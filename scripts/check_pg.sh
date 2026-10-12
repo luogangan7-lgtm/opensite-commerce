@@ -16,3 +16,4 @@ for test_file in tests/db_security_audit.sql tests/db_smoke.sql tests/db_isolati
   echo "RUN $test_file"
   "${PSQL[@]}" < "$test_file"
 done
+python3 scripts/check_modules.py --tables

@@ -9,6 +9,8 @@ if GOPROXY=off GOSUMDB=off go run ./cmd/preflight fixtures/home-invalid.json; th
 fi
 python3 scripts/check_contract.py
 python3 scripts/check_ci_pins.py
+python3 scripts/check_modules.py
+python3 tests/test_modules.py
 python3 tests/test_migration_runner.py
 python3 tests/test_check_pg_runner.py
 python3 tests/test_sqlc_contract_static.py

@@ -1,0 +1,516 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "identity",
+      "status": "implemented",
+      "go_path": "internal/modules/identity",
+      "go_status": "planned",
+      "owns_tables": [
+        "users",
+        "auth_sessions"
+      ],
+      "operations": [],
+      "dependencies": [],
+      "tests": [
+        "tests/db_role_boundaries.sql",
+        "tests/db_role_matrix.sql"
+      ],
+      "scopes": [],
+      "note": "Global staff identity and sessions have no tenant_id. Module status describes the existing database model; all module Go paths and HTTP operations remain planned."
+    },
+    {
+      "name": "tenant",
+      "status": "implemented",
+      "go_path": "internal/modules/tenant",
+      "go_status": "planned",
+      "owns_tables": [
+        "tenants",
+        "tenant_memberships",
+        "api_keys"
+      ],
+      "operations": [],
+      "dependencies": [
+        "identity"
+      ],
+      "tests": [
+        "internal/tenanttx/tenanttx_test.go",
+        "tests/db_isolation.sql",
+        "tests/db_connection_reuse.sql"
+      ],
+      "scopes": [],
+      "note": "Tenant membership and tenant-bound API keys reference global users. Tenant-scoped key storage belongs here; credential verification will use the identity public contract."
+    },
+    {
+      "name": "site",
+      "status": "implemented",
+      "go_path": "internal/modules/site",
+      "go_status": "planned",
+      "owns_tables": [
+        "organizations",
+        "sites",
+        "site_domains",
+        "site_locales"
+      ],
+      "operations": [
+        {
+          "operation_id": "createOrganization",
+          "status": "planned"
+        },
+        {
+          "operation_id": "createSite",
+          "status": "planned"
+        }
+      ],
+      "dependencies": [
+        "tenant"
+      ],
+      "tests": [
+        "tests/db_smoke.sql",
+        "tests/db_role_boundaries.sql"
+      ],
+      "scopes": [
+        "organization.create",
+        "site.create"
+      ],
+      "note": "Organizations represent tenant business organizations shared by sites and company CMS data, so they belong to site rather than global authentication. The sites.published_release_id FK is a publish-controlled pointer, not a site-to-publish Go dependency."
+    },
+    {
+      "name": "catalog",
+      "status": "implemented",
+      "go_path": "internal/modules/catalog",
+      "go_status": "planned",
+      "owns_tables": [
+        "products",
+        "product_options",
+        "product_option_values",
+        "product_variants",
+        "variant_option_values",
+        "attribute_definitions",
+        "product_attribute_values",
+        "product_content_revisions",
+        "product_listings"
+      ],
+      "operations": [
+        {
+          "operation_id": "createProduct",
+          "status": "planned"
+        },
+        {
+          "operation_id": "createVariant",
+          "status": "planned"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "site"
+      ],
+      "tests": [
+        "tests/db_smoke.sql",
+        "tests/test_sqlc_contract_static.py"
+      ],
+      "scopes": [
+        "catalog.write"
+      ]
+    },
+    {
+      "name": "media",
+      "status": "implemented",
+      "go_path": "internal/modules/media",
+      "go_status": "planned",
+      "owns_tables": [
+        "media_uploads",
+        "media_blobs",
+        "media_assets",
+        "product_media"
+      ],
+      "operations": [
+        {
+          "operation_id": "createMediaUpload",
+          "status": "planned"
+        },
+        {
+          "operation_id": "putMediaUploadContent",
+          "status": "planned"
+        },
+        {
+          "operation_id": "completeMediaUpload",
+          "status": "planned"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "catalog"
+      ],
+      "tests": [
+        "internal/storage/local/local_test.go",
+        "tests/db_sealed_media.sql",
+        "tests/db_security_services.sql"
+      ],
+      "scopes": [
+        "media.write"
+      ]
+    },
+    {
+      "name": "cms",
+      "status": "implemented",
+      "go_path": "internal/modules/cms",
+      "go_status": "planned",
+      "owns_tables": [
+        "company_contacts",
+        "company_profile_revisions",
+        "pages",
+        "page_revisions",
+        "blog_posts",
+        "blog_post_revisions",
+        "blog_post_publications",
+        "inquiries"
+      ],
+      "operations": [
+        {
+          "operation_id": "submitInquiry",
+          "status": "planned"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "site",
+        "catalog"
+      ],
+      "tests": [
+        "tests/db_smoke.sql",
+        "tests/db_isolation.sql"
+      ],
+      "scopes": [],
+      "note": "submitInquiry is public in the current OpenAPI and declares no required scope."
+    },
+    {
+      "name": "publish",
+      "status": "implemented",
+      "go_path": "internal/modules/publish",
+      "go_status": "planned",
+      "owns_tables": [
+        "site_releases",
+        "site_release_routes",
+        "site_release_templates",
+        "site_release_media",
+        "site_drafts",
+        "draft_pages",
+        "draft_operations"
+      ],
+      "operations": [
+        {
+          "operation_id": "createSiteDraft",
+          "status": "planned"
+        },
+        {
+          "operation_id": "applyPageOperations",
+          "status": "planned"
+        },
+        {
+          "operation_id": "validateSiteDraft",
+          "status": "planned"
+        },
+        {
+          "operation_id": "publishSiteDraft",
+          "status": "planned"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "site",
+        "cms",
+        "media"
+      ],
+      "tests": [
+        "internal/pagegraph/graph_test.go",
+        "tests/db_release_integrity.sql",
+        "tests/db_publish_isolation.sql"
+      ],
+      "scopes": [
+        "site.draft.write",
+        "site.publish"
+      ]
+    },
+    {
+      "name": "reliability",
+      "status": "implemented",
+      "go_path": "internal/modules/reliability",
+      "go_status": "planned",
+      "owns_tables": [
+        "idempotency_records",
+        "audit_events",
+        "outbox_events",
+        "webhook_inbox"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant"
+      ],
+      "tests": [
+        "tests/db_reliability.sql"
+      ],
+      "scopes": []
+    },
+    {
+      "name": "platform-security",
+      "status": "implemented",
+      "go_path": "internal/modules/platform-security",
+      "go_status": "planned",
+      "owns_tables": [],
+      "operations": [],
+      "dependencies": [
+        "identity",
+        "tenant",
+        "site",
+        "media",
+        "publish",
+        "reliability"
+      ],
+      "tests": [
+        "tests/db_security_hardening.sql",
+        "tests/db_security_services.sql",
+        "tests/db_security_audit.sql",
+        "tests/db_role_matrix.sql"
+      ],
+      "scopes": [],
+      "note": "Owns cross-cutting role and policy migrations, not application tables. Security hardening never transfers table ownership."
+    },
+    {
+      "name": "money",
+      "status": "planned",
+      "go_path": "internal/modules/money",
+      "go_status": "planned",
+      "owns_tables": [],
+      "operations": [],
+      "dependencies": [],
+      "tests": [],
+      "scopes": [],
+      "note": "PR16 candidate is pure Go money arithmetic; no app table ownership is proposed."
+    },
+    {
+      "name": "pricing",
+      "status": "planned",
+      "go_path": "internal/modules/pricing",
+      "go_status": "planned",
+      "owns_tables": [
+        "price_lists",
+        "price_entries"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "catalog",
+        "money"
+      ],
+      "tests": [],
+      "scopes": [],
+      "note": "Planned names read from PR16 candidate origin/feat/c10a-money-pricing; candidate migration numbering is not a main migration registration."
+    },
+    {
+      "name": "inventory",
+      "status": "planned",
+      "go_path": "internal/modules/inventory",
+      "go_status": "planned",
+      "owns_tables": [
+        "warehouses",
+        "stock_levels",
+        "inventory_reservations",
+        "inventory_movements"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "catalog"
+      ],
+      "tests": [],
+      "scopes": [],
+      "note": "Planned names read from PR14 candidate origin/feat/c11a-inventory; candidate SQL was not executed."
+    },
+    {
+      "name": "shipping",
+      "status": "planned",
+      "go_path": "internal/modules/shipping",
+      "go_status": "planned",
+      "owns_tables": [
+        "shipping_zones",
+        "shipping_zone_destinations",
+        "shipping_profiles",
+        "shipping_rates"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "money"
+      ],
+      "tests": [],
+      "scopes": [],
+      "note": "Planned names read from PR15 candidate origin/feat/c13a-shipping; candidate SQL was not executed."
+    }
+  ],
+  "migrations": [
+    {
+      "file": "migrations/001_identity.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "tenants",
+        "users",
+        "tenant_memberships",
+        "auth_sessions",
+        "api_keys"
+      ]
+    },
+    {
+      "file": "migrations/002_site.sql",
+      "owner": "site",
+      "touches_tables": [
+        "organizations",
+        "sites",
+        "site_domains",
+        "site_locales"
+      ]
+    },
+    {
+      "file": "migrations/003_catalog.sql",
+      "owner": "catalog",
+      "touches_tables": [
+        "products",
+        "product_options",
+        "product_option_values",
+        "product_variants",
+        "variant_option_values",
+        "attribute_definitions",
+        "product_attribute_values",
+        "product_content_revisions",
+        "product_listings"
+      ]
+    },
+    {
+      "file": "migrations/004_media.sql",
+      "owner": "media",
+      "touches_tables": [
+        "media_uploads",
+        "media_blobs",
+        "media_assets",
+        "product_media"
+      ]
+    },
+    {
+      "file": "migrations/005_cms.sql",
+      "owner": "cms",
+      "touches_tables": [
+        "company_contacts",
+        "company_profile_revisions",
+        "pages",
+        "page_revisions",
+        "blog_posts",
+        "blog_post_revisions",
+        "blog_post_publications",
+        "inquiries"
+      ]
+    },
+    {
+      "file": "migrations/006_publish.sql",
+      "owner": "publish",
+      "touches_tables": [
+        "site_releases",
+        "site_release_routes",
+        "site_release_templates",
+        "site_release_media",
+        "site_drafts",
+        "draft_pages",
+        "draft_operations"
+      ]
+    },
+    {
+      "file": "migrations/007_reliability.sql",
+      "owner": "reliability",
+      "touches_tables": [
+        "idempotency_records",
+        "audit_events",
+        "outbox_events"
+      ]
+    },
+    {
+      "file": "migrations/008_rls_grants.sql",
+      "owner": "platform-security",
+      "touches_tables": [
+        "tenant_memberships",
+        "api_keys",
+        "organizations",
+        "sites",
+        "site_domains",
+        "site_locales",
+        "products",
+        "product_options",
+        "product_option_values",
+        "product_variants",
+        "variant_option_values",
+        "attribute_definitions",
+        "product_attribute_values",
+        "product_content_revisions",
+        "product_listings",
+        "media_uploads",
+        "media_blobs",
+        "media_assets",
+        "product_media",
+        "company_contacts",
+        "company_profile_revisions",
+        "pages",
+        "page_revisions",
+        "blog_posts",
+        "blog_post_revisions",
+        "blog_post_publications",
+        "inquiries",
+        "site_releases",
+        "site_release_routes",
+        "site_release_templates",
+        "site_release_media",
+        "site_drafts",
+        "draft_pages",
+        "draft_operations",
+        "idempotency_records",
+        "audit_events",
+        "outbox_events"
+      ]
+    },
+    {
+      "file": "migrations/009_auth_domain_roles.sql",
+      "owner": "platform-security",
+      "touches_tables": [
+        "users",
+        "auth_sessions",
+        "api_keys",
+        "tenant_memberships",
+        "site_domains",
+        "sites"
+      ]
+    },
+    {
+      "file": "migrations/010_security_hardening.sql",
+      "owner": "platform-security",
+      "touches_tables": [
+        "tenant_memberships",
+        "site_domains",
+        "sites",
+        "media_uploads",
+        "media_blobs",
+        "media_assets",
+        "site_releases",
+        "site_release_routes",
+        "site_release_templates",
+        "site_release_media"
+      ]
+    },
+    {
+      "file": "migrations/011_platform_reliability.sql",
+      "owner": "reliability",
+      "touches_tables": [
+        "webhook_inbox",
+        "outbox_events",
+        "idempotency_records",
+        "audit_events"
+      ]
+    }
+  ]
+}
