@@ -405,5 +405,20 @@ BEGIN
   OR pg_has_role('app_runtime','app_inventory_executor','SET') THEN
   RAISE EXCEPTION 'CART_TENANT_CAPABILITY_BROADENED';
  END IF;
+ SELECT p.* INTO STRICT f FROM pg_proc p WHERE p.oid='app.cart_guard_version()'::regprocedure;
+ IF f.prokind<>'f' OR f.pronargs<>0 OR f.prorettype<>'trigger'::regtype OR f.prosecdef
+  OR f.proowner<>(SELECT relowner FROM pg_class WHERE oid='app.carts'::regclass)
+  OR cardinality(f.proconfig) IS DISTINCT FROM 1
+  OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+  OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner)))
+   WHERE grantee<>f.proowner OR privilege_type<>'EXECUTE' OR is_grantable) THEN
+  RAISE EXCEPTION 'CART_UNSAFE_VERSION_GUARD';
+ END IF;
+ FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+  IF has_function_privilege(role_name,f.oid,'EXECUTE')
+   OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'CART_GUARD_EXECUTE_MISMATCH: %',role_name;
+  END IF;
+ END LOOP;
 END $cart_functions$;
 SELECT 'PASS: cart tenant helper exact owner/search_path/boolean/STABLE/EXECUTE; no tenant-read grant' AS result;

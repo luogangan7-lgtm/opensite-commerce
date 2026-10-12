@@ -627,8 +627,8 @@ paths:
         guest capability returned once as cart_token; only its hash is persisted. Creation
         has no existing representation and is exempt from If-Match.
       parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/CartToken'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CartToken'
       requestBody:
         required: true
         content:
@@ -683,15 +683,15 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: Storefront
       security:
-      - CartToken: []
+        - CartToken: []
       description: Guest X-Cart-Token capability or trusted customer actor resolver
         must match tenant and cart owner. No staff cookies or bearer keys. Ownership
         failures are 404. Strong ETag includes version and current price/inventory hints.
         Writes require exact If-Match; reads do not reserve stock.
       parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/CartId'
-      - $ref: '#/components/parameters/CartToken'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CartId'
+        - $ref: '#/components/parameters/CartToken'
       responses:
         '200':
           description: Current cart; no-store. The creation token must be kept secret.
@@ -740,17 +740,17 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: Storefront
       security:
-      - CartToken: []
+        - CartToken: []
       description: Guest X-Cart-Token capability or trusted customer actor resolver
         must match tenant and cart owner. No staff cookies or bearer keys. Ownership
         failures are 404. Strong ETag includes version and current price/inventory hints.
         Writes require exact If-Match; reads do not reserve stock.
       parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/CartId'
-      - $ref: '#/components/parameters/SkuId'
-      - $ref: '#/components/parameters/CartToken'
-      - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CartId'
+        - $ref: '#/components/parameters/SkuId'
+        - $ref: '#/components/parameters/CartToken'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -804,17 +804,17 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: Storefront
       security:
-      - CartToken: []
+        - CartToken: []
       description: Guest X-Cart-Token capability or trusted customer actor resolver
         must match tenant and cart owner. No staff cookies or bearer keys. Ownership
         failures are 404. Strong ETag includes version and current price/inventory hints.
         Writes require exact If-Match; reads do not reserve stock.
       parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/CartId'
-      - $ref: '#/components/parameters/SkuId'
-      - $ref: '#/components/parameters/CartToken'
-      - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CartId'
+        - $ref: '#/components/parameters/SkuId'
+        - $ref: '#/components/parameters/CartToken'
+        - $ref: '#/components/parameters/IfMatch'
       responses:
         '200':
           description: Current cart; no-store. The creation token must be kept secret.

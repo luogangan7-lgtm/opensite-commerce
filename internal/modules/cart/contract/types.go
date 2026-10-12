@@ -9,8 +9,9 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
 )
