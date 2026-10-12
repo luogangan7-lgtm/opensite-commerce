@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Upgrade gates for security hardening and forward reliability; real PG18 only.
+# Upgrade gates for security hardening, forward reliability and additive inventory; real PG18 only.
 # Depends on: a superuser DATABASE_URL (or Docker compose) able to CREATE DATABASE.
 # Called by: CI after check_pg.sh. Each case runs in its own throwaway database.
 # Invariants: 010 refuses to seal a live release with unsafe media; every pre-010
@@ -153,6 +153,50 @@ for legacy_state in processing delivered failed completed; do
  else pass "reliability refuses ambiguous legacy $legacy_state atomically"; fi
  admin -c "DROP DATABASE $RELIABILITY_DB"; RELIABILITY_DB=""
 done
+[[ $fail -eq 0 ]] || exit 1
+# C-11a: install additive inventory over preexisting tenant/catalog data. Discover
+# the module file by suffix, so integration renumbering does not alter this gate.
+DB=upgrade_inventory_$$
+fresh_009 $DB
+# Every forward migration that precedes inventory (010, 011, ...), in order.
+for f in migrations/0[1-9][0-9]_*.sql; do
+  [[ $f == *_inventory.sql ]] && continue  # the glob already excludes 001-009
+  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db $DB >/dev/null
+done
+# No inventory tables existed when this tenant and SKU were written.
+db $DB <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('inventory-upgrade') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','existing-product') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+ VALUES(:'t',:'p','existing-sku','default');
+SQL
+inventory_files=(migrations/*_inventory.sql)
+[[ ${#inventory_files[@]} -eq 1 && -f ${inventory_files[0]} ]] || { echo 'FAIL: exactly one inventory migration required'; exit 1; }
+{ echo 'BEGIN;'; cat "${inventory_files[0]}"; echo 'COMMIT;'; } | db $DB >/dev/null
+result=$(db $DB <<'SQL'
+SELECT set_config('app.tenant_id',(SELECT id::text FROM app.tenants WHERE name='inventory-upgrade'),false);
+SELECT set_config('upgrade.sku',(SELECT id::text FROM app.product_variants WHERE sku='existing-sku'),false);
+SET ROLE app_inventory_manager;
+SELECT app.inventory_adjust(current_setting('upgrade.sku')::uuid,2,'existing SKU receipt',uuidv7(),'inbound');
+RESET ROLE;
+SET ROLE app_runtime;
+SELECT (app.inventory_reserve(current_setting('upgrade.sku')::uuid,1,'checkout',uuidv7(),'upgrade-key',900)).id AS rid \gset
+SELECT app.inventory_commit(:'rid');
+SELECT 'INVENTORY_UPGRADE='||s.on_hand||'|'||s.reserved||'|'||
+ (SELECT count(*) FROM app.inventory_movements)||'|'||
+ (SELECT count(*) FROM app.products WHERE product_code='existing-product')||'|'||
+ (SELECT count(*) FROM app.product_variants WHERE sku='existing-sku')
+ FROM app.stock_levels s;
+SQL
+)
+if [[ $result == *'INVENTORY_UPGRADE=1|0|3|1|1'* ]]; then
+  pass 'inventory upgrade preserves existing tenant/catalog and commits with bounded counters +3 movements'
+else bad "inventory upgrade: $result"; fi
+# Full scoped SQL and exact authority matrix also run against the upgraded DB.
+db $DB -f tests/db_inventory.sql >/dev/null
+db $DB -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"
+
 # Existing catalog rows from 001..010 remain usable by the forward pricing DDL.
 # Apply every post-010 migration by its current filename, not a reserved number.
 DB=upgrade_pricing_$$
@@ -182,4 +226,4 @@ SQL
 fi
 admin -c "DROP DATABASE $DB"
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability and pricing upgrade gates'
+echo 'PASS: security, reliability, inventory and pricing upgrade gates'
