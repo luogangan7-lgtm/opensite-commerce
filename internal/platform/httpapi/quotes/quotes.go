@@ -242,7 +242,11 @@ func quoteRepresentation(q qc.Quote) (httpapi.Quote, error) {
 	if err != nil {
 		return out, err
 	}
-	err = json.Unmarshal(body, &out)
+	// Calculator snapshots contain open JSON objects. Keep their int64 minor
+	// units as JSON numbers rather than round-tripping through float64.
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	err = decoder.Decode(&out)
 	return out, err
 }
 func (h *QuotesHandler) SubmitInquiry(ctx context.Context, r httpapi.SubmitInquiryRequestObject) (httpapi.SubmitInquiryResponseObject, error) {

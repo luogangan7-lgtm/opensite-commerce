@@ -25,6 +25,7 @@ const quoteActor = "33333333-3333-3333-3333-333333333333"
 const quoteCompany = "44444444-4444-4444-4444-444444444444"
 
 type quoteFixture struct {
+	view        *qc.Quote
 	createInput qc.CreateInput
 	calls       int
 	input       qc.InquiryInput
@@ -45,6 +46,9 @@ func (f *quoteFixture) Create(_ context.Context, in qc.CreateInput, o qc.WriteOp
 }
 func (f *quoteFixture) Get(context.Context, string) (qc.Quote, error) {
 	f.calls++
+	if f.view != nil {
+		return *f.view, f.fail
+	}
 	return quoteView(), f.fail
 }
 func (f *quoteFixture) Transition(_ context.Context, _ string, _ qc.Action, o qc.WriteOptions) (qc.Quote, error) {
@@ -208,6 +212,34 @@ func TestQuotesCreateUsesGeneratedStrictAdapter(t *testing.T) {
 	}
 	if f.calls != 1 {
 		t.Fatalf("bad create reached service %d", f.calls)
+	}
+}
+func TestQuotesSnapshotMinorUnitsRemainExact(t *testing.T) {
+	for _, tc := range []struct{ amount, shipping int64 }{{9007199254740993, 9007199254740993}, {9223372036854775807, 0}} {
+		q := quoteView()
+		q.Snapshot.Subtotal, q.Snapshot.Total = tc.amount, tc.amount+tc.shipping
+		q.Snapshot.ShippingAmount = tc.shipping
+		q.Snapshot.Shipping.Charge.Amount, q.Snapshot.Shipping.Charge.Currency = tc.shipping, "USD"
+		q.Snapshot.Tax.Currency = "USD"
+		q.Snapshot.Tax.Totals.Net, q.Snapshot.Tax.Totals.Gross = tc.amount, tc.amount
+		line := qc.Line{LineNo: 1, Description: "zero-rated", Quantity: 1, UnitPrice: tc.amount, LineTotal: tc.amount}
+		line.Snapshot.Amounts.Net, line.Snapshot.Amounts.Gross = tc.amount, tc.amount
+		q.Snapshot.Lines = []qc.Line{line}
+		q.Snapshot.Tax.Lines = append(q.Snapshot.Tax.Lines, line.Snapshot)
+		f := &quoteFixture{view: &q}
+		w := quoteRequest(quoteRouter(t, f, quoteAuth{kind: "staff"}, nil, nil), "GET", "/api/v1/t/"+quoteTenant+"/quotes/"+quoteID, "", nil)
+		var body struct {
+			Snapshot struct {
+				Tax      struct{ Totals struct{ Net int64 } }
+				Shipping struct{ Charge struct{ Amount int64 } }
+				Lines    []struct {
+					Snapshot struct{ Amounts struct{ Net int64 } }
+				}
+			}
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Snapshot.Tax.Totals.Net != tc.amount || body.Snapshot.Shipping.Charge.Amount != tc.shipping || len(body.Snapshot.Lines) != 1 || body.Snapshot.Lines[0].Snapshot.Amounts.Net != tc.amount {
+			t.Fatalf("minor units changed: amount=%d shipping=%d HTTP%d %s", tc.amount, tc.shipping, w.Code, w.Body.String())
+		}
 	}
 }
 func TestQuotesErrorsAreStableAndRedacted(t *testing.T) {
