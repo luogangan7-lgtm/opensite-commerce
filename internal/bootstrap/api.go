@@ -28,14 +28,19 @@ func New(config Config) (*http.Server, error) {
 			return nil, err
 		}
 	}
-	// Socket write deadlines do not cancel PostgreSQL queries or lock waits.
-	// This covers authentication and handlers together, including the 60s backoff.
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
-		defer cancel()
-		router.ServeHTTP(w, r.WithContext(ctx))
-	})
+	// Socket deadlines do not cancel database queries or lock waits. Preserve
+	// the router's registration snapshot through the request deadline wrapper.
+	handler := deadlineHandler{Router: router}
 	return &http.Server{Addr: config.Address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second}, nil
+}
+
+// Embedding exposes the router's immutable RouteSpecs snapshot for contract gates.
+type deadlineHandler struct{ *httpapi.Router }
+
+func (h deadlineHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
+	defer cancel()
+	h.Router.ServeHTTP(w, r.WithContext(ctx))
 }
 
 func Run(ctx context.Context, config Config) error {

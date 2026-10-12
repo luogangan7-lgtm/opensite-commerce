@@ -15,15 +15,35 @@
       ],
       "operations": [
         {
+          "operation_id": "createAdminSession",
+          "status": "planned"
+        },
+        {
+          "operation_id": "deleteAdminSession",
+          "status": "planned"
+        },
+        {
+          "operation_id": "getCurrentActor",
+          "status": "planned"
+        },
+        {
+          "operation_id": "listAdminSessions",
+          "status": "planned"
+        },
+        {
+          "operation_id": "revokeAdminSession",
+          "status": "planned"
+        },
+        {
           "operation_id": "getAdminLoginChallenge",
           "status": "implemented"
         },
         {
-          "operation_id": "createAdminSession",
+          "operation_id": "createStaffLoginSession",
           "status": "implemented"
         },
         {
-          "operation_id": "revokeAdminSession",
+          "operation_id": "logoutCurrentStaffSession",
           "status": "implemented"
         },
         {
@@ -40,7 +60,7 @@
         "tests/test_identity_login_contract.py"
       ],
       "scopes": [],
-      "note": "Global staff authentication, signed anonymous login CSRF, and opaque admin sessions have no tenant context. Self-session/logout admission checks active user/session without membership or API-key scopes."
+      "note": "Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented; HTTP operations remain planned. Four staff login/challenge/session/logout HTTP operations are implemented; the five admin-session management operations remain planned."
     },
     {
       "name": "tenant",
@@ -266,14 +286,20 @@
         "outbox_events",
         "webhook_inbox"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "health",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [
         "tenant"
       ],
       "tests": [
         "tests/db_reliability.sql"
       ],
-      "scopes": []
+      "scopes": [],
+      "note": "Owns the platform health operation implemented by bootstrap; this does not promote a business Go service."
     },
     {
       "name": "platform-security",
@@ -396,6 +422,105 @@
       "legacy_go_paths": [
         "internal/shipping"
       ]
+    },
+    {
+      "name": "tax",
+      "status": "implemented",
+      "go_path": "internal/modules/tax",
+      "go_status": "planned",
+      "owns_tables": [
+        "tax_zones",
+        "tax_zone_locations",
+        "tax_categories",
+        "tax_rates",
+        "tax_settings"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "money"
+      ],
+      "tests": [
+        "internal/tax/tax_test.go",
+        "tests/db_tax.sql",
+        "tests/test_sqlc_contract_static.py"
+      ],
+      "scopes": [],
+      "note": "Tenant regional rule tables and pure calculator from PR19. Existing internal/tax uses approved Money arithmetic; target module Go path and HTTP operations remain planned. Billing must consume saved Tax snapshots without recalculation.",
+      "legacy_go_paths": [
+        "internal/tax"
+      ]
+    },
+    {
+      "name": "customer",
+      "status": "implemented",
+      "go_path": "internal/modules/customer",
+      "go_status": "planned",
+      "owns_tables": [
+        "customers",
+        "customer_credentials",
+        "customer_addresses"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant"
+      ],
+      "tests": [
+        "tests/db_customers.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Storefront customer identity is independent of employee users. Dedicated customer-auth credentials; HTTP and module Go path remain planned."
+    },
+    {
+      "name": "b2b",
+      "status": "implemented",
+      "go_path": "internal/modules/b2b",
+      "go_status": "planned",
+      "owns_tables": [
+        "buyer_companies",
+        "buyer_roles",
+        "buyer_company_members"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "customer"
+      ],
+      "tests": [
+        "tests/db_customers.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Purchasing companies and memberships are separate from seller organizations. Fixed tenant roles are automatically provisioned; no HTTP operations."
+    },
+    {
+      "name": "ledger",
+      "status": "implemented",
+      "go_path": "internal/modules/ledger",
+      "go_status": "implemented",
+      "owns_tables": [
+        "ledger_accounts",
+        "ledger_transactions",
+        "ledger_entries"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "money"
+      ],
+      "tests": [
+        "tests/db_ledger.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Internal single-currency posting and account balances. Atomic posting is the only runtime write capability for transactions and entries; tenant settlement currency is explicit, with no automatic default."
     }
   ],
   "migrations": [
@@ -592,20 +717,56 @@
       ]
     },
     {
-      "file": "migrations/015_identity_auth.sql",
-      "owner": "identity",
+      "file": "migrations/015_tax.sql",
+      "owner": "tax",
       "touches_tables": [
-        "auth_account_attempts",
-        "auth_login_attempts",
-        "known_devices",
-        "users",
-        "api_keys",
-        "tenant_memberships",
+        "tax_zones",
+        "tax_zone_locations",
+        "tax_categories",
+        "tax_rates",
+        "tax_settings"
+      ]
+    },
+    {
+      "file": "migrations/016_customers_b2b.sql",
+      "owner": "customer",
+      "touches_tables": [
+        "customers",
+        "customer_credentials",
+        "customer_addresses",
+        "buyer_companies",
+        "buyer_roles",
+        "buyer_company_members",
+        "price_lists",
         "tenants"
       ]
     },
     {
-      "file": "migrations/016_identity_login.sql",
+      "file": "migrations/017_ledger.sql",
+      "owner": "ledger",
+      "touches_tables": [
+        "tenants",
+        "ledger_accounts",
+        "ledger_transactions",
+        "ledger_entries"
+      ]
+    },
+    {
+      "file": "migrations/018_identity_auth.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "users",
+        "tenants",
+        "tenant_memberships",
+        "auth_account_attempts",
+        "auth_login_attempts",
+        "known_devices",
+        "api_keys",
+        "buyer_roles"
+      ]
+    },
+    {
+      "file": "migrations/019_identity_login.sql",
       "owner": "identity",
       "touches_tables": [
         "auth_sessions"

@@ -1,5 +1,5 @@
 // Responsibility: private staff-auth persistence through generated SQL.
-// Dependencies: pgx.Conn and internal/db; callers: identity login service.
+// Dependencies: platform identity connection adapter and internal/db; callers: identity login service.
 // Invariants: dedicated app_auth LOGIN; serialized connection; atomic rotation;
 // driver errors and credentials never escape this boundary.
 package store
@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
+	identityadapter "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/identitydb/pgxadapter"
 )
 
 type authConnection interface {
@@ -37,12 +38,7 @@ func OpenLogin(ctx context.Context, dsn string, idleTimeout time.Duration) (*Log
 	if idleTimeout < time.Second {
 		return nil, login.ErrDatabase
 	}
-	config, err := pgx.ParseConfig(dsn)
-	if err != nil {
-		return nil, login.ErrDatabase
-	}
-	config.ConnectTimeout = 10 * time.Second
-	conn, err := pgx.ConnectConfig(ctx, config)
+	conn, err := identityadapter.Open(ctx, dsn)
 	if err != nil {
 		return nil, login.ErrDatabase
 	}
@@ -111,7 +107,7 @@ func (r *LoginRepository) Cooldowns(ctx context.Context, identifier string, ip n
 	}
 	return row.AccountUntil.Time, row.IpUntil.Time, nil
 }
-func (r *LoginRepository) RecordFailure(ctx context.Context, identifier string, ip netip.Addr, at time.Time) error {
+func (r *LoginRepository) RecordFailure(ctx context.Context, identifier string, ip netip.Addr) error {
 	if !ip.IsValid() {
 		return login.ErrDatabase
 	}
@@ -119,7 +115,7 @@ func (r *LoginRepository) RecordFailure(ctx context.Context, identifier string, 
 		return err
 	}
 	defer r.leave()
-	err := r.queries.LoginRecordFailure(ctx, db.LoginRecordFailureParams{Identifier: identifier, Ip: ip.Unmap(), At: stamp(at)})
+	err := r.queries.LoginRecordFailure(ctx, db.LoginRecordFailureParams{Identifier: identifier, Ip: ip.Unmap()})
 	if err != nil {
 		return login.ErrDatabase
 	}
@@ -139,7 +135,7 @@ func (r *LoginRepository) Device(ctx context.Context, hash [32]byte) (login.Devi
 	}
 	return login.Device{ID: row.ID.String(), UserID: row.UserID.String(), ExpiresAt: row.ExpiresAt.Time, Revoked: row.RevokedAt.Valid}, nil
 }
-func (r *LoginRepository) FailDevice(ctx context.Context, id string, at time.Time) error {
+func (r *LoginRepository) FailDevice(ctx context.Context, id string) error {
 	u, err := uuid(id)
 	if err != nil {
 		return login.ErrDatabase
@@ -148,7 +144,7 @@ func (r *LoginRepository) FailDevice(ctx context.Context, id string, at time.Tim
 		return err
 	}
 	defer r.leave()
-	if err = r.queries.LoginFailDevice(ctx, db.LoginFailDeviceParams{ID: u, At: stamp(at)}); err != nil {
+	if err = r.queries.LoginFailDevice(ctx, u); err != nil {
 		return login.ErrDatabase
 	}
 	return nil

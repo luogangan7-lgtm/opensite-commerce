@@ -1,8 +1,9 @@
 // Responsibilities: admit one bounded JSON DTO object at the HTTP boundary.
 // Dependencies: stdlib MIME/HTTP/JSON; platform/errors; RouteSpec body limit.
 // Callers: transport handlers; owns no tables and performs no domain validation.
-// Invariants: only application/json; bounded body/depth/decoded strings; strict
-// DTO fields and one JSON value. Callers must discard dst after any error.
+// Invariants: only application/json; bounded body/depth/decoded strings;
+// unique decoded object keys, strict DTO fields and one JSON value. Callers
+// must discard dst after any error.
 package httpapi
 
 import (
@@ -71,27 +72,52 @@ func checkJSONLimits(body []byte) error {
 	if err != nil || first != json.Delim('{') {
 		return invalidJSON()
 	}
-	depth := 1
-	for depth > 0 {
+	// Arrays have nil keys; each object has its own decoded-name set.
+	type frame struct {
+		keys      map[string]struct{}
+		expectKey bool
+	}
+	stack := []frame{{keys: make(map[string]struct{}), expectKey: true}}
+	for len(stack) > 0 {
 		token, err := dec.Token()
 		if err != nil {
 			return invalidJSON()
 		}
+		current := &stack[len(stack)-1]
 		switch value := token.(type) {
 		case json.Delim:
 			switch value {
 			case '{', '[':
-				depth++
-				if depth > maxJSONDepth {
+				if len(stack) == maxJSONDepth {
 					return invalidJSON()
 				}
+				// Opening a container consumes its parent's value; only the
+				// new top frame sees tokens until that container closes.
+				current.expectKey = true
+				next := frame{}
+				if value == '{' {
+					next = frame{keys: make(map[string]struct{}), expectKey: true}
+				}
+				stack = append(stack, next)
 			case '}', ']':
-				depth--
+				stack = stack[:len(stack)-1]
 			}
 		case string:
 			if len(value) > maxJSONStringBytes {
 				return invalidJSON()
 			}
+			if current.keys != nil && current.expectKey {
+				if _, exists := current.keys[value]; exists {
+					return invalidJSON()
+				}
+				current.keys[value] = struct{}{}
+				current.expectKey = false
+			} else {
+				current.expectKey = true
+			}
+		default:
+			// Numbers, booleans and null finish an object value as well.
+			current.expectKey = true
 		}
 	}
 	// Token also detects trailing junk. EOF after whitespace proves one value.

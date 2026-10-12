@@ -35,14 +35,14 @@ SELECT (SELECT cooldown_until FROM app.auth_account_attempts WHERE identifier_no
  (SELECT cooldown_until FROM app.auth_login_attempts WHERE identifier_normalized=sqlc.arg(identifier)::text AND ip=sqlc.arg(ip)::inet)::timestamptz AS ip_until;
 
 -- name: LoginRecordFailure :exec
-SELECT app.auth_record_failure(sqlc.arg(identifier)::text,sqlc.arg(ip)::inet,sqlc.arg(at)::timestamptz);
+SELECT app.auth_record_failure(sqlc.arg(identifier)::text,sqlc.arg(ip)::inet);
 
 -- name: LoginDevice :one
 SELECT id,user_id,expires_at,revoked_at FROM app.known_devices
  WHERE cookie_hash=sqlc.arg(cookie_hash)::bytea AND revoked_at IS NULL;
 
 -- name: LoginFailDevice :exec
-SELECT app.auth_fail_known_device(sqlc.arg(id)::uuid,sqlc.arg(at)::timestamptz);
+SELECT app.auth_fail_known_device(sqlc.arg(id)::uuid);
 
 -- name: LoginRotateOldSession :execrows
 UPDATE app.auth_sessions s SET revoked_at=clock_timestamp()

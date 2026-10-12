@@ -1,4 +1,4 @@
--- Responsibility: audit the least-privilege contract for the three base roles.
+-- Responsibility: audit the least-privilege contract for the four internal roles.
 -- Dependencies: PostgreSQL 18 catalogs and app tables from migrations 001..009.
 -- Caller: privileged psql test runner on an expendable database, after hardening.
 -- Invariant: effective privileges (including PUBLIC/inheritance) match the contract
@@ -6,7 +6,7 @@
 \set ON_ERROR_STOP on
 DO $audit$
 DECLARE
- roles text[] := ARRAY['app_runtime','app_auth','app_domain_resolver'];
+ roles text[] := ARRAY['app_runtime','app_auth','app_domain_resolver','app_customer_auth'];
  -- Named business boundaries, independent of the migration's grant generator.
  mutable_tables text[] := ARRAY[
   'organizations','site_locales','products','product_options','product_option_values',
@@ -23,6 +23,9 @@ DECLARE
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
   'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
   'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
+  'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
+  'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
+  'ledger_accounts','ledger_transactions','ledger_entries',
   'auth_account_attempts','auth_login_attempts','known_devices'];
  role_name text;
  r record;
@@ -69,7 +72,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','auth_account_attempts','auth_login_attempts','known_devices']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','customer_credentials','auth_account_attempts','auth_login_attempts','known_devices']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='INSERT' THEN
@@ -78,6 +81,12 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'ledger_accounts' THEN ARRAY['tenant_id','id','code','currency','account_type']
+        WHEN 'tax_zones' THEN ARRAY['tenant_id','id','name']
+        WHEN 'tax_zone_locations' THEN ARRAY['tenant_id','zone_id','country_code','subdivision']
+        WHEN 'tax_categories' THEN ARRAY['tenant_id','code','name','is_exempt']
+        WHEN 'tax_rates' THEN ARRAY['tenant_id','id','zone_id','category_code','rate_bp','valid_from','valid_until']
+        WHEN 'tax_settings' THEN ARRAY['tenant_id','prices_include_tax']
         WHEN 'idempotency_records' THEN ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','request_hash','expires_at','claim_token','created_at']
         WHEN 'outbox_events' THEN ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key','created_at']
         WHEN 'webhook_inbox' THEN ARRAY['tenant_id','id','provider','provider_account_id','environment','provider_event_id','payload_hash','payload_reference','created_at']
@@ -96,6 +105,10 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'tax_zones' THEN ARRAY['name']
+        WHEN 'tax_categories' THEN ARRAY['name','is_exempt']
+        WHEN 'tax_rates' THEN ARRAY['rate_bp','valid_from','valid_until']
+        WHEN 'tax_settings' THEN ARRAY['prices_include_tax']
         WHEN 'webhook_inbox' THEN ARRAY['status','attempts','next_attempt_at','processed_at']
         WHEN 'sites' THEN ARRAY['name','default_locale']
         WHEN 'media_assets' THEN ARRAY['filename','mime_type','width','height']
@@ -118,6 +131,18 @@ BEGIN
       allowed_columns:=ARRAY['id','status'];
      ELSIF privilege='UPDATE' AND t.relname='auth_sessions' THEN
       allowed_columns := ARRAY['revoked_at','last_seen_at'];
+     END IF;
+    ELSIF role_name='app_customer_auth' THEN
+     IF privilege='SELECT' AND t.relname=ANY(ARRAY['customers','customer_credentials']) THEN
+      allowed_columns := all_columns;
+      expected_table := true;
+     ELSIF privilege='INSERT' THEN
+      allowed_columns := CASE t.relname
+       WHEN 'customers' THEN ARRAY['tenant_id','id','email','display_name']
+       WHEN 'customer_credentials' THEN ARRAY['tenant_id','customer_id','password_hash']
+       ELSE ARRAY[]::text[] END;
+     ELSIF privilege='UPDATE' AND t.relname='customer_credentials' THEN
+      allowed_columns := ARRAY['password_hash'];
      END IF;
     ELSIF role_name='app_domain_resolver' AND privilege='SELECT' THEN
      allowed_columns := CASE t.relname
@@ -151,13 +176,33 @@ BEGIN
   END LOOP;
  END LOOP;
 END $audit$;
-SELECT 'PASS: three internal roles; exact contracted-table and every-column privilege matrix' AS result;
+DO $customer_capability$
+DECLARE role_name text; f record;
+BEGIN
+ FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver',
+  'app_domain_verifier','app_media_service','app_publisher','app_publish_executor',
+  'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor'] LOOP
+  IF pg_has_role(role_name,'app_customer_auth','SET')
+   OR pg_has_role('app_customer_auth',role_name,'SET') THEN
+   RAISE EXCEPTION 'customer/staff/service capability path: %',role_name;
+  END IF;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' LOOP
+  IF has_function_privilege('app_customer_auth',f.oid,'EXECUTE')
+   OR has_function_privilege('app_customer_auth',f.oid,'EXECUTE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'customer auth can execute foreign routine: %',f.proname;
+  END IF;
+ END LOOP;
+END $customer_capability$;
+SELECT 'PASS: four internal roles; exact contracted-table and every-column privilege matrix' AS result;
 
+-- Service capabilities are disjoint; publisher's only authority is two routines.
 -- Global auth is isolated by effective table/column ACL, not a fake tenant realm.
 -- Bootstrap is execute-only; its unreachable owner has minimal credential DML.
 DO $identity$
 DECLARE role_name text; r record; t record; a record; p text; allowed text[]; f record;
- names text[]:=ARRAY['auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin'];
+ names text[]:=ARRAY['auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts'];
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['app_credential_writer','app_admin_bootstrap'] LOOP
   SELECT * INTO STRICT r FROM pg_roles WHERE rolname=role_name;
@@ -172,13 +217,18 @@ BEGIN
     allowed:=ARRAY[]::text[];
     IF role_name='app_credential_writer' THEN
      IF p='SELECT' THEN allowed:=CASE t.relname WHEN 'users' THEN ARRAY['id'] WHEN 'tenants' THEN ARRAY['id']
-      WHEN 'tenant_memberships' THEN ARRAY['role'] WHEN 'api_keys' THEN ARRAY['id'] ELSE allowed END;
-     ELSIF p='INSERT' THEN allowed:=CASE t.relname WHEN 'users' THEN ARRAY['email','password_hash'] WHEN 'tenants' THEN ARRAY['name']
+      WHEN 'tenant_memberships' THEN ARRAY['role'] WHEN 'api_keys' THEN ARRAY['id']
+      WHEN 'auth_account_attempts' THEN ARRAY['identifier_normalized','window_started_at','cooldown_until','last_failed_at']
+      WHEN 'auth_login_attempts' THEN ARRAY['identifier_normalized','ip','window_started_at','cooldown_until','last_failed_at'] ELSE allowed END;
+     ELSIF p='INSERT' THEN allowed:=CASE t.relname WHEN 'users' THEN ARRAY['email','password_hash'] WHEN 'tenants' THEN ARRAY['id','name']
       WHEN 'tenant_memberships' THEN ARRAY['tenant_id','user_id','role']
+      WHEN 'buyer_roles' THEN ARRAY['tenant_id','code']
       WHEN 'api_keys' THEN ARRAY['tenant_id','id','issued_by','key_prefix','key_hash','scopes','expires_at'] ELSE allowed END;
      ELSIF p='UPDATE' AND t.relname='users' THEN allowed:=ARRAY['password_hash']; END IF;
     END IF;
-    IF has_table_privilege(role_name,t.oid,p) OR has_table_privilege(role_name,t.oid,p||' WITH GRANT OPTION') THEN
+    IF has_table_privilege(role_name,t.oid,p) IS DISTINCT FROM
+     (role_name='app_credential_writer' AND p='DELETE' AND t.relname IN ('auth_account_attempts','auth_login_attempts'))
+     OR has_table_privilege(role_name,t.oid,p||' WITH GRANT OPTION') THEN
      RAISE EXCEPTION 'identity role has table authority: % % %',role_name,t.relname,p; END IF;
     IF p=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
      FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
@@ -193,31 +243,35 @@ BEGIN
  FOR t IN SELECT c.oid,c.relname,c.relrowsecurity,c.relforcerowsecurity,c.relacl,c.relowner
   FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relname=ANY(ARRAY['auth_account_attempts','auth_login_attempts','known_devices']) LOOP
   IF t.relrowsecurity OR t.relforcerowsecurity OR EXISTS(SELECT FROM pg_attribute WHERE attrelid=t.oid AND attname='tenant_id' AND NOT attisdropped)
-   OR EXISTS(SELECT FROM aclexplode(coalesce(t.relacl,acldefault('r',t.relowner))) WHERE grantee<>t.relowner) THEN
+   OR EXISTS(SELECT FROM aclexplode(coalesce(t.relacl,acldefault('r',t.relowner))) WHERE grantee<>t.relowner AND NOT (t.relname IN ('auth_account_attempts','auth_login_attempts')
+     AND grantee='app_credential_writer'::regrole AND privilege_type='DELETE' AND NOT is_grantable)) THEN
    RAISE EXCEPTION 'global auth table contract mismatch: %',t.relname; END IF;
-  IF EXISTS(SELECT FROM pg_attribute col CROSS JOIN LATERAL aclexplode(col.attacl) acl WHERE col.attrelid=t.oid AND acl.grantee NOT IN (t.relowner,'app_auth'::regrole)) THEN
+  IF EXISTS(SELECT FROM pg_attribute col CROSS JOIN LATERAL aclexplode(col.attacl) acl WHERE col.attrelid=t.oid AND acl.grantee NOT IN (t.relowner,'app_auth'::regrole,'app_credential_writer'::regrole)) THEN
    RAISE EXCEPTION 'non-auth global column access: %',t.relname; END IF;
  END LOOP;
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname='app' AND p.proname=ANY(names) LOOP
-  IF f.proowner<>'app_credential_writer'::regrole OR f.prosecdef IS DISTINCT FROM (f.proname='bootstrap_admin')
-   OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
+  IF f.proowner<>'app_credential_writer'::regrole OR f.prosecdef IS DISTINCT FROM (f.proname IN ('bootstrap_admin','auth_prune_attempts'))
+   OR cardinality(f.proconfig) IS DISTINCT FROM (CASE WHEN f.proname='bootstrap_admin' THEN 2 ELSE 1 END)
+   OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
+   OR (f.proname='bootstrap_admin' AND f.proconfig[2]<>'app.tenant_id=')
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE
-    grantee<>f.proowner AND NOT (grantee='app_auth'::regrole AND f.proname IN ('auth_record_failure','auth_fail_known_device')
+    grantee<>f.proowner AND NOT (grantee='app_auth'::regrole AND f.proname IN ('auth_record_failure','auth_fail_known_device','auth_prune_attempts')
     OR grantee='app_admin_bootstrap'::regrole AND f.proname='bootstrap_admin'))
-   OR f.oid<>to_regprocedure(CASE f.proname WHEN 'auth_record_failure' THEN 'app.auth_record_failure(text,inet,timestamptz)'
-    WHEN 'guard_known_device' THEN 'app.guard_known_device()' WHEN 'auth_fail_known_device' THEN 'app.auth_fail_known_device(uuid,timestamptz)'
-    WHEN 'bootstrap_admin' THEN 'app.bootstrap_admin(text,text,text)' END) THEN RAISE EXCEPTION 'unsafe identity function %',f.proname; END IF;
+   OR f.oid<>to_regprocedure(CASE f.proname WHEN 'auth_record_failure' THEN 'app.auth_record_failure(text,inet)'
+    WHEN 'guard_known_device' THEN 'app.guard_known_device()' WHEN 'auth_fail_known_device' THEN 'app.auth_fail_known_device(uuid)'
+    WHEN 'bootstrap_admin' THEN 'app.bootstrap_admin(text,text,text)'
+    WHEN 'auth_prune_attempts' THEN 'app.auth_prune_attempts(integer)' END) THEN RAISE EXCEPTION 'unsafe identity function %',f.proname; END IF;
   FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service','app_publisher',
-   'app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_credential_writer','app_admin_bootstrap'] LOOP
+   'app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_ledger_executor','app_credential_writer','app_admin_bootstrap'] LOOP
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM
-    (role_name='app_credential_writer' OR role_name='app_auth' AND f.proname=ANY(ARRAY['auth_record_failure','auth_fail_known_device'])
+    (role_name='app_credential_writer' OR role_name='app_auth' AND f.proname=ANY(ARRAY['auth_record_failure','auth_fail_known_device','auth_prune_attempts'])
      OR role_name='app_admin_bootstrap' AND f.proname='bootstrap_admin') THEN RAISE EXCEPTION 'identity function role mismatch: % %',role_name,f.proname; END IF;
    IF role_name<>'app_credential_writer' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'identity function grant option: % %',role_name,f.proname; END IF;
   END LOOP;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>4 THEN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>5 THEN
   RAISE EXCEPTION 'identity function contract incomplete'; END IF;
  -- New capability roles cannot execute older business service functions either.
  FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND NOT p.proname=ANY(names) LOOP
@@ -281,7 +335,9 @@ BEGIN
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
-   'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin') LOOP
+   'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
+   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
+   'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -301,7 +357,9 @@ BEGIN
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
-   'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin'))<>10 THEN
+   'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
+   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
+   'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -375,3 +433,111 @@ BEGIN
  END IF;
 END $inventory$;
 SELECT 'PASS: inventory exact owner/manager/runtime table-column-routine capabilities' AS result;
+
+-- Customer trigger routines inherit the caller's authority, never add a capability.
+DO $customer_triggers$
+DECLARE f record; role_name text; owner_role record;
+ names text[]:=ARRAY['buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at'];
+BEGIN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
+  RAISE EXCEPTION 'CUSTOMERS_TRIGGER_FUNCTION_CONTRACT_INCOMPLETE';
+ END IF;
+ FOR f IN SELECT p.oid,p.proname,p.proowner,p.prosecdef,p.proconfig,p.proacl,p.prorettype,p.pronargs,p.prokind
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' AND p.proname=ANY(names) LOOP
+  SELECT * INTO STRICT owner_role FROM pg_roles WHERE oid=f.proowner;
+  IF f.prokind<>'f' OR f.pronargs<>0 OR f.prorettype<>'trigger'::regtype
+   OR f.prosecdef OR NOT(owner_role.rolsuper OR owner_role.rolbypassrls)
+   OR EXISTS(SELECT FROM pg_class WHERE oid IN ('app.tenants'::regclass,
+     'app.customers'::regclass,'app.customer_credentials'::regclass,'app.customer_addresses'::regclass,
+     'app.buyer_companies'::regclass,'app.buyer_roles'::regclass,'app.buyer_company_members'::regclass)
+     AND relowner IS DISTINCT FROM f.proowner)
+   OR cardinality(f.proconfig) IS DISTINCT FROM 1
+   OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner)))
+     WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+   RAISE EXCEPTION 'CUSTOMERS_UNSAFE_TRIGGER_FUNCTION: %',f.proname;
+  END IF;
+  FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+   IF has_function_privilege(role_name,f.oid,'EXECUTE')
+    OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'CUSTOMERS_TRIGGER_EXECUTE_CAPABILITY: % %',role_name,f.proname;
+   END IF;
+  END LOOP;
+ END LOOP;
+END $customer_triggers$;
+SELECT 'PASS: customer trigger exact signature, privileged table owner, SECURITY INVOKER, search_path and no application EXECUTE' AS result;
+
+-- Ledger writes are an atomic command; no application/service can become owner.
+DO $ledger$
+DECLARE r record; t record; a record; f record; privilege text; role_name text;
+ expected_table boolean; expected_column boolean; allowed text[];
+ names text[]:=ARRAY['guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger'];
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_ledger_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole
+  OR r.rolreplication OR r.rolinherit
+  OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+  OR pg_has_role('app_runtime',r.oid,'SET')
+  OR has_schema_privilege(r.oid,'app','CREATE')
+  OR NOT has_schema_privilege(r.oid,'app','USAGE')
+  OR has_schema_privilege(r.oid,'app','USAGE WITH GRANT OPTION') THEN
+  RAISE EXCEPTION 'unsafe ledger executor role';
+ END IF;
+ FOR t IN SELECT c.oid,c.relname,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c
+  JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
+  IF t.relname=ANY(ARRAY['ledger_accounts','ledger_transactions','ledger_entries'])
+   AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN
+   RAISE EXCEPTION 'ledger must FORCE RLS: %',t.relname;
+  END IF;
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['ledger_accounts','ledger_transactions','ledger_entries']);
+   allowed:=ARRAY[]::text[];
+   IF expected_table THEN
+    SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+   ELSIF privilege='INSERT' THEN
+    allowed:=CASE t.relname
+     WHEN 'ledger_transactions' THEN ARRAY['tenant_id','id','currency','source_type','source_id','event']
+     WHEN 'ledger_entries' THEN ARRAY['tenant_id','transaction_id','line_no','account_id','currency','side','amount'] ELSE allowed END;
+   ELSIF privilege='UPDATE' AND t.relname='ledger_transactions' THEN allowed:=ARRAY['status','posted_at','revision'];
+   END IF;
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected_table
+    OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'ledger executor table capability: % %',t.relname,privilege;
+   END IF;
+   IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
+    FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     expected_column:=a.attname::text=ANY(allowed);
+     IF has_column_privilege(r.oid,t.oid,a.attnum,privilege) IS DISTINCT FROM expected_column
+      OR has_column_privilege(r.oid,t.oid,a.attnum,privilege||' WITH GRANT OPTION') THEN
+      RAISE EXCEPTION 'ledger executor column capability: %.% %',t.relname,a.attname,privilege;
+     END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl FROM pg_proc p
+  JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' LOOP
+  IF f.proname=ANY(names) THEN
+   IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM (f.proname=ANY(ARRAY['guard_ledger_entry','assert_ledger_balance','post_ledger']))
+    OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+    RAISE EXCEPTION 'unsafe ledger routine definition: %',f.proname;
+   END IF;
+   FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
+    'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth'] LOOP
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name='app_runtime' AND f.proname='post_ledger')
+     OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'ledger routine authority: % %',role_name,f.proname;
+    END IF;
+   END LOOP;
+  ELSIF has_function_privilege(r.oid,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'ledger has foreign routine capability: %',f.proname;
+  END IF;
+ END LOOP;
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>5
+ OR NOT EXISTS(SELECT FROM pg_proc WHERE oid='app.post_ledger(uuid,text,text,text,text,uuid[],text[],bigint[])'::regprocedure AND prorettype='uuid'::regtype) THEN
+  RAISE EXCEPTION 'ledger routine contract incomplete';
+ END IF;
+END $ledger$;
+SELECT 'PASS: ledger exact executor/runtime table-column-function capabilities and FORCE RLS' AS result;

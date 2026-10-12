@@ -100,6 +100,28 @@ type AppBlogPostRevision struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+type AppBuyerCompany struct {
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	Status    string             `json:"status"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppBuyerCompanyMember struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	BuyerCompanyID pgtype.UUID        `json:"buyer_company_id"`
+	CustomerID     pgtype.UUID        `json:"customer_id"`
+	RoleCode       string             `json:"role_code"`
+	Status         string             `json:"status"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppBuyerRole struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	Code     string      `json:"code"`
+}
+
 type AppCompanyContact struct {
 	TenantID       pgtype.UUID `json:"tenant_id"`
 	OrganizationID pgtype.UUID `json:"organization_id"`
@@ -117,6 +139,36 @@ type AppCompanyProfileRevision struct {
 	Revision       int64              `json:"revision"`
 	Profile        []byte             `json:"profile"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppCustomer struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ID              pgtype.UUID        `json:"id"`
+	Email           string             `json:"email"`
+	EmailNormalized pgtype.Text        `json:"email_normalized"`
+	DisplayName     string             `json:"display_name"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppCustomerAddress struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	ID           pgtype.UUID `json:"id"`
+	CustomerID   pgtype.UUID `json:"customer_id"`
+	Recipient    string      `json:"recipient"`
+	AddressLine1 string      `json:"address_line1"`
+	AddressLine2 string      `json:"address_line2"`
+	City         string      `json:"city"`
+	Subdivision  pgtype.Text `json:"subdivision"`
+	PostalCode   string      `json:"postal_code"`
+	CountryCode  string      `json:"country_code"`
+}
+
+type AppCustomerCredential struct {
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	CustomerID   pgtype.UUID        `json:"customer_id"`
+	PasswordHash string             `json:"password_hash"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type AppDraftOperation struct {
@@ -214,6 +266,39 @@ type AppKnownDevice struct {
 	RevokedAt    pgtype.Timestamptz `json:"revoked_at"`
 	FailureCount int32              `json:"failure_count"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppLedgerAccount struct {
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	ID          pgtype.UUID        `json:"id"`
+	Currency    string             `json:"currency"`
+	Code        string             `json:"code"`
+	AccountType string             `json:"account_type"`
+	Status      string             `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppLedgerEntry struct {
+	TenantID      pgtype.UUID `json:"tenant_id"`
+	TransactionID pgtype.UUID `json:"transaction_id"`
+	LineNo        int32       `json:"line_no"`
+	AccountID     pgtype.UUID `json:"account_id"`
+	Currency      string      `json:"currency"`
+	Side          string      `json:"side"`
+	Amount        int64       `json:"amount"`
+}
+
+type AppLedgerTransaction struct {
+	TenantID   pgtype.UUID        `json:"tenant_id"`
+	ID         pgtype.UUID        `json:"id"`
+	Currency   string             `json:"currency"`
+	SourceType string             `json:"source_type"`
+	SourceID   string             `json:"source_id"`
+	Event      string             `json:"event"`
+	Status     string             `json:"status"`
+	Revision   int64              `json:"revision"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	PostedAt   pgtype.Timestamptz `json:"posted_at"`
 }
 
 type AppMediaAsset struct {
@@ -512,11 +597,47 @@ type AppStockLevel struct {
 	Reserved    int64       `json:"reserved"`
 }
 
+type AppTaxCategory struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	Code     string      `json:"code"`
+	Name     string      `json:"name"`
+	IsExempt bool        `json:"is_exempt"`
+}
+
+type AppTaxRate struct {
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	ID           pgtype.UUID        `json:"id"`
+	ZoneID       pgtype.UUID        `json:"zone_id"`
+	CategoryCode string             `json:"category_code"`
+	RateBp       int32              `json:"rate_bp"`
+	ValidFrom    pgtype.Timestamptz `json:"valid_from"`
+	ValidUntil   pgtype.Timestamptz `json:"valid_until"`
+}
+
+type AppTaxSetting struct {
+	TenantID         pgtype.UUID `json:"tenant_id"`
+	PricesIncludeTax bool        `json:"prices_include_tax"`
+}
+
+type AppTaxZone struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+	Name     string      `json:"name"`
+}
+
+type AppTaxZoneLocation struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	ZoneID      pgtype.UUID `json:"zone_id"`
+	CountryCode string      `json:"country_code"`
+	Subdivision string      `json:"subdivision"`
+}
+
 type AppTenant struct {
-	ID        pgtype.UUID        `json:"id"`
-	Name      string             `json:"name"`
-	Status    string             `json:"status"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID                 pgtype.UUID        `json:"id"`
+	Name               string             `json:"name"`
+	Status             string             `json:"status"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	SettlementCurrency pgtype.Text        `json:"settlement_currency"`
 }
 
 type AppTenantMembership struct {

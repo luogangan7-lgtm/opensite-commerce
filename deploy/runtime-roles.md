@@ -17,7 +17,7 @@ with no outward memberships. Provision LOGIN credentials outside migrations.
 | `app_reliability_executor` | Own outbox/idempotency functions | No LOGIN or members; never provision credentials |
 | `app_inventory_manager` | Trusted inventory adjustments and reads | Private inventory manager LOGIN; tenant-scoped commands |
 | `app_inventory_executor` | Own inventory mutations | No LOGIN or members; never provision credentials |
-| `app_credential_writer` | Own bootstrap; minimum user hash/key issuance columns | No LOGIN or members; never provision credentials or grant this role |
+| `app_credential_writer` | Own bootstrap and bounded counter cleanup; minimum user hash/key issuance, scoped buyer-role seed and cleanup columns | No LOGIN or members; never provision credentials or grant this role |
 | `app_admin_bootstrap` | Execute first-owner bootstrap only | Dedicated offline bootstrap LOGIN only; no table/column privileges |
 
 The migrator's privileged LOGIN is a separate operator identity, not an
@@ -77,3 +77,14 @@ application signing secret. Avoid giving it to the Astro renderer.
 identities. The Go service enforces Host normalization and internal service
 authorization; the role does not make DNS validation or TLS authorization
 unnecessary.
+
+## Deployment constraint
+
+V1 supports exactly one OpenSite application database per PostgreSQL cluster.
+All capability roles (`app_runtime`, `app_auth`, `app_customer_auth`, ...) are
+cluster-wide, so a second OpenSite database on the same cluster would share
+their memberships and grants. Deployment preflight will refuse a cluster that
+already hosts another OpenSite database, and operators must `REVOKE CONNECT ON
+DATABASE ... FROM PUBLIC` so capability logins reach only their own database.
+
+Identity integration also grants the function owner only tenant-scoped buyer-role seed INSERT columns, so first-owner bootstrap composes with the customers tenant trigger. Bootstrap restores the caller tenant GUC. Counter functions sample database time and expose no clock parameter. The execute-only bounded retention function is available to app_auth; no authentication caller receives direct DELETE. A future hourly maintenance caller must drain small batches; scheduling is outside this migration.

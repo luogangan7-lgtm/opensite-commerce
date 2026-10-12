@@ -40,9 +40,9 @@ type SessionInput struct {
 type Repository interface {
 	Credential(context.Context, string) (Credential, error)
 	Cooldowns(context.Context, string, netip.Addr) (time.Time, time.Time, error)
-	RecordFailure(context.Context, string, netip.Addr, time.Time) error
+	RecordFailure(context.Context, string, netip.Addr) error
 	Device(context.Context, [32]byte) (Device, error)
-	FailDevice(context.Context, string, time.Time) error
+	FailDevice(context.Context, string) error
 	SaveLogin(context.Context, SessionInput) (Session, error)
 	LookupSession(context.Context, [32]byte, time.Time, time.Duration) (Session, error)
 	RevokeSession(context.Context, string, time.Time) error

@@ -43,14 +43,14 @@ func (f *fakeRepo) Cooldowns(_ context.Context, _ string, ip netip.Addr) (time.T
 	f.lastIP = ip
 	return f.accountCooldown, f.pairCooldown, nil
 }
-func (f *fakeRepo) RecordFailure(context.Context, string, netip.Addr, time.Time) error {
+func (f *fakeRepo) RecordFailure(context.Context, string, netip.Addr) error {
 	f.failures++
 	return nil
 }
 func (f *fakeRepo) Device(context.Context, [32]byte) (login.Device, error) {
 	return login.Device{}, login.ErrNotFound
 }
-func (f *fakeRepo) FailDevice(context.Context, string, time.Time) error { return nil }
+func (f *fakeRepo) FailDevice(context.Context, string) error { return nil }
 func (f *fakeRepo) SaveLogin(_ context.Context, in login.SessionInput) (login.Session, error) {
 	f.saved++
 	if in.OldTokenHash != nil {
@@ -276,8 +276,8 @@ func TestAuthErrorMapping(t *testing.T) {
 func TestRouteClassesAndDefaultDeny(t *testing.T) {
 	h, _, _, _, _ := transportFixture(t)
 	for _, route := range h.Routes() {
-		want := platform.AdminSession
-		if route.Spec.OperationID == "createAdminSession" || route.Spec.OperationID == "getAdminLoginChallenge" {
+		want := platform.AuthenticatedSelf
+		if route.Spec.OperationID == "createStaffLoginSession" || route.Spec.OperationID == "getAdminLoginChallenge" {
 			want = platform.Public
 		}
 		if route.Spec.Access != want || route.Spec.Scope != "" {
@@ -287,7 +287,7 @@ func TestRouteClassesAndDefaultDeny(t *testing.T) {
 		if e := r.Register(route.Spec, route.Handler); e != nil {
 			t.Fatal(e)
 		}
-		if want == platform.AdminSession {
+		if want == platform.AuthenticatedSelf {
 			w := request(r, route.Spec.Method, route.Spec.Pattern, "")
 			if w.Code != 401 {
 				t.Fatal("private route without authenticator reachable", w.Code)
@@ -297,7 +297,7 @@ func TestRouteClassesAndDefaultDeny(t *testing.T) {
 }
 func TestUnsupportedPrivateAccessDenied(t *testing.T) {
 	h, _, _, _, raw := transportFixture(t)
-	for _, spec := range []platform.RouteSpec{{OperationID: "foreign", Method: "GET", Pattern: "/foreign", Access: platform.AdminSession}, {OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.APIKey}, {OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.AdminSession, Scope: "catalog.write"}} {
+	for _, spec := range []platform.RouteSpec{{OperationID: "foreign", Method: "GET", Pattern: "/foreign", Access: platform.AdminSession}, {OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.APIKey}, {OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.AuthenticatedSelf, Scope: "catalog.write"}} {
 		q := httptest.NewRequest("GET", "/", nil)
 		q.AddCookie(&http.Cookie{Name: SessionCookie, Value: raw})
 		if ctx, e := h.Authenticate(q.Context(), q, spec); e == nil || ctx != nil {

@@ -7,6 +7,7 @@ package store
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -149,5 +150,34 @@ func TestAuthConnectionErrorsRedacted(t *testing.T) {
 		if r != nil || !errors.Is(err, login.ErrDatabase) || strings.Contains(err.Error(), "private-sentinel") {
 			t.Fatal("connection error escaped boundary")
 		}
+	}
+}
+
+// Counter writes expose no caller clock and preserve generated argument shape.
+type counterConn struct {
+	loginFakeConn
+	calls []string
+	sizes []int
+}
+
+func (c *counterConn) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	c.calls = append(c.calls, sql)
+	c.sizes = append(c.sizes, len(args))
+	return pgconn.NewCommandTag("SELECT 1"), nil
+}
+func TestCounterWritesHaveNoCallerClock(t *testing.T) {
+	c := &counterConn{}
+	r := &LoginRepository{conn: c, queries: db.New(c), gate: make(chan struct{}, 1)}
+	if err := r.RecordFailure(context.Background(), "missing@example.test", netip.MustParseAddr("192.0.2.9")); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.FailDevice(context.Background(), "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.sizes) != 2 || c.sizes[0] != 2 || c.sizes[1] != 1 {
+		t.Fatalf("counter argument counts = %v", c.sizes)
+	}
+	if !strings.Contains(c.calls[0], "auth_record_failure") || !strings.Contains(c.calls[1], "auth_fail_known_device") {
+		t.Fatal("counter writes bypassed server functions")
 	}
 }

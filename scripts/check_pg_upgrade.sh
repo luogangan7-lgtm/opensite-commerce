@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Upgrade gates for security hardening, forward reliability, additive inventory and identity; real PG18 only.
+# Upgrade gates for security hardening, forward reliability and additive inventory; real PG18 only.
 # Depends on: a superuser DATABASE_URL (or Docker compose) able to CREATE DATABASE.
 # Called by: CI after check_pg.sh. Each case runs in its own throwaway database.
 # Invariants: 010 refuses to seal a live release with unsafe media; every pre-010
 # release ends up sealed (history is immutable); releases created after 010 are not.
 # Reliability preserves compatible pending data and refuses ambiguous old results.
-# Identity preserves populated global credentials and tenant-bound membership/key state.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -124,9 +123,19 @@ fresh_before_reliability() {
 apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
 RELIABILITY_DB=""
 SHIPPING_DB=""
+TAX_DB=""
+CUSTOMERS_DB=""
+LEDGER_DB=""
 IDENTITY_DB=""
 LOGIN_DB=""
-trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1; [[ -z $SHIPPING_DB ]] || admin -c "DROP DATABASE IF EXISTS $SHIPPING_DB" >/dev/null 2>&1; [[ -z $IDENTITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $IDENTITY_DB" >/dev/null 2>&1; [[ -z $LOGIN_DB ]] || admin -c "DROP DATABASE IF EXISTS $LOGIN_DB" >/dev/null 2>&1' EXIT
+cleanup_forward_databases() {
+ # Attempt each owned database independently even when an earlier DROP fails.
+ local name
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$IDENTITY_DB" "$LOGIN_DB"; do
+  [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
+ done
+}
+trap cleanup_forward_databases EXIT
 RELIABILITY_DB=reliability_upgrade_$$
 fresh_before_reliability "$RELIABILITY_DB"
 db "$RELIABILITY_DB" <<'SQL' >/dev/null
@@ -275,6 +284,343 @@ db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 SHIPPING_DB=""
 
+# Tax upgrade: apply ALL predecessors in filename order, then seed real legacy
+# tenant/catalog data before applying the logical tax module (number may change).
+tax=(migrations/[0-9][0-9][0-9]_tax.sql)
+[[ ${#tax[@]} == 1 ]] || { echo 'FAIL: exactly one tax migration required' >&2; exit 1; }
+TAX_DB=tax_upgrade_$$
+admin -c "CREATE DATABASE $TAX_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${tax[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$TAX_DB" >/dev/null
+done
+db "$TAX_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('tax-existing-tenant') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES(:'t','tax-existing-product','draft');
+SQL
+{ echo 'BEGIN;'; cat "${tax[0]}"; echo 'COMMIT;'; } | db "$TAX_DB" >/dev/null
+# Exercise new settings/rules through runtime and preserve the existing product.
+result=$(db "$TAX_DB" <<'SQL'
+SELECT set_config('app.tenant_id',(SELECT id::text FROM app.tenants WHERE name='tax-existing-tenant'),false);
+SET ROLE app_runtime;
+INSERT INTO app.tax_settings(tenant_id,prices_include_tax) VALUES(current_setting('app.tenant_id')::uuid,true);
+INSERT INTO app.tax_zones(tenant_id,name) VALUES(current_setting('app.tenant_id')::uuid,'US') RETURNING id AS z \gset
+INSERT INTO app.tax_zone_locations(tenant_id,zone_id,country_code) VALUES(current_setting('app.tenant_id')::uuid,:'z','US');
+INSERT INTO app.tax_categories(tenant_id,code,name) VALUES(current_setting('app.tenant_id')::uuid,'standard','Standard');
+INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from) VALUES(current_setting('app.tenant_id')::uuid,:'z','standard',500,'2026-01-01Z');
+SELECT (SELECT count(*) FROM app.products WHERE product_code='tax-existing-product')||'|'||
+ (SELECT prices_include_tax FROM app.tax_settings)||'|'||(SELECT rate_bp FROM app.tax_rates);
+SQL
+)
+[[ $result == *'1|true|500'* ]] || bad "tax populated upgrade witness: $result"
+# Apply successors too: the complete-schema exact matrix must remain meaningful
+# when integration later puts another module after Tax.
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${tax[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$TAX_DB" >/dev/null
+done
+if ! db "$TAX_DB" < tests/db_tax.sql >/dev/null || ! db "$TAX_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'tax constraints/role matrix after populated upgrade'
+else pass 'tax upgrade preserves prior catalog data; new settings/rules and exact privileges pass'; fi
+admin -c "DROP DATABASE $TAX_DB" >/dev/null; TAX_DB=""
+
+# Customers/B2B must be additive over ALL preceding forward migrations. Match
+# by logical suffix and filename order, never a reserved number or octal value.
+customers=(migrations/[0-9][0-9][0-9]_customers_b2b.sql)
+[[ ${#customers[@]} == 1 ]] || { echo 'FAIL: exactly one customers/B2B migration required' >&2; exit 1; }
+fresh_before_customers() {
+ admin -c "DROP DATABASE IF EXISTS $1" -c "CREATE DATABASE $1" 2>/dev/null
+ local f
+ for f in migrations/[0-9][0-9][0-9]_*.sql; do
+  [[ $f < ${customers[0]} ]] || break
+  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$1" >/dev/null
+ done
+}
+apply_customers() { { echo 'BEGIN;'; cat "${customers[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
+CUSTOMERS_DB=customers_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('customer-upgrade') RETURNING id AS t \gset
+INSERT INTO app.users(email,password_hash) VALUES('staff-upgrade@example.com','legacy-staff-hash') RETURNING id AS u \gset
+INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES(:'t',:'u','owner');
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','CUSTOMER-LEGACY') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+ VALUES(:'t',:'p','CUSTOMER-LEGACY','default') RETURNING id AS k \gset
+INSERT INTO app.price_lists(tenant_id,currency,starts_at) VALUES(:'t','USD','2026-01-01Z') RETURNING id AS l \gset
+INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount)
+ VALUES(:'t',:'l',:'k',1,199);
+SQL
+# Earlier cases created this cluster-wide role. Simulate a legacy deployment's
+# unsafe attributes, memberships and independently granted column privileges;
+# the forward migration must scrub every path before granting its narrow API.
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+ALTER ROLE app_customer_auth LOGIN SUPERUSER BYPASSRLS CREATEDB CREATEROLE REPLICATION INHERIT;
+GRANT app_auth TO app_customer_auth;
+GRANT app_customer_auth TO app_runtime;
+GRANT CREATE ON SCHEMA app TO app_customer_auth;
+GRANT SELECT ON app.users TO app_customer_auth;
+GRANT SELECT(password_hash) ON app.users TO app_customer_auth;
+GRANT UPDATE(role) ON app.tenant_memberships TO app_customer_auth;
+GRANT EXECUTE ON FUNCTION app.guard_release_children() TO app_customer_auth;
+SQL
+if ! out=$(apply_customers "$CUSTOMERS_DB"); then bad "populated customers/B2B upgrade: $out"
+else
+ result=$(db "$CUSTOMERS_DB" <<'SQL'
+SELECT 'CUSTOMERS_ROLE_HYGIENE='||(
+ NOT r.rolcanlogin AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreatedb
+ AND NOT r.rolcreaterole AND NOT r.rolreplication AND NOT r.rolinherit
+ AND NOT EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+ AND has_schema_privilege(r.oid,'app','USAGE')
+ AND NOT has_schema_privilege(r.oid,'app','CREATE')
+ AND NOT has_table_privilege(r.oid,'app.users','SELECT')
+ AND NOT has_column_privilege(r.oid,'app.users','password_hash','SELECT')
+ AND NOT has_column_privilege(r.oid,'app.tenant_memberships','role','UPDATE')
+ AND NOT has_function_privilege(r.oid,'app.guard_release_children()','EXECUTE'))::text
+ FROM pg_roles r WHERE r.rolname='app_customer_auth';
+SQL
+ )
+ if [[ $result == 'CUSTOMERS_ROLE_HYGIENE=true' ]]; then
+  pass 'customers/B2B upgrade scrubs unsafe auth attributes, both membership directions, schema/table/column/function grants'
+ else bad "customers/B2B role hygiene witness: $result"; fi
+ result=$(db "$CUSTOMERS_DB" <<'SQL'
+SELECT 'CUSTOMERS_UPGRADE='||
+ (SELECT count(*) FROM app.users WHERE email='staff-upgrade@example.com' AND password_hash='legacy-staff-hash')||'|'||
+ (SELECT count(*) FROM app.tenant_memberships m JOIN app.users u ON u.id=m.user_id WHERE u.email='staff-upgrade@example.com' AND m.role='owner' AND m.status='active')||'|'||
+ (SELECT count(*) FROM app.price_entries e JOIN app.product_variants k ON (e.tenant_id,e.sku_id)=(k.tenant_id,k.id) WHERE k.sku='CUSTOMER-LEGACY' AND e.unit_amount=199)||'|'||
+ (SELECT string_agg(code,',' ORDER BY code) FROM app.buyer_roles WHERE tenant_id=(SELECT id FROM app.tenants WHERE name='customer-upgrade'))||'|'||
+ (SELECT count(*) FROM app.customers)||'|'||(SELECT count(*) FROM app.customer_credentials);
+SQL
+ )
+ if [[ $result == 'CUSTOMERS_UPGRADE=1|1|1|admin,approver,purchaser|0|0' ]]; then
+  pass 'customers/B2B upgrade preserves employee identity, membership and SKU pricing without synthesizing customers/credentials'
+ else bad "customers/B2B populated upgrade witness: $result"; fi
+ # Include any later module before evaluating the repository-wide role matrix.
+ for f in migrations/[0-9][0-9][0-9]_*.sql; do
+  [[ $f > ${customers[0]} ]] || continue
+  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$CUSTOMERS_DB" >/dev/null
+ done
+ if ! db "$CUSTOMERS_DB" -f tests/db_customers.sql >/dev/null; then bad 'customers/B2B SQL gate after populated upgrade'; fi
+ if ! db "$CUSTOMERS_DB" -f tests/db_role_matrix.sql >/dev/null; then bad 'customers/B2B role matrix after populated upgrade'; fi
+fi
+admin -c "DROP DATABASE $CUSTOMERS_DB"; CUSTOMERS_DB=""
+
+# Pricing intentionally had no company FK before B2B existed. An orphan legacy
+# target requires operator reconciliation: the migration cannot silently clear
+# its audience or install an unvalidated FK. Failure must roll back every DDL.
+CUSTOMERS_DB=customers_orphan_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('customer-orphan-upgrade') RETURNING id AS t \gset
+INSERT INTO app.price_lists(tenant_id,currency,starts_at,audience,buyer_company_id)
+ VALUES(:'t','USD','2026-01-01Z','buyer_company','00000000-0000-0000-0000-000000000005');
+SQL
+if out=$(apply_customers "$CUSTOMERS_DB"); then bad 'customers/B2B upgrade accepted an orphan legacy buyer-company price'
+elif [[ $out != *CUSTOMERS_UPGRADE_BUYER_COMPANY_RECONCILIATION_REQUIRED* ]]; then bad "orphan customers/B2B upgrade failed for another reason: $out"
+else
+ result=$(db "$CUSTOMERS_DB" <<'SQL'
+SELECT to_regclass('app.customers') IS NULL AND to_regclass('app.customer_credentials') IS NULL
+ AND to_regclass('app.buyer_companies') IS NULL
+ AND NOT EXISTS(SELECT FROM pg_constraint WHERE conrelid='app.price_lists'::regclass AND conname='price_lists_buyer_company_fk')
+ AND (SELECT count(*) FROM app.price_lists WHERE audience='buyer_company' AND buyer_company_id='00000000-0000-0000-0000-000000000005')=1;
+SQL
+ )
+ if [[ $result != t ]]; then bad "orphan customers/B2B refusal changed legacy data/schema: $result"
+ else pass 'customers/B2B rejects orphan legacy buyer-price target atomically without changing audience'; fi
+ # Explicit operator repair in the disposable fixture, then retry the SAME DDL.
+ db "$CUSTOMERS_DB" -c "UPDATE app.price_lists SET audience='all',buyer_company_id=NULL" >/dev/null
+ if ! out=$(apply_customers "$CUSTOMERS_DB"); then bad "customers/B2B retry after explicit reconciliation: $out"
+ elif [[ $(db "$CUSTOMERS_DB" -c "SELECT convalidated FROM pg_constraint WHERE conrelid='app.price_lists'::regclass AND conname='price_lists_buyer_company_fk'") != t ]]; then bad 'customers/B2B retry left an unvalidated or missing buyer-price FK'
+ else pass 'customers/B2B reconciliation retry installs the validated composite buyer-price FK'; fi
+fi
+admin -c "DROP DATABASE $CUSTOMERS_DB"; CUSTOMERS_DB=""
+
+# Roles and pg_auth_members are cluster-wide. Grantor-aware cleanup must remove
+# a non-superuser provisioner's outbound grant, keep a dedicated login provisioned
+# for another database on the same cluster, and refuse (fail closed) when a
+# third-party grantor's object privilege cannot be revoked by the owner.
+drop_grantor_roles() {
+ admin <<'SQL' >/dev/null 2>&1 || true
+DO $d$ DECLARE m record; BEGIN
+ FOR m IN SELECT r.rolname role_name,mem.rolname member_name,g.rolname grantor_name FROM pg_auth_members a
+  JOIN pg_roles r ON r.oid=a.roleid JOIN pg_roles mem ON mem.oid=a.member JOIN pg_roles g ON g.oid=a.grantor
+  WHERE g.rolname IN ('cust_provisioner','cust_thirdparty') LOOP
+  EXECUTE format('REVOKE %I FROM %I GRANTED BY %I CASCADE',m.role_name,m.member_name,m.grantor_name);
+ END LOOP; END $d$;
+DROP ROLE IF EXISTS cust_provisioner; DROP ROLE IF EXISTS cust_thirdparty; DROP ROLE IF EXISTS cust_login_db1;
+SQL
+}
+drop_grantor_roles
+CUSTOMERS_DB=customers_grantor_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+DO $r$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
+ CREATE ROLE app_customer_auth NOLOGIN; END IF; END $r$;
+CREATE ROLE cust_provisioner NOLOGIN;
+GRANT app_auth TO cust_provisioner WITH ADMIN OPTION;
+SET ROLE cust_provisioner; GRANT app_auth TO app_customer_auth; RESET ROLE;
+CREATE ROLE cust_login_db1 LOGIN;
+GRANT app_customer_auth TO cust_login_db1;
+SQL
+if ! out=$(apply_customers "$CUSTOMERS_DB"); then bad "customers/B2B grantor upgrade: $out"
+else
+ result=$(db "$CUSTOMERS_DB" -c "SELECT pg_has_role('app_customer_auth','app_auth','SET')::text||'|'||pg_has_role('cust_login_db1','app_customer_auth','MEMBER')::text")
+ [[ ${result%%|*} == false ]] && pass 'customers/B2B revokes a non-superuser-granted outbound membership by its grantor' \
+  || bad "customers/B2B kept provisioner-granted app_auth membership: $result"
+ [[ ${result##*|} == true ]] && pass 'customers/B2B keeps a dedicated customer-auth login provisioned for another database' \
+  || bad "customers/B2B stripped a cluster-wide dedicated login: $result"
+fi
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+drop_grantor_roles
+CUSTOMERS_DB=customers_thirdparty_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+DO $r$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
+ CREATE ROLE app_customer_auth NOLOGIN; END IF; END $r$;
+CREATE ROLE cust_thirdparty NOLOGIN;
+GRANT USAGE ON SCHEMA app TO cust_thirdparty;
+GRANT SELECT ON app.users TO cust_thirdparty WITH GRANT OPTION;
+SET ROLE cust_thirdparty; GRANT SELECT ON app.users TO app_customer_auth; RESET ROLE;
+SQL
+if out=$(apply_customers "$CUSTOMERS_DB"); then bad 'customers/B2B accepted an unrevokable third-party grant to app_customer_auth'
+elif [[ $out != *CUSTOMERS_AUTH_RESIDUAL_PRIVILEGE*users*cust_thirdparty* ]]; then bad "third-party grant refusal failed for another reason: $out"
+else pass 'customers/B2B fails closed naming object and grantor of a residual third-party privilege'; fi
+db "$CUSTOMERS_DB" -c "REVOKE ALL ON app.users FROM cust_thirdparty CASCADE; REVOKE ALL ON SCHEMA app FROM cust_thirdparty" >/dev/null 2>&1 || true
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+drop_grantor_roles
+# An inbound path through a non-app_ bridge group (app_auth -> legacy_bridge ->
+# app_customer_auth) survives selective cleanup, so 016 must refuse it; once the
+# bridge is removed the retry succeeds and a dedicated login keeps its membership.
+drop_bridge_roles() { admin -c "DROP ROLE IF EXISTS legacy_bridge" -c "DROP ROLE IF EXISTS cust_login_ok" >/dev/null 2>&1 || true; }
+drop_bridge_roles
+CUSTOMERS_DB=customers_bridge_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+DO $r$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
+ CREATE ROLE app_customer_auth NOLOGIN; END IF; END $r$;
+CREATE ROLE legacy_bridge NOLOGIN;
+GRANT app_customer_auth TO legacy_bridge;
+GRANT legacy_bridge TO app_auth;
+CREATE ROLE cust_login_ok LOGIN;
+GRANT app_customer_auth TO cust_login_ok;
+SQL
+if out=$(apply_customers "$CUSTOMERS_DB"); then bad 'customers/B2B accepted an indirect app_auth path to app_customer_auth via a bridge group'
+elif [[ $out != *CUSTOMERS_AUTH_FORBIDDEN_PATH*app_auth* ]]; then bad "bridge path refusal failed for another reason: $out"
+else
+ pass 'customers/B2B fails closed on an indirect internal-role path through a non-app_ bridge'
+ admin -c "DROP ROLE legacy_bridge" >/dev/null
+ if ! out=$(apply_customers "$CUSTOMERS_DB"); then bad "customers/B2B retry after bridge removal: $out"
+ elif [[ $(db "$CUSTOMERS_DB" -c "SELECT pg_has_role('cust_login_ok','app_customer_auth','MEMBER')") != t ]]; then bad 'customers/B2B bridge refusal path stripped a dedicated login'
+ else pass 'customers/B2B retry after bridge removal keeps the dedicated customer-auth login'; fi
+fi
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+drop_bridge_roles
+
+# Migrator default privileges would pre-grant the new tables; 016 refuses them.
+CUSTOMERS_DB=customers_defacl_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+DO $r$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
+ CREATE ROLE app_customer_auth NOLOGIN; END IF; END $r$;
+ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON TABLES TO app_customer_auth;
+SQL
+if out=$(apply_customers "$CUSTOMERS_DB"); then bad 'customers/B2B accepted migrator default privileges granting app_customer_auth'
+elif [[ $out != *CUSTOMERS_DEFAULT_PRIVILEGES*app_customer_auth* ]]; then bad "default-privilege refusal failed for another reason: $out"
+else pass 'customers/B2B fails closed on default privileges that would pre-grant new tables'; fi
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+# A preserved dedicated login must not keep ADMIN OPTION on the capability,
+# otherwise it can delegate credential access to any role.
+drop_admin_roles() { admin -c "DROP ROLE IF EXISTS cust_login_admin" -c "DROP ROLE IF EXISTS cust_victim" >/dev/null 2>&1 || true; }
+drop_admin_roles
+CUSTOMERS_DB=customers_admin_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+DO $r$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
+ CREATE ROLE app_customer_auth NOLOGIN; END IF; END $r$;
+CREATE ROLE cust_login_admin LOGIN;
+CREATE ROLE cust_victim NOLOGIN;
+GRANT app_customer_auth TO cust_login_admin WITH ADMIN OPTION;
+SQL
+if ! out=$(apply_customers "$CUSTOMERS_DB"); then bad "customers/B2B admin-option upgrade: $out"
+else
+ result=$(db "$CUSTOMERS_DB" -c "SELECT pg_has_role('cust_login_admin','app_customer_auth','MEMBER')::text||'|'||bool_or(admin_option)::text FROM pg_auth_members WHERE roleid='app_customer_auth'::regrole AND member='cust_login_admin'::regrole")
+ if [[ $result != 'true|false' ]]; then bad "customers/B2B preserved login membership/admin option: $result"
+ elif db "$CUSTOMERS_DB" -c "SET SESSION AUTHORIZATION cust_login_admin; GRANT app_customer_auth TO cust_victim" >/dev/null 2>&1; then bad 'customers/B2B preserved login can still delegate app_customer_auth'
+ else pass 'customers/B2B keeps a dedicated login but strips its admin option (no delegation)'; fi
+fi
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+drop_admin_roles
+
+# A tenant inserted concurrently (uncommitted when 016 starts) must end up with
+# exactly the three buyer roles: backfill and trigger leave no gap between them.
+CUSTOMERS_DB=customers_tenant_race_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null &
+BEGIN;
+INSERT INTO app.tenants(name) VALUES('race-tenant');
+SELECT pg_sleep(0.5);
+DO $w$ BEGIN FOR i IN 1..300 LOOP PERFORM pg_stat_clear_snapshot();
+ EXIT WHEN EXISTS(SELECT FROM pg_stat_activity WHERE datname=current_database()
+  AND pid<>pg_backend_pid() AND wait_event_type='Lock');
+ PERFORM pg_sleep(0.1); END LOOP; END $w$;
+COMMIT;
+SQL
+race_pid=$!
+until [[ $(db "$CUSTOMERS_DB" -c "SELECT count(*) FROM pg_locks WHERE relation='app.tenants'::regclass AND mode='RowExclusiveLock' AND granted") != 0 ]]; do sleep 0.1; done
+out=$(apply_customers "$CUSTOMERS_DB") || bad "customers/B2B upgrade with concurrent tenant insert: $out"
+wait "$race_pid" || bad 'customers/B2B concurrent tenant insert session failed'
+result=$(db "$CUSTOMERS_DB" -c "SELECT string_agg(code,',' ORDER BY code) FROM app.buyer_roles r JOIN app.tenants t ON t.id=r.tenant_id WHERE t.name='race-tenant'")
+[[ $result == admin,approver,purchaser ]] && pass 'customers/B2B concurrent tenant insert gets exactly the three buyer roles' \
+ || bad "customers/B2B concurrent tenant buyer roles: $result"
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+# Ledger upgrade is additive: a tenant created before the logical migration
+# remains explicitly unconfigured. Currency is an operator choice, never a
+# guessed USD backfill. All predecessors/successors use filename order.
+ledger=(migrations/[0-9][0-9][0-9]_ledger.sql)
+[[ ${#ledger[@]} == 1 ]] || { echo 'FAIL: exactly one ledger migration required' >&2; exit 1; }
+LEDGER_DB=ledger_upgrade_$$
+admin -c "CREATE DATABASE $LEDGER_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${ledger[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$LEDGER_DB" >/dev/null
+done
+db "$LEDGER_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('ledger-existing-tenant') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','ledger-existing-product');
+SQL
+{ echo 'BEGIN;'; cat "${ledger[0]}"; echo 'COMMIT;'; } | db "$LEDGER_DB" >/dev/null
+result=$(db "$LEDGER_DB" <<'SQL'
+SELECT 'LEDGER_UNCONFIGURED='||count(*) FROM app.tenants
+ WHERE name='ledger-existing-tenant' AND settlement_currency IS NULL;
+UPDATE app.tenants SET settlement_currency='USD' WHERE name='ledger-existing-tenant' RETURNING id AS t \gset
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_runtime;
+INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
+ VALUES(:'t','cash','asset','USD') RETURNING id AS a \gset
+INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
+ VALUES(:'t','revenue','revenue','USD') RETURNING id AS b \gset
+SELECT app.post_ledger(:'t','USD','upgrade','legacy','capture',ARRAY[:'a',:'b']::uuid[],ARRAY['debit','credit'],ARRAY[125,125]::bigint[]);
+COMMIT;
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_runtime;
+SELECT 'LEDGER_UPGRADE='||(SELECT count(*) FROM app.products WHERE product_code='ledger-existing-product')||'|'||
+ (SELECT count(*) FROM app.ledger_transactions WHERE status='posted' AND posted_at IS NOT NULL)||'|'||
+ (SELECT count(*) FROM app.ledger_entries)||'|'||
+ (SELECT sum(CASE side WHEN 'debit' THEN amount::numeric ELSE -amount::numeric END) FROM app.ledger_entries);
+COMMIT;
+SQL
+)
+[[ $result == *'LEDGER_UNCONFIGURED=1'* && $result == *'LEDGER_UPGRADE=1|1|2|0'* ]] || bad "ledger populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${ledger[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$LEDGER_DB" >/dev/null
+done
+if ! db "$LEDGER_DB" < tests/db_ledger.sql >/dev/null || ! db "$LEDGER_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'ledger constraints/role matrix after populated upgrade'
+else pass 'ledger upgrade preserves existing catalog/unconfigured tenant; explicit currency runtime posting and exact privileges pass'; fi
+admin -c "DROP DATABASE $LEDGER_DB" >/dev/null; LEDGER_DB=""
+
 # C-02a: discover the identity upgrade by suffix. Seed only after ALL filename-
 # ordered predecessors; retain a full-row snapshot so ids, hashes and state are
 # independently compared, then apply every later module before the exact matrix.
@@ -381,7 +727,6 @@ db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 IDENTITY_DB=""
 
-
 # C-02b: start immediately before the logical session-activity migration, after
 # every predecessor (including identity-auth), then compare all legacy row fields.
 login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)
@@ -427,4 +772,4 @@ admin -c "DROP DATABASE $DB"
 LOGIN_DB=""
 
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping and identity upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B and ledger upgrade gates'

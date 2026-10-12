@@ -40,13 +40,13 @@ func New(s *login.Service, origin string, idle time.Duration, trusted ...netip.P
 func (h *Handler) Routes() []platform.Route {
 	return []platform.Route{
 		{Spec: platform.RouteSpec{OperationID: "getAdminLoginChallenge", Method: "GET", Pattern: "/api/v1/auth/login", Access: platform.Public}, Handler: http.HandlerFunc(h.challenge)},
-		{Spec: platform.RouteSpec{OperationID: "createAdminSession", Method: "POST", Pattern: "/api/v1/auth/login", Access: platform.Public, MaxBodySize: 4096}, Handler: http.HandlerFunc(h.create)},
-		{Spec: platform.RouteSpec{OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.AdminSession}, Handler: http.HandlerFunc(h.session)},
-		{Spec: platform.RouteSpec{OperationID: "revokeAdminSession", Method: "POST", Pattern: "/api/v1/auth/logout", Access: platform.AdminSession}, Handler: http.HandlerFunc(h.logout)},
+		{Spec: platform.RouteSpec{OperationID: "createStaffLoginSession", Method: "POST", Pattern: "/api/v1/auth/login", Access: platform.Public, MaxBodySize: 4096}, Handler: http.HandlerFunc(h.create)},
+		{Spec: platform.RouteSpec{OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.AuthenticatedSelf}, Handler: http.HandlerFunc(h.session)},
+		{Spec: platform.RouteSpec{OperationID: "logoutCurrentStaffSession", Method: "POST", Pattern: "/api/v1/auth/logout", Access: platform.AuthenticatedSelf}, Handler: http.HandlerFunc(h.logout)},
 	}
 }
 func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platform.RouteSpec) (context.Context, error) {
-	if h.service == nil || spec.Access != platform.AdminSession || spec.Scope != "" || !((spec.OperationID == "getAdminSession" && spec.Method == "GET" && spec.Pattern == "/api/v1/auth/session") || (spec.OperationID == "revokeAdminSession" && spec.Method == "POST" && spec.Pattern == "/api/v1/auth/logout")) {
+	if h.service == nil || spec.Access != platform.AuthenticatedSelf || spec.Scope != "" || !((spec.OperationID == "getAdminSession" && spec.Method == "GET" && spec.Pattern == "/api/v1/auth/session") || (spec.OperationID == "logoutCurrentStaffSession" && spec.Method == "POST" && spec.Pattern == "/api/v1/auth/logout")) {
 		return nil, apperrors.New(401, "unauthenticated", "Authentication is required")
 	}
 	token, ok := cookieValue(r, SessionCookie)

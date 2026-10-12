@@ -76,16 +76,11 @@ func (q *Queries) LoginDevice(ctx context.Context, cookieHash []byte) (LoginDevi
 }
 
 const loginFailDevice = `-- name: LoginFailDevice :exec
-SELECT app.auth_fail_known_device($1::uuid,$2::timestamptz)
+SELECT app.auth_fail_known_device($1::uuid)
 `
 
-type LoginFailDeviceParams struct {
-	ID pgtype.UUID        `json:"id"`
-	At pgtype.Timestamptz `json:"at"`
-}
-
-func (q *Queries) LoginFailDevice(ctx context.Context, arg LoginFailDeviceParams) error {
-	_, err := q.db.Exec(ctx, loginFailDevice, arg.ID, arg.At)
+func (q *Queries) LoginFailDevice(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, loginFailDevice, id)
 	return err
 }
 
@@ -190,17 +185,16 @@ func (q *Queries) LoginLookupSession(ctx context.Context, arg LoginLookupSession
 }
 
 const loginRecordFailure = `-- name: LoginRecordFailure :exec
-SELECT app.auth_record_failure($1::text,$2::inet,$3::timestamptz)
+SELECT app.auth_record_failure($1::text,$2::inet)
 `
 
 type LoginRecordFailureParams struct {
-	Identifier string             `json:"identifier"`
-	Ip         netip.Addr         `json:"ip"`
-	At         pgtype.Timestamptz `json:"at"`
+	Identifier string     `json:"identifier"`
+	Ip         netip.Addr `json:"ip"`
 }
 
 func (q *Queries) LoginRecordFailure(ctx context.Context, arg LoginRecordFailureParams) error {
-	_, err := q.db.Exec(ctx, loginRecordFailure, arg.Identifier, arg.Ip, arg.At)
+	_, err := q.db.Exec(ctx, loginRecordFailure, arg.Identifier, arg.Ip)
 	return err
 }
 

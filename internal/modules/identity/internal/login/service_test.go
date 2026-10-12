@@ -193,7 +193,7 @@ func (f *fakeRepo) Cooldowns(_ context.Context, identifier string, ip netip.Addr
 	}
 	return f.account, f.accountIP, nil
 }
-func (f *fakeRepo) RecordFailure(_ context.Context, _ string, ip netip.Addr, _ time.Time) error {
+func (f *fakeRepo) RecordFailure(_ context.Context, _ string, ip netip.Addr) error {
 	f.failures++
 	f.failureIP = ip
 	return f.failureErr
@@ -204,7 +204,7 @@ func (f *fakeRepo) Device(context.Context, [32]byte) (Device, error) {
 	}
 	return f.device, nil
 }
-func (f *fakeRepo) FailDevice(context.Context, string, time.Time) error {
+func (f *fakeRepo) FailDevice(context.Context, string) error {
 	f.deviceFailures++
 	return f.deviceFailureErr
 }

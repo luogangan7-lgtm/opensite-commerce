@@ -217,11 +217,10 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		return LoginResult{}, ErrRateLimited
 	}
 	if !verifiedPassword {
-		now := s.cfg.Now()
-		failureErr := s.repo.RecordFailure(ctx, in.Identifier, in.IP, now)
+		failureErr := s.repo.RecordFailure(ctx, in.Identifier, in.IP)
 		var deviceErr error
 		if known {
-			deviceErr = s.repo.FailDevice(ctx, device.ID, now)
+			deviceErr = s.repo.FailDevice(ctx, device.ID)
 		}
 		if failureErr != nil || deviceErr != nil {
 			return LoginResult{}, ErrDatabase

@@ -13,7 +13,7 @@ assert sql['engine'] == 'postgresql'
 assert sql['gen']['go']['sql_package'] == 'pgx/v5'
 assert sql['gen']['go']['out'] == 'internal/db'
 assert set(sql['schema']) == {str(p.relative_to(root)) for p in (root/'migrations').glob('*.sql') if p.name[:3] not in ('008','009')}
-for suffix in ('_security_hardening.sql', '_platform_reliability.sql', '_money_pricing.sql', '_shipping.sql'):
+for suffix in ('_security_hardening.sql', '_platform_reliability.sql', '_money_pricing.sql', '_shipping.sql', '_tax.sql', '_customers_b2b.sql'):
     matches = list((root/'migrations').glob('[0-9][0-9][0-9]'+suffix))
     assert len(matches) == 1, suffix
     assert str(matches[0].relative_to(root)) in sql['schema'], suffix
@@ -58,3 +58,13 @@ assert ci.index('name: PostgreSQL 18 forward-only') < ci.index('name: Go pgx-tag
 codegen=(root/'scripts/check_codegen.sh').read_text()
 assert 'sqlc generate' in codegen and '-tags pgx' in codegen
 print(f'PASS: static sqlc config/query sanity: {len(tables)} schema tables, {len(query_names)} named queries (NOT sqlc generate)')
+
+# Pin the assigned-country snapshot, so a coordinated SQL/Go typo cannot pass
+# only by preserving list length. Integration must consciously update this pin.
+import hashlib
+tax_file, = (root/'migrations').glob('[0-9][0-9][0-9]_tax.sql')
+country_check = re.search(r'tax_country_assigned CHECK\(country_code IN \((.*?)\)\)', tax_file.read_text()).group(1)
+countries = re.findall(r"'([A-Z]{2})'", country_check)
+assert countries == sorted(set(countries)) and len(countries) == 249
+assert hashlib.sha256(' '.join(countries).encode()).hexdigest() == 'e1c950d24ceb933ac49eaa44de8d1a7ffb6bf40bfe519a5a99d791cb50332197', 'tax assigned-country snapshot changed'
+print('PASS: Tax assigned-country snapshot pinned independently of runtime selection')

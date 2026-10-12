@@ -29,6 +29,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	identityadapter "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/identitydb/pgxadapter"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -41,7 +42,7 @@ var testPassword = func() string {
 	return "t-" + hex.EncodeToString(b)
 }()
 
-func setupLoginPG(t *testing.T) (context.Context, *pgx.Conn, string, LoginConfig) {
+func setupLoginPG(t *testing.T) (context.Context, identityadapter.Connection, string, LoginConfig) {
 	t.Helper()
 	source := os.Getenv("DATABASE_URL")
 	if source == "" {
@@ -49,11 +50,11 @@ func setupLoginPG(t *testing.T) (context.Context, *pgx.Conn, string, LoginConfig
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	cfg, e := pgx.ParseConfig(source)
+	fixtureURL, e := url.Parse(source)
 	if e != nil {
 		t.Fatal("fixture DSN invalid")
 	}
-	admin, e := pgx.ConnectConfig(ctx, cfg)
+	admin, e := identityadapter.Open(ctx, source)
 	if e != nil {
 		t.Fatal("fixture connection failed")
 	}
@@ -71,8 +72,8 @@ func setupLoginPG(t *testing.T) (context.Context, *pgx.Conn, string, LoginConfig
 		_, _ = admin.Exec(context.Background(), "DROP DATABASE "+pgx.Identifier{database}.Sanitize()+" WITH (FORCE)")
 		_, _ = admin.Exec(context.Background(), "DROP ROLE "+pgx.Identifier{role}.Sanitize())
 	})
-	cfg.Database = database
-	db, e := pgx.ConnectConfig(ctx, cfg)
+	fixtureURL.Path = "/" + database
+	db, e := identityadapter.Open(ctx, fixtureURL.String())
 	if e != nil {
 		t.Fatal("fixture database unavailable")
 	}
@@ -118,7 +119,7 @@ func fixtureRouter(t *testing.T, ctx context.Context, dsn string, cfg LoginConfi
 	t.Helper()
 	m, e := OpenLogin(ctx, dsn, cfg)
 	if e != nil {
-		diagnostic, connectErr := pgx.Connect(ctx, dsn)
+		diagnostic, connectErr := identityadapter.Open(ctx, dsn)
 		if connectErr == nil {
 			admitted, admissionErr := db.New(diagnostic).ValidateAuthConnection(ctx)
 			t.Log("auth admission", admitted, safeCode(admissionErr))
@@ -180,7 +181,7 @@ func loginPG(t *testing.T, r *platform.Router, email, password, ip string, extra
 	body, _ := json.Marshal(map[string]string{"email": email, "password": password})
 	return requestPG(r, "POST", "/api/v1/auth/login", string(body), csrf, ip, append(extra, c)...)
 }
-func seedLoginPG(t *testing.T, ctx context.Context, db *pgx.Conn, email string) string {
+func seedLoginPG(t *testing.T, ctx context.Context, db identityadapter.Connection, email string) string {
 	t.Helper()
 	salt := []byte("0123456789abcdef")
 	hash := argon2.IDKey([]byte(testPassword), salt, 2, 19456, 1, 32)
@@ -397,7 +398,7 @@ func TestLoginDeviceRevocationPostgres(t *testing.T) {
 	}
 	_ = other
 }
-func waitLoginLocks(t *testing.T, ctx context.Context, db *pgx.Conn, query string, count int) {
+func waitLoginLocks(t *testing.T, ctx context.Context, db identityadapter.Connection, query string, count int) {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
@@ -436,7 +437,7 @@ func TestLoginConcurrentPostgres(t *testing.T) {
 		body := `{"email":"unknownrace@example.test","password":"wrong-password"}`
 		go func() { ch <- requestPG(a, "POST", "/api/v1/auth/login", body, csrf1, "203.0.113.30", c1).Code }()
 		go func() { ch <- requestPG(b, "POST", "/api/v1/auth/login", body, csrf2, "203.0.113.30", c2).Code }()
-		witness, e := pgx.Connect(ctx, dsn)
+		witness, e := identityadapter.Open(ctx, dsn)
 		if e != nil {
 			t.Fatal("witness unavailable")
 		}
@@ -475,7 +476,7 @@ func TestLoginConcurrentPostgres(t *testing.T) {
 		ch := make(chan int, 2)
 		go func() { ch <- requestPG(a, "POST", "/api/v1/auth/login", body, s1, "203.0.113.41", old, c1).Code }()
 		go func() { ch <- requestPG(b, "POST", "/api/v1/auth/login", body, s2, "203.0.113.42", old, c2).Code }()
-		witness, e := pgx.Connect(ctx, dsn)
+		witness, e := identityadapter.Open(ctx, dsn)
 		if e != nil {
 			t.Fatal("witness unavailable")
 		}
