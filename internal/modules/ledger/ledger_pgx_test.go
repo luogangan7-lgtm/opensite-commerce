@@ -1,7 +1,8 @@
 //go:build pgx
 
 // Responsibility: exercise the public ledger port against migrated PostgreSQL.
-// Dependencies: pgx, SQLC and DATABASE_URL for an expendable database; module gate.
+// Dependencies: pgxadapter (the only pool owner), SQLC and DATABASE_URL for an
+// expendable database; module gate forbids raw pgx connections here.
 // Invariants: each fixture uses a new tenant; authority is transaction-local;
 // committed concurrency fixtures remain only in the expendable gate database.
 package ledger_test
@@ -15,13 +16,16 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"os"
 	"sync"
 	"testing"
 	"time"
 )
 
-func ledgerDB(t *testing.T) (context.Context, *pgx.Conn) {
+var errRollback = errors.New("fixture rollback")
+
+func ledgerDB(t *testing.T) (context.Context, pgxadapter.Runner) {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -29,12 +33,21 @@ func ledgerDB(t *testing.T) (context.Context, *pgx.Conn) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	conn, err := pgx.Connect(ctx, dsn)
+	r, closePool, err := pgxadapter.Open(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = conn.Close(context.Background()) })
-	return ctx, conn
+	t.Cleanup(closePool)
+	return ctx, r
+}
+
+// inRolledBack runs fn in one maintenance transaction that is always rolled back.
+func inRolledBack(t *testing.T, ctx context.Context, r pgxadapter.Runner, fn func(pgx.Tx)) {
+	t.Helper()
+	err := r.InMaintenance(ctx, func(_ context.Context, tx pgx.Tx) error { fn(tx); return errRollback })
+	if !errors.Is(err, errRollback) {
+		t.Fatal(err)
+	}
 }
 func seedLedger(t *testing.T, ctx context.Context, tx pgx.Tx) (string, []string) {
 	t.Helper()
@@ -76,12 +89,10 @@ func testUUID(t *testing.T, s string) pgtype.UUID {
 	return id
 }
 func TestLedgerPostBalanceReplayReversal(t *testing.T) {
-	ctx, conn := ledgerDB(t)
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(context.Background())
+	ctx, r := ledgerDB(t)
+	inRolledBack(t, ctx, r, func(tx pgx.Tx) { postBalanceReplayReversal(t, ctx, tx) })
+}
+func postBalanceReplayReversal(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	tenant, accounts := seedLedger(t, ctx, tx)
 	foreignTenant, foreign := seedLedger(t, ctx, tx)
 	scopeLedger(t, ctx, tx, tenant)
@@ -138,10 +149,10 @@ func TestLedgerPostBalanceReplayReversal(t *testing.T) {
 		x.Entries[1].AccountID = foreign[4]
 	}, contract.ErrForbidden)
 	missing := "00000000-0000-0000-0000-ffffffffffff"
-	if _, err = m.Balance(ctx, tx, tenant, missing, time.Now()); !errors.Is(err, contract.ErrNotFound) {
+	if _, err := m.Balance(ctx, tx, tenant, missing, time.Now()); !errors.Is(err, contract.ErrNotFound) {
 		t.Fatal(err)
 	}
-	if _, err = m.Balance(ctx, tx, foreignTenant, foreign[0], time.Now()); !errors.Is(err, contract.ErrNotFound) {
+	if _, err := m.Balance(ctx, tx, foreignTenant, foreign[0], time.Now()); !errors.Is(err, contract.ErrNotFound) {
 		t.Fatalf("foreign balance leaked: %v", err)
 	}
 	reversal := journal(tenant, accounts, "reversed")
@@ -158,17 +169,16 @@ func TestLedgerPostBalanceReplayReversal(t *testing.T) {
 		}
 	}
 	// Force deferred constraints now: rollback cleanup alone cannot prove finality.
-	if _, err = tx.Exec(ctx, "SET CONSTRAINTS ALL IMMEDIATE"); err != nil {
+	if _, err := tx.Exec(ctx, "SET CONSTRAINTS ALL IMMEDIATE"); err != nil {
 		t.Fatal(err)
 	}
 }
 func TestLedgerAllNormalBalances(t *testing.T) {
-	ctx, conn := ledgerDB(t)
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(context.Background())
+	ctx, r := ledgerDB(t)
+	inRolledBack(t, ctx, r, func(tx pgx.Tx) { allNormalBalances(t, ctx, tx) })
+}
+func allNormalBalances(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	var err error
 	tenant, accounts := seedLedger(t, ctx, tx)
 	scopeLedger(t, ctx, tx, tenant)
 	m := ledger.New()
@@ -208,14 +218,13 @@ func TestLedgerAllNormalBalances(t *testing.T) {
 	}
 }
 func TestLedgerConcurrentIdenticalReplay(t *testing.T) {
-	ctx, conn := ledgerDB(t)
-	fixture, err := conn.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer fixture.Rollback(context.Background())
-	tenant, accounts := seedLedger(t, ctx, fixture)
-	if err = fixture.Commit(ctx); err != nil {
+	ctx, r := ledgerDB(t)
+	var tenant string
+	var accounts []string
+	if err := r.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		tenant, accounts = seedLedger(t, ctx, tx)
+		return nil // committed: the racing transactions must see the fixture
+	}); err != nil {
 		t.Fatal(err)
 	}
 	type result struct {
@@ -228,34 +237,22 @@ func TestLedgerConcurrentIdenticalReplay(t *testing.T) {
 	ready.Add(2)
 	for i := 0; i < 2; i++ {
 		go func() {
-			c, err := pgx.Connect(ctx, os.Getenv("DATABASE_URL"))
-			if err != nil {
-				ready.Done()
-				results <- result{err: err}
-				return
-			}
-			defer c.Close(context.Background())
-			tx, err := c.Begin(ctx)
-			if err != nil {
-				ready.Done()
-				results <- result{err: err}
-				return
-			}
-			defer tx.Rollback(context.Background())
-			_, err = tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", tenant)
-			if err == nil {
-				_, err = tx.Exec(ctx, "SET LOCAL ROLE app_runtime")
-			}
-			ready.Done()
-			<-start
-			if err != nil {
-				results <- result{err: err}
-				return
-			}
-			id, err := ledger.New().Post(ctx, tx, journal(tenant, accounts, "concurrent"))
-			if err == nil {
-				err = tx.Commit(ctx)
-			}
+			// Each InTenant call takes its own pooled connection; both
+			// transactions are open and scoped before either posts.
+			var once sync.Once
+			signal := func() { once.Do(ready.Done) }
+			var id string
+			err := r.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+				_, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime")
+				signal()
+				<-start
+				if err != nil {
+					return err
+				}
+				id, err = ledger.New().Post(ctx, tx, journal(tenant, accounts, "concurrent"))
+				return err
+			})
+			signal()
 			results <- result{id: id, err: err}
 		}()
 	}
@@ -265,14 +262,11 @@ func TestLedgerConcurrentIdenticalReplay(t *testing.T) {
 	if first.err != nil || second.err != nil || first.id == "" || first.id != second.id {
 		t.Fatalf("concurrent replay: %+v %+v", first, second)
 	}
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(context.Background())
-	scopeLedger(t, ctx, tx, tenant)
-	b, err := ledger.New().Balance(ctx, tx, tenant, accounts[0], time.Now())
-	if err != nil || b.Debits.Amount != 100 || b.Credits.Amount != 0 {
-		t.Fatalf("duplicate committed content: %+v %v", b, err)
-	}
+	inRolledBack(t, ctx, r, func(tx pgx.Tx) {
+		scopeLedger(t, ctx, tx, tenant)
+		b, err := ledger.New().Balance(ctx, tx, tenant, accounts[0], time.Now())
+		if err != nil || b.Debits.Amount != 100 || b.Credits.Amount != 0 {
+			t.Fatalf("duplicate committed content: %+v %v", b, err)
+		}
+	})
 }
