@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "root_id": "root",
+  "nodes": {
+    "root": {"component":"core.page-layout@1","props":{},"slots":{"main":["hero","featured","company"]}},
+    "hero": {"component":"core.hero@1","props":{"title":"Demo Aroma Supply","layout":"split"},"slots":{}},
+    "featured": {"component":"catalog.product-grid@1","props":{"columns_desktop":4,"columns_mobile":2,"show_price":false},"binding":{"resolver":"catalog.featured-products@1","params":{"limit":8}},"slots":{}},
+    "company": {"component":"company.profile@1","props":{},"binding":{"resolver":"company.profile@1","params":{}},"slots":{}}
+  }
+}

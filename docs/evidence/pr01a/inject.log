@@ -1,0 +1,14 @@
+== INJECT: NO FORCE RLS on app.tenant_memberships
+ALTER TABLE
+ERROR:  Tenant table missing ENABLE/FORCE RLS: app.tenant_memberships
+CONTEXT:  PL/pgSQL function inline_code_block line 12 at RAISE
+audit exit=3
+== RESTORE
+ALTER TABLE
+DO
+                  result                  
+------------------------------------------
+ PASS: database roles and FORCE RLS flags
+(1 row)
+
+audit exit=0

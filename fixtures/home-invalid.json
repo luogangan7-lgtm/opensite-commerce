@@ -1,0 +1,5 @@
+{
+ "schema_version":1,"root_id":"root",
+ "nodes":{"root":{"component":"core.page-layout@1","props":{},"slots":{"main":["bad"]}},
+ "bad":{"component":"javascript.eval@1","props":{"source":"rm -rf /"},"slots":{}}}
+}

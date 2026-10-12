@@ -1,0 +1,15 @@
+ok  	example.com/opensite-commerce/cmd/dev-api	0.524s
+?   	example.com/opensite-commerce/cmd/preflight	[no test files]
+?   	example.com/opensite-commerce/internal/db	[no test files]
+ok  	example.com/opensite-commerce/internal/pagegraph	0.354s
+ok  	example.com/opensite-commerce/internal/storage/local	0.355s
+ok  	example.com/opensite-commerce/internal/tenanttx	0.306s
+VALID: PageDocument conforms to the bundled V1 registry
+INVALID: node bad: unregistered component "javascript.eval@1"
+exit status 1
+PASS: YAML parsed; 12 API operations; 57 references resolved; 25 JSON Schemas; valid+invalid page fixtures checked.
+NOT CHECKED: full OpenAPI conformance validator, implemented endpoints, PG migrations.
+PASS: migration runner orchestration + missing-number fail-fast (mock psql; NO SQL executed)
+PASS: check_pg submits all 5 real-PG test files, repeats 9 migrations, propagates failures (mock psql; NO SQL executed)
+PASS: static sqlc config/query sanity: 40 schema tables, 10 named queries (NOT sqlc generate)
+PASS: offline checks (does not test PostgreSQL or production API)

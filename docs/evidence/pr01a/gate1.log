@@ -1,0 +1,286 @@
+CHECK 001_identity
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+Applied: 001_identity
+CHECK 002_site
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Applied: 002_site
+CHECK 003_catalog
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Applied: 003_catalog
+CHECK 004_media
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Applied: 004_media
+CHECK 005_cms
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Applied: 005_cms
+CHECK 006_publish
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Applied: 006_publish
+CHECK 007_reliability
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Applied: 007_reliability
+CHECK 008_rls_grants
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Applied: 008_rls_grants
+CHECK 009_auth_domain_roles
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Applied: 009_auth_domain_roles
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+All migrations applied, in order, with checksums and history verified.
+CHECK 001_identity
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Already applied: 001_identity (checksum matched)
+CHECK 002_site
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Already applied: 002_site (checksum matched)
+CHECK 003_catalog
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Already applied: 003_catalog (checksum matched)
+CHECK 004_media
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Already applied: 004_media (checksum matched)
+CHECK 005_cms
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Already applied: 005_cms (checksum matched)
+CHECK 006_publish
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Already applied: 006_publish (checksum matched)
+CHECK 007_reliability
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Already applied: 007_reliability (checksum matched)
+CHECK 008_rls_grants
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Already applied: 008_rls_grants (checksum matched)
+CHECK 009_auth_domain_roles
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+NOTICE:  relation "schema_migrations" already exists, skipping
+Already applied: 009_auth_domain_roles (checksum matched)
+ pg_advisory_xact_lock 
+-----------------------
+ 
+(1 row)
+
+All migrations applied, in order, with checksums and history verified.
+RUN tests/db_security_audit.sql
+DO
+                  result                  
+------------------------------------------
+ PASS: database roles and FORCE RLS flags
+(1 row)
+
+RUN tests/db_smoke.sql
+DO
+BEGIN
+DO
+ROLLBACK
+BEGIN
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+SET
+              set_config              
+--------------------------------------
+ 01a12f32-4b8e-70de-bfbb-4dc03d0fbb39
+(1 row)
+
+DO
+RESET
+ROLLBACK
+RUN tests/db_isolation.sql
+BEGIN
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+DO
+SET
+DO
+RESET
+              set_config              
+--------------------------------------
+ 01a12f32-4bfa-7434-b47a-13702fb221e4
+(1 row)
+
+              set_config              
+--------------------------------------
+ 01a12f32-4bf9-7d6f-ad1a-64127ea3da2b
+(1 row)
+
+SET
+DO
+RESET
+ROLLBACK
+                               result                               
+--------------------------------------------------------------------
+ PASS: RLS denies unset and foreign tenants; composite foreign keys
+(1 row)
+
+RUN tests/db_role_boundaries.sql
+BEGIN
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+UPDATE 1
+              set_config              
+--------------------------------------
+ 01a12f32-4cc3-7dbf-8683-281eba747e3c
+(1 row)
+
+              set_config              
+--------------------------------------
+ 01a12f32-4cc4-7b12-9605-f86160248c60
+(1 row)
+
+SET
+DO
+RESET
+SET
+DO
+RESET
+ROLLBACK
+                          result                          
+----------------------------------------------------------
+ PASS: auth lookup and verified/published domain behavior
+(1 row)
+
+RUN tests/db_release_integrity.sql
+BEGIN
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+              set_config              
+--------------------------------------
+ 01a12f32-4d8f-79e7-af05-e56e646f58ce
+(1 row)
+
+              set_config              
+--------------------------------------
+ 01a12f32-4d91-76a6-9689-c4101f69cf05
+(1 row)
+
+              set_config              
+--------------------------------------
+ 01a12f32-4d92-7a3a-81f8-44c9098d8088
+(1 row)
+
+              set_config              
+--------------------------------------
+ 01a12f32-4d93-741b-8ba6-5b54977209b7
+(1 row)
+
+              set_config              
+--------------------------------------
+ 01a12f32-4d95-7fe4-a247-977b4f523872
+(1 row)
+
+DO
+ROLLBACK
+                  result                   
+-------------------------------------------
+ PASS: cross-site publication FK isolation
+(1 row)
+

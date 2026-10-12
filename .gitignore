@@ -1,2 +1,11 @@
 .DS_Store
 /deep-research-report.md
+.env
+*.secret
+.venv/
+node_modules/
+dist/
+coverage/
+.DS_Store
+media/
+*.test

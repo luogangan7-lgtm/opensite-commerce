@@ -1,0 +1,8 @@
+ok  	example.com/opensite-commerce/cmd/dev-api	(cached)
+?   	example.com/opensite-commerce/cmd/preflight	[no test files]
+?   	example.com/opensite-commerce/internal/db	[no test files]
+ok  	example.com/opensite-commerce/internal/pagegraph	(cached)
+ok  	example.com/opensite-commerce/internal/storage/local	(cached)
+ok  	example.com/opensite-commerce/internal/tenanttx	(cached)
+?   	example.com/opensite-commerce/internal/tenanttx/pgxadapter	[no test files]
+PASS: real sqlc generation + pgx build/typecheck
