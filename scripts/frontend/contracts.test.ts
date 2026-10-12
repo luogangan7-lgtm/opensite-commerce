@@ -16,14 +16,13 @@ test('production cannot contain gallery code', () => {
   }
 });
 
-// Include cross-architecture CLI startup; rejection code and message remain mandatory.
 test('local baseline generation is rejected', () => {
   const result = Bun.spawnSync(['bun', 'scripts/frontend/update-baselines.ts'], {
     env: { ...process.env, GITHUB_ACTIONS: 'false' }
   });
   expect(result.exitCode).toBe(1);
   expect(new TextDecoder().decode(result.stderr)).toContain('explicit pinned GitHub Actions');
-}, 30_000);
+});
 
 test('direct local Playwright snapshot update is rejected before launch', () => {
   const result = Bun.spawnSync(['bun', 'x', '--no-install', 'playwright', 'test', '--update-snapshots', '--list'], {
@@ -31,4 +30,4 @@ test('direct local Playwright snapshot update is rejected before launch', () => 
   });
   expect(result.exitCode).toBe(1);
   expect(new TextDecoder().decode(result.stderr)).toContain('Snapshot updates require the explicit pinned GitHub Actions');
-}, 30_000);
+});
