@@ -92,7 +92,7 @@ func (f *idemPGFixture) connect(t *testing.T) *pgx.Conn {
 	return c
 }
 func (f *idemPGFixture) scope(key string) idempotency.Scope {
-	return idempotency.Scope{f.tenants[0], "service", f.actor, "testCommand", key}
+	return idempotency.Scope{TenantID: f.tenants[0], ActorKind: "service", ActorID: f.actor, Operation: "testCommand", Key: key}
 }
 func idemScoped(ctx context.Context, c *pgx.Conn, tenant string) (pgx.Tx, error) {
 	tx, err := c.Begin(ctx)
@@ -137,7 +137,7 @@ func idemEffectCount(t *testing.T, f *idemPGFixture, scope idempotency.Scope) in
 	return n
 }
 func idemTestResponse() idempotency.Response {
-	return idempotency.Response{201, http.Header{"Content-Type": {"application/octet-stream"}, "Etag": {"\"idem-v1\""}, "X-Repeat": {"a", "b"}}, []byte{0, 255, 'o', 'k'}}
+	return idempotency.Response{Status: 201, Header: http.Header{"Content-Type": {"application/octet-stream"}, "Etag": {"\"idem-v1\""}, "X-Repeat": {"a", "b"}}, Body: []byte{0, 255, 'o', 'k'}}
 }
 func idemLocalResponses(t *testing.T) idempotency.ResponseStore {
 	t.Helper()
