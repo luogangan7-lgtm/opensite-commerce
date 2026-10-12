@@ -442,7 +442,11 @@ class GovernanceTests(unittest.TestCase):
         self.source("internal/bridgeimpl/source.go", 'package bridgeimpl\nimport "github.com/jackc/pgx/v5"\nvar Connection *pgx.Conn\n')
         (self.root / "internal/modules/a/alias").symlink_to(self.root / "internal/bridgeimpl", target_is_directory=True)
         self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/modules/a/alias"\nvar Value=bridgeimpl.Connection\n')
-        self.assert_red("MODULE_SOURCE_DIRECTORY_ALIAS")
+        # The first-party connection ban now rejects the bridge source itself,
+        # before the alias rule (still covered by the other alias tests).
+        result = self.run_gate()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stderr, "MODULE_(SOURCE_DIRECTORY_ALIAS|RAW_CONNECTION)")
 
     def test_legacy_source_directory_alias_red(self):
         self.registry["modules"][0]["legacy_go_paths"] = ["internal/a"]
@@ -672,7 +676,7 @@ class GovernanceTests(unittest.TestCase):
         for key, method, operation in cases:
             with self.subTest(key=key, method=method):
                 path.write_text(f'openapi: 3.1.0\npaths:\n  {key}:\n    {method}:\n      operationId: {operation}\n')
-                self.assertEqual(checker.openapi_operations(path), {operation})
+                self.assertEqual(set(checker.openapi_operations(path)), {operation})
 
     def test_openapi_distinct_action_paths_keep_independent_methods_and_ids(self):
         path = self.root / 'api/openapi.yaml'
@@ -682,7 +686,7 @@ class GovernanceTests(unittest.TestCase):
             '  "/orders/{id}:refund":\n    put:\n      operationId: refundOrder\n'
             "  '/orders/{id}:archive':\n    delete:\n      operationId: archiveOrder\n"
             '  /orders/{id}:preview:validate:\n    patch:\n      operationId: validateOrderPreview\n')
-        self.assertEqual(checker.openapi_operations(path),
+        self.assertEqual(set(checker.openapi_operations(path)),
                          {'cancelOrder', 'refundOrder', 'archiveOrder', 'validateOrderPreview'})
 
     def test_openapi_action_path_operations_reconcile_both_directions(self):
@@ -700,6 +704,66 @@ class GovernanceTests(unittest.TestCase):
                 {'operation_id': 'missingOrderAction', 'status': 'planned'}]}]}, path)
         with self.assertRaisesRegex(checker.GovernanceError, 'MODULE_UNREGISTERED_OPERATION'):
             checker.check_operations({'modules': [{'operations': operations[:1]}]}, path)
+
+    def vendor_pgx_and_pool(self):
+        self.vendor_pgx()
+        self.source("vendor/github.com/jackc/pgx/v5/pgxpool/pool.go", "package pgxpool\ntype Pool struct{}\n")
+        with (self.root / "vendor/modules.txt").open("a") as output:
+            output.write("github.com/jackc/pgx/v5/pgxpool\n")
+
+    def test_raw_pool_in_unregistered_bridge_red(self):
+        # Review probe on f72ff34: a first-party bridge outside business
+        # modules held the pool for its caller and every gate stayed green.
+        self.vendor_pgx_and_pool()
+        self.source("internal/bridgex/bridge.go", 'package bridgex\nimport "github.com/jackc/pgx/v5/pgxpool"\nvar Pool *pgxpool.Pool\n')
+        self.source("internal/modules/a/bridge.go", 'package a\nimport "example.test/shop/internal/bridgex"\nvar Pool = bridgex.Pool\n')
+        self.assert_red("MODULE_RAW_POOL_IMPORT")
+
+    def test_raw_connect_in_standalone_first_party_package_red(self):
+        self.vendor_pgx()
+        for name in ("internal/bridgez/bridge.go", "cmd/tool/main.go", "internal/db/db.go"):
+            with self.subTest(name=name):
+                self.source(name, 'package bridge\nimport "github.com/jackc/pgx/v5"\nvar Connect = pgx.Connect\n')
+                self.assert_red("MODULE_RAW_CONNECTION")
+                (self.root / name).unlink()
+
+    def test_allowlisted_pool_adapter_and_db_integration_test_green(self):
+        self.vendor_pgx_and_pool()
+        self.source("internal/tenanttx/pgxadapter/adapter.go",
+                    'package pgxadapter\nimport (\n\t"github.com/jackc/pgx/v5"\n\t"github.com/jackc/pgx/v5/pgxpool"\n)\n'
+                    'type Runner struct{ Pool *pgxpool.Pool }\nvar Connect = pgx.Connect\n')
+        self.source("internal/db/db.go", 'package db\nimport "github.com/jackc/pgx/v5"\nvar Tx pgx.Tx\n')
+        self.source("internal/db/db_test.go", 'package db\nimport "github.com/jackc/pgx/v5"\nvar Connect = pgx.Connect\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def generated_server(self):
+        self.source("internal/platform/httpapi/generated/api.gen.go", "package generated\nfunc HandlerFromMux() {}\n")
+
+    def test_generated_server_import_outside_httpapi_red(self):
+        self.generated_server()
+        for name in ("cmd/api/main.go", "internal/modules/a/mount.go"):
+            with self.subTest(name=name):
+                self.source(name, 'package a\nimport "example.test/shop/internal/platform/httpapi/generated"\nvar Mount = generated.HandlerFromMux\n')
+                self.assert_red("MODULE_GENERATED_SERVER_IMPORT")
+                (self.root / name).unlink()
+
+    def test_generated_server_import_from_httpapi_and_tests_green(self):
+        self.generated_server()
+        importer = 'import "example.test/shop/internal/platform/httpapi/generated"\nvar Mount = generated.HandlerFromMux\n'
+        self.source("internal/platform/httpapi/router.go", "package httpapi\n" + importer)
+        self.source("cmd/api/main_test.go", "package main\n" + importer)
+        self.source("cmd/api/main.go", "package main\nfunc main() {}\n")
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_operation_status_drift_red(self):
+        path = self.root / "api/openapi.yaml"
+        path.write_text(path.read_text() + "      x-opensite-status: implemented\n")
+        self.assert_red("MODULE_OPERATION_STATUS_MISMATCH")
+        path.write_text(path.read_text().replace("implemented", "planned"))
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -54,12 +54,17 @@ files cannot resolve into a business module, even when both
 their package name and linker target use a foreign prefix.
 First-party Go source cannot
 use `go:linkname` to bypass visibility through an unregistered bridge package;
-business packages also cannot directly import raw `pgxpool`.
-They cannot use `pgx.Conn`, `pgx.Connect` or `pgx.ConnectConfig`, including renamed
+no first-party package (business module, bridge, `cmd/*` or platform) may import
+raw `pgxpool` unless allowlisted in `RAW_CONNECTION_ALLOWED` (default deny: today
+`internal/tenanttx/pgxadapter`, plus `_test.go` files in `internal/db`).
+Nor may they use `pgx.Conn`, `pgx.Connect` or `pgx.ConnectConfig`, including renamed
 imports, tests and sources behind custom build tags; dot imports of pgx are
 forbidden. Transaction types such as `pgx.Tx` remain allowed. Connection creation
-belongs to the approved platform transaction/authorization entry points, outside
-business modules. The same rule covers registered legacy business paths.
+belongs to the allowlisted platform transaction adapter.
+Only `internal/platform/httpapi` may import the oapi-codegen server package
+(`httpapi/generated`) in production code, so nothing mounts generated handlers
+around the httpapi chain; tests may import it. A registry operation `status` must
+equal the OpenAPI `x-opensite-status` of the same `operationId`. The same rule covers registered legacy business paths.
 Vendor Go files are scanned too: linker directives targeting this repository
 are forbidden, including private package roots and symlink aliases that omit
 `internal` from the import name. Unrelated external targets and directive text
@@ -97,6 +102,6 @@ platform paths belong to C-03ac and are unchanged here.
 
 The threat model is accidental boundary violations by honest authors and agents.
 This gate is not an adversarial sandbox or a proof that every handler authorizes
-its actor. The connection rule checks business-source imports and selectors,
+its actor. The connection rule checks first-party source imports and selectors,
 not capabilities returned by platform/bridge functions; the runtime authorization
 and database gates remain required.

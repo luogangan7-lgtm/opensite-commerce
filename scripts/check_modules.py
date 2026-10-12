@@ -143,6 +143,7 @@ def openapi_operations(path):
     methods = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
     stack, operations = [], set()
     mapping_keys, operation_locations, identified_locations = set(), set(), set()
+    ids, statuses = {}, {}
     block_indent = None
     saw_paths = False
     for line in path.read_text().splitlines():
@@ -193,25 +194,38 @@ def openapi_operations(path):
             require(identifier not in operations, "MODULE_OPENAPI_INVALID", f"duplicate operationId {identifier}")
             operations.add(identifier)
             identified_locations.add(tuple(parents))
+            ids[tuple(parents)] = identifier
+        if (key == "x-opensite-status" and len(parents) == 3 and parents[0] == "paths" and
+                parents[1].startswith("/") and parents[2] in methods):
+            match_status = re.fullmatch(r"""(['"]?)(planned|implemented)\1(?:\s+#.*)?""", value)
+            require(match_status, "MODULE_OPENAPI_INVALID", "x-opensite-status must be planned or implemented")
+            statuses[tuple(parents)] = match_status.group(2)
         if re.match(r"[|>][-+0-9]*(?:\s+#.*)?$", value):
             block_indent = indent
         elif not value or value.startswith("#"):
             stack.append((indent, key))
     require(saw_paths and operations, "MODULE_OPENAPI_INVALID", "no inline path operations found")
     require(operation_locations == identified_locations, "MODULE_OPENAPI_INVALID", "every HTTP operation needs an operationId")
-    return operations
+    # Presence of x-opensite-status is check_contract's rule; here a declared
+    # status is returned so the registry cannot drift from it.
+    return {identifier: statuses.get(location) for location, identifier in ids.items()}
 
 
 def check_operations(registry, path):
     available = openapi_operations(path)
-    registered = set()
+    registered = {}
     for module in registry["modules"]:
         for operation in module["operations"]:
-            registered.add(operation["operation_id"])
+            registered[operation["operation_id"]] = operation.get("status")
     # Status governs handler readiness, never whether a declared ID is a
     # contract. Both planned and implemented operations must exist in the OAS.
-    require(registered <= available, "MODULE_MISSING_OPERATION", ", ".join(sorted(registered - available)))
-    require(available <= registered, "MODULE_UNREGISTERED_OPERATION", ", ".join(sorted(available - registered)))
+    require(registered.keys() <= available.keys(), "MODULE_MISSING_OPERATION",
+            ", ".join(sorted(registered.keys() - available.keys())))
+    require(available.keys() <= registered.keys(), "MODULE_UNREGISTERED_OPERATION",
+            ", ".join(sorted(available.keys() - registered.keys())))
+    drift = sorted(identifier for identifier, status in available.items()
+                   if status is not None and status != registered[identifier])
+    require(not drift, "MODULE_OPERATION_STATUS_MISMATCH", ", ".join(drift))
 
 
 def json_stream(text):
@@ -280,6 +294,21 @@ def check_raw_connection(text, location):
         require(not (tokens[index] in aliases and tokens[index + 1] == "." and
                      tokens[index + 2] in ("Conn", "Connect", "ConnectConfig")),
                 "MODULE_RAW_CONNECTION", location)
+
+
+# Default deny: only the tenant-transaction adapter may hold a pgxpool or open
+# a raw pgx connection; the generated db package's integration tests open a
+# maintenance connection. Everything else gets connections via tenanttx.
+RAW_CONNECTION_ALLOWED = {Path("internal/tenanttx/pgxadapter"): "", Path("internal/db"): "_test.go"}
+# Only the httpapi chain may mount the oapi-codegen server; tests anywhere may
+# exercise it.
+GENERATED_SERVER = "internal/platform/httpapi/generated"
+GENERATED_SERVER_IMPORTERS = {Path("internal/platform/httpapi"), Path(GENERATED_SERVER)}
+
+
+def raw_connection_allowed(relative):
+    suffix = RAW_CONNECTION_ALLOWED.get(relative.parent)
+    return suffix is not None and relative.name.endswith(suffix)
 
 
 def check_go(registry, root):
@@ -353,9 +382,15 @@ def check_go(registry, root):
                 if source.is_relative_to(target):
                     target_source.add(name)
             text = source.read_text()
-            if any(source.is_relative_to(owned) or source.resolve().is_relative_to(owned)
-                   for owned in owned_paths):
-                check_raw_connection(text, str(source.relative_to(root)))
+            relative = source.relative_to(root)
+            resolved = source.resolve()
+            # All first-party source, not just business modules: a new bridge
+            # package must not be able to open connections on a module's behalf.
+            allowed = (raw_connection_allowed(relative) and resolved.is_relative_to(root) and
+                       raw_connection_allowed(resolved.relative_to(root)))
+            if (not allowed and relative_parts[:1] != ("vendor",)) or any(
+                    resolved.is_relative_to(owned) for owned in owned_paths):
+                check_raw_connection(text, str(relative))
             require(not re.search(r'^\s*import\s*(?:\(\s*)?"C"', text, re.M),
                     "MODULE_NON_GO_SOURCE", str(source.relative_to(root)) + " (cgo)")
             for token in go_tokens.finditer(text):
@@ -449,6 +484,11 @@ def check_go(registry, root):
                 require(not relative_parts or relative_parts[0] not in
                         ("work", ".worktrees", ".git", "vendor", "node_modules"),
                         "MODULE_ARTIFACT_SOURCE", str(directory.relative_to(root)))
+            if (first_party and directory.is_relative_to(root) and not package.get("ForTest") and
+                    not package["ImportPath"].endswith(".test") and
+                    directory.relative_to(root) not in GENERATED_SERVER_IMPORTERS):
+                require(prefix + GENERATED_SERVER not in package.get("Imports", []),
+                        "MODULE_GENERATED_SERVER_IMPORT", str(directory.relative_to(root)))
             source = module_path(package)
             errors = errors or bool(package.get("Error") or package.get("DepsErrors"))
             if source is None:
