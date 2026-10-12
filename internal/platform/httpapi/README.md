@@ -35,3 +35,10 @@ the HTTP response. Problems have stable `code` and correlated `request_id`.
 
 Real auth/session, OpenAPI strict generation, module registry/import rules and
 operation coverage remain in PR-02 / C-03b / C-03d / C-03e respectively.
+
+`Storefront` is a separate authenticated access class for tenant cart capabilities.
+It requires the canonical tenant path and forbids staff scopes. A missing
+Authenticator still denies it. Bootstrap delegates these routes only to the
+cart module, which admits anonymous creation and otherwise requires a guest
+capability or a trusted customer resolver. Staff cookies/API keys grant no cart
+access. Cart responses use no-store and strong whole-representation ETags.

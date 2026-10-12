@@ -17,10 +17,13 @@ func WriteProblem(w http.ResponseWriter, r *http.Request, err error) {
 	status, code, detail := http.StatusInternalServerError, "internal_error", ""
 	var failure *platformerrors.Error
 	if stderrors.As(err, &failure) && failure != nil {
-		if defaultCode, ok := problemCode(failure.Status); ok && failure.Status < 500 {
-			status, code, detail = failure.Status, defaultCode, failure.Detail
-			if failure.Code != "" {
-				code = failure.Code
+		if defaultCode, ok := problemCode(failure.Status); ok {
+			status, code = failure.Status, defaultCode
+			if failure.Status < 500 {
+				detail = failure.Detail
+				if failure.Code != "" {
+					code = failure.Code
+				}
 			}
 		}
 	}
@@ -64,6 +67,8 @@ func problemCode(status int) (string, bool) {
 		return "rate_limited", true
 	case 500:
 		return "internal_error", true
+	case 503:
+		return "service_unavailable", true
 	default:
 		return "", false
 	}

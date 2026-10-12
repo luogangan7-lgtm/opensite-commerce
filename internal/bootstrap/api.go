@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
@@ -18,12 +19,17 @@ type Config struct {
 	Logger        *slog.Logger
 	Authenticator httpapi.Authenticator
 	Routes        []httpapi.Route
+	Cart          *cart.Module
 }
 
 func New(config Config) (*http.Server, error) {
-	router := httpapi.New(config.Authenticator, config.Logger)
+	cartModule := config.Cart
+	if cartModule == nil {
+		cartModule = cart.New(nil, nil)
+	}
+	router := httpapi.New(routeAuthenticator{cart: cartModule, staff: config.Authenticator}, config.Logger)
 	health := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "health", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })}
-	for _, route := range append([]httpapi.Route{health}, config.Routes...) {
+	for _, route := range append(append([]httpapi.Route{health}, cartModule.Routes()...), config.Routes...) {
 		if err := router.Register(route.Spec, route.Handler); err != nil {
 			return nil, err
 		}
@@ -55,4 +61,21 @@ func Run(ctx context.Context, config Config) error {
 		<-done
 		return nil
 	}
+}
+
+// routeAuthenticator separates storefront capabilities from staff authentication.
+// A staff credential can never authorize a Storefront route by falling through.
+type routeAuthenticator struct {
+	cart  *cart.Module
+	staff httpapi.Authenticator
+}
+
+func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	if spec.Access == httpapi.Storefront {
+		return a.cart.Authenticate(ctx, r, spec)
+	}
+	if a.staff == nil {
+		return (httpapi.DenyAuthenticator{}).Authenticate(ctx, r, spec)
+	}
+	return a.staff.Authenticate(ctx, r, spec)
 }

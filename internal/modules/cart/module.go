@@ -1,0 +1,81 @@
+// Package cart is the storefront cart composition boundary. It depends on its
+// public contract, private service/store/transport and platform HTTP; bootstrap
+// calls it. Only a trusted customer resolver or a guest capability grants access.
+package cart
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"net/http"
+	"strings"
+
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
+	transport "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/internal/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/internal/service"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/internal/store"
+	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
+	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+)
+
+// ActorResolver is a trusted customer-session seam, never a client identity DTO.
+// A zero actor means guest. Customer login/cookies are supplied by a later module.
+type ActorResolver func(context.Context, *http.Request) (contract.AuthorizedActor, error)
+
+type Module struct {
+	*service.Service
+	resolver ActorResolver
+}
+
+func New(repo contract.Repository, resolver ActorResolver) *Module {
+	return &Module{Service: service.New(repo), resolver: resolver}
+}
+
+func NewPostgres(pool contract.Beginner, resolver ActorResolver) *Module {
+	return New(store.New(pool), resolver)
+}
+
+func (m *Module) Routes() []platform.Route { return transport.New(m.Service).Routes() }
+
+func (m *Module) Authenticate(ctx context.Context, r *http.Request, spec platform.RouteSpec) (context.Context, error) {
+	denied := func() (context.Context, error) { return ctx, apperrors.New(404, "cart_not_found", "Cart not found") }
+	tenant := strings.ToLower(r.PathValue("tenant_id"))
+	if spec.Access != platform.Storefront || !service.ValidID(tenant) {
+		return denied()
+	}
+	var actor contract.AuthorizedActor
+	if m.resolver != nil {
+		var err error
+		actor, err = m.resolver(ctx, r)
+		if err != nil {
+			return ctx, err
+		}
+	}
+	tokens := r.Header.Values("X-Cart-Token")
+	if actor.CustomerID != "" {
+		if !service.ValidID(actor.CustomerID) || strings.ToLower(actor.TenantID) != tenant || len(actor.GuestTokenHash) != 0 || len(tokens) != 0 {
+			return denied()
+		}
+		actor.TenantID = tenant
+		actor.CustomerID = strings.ToLower(actor.CustomerID)
+		return contract.WithActor(ctx, actor), nil
+	}
+	// The guest branch never accepts a partially populated trusted identity.
+	if actor.TenantID != "" || len(actor.GuestTokenHash) != 0 {
+		return denied()
+	}
+	actor.TenantID = tenant
+	if spec.OperationID == "createCart" && len(tokens) == 0 {
+		return contract.WithActor(ctx, actor), nil
+	}
+	if len(tokens) != 1 {
+		return denied()
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(tokens[0])
+	if err != nil || len(raw) != 32 || base64.RawURLEncoding.EncodeToString(raw) != tokens[0] {
+		return denied()
+	}
+	hash := sha256.Sum256([]byte(tokens[0]))
+	actor.GuestTokenHash = hash[:]
+	return contract.WithActor(ctx, actor), nil
+}

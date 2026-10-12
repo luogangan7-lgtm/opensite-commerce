@@ -23,7 +23,7 @@ DECLARE
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
   'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
   'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
-  'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings'];
+  'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings','carts','cart_lines'];
  role_name text;
  r record;
  t record;
@@ -78,6 +78,8 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'carts' THEN ARRAY['tenant_id','id','customer_id','guest_token_hash','currency']
+        WHEN 'cart_lines' THEN ARRAY['tenant_id','cart_id','sku_id','quantity']
         WHEN 'tax_zones' THEN ARRAY['tenant_id','id','name']
         WHEN 'tax_zone_locations' THEN ARRAY['tenant_id','zone_id','country_code','subdivision']
         WHEN 'tax_categories' THEN ARRAY['tenant_id','code','name','is_exempt']
@@ -95,12 +97,16 @@ BEGIN
          'renderer_build_id','manifest','manifest_hash','restored_from','created_at']
         ELSE ARRAY[]::text[] END;
       END IF;
+     ELSIF privilege='DELETE' AND t.relname='cart_lines' THEN
+      expected_table := true;
      ELSIF privilege='UPDATE' THEN
       IF t.relname=ANY(mutable_tables) THEN
        allowed_columns := all_columns;
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'carts' THEN ARRAY['version']
+        WHEN 'cart_lines' THEN ARRAY['quantity']
         WHEN 'tax_zones' THEN ARRAY['name']
         WHEN 'tax_categories' THEN ARRAY['name','is_exempt']
         WHEN 'tax_rates' THEN ARRAY['rate_bp','valid_from','valid_until']
@@ -205,7 +211,7 @@ BEGIN
  END LOOP;
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
-  AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
@@ -224,7 +230,7 @@ BEGIN
   END IF;
  END LOOP;
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
-  AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
@@ -288,7 +294,7 @@ BEGIN
   END LOOP;
  END LOOP;
  FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-  WHERE n.nspname='app' AND NOT p.proname=ANY(names) LOOP
+  WHERE n.nspname='app' AND NOT p.proname=ANY(names) AND p.proname<>'cart_tenant_active' LOOP
   IF has_function_privilege('app_inventory_manager',f.oid,'EXECUTE')
    OR has_function_privilege('app_inventory_executor',f.oid,'EXECUTE') THEN
    RAISE EXCEPTION 'inventory role has foreign routine capability: %',f.proname;
@@ -299,3 +305,37 @@ BEGIN
  END IF;
 END $inventory$;
 SELECT 'PASS: inventory exact owner/manager/runtime table-column-routine capabilities' AS result;
+
+
+-- Cart borrows only the existing unreachable executor's tenant-read privilege.
+-- Runtime sees a boolean for its current context, never the tenant roster.
+DO $cart_functions$
+DECLARE f record; role_name text;
+BEGIN
+ SELECT p.* INTO STRICT f FROM pg_proc p WHERE p.oid='app.cart_tenant_active()'::regprocedure;
+ IF NOT f.prosecdef OR f.proowner<>'app_inventory_executor'::regrole
+  OR f.pronargs<>0 OR f.prorettype<>'boolean'::regtype OR f.provolatile<>'s'
+  OR f.prolang<>(SELECT oid FROM pg_language WHERE lanname='sql')
+  OR cardinality(f.proconfig) IS DISTINCT FROM 1
+  OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+  OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner)))
+   WHERE grantee NOT IN ('app_runtime'::regrole,'app_inventory_executor'::regrole)
+    OR privilege_type<>'EXECUTE' OR is_grantable) THEN
+  RAISE EXCEPTION 'CART_UNSAFE_TENANT_HELPER';
+ END IF;
+ FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier',
+  'app_media_service','app_publisher','app_publish_executor','app_outbox_worker',
+  'app_reliability_executor','app_customer_auth','app_inventory_manager'] LOOP
+  IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name='app_runtime')
+   OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'CART_HELPER_EXECUTE_MISMATCH: %',role_name;
+  END IF;
+ END LOOP;
+ IF has_table_privilege('app_runtime','app.tenants','SELECT')
+  OR has_any_column_privilege('app_runtime','app.tenants','SELECT')
+  OR has_schema_privilege('app_inventory_executor','app','CREATE')
+  OR pg_has_role('app_runtime','app_inventory_executor','SET') THEN
+  RAISE EXCEPTION 'CART_TENANT_CAPABILITY_BROADENED';
+ END IF;
+END $cart_functions$;
+SELECT 'PASS: cart tenant helper exact owner/search_path/boolean/STABLE/EXECUTE; no tenant-read grant' AS result;

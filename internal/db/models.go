@@ -80,6 +80,45 @@ type AppBlogPostRevision struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+type AppBuyerCompany struct {
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	Status    string             `json:"status"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppBuyerCompanyMember struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	BuyerCompanyID pgtype.UUID        `json:"buyer_company_id"`
+	CustomerID     pgtype.UUID        `json:"customer_id"`
+	RoleCode       string             `json:"role_code"`
+	Status         string             `json:"status"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppBuyerRole struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	Code     string      `json:"code"`
+}
+
+type AppCart struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	ID             pgtype.UUID        `json:"id"`
+	CustomerID     pgtype.UUID        `json:"customer_id"`
+	GuestTokenHash []byte             `json:"guest_token_hash"`
+	Currency       string             `json:"currency"`
+	Version        int64              `json:"version"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppCartLine struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	CartID   pgtype.UUID `json:"cart_id"`
+	SkuID    pgtype.UUID `json:"sku_id"`
+	Quantity int64       `json:"quantity"`
+}
+
 type AppCompanyContact struct {
 	TenantID       pgtype.UUID `json:"tenant_id"`
 	OrganizationID pgtype.UUID `json:"organization_id"`
@@ -97,6 +136,36 @@ type AppCompanyProfileRevision struct {
 	Revision       int64              `json:"revision"`
 	Profile        []byte             `json:"profile"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppCustomer struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ID              pgtype.UUID        `json:"id"`
+	Email           string             `json:"email"`
+	EmailNormalized pgtype.Text        `json:"email_normalized"`
+	DisplayName     string             `json:"display_name"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppCustomerAddress struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	ID           pgtype.UUID `json:"id"`
+	CustomerID   pgtype.UUID `json:"customer_id"`
+	Recipient    string      `json:"recipient"`
+	AddressLine1 string      `json:"address_line1"`
+	AddressLine2 string      `json:"address_line2"`
+	City         string      `json:"city"`
+	Subdivision  pgtype.Text `json:"subdivision"`
+	PostalCode   string      `json:"postal_code"`
+	CountryCode  string      `json:"country_code"`
+}
+
+type AppCustomerCredential struct {
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	CustomerID   pgtype.UUID        `json:"customer_id"`
+	PasswordHash string             `json:"password_hash"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type AppDraftOperation struct {

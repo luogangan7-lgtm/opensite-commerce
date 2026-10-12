@@ -279,3 +279,25 @@ func TestBufferedWriteSniffsContentType(t *testing.T) {
 		t.Fatalf("Content-Type = %q, want sniffed text/html", got)
 	}
 }
+
+func TestStorefrontAccessIsTenantBoundDefaultDeny(t *testing.T) {
+	spec := httpapi.RouteSpec{OperationID: "getCart", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/carts/{cart_id}", Access: httpapi.Access("Storefront")}
+	r := httpapi.New(nil, nil)
+	if err := r.Register(spec, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("unauthorized storefront handler reached") })); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/a/carts/b", nil))
+	assertProblem(t, w, 401)
+	for _, change := range []func(*httpapi.RouteSpec){
+		func(s *httpapi.RouteSpec) { s.Scope = "catalog.read" },
+		func(s *httpapi.RouteSpec) { s.Pattern = "/auth/whoami" },
+		func(s *httpapi.RouteSpec) { s.Pattern = "/t/{tenant_id}/carts" },
+	} {
+		bad := spec
+		change(&bad)
+		if httpapi.New(nil, nil).Register(bad, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})) == nil {
+			t.Fatal("invalid storefront policy accepted")
+		}
+	}
+}
