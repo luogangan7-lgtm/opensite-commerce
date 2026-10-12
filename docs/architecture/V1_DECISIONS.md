@@ -316,7 +316,7 @@ SUM(amount_minor) FILTER (WHERE side = 'credit')
 
 同时要求 Posted 至少两行、总金额大于零，并验证币种一致。
 
-**锁必须在数据库内强制，而不是依赖 Go 服务约定**：Entry 的 BEFORE INSERT/UPDATE/DELETE 触发器与 Journal 的 Posting 触发器都先 `SELECT … FROM ledger_transactions WHERE id = … FOR UPDATE` 锁定父 Journal，再检查其状态（已 Posted 则拒绝 Entry 变更）。这样直接 SQL 或未来其他写入方也无法让「过账校验看到旧 Entry、Entry 写入看到 Draft」两个事务同时提交出不平衡的 Posted Journal。验收 gate 增加：两个并发会话分别执行「过账」与「修改 Entry」，结果必须是其一失败或串行，最终 Posted Journal 始终借贷平衡。
+**锁必须在数据库内强制，而不是依赖 Go 服务约定**：Entry 的 BEFORE INSERT/UPDATE/DELETE 触发器与 Journal 的 Posting 触发器都先 `SELECT … FROM ledger_transactions WHERE id = … FOR UPDATE` 锁定父 Journal，再检查其状态（已 Posted 则拒绝 Entry 变更）。Entry 的父键 `(tenant_id, transaction_id)` 一律**不可变**：BEFORE UPDATE 触发器只要发现父键有变化就拒绝，要换 Journal 只能删掉再插入，删除和插入各自对所属 Journal 加锁、检查状态。这样就不会出现「从已 Posted 的 Journal 移出」或「移入已 Posted 的 Journal」这种单边漏检。这样直接 SQL 或未来其他写入方也无法让「过账校验看到旧 Entry、Entry 写入看到 Draft」两个事务同时提交出不平衡的 Posted Journal。验收 gate 增加：两个并发会话分别执行「过账」与「修改 Entry」，结果必须是其一失败或串行，最终 Posted Journal 始终借贷平衡。
 
 PostgreSQL 支持事务末尾执行的延迟 Constraint Trigger；但上述只是 DDL 契约示例，完整函数仍必须实现及实测（参见 PostgreSQL 18 文档 [CREATE TRIGGER · CONSTRAINT / DEFERRABLE](https://www.postgresql.org/docs/18/sql-createtrigger.html)）。
 

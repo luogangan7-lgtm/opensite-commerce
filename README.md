@@ -2,7 +2,7 @@
 
 可自部署的 B2C + B2B 电商系统（规划中）。技术方向：Go 模块化单体、PostgreSQL 18 唯一事实源（pgx + sqlc，启用 RLS）、River 任务队列、Astro 前台、React 后台；默认用 LocalFS 存储，S3 兼容存储可选。
 
-> **状态：架构阶段。** PR-01 数据库基础代码（ChatGPT 沙箱产出，从未在真实 PostgreSQL 上跑过）正在走导入 + PG18 真实验收（PR-01A），通过前不进 main。
+> **状态：架构阶段。** PR-01 数据库基础代码（ChatGPT 沙箱产出）已在 [PR #2](https://github.com/luogangan7-lgtm/opensite-commerce/pull/2) 分支导入，并在真实 PostgreSQL 18.6 上通过验收（本地 gate 1–3 全部通过，GitHub CI 绿），**但还没合入 main**。在那之前，main 上只有文档。
 
 ## 文档
 
