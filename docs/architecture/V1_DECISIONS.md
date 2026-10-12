@@ -565,38 +565,40 @@ rg -n -U -P \
 
 ### 7.5 SQL 断言
 
-RLS 必须在**同一数据库连接**上执行：
+RLS 连接复用断言必须有**非空见证数据**，并在**同一数据库连接**上执行（否则空库下即使上下文泄漏也会得到零行，断言恒真）：
 
 ```sql
+-- 0. 准备（以迁移 owner 身份，单独提交，跨后续事务保留）：
+--    按 001–003 的必填列插入测试租户 W 及其下 1 个产品，id 带唯一前缀，测试结束后清理。
+
+-- 1. 租户事务：先证明能看到见证行
 BEGIN;
-
-SELECT set_config(
-  'app.tenant_id',
-  '00000000-0000-0000-0000-000000000001',
-  true
-);
-
+SELECT set_config('app.tenant_id', '<W>', true);   -- true = 事务级（SET LOCAL 语义）
+SET LOCAL ROLE app_runtime;
+DO $$ BEGIN
+  IF (SELECT count(*) FROM app.products) < 1 THEN
+    RAISE EXCEPTION 'witness not visible in tenant tx';
+  END IF;
+END $$;
 COMMIT;
 
+-- 2. 同一连接、无租户事务：上下文必须已清空，且看不到见证行
 BEGIN;
-
 SET LOCAL ROLE app_runtime;
-
-DO $$
-DECLARE n bigint;
-BEGIN
-  SELECT count(*) INTO n
-  FROM app.products;
-
-  IF n <> 0 THEN
+DO $$ BEGIN
+  IF coalesce(current_setting('app.tenant_id', true), '') <> '' THEN
+    RAISE EXCEPTION 'tenant setting survived transaction end';
+  END IF;
+  IF (SELECT count(*) FROM app.products) <> 0 THEN
     RAISE EXCEPTION 'tenant context leaked';
   END IF;
 END $$;
-
 ROLLBACK;
 ```
 
-预期：第二个事务无租户上下文，查询返回零行且不抛 UUID 转换错误。
+预期：第 1 步看到 ≥1 行；第 2 步设置为空串/NULL、零行，且不抛 UUID 转换错误。
+
+**回归要求（注错红 → 绿）**：把第 1 步改成 `set_config(..., false)`（会话级、跨事务保留）时，第 2 步必须失败；恢复为 `true` 后通过。
 
 Payments 表实现后，再执行两类真实数据库断言：
 
