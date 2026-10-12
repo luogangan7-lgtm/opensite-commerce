@@ -16,6 +16,7 @@ sql:
       - "migrations/013_money_pricing.sql"
       - "migrations/014_shipping.sql"
       - "migrations/015_tax.sql"
+      - "migrations/016_catalog_api.sql"
     queries: "queries"
     gen:
       go:

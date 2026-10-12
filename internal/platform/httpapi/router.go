@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
 )
 
 type Access string
@@ -97,6 +98,7 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 	}()
 	s.mux.Handle(spec.Method+" "+spec.Pattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
 		if spec.Access != Public {
 			var err error
 			ctx, err = s.auth.Authenticate(ctx, r, spec)
@@ -107,6 +109,14 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 			if ctx == nil {
 				WriteProblem(w, r, apperrors.New(401, "unauthenticated", "Authentication is required"))
 				return
+			}
+			if strings.Contains(spec.Pattern, "{tenant_id}") {
+				tenant := r.PathValue("tenant_id")
+				if !tenanttx.ValidTenantID(tenant) {
+					WriteProblem(w, r, apperrors.New(400, "invalid_tenant", "Tenant must be a canonical UUID"))
+					return
+				}
+				ctx = context.WithValue(ctx, authorizedTenantKey{}, tenant)
 			}
 		}
 		ctx = context.WithValue(ctx, requestIDKey{}, RequestID(r.Context()))

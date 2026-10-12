@@ -124,10 +124,11 @@ apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; 
 RELIABILITY_DB=""
 SHIPPING_DB=""
 TAX_DB=""
+CATALOG_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CATALOG_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -320,5 +321,39 @@ if ! db "$TAX_DB" < tests/db_tax.sql >/dev/null || ! db "$TAX_DB" < tests/db_rol
 else pass 'tax upgrade preserves prior catalog data; new settings/rules and exact privileges pass'; fi
 admin -c "DROP DATABASE $TAX_DB" >/dev/null; TAX_DB=""
 
+# Catalog API: apply every earlier forward migration by file order, then prove
+# legacy product/SKU/media metadata survives the additive columns and grants.
+catalog_api=(migrations/[0-9][0-9][0-9]_catalog_api.sql)
+[[ ${#catalog_api[@]} == 1 ]] || { echo 'FAIL: exactly one catalog API migration required' >&2; exit 1; }
+CATALOG_DB=catalog_api_upgrade_$$
+admin -c "CREATE DATABASE $CATALOG_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${catalog_api[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$CATALOG_DB" >/dev/null
+done
+db "$CATALOG_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('catalog-existing') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','catalog-existing') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','catalog-existing','');
+INSERT INTO app.media_uploads(tenant_id,original_filename,expected_size,expires_at) VALUES(:'t','old.png',0,now()+interval '1 hour');
+SQL
+{ echo 'BEGIN;'; cat "${catalog_api[0]}"; echo 'COMMIT;'; } | db "$CATALOG_DB" >/dev/null
+result=$(db "$CATALOG_DB" <<'SQL'
+SELECT (SELECT version FROM app.products WHERE product_code='catalog-existing')||'|'||
+ (SELECT version FROM app.product_variants WHERE sku='catalog-existing')||'|'||
+ (SELECT lifecycle_status FROM app.product_variants WHERE sku='catalog-existing')||'|'||
+ (SELECT count(*) FROM app.media_uploads WHERE original_filename='old.png' AND media_id IS NULL);
+SQL
+)
+[[ $result == *'1|1|draft|1'* ]] || bad "catalog populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${catalog_api[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$CATALOG_DB" >/dev/null
+done
+if ! db "$CATALOG_DB" < tests/db_catalog_api.sql >/dev/null || ! db "$CATALOG_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'catalog constraints/role matrix after populated upgrade'
+else pass 'catalog additive upgrade preserves versions, lifecycle and old uploads'; fi
+admin -c "DROP DATABASE $CATALOG_DB" >/dev/null; CATALOG_DB=""
+
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping and tax upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax and catalog upgrade gates'

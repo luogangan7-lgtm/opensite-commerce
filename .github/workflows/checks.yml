@@ -53,6 +53,10 @@ jobs:
           ./scripts/check_pg.sh
           ./scripts/check_pg_races.sh
           ./scripts/check_pg_upgrade.sh
+      - name: Catalog/media real HTTP gates with isolated role logins
+        env:
+          OPENSITE_DISPOSABLE_PG: '1'
+        run: ./scripts/check_catalog_api.sh
       - name: Go pgx-tagged vet and race tests
         run: |
           go vet -tags pgx ./...
