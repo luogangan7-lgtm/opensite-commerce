@@ -33,6 +33,10 @@ jobs:
         run: |
           go vet -tags pgx ./...
           go test -race -tags pgx -count=1 ./...
+      - name: CI pin policy and offline gates
+        run: |
+          python3 scripts/check_ci_pins.py
+          bash scripts/check_all.sh
       - name: OpenAPI structural checks
         run: |
           python -m pip install --quiet --require-hashes -r requirements-ci.txt
