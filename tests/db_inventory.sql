@@ -4,11 +4,9 @@
 -- tenant isolation, trusted-only adjustment and immutable matching movements.
 \set ON_ERROR_STOP on
 BEGIN;
--- C-15a removes these runtime capabilities. This rollback-only inventory unit
--- harness temporarily restores them to exercise the unchanged 012 terminal
--- algorithm; db_role_matrix/db_orders verify the deployed denial and order
--- ownership entry point without these grants. No authority escapes ROLLBACK.
-GRANT EXECUTE ON FUNCTION app.inventory_commit(uuid),app.inventory_release(uuid) TO app_runtime;
+-- C-15a: runtime finishes non-order reservations only via owner-fenced
+-- *_non_order commands (same 012 terminal algorithm); order-owned holds are
+-- finished by orders_transition. No temporary grants are used.
 INSERT INTO app.tenants(name) VALUES('inventory-A') RETURNING id AS t \gset
 INSERT INTO app.tenants(name) VALUES('inventory-B') RETURNING id AS foreign_t \gset
 INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','inventory') RETURNING id AS p \gset
@@ -72,8 +70,8 @@ BEGIN
   PERFORM app.inventory_reserve(s,1,'order',owner_id,'zero-ttl',0);
   RAISE EXCEPTION 'INVENTORY_GATE zero TTL accepted';
  EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
- PERFORM app.inventory_release(r.id);
- PERFORM app.inventory_release(r.id);
+ PERFORM app.inventory_release_non_order(r.id);
+ PERFORM app.inventory_release_non_order(r.id);
  replay:=app.inventory_reserve(s,3,'checkout',owner_id,'inventory-key',900);
  IF replay.id<>r.id OR replay.state<>'released' OR replay.expires_at<>r.expires_at THEN
   RAISE EXCEPTION 'INVENTORY_GATE released key was reused or expiry extended';
@@ -83,13 +81,13 @@ BEGIN
   RAISE EXCEPTION 'INVENTORY_GATE release not exactly once';
  END IF;
  BEGIN
-  PERFORM app.inventory_commit(r.id);
+  PERFORM app.inventory_commit_non_order(r.id);
   RAISE EXCEPTION 'INVENTORY_GATE released reservation committed';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
- r:=app.inventory_reserve(s,2,'order',owner_id,'commit-key',900);
- PERFORM app.inventory_commit(r.id);
- PERFORM app.inventory_commit(r.id);
- replay:=app.inventory_reserve(s,2,'order',owner_id,'commit-key',900);
+ r:=app.inventory_reserve(s,2,'checkout',owner_id,'commit-key',900);
+ PERFORM app.inventory_commit_non_order(r.id);
+ PERFORM app.inventory_commit_non_order(r.id);
+ replay:=app.inventory_reserve(s,2,'checkout',owner_id,'commit-key',900);
  IF replay.id<>r.id OR replay.state<>'committed' OR replay.expires_at<>r.expires_at THEN
   RAISE EXCEPTION 'INVENTORY_GATE committed key was reused or expiry extended';
  END IF;
@@ -99,9 +97,32 @@ BEGIN
   RAISE EXCEPTION 'INVENTORY_GATE commit not exactly once';
  END IF;
  BEGIN
-  PERFORM app.inventory_release(r.id);
+  PERFORM app.inventory_release_non_order(r.id);
   RAISE EXCEPTION 'INVENTORY_GATE committed reservation released';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ -- Subtransaction: the order-owned probe hold is rolled back afterwards.
+ BEGIN
+  r:=app.inventory_reserve(s,1,'order',owner_id,'order-owned-key',900);
+  BEGIN
+   PERFORM app.inventory_commit_non_order(r.id);
+   RAISE EXCEPTION 'INVENTORY_GATE runtime committed order-owned reservation';
+  EXCEPTION WHEN insufficient_privilege THEN
+   IF SQLERRM<>'INVENTORY_ORDER_OWNED_RESERVATION' THEN RAISE; END IF;
+  END;
+  BEGIN
+   PERFORM app.inventory_release_non_order(r.id);
+   RAISE EXCEPTION 'INVENTORY_GATE runtime released order-owned reservation';
+  EXCEPTION WHEN insufficient_privilege THEN
+   IF SQLERRM<>'INVENTORY_ORDER_OWNED_RESERVATION' THEN RAISE; END IF;
+  END;
+  BEGIN
+   PERFORM app.inventory_commit(r.id);
+   RAISE EXCEPTION 'INVENTORY_GATE runtime has raw commit';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  RAISE EXCEPTION 'INVENTORY_PROBE_ROLLBACK';
+ EXCEPTION WHEN raise_exception THEN
+  IF SQLERRM<>'INVENTORY_PROBE_ROLLBACK' THEN RAISE; END IF;
+ END;
  r:=app.inventory_reserve(s,1,'checkout',owner_id,'expire-key',900);
  PERFORM set_config('test.inventory_expire_id',r.id::text,true);
  PERFORM set_config('app.tenant_id','',true);
@@ -109,13 +130,13 @@ BEGIN
   RAISE EXCEPTION 'INVENTORY_GATE no-context row visible';
  END IF;
  BEGIN
-  PERFORM app.inventory_release(r.id);
+  PERFORM app.inventory_release_non_order(r.id);
   RAISE EXCEPTION 'INVENTORY_GATE missing tenant accepted';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  PERFORM set_config('app.tenant_id',t::text,true);
  PERFORM set_config('app.tenant_id','not-a-uuid',true);
  BEGIN
-  PERFORM app.inventory_release(r.id);
+  PERFORM app.inventory_release_non_order(r.id);
   RAISE EXCEPTION 'INVENTORY_GATE malformed tenant accepted';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  PERFORM set_config('app.tenant_id',t::text,true);
@@ -130,7 +151,7 @@ DECLARE r uuid:=current_setting('test.inventory_expire_id')::uuid; n integer;
  original app.inventory_reservations; replay app.inventory_reservations; movements bigint;
 BEGIN
  BEGIN
-  PERFORM app.inventory_commit(r);
+  PERFORM app.inventory_commit_non_order(r);
   RAISE EXCEPTION 'INVENTORY_GATE expired reservation committed';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN
   IF SQLERRM<>'INVENTORY_RESERVATION_EXPIRED' THEN RAISE; END IF;
@@ -189,7 +210,7 @@ BEGIN
   RAISE EXCEPTION 'INVENTORY_GATE cross-tenant read';
  END IF;
  BEGIN
-  PERFORM app.inventory_release(current_setting('test.inventory_expire_id')::uuid);
+  PERFORM app.inventory_release_non_order(current_setting('test.inventory_expire_id')::uuid);
   RAISE EXCEPTION 'INVENTORY_GATE cross-tenant operation';
  EXCEPTION WHEN no_data_found THEN NULL; END;
 END $foreign$;

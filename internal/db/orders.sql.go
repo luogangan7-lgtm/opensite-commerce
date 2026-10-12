@@ -151,6 +151,20 @@ func (q *Queries) GetPayableOrder(ctx context.Context, arg GetPayableOrderParams
 	return i, err
 }
 
+const lockOrderReservations = `-- name: LockOrderReservations :exec
+SELECT app.orders_lock_reservations($1::uuid,$2::uuid[])
+`
+
+type LockOrderReservationsParams struct {
+	OrderID        pgtype.UUID   `json:"order_id"`
+	ReservationIds []pgtype.UUID `json:"reservation_ids"`
+}
+
+func (q *Queries) LockOrderReservations(ctx context.Context, arg LockOrderReservationsParams) error {
+	_, err := q.db.Exec(ctx, lockOrderReservations, arg.OrderID, arg.ReservationIds)
+	return err
+}
+
 const reserveOrderInventory = `-- name: ReserveOrderInventory :one
 SELECT tenant_id, id, warehouse_id, sku_id, quantity, owner_type, owner_id, idempotency_key, request_hash, ttl_seconds, state, expires_at, created_at, finished_at FROM app.inventory_reserve($1::uuid,$2::bigint,
  'order',$3::uuid,$4::text,$5::integer)

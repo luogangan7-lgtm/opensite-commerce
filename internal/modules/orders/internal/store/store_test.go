@@ -22,11 +22,16 @@ func TestErrorBoundary(t *testing.T) {
 		{&pgconn.PgError{Code: "42501", Message: "ORDERS_TENANT_CONTEXT_REQUIRED"}, contract.ErrNotFound},
 		{&pgconn.PgError{Code: "22003", Message: "amount overflow"}, contract.ErrInvalid},
 		{&pgconn.PgError{Code: "55000", Message: "ORDER_INVALID_TRANSITION"}, contract.ErrConflict},
-		{&pgconn.PgError{Code: "40001", Message: "could not serialize"}, contract.ErrConflict},
+		{&pgconn.PgError{Code: "40001", Message: "could not serialize"}, contract.ErrRetry},
+		{&pgconn.PgError{Code: "40P01", Message: "deadlock detected"}, contract.ErrRetry},
+		{&pgconn.PgError{Code: "23505", Message: "duplicate key"}, contract.ErrConflict},
 	}
 	for _, x := range tests {
 		if err := MapError(x.err); !errors.Is(err, x.want) {
 			t.Fatalf("%v: got %v want %v", x.err, err, x.want)
+		}
+		if x.want == contract.ErrRetry && errors.Is(MapError(x.err), contract.ErrConflict) {
+			t.Fatalf("%v: retryable abort classified as business conflict", x.err)
 		}
 	}
 }

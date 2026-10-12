@@ -16,9 +16,12 @@ import (
 )
 
 var (
-	ErrInvalid          = errors.New("orders: invalid input")
-	ErrNotFound         = errors.New("orders: not found")
-	ErrConflict         = errors.New("orders: state conflict")
+	ErrInvalid  = errors.New("orders: invalid input")
+	ErrNotFound = errors.New("orders: not found")
+	ErrConflict = errors.New("orders: state conflict")
+	// ErrRetry: the database aborted the transaction (40001/40P01). Roll back
+	// and retry the whole transaction; it is not a business-state conflict.
+	ErrRetry            = errors.New("orders: transaction aborted, retry")
 	ErrKeyReused        = errors.New("orders: idempotency key reused")
 	ErrReservationOwner = errors.New("orders: reservation owner mismatch")
 	ErrStockUnavailable = errors.New("orders: stock unavailable")

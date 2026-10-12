@@ -10,6 +10,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -344,5 +346,149 @@ func TestOrdersServiceCustomerBuyer(t *testing.T) {
 	}
 	if ordersCount != 1 || reservations != 1 || events != 1 || reserved != 2 || onHand != 30 {
 		t.Fatalf("customer rejection leaked writes: orders=%d reservations=%d events=%d reserved=%d on_hand=%d", ordersCount, reservations, events, reserved, onHand)
+	}
+}
+
+// Mixed explicit + automatic reservations for one SKU must not deadlock with a
+// concurrent expiry sweep. Committed fixture data on separate connections: the
+// create is parked (test-only trigger) right after its automatic reserve holds
+// the stock row; the sweep then runs. Correct lock order (explicit reservation
+// rows before any stock write) makes the sweep SKIP the held explicit row.
+func TestOrdersServiceMixedReservationExpiryNoDeadlock(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	connect := func() *pgx.Conn {
+		c, err := pgx.Connect(ctx, dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = c.Close(context.Background()) })
+		return c
+	}
+	admin, gate, creator, sweeper := connect(), connect(), connect(), connect()
+	f := orderFixture{ctx: ctx}
+	var product, explicit string
+	orderID := uuid.NewString()
+	lockKey := int64(time.Now().UnixNano() & 0x7fffffff)
+	trigger := "c15a_mixed_" + strings.ReplaceAll(orderID[:8], "-", "")
+	for _, step := range []struct {
+		sql  string
+		args []any
+		out  *string
+	}{
+		{"INSERT INTO app.tenants(name) VALUES('orders-mixed-race') RETURNING id::text", nil, &f.tenant},
+		{"INSERT INTO app.products(tenant_id,product_code) VALUES($1,'MIXED-P') RETURNING id::text", []any{&f.tenant}, &product},
+		{"INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES($1,$2,'ORDER-SKU','default') RETURNING id::text", []any{&f.tenant, &product}, &f.sku},
+	} {
+		args := make([]any, len(step.args))
+		for i, a := range step.args {
+			args[i] = *(a.(*string))
+		}
+		if err := admin.QueryRow(ctx, step.sql, args...).Scan(step.out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := admin.Exec(ctx, "SELECT set_config('app.tenant_id',$1,false)", f.tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx, "SELECT app.inventory_adjust($1,10,'mixed race receipt',$2,'inbound')", f.sku, uuid.NewString()); err != nil {
+		t.Fatal(err)
+	}
+	if err := admin.QueryRow(ctx, "SELECT (app.inventory_reserve($1,2,'order',$2,'mixed-explicit',900)).id::text", f.sku, orderID).Scan(&explicit); err != nil {
+		t.Fatal(err)
+	}
+	// Due now: the sweep would take it unless the create already holds the row.
+	if _, err := admin.Exec(ctx, "UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND id=$2", f.tenant, explicit); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx, "CREATE FUNCTION public."+trigger+"() RETURNS trigger LANGUAGE plpgsql AS $b$ BEGIN PERFORM pg_advisory_xact_lock_shared("+strconv.FormatInt(lockKey, 10)+"); RETURN NEW; END $b$"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(context.Background(), "DROP FUNCTION IF EXISTS public."+trigger+"() CASCADE")
+	})
+	if _, err := admin.Exec(ctx, "CREATE TRIGGER "+trigger+" BEFORE INSERT ON app.inventory_movements FOR EACH ROW WHEN (NEW.kind='reserve' AND NEW.owner_id='"+orderID+"'::uuid) EXECUTE FUNCTION public."+trigger+"()"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gate.Exec(ctx, "SELECT pg_advisory_lock($1)", lockKey); err != nil {
+		t.Fatal(err)
+	}
+	in := f.input(t)
+	in.ID = orderID
+	auto := f.input(t).Lines[0]
+	in.Lines[0].ReservationID = explicit
+	in.Lines = append(in.Lines, auto)
+	begin := func(c *pgx.Conn) pgx.Tx {
+		tx, err := c.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", f.tenant); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+			t.Fatal(err)
+		}
+		return tx
+	}
+	waiting := func(pid uint32, event string) bool {
+		var n int
+		_ = admin.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock' AND ($2='' OR wait_event=$2)", pid, event).Scan(&n)
+		return n == 1
+	}
+	createTx := begin(creator)
+	createErr := make(chan error, 1)
+	go func() { _, err := orders.New().Create(ctx, createTx, f.tenant, in); createErr <- err }()
+	for i := 0; !waiting(creator.PgConn().PID(), "advisory"); i++ {
+		if i > 300 {
+			t.Fatal("create never parked after automatic reserve")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	sweepTx := begin(sweeper)
+	type swept struct {
+		n   int
+		err error
+	}
+	sweepDone := make(chan swept, 1)
+	go func() {
+		var n int
+		err := sweepTx.QueryRow(ctx, "SELECT app.inventory_expire_due(100)").Scan(&n)
+		sweepDone <- swept{n, err}
+	}()
+	var sweep swept
+	sweepFinished := false
+	for i := 0; i < 300 && !sweepFinished; i++ { // finished, or blocked on the create's stock lock
+		select {
+		case sweep = <-sweepDone:
+			sweepFinished = true
+		default:
+			if waiting(sweeper.PgConn().PID(), "") {
+				i = 300
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	if _, err := gate.Exec(ctx, "SELECT pg_advisory_unlock($1)", lockKey); err != nil {
+		t.Fatal(err)
+	}
+	err := <-createErr
+	_ = createTx.Rollback(ctx)
+	if !sweepFinished {
+		sweep = <-sweepDone
+	}
+	_ = sweepTx.Rollback(ctx)
+	if errors.Is(err, contract.ErrRetry) || (sweep.err != nil && strings.Contains(sweep.err.Error(), "40P01")) {
+		t.Fatalf("ORDERS_MIXED_LOCK_GATE deadlock: create=%v sweep=%v", err, sweep.err)
+	}
+	if !sweepFinished || sweep.err != nil || sweep.n != 0 {
+		t.Fatalf("ORDERS_MIXED_LOCK_GATE sweep must skip the held explicit row without waiting: finished=%v n=%d err=%v", sweepFinished, sweep.n, sweep.err)
+	}
+	if !errors.Is(err, contract.ErrConflict) {
+		t.Fatalf("create with expired explicit hold: got %v want ErrConflict", err)
 	}
 }

@@ -22,16 +22,20 @@ type prepared struct {
 	ttl                                 int32
 }
 type lineSnapshot struct {
-	ID             string       `json:"id"`
-	SKUID          string       `json:"sku_id"`
-	SKU            string       `json:"sku"`
-	Quantity       int64        `json:"quantity"`
-	UnitPriceMinor int64        `json:"unit_price_minor"`
-	LineNetMinor   int64        `json:"line_net_minor"`
-	LineTaxMinor   int64        `json:"line_tax_minor"`
-	LineTotalMinor int64        `json:"line_total_minor"`
-	ReservationID  string       `json:"reservation_id,omitempty"`
-	TaxSnapshot    tax.Snapshot `json:"tax_snapshot"`
+	ID             string `json:"id"`
+	SKUID          string `json:"sku_id"`
+	SKU            string `json:"sku"`
+	Quantity       int64  `json:"quantity"`
+	UnitPriceMinor int64  `json:"unit_price_minor"`
+	LineNetMinor   int64  `json:"line_net_minor"`
+	LineTaxMinor   int64  `json:"line_tax_minor"`
+	LineTotalMinor int64  `json:"line_total_minor"`
+	// Pricing provenance is bound into the request hash (not order_lines columns).
+	PriceListID   string       `json:"price_list_id"`
+	PricePriority int32        `json:"price_priority"`
+	PriceMinQty   int64        `json:"price_min_quantity"`
+	ReservationID string       `json:"reservation_id,omitempty"`
+	TaxSnapshot   tax.Snapshot `json:"tax_snapshot"`
 }
 
 func validID(id string) bool {
@@ -53,7 +57,7 @@ func prepare(in contract.CreateInput) (prepared, error) {
 	invalid := func(reason string) (prepared, error) {
 		return prepared{}, fmt.Errorf("%w: %s", contract.ErrInvalid, reason)
 	}
-	if !validID(in.ID) || !validKey(in.IdempotencyKey) || len(in.Lines) == 0 || len(in.Lines) > 1000 {
+	if !validID(in.ID) || !validKey(in.IdempotencyKey) || len(in.Lines) == 0 || len(in.Lines) > 1000 || len(in.Adjustments) > 1000 {
 		return invalid("order identity or lines")
 	}
 	base := money.Money{Currency: in.Currency}
@@ -159,7 +163,7 @@ func prepare(in contract.CreateInput) (prepared, error) {
 		if err != nil {
 			return prepared{}, fmt.Errorf("%w: %w", contract.ErrInvalid, err)
 		}
-		lines = append(lines, lineSnapshot{ID: id, SKUID: strings.ToLower(l.SKUID), SKU: l.SKU, Quantity: l.Quantity, UnitPriceMinor: l.Price.Unit.Amount, LineNetMinor: a.Net, LineTaxMinor: a.Tax, LineTotalMinor: a.Gross, ReservationID: rid, TaxSnapshot: s})
+		lines = append(lines, lineSnapshot{ID: id, SKUID: strings.ToLower(l.SKUID), SKU: l.SKU, Quantity: l.Quantity, UnitPriceMinor: l.Price.Unit.Amount, LineNetMinor: a.Net, LineTaxMinor: a.Tax, LineTotalMinor: a.Gross, PriceListID: strings.ToLower(l.Price.PriceListID), PricePriority: l.Price.Priority, PriceMinQty: l.Price.MinQuantity, ReservationID: rid, TaxSnapshot: s})
 	}
 	for _, a := range in.Adjustments {
 		id := strings.ToLower(a.ID)

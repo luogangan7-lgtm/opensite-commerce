@@ -51,6 +51,21 @@ func (Service) Create(ctx context.Context, tx pgx.Tx, tenantID string, in contra
 	if err = json.Unmarshal(p.lines, &lines); err != nil {
 		return contract.Order{}, contract.ErrInvalid
 	}
+	// Lock order: explicit reservation rows before any automatic reserve takes a
+	// stock lock (as transition and expiry do), else a concurrent expiry of an
+	// explicit hold on the same SKU deadlocks with this create.
+	var explicit []pgtype.UUID
+	for _, l := range lines {
+		if l.ReservationID != "" {
+			id, _ := store.UUID(l.ReservationID)
+			explicit = append(explicit, id)
+		}
+	}
+	if len(explicit) > 0 {
+		if err = q.LockOrderReservations(ctx, db.LockOrderReservationsParams{OrderID: orderID, ReservationIds: explicit}); err != nil {
+			return contract.Order{}, store.MapError(err)
+		}
+	}
 	for _, i := range reservationOrder(lines) {
 		if lines[i].ReservationID != "" {
 			continue

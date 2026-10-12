@@ -4,6 +4,7 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
@@ -90,6 +91,12 @@ func TestRejectSnapshotMismatch(t *testing.T) {
 		{"adjustment bad kind", func(x *contract.CreateInput) {
 			x.Adjustments = []contract.Adjustment{{ID: skuID, Kind: "weird", AmountMinor: 1, Reason: "x"}}
 		}},
+		{"too many adjustments", func(x *contract.CreateInput) {
+			x.Adjustments = make([]contract.Adjustment, 1001)
+			for i := range x.Adjustments {
+				x.Adjustments[i] = contract.Adjustment{ID: fmt.Sprintf("44444444-4444-4444-8444-%012d", i), Kind: "surcharge", AmountMinor: 1, Reason: "x"}
+			}
+		}},
 		{"overflow multiply", func(x *contract.CreateInput) { x.Lines[0].Price.Unit.Amount = math.MaxInt64 }},
 		{"overflow total", func(x *contract.CreateInput) { x.Shipping.Charge.Amount = math.MaxInt64 }},
 	}
@@ -171,6 +178,22 @@ func TestRequestHashBindsSnapshot(t *testing.T) {
 	ch, err = requestHash(changed, cp)
 	if err != nil || bytes.Equal(first, ch) {
 		t.Fatalf("explicit reservation not bound: %v", err)
+	}
+	for name, mutate := range map[string]func(*pricing.Result){
+		"price list":   func(r *pricing.Result) { r.PriceListID = lineID },
+		"priority":     func(r *pricing.Result) { r.Priority++ },
+		"min quantity": func(r *pricing.Result) { r.MinQuantity = 2 },
+	} {
+		changed = input()
+		mutate(&changed.Lines[0].Price)
+		cp, err = prepare(changed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ch, err = requestHash(changed, cp)
+		if err != nil || bytes.Equal(first, ch) {
+			t.Fatalf("pricing provenance %s not bound: %v", name, err)
+		}
 	}
 }
 

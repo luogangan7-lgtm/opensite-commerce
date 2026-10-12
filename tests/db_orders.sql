@@ -82,6 +82,18 @@ BEGIN
   OR EXISTS(SELECT FROM app.outbox_events WHERE payload->>'order_id'=other_id::text) THEN
   RAISE EXCEPTION 'ORDERS_GATE rejected order left partial snapshot';
  END IF;
+ -- Prelock fence: runtime may lock only reservations owned by this order.
+ PERFORM app.orders_lock_reservations(other_id,ARRAY[]::uuid[]);
+ BEGIN
+  PERFORM app.orders_lock_reservations(other_id,ARRAY[foreign_reservation]);
+  RAISE EXCEPTION 'ORDERS_GATE prelock accepted foreign reservation';
+ EXCEPTION WHEN insufficient_privilege THEN
+  IF SQLERRM<>'ORDER_RESERVATION_OWNER_MISMATCH' THEN RAISE; END IF;
+ END;
+ BEGIN
+  PERFORM app.orders_lock_reservations(other_id,ARRAY[uuidv7()]);
+  RAISE EXCEPTION 'ORDERS_GATE prelock accepted missing reservation';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  PERFORM set_config('app.tenant_id',current_setting('test.orders_other_t'),true);
  IF EXISTS(SELECT FROM app.orders WHERE app.orders.id=order_id_v) THEN
   RAISE EXCEPTION 'ORDERS_GATE cross-tenant order visible';

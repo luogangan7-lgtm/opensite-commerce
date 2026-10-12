@@ -111,6 +111,33 @@ CREATE POLICY orders_outbox_namespace ON app.outbox_events AS RESTRICTIVE FOR IN
 -- Reservation terminal commands are capability-private. Orders validates owner/SKU/qty.
 REVOKE EXECUTE ON FUNCTION app.inventory_commit(uuid),app.inventory_release(uuid) FROM app_runtime;
 GRANT EXECUTE ON FUNCTION app.inventory_commit(uuid),app.inventory_release(uuid) TO app_orders_executor;
+-- Non-order holds (e.g. checkout) keep a runtime terminal path, fenced so it
+-- can never finish an order-owned reservation. Lock order matches finish:
+-- reservation row, then stock (inside inventory_finish).
+CREATE FUNCTION app.inventory_finish_non_order(p_id uuid,p_target text) RETURNS app.inventory_reservations
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
+DECLARE t uuid:=app.inventory_context(); r app.inventory_reservations;
+BEGIN
+ SELECT * INTO r FROM app.inventory_reservations WHERE tenant_id=t AND id=p_id FOR UPDATE;
+ IF FOUND AND r.owner_type='order' THEN
+  RAISE EXCEPTION 'INVENTORY_ORDER_OWNED_RESERVATION' USING ERRCODE='42501';
+ END IF;
+ RETURN app.inventory_finish(p_id,p_target);
+END $fn$;
+CREATE FUNCTION app.inventory_release_non_order(p_id uuid) RETURNS app.inventory_reservations
+LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp
+AS 'SELECT app.inventory_finish_non_order(p_id,''released'')';
+CREATE FUNCTION app.inventory_commit_non_order(p_id uuid) RETURNS app.inventory_reservations
+LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp
+AS 'SELECT app.inventory_finish_non_order(p_id,''committed'')';
+GRANT CREATE ON SCHEMA app TO app_inventory_executor;
+ALTER FUNCTION app.inventory_finish_non_order(uuid,text) OWNER TO app_inventory_executor;
+ALTER FUNCTION app.inventory_release_non_order(uuid) OWNER TO app_inventory_executor;
+ALTER FUNCTION app.inventory_commit_non_order(uuid) OWNER TO app_inventory_executor;
+REVOKE CREATE ON SCHEMA app FROM app_inventory_executor;
+REVOKE ALL ON FUNCTION app.inventory_finish_non_order(uuid,text),app.inventory_release_non_order(uuid),
+ app.inventory_commit_non_order(uuid) FROM PUBLIC,app_runtime,app_inventory_manager,app_orders_executor;
+GRANT EXECUTE ON FUNCTION app.inventory_release_non_order(uuid),app.inventory_commit_non_order(uuid) TO app_runtime;
 
 CREATE FUNCTION app.orders_context() RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,app,pg_temp AS $fn$
@@ -251,6 +278,25 @@ BEGIN
  RETURN o;
 END $fn$;
 
+-- Create prelocks caller-supplied (explicit) reservations BEFORE any automatic
+-- inventory_reserve takes a stock lock: one global order, reservation rows
+-- (by id) then stock, as transition and expiry use. Only this order's holds.
+CREATE FUNCTION app.orders_lock_reservations(p_id uuid,p_reservations uuid[]) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
+DECLARE t uuid:=app.orders_context(); n integer;
+BEGIN
+ IF p_id IS NULL OR p_reservations IS NULL OR cardinality(p_reservations)>1000
+  OR array_position(p_reservations,NULL) IS NOT NULL THEN
+  RAISE EXCEPTION 'ORDER_INVALID_ARGUMENT' USING ERRCODE='22023';
+ END IF;
+ WITH locked AS (SELECT id FROM app.inventory_reservations
+  WHERE tenant_id=t AND id=ANY(p_reservations) AND owner_type='order' AND owner_id=p_id
+  ORDER BY id FOR UPDATE)
+ SELECT count(*) INTO n FROM locked;
+ IF n<>(SELECT count(DISTINCT x) FROM unnest(p_reservations) x) THEN
+  RAISE EXCEPTION 'ORDER_RESERVATION_OWNER_MISMATCH' USING ERRCODE='42501';
+ END IF;
+END $fn$;
 CREATE FUNCTION app.orders_transition(p_id uuid,p_target text,p_event_key text,p_refund_minor bigint DEFAULT 0)
 RETURNS app.orders LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
 DECLARE t uuid:=app.orders_context(); o app.orders; e app.outbox_events; l app.order_lines; r app.inventory_reservations;
@@ -321,11 +367,11 @@ DO $functions$
 DECLARE f record;
 BEGIN
  FOR f IN SELECT p.oid::regprocedure AS identity FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
- WHERE n.nspname='app' AND p.proname=ANY(ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition']) LOOP
+ WHERE n.nspname='app' AND p.proname=ANY(ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations']) LOOP
   EXECUTE format('ALTER FUNCTION %s OWNER TO app_orders_executor',f.identity);
   EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,app_runtime',f.identity);
  END LOOP;
 END $functions$;
 REVOKE CREATE ON SCHEMA app FROM app_orders_executor;
 GRANT EXECUTE ON FUNCTION app.orders_create(uuid,text,bytea,uuid,jsonb,text,bigint,jsonb,jsonb,jsonb),
- app.orders_transition(uuid,text,text,bigint) TO app_runtime;
+ app.orders_transition(uuid,text,text,bigint),app.orders_lock_reservations(uuid,uuid[]) TO app_runtime;

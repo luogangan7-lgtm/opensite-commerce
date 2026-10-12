@@ -7,6 +7,7 @@ package payment
 import (
 	"context"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
@@ -92,7 +93,7 @@ func validID(value string) bool {
 }
 
 func (r CreatePaymentIntent) Validate() error {
-	if !validID(r.TenantID) || !validID(r.OrderID) || r.OrderVersion <= 0 || r.Amount.Amount <= 0 || r.Amount.Validate() != nil || strings.TrimSpace(r.IdempotencyKey) == "" || len(r.IdempotencyKey) > 200 || strings.ContainsAny(r.IdempotencyKey, "\r\n\x00") {
+	if !validID(r.TenantID) || !validID(r.OrderID) || r.OrderVersion <= 0 || r.Amount.Amount <= 0 || r.Amount.Validate() != nil || strings.TrimSpace(r.IdempotencyKey) == "" || len(r.IdempotencyKey) > 200 || strings.ContainsAny(r.IdempotencyKey, "\r\n\x00") || !utf8.ValidString(r.IdempotencyKey) {
 		return &PaymentError{Code: ErrorNonRetryable, Message: "invalid payment request"}
 	}
 	return nil
@@ -129,6 +130,10 @@ func (e VerifiedEvent) Validate() error {
 	case StatusPending, StatusRequiresAction, StatusAuthorized, StatusCaptured, StatusFailed, StatusCanceled, StatusPartiallyRefunded, StatusRefunded:
 	default:
 		return &PaymentError{Code: ErrorNonRetryable, Message: "invalid payment event status"}
+	}
+	// EventID is submitted as the Orders transition EventKey: 1-128 printable ASCII.
+	if len(e.EventID) < 1 || len(e.EventID) > 128 || strings.ContainsFunc(e.EventID, func(c rune) bool { return c < '!' || c > '~' }) {
+		return &PaymentError{Code: ErrorNonRetryable, Message: "invalid payment event id"}
 	}
 	return (PaymentOperation{CreatePaymentIntent: CreatePaymentIntent{TenantID: e.TenantID, OrderID: e.OrderID, OrderVersion: e.OrderVersion, Amount: e.Amount, IdempotencyKey: e.EventID}, ProviderRef: e.ProviderRef}).Validate()
 }

@@ -22,14 +22,19 @@ the customers migration. A nonexistent or foreign-tenant customer is rejected;
 guest orders keep `customer_id` null. This reference proves tenant ownership,
 while customer identity/authentication remains the trusted caller's obligation.
 
-Automatic reservations acquire SKU locks in canonical SKU/line order while
-preserving the input snapshot order, avoiding reversed-cart deadlocks.
+Create first locks every explicit reservation row (`orders_lock_reservations`,
+by id, only holds owned by this order), then automatic reservations acquire SKU
+locks in canonical SKU/line order while preserving the input snapshot order.
+Reservation rows before stock is the same global order used by transition and
+expiry, so mixed explicit/automatic lines for one SKU cannot deadlock a sweep.
 Missing reservation IDs request order-owned reservations in the caller's
 transaction. Explicit reservation IDs must already belong to this exact order,
 SKU and quantity. The database rechecks ownership under lock at creation and
 payment/cancellation. Reservation keys are stable hashes of order/line/key;
 request hashes precede generated reservation IDs, so creation retries work even
-after stock commit. The service limits reservation TTL to 1–86400 seconds and
+after stock commit. The hash also binds pricing provenance (price list,
+priority, minimum quantity). At most 1,000 lines and 1,000 adjustments are
+accepted before any stock is reserved. The service limits reservation TTL to 1–86400 seconds and
 defaults it to 900 seconds.
 
 Cancellation is allowed only from `pending_payment`. Paid orders require refund
@@ -46,7 +51,9 @@ exposes no HTTP payment-success endpoint or webhook signature verifier.
 `GetPayable` returns the stored total/currency and order version only while
 `pending_payment`. Its intent key derives from tenant/order/version. Another
 tenant, a missing order or a context mismatch returns `ErrNotFound`. Terminal
-or progressed payment state returns `ErrConflict`. The neutral Payment Port
+or progressed payment state returns `ErrConflict`. SQLSTATE 40001/40P01
+(serialization failure, deadlock) map to `ErrRetry`: roll back and retry the
+whole transaction; `ErrConflict` is a non-retryable business conflict. The neutral Payment Port
 may consume this read-only contract; Orders never imports its implementation.
 
 Tests cover snapshot mismatch and overflow, mutation isolation, state legality,

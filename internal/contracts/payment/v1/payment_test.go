@@ -3,6 +3,7 @@ package payment_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
@@ -14,7 +15,7 @@ func TestRequestAndVerifiedEventShape(t *testing.T) {
 	if err := r.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	for _, mutate := range []func(*payment.CreatePaymentIntent){func(x *payment.CreatePaymentIntent) { x.TenantID = "00000000-0000-0000-0000-000000000000" }, func(x *payment.CreatePaymentIntent) { x.OrderID = "00000000000040008000000000000002" }, func(x *payment.CreatePaymentIntent) { x.OrderID = "00000000-0000-4000-8000-00000000000A" }, func(x *payment.CreatePaymentIntent) { x.IdempotencyKey = "\nkey" }, func(x *payment.CreatePaymentIntent) { x.IdempotencyKey = "   " }} {
+	for _, mutate := range []func(*payment.CreatePaymentIntent){func(x *payment.CreatePaymentIntent) { x.TenantID = "00000000-0000-0000-0000-000000000000" }, func(x *payment.CreatePaymentIntent) { x.OrderID = "00000000000040008000000000000002" }, func(x *payment.CreatePaymentIntent) { x.OrderID = "00000000-0000-4000-8000-00000000000A" }, func(x *payment.CreatePaymentIntent) { x.IdempotencyKey = "\nkey" }, func(x *payment.CreatePaymentIntent) { x.IdempotencyKey = "   " }, func(x *payment.CreatePaymentIntent) { x.IdempotencyKey = string([]byte{0xff}) }} {
 		invalid := r
 		mutate(&invalid)
 		if invalid.Validate() == nil {
@@ -23,6 +24,19 @@ func TestRequestAndVerifiedEventShape(t *testing.T) {
 	}
 	e := payment.VerifiedEvent{EventID: "event", TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: "neutral-ref", Status: payment.StatusCaptured, Amount: r.Amount}
 	if err := e.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	// EventID becomes the Orders transition EventKey: 1-128 printable ASCII.
+	for _, id := range []string{"has space", "ünicode", string([]byte{0xfe}), strings.Repeat("e", 129)} {
+		bad := e
+		bad.EventID = id
+		if bad.Validate() == nil {
+			t.Fatalf("event id %q accepted but Orders would reject it", id)
+		}
+	}
+	long := e
+	long.EventID = strings.Repeat("e", 128)
+	if err := long.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	e.Status = "future_unknown"

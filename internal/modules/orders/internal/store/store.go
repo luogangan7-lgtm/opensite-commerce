@@ -67,7 +67,9 @@ func MapError(err error) error {
 		return contract.ErrStockUnavailable
 	case e.Code == "22023" || e.Code == "22003" || e.Code == "23514" || e.Code == "23503" || e.Code == "22P02":
 		return contract.ErrInvalid
-	case e.Code == "55000" || e.Code == "23505" || e.Code == "40001" || e.Code == "40P01":
+	case e.Code == "40001" || e.Code == "40P01":
+		return contract.ErrRetry
+	case e.Code == "55000" || e.Code == "23505":
 		return contract.ErrConflict
 	case e.Code == "42501":
 		return contract.ErrNotFound

@@ -242,9 +242,10 @@ BEGIN
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+   'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition') LOOP
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -264,9 +265,10 @@ BEGIN
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+   'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition'))<>10 THEN
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -276,9 +278,10 @@ SELECT 'PASS: isolated service matrix and SECURITY DEFINER owner/search_path/EXE
 DO $inventory$
 DECLARE role_name text; r record; t record; a record; privilege text; f record;
  expected boolean; allowed_tables text[]:=ARRAY['warehouses','stock_levels','inventory_reservations','inventory_movements'];
- public_commands text[]:=ARRAY['inventory_reserve','inventory_expire_due'];
+ public_commands text[]:=ARRAY['inventory_reserve','inventory_expire_due','inventory_release_non_order','inventory_commit_non_order'];
  names text[]:=ARRAY['inventory_context','inventory_immutable_movement','inventory_adjust',
-  'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due'];
+  'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+  'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order'];
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['app_inventory_manager','app_inventory_executor'] LOOP
   SELECT * INTO STRICT r FROM pg_roles WHERE rolname=role_name;
@@ -336,7 +339,7 @@ BEGIN
    RAISE EXCEPTION 'inventory role has foreign routine capability: %',f.proname;
   END IF;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>8 THEN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
   RAISE EXCEPTION 'inventory function contract incomplete';
  END IF;
 END $inventory$;
@@ -455,7 +458,7 @@ SELECT 'PASS: ledger exact executor/runtime table-column-function capabilities a
 DO $orders$
 DECLARE r record; t record; a record; f record; role_name text; privilege text;
  expected boolean; allowed text[];
- names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition'];
+ names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_orders_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -511,7 +514,7 @@ BEGIN
   IF f.proname=ANY(names) THEN
    FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
     'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_ledger_executor'] LOOP
-    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition');
+    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition','orders_lock_reservations');
     IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
      RAISE EXCEPTION 'orders routine authority % %',role_name,f.proname;
