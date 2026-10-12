@@ -51,6 +51,62 @@ class SQLWritesTests(unittest.TestCase):
         self.query("WITH changed AS (UPDATE app.sites SET x=1 RETURNING *) SELECT * FROM changed;")
         self.red("MODULE_SQL_CROSS_MODULE_WRITE")
 
+    def test_multiple_writable_ctes_check_every_write_in_both_layouts(self):
+        for path in ("queries/catalog.sql", "queries/catalog/change.sql"):
+            for write in ("INSERT INTO app.sites (x) VALUES (1) RETURNING x",
+                          "UPDATE app.sites SET x=1 RETURNING x",
+                          "DELETE FROM app.sites WHERE x=1 RETURNING x"):
+                with self.subTest(path=path, write=write.split()[0]):
+                    # A legal first writer must not hide a later foreign writer.
+                    self.query("WITH own AS (INSERT INTO app.products (x) VALUES (1) RETURNING x), "
+                               "read_only AS (SELECT 'DELETE FROM app.sites' AS example), "
+                               f"foreign_write AS ({write}) SELECT * FROM own;", path)
+                    self.red("MODULE_SQL_CROSS_MODULE_WRITE")
+                    (self.root / path).unlink()
+
+    def test_owned_ctes_do_not_hide_foreign_final_statement(self):
+        for path in ("queries/catalog.sql", "queries/catalog/change.sql"):
+            for write in ("INSERT INTO app.sites (x) SELECT x FROM own",
+                          "UPDATE app.sites SET x=1",
+                          "DELETE FROM app.sites WHERE x=1"):
+                with self.subTest(path=path, write=write.split()[0]):
+                    self.query("WITH own AS (UPDATE app.products SET x=1 RETURNING x), "
+                               f"read_only AS (SELECT * FROM own) {write};", path)
+                    self.red("MODULE_SQL_CROSS_MODULE_WRITE")
+                    (self.root / path).unlink()
+
+    def test_multiple_owned_writable_ctes_and_foreign_reads_allowed(self):
+        for path in ("queries/catalog.sql", "queries/catalog/change.sql"):
+            with self.subTest(path=path):
+                self.query("WITH added AS (INSERT INTO app.products (x) VALUES (1) RETURNING x), "
+                           "changed AS (UPDATE ONLY app.products SET x=2 RETURNING x), "
+                           "removed AS (DELETE FROM ONLY app.products WHERE x=3 RETURNING x), "
+                           "foreign_read AS (SELECT * FROM app.sites) "
+                           "SELECT 'INSERT INTO app.sites', $$UPDATE app.sites$$ FROM removed;", path)
+                self.green()
+                (self.root / path).unlink()
+
+    def test_cte_write_ownership_follows_query_module_not_final_read(self):
+        for path in ("queries/site.sql", "queries/site/change.sql"):
+            with self.subTest(path=path):
+                self.query("WITH own AS (DELETE FROM app.sites RETURNING *) "
+                           "SELECT * FROM app.products;", path)
+                self.green()
+                self.query("WITH own AS (DELETE FROM app.sites RETURNING *), "
+                           "foreign_write AS (INSERT INTO app.products (x) VALUES (1) RETURNING *) "
+                           "SELECT * FROM own;", path)
+                self.red("MODULE_SQL_CROSS_MODULE_WRITE")
+                (self.root / path).unlink()
+
+    def test_writable_ctes_reject_unowned_and_unqualified_targets(self):
+        for write, marker in (
+                ("INSERT INTO app.ghost (x) VALUES (1) RETURNING x", "MODULE_SQL_UNDECLARED_WRITE"),
+                ("DELETE FROM products RETURNING x", "MODULE_SQL_UNQUALIFIED_TARGET")):
+            with self.subTest(marker=marker):
+                self.query("WITH own AS (UPDATE app.products SET x=1 RETURNING x), "
+                           f"unchecked AS ({write}) SELECT * FROM own;")
+                self.red(marker)
+
     def test_cross_module_delete(self):
         self.query("DELETE FROM app.sites;")
         self.red("MODULE_SQL_CROSS_MODULE_WRITE")
