@@ -1,7 +1,7 @@
 // Responsibilities: exercise quote transport trust, strict admission and headers.
 // Dependencies: quotes contract and httptest; callers: focused tests and CI.
 // Invariants: rejected requests never reach the service; no SQL proof is implied.
-package httpapi_test
+package quotes_test
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
 )
 
 const quoteTenant = "11111111-1111-1111-1111-111111111111"
@@ -69,10 +70,10 @@ func (a quoteAuth) Authenticate(ctx context.Context, _ *http.Request, _ httpapi.
 	}
 	return qc.WithTrustedActor(ctx, i), nil
 }
-func quoteRouter(t *testing.T, f *quoteFixture, staff, buyer httpapi.Authenticator, inquiry httpapi.QuotesInquiryResolver) http.Handler {
+func quoteRouter(t *testing.T, f *quoteFixture, staff, buyer httpapi.Authenticator, inquiry quoteshttp.QuotesInquiryResolver) http.Handler {
 	t.Helper()
 	r := httpapi.New(staff, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	for _, v := range httpapi.NewQuotesHandler(f, buyer, inquiry).Routes() {
+	for _, v := range quoteshttp.NewQuotesHandler(f, buyer, inquiry).Routes() {
 		if err := r.Register(v.Spec, v.Handler); err != nil {
 			t.Fatal(err)
 		}

@@ -3,7 +3,7 @@
 // bootstrap calls Routes. Owns no tables, SQL, transactions or authentication IO.
 // Invariants: domain calls require a sealed staff/customer/verified-host stamp;
 // client identity headers/body never grant authority, writes require CAS+key.
-package httpapi
+package quotes
 
 import (
 	"bytes"
@@ -20,7 +20,7 @@ import (
 
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
-	gen "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
 // QuotesService is implemented by the quotes application transaction facade.
@@ -36,33 +36,33 @@ type QuotesService interface {
 type QuotesInquiryResolver func(context.Context, *http.Request) (context.Context, error)
 
 type QuotesHandler struct {
-	gen.StrictServerInterface // Only our explicit Routes below can reach this adapter.
-	service                   QuotesService
-	buyer                     Authenticator
-	inquiry                   QuotesInquiryResolver
-	limiter                   inquiryLimiter
+	httpapi.StrictServerInterface // Only our explicit Routes below can reach this adapter.
+	service                       QuotesService
+	buyer                         httpapi.Authenticator
+	inquiry                       QuotesInquiryResolver
+	limiter                       inquiryLimiter
 }
 
-func NewQuotesHandler(service QuotesService, buyer Authenticator, inquiry QuotesInquiryResolver) *QuotesHandler {
+func NewQuotesHandler(service QuotesService, buyer httpapi.Authenticator, inquiry QuotesInquiryResolver) *QuotesHandler {
 	return &QuotesHandler{service: service, buyer: buyer, inquiry: inquiry, limiter: inquiryLimiter{entries: make(map[string]inquiryWindow)}}
 }
-func (h *QuotesHandler) Routes() []Route {
-	fail := func(w http.ResponseWriter, r *http.Request, e error) { WriteProblem(w, r, quoteError(e)) }
-	strict := gen.NewStrictHandlerWithOptions(h, nil, gen.StrictHTTPServerOptions{RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) { WriteProblem(w, r, invalidJSON()) }, ResponseErrorHandlerFunc: fail})
-	wrapper := gen.ServerInterfaceWrapper{Handler: strict, ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
-		WriteProblem(w, r, apperrors.New(400, "invalid_request", "Invalid request parameter"))
+func (h *QuotesHandler) Routes() []httpapi.Route {
+	fail := func(w http.ResponseWriter, r *http.Request, e error) { httpapi.WriteProblem(w, r, quoteError(e)) }
+	strict := httpapi.NewStrictHandlerWithOptions(h, nil, httpapi.StrictHTTPServerOptions{RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) { httpapi.WriteProblem(w, r, quoteInvalidJSON()) }, ResponseErrorHandlerFunc: fail})
+	wrapper := httpapi.ServerInterfaceWrapper{Handler: strict, ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
+		httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_request", "Invalid request parameter"))
 	}}
-	return []Route{
-		{Spec: RouteSpec{OperationID: "submitInquiry", Method: "POST", Pattern: "/api/public/v1/inquiries", Access: Public, MaxBodySize: 64 << 10}, Handler: h.admit("submitInquiry", wrapper.SubmitInquiry)},
-		{Spec: RouteSpec{OperationID: "createQuote", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/quotes", Access: AdminOrAPIKey, Scope: "quotes:write", MaxBodySize: 128 << 10}, Handler: h.admit("createQuote", wrapper.CreateQuote)},
-		{Spec: RouteSpec{OperationID: "getQuote", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/quotes/{quote_id}", Access: AdminOrAPIKey, Scope: "quotes:read"}, Handler: h.admit("getQuote", wrapper.GetQuote)},
-		{Spec: RouteSpec{OperationID: "sendQuote", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/quotes/{quote_id}/send", Access: AdminOrAPIKey, Scope: "quotes:write", MaxBodySize: 1024}, Handler: h.admit("sendQuote", wrapper.SendQuote)},
-		{Spec: RouteSpec{OperationID: "withdrawQuote", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw", Access: AdminOrAPIKey, Scope: "quotes:write", MaxBodySize: 1024}, Handler: h.admit("withdrawQuote", wrapper.WithdrawQuote)},
-		{Spec: RouteSpec{OperationID: "expireQuote", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/quotes/{quote_id}/expire", Access: AdminOrAPIKey, Scope: "quotes:write", MaxBodySize: 1024}, Handler: h.admit("expireQuote", wrapper.ExpireQuote)},
-		{Spec: RouteSpec{OperationID: "getBuyerQuote", Method: "GET", Pattern: "/api/public/v1/quotes/{quote_id}", Access: Public}, Handler: h.admit("getBuyerQuote", wrapper.GetBuyerQuote)},
-		{Spec: RouteSpec{OperationID: "acceptQuote", Method: "POST", Pattern: "/api/public/v1/quotes/{quote_id}/accept", Access: Public, MaxBodySize: 1024}, Handler: h.admit("acceptQuote", wrapper.AcceptQuote)},
-		{Spec: RouteSpec{OperationID: "approveQuote", Method: "POST", Pattern: "/api/public/v1/quotes/{quote_id}/approve", Access: Public, MaxBodySize: 1024}, Handler: h.admit("approveQuote", wrapper.ApproveQuote)},
-		{Spec: RouteSpec{OperationID: "rejectQuote", Method: "POST", Pattern: "/api/public/v1/quotes/{quote_id}/reject", Access: Public, MaxBodySize: 1024}, Handler: h.admit("rejectQuote", wrapper.RejectQuote)},
+	return []httpapi.Route{
+		{Spec: httpapi.RouteSpec{OperationID: "submitInquiry", Method: "POST", Pattern: "/api/public/v1/inquiries", Access: httpapi.Public, MaxBodySize: 64 << 10}, Handler: h.admit("submitInquiry", wrapper.SubmitInquiry)},
+		{Spec: httpapi.RouteSpec{OperationID: "createQuote", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/quotes", Access: httpapi.AdminOrAPIKey, Scope: "quotes:write", MaxBodySize: 128 << 10}, Handler: h.admit("createQuote", wrapper.CreateQuote)},
+		{Spec: httpapi.RouteSpec{OperationID: "getQuote", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/quotes/{quote_id}", Access: httpapi.AdminOrAPIKey, Scope: "quotes:read"}, Handler: h.admit("getQuote", wrapper.GetQuote)},
+		{Spec: httpapi.RouteSpec{OperationID: "sendQuote", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/quotes/{quote_id}/send", Access: httpapi.AdminOrAPIKey, Scope: "quotes:write", MaxBodySize: 1024}, Handler: h.admit("sendQuote", wrapper.SendQuote)},
+		{Spec: httpapi.RouteSpec{OperationID: "withdrawQuote", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw", Access: httpapi.AdminOrAPIKey, Scope: "quotes:write", MaxBodySize: 1024}, Handler: h.admit("withdrawQuote", wrapper.WithdrawQuote)},
+		{Spec: httpapi.RouteSpec{OperationID: "expireQuote", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/quotes/{quote_id}/expire", Access: httpapi.AdminOrAPIKey, Scope: "quotes:write", MaxBodySize: 1024}, Handler: h.admit("expireQuote", wrapper.ExpireQuote)},
+		{Spec: httpapi.RouteSpec{OperationID: "getBuyerQuote", Method: "GET", Pattern: "/api/public/v1/quotes/{quote_id}", Access: httpapi.Public}, Handler: h.admit("getBuyerQuote", wrapper.GetBuyerQuote)},
+		{Spec: httpapi.RouteSpec{OperationID: "acceptQuote", Method: "POST", Pattern: "/api/public/v1/quotes/{quote_id}/accept", Access: httpapi.Public, MaxBodySize: 1024}, Handler: h.admit("acceptQuote", wrapper.AcceptQuote)},
+		{Spec: httpapi.RouteSpec{OperationID: "approveQuote", Method: "POST", Pattern: "/api/public/v1/quotes/{quote_id}/approve", Access: httpapi.Public, MaxBodySize: 1024}, Handler: h.admit("approveQuote", wrapper.ApproveQuote)},
+		{Spec: httpapi.RouteSpec{OperationID: "rejectQuote", Method: "POST", Pattern: "/api/public/v1/quotes/{quote_id}/reject", Access: httpapi.Public, MaxBodySize: 1024}, Handler: h.admit("rejectQuote", wrapper.RejectQuote)},
 	}
 }
 func (h *QuotesHandler) admit(op string, next http.HandlerFunc) http.Handler {
@@ -73,7 +73,7 @@ func (h *QuotesHandler) admit(op string, next http.HandlerFunc) http.Handler {
 		switch op {
 		case "submitInquiry":
 			if h.inquiry == nil {
-				WriteProblem(w, r, quoteError(qc.ErrUnauthorized))
+				httpapi.WriteProblem(w, r, quoteError(qc.ErrUnauthorized))
 				return
 			}
 			ctx, err = h.inquiry(ctx, r)
@@ -88,10 +88,10 @@ func (h *QuotesHandler) admit(op string, next http.HandlerFunc) http.Handler {
 			}
 		case "getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote":
 			if h.buyer == nil {
-				WriteProblem(w, r, quoteError(qc.ErrUnauthorized))
+				httpapi.WriteProblem(w, r, quoteError(qc.ErrUnauthorized))
 				return
 			}
-			ctx, err = h.buyer.Authenticate(ctx, r, RouteSpec{OperationID: op, Access: Public})
+			ctx, err = h.buyer.Authenticate(ctx, r, httpapi.RouteSpec{OperationID: op, Access: httpapi.Public})
 			if err == nil && ctx != nil {
 				a, e := qc.ActorFromContext(ctx)
 				err = e
@@ -112,13 +112,13 @@ func (h *QuotesHandler) admit(op string, next http.HandlerFunc) http.Handler {
 			}
 		}
 		if err != nil {
-			WriteProblem(w, r, quoteError(err))
+			httpapi.WriteProblem(w, r, quoteError(err))
 			return
 		}
 		r = r.WithContext(ctx)
 		if r.Method == http.MethodPost && op != "submitInquiry" {
 			if err = quotePreconditions(r, op == "createQuote"); err != nil {
-				WriteProblem(w, r, err)
+				httpapi.WriteProblem(w, r, err)
 				return
 			}
 		}
@@ -127,30 +127,30 @@ func (h *QuotesHandler) admit(op string, next http.HandlerFunc) http.Handler {
 			schema := "QuoteTransition"
 			switch op {
 			case "createQuote":
-				dto = &gen.CreateQuote{}
+				dto = &httpapi.CreateQuote{}
 				schema = "CreateQuote"
 			case "submitInquiry":
-				dto = &gen.CreateInquiry{}
+				dto = &httpapi.CreateInquiry{}
 				schema = "CreateInquiry"
 			default:
-				dto = &gen.QuoteTransition{}
+				dto = &httpapi.QuoteTransition{}
 			}
 			var body bytes.Buffer
 			r.Body = struct {
 				io.Reader
 				io.Closer
 			}{io.TeeReader(r.Body, &body), r.Body}
-			if err = DecodeJSON(w, r, dto); err == nil {
+			if err = httpapi.DecodeJSON(w, r, dto); err == nil {
 				err = quoteSchemaAdmission(schema, body.Bytes())
 			}
 			if err != nil {
-				WriteProblem(w, r, err)
+				httpapi.WriteProblem(w, r, err)
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body.Bytes()))
 		}
 		if h.service == nil {
-			WriteProblem(w, r, quoteError(qc.ErrUnavailable))
+			httpapi.WriteProblem(w, r, quoteError(qc.ErrUnavailable))
 			return
 		}
 		next(w, r)
@@ -174,13 +174,13 @@ func quotePreconditions(r *http.Request, create bool) error {
 	return nil
 }
 func quoteSchemaAdmission(name string, body []byte) error {
-	doc, err := gen.GetSwagger()
+	doc, err := httpapi.GetSwagger()
 	if err != nil {
 		return err
 	}
 	var value any
 	if json.Unmarshal(body, &value) != nil || doc.Components.Schemas[name].Value.VisitJSON(value) != nil {
-		return invalidJSON()
+		return quoteInvalidJSON()
 	}
 	return nil
 }
@@ -236,8 +236,8 @@ func (l *inquiryLimiter) allow(remote string, now time.Time) bool {
 	l.entries[host] = v
 	return true
 }
-func quoteRepresentation(q qc.Quote) (gen.Quote, error) {
-	var out gen.Quote
+func quoteRepresentation(q qc.Quote) (httpapi.Quote, error) {
+	var out httpapi.Quote
 	body, err := json.Marshal(q)
 	if err != nil {
 		return out, err
@@ -245,7 +245,7 @@ func quoteRepresentation(q qc.Quote) (gen.Quote, error) {
 	err = json.Unmarshal(body, &out)
 	return out, err
 }
-func (h *QuotesHandler) SubmitInquiry(ctx context.Context, r gen.SubmitInquiryRequestObject) (gen.SubmitInquiryResponseObject, error) {
+func (h *QuotesHandler) SubmitInquiry(ctx context.Context, r httpapi.SubmitInquiryRequestObject) (httpapi.SubmitInquiryResponseObject, error) {
 	site, err := qc.InquiryFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -262,7 +262,7 @@ func (h *QuotesHandler) SubmitInquiry(ctx context.Context, r gen.SubmitInquiryRe
 		return nil, err
 	}
 	// Generated receipt only exposes id/status, never contact fields or host context.
-	var dto gen.InquiryReceipt
+	var dto httpapi.InquiryReceipt
 	body, err := json.Marshal(struct {
 		ID     string `json:"id"`
 		Status string `json:"status"`
@@ -273,9 +273,9 @@ func (h *QuotesHandler) SubmitInquiry(ctx context.Context, r gen.SubmitInquiryRe
 	if err = json.Unmarshal(body, &dto); err != nil {
 		return nil, err
 	}
-	return gen.SubmitInquiry202JSONResponse(dto), nil
+	return httpapi.SubmitInquiry202JSONResponse(dto), nil
 }
-func (h *QuotesHandler) CreateQuote(ctx context.Context, r gen.CreateQuoteRequestObject) (gen.CreateQuoteResponseObject, error) {
+func (h *QuotesHandler) CreateQuote(ctx context.Context, r httpapi.CreateQuoteRequestObject) (httpapi.CreateQuoteResponseObject, error) {
 	var in qc.CreateInput
 	body, err := json.Marshal(r.Body)
 	if err != nil {
@@ -293,9 +293,9 @@ func (h *QuotesHandler) CreateQuote(ctx context.Context, r gen.CreateQuoteReques
 		return nil, err
 	}
 	etag := q.ETag()
-	return gen.CreateQuote201JSONResponse{Body: dto, Headers: gen.CreateQuote201ResponseHeaders{ETag: &etag}}, nil
+	return httpapi.CreateQuote201JSONResponse{Body: dto, Headers: httpapi.CreateQuote201ResponseHeaders{ETag: &etag}}, nil
 }
-func (h *QuotesHandler) GetQuote(ctx context.Context, r gen.GetQuoteRequestObject) (gen.GetQuoteResponseObject, error) {
+func (h *QuotesHandler) GetQuote(ctx context.Context, r httpapi.GetQuoteRequestObject) (httpapi.GetQuoteResponseObject, error) {
 	q, err := h.service.Get(ctx, r.QuoteId.String())
 	if err != nil {
 		return nil, err
@@ -305,9 +305,9 @@ func (h *QuotesHandler) GetQuote(ctx context.Context, r gen.GetQuoteRequestObjec
 		return nil, err
 	}
 	etag := q.ETag()
-	return gen.GetQuote200JSONResponse{Body: dto, Headers: gen.GetQuote200ResponseHeaders{ETag: &etag}}, nil
+	return httpapi.GetQuote200JSONResponse{Body: dto, Headers: httpapi.GetQuote200ResponseHeaders{ETag: &etag}}, nil
 }
-func (h *QuotesHandler) GetBuyerQuote(ctx context.Context, r gen.GetBuyerQuoteRequestObject) (gen.GetBuyerQuoteResponseObject, error) {
+func (h *QuotesHandler) GetBuyerQuote(ctx context.Context, r httpapi.GetBuyerQuoteRequestObject) (httpapi.GetBuyerQuoteResponseObject, error) {
 	q, err := h.service.Get(ctx, r.QuoteId.String())
 	if err != nil {
 		return nil, err
@@ -317,9 +317,9 @@ func (h *QuotesHandler) GetBuyerQuote(ctx context.Context, r gen.GetBuyerQuoteRe
 		return nil, err
 	}
 	etag := q.ETag()
-	return gen.GetBuyerQuote200JSONResponse{Body: dto, Headers: gen.GetBuyerQuote200ResponseHeaders{ETag: &etag}}, nil
+	return httpapi.GetBuyerQuote200JSONResponse{Body: dto, Headers: httpapi.GetBuyerQuote200ResponseHeaders{ETag: &etag}}, nil
 }
-func (h *QuotesHandler) SendQuote(ctx context.Context, r gen.SendQuoteRequestObject) (gen.SendQuoteResponseObject, error) {
+func (h *QuotesHandler) SendQuote(ctx context.Context, r httpapi.SendQuoteRequestObject) (httpapi.SendQuoteResponseObject, error) {
 	q, err := h.service.Transition(ctx, r.QuoteId.String(), qc.Send, qc.WriteOptions{IfMatch: r.Params.IfMatch, IdempotencyKey: r.Params.IdempotencyKey})
 	if err != nil {
 		return nil, err
@@ -329,9 +329,9 @@ func (h *QuotesHandler) SendQuote(ctx context.Context, r gen.SendQuoteRequestObj
 		return nil, err
 	}
 	etag := q.ETag()
-	return gen.SendQuote200JSONResponse{Body: dto, Headers: gen.SendQuote200ResponseHeaders{ETag: &etag}}, nil
+	return httpapi.SendQuote200JSONResponse{Body: dto, Headers: httpapi.SendQuote200ResponseHeaders{ETag: &etag}}, nil
 }
-func (h *QuotesHandler) WithdrawQuote(ctx context.Context, r gen.WithdrawQuoteRequestObject) (gen.WithdrawQuoteResponseObject, error) {
+func (h *QuotesHandler) WithdrawQuote(ctx context.Context, r httpapi.WithdrawQuoteRequestObject) (httpapi.WithdrawQuoteResponseObject, error) {
 	q, err := h.service.Transition(ctx, r.QuoteId.String(), qc.Withdraw, qc.WriteOptions{IfMatch: r.Params.IfMatch, IdempotencyKey: r.Params.IdempotencyKey})
 	if err != nil {
 		return nil, err
@@ -341,9 +341,9 @@ func (h *QuotesHandler) WithdrawQuote(ctx context.Context, r gen.WithdrawQuoteRe
 		return nil, err
 	}
 	etag := q.ETag()
-	return gen.WithdrawQuote200JSONResponse{Body: dto, Headers: gen.WithdrawQuote200ResponseHeaders{ETag: &etag}}, nil
+	return httpapi.WithdrawQuote200JSONResponse{Body: dto, Headers: httpapi.WithdrawQuote200ResponseHeaders{ETag: &etag}}, nil
 }
-func (h *QuotesHandler) ExpireQuote(ctx context.Context, r gen.ExpireQuoteRequestObject) (gen.ExpireQuoteResponseObject, error) {
+func (h *QuotesHandler) ExpireQuote(ctx context.Context, r httpapi.ExpireQuoteRequestObject) (httpapi.ExpireQuoteResponseObject, error) {
 	q, err := h.service.Transition(ctx, r.QuoteId.String(), qc.Expire, qc.WriteOptions{IfMatch: r.Params.IfMatch, IdempotencyKey: r.Params.IdempotencyKey})
 	if err != nil {
 		return nil, err
@@ -353,9 +353,9 @@ func (h *QuotesHandler) ExpireQuote(ctx context.Context, r gen.ExpireQuoteReques
 		return nil, err
 	}
 	etag := q.ETag()
-	return gen.ExpireQuote200JSONResponse{Body: dto, Headers: gen.ExpireQuote200ResponseHeaders{ETag: &etag}}, nil
+	return httpapi.ExpireQuote200JSONResponse{Body: dto, Headers: httpapi.ExpireQuote200ResponseHeaders{ETag: &etag}}, nil
 }
-func (h *QuotesHandler) AcceptQuote(ctx context.Context, r gen.AcceptQuoteRequestObject) (gen.AcceptQuoteResponseObject, error) {
+func (h *QuotesHandler) AcceptQuote(ctx context.Context, r httpapi.AcceptQuoteRequestObject) (httpapi.AcceptQuoteResponseObject, error) {
 	q, err := h.service.Transition(ctx, r.QuoteId.String(), qc.Accept, qc.WriteOptions{IfMatch: r.Params.IfMatch, IdempotencyKey: r.Params.IdempotencyKey})
 	if err != nil {
 		return nil, err
@@ -365,9 +365,9 @@ func (h *QuotesHandler) AcceptQuote(ctx context.Context, r gen.AcceptQuoteReques
 		return nil, err
 	}
 	etag := q.ETag()
-	return gen.AcceptQuote200JSONResponse{Body: dto, Headers: gen.AcceptQuote200ResponseHeaders{ETag: &etag}}, nil
+	return httpapi.AcceptQuote200JSONResponse{Body: dto, Headers: httpapi.AcceptQuote200ResponseHeaders{ETag: &etag}}, nil
 }
-func (h *QuotesHandler) ApproveQuote(ctx context.Context, r gen.ApproveQuoteRequestObject) (gen.ApproveQuoteResponseObject, error) {
+func (h *QuotesHandler) ApproveQuote(ctx context.Context, r httpapi.ApproveQuoteRequestObject) (httpapi.ApproveQuoteResponseObject, error) {
 	q, err := h.service.Transition(ctx, r.QuoteId.String(), qc.Approve, qc.WriteOptions{IfMatch: r.Params.IfMatch, IdempotencyKey: r.Params.IdempotencyKey})
 	if err != nil {
 		return nil, err
@@ -377,9 +377,9 @@ func (h *QuotesHandler) ApproveQuote(ctx context.Context, r gen.ApproveQuoteRequ
 		return nil, err
 	}
 	etag := q.ETag()
-	return gen.ApproveQuote200JSONResponse{Body: dto, Headers: gen.ApproveQuote200ResponseHeaders{ETag: &etag}}, nil
+	return httpapi.ApproveQuote200JSONResponse{Body: dto, Headers: httpapi.ApproveQuote200ResponseHeaders{ETag: &etag}}, nil
 }
-func (h *QuotesHandler) RejectQuote(ctx context.Context, r gen.RejectQuoteRequestObject) (gen.RejectQuoteResponseObject, error) {
+func (h *QuotesHandler) RejectQuote(ctx context.Context, r httpapi.RejectQuoteRequestObject) (httpapi.RejectQuoteResponseObject, error) {
 	q, err := h.service.Transition(ctx, r.QuoteId.String(), qc.Reject, qc.WriteOptions{IfMatch: r.Params.IfMatch, IdempotencyKey: r.Params.IdempotencyKey})
 	if err != nil {
 		return nil, err
@@ -389,5 +389,10 @@ func (h *QuotesHandler) RejectQuote(ctx context.Context, r gen.RejectQuoteReques
 		return nil, err
 	}
 	etag := q.ETag()
-	return gen.RejectQuote200JSONResponse{Body: dto, Headers: gen.RejectQuote200ResponseHeaders{ETag: &etag}}, nil
+	return httpapi.RejectQuote200JSONResponse{Body: dto, Headers: httpapi.RejectQuote200ResponseHeaders{ETag: &etag}}, nil
+}
+
+// quoteInvalidJSON hides parser diagnostics that could contain request content.
+func quoteInvalidJSON() error {
+	return apperrors.New(http.StatusBadRequest, "invalid_json", "Body must be one valid JSON object within the JSON limits")
 }

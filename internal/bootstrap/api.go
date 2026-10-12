@@ -14,6 +14,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
 )
 
 type Config struct {
@@ -23,9 +24,9 @@ type Config struct {
 	Routes                   []httpapi.Route
 	Catalog                  catalog.Config
 	Media                    media.Config
-	Quotes                   httpapi.QuotesService
+	Quotes                   quoteshttp.QuotesService
 	QuotesBuyerAuthenticator httpapi.Authenticator
-	QuotesInquiryResolver    httpapi.QuotesInquiryResolver
+	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
 }
 
 func New(config Config) (server *http.Server, err error) {
@@ -41,7 +42,7 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)
 	if config.Quotes != nil {
-		routes = append(routes, httpapi.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
+		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
 	}
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {

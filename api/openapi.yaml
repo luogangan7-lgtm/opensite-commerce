@@ -7,24 +7,24 @@ info:
     credentials authorize them. Only health is implemented; other operations are planned
     contracts.
 servers:
-- url: /
+  - url: /
 security:
-- adminSession: []
-- ApiKeyBearer: []
+  - adminSession: []
+  - ApiKeyBearer: []
 tags:
-- name: Organization
-- name: Catalog
-- name: Media
-- name: Builder
-- name: Inquiry
-- name: Identity
-- name: Health
-- name: Quotes
+  - name: Organization
+  - name: Catalog
+  - name: Media
+  - name: Builder
+  - name: Inquiry
+  - name: Identity
+  - name: Health
+  - name: Quotes
 paths:
   /healthz:
     get:
       tags:
-      - Health
+        - Health
       operationId: health
       x-opensite-status: implemented
       x-opensite-access: Public
@@ -35,7 +35,7 @@ paths:
   /api/v1/auth/admin-sessions:
     post:
       tags:
-      - Identity
+        - Identity
       operationId: createAdminSession
       x-opensite-status: planned
       x-opensite-access: Public
@@ -44,8 +44,8 @@ paths:
         material. Bad credentials, disabled and unknown users have the same 401 response
         and work. Implemented by PR-02.
       parameters:
-      - $ref: '#/components/parameters/Origin'
-      - $ref: '#/components/parameters/CSRFToken'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CSRFToken'
       requestBody:
         required: true
         content:
@@ -86,12 +86,12 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
     get:
       tags:
-      - Identity
+        - Identity
       operationId: listAdminSessions
       x-opensite-status: planned
       x-opensite-access: AuthenticatedSelf
       security:
-      - adminSession: []
+        - adminSession: []
       description: List only the active caller own sessions. Requires a valid session
         and active user, even when no tenant membership remains.
       responses:
@@ -122,17 +122,17 @@ paths:
   /api/v1/auth/admin-sessions/current:
     delete:
       tags:
-      - Identity
+        - Identity
       operationId: deleteAdminSession
       x-opensite-status: planned
       x-opensite-access: AuthenticatedSelf
       security:
-      - adminSession: []
+        - adminSession: []
       description: Revoke the current session and clear its cookie. No membership
         or scope required. Exact Origin and session-bound HMAC CSRF token required.
       parameters:
-      - $ref: '#/components/parameters/Origin'
-      - $ref: '#/components/parameters/CSRFToken'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CSRFToken'
       responses:
         '204':
           description: Current session revoked.
@@ -162,20 +162,20 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
   /api/v1/auth/admin-sessions/{session_id}:
     parameters:
-    - $ref: '#/components/parameters/SessionId'
+      - $ref: '#/components/parameters/SessionId'
     delete:
       tags:
-      - Identity
+        - Identity
       operationId: revokeAdminSession
       x-opensite-status: planned
       x-opensite-access: AuthenticatedSelf
       security:
-      - adminSession: []
+        - adminSession: []
       description: Revoke only a session owned by the caller. Exact Origin and session-bound
         HMAC CSRF token required. No tenant membership or scope required.
       parameters:
-      - $ref: '#/components/parameters/Origin'
-      - $ref: '#/components/parameters/CSRFToken'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CSRFToken'
       responses:
         '204':
           description: Owned session revoked.
@@ -202,12 +202,12 @@ paths:
   /api/v1/auth/current-actor:
     get:
       tags:
-      - Identity
+        - Identity
       operationId: getCurrentActor
       x-opensite-status: planned
       x-opensite-access: AuthenticatedSelf
       security:
-      - adminSession: []
+        - adminSession: []
       description: The active caller identity only; no tenant membership or tenant
         authorization is inferred.
       responses:
@@ -237,10 +237,10 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
   /api/v1/t/{tenant_id}/organizations:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/TenantId'
     post:
       tags:
-      - Organization
+        - Organization
       operationId: createOrganization
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
@@ -248,9 +248,9 @@ paths:
       description: Create a seller organization within the target tenant, with membership
         and organization.create scope. This does not create a tenant or owner.
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -284,18 +284,18 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
   /api/v1/t/{tenant_id}/sites:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/TenantId'
     post:
       tags:
-      - Organization
+        - Organization
       operationId: createSite
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
       x-required-scope: site.create
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -329,18 +329,18 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
   /api/v1/t/{tenant_id}/products:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/TenantId'
     post:
       tags:
-      - Catalog
+        - Catalog
       operationId: createProduct
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog:write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '201':
           description: Success
@@ -380,7 +380,7 @@ paths:
               $ref: '#/components/schemas/CreateProduct'
     get:
       tags:
-      - Catalog
+        - Catalog
       operationId: listProducts
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
@@ -417,23 +417,23 @@ paths:
         '503':
           $ref: '#/components/responses/Problem'
       parameters:
-      - $ref: '#/components/parameters/PageSize'
-      - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
   /api/v1/t/{tenant_id}/products/{product_id}/variants:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProductId'
     post:
       tags:
-      - Catalog
+        - Catalog
       operationId: createVariant
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog:write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '201':
           description: Success
@@ -473,7 +473,7 @@ paths:
               $ref: '#/components/schemas/CreateVariant'
     get:
       tags:
-      - Catalog
+        - Catalog
       operationId: listVariants
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
@@ -510,22 +510,22 @@ paths:
         '503':
           $ref: '#/components/responses/Problem'
       parameters:
-      - $ref: '#/components/parameters/PageSize'
-      - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
   /api/v1/t/{tenant_id}/media/uploads:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/TenantId'
     post:
       tags:
-      - Media
+        - Media
       operationId: createMediaUpload
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: media:write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -565,11 +565,11 @@ paths:
           $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/media/uploads/{upload_id}/content:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/UploadId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/UploadId'
     put:
       tags:
-      - Media
+        - Media
       operationId: putMediaUploadContent
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
@@ -583,9 +583,9 @@ paths:
               type: string
               format: binary
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '204':
           description: Bytes received
@@ -615,19 +615,19 @@ paths:
           $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/media/uploads/{upload_id}/complete:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/UploadId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/UploadId'
     post:
       tags:
-      - Media
+        - Media
       operationId: completeMediaUpload
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: media:write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '202':
           description: Content verified and private media persisted synchronously;
@@ -662,19 +662,19 @@ paths:
           $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/SiteId'
     post:
       tags:
-      - Builder
+        - Builder
       operationId: createSiteDraft
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
       x-required-scope: site.draft.write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -708,21 +708,21 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/SiteId'
-    - $ref: '#/components/parameters/DraftId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/DraftId'
     post:
       tags:
-      - Builder
+        - Builder
       operationId: applyPageOperations
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
       x-required-scope: site.draft.write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -760,19 +760,19 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/validate:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/SiteId'
-    - $ref: '#/components/parameters/DraftId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/DraftId'
     post:
       tags:
-      - Builder
+        - Builder
       operationId: validateSiteDraft
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
       x-required-scope: site.draft.write
       parameters:
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '200':
           description: Validation report
@@ -800,21 +800,21 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/publish:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/SiteId'
-    - $ref: '#/components/parameters/DraftId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/DraftId'
     post:
       tags:
-      - Builder
+        - Builder
       operationId: publishSiteDraft
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
       x-required-scope: site.publish
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '201':
           description: New immutable release; commit is atomic in PostgreSQL
@@ -843,7 +843,7 @@ paths:
   /api/public/v1/inquiries:
     post:
       tags:
-      - Inquiry
+        - Inquiry
       operationId: submitInquiry
       x-opensite-status: implemented
       x-opensite-access: Public
@@ -889,11 +889,11 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
   /api/v1/t/{tenant_id}/products/{product_id}:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProductId'
     get:
       tags:
-      - Catalog
+        - Catalog
       operationId: getProduct
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
@@ -931,16 +931,16 @@ paths:
           $ref: '#/components/responses/Problem'
     patch:
       tags:
-      - Catalog
+        - Catalog
       operationId: updateProduct
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog:write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
       responses:
         '200':
           description: Success
@@ -980,16 +980,16 @@ paths:
               $ref: '#/components/schemas/UpdateProduct'
     delete:
       tags:
-      - Catalog
+        - Catalog
       operationId: archiveProduct
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog:write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
       responses:
         '204':
           description: Success
@@ -1019,12 +1019,12 @@ paths:
           $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/products/{product_id}/variants/{variant_id}:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/ProductId'
-    - $ref: '#/components/parameters/VariantId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/VariantId'
     get:
       tags:
-      - Catalog
+        - Catalog
       operationId: getVariant
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
@@ -1062,16 +1062,16 @@ paths:
           $ref: '#/components/responses/Problem'
     patch:
       tags:
-      - Catalog
+        - Catalog
       operationId: updateVariant
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog:write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
       responses:
         '200':
           description: Success
@@ -1111,16 +1111,16 @@ paths:
               $ref: '#/components/schemas/UpdateVariant'
     delete:
       tags:
-      - Catalog
+        - Catalog
       operationId: archiveVariant
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog:write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
       responses:
         '204':
           description: Success
@@ -1150,19 +1150,19 @@ paths:
           $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/products/{product_id}/media:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProductId'
     post:
       tags:
-      - Media
+        - Media
       operationId: linkProductMedia
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: media:write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '201':
           description: Success
@@ -1202,19 +1202,19 @@ paths:
               $ref: '#/components/schemas/LinkProductMedia'
   /api/v1/t/{tenant_id}/media/{media_id}:
     parameters:
-    - $ref: '#/components/parameters/TenantId'
-    - $ref: '#/components/parameters/MediaId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/MediaId'
     delete:
       tags:
-      - Media
+        - Media
       operationId: deleteMedia
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: media:write
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '204':
           description: Success
@@ -1245,17 +1245,17 @@ paths:
   /api/v1/t/{tenant_id}/quotes:
     post:
       tags:
-      - Quotes
+        - Quotes
       operationId: createQuote
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: quotes:write
       parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1302,14 +1302,14 @@ paths:
   /api/v1/t/{tenant_id}/quotes/{quote_id}:
     get:
       tags:
-      - Quotes
+        - Quotes
       operationId: getQuote
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: quotes:read
       parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/QuoteId'
       responses:
         '200':
           description: Current complete quote representation
@@ -1349,18 +1349,18 @@ paths:
   /api/v1/t/{tenant_id}/quotes/{quote_id}/send:
     post:
       tags:
-      - Quotes
+        - Quotes
       operationId: sendQuote
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: quotes:write
       parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/QuoteId'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1406,18 +1406,18 @@ paths:
   /api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw:
     post:
       tags:
-      - Quotes
+        - Quotes
       operationId: withdrawQuote
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: quotes:write
       parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/QuoteId'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1463,18 +1463,18 @@ paths:
   /api/v1/t/{tenant_id}/quotes/{quote_id}/expire:
     post:
       tags:
-      - Quotes
+        - Quotes
       operationId: expireQuote
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: quotes:write
       parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/QuoteId'
-      - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      - $ref: '#/components/parameters/OriginIfCookie'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1520,7 +1520,7 @@ paths:
   /api/public/v1/quotes/{quote_id}:
     get:
       tags:
-      - Quotes
+        - Quotes
       operationId: getBuyerQuote
       x-opensite-status: implemented
       x-opensite-access: Public
@@ -1531,7 +1531,7 @@ paths:
         without a resolver the production endpoint returns 401. Admin sessions, body
         IDs and quote possession never authenticate a customer.
       parameters:
-      - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/QuoteId'
       responses:
         '200':
           description: Current complete quote representation
@@ -1571,7 +1571,7 @@ paths:
   /api/public/v1/quotes/{quote_id}/accept:
     post:
       tags:
-      - Quotes
+        - Quotes
       operationId: acceptQuote
       x-opensite-status: implemented
       x-opensite-access: Public
@@ -1582,9 +1582,9 @@ paths:
         without a resolver the production endpoint returns 401. Admin sessions, body
         IDs and quote possession never authenticate a customer.
       parameters:
-      - $ref: '#/components/parameters/QuoteId'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1630,7 +1630,7 @@ paths:
   /api/public/v1/quotes/{quote_id}/approve:
     post:
       tags:
-      - Quotes
+        - Quotes
       operationId: approveQuote
       x-opensite-status: implemented
       x-opensite-access: Public
@@ -1641,9 +1641,9 @@ paths:
         without a resolver the production endpoint returns 401. Admin sessions, body
         IDs and quote possession never authenticate a customer.
       parameters:
-      - $ref: '#/components/parameters/QuoteId'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1689,7 +1689,7 @@ paths:
   /api/public/v1/quotes/{quote_id}/reject:
     post:
       tags:
-      - Quotes
+        - Quotes
       operationId: rejectQuote
       x-opensite-status: implemented
       x-opensite-access: Public
@@ -1700,9 +1700,9 @@ paths:
         without a resolver the production endpoint returns 401. Admin sessions, body
         IDs and quote possession never authenticate a customer.
       parameters:
-      - $ref: '#/components/parameters/QuoteId'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1987,8 +1987,8 @@ components:
     CreateAdminSession:
       type: object
       required:
-      - identifier
-      - password
+        - identifier
+        - password
       properties:
         identifier:
           type: string
@@ -2003,7 +2003,7 @@ components:
     CurrentActor:
       type: object
       required:
-      - user_id
+        - user_id
       properties:
         user_id:
           type: string
@@ -2012,10 +2012,10 @@ components:
     AdminSession:
       type: object
       required:
-      - id
-      - created_at
-      - expires_at
-      - is_current
+        - id
+        - created_at
+        - expires_at
+        - is_current
       properties:
         id:
           type: string
@@ -2028,8 +2028,8 @@ components:
           format: date-time
         revoked_at:
           type:
-          - string
-          - 'null'
+            - string
+            - 'null'
           format: date-time
         is_current:
           type: boolean
@@ -2037,9 +2037,9 @@ components:
     AdminSessionCreated:
       type: object
       required:
-      - actor
-      - session
-      - csrf_token
+        - actor
+        - session
+        - csrf_token
       properties:
         actor:
           $ref: '#/components/schemas/CurrentActor'
@@ -2054,7 +2054,7 @@ components:
     AdminSessionList:
       type: object
       required:
-      - sessions
+        - sessions
       properties:
         sessions:
           type: array
@@ -2064,10 +2064,10 @@ components:
     Problem:
       type: object
       required:
-      - type
-      - title
-      - status
-      - code
+        - type
+        - title
+        - status
+        - code
       properties:
         type:
           type: string
@@ -2086,7 +2086,7 @@ components:
     CreateOrganization:
       type: object
       required:
-      - display_name
+        - display_name
       properties:
         display_name:
           type: string
@@ -2099,8 +2099,8 @@ components:
     Organization:
       type: object
       required:
-      - id
-      - display_name
+        - id
+        - display_name
       properties:
         id:
           type: string
@@ -2113,9 +2113,9 @@ components:
     CreateSite:
       type: object
       required:
-      - organization_id
-      - name
-      - default_locale
+        - organization_id
+        - name
+        - default_locale
       properties:
         organization_id:
           type: string
@@ -2132,11 +2132,11 @@ components:
     Site:
       type: object
       required:
-      - id
-      - organization_id
-      - name
-      - default_locale
-      - status
+        - id
+        - organization_id
+        - name
+        - default_locale
+        - status
       properties:
         id:
           type: string
@@ -2151,18 +2151,18 @@ components:
         status:
           type: string
           enum:
-          - draft
-          - published
+            - draft
+            - published
         published_release_id:
           type:
-          - string
-          - 'null'
+            - string
+            - 'null'
           format: uuid
       additionalProperties: false
     CreateProduct:
       type: object
       required:
-      - product_code
+        - product_code
       properties:
         product_code:
           type: string
@@ -2172,11 +2172,11 @@ components:
     Product:
       type: object
       required:
-      - id
-      - product_code
-      - lifecycle_status
-      - version
-      - created_at
+        - id
+        - product_code
+        - lifecycle_status
+        - version
+        - created_at
       properties:
         id:
           type: string
@@ -2186,9 +2186,9 @@ components:
         lifecycle_status:
           type: string
           enum:
-          - draft
-          - ready
-          - archived
+            - draft
+            - ready
+            - archived
         version:
           type: integer
           format: int64
@@ -2200,8 +2200,8 @@ components:
     CreateVariant:
       type: object
       required:
-      - sku
-      - option_value_ids
+        - sku
+        - option_value_ids
       properties:
         sku:
           type: string
@@ -2217,13 +2217,13 @@ components:
     Variant:
       type: object
       required:
-      - id
-      - product_id
-      - sku
-      - lifecycle_status
-      - version
-      - created_at
-      - option_value_ids
+        - id
+        - product_id
+        - sku
+        - lifecycle_status
+        - version
+        - created_at
+        - option_value_ids
       properties:
         id:
           type: string
@@ -2236,9 +2236,9 @@ components:
         lifecycle_status:
           type: string
           enum:
-          - draft
-          - ready
-          - archived
+            - draft
+            - ready
+            - archived
         version:
           type: integer
           format: int64
@@ -2256,9 +2256,9 @@ components:
     CreateUpload:
       type: object
       required:
-      - filename
-      - size_bytes
-      - sha256
+        - filename
+        - size_bytes
+        - sha256
       properties:
         filename:
           type: string
@@ -2277,9 +2277,9 @@ components:
     UploadSession:
       type: object
       required:
-      - id
-      - status
-      - expires_at
+        - id
+        - status
+        - expires_at
       properties:
         id:
           type: string
@@ -2287,17 +2287,17 @@ components:
         status:
           type: string
           enum:
-          - reserved
-          - uploading
-          - verifying
-          - stored
-          - processing
-          - ready
-          - failed
+            - reserved
+            - uploading
+            - verifying
+            - stored
+            - processing
+            - ready
+            - failed
         media_id:
           type:
-          - string
-          - 'null'
+            - string
+            - 'null'
           format: uuid
         expires_at:
           type: string
@@ -2308,16 +2308,16 @@ components:
       properties:
         base_release_id:
           type:
-          - string
-          - 'null'
+            - string
+            - 'null'
           format: uuid
       additionalProperties: false
     Draft:
       type: object
       required:
-      - id
-      - revision
-      - status
+        - id
+        - revision
+        - status
       properties:
         id:
           type: string
@@ -2328,16 +2328,16 @@ components:
         status:
           type: string
           enum:
-          - open
-          - published
-          - abandoned
+            - open
+            - published
+            - abandoned
       additionalProperties: false
     PageDocument:
       type: object
       required:
-      - schema_version
-      - root_id
-      - nodes
+        - schema_version
+        - root_id
+        - nodes
       properties:
         schema_version:
           type: integer
@@ -2355,18 +2355,18 @@ components:
     ComponentNode:
       type: object
       required:
-      - component
-      - props
-      - slots
+        - component
+        - props
+        - slots
       properties:
         component:
           type: string
           enum:
-          - core.page-layout@1
-          - core.section@1
-          - core.hero@1
-          - catalog.product-grid@1
-          - company.profile@1
+            - core.page-layout@1
+            - core.section@1
+            - core.hero@1
+            - catalog.product-grid@1
+            - company.profile@1
         props:
           type: object
         binding:
@@ -2381,22 +2381,22 @@ components:
     DataBinding:
       type: object
       required:
-      - resolver
-      - params
+        - resolver
+        - params
       properties:
         resolver:
           type: string
           enum:
-          - catalog.featured-products@1
-          - catalog.collection-products@1
-          - company.profile@1
+            - catalog.featured-products@1
+            - catalog.collection-products@1
+            - company.profile@1
         params:
           type: object
       additionalProperties: false
     OperationBatch:
       type: object
       required:
-      - operations
+        - operations
       properties:
         operations:
           type: array
@@ -2407,9 +2407,9 @@ components:
       additionalProperties: false
     PageOperation:
       oneOf:
-      - $ref: '#/components/schemas/ComponentAdd'
-      - $ref: '#/components/schemas/ComponentMove'
-      - $ref: '#/components/schemas/ComponentSetProps'
+        - $ref: '#/components/schemas/ComponentAdd'
+        - $ref: '#/components/schemas/ComponentMove'
+        - $ref: '#/components/schemas/ComponentSetProps'
       discriminator:
         propertyName: type
         mapping:
@@ -2419,10 +2419,10 @@ components:
     ComponentAdd:
       type: object
       required:
-      - operation_id
-      - type
-      - target
-      - arguments
+        - operation_id
+        - type
+        - target
+        - arguments
       properties:
         operation_id:
           type: string
@@ -2433,7 +2433,7 @@ components:
         target:
           type: object
           required:
-          - page_key
+            - page_key
           properties:
             page_key:
               type: string
@@ -2442,11 +2442,11 @@ components:
         arguments:
           type: object
           required:
-          - component
-          - node_id
-          - parent_node_id
-          - slot
-          - props
+            - component
+            - node_id
+            - parent_node_id
+            - slot
+            - props
           properties:
             component:
               type: string
@@ -2469,10 +2469,10 @@ components:
     ComponentMove:
       type: object
       required:
-      - operation_id
-      - type
-      - target
-      - arguments
+        - operation_id
+        - type
+        - target
+        - arguments
       properties:
         operation_id:
           type: string
@@ -2483,8 +2483,8 @@ components:
         target:
           type: object
           required:
-          - page_key
-          - node_id
+            - page_key
+            - node_id
           properties:
             page_key:
               type: string
@@ -2496,8 +2496,8 @@ components:
         arguments:
           type: object
           required:
-          - parent_node_id
-          - slot
+            - parent_node_id
+            - slot
           properties:
             parent_node_id:
               type: string
@@ -2510,10 +2510,10 @@ components:
     ComponentSetProps:
       type: object
       required:
-      - operation_id
-      - type
-      - target
-      - arguments
+        - operation_id
+        - type
+        - target
+        - arguments
       properties:
         operation_id:
           type: string
@@ -2524,8 +2524,8 @@ components:
         target:
           type: object
           required:
-          - page_key
-          - node_id
+            - page_key
+            - node_id
           properties:
             page_key:
               type: string
@@ -2537,7 +2537,7 @@ components:
         arguments:
           type: object
           required:
-          - props
+            - props
           properties:
             props:
               type: object
@@ -2546,8 +2546,8 @@ components:
     ValidationResult:
       type: object
       required:
-      - valid
-      - issues
+        - valid
+        - issues
       properties:
         valid:
           type: boolean
@@ -2556,8 +2556,8 @@ components:
           items:
             type: object
             required:
-            - code
-            - message
+              - code
+              - message
             properties:
               code:
                 type: string
@@ -2566,9 +2566,9 @@ components:
     PublishedRelease:
       type: object
       required:
-      - id
-      - site_id
-      - release_no
+        - id
+        - site_id
+        - release_no
       properties:
         id:
           type: string
@@ -2582,8 +2582,8 @@ components:
     CreateInquiry:
       type: object
       required:
-      - buyer_email
-      - message
+        - buyer_email
+        - message
       properties:
         product_id:
           type: string
@@ -2606,8 +2606,8 @@ components:
     InquiryReceipt:
       type: object
       required:
-      - id
-      - status
+        - id
+        - status
       properties:
         id:
           type: string
@@ -2626,8 +2626,8 @@ components:
         lifecycle_status:
           type: string
           enum:
-          - draft
-          - ready
+            - draft
+            - ready
       additionalProperties: false
     UpdateVariant:
       type: object
@@ -2640,13 +2640,13 @@ components:
         lifecycle_status:
           type: string
           enum:
-          - draft
-          - ready
+            - draft
+            - ready
       additionalProperties: false
     ProductPage:
       type: object
       required:
-      - items
+        - items
       properties:
         items:
           type: array
@@ -2658,7 +2658,7 @@ components:
     VariantList:
       type: object
       required:
-      - items
+        - items
       properties:
         items:
           type: array
@@ -2670,8 +2670,8 @@ components:
     LinkProductMedia:
       type: object
       required:
-      - media_id
-      - role
+        - media_id
+        - role
       properties:
         media_id:
           type: string
@@ -2679,11 +2679,11 @@ components:
         role:
           type: string
           enum:
-          - main
-          - gallery
-          - detail
-          - video
-          - size_chart
+            - main
+            - gallery
+            - detail
+            - video
+            - size_chart
         sort_order:
           type: integer
           format: int32
@@ -2692,10 +2692,10 @@ components:
     ProductMedia:
       type: object
       required:
-      - product_id
-      - media_id
-      - role
-      - sort_order
+        - product_id
+        - media_id
+        - role
+        - sort_order
       properties:
         product_id:
           type: string
@@ -2706,11 +2706,11 @@ components:
         role:
           type: string
           enum:
-          - main
-          - gallery
-          - detail
-          - video
-          - size_chart
+            - main
+            - gallery
+            - detail
+            - video
+            - size_chart
         sort_order:
           type: integer
           format: int32
@@ -2722,8 +2722,8 @@ components:
     QuoteDestination:
       type: object
       required:
-      - country
-      - subdivision
+        - country
+        - subdivision
       additionalProperties: false
       properties:
         country:
@@ -2735,10 +2735,10 @@ components:
     QuoteLineInput:
       type: object
       required:
-      - description
-      - quantity
-      - unit_price
-      - tax_category
+        - description
+        - quantity
+        - unit_price
+        - tax_category
       additionalProperties: false
       properties:
         product_id:
@@ -2768,15 +2768,15 @@ components:
     CreateQuote:
       type: object
       required:
-      - site_id
-      - inquiry_id
-      - company_id
-      - currency
-      - expires_at
-      - lines
-      - destination
-      - shipping_profile_id
-      - weight_g
+        - site_id
+        - inquiry_id
+        - company_id
+        - currency
+        - expires_at
+        - lines
+        - destination
+        - shipping_profile_id
+        - weight_g
       additionalProperties: false
       properties:
         site_id:
@@ -2813,17 +2813,17 @@ components:
     Quote:
       type: object
       required:
-      - id
-      - tenant_id
-      - site_id
-      - inquiry_id
-      - company_id
-      - status
-      - version
-      - currency
-      - expires_at
-      - created_by
-      - snapshot
+        - id
+        - tenant_id
+        - site_id
+        - inquiry_id
+        - company_id
+        - status
+        - version
+        - currency
+        - expires_at
+        - created_by
+        - snapshot
       additionalProperties: false
       properties:
         id:
@@ -2844,13 +2844,13 @@ components:
         status:
           type: string
           enum:
-          - draft
-          - sent
-          - accepted
-          - approved
-          - rejected
-          - withdrawn
-          - expired
+            - draft
+            - sent
+            - accepted
+            - approved
+            - rejected
+            - withdrawn
+            - expired
         version:
           type: integer
           format: int64
@@ -2873,19 +2873,19 @@ components:
     QuoteSnapshot:
       type: object
       required:
-      - calculator
-      - currency
-      - lines
-      - tax
-      - shipping
-      - subtotal
-      - tax_amount
-      - shipping_amount
-      - total
-      - calculated_at
-      - destination
-      - shipping_profile_id
-      - weight_g
+        - calculator
+        - currency
+        - lines
+        - tax
+        - shipping
+        - subtotal
+        - tax_amount
+        - shipping_amount
+        - total
+        - calculated_at
+        - destination
+        - shipping_profile_id
+        - weight_g
       additionalProperties: false
       properties:
         calculator:
@@ -2935,12 +2935,12 @@ components:
     QuoteLine:
       type: object
       required:
-      - line_no
-      - description
-      - quantity
-      - unit_price
-      - line_total
-      - snapshot
+        - line_no
+        - description
+        - quantity
+        - unit_price
+        - line_total
+        - snapshot
       additionalProperties: false
       properties:
         line_no:
