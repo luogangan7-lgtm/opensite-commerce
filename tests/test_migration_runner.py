@@ -15,6 +15,9 @@ with tempfile.TemporaryDirectory() as temp:
     shutil.copy2(source_root/'scripts/migrate.sh', root/'scripts/migrate.sh')
     for migration in migrations:
         shutil.copy2(migration, root/'migrations'/migration.name)
+    # Business names such as customers_b2b must remain valid after renumbering.
+    digit_name = f'{len(migrations)+1:03d}_b2b_fixture.sql'
+    (root/'migrations'/digit_name).write_text('SELECT 1;\n')
     migrations = sorted((root/'migrations').glob('*.sql'))
     log = bindir/'psql_calls.txt'
     psql = bindir/'psql'
@@ -72,4 +75,13 @@ else:
     missing = subprocess.run(['bash',str(broken/'scripts/migrate.sh')],env=env,capture_output=True,text=True)
     assert missing.returncode==2 and 'numbering must be contiguous' in missing.stderr, (missing.stdout,missing.stderr)
     assert log.stat().st_size == previous_size, 'unexpected migration DDL submitted before numbering failure'
+    # Punctuation cannot enter known_versions, even when the prefix is valid.
+    # Validate ALL names before any migration SQL is sent.
+    digit_file = root/'migrations'/digit_name
+    invalid_file = digit_file.with_name(digit_file.name.replace('b2b_fixture', 'b2b,escape'))
+    digit_file.rename(invalid_file)
+    previous_size = log.stat().st_size
+    invalid = subprocess.run(['bash',str(root/'scripts/migrate.sh')],env=env,capture_output=True,text=True)
+    assert invalid.returncode == 2 and 'Invalid migration' in invalid.stderr, (invalid.stdout,invalid.stderr)
+    assert log.stat().st_size == previous_size, 'unexpected DDL submitted before invalid-name failure'
     print('PASS: migration runner orchestration + missing-number fail-fast (mock psql; NO SQL executed)')

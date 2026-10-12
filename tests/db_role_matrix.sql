@@ -1,4 +1,4 @@
--- Responsibility: audit the least-privilege contract for the three base roles.
+-- Responsibility: audit the least-privilege contract for the four internal roles.
 -- Dependencies: PostgreSQL 18 catalogs and app tables from migrations 001..009.
 -- Caller: privileged psql test runner on an expendable database, after hardening.
 -- Invariant: effective privileges (including PUBLIC/inheritance) match the contract
@@ -6,7 +6,7 @@
 \set ON_ERROR_STOP on
 DO $audit$
 DECLARE
- roles text[] := ARRAY['app_runtime','app_auth','app_domain_resolver'];
+ roles text[] := ARRAY['app_runtime','app_auth','app_domain_resolver','app_customer_auth'];
  -- Named business boundaries, independent of the migration's grant generator.
  mutable_tables text[] := ARRAY[
   'organizations','site_locales','products','product_options','product_option_values',
@@ -23,7 +23,8 @@ DECLARE
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
   'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
   'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
-  'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings','carts','cart_lines'];
+  'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
+  'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members','carts','cart_lines'];
  role_name text;
  r record;
  t record;
@@ -69,7 +70,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','customer_credentials']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='INSERT' THEN
@@ -125,6 +126,18 @@ BEGIN
      ELSIF privilege='UPDATE' AND t.relname='auth_sessions' THEN
       allowed_columns := ARRAY['revoked_at'];
      END IF;
+    ELSIF role_name='app_customer_auth' THEN
+     IF privilege='SELECT' AND t.relname=ANY(ARRAY['customers','customer_credentials']) THEN
+      allowed_columns := all_columns;
+      expected_table := true;
+     ELSIF privilege='INSERT' THEN
+      allowed_columns := CASE t.relname
+       WHEN 'customers' THEN ARRAY['tenant_id','id','email','display_name']
+       WHEN 'customer_credentials' THEN ARRAY['tenant_id','customer_id','password_hash']
+       ELSE ARRAY[]::text[] END;
+     ELSIF privilege='UPDATE' AND t.relname='customer_credentials' THEN
+      allowed_columns := ARRAY['password_hash'];
+     END IF;
     ELSIF role_name='app_domain_resolver' AND privilege='SELECT' THEN
      allowed_columns := CASE t.relname
       WHEN 'site_domains' THEN ARRAY['tenant_id','site_id','normalized_hostname','status','verified_at']
@@ -157,7 +170,26 @@ BEGIN
   END LOOP;
  END LOOP;
 END $audit$;
-SELECT 'PASS: three internal roles; exact contracted-table and every-column privilege matrix' AS result;
+DO $customer_capability$
+DECLARE role_name text; f record;
+BEGIN
+ FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver',
+  'app_domain_verifier','app_media_service','app_publisher','app_publish_executor',
+  'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor'] LOOP
+  IF pg_has_role(role_name,'app_customer_auth','SET')
+   OR pg_has_role('app_customer_auth',role_name,'SET') THEN
+   RAISE EXCEPTION 'customer/staff/service capability path: %',role_name;
+  END IF;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' LOOP
+  IF has_function_privilege('app_customer_auth',f.oid,'EXECUTE')
+   OR has_function_privilege('app_customer_auth',f.oid,'EXECUTE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'customer auth can execute foreign routine: %',f.proname;
+  END IF;
+ END LOOP;
+END $customer_capability$;
+SELECT 'PASS: four internal roles; exact contracted-table and every-column privilege matrix' AS result;
 
 -- Service capabilities are disjoint; publisher's only authority is two routines.
 DO $services$
@@ -212,7 +244,8 @@ BEGIN
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
-   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due') LOOP
+   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+   'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -231,7 +264,8 @@ BEGIN
  END LOOP;
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
-   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due'))<>10 THEN
+   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+   'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -306,6 +340,40 @@ BEGIN
 END $inventory$;
 SELECT 'PASS: inventory exact owner/manager/runtime table-column-routine capabilities' AS result;
 
+-- Customer trigger routines inherit the caller's authority, never add a capability.
+DO $customer_triggers$
+DECLARE f record; role_name text; owner_role record;
+ names text[]:=ARRAY['buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at'];
+BEGIN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
+  RAISE EXCEPTION 'CUSTOMERS_TRIGGER_FUNCTION_CONTRACT_INCOMPLETE';
+ END IF;
+ FOR f IN SELECT p.oid,p.proname,p.proowner,p.prosecdef,p.proconfig,p.proacl,p.prorettype,p.pronargs,p.prokind
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' AND p.proname=ANY(names) LOOP
+  SELECT * INTO STRICT owner_role FROM pg_roles WHERE oid=f.proowner;
+  IF f.prokind<>'f' OR f.pronargs<>0 OR f.prorettype<>'trigger'::regtype
+   OR f.prosecdef OR NOT(owner_role.rolsuper OR owner_role.rolbypassrls)
+   OR EXISTS(SELECT FROM pg_class WHERE oid IN ('app.tenants'::regclass,
+     'app.customers'::regclass,'app.customer_credentials'::regclass,'app.customer_addresses'::regclass,
+     'app.buyer_companies'::regclass,'app.buyer_roles'::regclass,'app.buyer_company_members'::regclass)
+     AND relowner IS DISTINCT FROM f.proowner)
+   OR cardinality(f.proconfig) IS DISTINCT FROM 1
+   OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner)))
+     WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+   RAISE EXCEPTION 'CUSTOMERS_UNSAFE_TRIGGER_FUNCTION: %',f.proname;
+  END IF;
+  FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+   IF has_function_privilege(role_name,f.oid,'EXECUTE')
+    OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'CUSTOMERS_TRIGGER_EXECUTE_CAPABILITY: % %',role_name,f.proname;
+   END IF;
+  END LOOP;
+ END LOOP;
+END $customer_triggers$;
+SELECT 'PASS: customer trigger exact signature, privileged table owner, SECURITY INVOKER, search_path and no application EXECUTE' AS result;
 
 -- Cart borrows only the existing unreachable executor's tenant-read privilege.
 -- Runtime sees a boolean for its current context, never the tenant roster.

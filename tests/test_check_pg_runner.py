@@ -6,10 +6,48 @@ This is NOT a PostgreSQL execution test. Its fake psql never parses SQL.
 from pathlib import Path
 import json
 import os
+import re
 import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
+# Exercise the actual race helper independently of PostgreSQL. Presence alone
+# cannot prove that a participant finishes or its failed exit reaches the gate.
+race_source = (root / 'scripts/check_pg_races.sh').read_text()
+helper_match = re.search(r'^await_job\(\) \{\n.*?^\}\n', race_source, re.MULTILINE | re.DOTALL)
+assert helper_match, 'Customer independent-tenant race requires await_job helper'
+helper = helper_match.group()
+with tempfile.TemporaryDirectory() as job_tmp:
+    def check_job(body, implementation=helper):
+        result = subprocess.run(['bash', '-c', implementation + body],
+                                cwd=job_tmp, capture_output=True, text=True, timeout=5)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+
+    check_job(r'''
+RACE_PREFIX=offline_; fail=0
+(sleep 0.2; touch completed) & pid=$!
+kill -0 "$pid" || exit 10
+await_job completed "$pid" || exit 11
+[[ -f completed && $fail == 0 ]] || exit 12
+''')
+    check_job(r'''
+RACE_PREFIX=offline_; fail=0
+(sleep 0.1; exit 7) & pid=$!
+kill -0 "$pid" || exit 20
+await_job rejected "$pid"; status=$?
+[[ $status == 7 ]] || exit 21
+''')
+    assert helper.count('SECONDS + 15') == 1, 'await_job must retain bounded production deadline'
+    check_job(r'''
+RACE_PREFIX=offline_; fail=0
+sleep 2 & pid=$!
+trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+kill -0 "$pid" || exit 30
+await_job timeout "$pid"; status=$?
+[[ $status == 1 && $fail == 1 ]] || exit 31
+''', helper.replace('SECONDS + 15', 'SECONDS + 0'))
+print('PASS: actual await_job waits, propagates child failure, and marks bounded timeout')
+
 expected = [
     'db_security_audit.sql',
     'db_smoke.sql',
@@ -27,6 +65,7 @@ expected = [
     'db_pricing.sql',
     'db_shipping.sql',
     'db_tax.sql',
+    'db_customers.sql',
     'db_cart.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
@@ -94,6 +133,10 @@ fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_tax.sql' in failed.stdout
+    env['FAKE_FAIL_ON'] = 'CUSTOMERS_PASSWORD_UPDATED_AT'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_customers.sql' in failed.stdout
     env['FAKE_FAIL_ON'] = 'CART_EXPECTED_REFUSAL'
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)

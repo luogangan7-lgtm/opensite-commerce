@@ -1,5 +1,5 @@
 // Package contract exposes cart intent and consumer-defined persistence ports.
-// It depends on pricing and the standard library; cart service, transport and
+// It depends on pricing, pgx transaction capability and the standard library; cart service, transport and
 // future checkout consume it. Actors are trusted, prices are never persisted,
 // and a strong ETag includes both intent version and current read projections.
 package contract
