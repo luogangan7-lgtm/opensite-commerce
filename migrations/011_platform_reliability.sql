@@ -118,16 +118,42 @@ END $$;
 CREATE TRIGGER inbox_identity BEFORE UPDATE ON app.webhook_inbox
  FOR EACH ROW EXECUTE FUNCTION app.guard_inbox_identity();
 CREATE FUNCTION app.guard_idempotency_identity() RETURNS trigger LANGUAGE plpgsql
-SET search_path=pg_catalog,app,pg_temp AS $$ BEGIN
- IF ROW(NEW.tenant_id,NEW.actor_kind,NEW.actor_id,NEW.operation,NEW.idempotency_key,NEW.request_hash,NEW.claim_token,NEW.created_at,NEW.expires_at)
-  IS DISTINCT FROM ROW(OLD.tenant_id,OLD.actor_kind,OLD.actor_id,OLD.operation,OLD.idempotency_key,OLD.request_hash,OLD.claim_token,OLD.created_at,OLD.expires_at)
- OR (OLD.state='completed' AND NEW IS DISTINCT FROM OLD) THEN
+SET search_path=pg_catalog,app,pg_temp AS $$
+DECLARE reclaim boolean;
+BEGIN
+ -- Takeover of a crashed owner's claim: still in_progress, already expired, same
+ -- request; only the claim token and a fresh expiry may change.
+ reclaim := OLD.state='in_progress' AND NEW.state='in_progress' AND OLD.expires_at<=clock_timestamp()
+   AND NEW.expires_at>clock_timestamp() AND NEW.claim_token IS DISTINCT FROM OLD.claim_token;
+ IF ROW(NEW.tenant_id,NEW.actor_kind,NEW.actor_id,NEW.operation,NEW.idempotency_key,NEW.request_hash,NEW.created_at)
+  IS DISTINCT FROM ROW(OLD.tenant_id,OLD.actor_kind,OLD.actor_id,OLD.operation,OLD.idempotency_key,OLD.request_hash,OLD.created_at)
+ OR (OLD.state='completed' AND NEW IS DISTINCT FROM OLD)
+ OR (ROW(NEW.claim_token,NEW.expires_at) IS DISTINCT FROM ROW(OLD.claim_token,OLD.expires_at) AND NOT reclaim)
+ -- Completion is fenced: the caller proves it holds the CURRENT claim, so a stale
+ -- owner whose claim was taken over cannot write a result.
+ OR (OLD.state='in_progress' AND NEW.state<>'in_progress'
+     AND nullif(current_setting('app.idempotency_claim',true),'') IS DISTINCT FROM OLD.claim_token::text) THEN
   RAISE EXCEPTION 'IDEMPOTENCY_IDENTITY_OR_RESULT_IMMUTABLE' USING ERRCODE='55000';
  END IF;
  RETURN NEW;
 END $$;
 CREATE TRIGGER idempotency_identity BEFORE UPDATE ON app.idempotency_records
  FOR EACH ROW EXECUTE FUNCTION app.guard_idempotency_identity();
+-- One atomic claim: insert, or return the existing row (409 in_progress / 422
+-- different hash / replay completed), taking over only an expired claim of the
+-- same request. Invoker rights: RLS and runtime column grants still apply.
+CREATE FUNCTION app.idempotency_claim(p_tenant uuid,p_actor_kind text,p_actor_id uuid,p_operation text,
+ p_key text,p_hash bytea,p_ttl interval,p_claim uuid) RETURNS app.idempotency_records
+LANGUAGE sql SET search_path=pg_catalog,app,pg_temp AS $$
+ INSERT INTO app.idempotency_records AS r(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token)
+ VALUES(p_tenant,p_actor_kind,p_actor_id,p_operation,p_key,p_hash,clock_timestamp()+p_ttl,p_claim)
+ ON CONFLICT(tenant_id,actor_kind,actor_id,operation,idempotency_key) DO UPDATE SET
+  claim_token=CASE WHEN r.state='in_progress' AND r.expires_at<=clock_timestamp() AND r.request_hash=EXCLUDED.request_hash
+                   THEN EXCLUDED.claim_token ELSE r.claim_token END,
+  expires_at=CASE WHEN r.state='in_progress' AND r.expires_at<=clock_timestamp() AND r.request_hash=EXCLUDED.request_hash
+                  THEN EXCLUDED.expires_at ELSE r.expires_at END
+ RETURNING r.*;
+$$;
 
 CREATE FUNCTION app.claim_outbox(p_tenant uuid,p_worker uuid,p_limit integer,p_lease_seconds integer DEFAULT 60)
 RETURNS SETOF app.outbox_events LANGUAGE plpgsql SECURITY DEFINER
@@ -182,6 +208,9 @@ END $$;
 GRANT CREATE ON SCHEMA app TO app_reliability_executor;
 ALTER FUNCTION app.guard_inbox_identity() OWNER TO app_reliability_executor;
 ALTER FUNCTION app.guard_idempotency_identity() OWNER TO app_reliability_executor;
+ALTER FUNCTION app.idempotency_claim(uuid,text,uuid,text,text,bytea,interval,uuid) OWNER TO app_reliability_executor;
+REVOKE ALL ON FUNCTION app.idempotency_claim(uuid,text,uuid,text,text,bytea,interval,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.idempotency_claim(uuid,text,uuid,text,text,bytea,interval,uuid) TO app_runtime;
 ALTER FUNCTION app.claim_outbox(uuid,uuid,integer,integer) OWNER TO app_reliability_executor;
 ALTER FUNCTION app.complete_outbox(uuid,uuid,uuid,integer) OWNER TO app_reliability_executor;
 ALTER FUNCTION app.fail_outbox(uuid,uuid,uuid,integer,text,integer) OWNER TO app_reliability_executor;

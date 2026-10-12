@@ -34,6 +34,7 @@ END $$;
 INSERT INTO app.tenants(name) VALUES('reliability-A') RETURNING id AS ta \gset
 INSERT INTO app.tenants(name) VALUES('reliability-B') RETURNING id AS tb \gset
 SELECT uuidv7() AS worker, uuidv7() AS other_worker, uuidv7() AS actor, uuidv7() AS token \gset
+SELECT uuidv7() AS token2, uuidv7() AS token3, uuidv7() AS token4 \gset
 SELECT set_config('app.tenant_id', :'ta', true);
 SELECT current_setting('test.reliability_case') IN ('all','inbox') AS do_inbox,
  current_setting('test.reliability_case') IN ('all','outbox') AS do_outbox,
@@ -112,14 +113,40 @@ WITH r AS (INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,ope
  ON CONFLICT(tenant_id,actor_kind,actor_id,operation,idempotency_key) DO UPDATE SET idempotency_key=EXCLUDED.idempotency_key RETURNING *)
 SELECT pg_temp.assert_true((SELECT request_hash<>sha256('POST|/test/{id}|id=2|q=1|{}'::bytea) FROM r),'changed request returns original hash ->422');
 SELECT pg_temp.reject_sql(format('UPDATE app.idempotency_records SET request_hash=sha256(%L::bytea)','changed'),'55000');
+-- Valid claim token, so the CHECK on response shape (not the fence) is what rejects.
+SELECT set_config('app.idempotency_claim',:'token',true);
 SELECT pg_temp.reject_sql('UPDATE app.idempotency_records SET state=''completed''','23514');
-UPDATE app.idempotency_records SET state='completed',response_status=201,response_body_reference='blob:response/one',completed_at=clock_timestamp();
+-- Completion is fenced: only the holder of the current claim token may complete.
+SELECT set_config('app.idempotency_claim',uuidv7()::text,true);
+SELECT pg_temp.reject_sql('UPDATE app.idempotency_records SET state=''completed'',response_status=201,response_body_reference=''blob:x'',completed_at=clock_timestamp() WHERE idempotency_key=''one''','55000');
+SELECT set_config('app.idempotency_claim',:'token',true);
+UPDATE app.idempotency_records SET state='completed',response_status=201,response_body_reference='blob:response/one',completed_at=clock_timestamp() WHERE idempotency_key='one';
 WITH r AS (INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at)
  VALUES(:'ta','service',:'actor','POST /test/{id}','one',sha256('POST|/test/{id}|id=1|q=1|{}'::bytea),now()+interval '1 day')
  ON CONFLICT(tenant_id,actor_kind,actor_id,operation,idempotency_key) DO UPDATE SET idempotency_key=EXCLUDED.idempotency_key RETURNING *)
 SELECT pg_temp.assert_true((SELECT state='completed' AND response_status=201 AND response_body_reference='blob:response/one' FROM r),'completed exact replay');
 SELECT pg_temp.reject_sql('UPDATE app.idempotency_records SET response_status=202','55000');
 SELECT pg_temp.reject_sql('UPDATE app.idempotency_records SET state=''in_progress'',response_status=NULL,response_body_reference=NULL,completed_at=NULL','55000');
+-- Crashed owner: an expired in_progress claim for the SAME request is reacquired
+-- atomically with a fresh token; the stale owner can no longer complete.
+INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token)
+ VALUES(:'ta','service',:'actor','POST /test/{id}','two',sha256('two'::bytea),now()-interval '1 second',:'token2');
+SELECT pg_temp.assert_true((SELECT claim_token=:'token3'::uuid AND state='in_progress' AND expires_at>now()
+ FROM app.idempotency_claim(:'ta','service',:'actor','POST /test/{id}','two',sha256('two'::bytea),interval '1 hour',:'token3')),'expired same-request claim is reacquired');
+SELECT set_config('app.idempotency_claim',:'token2',true);
+SELECT pg_temp.reject_sql('UPDATE app.idempotency_records SET state=''completed'',response_status=201,response_body_reference=''blob:stale'',completed_at=clock_timestamp() WHERE idempotency_key=''two''','55000');
+SELECT set_config('app.idempotency_claim',:'token3',true);
+UPDATE app.idempotency_records SET state='completed',response_status=200,response_body_reference='blob:response/two',completed_at=clock_timestamp() WHERE idempotency_key='two';
+-- Expired claim with a DIFFERENT request is not taken over (caller answers 422).
+INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token)
+ VALUES(:'ta','service',:'actor','POST /test/{id}','three',sha256('three'::bytea),now()-interval '1 second',:'token4');
+SELECT pg_temp.assert_true((SELECT claim_token=:'token4'::uuid AND request_hash=sha256('three'::bytea)
+ FROM app.idempotency_claim(:'ta','service',:'actor','POST /test/{id}','three',sha256('other'::bytea),interval '1 hour',uuidv7())),'expired different-request claim is not reacquired');
+-- A live claim is never stolen; reclaim cannot be faked by a direct UPDATE.
+INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token)
+ VALUES(:'ta','service',:'actor','POST /test/{id}','four',sha256('four'::bytea),now()+interval '1 hour',uuidv7());
+SELECT pg_temp.assert_true((SELECT claim_token<>:'token3'::uuid FROM app.idempotency_claim(:'ta','service',:'actor','POST /test/{id}','four',sha256('four'::bytea),interval '1 hour',:'token3')),'live claim is not stolen');
+SELECT pg_temp.reject_sql(format('UPDATE app.idempotency_records SET claim_token=%L WHERE idempotency_key=''four''',uuidv7()),'55000');
 RESET ROLE;
 SELECT 'PASS: reliability idempotency atomic existing-row/409/422/replay/immutability' AS result;
 \endif

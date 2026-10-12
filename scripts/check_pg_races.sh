@@ -221,5 +221,23 @@ expect idem_b ok; result idem_b "acquired=false|in_progress|$H"
 got=$(sql <<<"SELECT count(*)||'|'||min(state)||'|'||bool_and(claim_token='$IA' AND request_hash=sha256('same-request'::bytea) AND response_status IS NULL AND response_body IS NULL AND response_body_reference IS NULL) FROM app.idempotency_records WHERE tenant_id='$T';")
 echo "race same-key occupancy: $got (expected 1|in_progress|true)"
 [[ $got == '1|in_progress|true' ]] || fail=1
+# Crashed owner: two concurrent reclaimers of the same EXPIRED claim; exactly one
+# takes it over (the other waits on the row lock, then sees a live claim).
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('idempotency-reclaim') RETURNING id;" | tail -1)
+read -r IO IA IB <<<"$(sql <<<"SELECT uuidv7(),uuidv7(),uuidv7();" | tr '|' ' ')"
+sql <<<"INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token) VALUES('$T','service','$WA','reclaim','k',sha256('r'::bytea),clock_timestamp()-interval '1 second','$IO');" >/dev/null
+reclaim_a="SELECT 'owner='||(claim_token='$IA'::uuid) FROM app.idempotency_claim('$T','service','$WA','reclaim','k',sha256('r'::bytea),interval '1 hour','$IA');"
+reclaim_b=${reclaim_a//$IA/$IB}
+gate_close 7
+tx rc_a app_runtime "$T" "$reclaim_a $(park 7)" &
+await rc_a advisory
+tx rc_b app_runtime "$T" "$reclaim_b" &
+await rc_b "${ROWLOCK[@]}"
+gate_open 7; wait
+expect rc_a ok; result rc_a 'owner=true'
+expect rc_b ok; result rc_b 'owner=false'
+got=$(sql <<<"SELECT (claim_token='$IA')||'|'||(expires_at>clock_timestamp()) FROM app.idempotency_records WHERE tenant_id='$T';")
+echo "race expired-claim takeover: $got (expected true|true)"
+[[ $got == 'true|true' ]] || fail=1
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
