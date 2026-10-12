@@ -1,5 +1,7 @@
 ---
 /** Responsibility: single-segment published CMS route; dependency: published page composition. */
 import PublishedPage from '../components/PublishedPage.astro';
+import { preparePublishedPage } from '../lib/published-page';
+const view = await preparePublishedPage(Astro, `/${Astro.params.slug}`);
 ---
-<PublishedPage path={`/${Astro.params.slug}`} />
+<PublishedPage view={view} />

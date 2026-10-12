@@ -7,8 +7,6 @@ import Retry from './Retry';
 import { copy } from '../lib/copy';
 const { status = 404 } = Astro.props as { status?: 404 | 502 };
 const ui = copy();
-Astro.response.status = status;
-Astro.response.headers.set('Cache-Control', 'no-store');
 const title = status === 404 ? ui.notFound : ui.unavailable;
 const description = status === 404 ? ui.notFoundDescription : ui.unavailableDescription;
 ---

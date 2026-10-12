@@ -1,33 +1,16 @@
 ---
-/** Responsibility: published-release SSR page composition and request-scoped API loading.
- * Dependencies: generated public API client, Shell, shared React UI; callers: home/CMS/product routes.
- * Invariants: API origin is server-only configuration, hostname comes from Astro URL, no cross-host cache.
+/** Responsibility: render a prepared published-release view.
+ * Dependencies: typed view, Shell, shared React UI; callers: home/CMS/product routes.
+ * Invariants: no API reads or response writes after the route starts rendering.
  */
-import { readPublishedSite, PublicSiteNotFoundError, type PublishedSite } from '@opensite/api-client';
 import { EmptyState } from '@opensite/ui';
 import Shell from '../layouts/Shell.astro';
 import ErrorPage from './ErrorPage.astro';
 import ProductSummary from './ProductSummary';
-import { copy } from '../lib/copy';
-import { formatAmount, normalizeHostname, readAPIOrigin } from '../lib/presentation';
-const { path } = Astro.props as { path: string };
-let site: PublishedSite | undefined;
-let status: 404 | 502 | undefined;
-try {
-  const origin = readAPIOrigin(process.env.OSC_READ_API_ORIGIN ?? 'http://127.0.0.1:8080');
-  site = await readPublishedSite(origin, normalizeHostname(Astro.url.hostname));
-} catch (error) {
-  status = error instanceof PublicSiteNotFoundError ? 404 : 502;
-}
-Astro.response.headers.set('Cache-Control', 'no-store');
-const ui = copy(site?.locale);
-const isList = path === '/products';
-const productSlug = path.startsWith('/products/') ? path.slice('/products/'.length) : undefined;
-const product = productSlug ? site?.products.find(item => item.slug === productSlug) : undefined;
-const page = site?.pages.find(item => item.path === path);
-if (!status && !isList && !product && !page) status = 404;
-const title = product?.name ?? (isList ? ui.products : page?.title) ?? site?.title ?? ui.storefront;
-const description = product?.description ?? (isList ? site?.description : page?.description) ?? '';
+import { formatAmount } from '../lib/presentation';
+import type { PublishedPageView } from '../lib/published-page';
+interface Props { view: PublishedPageView }
+const { site, status, ui, isList, product, page, title, description } = Astro.props.view;
 ---
 {status ? <ErrorPage status={status} /> : site && <Shell
   title={`${title} | ${site.title}`} description={description}

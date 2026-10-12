@@ -1,5 +1,7 @@
 ---
 /** Responsibility: home SSR route; dependency: published page composition. */
 import PublishedPage from '../components/PublishedPage.astro';
+import { preparePublishedPage } from '../lib/published-page';
+const view = await preparePublishedPage(Astro, '/');
 ---
-<PublishedPage path="/" />
+<PublishedPage view={view} />

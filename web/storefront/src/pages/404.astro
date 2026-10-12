@@ -1,5 +1,7 @@
 ---
 /** Responsibility: native Astro unknown-route response; dependency: error composition. */
 import ErrorPage from '../components/ErrorPage.astro';
+Astro.response.status = 404;
+Astro.response.headers.set('Cache-Control', 'no-store');
 ---
 <ErrorPage status={404} />

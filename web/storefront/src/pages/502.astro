@@ -1,5 +1,7 @@
 ---
 /** Responsibility: backend-unavailable error document; dependency: error composition. */
 import ErrorPage from '../components/ErrorPage.astro';
+Astro.response.status = 502;
+Astro.response.headers.set('Cache-Control', 'no-store');
 ---
 <ErrorPage status={502} />

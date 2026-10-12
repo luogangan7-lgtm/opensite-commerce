@@ -34,18 +34,21 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual((cookie["type"], cookie["in"], cookie["name"]),
                          ("apiKey", "cookie", "__Host-osc_admin_session"))
 
-    def test_planned_identity_and_implemented_health(self):
+    def test_planned_identity_and_implemented_public_reads(self):
         ops = operations(self.api)
         for name in ("createAdminSession", "deleteAdminSession", "getCurrentActor",
                      "listAdminSessions", "revokeAdminSession"):
             with self.subTest(name=name):
                 self.assertIn(name, ops)
                 self.assertEqual(ops[name][2]["x-opensite-status"], "planned")
+        self.assertEqual(ops["getPublishedSite"][:2], ("/api/v1/public/sites/current", "get"))
+        self.assertEqual(ops["getPublishedSite"][2]["x-opensite-access"], "Public")
+        self.assertEqual(ops["getPublishedSite"][2]["security"], [])
         self.assertEqual(ops["health"][:2], ("/healthz", "get"))
         self.assertEqual(set(ops["health"][2]["responses"]), {"204"})
         self.assertNotIn("content", ops["health"][2]["responses"]["204"])
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, {"health"})
+                          if op["x-opensite-status"] == "implemented"}, {"health", "getPublishedSite"})
 
     def test_all_business_paths_include_tenant_and_allow_cookie_or_key(self):
         ops = operations(self.api)
