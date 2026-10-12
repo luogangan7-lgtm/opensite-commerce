@@ -17,4 +17,3 @@ export const CASE_IDS = [
   ...tones.map(tone => `badge-${tone}`), ...tones.map(tone => `status-${tone}`),
   'card-default', 'table-populated', 'table-empty', 'table-loading', 'empty-basic', 'empty-action', 'dialog-closed', 'dialog-open',
 ] as const;
-
