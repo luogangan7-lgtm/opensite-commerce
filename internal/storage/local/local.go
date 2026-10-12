@@ -1,5 +1,7 @@
 // Package local is a content-addressed, free, self-hosted filesystem BlobStore.
 // SQL metadata and access control are deliberately outside this package.
+// Called by cmd/dev-api and storage tests; uses only the standard filesystem APIs.
+// New/Put/Remove acknowledge success only after affected directories are synced.
 // Never expose raw keys in a public URL; use an authorized media service.
 package local
 
@@ -23,9 +25,15 @@ type Blob struct {
 type Store struct {
 	root     string
 	maxBytes int64
+	syncDir  func(string) error
 }
 
 func New(root string, maxBytes int64) (*Store, error) {
+	return newWithSyncDir(root, maxBytes, syncDir)
+}
+
+// newWithSyncDir keeps durability fault injection local to one store.
+func newWithSyncDir(root string, maxBytes int64, syncDir func(string) error) (*Store, error) {
 	if maxBytes < 1 {
 		return nil, errors.New("maxBytes must be positive")
 	}
@@ -57,7 +65,7 @@ func New(root string, maxBytes int64) (*Store, error) {
 			break
 		}
 	}
-	return &Store{root: abs, maxBytes: maxBytes}, nil
+	return &Store{root: abs, maxBytes: maxBytes, syncDir: syncDir}, nil
 }
 
 // Put writes to a private staging file on the same filesystem, then atomically
@@ -110,13 +118,13 @@ func (s *Store) Put(ctx context.Context, src io.Reader) (Blob, error) {
 		return zero, err
 	}
 	// Persist removal of the staging entry so no orphan upload-* survives a crash.
-	if err := syncDir(filepath.Join(s.root, "staging")); err != nil {
+	if err := s.syncDir(filepath.Join(s.root, "staging")); err != nil {
 		return zero, err
 	}
 	// Persist the rename and any hash-prefix directories MkdirAll just created:
 	// leaf (bb/), its parent (aa/) and originals/ itself.
 	for dir := filepath.Dir(dst); ; dir = filepath.Dir(dir) {
-		if err := syncDir(dir); err != nil {
+		if err := s.syncDir(dir); err != nil {
 			return zero, err
 		}
 		if dir == filepath.Join(s.root, "originals") {
@@ -169,13 +177,11 @@ func (s *Store) Remove(key string) error {
 	}
 	path := filepath.Join(s.root, "originals", filepath.FromSlash(key))
 	err := os.Remove(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return syncDir(filepath.Dir(path)) // make the acknowledged delete durable
+	// Retry the directory sync even after an earlier unlink already succeeded.
+	return s.syncDir(filepath.Dir(path)) // make the acknowledged delete durable
 }
 func validKey(key string) bool {
 	if len(key) != 2+1+2+1+64 {

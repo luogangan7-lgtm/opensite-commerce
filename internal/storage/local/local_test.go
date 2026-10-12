@@ -6,7 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -37,6 +41,96 @@ func TestPutOpenAndDedup(t *testing.T) {
 	data, e := io.ReadAll(f)
 	if e != nil || !bytes.Equal(src, data) {
 		t.Fatal("blob altered", e)
+	}
+}
+
+func TestNewSyncsEveryCreatedAncestor(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "a", "b", "c")
+	want := []string{root, filepath.Dir(root), filepath.Join(base, "a"), base}
+	var synced []string
+	_, err := newWithSyncDir(root, 16, func(path string) error {
+		synced = append(synced, path)
+		return syncDir(path)
+	})
+	if err != nil || !reflect.DeepEqual(synced, want) {
+		t.Fatalf("synced=%v err=%v, want %v", synced, err, want)
+	}
+}
+
+func TestNewPropagatesAncestorSyncFailure(t *testing.T) {
+	for depth := 0; depth < 4; depth++ {
+		t.Run(fmt.Sprintf("depth-%d", depth), func(t *testing.T) {
+			base := t.TempDir()
+			root := filepath.Join(base, "a", "b", "c")
+			want := []string{root, filepath.Dir(root), filepath.Join(base, "a"), base}
+			fault := errors.New("ancestor sync failed")
+			var synced []string
+			s, err := newWithSyncDir(root, 16, func(path string) error {
+				synced = append(synced, path)
+				if path == want[depth] {
+					return fault
+				}
+				return syncDir(path)
+			})
+			if s != nil || !errors.Is(err, fault) || !reflect.DeepEqual(synced, want[:depth+1]) {
+				t.Fatalf("store=%v synced=%v err=%v", s, synced, err)
+			}
+		})
+	}
+}
+
+func TestPutSyncsStagingAndHashAncestors(t *testing.T) {
+	s, err := New(t.TempDir(), 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var synced []string
+	s.syncDir = func(path string) error {
+		synced = append(synced, path)
+		return syncDir(path)
+	}
+	blob, err := s.Put(context.Background(), strings.NewReader("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf := filepath.Dir(filepath.Join(s.root, "originals", filepath.FromSlash(blob.Key)))
+	want := []string{filepath.Join(s.root, "staging"), leaf, filepath.Dir(leaf), filepath.Join(s.root, "originals")}
+	if !reflect.DeepEqual(synced, want) {
+		t.Fatalf("synced=%v, want %v", synced, want)
+	}
+}
+
+func TestRemoveRetriesDirectorySyncAfterUnlink(t *testing.T) {
+	s, err := New(t.TempDir(), 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, err := s.Put(context.Background(), strings.NewReader("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(s.root, "originals", filepath.FromSlash(blob.Key))
+	fault := errors.New("delete directory sync failed")
+	calls := 0
+	s.syncDir = func(dir string) error {
+		calls++
+		if dir != filepath.Dir(path) {
+			t.Fatalf("synced %q instead of blob directory", dir)
+		}
+		if calls <= 2 {
+			return fault
+		}
+		return syncDir(dir)
+	}
+	for attempt := 1; attempt <= 3; attempt++ {
+		err := s.Remove(blob.Key)
+		if calls != attempt || (attempt <= 2 && !errors.Is(err, fault)) || (attempt == 3 && err != nil) {
+			t.Fatalf("attempt=%d sync calls=%d err=%v", attempt, calls, err)
+		}
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("blob still exists after unlink: %v", err)
+		}
 	}
 }
 func TestOversize(t *testing.T) {

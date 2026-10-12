@@ -49,7 +49,7 @@ for file in "${files[@]}"; do
   echo "CHECK $version"
   # File names are validated above. The file path is fixed by this repository.
   # psql values use :'var' to ensure SQL-quoted strings (no raw interpolation).
-  "${PSQL[@]}" -v m_version="$version" -v m_checksum="$checksum" -v m_known_versions="$known_versions" <<SQL
+  "${PSQL[@]}" -v m_version="$version" -v m_checksum="$checksum" -v m_known_versions="$known_versions" -v m_include="$INCLUDE_ROOT/$base" <<SQL
 BEGIN;
 SELECT pg_advisory_xact_lock(18004517::bigint);
 CREATE TABLE IF NOT EXISTS public.schema_migrations (
@@ -82,7 +82,7 @@ SELECT EXISTS(SELECT 1 FROM public.schema_migrations WHERE version = :'m_version
   \if :m_newer_installed
     SELECT 'MIGRATION_OUT_OF_ORDER'::integer;
   \endif
-  \i $INCLUDE_ROOT/$base
+  \i :'m_include'
   INSERT INTO public.schema_migrations(version, checksum)
     VALUES (:'m_version', :'m_checksum');
   \echo Applied: $version

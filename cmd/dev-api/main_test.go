@@ -6,6 +6,8 @@ import (
 	"example.com/opensite-commerce/internal/storage/local"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -36,5 +38,38 @@ func TestDiagnosticAPI(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &r)
 	if r.Key == "" || r.SHA256 == "" || r.Bytes != 5 {
 		t.Fatalf("bad blob response: %#v", r)
+	}
+}
+
+func TestDevMediaRootRejectsFilesystemRoot(t *testing.T) {
+	link := filepath.Join(t.TempDir(), "root-link")
+	if err := os.Symlink(string(filepath.Separator), link); err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range []string{"/", "/./", "//", link} {
+		t.Run(root, func(t *testing.T) {
+			if _, err := devMediaRoot(root); err == nil || err.Error() != "refusing to use filesystem root" {
+				t.Fatalf("filesystem root %q: got %v", root, err)
+			}
+		})
+	}
+}
+
+func TestDevMediaRootResolvesExistingAncestor(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "media-link")
+	if err := os.Symlink(base, link); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(base, "new", "media")
+	got, err := devMediaRoot(filepath.Join(link, "new", "media"))
+	if err != nil || got != want {
+		t.Fatalf("root=%q err=%v, want %q", got, err, want)
+	}
+	if _, err := local.New(got, 1024); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -1,5 +1,6 @@
 // dev-api provides ONLY loopback development diagnostics. It is NOT the
 // production authenticated OpenSite API or a substitute for PostgreSQL.
+// It depends on pagegraph/local; configured media roots must resolve away from root.
 package main
 
 import (
@@ -10,7 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
+	"path/filepath"
 	"time"
 
 	"example.com/opensite-commerce/internal/pagegraph"
@@ -64,13 +65,38 @@ func newHandler(store *local.Store) http.Handler {
 	})
 	return mux
 }
-func main() {
-	root := os.Getenv("OPENSITE_DEV_MEDIA_ROOT")
+func devMediaRoot(root string) (string, error) {
 	if root == "" {
 		root = "./.dev-media"
 	}
-	if strings.TrimSpace(root) == "/" {
-		log.Fatal("refusing to use filesystem root")
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	// Resolve the existing prefix without creating the missing default directory.
+	path, tail := abs, ""
+	for {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err == nil {
+			abs = filepath.Join(resolved, tail)
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) || filepath.Dir(path) == path {
+			return "", err
+		}
+		tail = filepath.Join(filepath.Base(path), tail)
+		path = filepath.Dir(path)
+	}
+	if filepath.Dir(abs) == abs {
+		return "", errors.New("refusing to use filesystem root")
+	}
+	return abs, nil
+}
+
+func main() {
+	root, err := devMediaRoot(os.Getenv("OPENSITE_DEV_MEDIA_ROOT"))
+	if err != nil {
+		log.Fatal(err)
 	}
 	store, err := local.New(root, 10<<20)
 	if err != nil {
