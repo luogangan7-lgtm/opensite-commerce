@@ -53,6 +53,18 @@ test('storefront published navigation, product link and keyboard skip', async ({
   await expect(page).toHaveURL(`${origin}/products`);
 });
 
+test('storefront canonical preserves admitted origin for double-slash request paths', async ({ page }) => {
+  for (const path of ['//external.example/path', '///external.example/path']) {
+    const response = await page.goto(`${origin}${path}?ignored=query#fragment`);
+    expect(response?.status()).toBe(404);
+    expect(response?.headers()['cache-control']).toContain('no-store');
+    // Astro normalizes repeated leading slashes before rendering; authority must stay admitted.
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${origin}/external.example/path`);
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Page not found');
+  }
+});
+
 test('storefront missing CMS/product/native routes return accessible 404', async ({ page }) => {
   for (const path of ['/missing', '/products/missing', '/unknown/nested', '/404']) {
     expect((await page.goto(`${origin}${path}`))?.status()).toBe(404);

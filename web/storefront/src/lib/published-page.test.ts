@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { PublishedSite } from '@opensite/api-client';
 import { preparePublishedPage } from './published-page';
-import { readAllowedHosts } from './host-policy';
+import { readAllowedHosts, requestCanonical } from './host-policy';
 
 function requestContext(url: URL, response: { status: number; statusText: string; headers: Headers }, headers: Record<string, string> = {}) {
   return { url, response, request: new Request(url, { headers: { host: url.host, ...headers } }) };
@@ -19,6 +19,24 @@ const site: PublishedSite = {
 };
 
 describe('published page prepares the route response before rendering', () => {
+  test('double-slash pathname cannot replace canonical authority or expose URL credentials', () => {
+    for (const requested of [
+      'https://shop.example.test//external.example/path?token=private#section',
+      'https://mock-user:mock-password@shop.example.test//external.example/path?token=private#section',
+    ]) {
+      const url = new URL(requested);
+      const request = new Request(url.origin, { headers: { host: url.host } });
+      const canonical = requestCanonical({ url, request });
+      expect(canonical).toBe('https://shop.example.test//external.example/path');
+      const parsed = new URL(canonical!);
+      expect(parsed.origin).toBe('https://shop.example.test');
+      expect(parsed.pathname).toBe('//external.example/path');
+      expect(parsed.username).toBe('');
+      expect(parsed.password).toBe('');
+      expect(parsed.search).toBe('');
+      expect(parsed.hash).toBe('');
+    }
+  });
   test('canonical stays with each top-level request origin/path and excludes query/fragment', async () => {
     const upstream = Bun.serve({ port: 0, fetch() { return Response.json(site); } });
     try {

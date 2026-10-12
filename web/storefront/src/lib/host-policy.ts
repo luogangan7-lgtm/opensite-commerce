@@ -18,6 +18,8 @@ export function requestCanonical(context: Pick<AstroGlobal, 'url' | 'request'>):
     const host = new URL(`${context.url.protocol}//${rawHost}`);
     if (host.username || host.password || host.pathname !== '/' || host.search || host.hash ||
         normalizeHostname(host.hostname) !== normalizeHostname(context.url.hostname) || host.port !== context.url.port) return;
-    return new URL(context.url.pathname, context.url.origin).href;
+    const canonical = new URL(context.url.origin);
+    canonical.pathname = context.url.pathname;
+    return canonical.href;
   } catch { return; }
 }
