@@ -20,7 +20,8 @@ DECLARE
   'site_release_media','draft_operations','audit_events'];
  special_tables text[] := ARRAY[
   'tenants','users','auth_sessions','api_keys','tenant_memberships','sites',
-  'site_domains','media_uploads','media_blobs','media_assets','site_releases'];
+  'site_domains','media_uploads','media_blobs','media_assets','site_releases',
+  'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates'];
  role_name text;
  r record;
  t record;
@@ -32,8 +33,8 @@ DECLARE
  expected_column boolean;
 BEGIN
  IF (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-     WHERE n.nspname='app' AND c.relkind IN ('r','p')) <> 40 THEN
-  RAISE EXCEPTION 'role matrix requires exactly the 40 contracted app tables';
+     WHERE n.nspname='app' AND c.relkind IN ('r','p')) <> cardinality(mutable_tables || append_tables || special_tables) THEN
+  RAISE EXCEPTION 'role matrix requires exactly the classified contracted app tables';
  END IF;
  FOREACH role_name IN ARRAY roles LOOP
   SELECT * INTO r FROM pg_roles WHERE rolname=role_name;
@@ -135,7 +136,7 @@ BEGIN
   END LOOP;
  END LOOP;
 END $audit$;
-SELECT 'PASS: three internal roles; exact 40-table and every-column privilege matrix' AS result;
+SELECT 'PASS: three internal roles; exact contracted-table and every-column privilege matrix' AS result;
 
 -- Service capabilities are disjoint; publisher's only authority is two routines.
 DO $services$

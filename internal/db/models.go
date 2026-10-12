@@ -297,6 +297,39 @@ type AppProductVariant struct {
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
+type AppShippingProfile struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+	Name     string      `json:"name"`
+	Currency string      `json:"currency"`
+}
+
+type AppShippingRate struct {
+	TenantID       pgtype.UUID `json:"tenant_id"`
+	ID             pgtype.UUID `json:"id"`
+	ProfileID      pgtype.UUID `json:"profile_id"`
+	ZoneID         pgtype.UUID `json:"zone_id"`
+	Method         string      `json:"method"`
+	Currency       string      `json:"currency"`
+	Amount         int64       `json:"amount"`
+	MinWeightG     pgtype.Int8 `json:"min_weight_g"`
+	MaxWeightG     pgtype.Int8 `json:"max_weight_g"`
+	FreeOverAmount pgtype.Int8 `json:"free_over_amount"`
+}
+
+type AppShippingZone struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+	Name     string      `json:"name"`
+}
+
+type AppShippingZoneDestination struct {
+	TenantID        pgtype.UUID `json:"tenant_id"`
+	ZoneID          pgtype.UUID `json:"zone_id"`
+	CountryCode     string      `json:"country_code"`
+	SubdivisionCode string      `json:"subdivision_code"`
+}
+
 type AppSite struct {
 	TenantID           pgtype.UUID        `json:"tenant_id"`
 	ID                 pgtype.UUID        `json:"id"`

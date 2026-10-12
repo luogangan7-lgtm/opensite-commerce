@@ -12,7 +12,10 @@ sql = config['sql'][0]
 assert sql['engine'] == 'postgresql'
 assert sql['gen']['go']['sql_package'] == 'pgx/v5'
 assert sql['gen']['go']['out'] == 'internal/db'
-assert len(sql['schema']) == 7
+assert len(sql['schema']) >= 7
+expected_schema = {str(p.relative_to(root)) for p in (root/'migrations').glob('*.sql')
+                   if p.name[:4] not in ('008_', '009_', '010_')}
+assert set(sql['schema']) == expected_schema, 'sqlc must cover all business DDL migrations'
 for path in sql['schema']:
     assert (root/path).is_file(), path
 assert all('008_' not in name and '009_' not in name for name in sql['schema'])

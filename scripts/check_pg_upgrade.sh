@@ -106,5 +106,33 @@ SQL
 fi
 admin -c "DROP DATABASE $DB"
 
+# Existing pre-shipping tenant survives the additive Shipping migration(s).
+# Numbers belong to integration order: discover all post-010 files, not 011.
+DB=upgrade_shipping_$$
+fresh_009 "$DB"
+apply_010 "$DB"
+db "$DB" -c "INSERT INTO app.tenants(name) VALUES('shipping-upgrade');" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ number=${f##*/}; number=${number%%_*}
+ if ((10#$number > 10)); then db "$DB" < "$f" >/dev/null; fi
+done
+result=$(db "$DB" <<'SQL'
+SELECT id AS t FROM app.tenants WHERE name='shipping-upgrade' \gset
+INSERT INTO app.shipping_zones(tenant_id,name) VALUES(:'t','legacy tenant') RETURNING id AS z \gset
+INSERT INTO app.shipping_profiles(tenant_id,name,currency) VALUES(:'t','P','USD') RETURNING id AS p \gset
+INSERT INTO app.shipping_zone_destinations VALUES(:'t',:'z','US','');
+INSERT INTO app.shipping_rates(tenant_id,profile_id,zone_id,method,currency,amount,min_weight_g,max_weight_g)
+VALUES(:'t',:'p',:'z','by_weight','USD',0,0,500);
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_runtime;
+SELECT count(*) FROM app.shipping_rates WHERE amount=0;
+COMMIT;
+SQL
+)
+if [[ ${result##*$'\n'} == 1 ]]; then pass "additive shipping migration on pre-existing tenant: runtime reads zero-cost tier"
+else bad "shipping upgrade witness: $result"; fi
+admin -c "DROP DATABASE $DB"
+
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: 010 upgrade gates'
+echo 'PASS: 010 and additive shipping upgrade gates'
