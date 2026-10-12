@@ -47,7 +47,10 @@ queries/<module>/*.sql
 **Decision.** `net/http.ServeMux` (Go 1.22+ patterns) plus an **oapi-codegen strict server**, pinned at v2.8.x after a compatibility POC against the current OAS 3.1 (`oneOf`, nullable, response mapping). If the POC fails, write a new ADR. Never fall back silently to unconstrained handlers.
 
 - Every route carries a mandatory `RouteSpec{OperationID, Method, Pattern, Access, Scope, MaxBodySize}`.
-- `Access ∈ {Public, AdminSession, APIKey, AdminOrAPIKey, InternalService}`; unknown access types are rejected. A private route without a scope fails at startup and in CI.
+- `Access ∈ {Public, AuthenticatedSelf, AdminSession, APIKey, AdminOrAPIKey, InternalService}`; unknown access types are rejected.
+  - Tenant-scoped private routes (those with a `{tenant_id}` path parameter) must declare a scope. A missing scope fails at startup and in CI.
+  - `AuthenticatedSelf` is for the caller's own identity and session: whoami/current actor, logout, session list/revoke. It must have **no** tenant path parameter and **no** scope, and it checks only a valid session plus an active user. Declaring a scope or a tenant parameter on it, or using it for anything else, fails registration.
+  - Registration tests cover both directions.
 - OpenAPI security lists cookie session OR API key as alternatives, not both required. Every authenticated call reaches the same domain command service, so agents and browsers share the same path.
 - **Layering:**
 
@@ -88,7 +91,12 @@ queries/<module>/*.sql
   - a PG-persisted per account+IP failure count and cooldown (new table such as `auth_login_attempts`);
   - an independent, durable **account-wide** counter keyed by the normalized identifier, also covering unknown identifiers, so rotating source IPs does not reset it.
 
-  The account-wide layer applies progressive cooldown and backoff rather than a hard lock, so an attacker cannot lock the real owner out indefinitely.
+  The account-wide layer applies progressive, **bounded** backoff (a capped maximum delay, never a hard lock).
+- **Anti-lockout.** A successful login issues a signed, long-lived known-device cookie, `__Host-osc_known_device`, bound to the user and revocable.
+  - A login attempt that presents a valid known-device cookie for that account is exempt from the account-wide layer, but still subject to the per-IP and account+IP layers.
+  - Those attempts are verified on a separately reserved Argon2 hashing slot, so a flood of attacker guesses cannot starve the owner.
+  - Failures under a known-device cookie count against that cookie, and too many revoke it.
+  - New devices during an attack get only the bounded backoff, so the owner can always log in from a known device, and from a new one after at most the cap.
 - **API keys.** Public key id + 256-bit secret. Look up by id, hash the secret, compare in constant time, then check expired/revoked and that the issuer is still an active member **of the key's tenant**. A key is bound to its owning tenant (`api_keys.tenant_id`): the request must target that tenant (`key.tenant_id == route tenant_id`), or it is rejected before any membership or scope evaluation.
   - Effective scopes = RoleScopes ∩ KeyScopes ∩ ResourcePolicy.
   - The secret is shown once and only rotated, never retrievable. Do not store plaintext to replay a create response.
@@ -114,6 +122,7 @@ queries/<module>/*.sql
   - a key with a narrowed scope, or whose issuer lost membership;
   - a key issued for tenant A used against tenant B, where the issuer is an active member of **both** tenants with overlapping scopes (so a membership-only check cannot pass);
   - distributed guessing against one account from many IPs, which must hit the account-wide cooldown;
+  - while an attacker continuously renews the account-wide backoff, the owner with a known-device cookie still logs in, and a new device succeeds within the backoff cap (never locked indefinitely);
   - the runtime pool reading `password_hash`, or the auth pool writing catalog;
   - brute force (rate limited and audited).
 
@@ -237,11 +246,11 @@ packages/{api-client,ui,design-tokens,component-contracts}
 |---|---|---|---|
 | 03a | module path, pinned toolchain (mostly C-01), `cmd/api` + module skeleton | auth, business logic | clean build; old import path or version drift fails CI |
 | 03b | OpenAPI cookie/bearer security, auth operations, tenant routes; oapi-codegen POC | real sessions | generated code compiles; undeclared field / missing response fails contract test |
-| 03c | RouteSpec, default-deny auth middleware, RFC 9457, body size / strict JSON | business handlers | private route without scope fails startup/CI |
+| 03c | RouteSpec, default-deny auth middleware, `AuthenticatedSelf` class, RFC 9457, body size / strict JSON | business handlers | tenant route without scope fails; `AuthenticatedSelf` route with a scope or tenant param fails |
 | 03d | `modules/registry.yaml`, import graph, SQL ownership reconcile; move the two misfiled queries | microservices | illegal import, cross-module table write, cycle each fail |
 | 03e | affected-CI, operation coverage matrix, summary gate | all E2E pages | missing test, skipped required job, wrong impact each fail |
 | 02a | forward migration: login attempts, key public-id index, credential-writer role, auth tenant-status read; `cmd/bootstrap-admin`; update `deploy/runtime-roles.md` | public signup | real PG18 role checks; wrong-role write and cross-tenant denied |
-| 02b | Argon2id (dummy-hash path for unknown/disabled), identity lookup, session create/logout, errors, login rate limit (IP, account+IP, account-wide) | customer login | bad password, unknown user (same work/timing class), brute force, distributed multi-IP guessing hits account-wide cooldown, expired session, logout without membership |
+| 02b | Argon2id (dummy-hash path for unknown/disabled), identity lookup, session create/logout, errors, login rate limit (IP, account+IP, account-wide) | customer login | bad password, unknown user (same work/timing class), brute force, distributed multi-IP guessing hits account-wide cooldown, owner with known-device cookie logs in during a sustained attack, expired session, logout without membership |
 | 02c | admin cookie, CSRF, Origin, conditional-revoke rotation, revocation | OAuth/OIDC | weak cookie flags, missing CSRF, replayed old token all fail; concurrent rotation yields one successor |
 | 02d | API key issue/verify/revoke, tenant binding (`key.tenant_id == route tenant`), scope intersection, one-time secret | service accounts, dynamic roles | revoked/expired/issuer-lost/over-scope denied; key for A used on B denied even when the issuer is a member of both |
 | 02e | `/admin/t/{tenant}` + tenant API routes, `AuthorizedActor`, `RunAuthorized`, three PG pools | catalog/order commands | real PG18 cross-tenant, revoked membership, connection reuse |
