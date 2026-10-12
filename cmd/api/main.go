@@ -1,7 +1,6 @@
 // API executable is the composition entry point: env, signals and bootstrap.
 // Dependencies: stdlib/bootstrap/quotes application; HTTP lives in the platform.
-// The quote runner and customer/host resolvers are intentionally unconfigured;
-// every quote/contact endpoint denies authentication until trusted wiring exists.
+// Quotes deny by default until trusted staff/customer/host authentication is wired.
 // Invalid registration fails startup; this executable performs no business IO.
 package main
 
@@ -24,7 +23,13 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := bootstrap.Run(ctx, bootstrap.Config{Address: address, Logger: logger, Quotes: quotes.NewApplication(nil)}); err != nil {
+	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger, Quotes: quotes.NewApplication(nil)})
+	if err != nil {
+		logger.Error("API configuration failed", "error", err)
+		os.Exit(1)
+	}
+	defer closeRuntime()
+	if err := bootstrap.Run(ctx, config); err != nil {
 		logger.Error("API stopped", "error", err)
 		os.Exit(1)
 	}

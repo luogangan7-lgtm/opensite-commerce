@@ -5,9 +5,12 @@ package bootstrap_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
@@ -38,6 +41,17 @@ func TestHealthAndNotFound(t *testing.T) {
 				t.Fatal("404 must be a problem")
 			}
 		})
+	}
+}
+
+func TestStartupRejectsInvalidMediaRoot(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := bootstrap.New(bootstrap.Config{Media: media.Config{Root: filepath.Join(file, "media")}})
+	if err == nil || s != nil {
+		t.Fatal("invalid configured media root did not stop server construction")
 	}
 }
 

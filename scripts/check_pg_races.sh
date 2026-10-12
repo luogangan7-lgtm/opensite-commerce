@@ -545,6 +545,25 @@ SQL
  done
 done
 
+# Catalog optimistic locking: a stale transaction waits on the winner's row
+# lock, then rechecks version at READ COMMITTED and must update zero rows.
+# Gate 25 is distinct from prior module synchronization keys.
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('catalog-cas-race') RETURNING id;" | tail -1)
+P=$(sql <<<"INSERT INTO app.products(tenant_id,product_code) VALUES('$T','CAS-RACE') RETURNING id;" | tail -1)
+cas_first="WITH changed AS (UPDATE app.products SET product_code='CAS-FIRST',version=version+1 WHERE tenant_id='$T' AND id='$P' AND version=1 RETURNING id) SELECT 'C07_CAS_FIRST='||count(*) FROM changed;"
+cas_stale="WITH changed AS (UPDATE app.products SET product_code='CAS-STALE',version=version+1 WHERE tenant_id='$T' AND id='$P' AND version=1 RETURNING id) SELECT 'C07_CAS_STALE='||count(*) FROM changed;"
+gate_close 25
+tx catalog_cas_first app_runtime "$T" "$cas_first $(park 25)" &
+await catalog_cas_first advisory
+tx catalog_cas_stale app_runtime "$T" "$cas_stale" &
+await catalog_cas_stale "${ROWLOCK[@]}"
+gate_open 25; wait
+expect catalog_cas_first ok; expect catalog_cas_stale ok
+result catalog_cas_first 'C07_CAS_FIRST=1'; result catalog_cas_stale 'C07_CAS_STALE=0'
+got=$(sql <<<"SELECT version||'|'||product_code FROM app.products WHERE tenant_id='$T' AND id='$P';")
+echo "race catalog stale CAS: $got (expected 2|CAS-FIRST)"
+[[ $got == '2|CAS-FIRST' ]] || fail=1
+
 # Quotes: freeze a pending quote and use the same expected version for both
 # writers. Run both deterministic winners; a rowlock wait precedes gate release.
 for winner in approve withdraw; do
@@ -587,7 +606,7 @@ SQL
  [[ $got == "$expected|4|$approvals|4" ]] || fail=1
 done
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger contract" >&2; exit 1; fi
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/quotes contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
@@ -595,4 +614,5 @@ echo 'PASS: shipping range INSERT/UPDATE races preserve exact non-overlapping ti
 echo 'PASS: tax INSERT/UPDATE exclusion races preserve non-overlapping windows'
 echo 'PASS: customer normalized email registrations commit once per tenant'
 echo 'PASS: ledger identical and conflicting posting races preserve one posted journal/two entries'
+echo 'PASS: catalog stale CAS waits for row lock, rechecks version and leaves winner unchanged'
 echo 'PASS: quote approve/withdraw row-lock CAS races have exactly one winner and atomic outbox/approval'

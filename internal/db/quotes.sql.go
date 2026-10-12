@@ -350,7 +350,7 @@ type SubmitInquiryRow struct {
 }
 
 // Responsibility: quote/inquiry reads and atomic quote commands for quotes store.
-// Dependencies:018 commands,011 receipts,tax015/shipping014; caller:quotes module.
+// Dependencies: forward quote commands, shared receipts and tax/shipping rules; caller:quotes module.
 // Invariants: actor-filtered reads, tenant transaction, shared fenced receipts;
 // JSON rule fields match pure calculators; no customer contact goes in outbox.
 func (q *Queries) SubmitInquiry(ctx context.Context, arg SubmitInquiryParams) (SubmitInquiryRow, error) {

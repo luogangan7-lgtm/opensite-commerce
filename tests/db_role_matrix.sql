@@ -208,11 +208,16 @@ BEGIN
     expected_table := false; allowed := ARRAY[]::text[];
     IF role_name='app_domain_verifier' AND t.relname='site_domains' AND privilege=ANY(ARRAY['SELECT','INSERT','UPDATE'])
     OR role_name='app_media_service' AND t.relname=ANY(ARRAY['media_uploads','media_blobs','media_assets']) AND privilege=ANY(ARRAY['SELECT','INSERT','UPDATE'])
+    OR role_name='app_media_service' AND t.relname='products' AND privilege='SELECT'
+    OR role_name='app_media_service' AND t.relname='product_media' AND privilege=ANY(ARRAY['SELECT','INSERT','DELETE'])
+    OR role_name='app_media_service' AND t.relname='media_assets' AND privilege='DELETE'
     OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['sites','site_releases','site_release_routes','site_release_templates','site_release_media','media_assets','media_blobs']) AND privilege='SELECT'
     OR role_name='app_reliability_executor' AND t.relname='outbox_events' AND privilege='SELECT' THEN
      expected_table := true;
      SELECT array_agg(attname::text) INTO allowed FROM pg_attribute
       WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+    ELSIF role_name='app_media_service' AND t.relname='product_media' AND privilege='UPDATE' THEN
+     allowed := ARRAY['sort_order'];
     ELSIF role_name='app_publish_executor' AND privilege='UPDATE' THEN
      allowed := CASE t.relname WHEN 'sites' THEN ARRAY['published_release_id']
                               WHEN 'site_releases' THEN ARRAY['sealed']
@@ -500,6 +505,6 @@ BEGIN
    END LOOP;
   ELSIF has_function_privilege(r.oid,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'QUOTES_FOREIGN_ROUTINE %',f.proname; END IF;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>6 THEN RAISE EXCEPTION 'QUOTES_ROUTINE_CONTRACT_INCOMPLETE'; END IF;
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN RAISE EXCEPTION 'QUOTES_ROUTINE_CONTRACT_INCOMPLETE'; END IF;
 END $quotes$;
 SELECT 'PASS: quotes exact table/column/function grants, bounded definer authority and FORCE RLS' AS result;

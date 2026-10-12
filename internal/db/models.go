@@ -308,6 +308,7 @@ type AppMediaUpload struct {
 	Status           string             `json:"status"`
 	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	MediaID          pgtype.UUID        `json:"media_id"`
 }
 
 type AppOrganization struct {
@@ -381,6 +382,7 @@ type AppProduct struct {
 	ProductCodeNormalized pgtype.Text        `json:"product_code_normalized"`
 	LifecycleStatus       string             `json:"lifecycle_status"`
 	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	Version               int64              `json:"version"`
 }
 
 type AppProductAttributeValue struct {
@@ -440,13 +442,15 @@ type AppProductOptionValue struct {
 }
 
 type AppProductVariant struct {
-	TenantID      pgtype.UUID        `json:"tenant_id"`
-	ID            pgtype.UUID        `json:"id"`
-	ProductID     pgtype.UUID        `json:"product_id"`
-	Sku           string             `json:"sku"`
-	SkuNormalized pgtype.Text        `json:"sku_normalized"`
-	OptionKey     string             `json:"option_key"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ID              pgtype.UUID        `json:"id"`
+	ProductID       pgtype.UUID        `json:"product_id"`
+	Sku             string             `json:"sku"`
+	SkuNormalized   pgtype.Text        `json:"sku_normalized"`
+	OptionKey       string             `json:"option_key"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Version         int64              `json:"version"`
+	LifecycleStatus string             `json:"lifecycle_status"`
 }
 
 type AppQuote struct {
