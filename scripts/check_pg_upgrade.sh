@@ -126,11 +126,12 @@ SHIPPING_DB=""
 TAX_DB=""
 CUSTOMERS_DB=""
 LEDGER_DB=""
+ORDERS_DB=""
 CATALOG_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -170,9 +171,11 @@ done
 # the module file by suffix, so integration renumbering does not alter this gate.
 DB=upgrade_inventory_$$
 fresh_009 $DB
+inventory_files=(migrations/*_inventory.sql)
+[[ ${#inventory_files[@]} -eq 1 && -f ${inventory_files[0]} ]] || { echo 'FAIL: exactly one inventory migration required'; exit 1; }
 # Every forward migration that precedes inventory (010, 011, ...), in order.
 for f in migrations/0[1-9][0-9]_*.sql; do
-  [[ $f == *_inventory.sql ]] && continue  # the glob already excludes 001-009
+  [[ $f < ${inventory_files[0]} ]] || break
   { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db $DB >/dev/null
 done
 # No inventory tables existed when this tenant and SKU were written.
@@ -182,8 +185,6 @@ INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','existing-product')
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
  VALUES(:'t',:'p','existing-sku','default');
 SQL
-inventory_files=(migrations/*_inventory.sql)
-[[ ${#inventory_files[@]} -eq 1 && -f ${inventory_files[0]} ]] || { echo 'FAIL: exactly one inventory migration required'; exit 1; }
 { echo 'BEGIN;'; cat "${inventory_files[0]}"; echo 'COMMIT;'; } | db $DB >/dev/null
 result=$(db $DB <<'SQL'
 SELECT set_config('app.tenant_id',(SELECT id::text FROM app.tenants WHERE name='inventory-upgrade'),false);
@@ -205,6 +206,10 @@ if [[ $result == *'INVENTORY_UPGRADE=1|0|3|1|1'* ]]; then
   pass 'inventory upgrade preserves existing tenant/catalog and commits with bounded counters +3 movements'
 else bad "inventory upgrade: $result"; fi
 # Full scoped SQL and exact authority matrix also run against the upgraded DB.
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+  [[ $f > ${inventory_files[0]} ]] || continue
+  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db $DB >/dev/null
+done
 db $DB -f tests/db_inventory.sql >/dev/null
 db $DB -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
@@ -655,4 +660,58 @@ else pass 'catalog additive upgrade preserves versions, lifecycle and old upload
 admin -c "DROP DATABASE $CATALOG_DB" >/dev/null; CATALOG_DB=""
 
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger and catalog upgrade gates'
+# C-15a: install orders over all preceding forward migrations and preserve a
+# preexisting tenant/SKU/owned active reservation plus its stock movement history.
+orders_files=(migrations/[0-9][0-9][0-9]_orders.sql)
+[[ ${#orders_files[@]} -eq 1 && -f ${orders_files[0]} ]] || { echo 'FAIL: exactly one orders migration required'; exit 1; }
+ORDERS_DB=upgrade_orders_$$; DB=$ORDERS_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${orders_files[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('orders-upgrade') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','orders-legacy') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+ VALUES(:'t',:'p','orders-legacy','default') RETURNING id AS sku \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_inventory_manager;
+SELECT app.inventory_adjust(:'sku',3,'legacy receipt',uuidv7(),'inbound');
+RESET ROLE;
+SET ROLE app_runtime;
+SELECT uuidv7() AS oid \gset
+SELECT app.inventory_reserve(:'sku',1,'order',:'oid','legacy-orders-reserve',900);
+SQL
+{ echo 'BEGIN;'; cat "${orders_files[0]}"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+result=$(db "$DB" <<'SQL'
+SELECT id AS t FROM app.tenants WHERE name='orders-upgrade' \gset
+SELECT id AS sku FROM app.product_variants WHERE sku='orders-legacy' \gset
+SELECT id AS rid,owner_id AS oid FROM app.inventory_reservations WHERE tenant_id=:'t' \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_runtime;
+SELECT app.orders_create(:'oid','legacy-create',sha256('legacy'::bytea),NULL,
+ '{"email":"legacy@example.invalid"}','USD',20,'{"currency":"USD","amount_minor":20,"service":"fixture"}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','orders-legacy','quantity',1,
+ 'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
+ 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
+SELECT app.orders_transition(:'oid','paid','legacy-pay',0);
+SELECT 'ORDERS_UPGRADE='||o.order_number||'|'||o.state||'|'||o.total_minor||'|'||s.on_hand||'|'||s.reserved||'|'||
+ (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=:'t')||'|'||
+ (SELECT count(*) FROM app.outbox_events WHERE tenant_id=:'t' AND payload->>'order_id'=:'oid')||'|'||
+ has_function_privilege('app_runtime','app.inventory_commit(uuid)','EXECUTE')
+ FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id=:'t';
+SQL
+)
+if [[ $result == *'ORDERS_UPGRADE=1|paid|130|2|0|3|2|false'* ]]; then
+ pass 'orders upgrade preserves legacy reservation/stock and fences runtime terminals'
+else bad "orders upgrade witness: $result"; fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${orders_files[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+db "$DB" -f tests/db_orders.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"; ORDERS_DB=""
+[[ $fail -eq 0 ]] || exit 1
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog and orders upgrade gates'
