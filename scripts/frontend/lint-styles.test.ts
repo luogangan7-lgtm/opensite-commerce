@@ -97,3 +97,8 @@ for (const source of [
 ]) {
   test(`accept case-insensitive CSS/image token ${source}`, () => expect(lintText(source, 'probe.tsx')).toEqual([]));
 }
+test('image-only backgrounds carry no color literal', () => {
+  for (const source of ["a { background-image: url('/logo.svg'); }", "a { background: url(/a.png) no-repeat center; }"])
+    expect(lintText(source, 'probe.css')).toEqual([]);
+  expect(lintText("a { background: url(/a.png) red; }", 'probe.css').length).toBeGreaterThan(0);
+});

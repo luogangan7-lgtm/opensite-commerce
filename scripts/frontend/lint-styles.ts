@@ -58,7 +58,8 @@ function tokenColor(value:string) {
   const isFunction=/^\s*\(/.test(text.slice(match.index+word.length));
   if(!(isFunction?colorFunctions:colorKeywords).has(word)) return false;
  }
- return /\bvar\(/i.test(text)||/^(?:0|inherit|initial|unset|revert|revert-layer|none|transparent|currentColor|auto|invert)$/i.test(value.replace(/\s*!important\s*$/i,'').trim());
+ // url() images carry no color; any color words beside them were already vetted above.
+ return /\bvar\(/i.test(text)||/\burl\(/i.test(value)||/^(?:0|inherit|initial|unset|revert|revert-layer|none|transparent|currentColor|auto|invert)$/i.test(value.replace(/\s*!important\s*$/i,'').trim());
 }
 
 export function lintText(source:string,path:string): string[] {
