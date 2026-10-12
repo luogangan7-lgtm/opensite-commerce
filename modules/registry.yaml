@@ -347,6 +347,9 @@
       "note": "PR16 is merged on main at 9a17e2f. Owns price_lists and price_entries created by migrations/013_money_pricing.sql. Quote code exists at internal/pricing/pricing.go with generated queries at internal/db/pricing.sql.go; no HTTP operations are implemented. go_status describes the planned internal/modules/pricing target path, not the existing source packages.",
       "legacy_go_paths": [
         "internal/pricing"
+      ],
+      "approved_public_ports": [
+        "internal/pricing"
       ]
     },
     {
