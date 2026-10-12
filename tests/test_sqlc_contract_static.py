@@ -30,7 +30,8 @@ for qpath in (root/sql['queries']).glob('*.sql'):
 assert len(query_names) == len(set(name for name,_ in query_names)), 'duplicate SQL query names'
 assert len(query_names) >= 6
 ci = (root/'.github/workflows/checks.yml').read_text()
-assert "go-version: '1.26.x'" in ci, 'pgx requires Go >=1.25'
+gov = re.search(r'^go (\d+\.\d+\.\d+)$', (root/'go.mod').read_text(), re.M).group(1)
+assert f"go-version: '{gov}'" in ci, 'CI go-version must equal go.mod go directive'
 assert './scripts/check_codegen.sh' in ci
 codegen=(root/'scripts/check_codegen.sh').read_text()
 assert 'sqlc generate' in codegen and '-tags pgx' in codegen
