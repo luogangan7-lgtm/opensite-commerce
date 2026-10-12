@@ -83,8 +83,13 @@ queries/<module>/*.sql
   - CSRF: an HMAC token bound to the session, sent as `X-CSRF-Token`, plus an exact Origin check. Pre-login CSRF uses short-lived anonymous material.
   - SameSite+Origin alone is not enough; unsigned double-submit is rejected.
   - API-key bearer calls need no CSRF token but still go through authn, authz and rate limiting.
-- **Login rate limit.** No Redis. Two layers: an in-process per-IP limiter, plus a PG-persisted per account+IP failure count and cooldown, updated atomically (new table such as `auth_login_attempts`).
-- **API keys.** Public key id + 256-bit secret. Look up by id, hash the secret, compare in constant time, then check expired/revoked and that the issuer is still an active member.
+- **Login rate limit.** No Redis. Three layers, all with atomic updates:
+  - an in-process per-IP limiter;
+  - a PG-persisted per account+IP failure count and cooldown (new table such as `auth_login_attempts`);
+  - an independent, durable **account-wide** counter keyed by the normalized identifier, also covering unknown identifiers, so rotating source IPs does not reset it.
+
+  The account-wide layer applies progressive cooldown and backoff rather than a hard lock, so an attacker cannot lock the real owner out indefinitely.
+- **API keys.** Public key id + 256-bit secret. Look up by id, hash the secret, compare in constant time, then check expired/revoked and that the issuer is still an active member **of the key's tenant**. A key is bound to its owning tenant (`api_keys.tenant_id`): the request must target that tenant (`key.tenant_id == route tenant_id`), or it is rejected before any membership or scope evaluation.
   - Effective scopes = RoleScopes ∩ KeyScopes ∩ ResourcePolicy.
   - The secret is shown once and only rotated, never retrievable. Do not store plaintext to replay a create response.
 - **Pools.** Separate DB logins:
@@ -107,6 +112,8 @@ queries/<module>/*.sql
   - a revoked session, a suspended membership or a disabled user (on the next request);
   - a POST with a cookie but no CSRF token, or a cross-origin write;
   - a key with a narrowed scope, or whose issuer lost membership;
+  - a key issued for tenant A used against tenant B, where the issuer is an active member of **both** tenants with overlapping scopes (so a membership-only check cannot pass);
+  - distributed guessing against one account from many IPs, which must hit the account-wide cooldown;
   - the runtime pool reading `password_hash`, or the auth pool writing catalog;
   - brute force (rate limited and audited).
 
@@ -234,9 +241,9 @@ packages/{api-client,ui,design-tokens,component-contracts}
 | 03d | `modules/registry.yaml`, import graph, SQL ownership reconcile; move the two misfiled queries | microservices | illegal import, cross-module table write, cycle each fail |
 | 03e | affected-CI, operation coverage matrix, summary gate | all E2E pages | missing test, skipped required job, wrong impact each fail |
 | 02a | forward migration: login attempts, key public-id index, credential-writer role, auth tenant-status read; `cmd/bootstrap-admin`; update `deploy/runtime-roles.md` | public signup | real PG18 role checks; wrong-role write and cross-tenant denied |
-| 02b | Argon2id (dummy-hash path for unknown/disabled), identity lookup, session create/logout, errors, login rate limit | customer login | bad password, unknown user (same work/timing class), brute force, expired session, logout without membership |
+| 02b | Argon2id (dummy-hash path for unknown/disabled), identity lookup, session create/logout, errors, login rate limit (IP, account+IP, account-wide) | customer login | bad password, unknown user (same work/timing class), brute force, distributed multi-IP guessing hits account-wide cooldown, expired session, logout without membership |
 | 02c | admin cookie, CSRF, Origin, conditional-revoke rotation, revocation | OAuth/OIDC | weak cookie flags, missing CSRF, replayed old token all fail; concurrent rotation yields one successor |
-| 02d | API key issue/verify/revoke, scope intersection, one-time secret | service accounts, dynamic roles | revoked/expired/issuer-lost/cross-tenant/over-scope all denied |
+| 02d | API key issue/verify/revoke, tenant binding (`key.tenant_id == route tenant`), scope intersection, one-time secret | service accounts, dynamic roles | revoked/expired/issuer-lost/over-scope denied; key for A used on B denied even when the issuer is a member of both |
 | 02e | `/admin/t/{tenant}` + tenant API routes, `AuthorizedActor`, `RunAuthorized`, three PG pools | catalog/order commands | real PG18 cross-tenant, revoked membership, connection reuse |
 | 02f | E2E of login, whoami, tenant switch, logout, API key and security scenarios; deploy runbook | full admin UI | all auth paths, fault probes and role checks pass on one SHA |
 
