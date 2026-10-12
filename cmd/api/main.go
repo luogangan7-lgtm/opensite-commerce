@@ -1,6 +1,6 @@
 // API executable is the composition entry point: env, signals and bootstrap.
-// It supplies the database transaction capability to cart through pgxadapter,
-// bootstrap and stdlib. Customer session resolution remains a separate seam.
+// It depends only on stdlib/bootstrap; all HTTP behavior lives in the platform.
+// Invalid registration fails startup; this executable performs no business IO.
 package main
 
 import (
@@ -11,8 +11,6 @@ import (
 	"syscall"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func main() {
@@ -23,16 +21,12 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	config := bootstrap.Config{Address: address, Logger: logger}
-	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
-		pool, err := pgxadapter.NewPool(ctx, dsn, "")
-		if err != nil {
-			logger.Error("Invalid database configuration")
-			os.Exit(1)
-		}
-		defer pool.Close()
-		config.Cart = cart.NewPostgres(pool, nil)
+	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger})
+	if err != nil {
+		logger.Error("API configuration failed", "error", err)
+		os.Exit(1)
 	}
+	defer closeRuntime()
 	if err := bootstrap.Run(ctx, config); err != nil {
 		logger.Error("API stopped", "error", err)
 		os.Exit(1)

@@ -17,13 +17,13 @@ func WriteProblem(w http.ResponseWriter, r *http.Request, err error) {
 	status, code, detail := http.StatusInternalServerError, "internal_error", ""
 	var failure *platformerrors.Error
 	if stderrors.As(err, &failure) && failure != nil {
-		if defaultCode, ok := problemCode(failure.Status); ok {
-			status, code = failure.Status, defaultCode
-			if failure.Status < 500 {
-				detail = failure.Detail
-				if failure.Code != "" {
-					code = failure.Code
-				}
+		if defaultCode, ok := problemCode(failure.Status); ok && (failure.Status < 500 || failure.Status == 503) {
+			status, code, detail = failure.Status, defaultCode, failure.Detail
+			if status >= 500 {
+				detail = ""
+			}
+			if failure.Code != "" {
+				code = failure.Code
 			}
 		}
 	}

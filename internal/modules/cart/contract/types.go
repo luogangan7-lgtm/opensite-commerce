@@ -1,5 +1,5 @@
 // Package contract exposes cart intent and consumer-defined persistence ports.
-// It depends on pricing, pgx transaction capability and the standard library; cart service, transport and
+// It depends on pricing and the standard library; cart service, transport and
 // future checkout consume it. Actors are trusted, prices are never persisted,
 // and a strong ETag includes both intent version and current read projections.
 package contract
@@ -11,16 +11,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
 )
-
-// Beginner is supplied by the application composition root. Business code
-// receives transaction capability rather than constructing a raw database pool.
-type Beginner interface {
-	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
-}
 
 // Service is the public cart application port consumed by the platform HTTP
 // adapter and future checkout. Generated HTTP DTOs never cross this boundary.
@@ -32,6 +24,11 @@ type Service interface {
 }
 
 const MaxQuantity int64 = 1_000_000
+
+// MaxLines bounds the stored cart so its worst-case JSON (~300 bytes per line
+// with every int64 at full width) stays far below the platform's 1 MiB
+// buffered response limit. Enforced in the mutating transaction before commit.
+const MaxLines = 1000
 
 // AuthorizedActor is supplied by a trusted customer resolver or a verified
 // guest capability. Staff identity, customer IDs in JSON and tenant headers

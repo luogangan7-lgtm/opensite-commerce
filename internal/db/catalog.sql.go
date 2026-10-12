@@ -11,10 +11,111 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addVariantOptionValue = `-- name: AddVariantOptionValue :exec
+INSERT INTO app.variant_option_values (tenant_id, product_id, variant_id, option_id, value_id)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type AddVariantOptionValueParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	ProductID pgtype.UUID `json:"product_id"`
+	VariantID pgtype.UUID `json:"variant_id"`
+	OptionID  pgtype.UUID `json:"option_id"`
+	ValueID   pgtype.UUID `json:"value_id"`
+}
+
+func (q *Queries) AddVariantOptionValue(ctx context.Context, arg AddVariantOptionValueParams) error {
+	_, err := q.db.Exec(ctx, addVariantOptionValue,
+		arg.TenantID,
+		arg.ProductID,
+		arg.VariantID,
+		arg.OptionID,
+		arg.ValueID,
+	)
+	return err
+}
+
+const archiveProduct = `-- name: ArchiveProduct :one
+UPDATE app.products SET lifecycle_status = 'archived', version = version + 1
+WHERE tenant_id = $1 AND id = $2 AND version = $3 AND lifecycle_status <> 'archived'
+RETURNING tenant_id, id, product_code, product_code_normalized, lifecycle_status, created_at, version
+`
+
+type ArchiveProductParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+	Version  int64       `json:"version"`
+}
+
+func (q *Queries) ArchiveProduct(ctx context.Context, arg ArchiveProductParams) (AppProduct, error) {
+	row := q.db.QueryRow(ctx, archiveProduct, arg.TenantID, arg.ID, arg.Version)
+	var i AppProduct
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.ProductCode,
+		&i.ProductCodeNormalized,
+		&i.LifecycleStatus,
+		&i.CreatedAt,
+		&i.Version,
+	)
+	return i, err
+}
+
+const archiveVariant = `-- name: ArchiveVariant :one
+UPDATE app.product_variants SET lifecycle_status = 'archived', version = version + 1
+WHERE tenant_id = $1 AND product_id = $2 AND id = $3 AND version = $4 AND lifecycle_status <> 'archived'
+RETURNING tenant_id, id, product_id, sku, sku_normalized, option_key, created_at, version, lifecycle_status
+`
+
+type ArchiveVariantParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	ProductID pgtype.UUID `json:"product_id"`
+	ID        pgtype.UUID `json:"id"`
+	Version   int64       `json:"version"`
+}
+
+func (q *Queries) ArchiveVariant(ctx context.Context, arg ArchiveVariantParams) (AppProductVariant, error) {
+	row := q.db.QueryRow(ctx, archiveVariant,
+		arg.TenantID,
+		arg.ProductID,
+		arg.ID,
+		arg.Version,
+	)
+	var i AppProductVariant
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.ProductID,
+		&i.Sku,
+		&i.SkuNormalized,
+		&i.OptionKey,
+		&i.CreatedAt,
+		&i.Version,
+		&i.LifecycleStatus,
+	)
+	return i, err
+}
+
+const countCatalogProductOptions = `-- name: CountCatalogProductOptions :one
+SELECT count(*) FROM app.product_options WHERE tenant_id = $1 AND product_id = $2
+`
+
+type CountCatalogProductOptionsParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	ProductID pgtype.UUID `json:"product_id"`
+}
+
+func (q *Queries) CountCatalogProductOptions(ctx context.Context, arg CountCatalogProductOptionsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countCatalogProductOptions, arg.TenantID, arg.ProductID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createProduct = `-- name: CreateProduct :one
 INSERT INTO app.products (tenant_id, product_code, lifecycle_status)
-VALUES ($1, $2, 'draft')
-RETURNING id, product_code, lifecycle_status, created_at
+VALUES ($1, $2, 'draft') RETURNING tenant_id, id, product_code, product_code_normalized, lifecycle_status, created_at, version
 `
 
 type CreateProductParams struct {
@@ -22,29 +123,24 @@ type CreateProductParams struct {
 	ProductCode string      `json:"product_code"`
 }
 
-type CreateProductRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	ProductCode     string             `json:"product_code"`
-	LifecycleStatus string             `json:"lifecycle_status"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-}
-
-func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (CreateProductRow, error) {
+func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (AppProduct, error) {
 	row := q.db.QueryRow(ctx, createProduct, arg.TenantID, arg.ProductCode)
-	var i CreateProductRow
+	var i AppProduct
 	err := row.Scan(
+		&i.TenantID,
 		&i.ID,
 		&i.ProductCode,
+		&i.ProductCodeNormalized,
 		&i.LifecycleStatus,
 		&i.CreatedAt,
+		&i.Version,
 	)
 	return i, err
 }
 
 const createVariant = `-- name: CreateVariant :one
 INSERT INTO app.product_variants (tenant_id, product_id, sku, option_key)
-VALUES ($1, $2, $3, $4)
-RETURNING id, product_id, sku, option_key
+VALUES ($1, $2, $3, $4) RETURNING tenant_id, id, product_id, sku, sku_normalized, option_key, created_at, version, lifecycle_status
 `
 
 type CreateVariantParams struct {
@@ -54,34 +150,82 @@ type CreateVariantParams struct {
 	OptionKey string      `json:"option_key"`
 }
 
-type CreateVariantRow struct {
-	ID        pgtype.UUID `json:"id"`
-	ProductID pgtype.UUID `json:"product_id"`
-	Sku       string      `json:"sku"`
-	OptionKey string      `json:"option_key"`
-}
-
-func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (CreateVariantRow, error) {
+func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (AppProductVariant, error) {
 	row := q.db.QueryRow(ctx, createVariant,
 		arg.TenantID,
 		arg.ProductID,
 		arg.Sku,
 		arg.OptionKey,
 	)
-	var i CreateVariantRow
+	var i AppProductVariant
 	err := row.Scan(
+		&i.TenantID,
 		&i.ID,
 		&i.ProductID,
 		&i.Sku,
+		&i.SkuNormalized,
 		&i.OptionKey,
+		&i.CreatedAt,
+		&i.Version,
+		&i.LifecycleStatus,
+	)
+	return i, err
+}
+
+const getCatalogOptionValue = `-- name: GetCatalogOptionValue :one
+SELECT value.option_id, value.id FROM app.product_option_values AS value
+WHERE value.tenant_id = $1 AND value.product_id = $2 AND value.id = $3
+ AND NOT EXISTS (
+  SELECT 1 FROM app.product_option_values AS other
+  WHERE other.tenant_id = value.tenant_id AND other.product_id = value.product_id
+   AND other.id = value.id AND other.option_id <> value.option_id
+ )
+`
+
+type GetCatalogOptionValueParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	ProductID pgtype.UUID `json:"product_id"`
+	ID        pgtype.UUID `json:"id"`
+}
+
+type GetCatalogOptionValueRow struct {
+	OptionID pgtype.UUID `json:"option_id"`
+	ID       pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) GetCatalogOptionValue(ctx context.Context, arg GetCatalogOptionValueParams) (GetCatalogOptionValueRow, error) {
+	row := q.db.QueryRow(ctx, getCatalogOptionValue, arg.TenantID, arg.ProductID, arg.ID)
+	var i GetCatalogOptionValueRow
+	err := row.Scan(&i.OptionID, &i.ID)
+	return i, err
+}
+
+const getCatalogProductForUpdate = `-- name: GetCatalogProductForUpdate :one
+SELECT tenant_id, id, product_code, product_code_normalized, lifecycle_status, created_at, version FROM app.products WHERE tenant_id = $1 AND id = $2 FOR UPDATE
+`
+
+type GetCatalogProductForUpdateParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) GetCatalogProductForUpdate(ctx context.Context, arg GetCatalogProductForUpdateParams) (AppProduct, error) {
+	row := q.db.QueryRow(ctx, getCatalogProductForUpdate, arg.TenantID, arg.ID)
+	var i AppProduct
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.ProductCode,
+		&i.ProductCodeNormalized,
+		&i.LifecycleStatus,
+		&i.CreatedAt,
+		&i.Version,
 	)
 	return i, err
 }
 
 const getProduct = `-- name: GetProduct :one
-SELECT id, product_code, lifecycle_status, created_at
-FROM app.products
-WHERE tenant_id = $1 AND id = $2
+SELECT tenant_id, id, product_code, product_code_normalized, lifecycle_status, created_at, version FROM app.products WHERE tenant_id = $1 AND id = $2
 `
 
 type GetProductParams struct {
@@ -89,21 +233,17 @@ type GetProductParams struct {
 	ID       pgtype.UUID `json:"id"`
 }
 
-type GetProductRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	ProductCode     string             `json:"product_code"`
-	LifecycleStatus string             `json:"lifecycle_status"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-}
-
-func (q *Queries) GetProduct(ctx context.Context, arg GetProductParams) (GetProductRow, error) {
+func (q *Queries) GetProduct(ctx context.Context, arg GetProductParams) (AppProduct, error) {
 	row := q.db.QueryRow(ctx, getProduct, arg.TenantID, arg.ID)
-	var i GetProductRow
+	var i AppProduct
 	err := row.Scan(
+		&i.TenantID,
 		&i.ID,
 		&i.ProductCode,
+		&i.ProductCodeNormalized,
 		&i.LifecycleStatus,
 		&i.CreatedAt,
+		&i.Version,
 	)
 	return i, err
 }
@@ -152,31 +292,90 @@ func (q *Queries) GetProductVariants(ctx context.Context, arg GetProductVariants
 	return items, nil
 }
 
+const getVariant = `-- name: GetVariant :one
+SELECT tenant_id, id, product_id, sku, sku_normalized, option_key, created_at, version, lifecycle_status FROM app.product_variants WHERE tenant_id = $1 AND product_id = $2 AND id = $3
+`
+
+type GetVariantParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	ProductID pgtype.UUID `json:"product_id"`
+	ID        pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) GetVariant(ctx context.Context, arg GetVariantParams) (AppProductVariant, error) {
+	row := q.db.QueryRow(ctx, getVariant, arg.TenantID, arg.ProductID, arg.ID)
+	var i AppProductVariant
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.ProductID,
+		&i.Sku,
+		&i.SkuNormalized,
+		&i.OptionKey,
+		&i.CreatedAt,
+		&i.Version,
+		&i.LifecycleStatus,
+	)
+	return i, err
+}
+
+const listCatalogVariantOptionValues = `-- name: ListCatalogVariantOptionValues :many
+SELECT variant_id, value_id FROM app.variant_option_values
+WHERE tenant_id = $1 AND product_id = $2
+  AND variant_id = ANY($3::uuid[])
+ORDER BY variant_id, option_id
+`
+
+type ListCatalogVariantOptionValuesParams struct {
+	TenantID   pgtype.UUID   `json:"tenant_id"`
+	ProductID  pgtype.UUID   `json:"product_id"`
+	VariantIds []pgtype.UUID `json:"variant_ids"`
+}
+
+type ListCatalogVariantOptionValuesRow struct {
+	VariantID pgtype.UUID `json:"variant_id"`
+	ValueID   pgtype.UUID `json:"value_id"`
+}
+
+func (q *Queries) ListCatalogVariantOptionValues(ctx context.Context, arg ListCatalogVariantOptionValuesParams) ([]ListCatalogVariantOptionValuesRow, error) {
+	rows, err := q.db.Query(ctx, listCatalogVariantOptionValues, arg.TenantID, arg.ProductID, arg.VariantIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCatalogVariantOptionValuesRow
+	for rows.Next() {
+		var i ListCatalogVariantOptionValuesRow
+		if err := rows.Scan(&i.VariantID, &i.ValueID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProducts = `-- name: ListProducts :many
-SELECT id, product_code, lifecycle_status, created_at
-FROM app.products
+SELECT tenant_id, id, product_code, product_code_normalized, lifecycle_status, created_at, version FROM app.products
 WHERE tenant_id = $1
-  AND (created_at, id) < ($2::timestamptz, $3::uuid)
-ORDER BY created_at DESC, id DESC LIMIT $4
+  AND (NOT $2::boolean OR (created_at, id) < ($3::timestamptz, $4::uuid))
+ORDER BY created_at DESC, id DESC LIMIT $5
 `
 
 type ListProductsParams struct {
 	TenantID        pgtype.UUID        `json:"tenant_id"`
+	HasCursor       bool               `json:"has_cursor"`
 	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
 	CursorID        pgtype.UUID        `json:"cursor_id"`
 	PageSize        int32              `json:"page_size"`
 }
 
-type ListProductsRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	ProductCode     string             `json:"product_code"`
-	LifecycleStatus string             `json:"lifecycle_status"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-}
-
-func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]ListProductsRow, error) {
+func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]AppProduct, error) {
 	rows, err := q.db.Query(ctx, listProducts,
 		arg.TenantID,
+		arg.HasCursor,
 		arg.CursorCreatedAt,
 		arg.CursorID,
 		arg.PageSize,
@@ -185,14 +384,17 @@ func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]L
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListProductsRow
+	var items []AppProduct
 	for rows.Next() {
-		var i ListProductsRow
+		var i AppProduct
 		if err := rows.Scan(
+			&i.TenantID,
 			&i.ID,
 			&i.ProductCode,
+			&i.ProductCodeNormalized,
 			&i.LifecycleStatus,
 			&i.CreatedAt,
+			&i.Version,
 		); err != nil {
 			return nil, err
 		}
@@ -202,4 +404,135 @@ func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]L
 		return nil, err
 	}
 	return items, nil
+}
+
+const listVariants = `-- name: ListVariants :many
+SELECT tenant_id, id, product_id, sku, sku_normalized, option_key, created_at, version, lifecycle_status FROM app.product_variants
+WHERE tenant_id = $1 AND product_id = $2
+  AND (NOT $3::boolean OR (created_at, id) > ($4::timestamptz, $5::uuid))
+ORDER BY created_at, id LIMIT $6
+`
+
+type ListVariantsParams struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ProductID       pgtype.UUID        `json:"product_id"`
+	HasCursor       bool               `json:"has_cursor"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        pgtype.UUID        `json:"cursor_id"`
+	PageSize        int32              `json:"page_size"`
+}
+
+func (q *Queries) ListVariants(ctx context.Context, arg ListVariantsParams) ([]AppProductVariant, error) {
+	rows, err := q.db.Query(ctx, listVariants,
+		arg.TenantID,
+		arg.ProductID,
+		arg.HasCursor,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AppProductVariant
+	for rows.Next() {
+		var i AppProductVariant
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.ID,
+			&i.ProductID,
+			&i.Sku,
+			&i.SkuNormalized,
+			&i.OptionKey,
+			&i.CreatedAt,
+			&i.Version,
+			&i.LifecycleStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateProduct = `-- name: UpdateProduct :one
+UPDATE app.products SET product_code = COALESCE($1::text, product_code),
+ lifecycle_status = COALESCE($2::text, lifecycle_status), version = version + 1
+WHERE tenant_id = $3 AND id = $4
+ AND version = $5 AND lifecycle_status <> 'archived'
+RETURNING tenant_id, id, product_code, product_code_normalized, lifecycle_status, created_at, version
+`
+
+type UpdateProductParams struct {
+	ProductCode     pgtype.Text `json:"product_code"`
+	LifecycleStatus pgtype.Text `json:"lifecycle_status"`
+	TenantID        pgtype.UUID `json:"tenant_id"`
+	ID              pgtype.UUID `json:"id"`
+	Version         int64       `json:"version"`
+}
+
+func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (AppProduct, error) {
+	row := q.db.QueryRow(ctx, updateProduct,
+		arg.ProductCode,
+		arg.LifecycleStatus,
+		arg.TenantID,
+		arg.ID,
+		arg.Version,
+	)
+	var i AppProduct
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.ProductCode,
+		&i.ProductCodeNormalized,
+		&i.LifecycleStatus,
+		&i.CreatedAt,
+		&i.Version,
+	)
+	return i, err
+}
+
+const updateVariant = `-- name: UpdateVariant :one
+UPDATE app.product_variants SET sku = COALESCE($1::text, sku),
+ lifecycle_status = COALESCE($2::text, lifecycle_status), version = version + 1
+WHERE tenant_id = $3 AND product_id = $4
+ AND id = $5 AND version = $6 AND lifecycle_status <> 'archived'
+RETURNING tenant_id, id, product_id, sku, sku_normalized, option_key, created_at, version, lifecycle_status
+`
+
+type UpdateVariantParams struct {
+	Sku             pgtype.Text `json:"sku"`
+	LifecycleStatus pgtype.Text `json:"lifecycle_status"`
+	TenantID        pgtype.UUID `json:"tenant_id"`
+	ProductID       pgtype.UUID `json:"product_id"`
+	ID              pgtype.UUID `json:"id"`
+	Version         int64       `json:"version"`
+}
+
+func (q *Queries) UpdateVariant(ctx context.Context, arg UpdateVariantParams) (AppProductVariant, error) {
+	row := q.db.QueryRow(ctx, updateVariant,
+		arg.Sku,
+		arg.LifecycleStatus,
+		arg.TenantID,
+		arg.ProductID,
+		arg.ID,
+		arg.Version,
+	)
+	var i AppProductVariant
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.ProductID,
+		&i.Sku,
+		&i.SkuNormalized,
+		&i.OptionKey,
+		&i.CreatedAt,
+		&i.Version,
+		&i.LifecycleStatus,
+	)
+	return i, err
 }

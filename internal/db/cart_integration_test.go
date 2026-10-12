@@ -1,7 +1,7 @@
 //go:build pgx
 
 // Responsibility: independently accept cart HTTP, actor isolation and live money projections.
-// Dependencies: production cart/bootstrap, pgx and expendable migrated DATABASE_URL.
+// Dependencies: production cart/bootstrap, pgxadapter runners and expendable migrated DATABASE_URL.
 // Caller: pgx acceptance gate; unique fixture tenants are cleaned in FK order.
 // Invariants: supplied DSN never skips; rejected writes roll back; cart never reserves stock.
 package db_test
@@ -18,12 +18,14 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
@@ -33,10 +35,11 @@ import (
 type cartFixture struct {
 	t                                                                               *testing.T
 	ctx                                                                             context.Context
-	pool                                                                            *pgxadapter.Pool
+	db                                                                              pgxadapter.Runner
+	runtime                                                                         *pgxadapter.QueryRunner
+	appName                                                                         string
 	tenant, otherTenant, product, sku, otherSKU, customer, otherCustomer, priceList string
 	actor                                                                           contract.AuthorizedActor
-	module                                                                          *cart.Module
 	guest, registered                                                               http.Handler
 }
 
@@ -48,15 +51,27 @@ func newCartFixture(t *testing.T) *cartFixture {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	t.Cleanup(cancel)
-	pool, err := pgxadapter.NewPool(ctx, dsn, fmt.Sprintf("cart_acceptance_%d", time.Now().UnixNano()))
+	// Fixtures use the maintenance runner; cart gets the production runner on a
+	// distinct application_name so lock probes see only cart transactions.
+	fixtures, closeFixtures, err := pgxadapter.Open(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(pool.Close)
-	if err = pool.Ping(ctx); err != nil {
+	t.Cleanup(closeFixtures)
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal("DATABASE_URL must be a URL")
+	}
+	appName := fmt.Sprintf("cart_acceptance_%d", time.Now().UnixNano())
+	query := parsed.Query()
+	query.Set("application_name", appName)
+	parsed.RawQuery = query.Encode()
+	runtime, err := pgxadapter.OpenQueryRunner(ctx, parsed.String())
+	if err != nil {
 		t.Fatal(err)
 	}
-	f := &cartFixture{t: t, ctx: ctx, pool: pool}
+	t.Cleanup(runtime.Close)
+	f := &cartFixture{t: t, ctx: ctx, db: fixtures, runtime: runtime, appName: appName}
 	f.tenant = f.id("INSERT INTO app.tenants(name) VALUES('cart-acceptance') RETURNING id::text")
 	f.otherTenant = f.id("INSERT INTO app.tenants(name) VALUES('cart-acceptance-foreign') RETURNING id::text")
 	t.Cleanup(func() {
@@ -68,7 +83,10 @@ func newCartFixture(t *testing.T) *cartFixture {
 			if table == "tenants" {
 				column = "id"
 			}
-			if _, err := pool.Exec(cleanCtx, "DELETE FROM app."+table+" WHERE "+column+"=$1::uuid OR "+column+"=$2::uuid", f.tenant, f.otherTenant); err != nil {
+			if err := fixtures.InMaintenance(cleanCtx, func(ctx context.Context, tx pgx.Tx) error {
+				_, err := tx.Exec(ctx, "DELETE FROM app."+table+" WHERE "+column+"=$1::uuid OR "+column+"=$2::uuid", f.tenant, f.otherTenant)
+				return err
+			}); err != nil {
 				t.Errorf("cleanup %s: %v", table, err)
 			}
 		}
@@ -83,7 +101,6 @@ func newCartFixture(t *testing.T) *cartFixture {
 	warehouse := f.id("INSERT INTO app.warehouses(tenant_id) VALUES($1) RETURNING id::text", f.tenant)
 	f.exec("INSERT INTO app.stock_levels(tenant_id,warehouse_id,sku_id,on_hand,reserved) VALUES($1,$2,$3,7,2),($1,$2,$4,7,0)", f.tenant, warehouse, f.sku, f.otherSKU)
 	f.actor = contract.AuthorizedActor{TenantID: f.tenant, CustomerID: f.customer}
-	f.module = cart.NewPostgres(pool, nil)
 	f.guest = f.handler(nil)
 	f.registered = f.handler(func(context.Context, *http.Request) (contract.AuthorizedActor, error) { return f.actor, nil })
 	return f
@@ -91,21 +108,30 @@ func newCartFixture(t *testing.T) *cartFixture {
 
 func (f *cartFixture) exec(sql string, args ...any) {
 	f.t.Helper()
-	if _, err := f.pool.Exec(f.ctx, sql, args...); err != nil {
+	if err := f.db.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, sql, args...)
+		return err
+	}); err != nil {
+		f.t.Fatal(err)
+	}
+}
+func (f *cartFixture) scan(sql string, args []any, dest ...any) {
+	f.t.Helper()
+	if err := f.db.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, sql, args...).Scan(dest...)
+	}); err != nil {
 		f.t.Fatal(err)
 	}
 }
 func (f *cartFixture) id(sql string, args ...any) string {
 	f.t.Helper()
 	var id string
-	if err := f.pool.QueryRow(f.ctx, sql, args...).Scan(&id); err != nil {
-		f.t.Fatal(err)
-	}
+	f.scan(sql, args, &id)
 	return id
 }
 func (f *cartFixture) handler(resolver cart.ActorResolver) http.Handler {
 	f.t.Helper()
-	server, err := bootstrap.New(bootstrap.Config{Cart: cart.NewPostgres(f.pool, resolver), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	server, err := bootstrap.New(bootstrap.Config{Cart: cart.NewPostgres(cart.Config{Run: f.runtime.RunAuthorized, Read: f.runtime.RunAuthorizedSnapshot}, resolver), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -153,9 +179,7 @@ func (f *cartFixture) path(id string) string { return "/api/v1/t/" + f.tenant + 
 func (f *cartFixture) state(id string) (int64, int64) {
 	f.t.Helper()
 	var version, quantity int64
-	if err := f.pool.QueryRow(f.ctx, "SELECT c.version,coalesce((SELECT sum(quantity) FROM app.cart_lines WHERE tenant_id=c.tenant_id AND cart_id=c.id),0)::bigint FROM app.carts c WHERE c.tenant_id=$1 AND c.id=$2", f.tenant, id).Scan(&version, &quantity); err != nil {
-		f.t.Fatal(err)
-	}
+	f.scan("SELECT c.version,coalesce((SELECT sum(quantity) FROM app.cart_lines WHERE tenant_id=c.tenant_id AND cart_id=c.id),0)::bigint FROM app.carts c WHERE c.tenant_id=$1 AND c.id=$2", []any{f.tenant, id}, &version, &quantity)
 	return version, quantity
 }
 
@@ -172,9 +196,7 @@ func TestCartPostgresGuestOwnership(t *testing.T) {
 	hash := sha256.Sum256([]byte(c.CartToken))
 	var stored []byte
 	var owner *string
-	if err = f.pool.QueryRow(f.ctx, "SELECT guest_token_hash,customer_id::text FROM app.carts WHERE tenant_id=$1 AND id=$2", f.tenant, c.Cart.ID).Scan(&stored, &owner); err != nil {
-		t.Fatal(err)
-	}
+	f.scan("SELECT guest_token_hash,customer_id::text FROM app.carts WHERE tenant_id=$1 AND id=$2", []any{f.tenant, c.Cart.ID}, &stored, &owner)
 	if !bytes.Equal(stored, hash[:]) || owner != nil || bytes.Equal(stored, []byte(c.CartToken)) {
 		t.Fatal("guest cart must persist only token SHA256")
 	}
@@ -334,9 +356,7 @@ func TestCartPostgresHTTPIntentAndPricing(t *testing.T) {
 		t.Fatal("DELETE retained line")
 	}
 	var reservations, movements, reserved int64
-	if err := f.pool.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM app.inventory_reservations WHERE tenant_id=$1),(SELECT count(*) FROM app.inventory_movements WHERE tenant_id=$1),(SELECT sum(reserved)::bigint FROM app.stock_levels WHERE tenant_id=$1)", f.tenant).Scan(&reservations, &movements, &reserved); err != nil {
-		t.Fatal(err)
-	}
+	f.scan("SELECT (SELECT count(*) FROM app.inventory_reservations WHERE tenant_id=$1),(SELECT count(*) FROM app.inventory_movements WHERE tenant_id=$1),(SELECT sum(reserved)::bigint FROM app.stock_levels WHERE tenant_id=$1)", []any{f.tenant}, &reservations, &movements, &reserved)
 	if reservations != 0 || movements != 0 || reserved != 2 {
 		t.Fatal("cart intent changed inventory")
 	}
@@ -403,14 +423,26 @@ func TestCartPostgresConcurrentIfMatch(t *testing.T) {
 	f := newCartFixture(t)
 	c, etag := f.create(f.registered)
 	path := f.path(c.Cart.ID) + "/lines/" + f.sku
-	blocker, err := f.pool.Begin(f.ctx)
-	if err != nil {
+	// The blocker holds the cart row lock in its own maintenance transaction
+	// until released; it commits, as the original raw transaction did.
+	locked, release, blocked := make(chan error, 1), make(chan struct{}), make(chan error, 1)
+	go func() {
+		blocked <- f.db.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, "SELECT id FROM app.carts WHERE tenant_id=$1 AND id=$2 FOR UPDATE", f.tenant, c.Cart.ID)
+			locked <- err
+			if err != nil {
+				return err
+			}
+			<-release
+			return nil
+		})
+	}()
+	if err := <-locked; err != nil {
 		t.Fatal(err)
 	}
-	defer blocker.Rollback(context.Background())
-	if _, err = blocker.Exec(f.ctx, "SELECT id FROM app.carts WHERE tenant_id=$1 AND id=$2 FOR UPDATE", f.tenant, c.Cart.ID); err != nil {
-		t.Fatal(err)
-	}
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
 	var wg sync.WaitGroup
 	responses := make(chan *httptest.ResponseRecorder, 2)
 	for _, q := range []int{2, 3} {
@@ -425,8 +457,10 @@ func TestCartPostgresConcurrentIfMatch(t *testing.T) {
 	defer cancel()
 	for {
 		var waiters int
-		if err = f.pool.QueryRow(waitCtx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name=$1 AND wait_event_type='Lock' AND query LIKE '%app.carts%' AND query LIKE '%FOR UPDATE%'", f.pool.Config().ConnConfig.RuntimeParams["application_name"]).Scan(&waiters); err != nil {
-			_ = blocker.Rollback(context.Background())
+		if err := f.db.InMaintenance(waitCtx, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name=$1 AND wait_event_type='Lock' AND query LIKE '%app.carts%' AND query LIKE '%FOR UPDATE%'", f.appName).Scan(&waiters)
+		}); err != nil {
+			unblock()
 			wg.Wait()
 			t.Fatal(err)
 		}
@@ -434,12 +468,13 @@ func TestCartPostgresConcurrentIfMatch(t *testing.T) {
 			break
 		}
 		if waitCtx.Err() != nil {
-			_ = blocker.Rollback(context.Background())
+			unblock()
 			wg.Wait()
 			t.Fatal("both cart mutations did not reach row-lock barrier")
 		}
 	}
-	if err = blocker.Commit(f.ctx); err != nil {
+	unblock()
+	if err := <-blocked; err != nil {
 		t.Fatal(err)
 	}
 	wg.Wait()

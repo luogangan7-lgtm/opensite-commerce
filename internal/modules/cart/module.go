@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/internal/service"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/internal/store"
@@ -30,8 +31,14 @@ func New(repo contract.Repository, resolver ActorResolver) *Module {
 	return &Module{Service: service.New(repo), resolver: resolver}
 }
 
-func NewPostgres(pool contract.Beginner, resolver ActorResolver) *Module {
-	return New(store.New(pool), resolver)
+// Config receives the platform's authorized tenant runners (bootstrap wires
+// pgxadapter.QueryRunner.RunAuthorized / RunAuthorizedSnapshot); never a pool.
+type Config struct {
+	Run, Read func(context.Context, string, func(*db.Queries) error) error
+}
+
+func NewPostgres(config Config, resolver ActorResolver) *Module {
+	return New(store.New(config.Run, config.Read), resolver)
 }
 
 func (m *Module) Authenticate(ctx context.Context, r *http.Request, spec platform.RouteSpec) (context.Context, error) {

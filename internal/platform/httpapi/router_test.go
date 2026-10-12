@@ -163,7 +163,7 @@ func TestDefaultDenyAndPublic(t *testing.T) {
 func TestAuthenticatorReceivesResolvedRoute(t *testing.T) {
 	called := false
 	r := httpapi.New(authFunc(func(c context.Context, r *http.Request, s httpapi.RouteSpec) (context.Context, error) {
-		if s.Scope != "catalog.read" || r.PathValue("tenant_id") != "tenant-a" {
+		if s.Scope != "catalog.read" || r.PathValue("tenant_id") != "11111111-1111-1111-1111-111111111111" {
 			t.Error("auth did not receive resolved route")
 		}
 		called = true
@@ -173,7 +173,7 @@ func TestAuthenticatorReceivesResolvedRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/tenant-a/products", nil))
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/11111111-1111-1111-1111-111111111111/products", nil))
 	if !called || w.Code != 204 {
 		t.Fatal("authentication seam did not run")
 	}
@@ -185,7 +185,7 @@ func TestNilAuthenticationContextDenied(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/a/products", nil))
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/11111111-1111-1111-1111-111111111111/products", nil))
 	assertProblem(t, w, 401)
 }
 
@@ -199,7 +199,7 @@ func TestAuthenticationContextKeepsRequestID(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/a/products", nil))
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/11111111-1111-1111-1111-111111111111/products", nil))
 	assertProblem(t, w, 403)
 	var p struct {
 		RequestID string `json:"request_id"`
