@@ -85,3 +85,16 @@ func TestTrailingJSON(t *testing.T) {
 		t.Fatal("trailing JSON accepted")
 	}
 }
+func TestCompanyParamsMustBeObject(t *testing.T) {
+	for _, params := range []string{`{}`, `"not-an-object"`, `null`, `[]`, ``} {
+		d := sample()
+		n := d.Nodes["root"]
+		n.Slots["main"] = append(n.Slots["main"], "company")
+		d.Nodes["root"] = n
+		d.Nodes["company"] = Node{Component: "company.profile@1", Props: json.RawMessage(`{}`), Binding: &Binding{"company.profile@1", json.RawMessage(params)}, Slots: map[string][]string{}}
+		err := Validate(d)
+		if (params == `{}`) != (err == nil) {
+			t.Fatalf("params %q: err=%v", params, err)
+		}
+	}
+}

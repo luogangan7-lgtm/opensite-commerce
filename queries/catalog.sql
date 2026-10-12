@@ -6,8 +6,9 @@ WHERE tenant_id = $1 AND id = $2;
 -- name: ListProducts :many
 SELECT id, product_code, lifecycle_status, created_at
 FROM app.products
-WHERE tenant_id = $1 AND (created_at, id) < ($2, $3)
-ORDER BY created_at DESC, id DESC LIMIT $4;
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND (created_at, id) < (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_id)::uuid)
+ORDER BY created_at DESC, id DESC LIMIT sqlc.arg(page_size);
 
 -- name: CreateProduct :one
 INSERT INTO app.products (tenant_id, product_code, lifecycle_status)

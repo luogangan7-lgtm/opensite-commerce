@@ -134,15 +134,16 @@ func (q *Queries) GetPublishedSite(ctx context.Context, arg GetPublishedSitePara
 const listProducts = `-- name: ListProducts :many
 SELECT id, product_code, lifecycle_status, created_at
 FROM app.products
-WHERE tenant_id = $1 AND (created_at, id) < ($2, $3)
+WHERE tenant_id = $1
+  AND (created_at, id) < ($2::timestamptz, $3::uuid)
 ORDER BY created_at DESC, id DESC LIMIT $4
 `
 
 type ListProductsParams struct {
-	TenantID    pgtype.UUID        `json:"tenant_id"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	CreatedAt_2 pgtype.Timestamptz `json:"created_at_2"`
-	Limit       int32              `json:"limit"`
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        pgtype.UUID        `json:"cursor_id"`
+	PageSize        int32              `json:"page_size"`
 }
 
 type ListProductsRow struct {
@@ -155,9 +156,9 @@ type ListProductsRow struct {
 func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]ListProductsRow, error) {
 	rows, err := q.db.Query(ctx, listProducts,
 		arg.TenantID,
-		arg.CreatedAt,
-		arg.CreatedAt_2,
-		arg.Limit,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageSize,
 	)
 	if err != nil {
 		return nil, err

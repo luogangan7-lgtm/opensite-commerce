@@ -209,8 +209,15 @@ func validateProps(id string, n Node) error {
 			return fmt.Errorf("node %s: unsupported prop %q", id, key)
 		}
 	}
-	if n.Binding != nil && n.Component == "company.profile@1" && n.Binding.Resolver != "company.profile@1" {
-		return fmt.Errorf("node %s: invalid company resolver", id)
+	if n.Binding != nil && n.Component == "company.profile@1" {
+		if n.Binding.Resolver != "company.profile@1" {
+			return fmt.Errorf("node %s: invalid company resolver", id)
+		}
+		// DataBinding.params is a required object in api/openapi.yaml.
+		var params map[string]json.RawMessage
+		if json.Unmarshal(n.Binding.Params, &params) != nil || params == nil {
+			return fmt.Errorf("node %s: binding params must be an object", id)
+		}
 	}
 	if n.Binding != nil && n.Component != "catalog.product-grid@1" && n.Component != "company.profile@1" {
 		return fmt.Errorf("node %s: binding not allowed", id)
