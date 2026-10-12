@@ -122,17 +122,20 @@ type AppDraftPage struct {
 }
 
 type AppIdempotencyRecord struct {
-	TenantID       pgtype.UUID        `json:"tenant_id"`
-	ActorKind      string             `json:"actor_kind"`
-	ActorID        pgtype.UUID        `json:"actor_id"`
-	Operation      string             `json:"operation"`
-	IdempotencyKey string             `json:"idempotency_key"`
-	RequestHash    []byte             `json:"request_hash"`
-	State          string             `json:"state"`
-	ResponseStatus pgtype.Int4        `json:"response_status"`
-	ResponseBody   []byte             `json:"response_body"`
-	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	TenantID              pgtype.UUID        `json:"tenant_id"`
+	ActorKind             string             `json:"actor_kind"`
+	ActorID               pgtype.UUID        `json:"actor_id"`
+	Operation             string             `json:"operation"`
+	IdempotencyKey        string             `json:"idempotency_key"`
+	RequestHash           []byte             `json:"request_hash"`
+	State                 string             `json:"state"`
+	ResponseStatus        pgtype.Int4        `json:"response_status"`
+	ResponseBody          []byte             `json:"response_body"`
+	ExpiresAt             pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	ClaimToken            pgtype.UUID        `json:"claim_token"`
+	ResponseBodyReference pgtype.Text        `json:"response_body_reference"`
+	CompletedAt           pgtype.Timestamptz `json:"completed_at"`
 }
 
 type AppInquiry struct {
@@ -230,14 +233,20 @@ type AppOrganization struct {
 }
 
 type AppOutboxEvent struct {
-	TenantID      pgtype.UUID        `json:"tenant_id"`
-	ID            pgtype.UUID        `json:"id"`
-	EventType     string             `json:"event_type"`
-	Payload       []byte             `json:"payload"`
-	Attempts      int32              `json:"attempts"`
-	NextAttemptAt pgtype.Timestamptz `json:"next_attempt_at"`
-	Status        string             `json:"status"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	ID             pgtype.UUID        `json:"id"`
+	EventType      string             `json:"event_type"`
+	Payload        []byte             `json:"payload"`
+	Attempts       int32              `json:"attempts"`
+	NextAttemptAt  pgtype.Timestamptz `json:"next_attempt_at"`
+	Status         string             `json:"status"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	DeliveryTarget string             `json:"delivery_target"`
+	DedupKey       string             `json:"dedup_key"`
+	LeaseOwner     pgtype.UUID        `json:"lease_owner"`
+	LeaseUntil     pgtype.Timestamptz `json:"lease_until"`
+	LastError      pgtype.Text        `json:"last_error"`
+	DeliveredAt    pgtype.Timestamptz `json:"delivered_at"`
 }
 
 type AppPage struct {
@@ -381,6 +390,7 @@ type AppSiteRelease struct {
 	ManifestHash    []byte             `json:"manifest_hash"`
 	RestoredFrom    pgtype.UUID        `json:"restored_from"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Sealed          bool               `json:"sealed"`
 }
 
 type AppSiteReleaseMedium struct {
@@ -454,4 +464,20 @@ type AppWarehouse struct {
 	ID        pgtype.UUID        `json:"id"`
 	Name      string             `json:"name"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppWebhookInbox struct {
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	ID                pgtype.UUID        `json:"id"`
+	Provider          string             `json:"provider"`
+	ProviderAccountID string             `json:"provider_account_id"`
+	Environment       string             `json:"environment"`
+	ProviderEventID   string             `json:"provider_event_id"`
+	PayloadHash       []byte             `json:"payload_hash"`
+	PayloadReference  string             `json:"payload_reference"`
+	Status            string             `json:"status"`
+	Attempts          int32              `json:"attempts"`
+	NextAttemptAt     pgtype.Timestamptz `json:"next_attempt_at"`
+	ProcessedAt       pgtype.Timestamptz `json:"processed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }

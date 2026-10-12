@@ -12,8 +12,15 @@ sql = config['sql'][0]
 assert sql['engine'] == 'postgresql'
 assert sql['gen']['go']['sql_package'] == 'pgx/v5'
 assert sql['gen']['go']['out'] == 'internal/db'
+assert len(sql['schema']) >= 9
+for suffix in ('_security_hardening.sql', '_platform_reliability.sql'):
+    matches = list((root/'migrations').glob('[0-9][0-9][0-9]'+suffix))
+    assert len(matches) == 1, suffix
+    assert str(matches[0].relative_to(root)) in sql['schema'], suffix
 # New DDL must participate in real codegen, independent of provisional number.
-assert len(sql['schema']) == 8
+expected_schema = sorted(m.relative_to(root).as_posix() for m in (root/'migrations').glob('[0-9][0-9][0-9]_*.sql')
+                         if not m.name.startswith(('008_', '009_')))
+assert sorted(sql['schema']) == expected_schema, (sql['schema'], expected_schema)
 inventory = list((root/'migrations').glob('*_inventory.sql'))
 assert len(inventory) == 1
 assert inventory[0].relative_to(root).as_posix() in sql['schema']
@@ -35,7 +42,8 @@ for qpath in (root/sql['queries']).glob('*.sql'):
 assert len(query_names) == len(set(name for name,_ in query_names)), 'duplicate SQL query names'
 assert len(query_names) >= 6
 ci = (root/'.github/workflows/checks.yml').read_text()
-assert "go-version: '1.26.x'" in ci, 'pgx requires Go >=1.25'
+gov = re.search(r'^go (\d+\.\d+\.\d+)$', (root/'go.mod').read_text(), re.M).group(1)
+assert f"go-version: '{gov}'" in ci, 'CI go-version must equal go.mod go directive'
 assert './scripts/check_codegen.sh' in ci
 codegen=(root/'scripts/check_codegen.sh').read_text()
 assert 'sqlc generate' in codegen and '-tags pgx' in codegen

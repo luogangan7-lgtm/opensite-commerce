@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"example.com/opensite-commerce/internal/pagegraph"
-	"example.com/opensite-commerce/internal/storage/local"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/pagegraph"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/storage/local"
 )
 
 type reply struct {

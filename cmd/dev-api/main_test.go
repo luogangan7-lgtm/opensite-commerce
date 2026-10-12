@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"example.com/opensite-commerce/internal/storage/local"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/storage/local"
 	"net/http"
 	"net/http/httptest"
 	"os"
