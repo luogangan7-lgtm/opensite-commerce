@@ -23,7 +23,7 @@ func OpenPublic(ctx context.Context, dsn string) (Runner, func(), error) {
    AND EXISTS (SELECT FROM pg_roles p WHERE p.rolname='app_domain_resolver' AND NOT (p.rolcanlogin OR p.rolsuper OR p.rolbypassrls OR p.rolcreatedb OR p.rolcreaterole OR p.rolreplication OR p.rolinherit))
    AND NOT EXISTS (SELECT FROM pg_auth_members m WHERE m.member='app_domain_resolver'::regrole)
    AND NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relname IN ('site_domains','sites','site_releases','site_release_routes','page_revisions') AND NOT (c.relrowsecurity AND c.relforcerowsecurity))
-   AND EXISTS (SELECT FROM pg_auth_members m JOIN pg_roles p ON p.oid=m.roleid WHERE m.member=r.oid AND p.rolname='app_domain_resolver')
+   AND EXISTS (SELECT FROM pg_auth_members m JOIN pg_roles p ON p.oid=m.roleid WHERE m.member=r.oid AND p.rolname='app_domain_resolver' AND m.set_option AND NOT m.admin_option)
    AND NOT EXISTS (SELECT FROM pg_auth_members m JOIN pg_roles p ON p.oid=m.roleid WHERE m.member=r.oid AND p.rolname<>'app_domain_resolver')
    AND NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relowner=r.oid)
    AND NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace

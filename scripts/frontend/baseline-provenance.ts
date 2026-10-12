@@ -14,7 +14,10 @@ export function sha256(path: string) { return createHash('sha256').update(readFi
 export function sourceFingerprint() {
   const inputs = ['package.json', 'bun.lock', 'tsconfig.json', 'playwright.config.ts', 'scripts/check_frontend.sh',
     ...['packages', 'web/admin', 'web/storefront', 'scripts/frontend', 'tests/frontend'].flatMap(filesAt),
-    'tests/fixtures/storefront_seed.sql', 'scripts/start_storefront_api_e2e.sh', 'scripts/seed_storefront.sh', 'scripts/start_storefront_ssr.sh'
+    'tests/fixtures/storefront_seed.sql', 'scripts/start_storefront_api_e2e.sh', 'scripts/seed_storefront.sh', 'scripts/start_storefront_ssr.sh',
+    ...filesAt('internal/modules/publish'), 'internal/tenanttx/pgxadapter/public.go',
+    'internal/platform/httpapi/storefront.go', 'cmd/api/storefront_pgx.go', 'api/openapi.yaml',
+    ...filesAt('migrations').filter(path => path.endsWith('_storefront_read.sql'))
   ].filter(path => !path.endsWith('.md') && !path.endsWith('provenance.json')).sort();
   return createHash('sha256').update(inputs.map(path => `${path}\0${sha256(path)}\n`).join('')).digest('hex');
 }

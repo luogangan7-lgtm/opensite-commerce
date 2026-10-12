@@ -5,9 +5,66 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
+	"strings"
 	"testing"
 )
+
+func TestProjectionResponseBudget(t *testing.T) {
+	products := make([]contract.Product, 100)
+	for i := range products {
+		products[i] = contract.Product{ID: fmt.Sprintf("p%d", i), Slug: fmt.Sprintf("p%d", i), Name: "Product", Description: strings.Repeat("x", 9000), UnitAmount: "100", Currency: "USD"}
+	}
+	rawManifest, err := json.Marshal(manifest{Version: 1, Locale: "en", Title: "Shop", Navigation: []contract.Navigation{}, Products: products})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name        string
+		pageCount   int
+		unavailable bool
+	}{
+		{"combined response exceeds transport budget", 5, true},
+		{"large response below transport budget remains available", 3, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pages := make([]contract.Page, tc.pageCount)
+			for i := range pages {
+				pages[i] = contract.Page{Path: fmt.Sprintf("/page%d", i), Title: "Page", Blocks: []contract.Block{}}
+				for j := 0; j < 4; j++ {
+					pages[i].Blocks = append(pages[i].Blocks, contract.Block{Kind: "paragraph", Text: strings.Repeat("x", 9000)})
+				}
+			}
+			rawPages, err := json.Marshal(pages)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rawManifest) >= 1<<20 || len(rawPages) >= 1<<20 {
+				t.Fatal("fixture must pass both input budgets")
+			}
+			t.Logf("manifest=%d pages=%d", len(rawManifest), len(rawPages))
+			got, err := Project("s", "r", "shop.example", "en", rawManifest, rawPages)
+			if tc.unavailable {
+				if !errors.Is(err, contract.ErrUnavailable) {
+					t.Fatalf("oversized combined public snapshot accepted: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := json.Marshal(got)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("serialized response plus newline=%d", len(response)+1)
+			if len(response)+1 > 1<<20 || len(response) < 900000 {
+				t.Fatal("large valid snapshot must fit the transport budget")
+			}
+		})
+	}
+}
 
 func TestCMSRouteOwnership(t *testing.T) {
 	for _, tc := range []struct {

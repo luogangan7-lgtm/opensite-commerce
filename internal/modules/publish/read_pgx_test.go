@@ -123,6 +123,24 @@ func TestPublicPublishedReadPG(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	for _, option := range []string{"SET FALSE", "ADMIN TRUE"} {
+		if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, "GRANT app_domain_resolver TO "+quoted+" WITH "+option)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, close, err := pgxadapter.OpenPublic(ctx, publicDSN); err == nil {
+			close()
+			t.Errorf("unsafe resolver membership option accepted: %s", option)
+		}
+		if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, "GRANT app_domain_resolver TO "+quoted+" WITH SET TRUE, ADMIN FALSE")
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, "GRANT app_runtime TO "+quoted)
 		return err

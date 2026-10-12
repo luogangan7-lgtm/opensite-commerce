@@ -1,6 +1,6 @@
 // Package service validates and projects the public version-1 release snapshot.
 // Dependencies: publish contract + stdlib; callers: publish facade.
-// Invariants: no private/unknown keys or raw HTML; bounded collections and local links.
+// Invariants: no private/unknown keys or raw HTML; local links and a bounded response.
 package service
 
 import (
@@ -81,5 +81,11 @@ func Project(siteID, releaseID, host, locale string, rawManifest, rawPages []byt
 			return fail()
 		}
 	}
-	return contract.Site{SiteID: siteID, ReleaseID: releaseID, Hostname: host, Locale: m.Locale, Title: m.Title, Description: m.Description, Navigation: m.Navigation, Pages: pages, Products: m.Products}, nil
+	site := contract.Site{SiteID: siteID, ReleaseID: releaseID, Hostname: host, Locale: m.Locale, Title: m.Title, Description: m.Description, Navigation: m.Navigation, Pages: pages, Products: m.Products}
+	// The HTTP buffer limits the complete JSON response, including Encoder's newline.
+	response, err := json.Marshal(site)
+	if err != nil || len(response)+1 > 1<<20 {
+		return fail()
+	}
+	return site, nil
 }

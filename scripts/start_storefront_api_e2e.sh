@@ -36,7 +36,7 @@ BEGIN
    OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication
    OR shobj_description(r.oid,'pg_authid') IS DISTINCT FROM 'C-09a disposable storefront E2E login'
    OR (SELECT count(*) FROM pg_auth_members WHERE member=r.oid)<>1
-   OR NOT EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid AND roleid='app_domain_resolver'::regrole AND NOT admin_option)
+   OR NOT EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid AND roleid='app_domain_resolver'::regrole AND set_option AND NOT admin_option)
    OR EXISTS(SELECT FROM pg_class c, LATERAL aclexplode(c.relacl) a WHERE a.grantee=r.oid)
    OR EXISTS(SELECT FROM pg_namespace n, LATERAL aclexplode(n.nspacl) a WHERE a.grantee=r.oid)
    OR EXISTS(SELECT FROM pg_proc p, LATERAL aclexplode(p.proacl) a WHERE a.grantee=r.oid) THEN
