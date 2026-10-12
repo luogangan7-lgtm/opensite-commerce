@@ -327,7 +327,7 @@ PostgreSQL 支持事务末尾执行的延迟 Constraint Trigger；但上述只�
 
 ### 010+ 迁移影响
 
-`020_single_currency_ledger.sql`
+`020_ledger.sql`
 
 必须包含账户、Journal、Entry、币种复合外键、不可变约束和延迟平衡触发器。
 
@@ -598,7 +598,7 @@ ROLLBACK;
 
 预期：第 1 步看到 ≥1 行；第 2 步设置为空串/NULL、零行，且不抛 UUID 转换错误。
 
-**回归要求（注错红 → 绿）**：把第 1 步改成 `set_config(..., false)`（会话级、跨事务保留）时，第 2 步必须失败；恢复为 `true` 后通过。
+**回归要求（注错红 → 绿）**：把第 1 步改成 `set_config(..., false)`（会话级、跨事务保留）时，第 2 步必须失败；恢复为 `true` 后通过。红、绿两轮之间必须先执行 `RESET app.tenant_id`，或者换一个新连接，否则红轮留下的会话级设置会让绿轮继续失败。
 
 Payments 表实现后，再执行两类真实数据库断言：
 
