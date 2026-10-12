@@ -121,6 +121,23 @@ class GovernanceTests(unittest.TestCase):
     def test_vendor_private_symlink_linkname_red(self):
         self.vendor_private_bridge("internal/modules/b/internal/store", alias=True)
 
+    def test_reversed_walk_keeps_owned_directory_alias_diagnostic(self):
+        # Retain the real Go witness and the existing strict security marker.
+        self.vendor_private_bridge("internal/modules/b/internal/store", alias=True)
+        real_walk = checker.os.walk
+
+        def reversed_walk(*args, **kwargs):
+            for directory, dirs, files in real_walk(*args, **kwargs):
+                # Filesystem order varies across macOS/Linux. Yield the same
+                # mutable lists so the checker can control recursive ordering.
+                dirs.sort(reverse=True)
+                files.sort(reverse=True)
+                yield directory, dirs, files
+
+        with mock.patch.object(checker.os, "walk", reversed_walk):
+            with self.assertRaisesRegex(checker.GovernanceError, "MODULE_SOURCE_DIRECTORY_ALIAS"):
+                checker.check_go(self.registry, self.root.resolve())
+
     def test_vendor_foreign_directory_private_alias_red(self):
         self.vendor_private_bridge("internal/modules/b/internal/store", vendor_alias="directory")
 

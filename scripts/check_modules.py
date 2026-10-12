@@ -310,6 +310,9 @@ def check_go(registry, root):
     prefix = manifest["Module"]["Path"] + "/"
     go_tokens = re.compile(r'''//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*' ''', re.S | re.X)
     for directory, dirs, files in os.walk(root):
+        # Stable traversal gives the same first rejection on every filesystem.
+        dirs.sort()
+        files.sort()
         directory = Path(directory)
         if directory == root:
             # Sibling managed checkouts and Git metadata are not this checkout.
