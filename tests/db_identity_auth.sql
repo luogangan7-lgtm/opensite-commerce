@@ -28,6 +28,10 @@ BEGIN
 END $retention_probe$;
 -- INT22_RETENTION_PROBE_END
 -- INT22_TENANT_PROBE_BEGIN: successful bootstrap restores caller transaction GUC.
+-- Privileged disposable-DB test only: isolate the success branch from upgrade
+-- owners, then immediately restore every existing owner and the caller GUC.
+SAVEPOINT int22_tenant_probe;
+DELETE FROM app.tenant_memberships WHERE role='owner';
 DO $tenant_probe$
 DECLARE before text; created uuid; value text;
 BEGIN
@@ -45,6 +49,8 @@ BEGIN
   DELETE FROM app.users WHERE email LIKE 'int22-%@example.test';
  END LOOP;
 END $tenant_probe$;
+ROLLBACK TO SAVEPOINT int22_tenant_probe;
+RELEASE SAVEPOINT int22_tenant_probe;
 -- INT22_TENANT_PROBE_END
 
 INSERT INTO app.users(email,password_hash) VALUES('c02a-device@example.test','fixture-only') RETURNING id AS u \gset
