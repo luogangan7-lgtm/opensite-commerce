@@ -2,7 +2,7 @@
 
 Tax owns `tax_zones`, normalized `tax_zone_locations`, `tax_categories`,
 `tax_rates` and `tax_settings`. It depends on tenant identity only. The pure
-`internal/tax` package depends on the standard library and receives one tenant's
+`internal/tax` package depends on the standard library and `internal/money`, and receives one tenant's
 already scoped rules and an explicit time. Callers must load `prices_include_tax`
 explicitly; a missing settings row is not permission to assume a tax policy.
 Settings use the natural singleton `tenant_id` primary key; entities and
@@ -24,8 +24,8 @@ Countries use a pinned 249-code assigned alpha-2 snapshot. Subdivisions validate
 country prefix and uppercase alphanumeric syntax, **not** membership in an
 ISO 3166-2 subdivision registry. See [ISO's country-code definition](https://www.iso.org/iso-3166-country-codes.html).
 Registry updates require a reviewed forward migration and corresponding Go/pin
-updates. Tax currently holds its own small registry because Shipping is not a
-dependency on this base; integration can coordinate future registry updates.
+updates. Tax and Shipping retain separate pinned registries; neither module depends on the
+other. A country-registry update must coordinate their forward SQL and Go changes.
 
 ## Rounding decision: per-line half-up
 
@@ -40,15 +40,16 @@ these already rounded lines; they never recompute tax on the aggregate.
 For example, two separate 1-unit net lines at 50% each incur 1 unit of tax,
 so invoice tax is 2. Rounding the 2-unit aggregate would produce 1. We accept this
 line-versus-aggregate difference so each invoice line is independently auditable.
-Intermediate rational arithmetic uses standard-library `math/big`; representable
-results are accepted even when the intermediate numerator exceeds `int64`.
-Quantity multiplication, final line values and totals return overflow errors.
-The main branch at the implementation base has no `internal/money`, so Tax
-uses `int64`. A later Money integration can adapt the boundary without changing
-the calculation or rounding policy.
+Each line supplies an explicit three-uppercase-letter currency. The calculator
+rejects invalid or mixed currencies and returns that currency in the result and
+rate snapshots. Its boundary amounts remain `int64` minor units; multiplication,
+scaling, subtraction and sums use shared `internal/money` operations. Money.Scale
+implements half-up with wide intermediates, so representable results remain valid
+even when the intermediate numerator exceeds `int64`. Final line values and
+totals return the shared Money overflow sentinel.
 
 Each returned line includes its net/tax/gross amounts and a JSON-serializable
-snapshot: zone, category, rate ID, basis points, validity bounds, inclusion mode,
+snapshot: currency, zone, category, rate ID, basis points, validity bounds, inclusion mode,
 rounding policy and selection reason. Snapshots copy time bounds and do not alias
 mutable input rules. Orders must persist these results, and Billing must consume
 them rather than recalculate from subsequently edited rates. Persistence,

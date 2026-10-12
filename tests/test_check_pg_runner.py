@@ -22,6 +22,9 @@ expected = [
     'db_publish_isolation.sql',
     'db_sealed_media.sql',
     'db_reliability.sql',
+    'db_inventory.sql',
+    'db_pricing.sql',
+    'db_shipping.sql',
     'db_tax.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
@@ -64,10 +67,12 @@ fi
     assert failed.returncode != 0, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_release_integrity.sql' not in failed.stdout
 
-    # The newly registered Tax file is actually read; its failure must propagate.
-    env['FAKE_FAIL_ON'] = 'TAX_FOREIGN_READ'
-    failed_tax = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
-    assert failed_tax.returncode == 31, (failed_tax.stdout, failed_tax.stderr)
-    assert 'RUN tests/db_tax.sql' in failed_tax.stdout
-
+    env['FAKE_FAIL_ON'] = 'SHIPPING_OVERLAP_ACCEPTED'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_shipping.sql' in failed.stdout
+    env['FAKE_FAIL_ON'] = 'TAX_EXPECTED_REFUSAL'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_tax.sql' in failed.stdout
 print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, propagates failures (mock psql; NO SQL executed)')

@@ -1,0 +1,14 @@
+{
+  "name": "@opensite/design-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/tokens.ts",
+    "./css": "./src/tokens.css"
+  },
+  "scripts": {
+    "generate": "bun generate.ts",
+    "check": "bun generate.ts --check"
+  }
+}

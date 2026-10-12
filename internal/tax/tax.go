@@ -1,5 +1,6 @@
 // Package tax owns pure destination/rate selection and line tax calculation.
-// Dependencies: Go standard library only; no tables, IO, clocks, or mutable runtime state.
+// Dependencies: internal/money for checked arithmetic; stdlib for rule selection.
+// Owns no tables, IO, clocks, or mutable runtime state.
 // Callers: future Orders/Billing supply one currency, explicit time and rules.
 // Invariants: nonnegative int64 minor units, line half-up, net+tax=gross;
 // returned snapshots do not alias rules, and missing rules never imply zero tax.
@@ -8,11 +9,11 @@ package tax
 import (
 	"errors"
 	"fmt"
-	"math"
-	"math/big"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 )
 
 var (
@@ -22,7 +23,7 @@ var (
 	ErrCategoryNotFound = errors.New("tax: category not found")
 	ErrRateNotFound     = errors.New("tax: active rate not found")
 	ErrAmbiguousRate    = errors.New("tax: multiple active rates")
-	ErrOverflow         = errors.New("tax: amount overflow")
+	ErrOverflow         = money.ErrOverflow
 )
 
 type Destination struct {
@@ -53,7 +54,9 @@ type Ruleset struct {
 
 // UnitAmount is the caller's net price, or gross price when includeTax is true.
 // Quantity multiplication precedes rounding; each resulting line rounds once.
+// Currency uses the Money contract: three uppercase ASCII letters.
 type LineItem struct {
+	Currency   string `json:"currency"`
 	ID         string `json:"id"`
 	Category   string `json:"category"`
 	UnitAmount int64  `json:"unit_amount"`
@@ -63,6 +66,7 @@ type LineItem struct {
 // Snapshot is the serializable decision record. Exempt categories have no rate
 // or validity window; a nil ValidUntil for a selected rate means unbounded.
 type Snapshot struct {
+	Currency    string     `json:"currency"`
 	ZoneID      string     `json:"zone_id"`
 	RateID      string     `json:"rate_id"`
 	Category    string     `json:"category"`
@@ -84,19 +88,27 @@ type LineResult struct {
 	Snapshot Snapshot `json:"snapshot"`
 }
 type Result struct {
-	Lines  []LineResult `json:"lines"`
-	Totals Amounts      `json:"totals"`
+	Currency string       `json:"currency"`
+	Lines    []LineResult `json:"lines"`
+	Totals   Amounts      `json:"totals"`
 }
 
 // Calculate validates the complete supplied ruleset and selects an exact
 // subdivision before its country wildcard. It never falls back between zones
 // for a rate. Active [ValidFrom, ValidUntil) rates must be unique for each line.
-// Currency, tenant isolation and loading consistent rules are caller concerns.
+// Currency is required and identical across lines; no conversion is implicit.
+// Tenant isolation and loading consistent rules are caller concerns.
 func Calculate(destination Destination, items []LineItem, includeTax bool, at time.Time, rules Ruleset) (Result, error) {
 	if !validDestination(destination) || len(items) == 0 || at.IsZero() {
 		return Result{}, ErrInvalidInput
 	}
 	for i, item := range items {
+		if err := (money.Money{Amount: item.UnitAmount, Currency: item.Currency}).Validate(); err != nil {
+			return Result{}, fmt.Errorf("line %d: %w: %w", i, ErrInvalidInput, err)
+		}
+		if item.Currency != items[0].Currency {
+			return Result{}, fmt.Errorf("line %d: %w: %w", i, ErrInvalidInput, money.ErrCurrencyMismatch)
+		}
 		if item.UnitAmount < 0 || item.Quantity <= 0 || !validCategoryCode(item.Category) {
 			return Result{}, fmt.Errorf("line %d: %w", i, ErrInvalidInput)
 		}
@@ -124,7 +136,7 @@ func Calculate(destination Destination, items []LineItem, includeTax bool, at ti
 	if zoneID == "" {
 		return Result{}, ErrZoneNotFound
 	}
-	result := Result{Lines: make([]LineResult, 0, len(items))}
+	result := Result{Currency: items[0].Currency, Lines: make([]LineResult, 0, len(items))}
 	for i, item := range items {
 		var category Category
 		found := false
@@ -137,7 +149,7 @@ func Calculate(destination Destination, items []LineItem, includeTax bool, at ti
 		if !found {
 			return Result{}, fmt.Errorf("line %d: %w", i, ErrCategoryNotFound)
 		}
-		snapshot := Snapshot{ZoneID: zoneID, Category: category.Code, IncludeTax: includeTax, Rounding: "half_up", Reason: "rate"}
+		snapshot := Snapshot{Currency: item.Currency, ZoneID: zoneID, Category: category.Code, IncludeTax: includeTax, Rounding: "half_up", Reason: "rate"}
 		if category.IsExempt {
 			snapshot.Reason = "exempt"
 		} else {
@@ -163,45 +175,43 @@ func Calculate(destination Destination, items []LineItem, includeTax bool, at ti
 				return Result{}, fmt.Errorf("line %d: %w", i, ErrRateNotFound)
 			}
 		}
-		if item.UnitAmount > math.MaxInt64/item.Quantity {
-			return Result{}, fmt.Errorf("line %d: %w", i, ErrOverflow)
+		base, err := (money.Money{Amount: item.UnitAmount, Currency: item.Currency}).Mul(item.Quantity)
+		if err != nil {
+			return Result{}, fmt.Errorf("line %d: %w", i, err)
 		}
-		base := item.UnitAmount * item.Quantity
 		denominator := int64(10000)
 		if includeTax {
 			denominator += snapshot.BasisPoints
 		}
-		taxAmount := halfUp(base, snapshot.BasisPoints, denominator)
-		amounts := Amounts{Net: base, Tax: taxAmount}
+		taxAmount, err := base.Scale(snapshot.BasisPoints, denominator)
+		if err != nil {
+			return Result{}, fmt.Errorf("line %d: %w", i, err)
+		}
+		net, gross := base, base
 		if includeTax {
-			amounts.Net, amounts.Gross = base-taxAmount, base
+			net, err = base.Sub(taxAmount)
 		} else {
-			if base > math.MaxInt64-taxAmount {
-				return Result{}, fmt.Errorf("line %d: %w", i, ErrOverflow)
+			gross, err = base.Add(taxAmount)
+		}
+		if err != nil {
+			return Result{}, fmt.Errorf("line %d: %w", i, err)
+		}
+		amounts := Amounts{Net: net.Amount, Tax: taxAmount.Amount, Gross: gross.Amount}
+		for _, pair := range []struct {
+			total *int64
+			line  money.Money
+		}{
+			{&result.Totals.Net, net}, {&result.Totals.Tax, taxAmount}, {&result.Totals.Gross, gross},
+		} {
+			total, err := (money.Money{Amount: *pair.total, Currency: result.Currency}).Add(pair.line)
+			if err != nil {
+				return Result{}, err
 			}
-			amounts.Gross = base + taxAmount
+			*pair.total = total.Amount
 		}
-		if result.Totals.Net > math.MaxInt64-amounts.Net || result.Totals.Tax > math.MaxInt64-amounts.Tax || result.Totals.Gross > math.MaxInt64-amounts.Gross {
-			return Result{}, ErrOverflow
-		}
-		result.Totals.Net += amounts.Net
-		result.Totals.Tax += amounts.Tax
-		result.Totals.Gross += amounts.Gross
 		result.Lines = append(result.Lines, LineResult{ID: item.ID, Amounts: amounts, Snapshot: snapshot})
 	}
 	return result, nil
-}
-
-// big.Int prevents a wide product from rejecting a representable final amount.
-// Nonnegative base and bp <= 10000 bound the quotient by base (thus int64).
-func halfUp(base, bp, denominator int64) int64 {
-	numerator := new(big.Int).Mul(big.NewInt(base), big.NewInt(bp))
-	quotient, remainder := new(big.Int), new(big.Int)
-	quotient.QuoRem(numerator, big.NewInt(denominator), remainder)
-	if remainder.Int64()*2 >= denominator {
-		quotient.Add(quotient, big.NewInt(1))
-	}
-	return quotient.Int64()
 }
 
 // ponytail: linear scans keep the supplied small ruleset explicit; add indexes

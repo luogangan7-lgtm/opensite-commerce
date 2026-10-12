@@ -20,8 +20,10 @@ DECLARE
   'site_release_media','draft_operations','audit_events'];
  special_tables text[] := ARRAY[
   'tenants','users','auth_sessions','api_keys','tenant_memberships','sites',
-  'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
-  'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox'];
+  'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
+  'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
+  'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
+  'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings'];
  role_name text;
  r record;
  t record;
@@ -33,8 +35,8 @@ DECLARE
  expected_column boolean;
 BEGIN
  IF (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-     WHERE n.nspname='app' AND c.relkind IN ('r','p')) <> 46 THEN
-  RAISE EXCEPTION 'role matrix requires exactly the 46 contracted app tables';
+     WHERE n.nspname='app' AND c.relkind IN ('r','p')) <> cardinality(mutable_tables || append_tables || special_tables) THEN
+  RAISE EXCEPTION 'role matrix requires exactly the classified app tables';
  END IF;
  FOREACH role_name IN ARRAY roles LOOP
   SELECT * INTO r FROM pg_roles WHERE rolname=role_name;
@@ -149,7 +151,7 @@ BEGIN
   END LOOP;
  END LOOP;
 END $audit$;
-SELECT 'PASS: three internal roles; exact 46-table and every-column privilege matrix' AS result;
+SELECT 'PASS: three internal roles; exact contracted-table and every-column privilege matrix' AS result;
 
 -- Service capabilities are disjoint; publisher's only authority is two routines.
 DO $services$
@@ -202,7 +204,9 @@ BEGIN
   END LOOP;
  END LOOP;
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
-  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' LOOP
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
+  AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
+   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -219,8 +223,79 @@ BEGIN
    RAISE EXCEPTION 'unsafe function capability: %',f.proname;
   END IF;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app')<>10 THEN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
+  AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
+   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
 SELECT 'PASS: isolated service matrix and SECURITY DEFINER owner/search_path/EXECUTE' AS result;
+
+-- Inventory owns quantity mutation; runtime is read+commands, manager alone adjusts.
+DO $inventory$
+DECLARE role_name text; r record; t record; a record; privilege text; f record;
+ expected boolean; allowed_tables text[]:=ARRAY['warehouses','stock_levels','inventory_reservations','inventory_movements'];
+ public_commands text[]:=ARRAY['inventory_reserve','inventory_release','inventory_commit','inventory_expire_due'];
+ names text[]:=ARRAY['inventory_context','inventory_immutable_movement','inventory_adjust',
+  'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due'];
+BEGIN
+ FOREACH role_name IN ARRAY ARRAY['app_inventory_manager','app_inventory_executor'] LOOP
+  SELECT * INTO STRICT r FROM pg_roles WHERE rolname=role_name;
+  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole
+   OR r.rolreplication OR r.rolinherit OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid)
+   OR (role_name='app_inventory_executor' AND EXISTS(SELECT FROM pg_auth_members WHERE roleid=r.oid))
+   OR pg_has_role('app_runtime',r.oid,'SET') OR has_schema_privilege(role_name,'app','CREATE')
+   OR NOT has_schema_privilege(role_name,'app','USAGE')
+   OR has_schema_privilege(role_name,'app','USAGE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'unsafe inventory authority: %',role_name;
+  END IF;
+  FOR t IN SELECT c.oid,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
+   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+    expected := privilege='SELECT' AND (t.relname=ANY(allowed_tables) OR (role_name='app_inventory_executor' AND t.relname='tenants'))
+     OR role_name='app_inventory_executor' AND privilege='INSERT' AND t.relname=ANY(allowed_tables)
+     OR role_name='app_inventory_executor' AND privilege='UPDATE' AND t.relname=ANY(ARRAY['stock_levels','inventory_reservations']);
+    IF has_table_privilege(role_name,t.oid,privilege) IS DISTINCT FROM expected
+     OR has_table_privilege(role_name,t.oid,privilege||' WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'inventory table privilege mismatch: % app.% %',role_name,t.relname,privilege;
+    END IF;
+    IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
+     FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+      IF has_column_privilege(role_name,t.oid,a.attnum,privilege) IS DISTINCT FROM expected
+       OR has_column_privilege(role_name,t.oid,a.attnum,privilege||' WITH GRANT OPTION') THEN
+       RAISE EXCEPTION 'inventory column privilege mismatch: % app.%.% %',role_name,t.relname,a.attname,privilege;
+      END IF;
+     END LOOP;
+    END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl FROM pg_proc p
+  JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names) LOOP
+  IF NOT f.prosecdef OR f.proowner<>'app_inventory_executor'::regrole
+   OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+   RAISE EXCEPTION 'unsafe inventory function definition: %',f.proname;
+  END IF;
+  FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier',
+   'app_media_service','app_publisher','app_publish_executor','app_inventory_manager'] LOOP
+   expected := role_name='app_runtime' AND f.proname=ANY(public_commands)
+    OR role_name='app_inventory_manager' AND f.proname='inventory_adjust';
+   IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
+    OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'inventory routine authority mismatch: % %',role_name,f.proname;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' AND NOT p.proname=ANY(names) LOOP
+  IF has_function_privilege('app_inventory_manager',f.oid,'EXECUTE')
+   OR has_function_privilege('app_inventory_executor',f.oid,'EXECUTE') THEN
+   RAISE EXCEPTION 'inventory role has foreign routine capability: %',f.proname;
+  END IF;
+ END LOOP;
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>8 THEN
+  RAISE EXCEPTION 'inventory function contract incomplete';
+ END IF;
+END $inventory$;
+SELECT 'PASS: inventory exact owner/manager/runtime table-column-routine capabilities' AS result;

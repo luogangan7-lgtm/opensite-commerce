@@ -151,6 +151,41 @@ type AppInquiry struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+type AppInventoryMovement struct {
+	TenantID      pgtype.UUID        `json:"tenant_id"`
+	ID            pgtype.UUID        `json:"id"`
+	WarehouseID   pgtype.UUID        `json:"warehouse_id"`
+	SkuID         pgtype.UUID        `json:"sku_id"`
+	ReservationID pgtype.UUID        `json:"reservation_id"`
+	OwnerType     string             `json:"owner_type"`
+	OwnerID       pgtype.UUID        `json:"owner_id"`
+	Kind          string             `json:"kind"`
+	Quantity      int64              `json:"quantity"`
+	OnHandDelta   int64              `json:"on_hand_delta"`
+	ReservedDelta int64              `json:"reserved_delta"`
+	OnHandAfter   int64              `json:"on_hand_after"`
+	ReservedAfter int64              `json:"reserved_after"`
+	Reason        string             `json:"reason"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppInventoryReservation struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	ID             pgtype.UUID        `json:"id"`
+	WarehouseID    pgtype.UUID        `json:"warehouse_id"`
+	SkuID          pgtype.UUID        `json:"sku_id"`
+	Quantity       int64              `json:"quantity"`
+	OwnerType      string             `json:"owner_type"`
+	OwnerID        pgtype.UUID        `json:"owner_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	RequestHash    []byte             `json:"request_hash"`
+	TtlSeconds     int32              `json:"ttl_seconds"`
+	State          string             `json:"state"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
+}
+
 type AppMediaAsset struct {
 	TenantID   pgtype.UUID        `json:"tenant_id"`
 	ID         pgtype.UUID        `json:"id"`
@@ -231,6 +266,28 @@ type AppPageRevision struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type AppPriceEntry struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	ID          pgtype.UUID `json:"id"`
+	PriceListID pgtype.UUID `json:"price_list_id"`
+	SkuID       pgtype.UUID `json:"sku_id"`
+	MinQuantity int64       `json:"min_quantity"`
+	UnitAmount  int64       `json:"unit_amount"`
+}
+
+type AppPriceList struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ID              pgtype.UUID        `json:"id"`
+	Currency        string             `json:"currency"`
+	Status          string             `json:"status"`
+	StartsAt        pgtype.Timestamptz `json:"starts_at"`
+	EndsAt          pgtype.Timestamptz `json:"ends_at"`
+	Priority        int32              `json:"priority"`
+	Audience        string             `json:"audience"`
+	CustomerGroupID pgtype.UUID        `json:"customer_group_id"`
+	BuyerCompanyID  pgtype.UUID        `json:"buyer_company_id"`
+}
+
 type AppProduct struct {
 	TenantID              pgtype.UUID        `json:"tenant_id"`
 	ID                    pgtype.UUID        `json:"id"`
@@ -304,6 +361,39 @@ type AppProductVariant struct {
 	SkuNormalized pgtype.Text        `json:"sku_normalized"`
 	OptionKey     string             `json:"option_key"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppShippingProfile struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+	Name     string      `json:"name"`
+	Currency string      `json:"currency"`
+}
+
+type AppShippingRate struct {
+	TenantID       pgtype.UUID `json:"tenant_id"`
+	ID             pgtype.UUID `json:"id"`
+	ProfileID      pgtype.UUID `json:"profile_id"`
+	ZoneID         pgtype.UUID `json:"zone_id"`
+	Method         string      `json:"method"`
+	Currency       string      `json:"currency"`
+	Amount         int64       `json:"amount"`
+	MinWeightG     pgtype.Int8 `json:"min_weight_g"`
+	MaxWeightG     pgtype.Int8 `json:"max_weight_g"`
+	FreeOverAmount pgtype.Int8 `json:"free_over_amount"`
+}
+
+type AppShippingZone struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+	Name     string      `json:"name"`
+}
+
+type AppShippingZoneDestination struct {
+	TenantID        pgtype.UUID `json:"tenant_id"`
+	ZoneID          pgtype.UUID `json:"zone_id"`
+	CountryCode     string      `json:"country_code"`
+	SubdivisionCode string      `json:"subdivision_code"`
 }
 
 type AppSite struct {
@@ -384,6 +474,14 @@ type AppSiteReleaseTemplate struct {
 	Document     []byte      `json:"document"`
 }
 
+type AppStockLevel struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	WarehouseID pgtype.UUID `json:"warehouse_id"`
+	SkuID       pgtype.UUID `json:"sku_id"`
+	OnHand      int64       `json:"on_hand"`
+	Reserved    int64       `json:"reserved"`
+}
+
 type AppTaxCategory struct {
 	TenantID pgtype.UUID `json:"tenant_id"`
 	Code     string      `json:"code"`
@@ -449,6 +547,13 @@ type AppVariantOptionValue struct {
 	VariantID pgtype.UUID `json:"variant_id"`
 	OptionID  pgtype.UUID `json:"option_id"`
 	ValueID   pgtype.UUID `json:"value_id"`
+}
+
+type AppWarehouse struct {
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type AppWebhookInbox struct {

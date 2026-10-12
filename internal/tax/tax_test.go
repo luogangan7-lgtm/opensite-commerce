@@ -1,5 +1,6 @@
 // Contract tests for pure tax: independent examples, integer oracle, config
-// rejection, and snapshot isolation. Dependencies: stdlib; caller: go test.
+// rejection, and snapshot isolation. Dependencies: stdlib, tax and Money public
+// contracts; caller: go test.
 package tax_test
 
 import (
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tax"
 )
 
@@ -31,7 +33,7 @@ func rules(bp int64) tax.Ruleset {
 	}
 }
 func item(amount, qty int64) []tax.LineItem {
-	return []tax.LineItem{{ID: "line", Category: "standard", UnitAmount: amount, Quantity: qty}}
+	return []tax.LineItem{{ID: "line", Category: "standard", Currency: "USD", UnitAmount: amount, Quantity: qty}}
 }
 func check(t *testing.T, got tax.Result, err error, want tax.Amounts) {
 	t.Helper()
@@ -424,5 +426,101 @@ func TestSnapshotJSONPreservesOffsetInstants(t *testing.T) {
 	s := decoded.Lines[0].Snapshot
 	if !s.ValidFrom.Equal(start) || !s.ValidUntil.Equal(end) {
 		t.Fatalf("JSON changed rate instants: from=%v until=%v", s.ValidFrom, s.ValidUntil)
+	}
+}
+
+func TestCurrencyContract(t *testing.T) {
+	for _, currency := range []string{"USD", "CNY"} {
+		for _, inclusive := range []bool{false, true} {
+			for _, category := range []string{"standard", "exempt"} {
+				lines := item(3, 1)
+				lines[0].Currency = currency
+				lines[0].Category = category
+				got, err := tax.Calculate(dest, lines, inclusive, start, rules(2000))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.Currency != currency || got.Lines[0].Snapshot.Currency != currency {
+					t.Fatalf("currency lost: %+v", got)
+				}
+				for _, value := range []any{lines[0], got, got.Lines[0].Snapshot} {
+					data, err := json.Marshal(value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var fields map[string]json.RawMessage
+					if err := json.Unmarshal(data, &fields); err != nil {
+						t.Fatal(err)
+					}
+					if string(fields["currency"]) != fmt.Sprintf("%q", currency) {
+						t.Fatalf("currency JSON missing: %s", data)
+					}
+				}
+				data, err := json.Marshal(got)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var restored tax.Result
+				if err := json.Unmarshal(data, &restored); err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(got, restored) {
+					t.Fatalf("currency roundtrip differs: %+v", restored)
+				}
+			}
+		}
+	}
+}
+
+func TestCurrencyRejection(t *testing.T) {
+	for _, tc := range []struct {
+		name, currency string
+		mixed          bool
+		want           error
+	}{
+		{"blank", "", false, money.ErrInvalidCurrency},
+		{"lowercase", "usd", false, money.ErrInvalidCurrency},
+		{"length", "US", false, money.ErrInvalidCurrency},
+		{"nonascii", "U$D", false, money.ErrInvalidCurrency},
+		{"mixed", "CNY", true, money.ErrCurrencyMismatch},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lines := item(1, 1)
+			if tc.mixed {
+				lines = append(lines, item(1, 1)...)
+			}
+			lines[len(lines)-1].Currency = tc.currency
+			got, err := tax.Calculate(dest, lines, false, start, rules(5000))
+			if !errors.Is(err, tax.ErrInvalidInput) || !errors.Is(err, tc.want) {
+				t.Fatalf("err=%v expected invalid input and %v", err, tc.want)
+			}
+			if !reflect.DeepEqual(got, tax.Result{}) {
+				t.Fatalf("partial result: %+v", got)
+			}
+		})
+	}
+}
+
+func TestSharedOverflowAndZeroResult(t *testing.T) {
+	if tax.ErrOverflow != money.ErrOverflow {
+		t.Fatal("tax overflow must share Money sentinel")
+	}
+	for _, tc := range []struct {
+		lines     []tax.LineItem
+		inclusive bool
+		bp        int64
+	}{
+		{item(math.MaxInt64, 2), false, 0},
+		{item(math.MaxInt64, 1), false, 1},
+		{append(item(math.MaxInt64, 1), item(1, 1)...), true, 0},
+		{append(item(math.MaxInt64/2, 1), item(1, 1)...), false, 10000},
+	} {
+		got, err := tax.Calculate(dest, tc.lines, tc.inclusive, start, rules(tc.bp))
+		if !errors.Is(err, money.ErrOverflow) || !errors.Is(err, tax.ErrOverflow) {
+			t.Fatalf("err=%v", err)
+		}
+		if !reflect.DeepEqual(got, tax.Result{}) {
+			t.Fatalf("partial result: %+v", got)
+		}
 	}
 }
