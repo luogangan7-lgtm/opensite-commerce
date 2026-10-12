@@ -36,7 +36,7 @@ UUID columns have shape checks but no referential authority yet. Their owner
 modules must add `(tenant_id, target_id)` foreign keys in a forward migration
 before those targets are exposed. A fabricated target ID grants no authentication.
 
-Migration numbers are temporary until integration (§9 P1-a). Frozen 001–010 stay
+Migration numbers are temporary until integration (§9 P1-a). Merged 001–011 stay
 unchanged; tests find pricing by table/module name, not the temporary number.
 Gates cover exact money/overflow/conservation, tie/window/audience/tier decisions,
 duplicate-tier/FK/check/RLS rejection, actual SQL reads and advisory-synchronized

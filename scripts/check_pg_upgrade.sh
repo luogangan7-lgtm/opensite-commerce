@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Upgrade gates for frozen hardening and forward pricing DDL; real PG18 only.
+# Upgrade gates for security hardening and forward reliability; real PG18 only.
 # Depends on: a superuser DATABASE_URL (or Docker compose) able to CREATE DATABASE.
 # Called by: CI after check_pg.sh. Each case runs in its own throwaway database.
 # Invariants: 010 refuses to seal a live release with unsafe media; every pre-010
 # release ends up sealed (history is immutable); releases created after 010 are not.
-# Forward pricing preserves existing catalog SKU identities and exact zero amounts.
+# Reliability preserves compatible pending data and refuses ambiguous old results.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -107,6 +107,52 @@ SQL
 fi
 admin -c "DROP DATABASE $DB"
 
+# Reliability proposals are located by logical suffix, independent of numbering.
+# Test compatible pending data and fail-closed legacy states without rewriting 007.
+shopt -s nullglob
+reliability=(migrations/[0-9][0-9][0-9]_platform_reliability.sql)
+[[ ${#reliability[@]} == 1 ]] || { echo 'FAIL: exactly one reliability migration required' >&2; exit 1; }
+fresh_before_reliability() {
+ admin -c "DROP DATABASE IF EXISTS $1" -c "CREATE DATABASE $1" 2>/dev/null
+ local f
+ for f in migrations/[0-9][0-9][0-9]_*.sql; do
+  [[ $f < ${reliability[0]} ]] || break
+  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$1" >/dev/null
+ done
+}
+apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
+RELIABILITY_DB=""
+trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1' EXIT
+RELIABILITY_DB=reliability_upgrade_$$
+fresh_before_reliability "$RELIABILITY_DB"
+db "$RELIABILITY_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('legacy-reliability') RETURNING id AS t \gset
+INSERT INTO app.outbox_events(tenant_id,event_type,payload) VALUES(:'t','legacy','{}');
+INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at)
+ VALUES(:'t','service',uuidv7(),'legacy','one',sha256('request'::bytea),now()+interval '1 day');
+SQL
+if ! out=$(apply_reliability "$RELIABILITY_DB"); then bad "pending reliability upgrade: $out"
+elif [[ $(db "$RELIABILITY_DB" -c "SELECT count(*) FROM app.outbox_events WHERE delivery_target='legacy' AND dedup_key=id::text AND status='pending' AND lease_owner IS NULL AND attempts=0") != 1 ]]; then bad 'legacy pending event identity changed'
+elif [[ $(db "$RELIABILITY_DB" -c "SELECT count(*) FROM app.idempotency_records WHERE state='in_progress' AND claim_token IS NOT NULL AND request_hash=sha256('request'::bytea) AND response_body_reference IS NULL") != 1 ]]; then bad 'legacy in-progress request identity changed'
+elif ! db "$RELIABILITY_DB" < tests/db_reliability.sql >/dev/null; then bad 'reliability SQL gate after pending-data upgrade'
+else pass 'reliability upgrade preserves pending events/requests and all new invariants'; fi
+admin -c "DROP DATABASE $RELIABILITY_DB"; RELIABILITY_DB=""
+
+for legacy_state in processing delivered failed completed; do
+ RELIABILITY_DB=reliability_refuse_$$
+ fresh_before_reliability "$RELIABILITY_DB"
+ db "$RELIABILITY_DB" -c "INSERT INTO app.tenants(name) VALUES('legacy-reconcile')" >/dev/null
+ if [[ $legacy_state == processing || $legacy_state == delivered ]]; then
+  db "$RELIABILITY_DB" -c "INSERT INTO app.outbox_events(tenant_id,event_type,payload,status) SELECT id,'legacy','{}','$legacy_state' FROM app.tenants" >/dev/null
+ else
+  db "$RELIABILITY_DB" -c "INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,state,response_status,response_body) SELECT id,'service',uuidv7(),'legacy','one',sha256('request'::bytea),now()+interval '1 day','$legacy_state',201,'{\"legacy\":true}' FROM app.tenants" >/dev/null
+ fi
+ if out=$(apply_reliability "$RELIABILITY_DB"); then bad "reliability silently accepted legacy $legacy_state"
+ elif [[ $out != *RELIABILITY_UPGRADE_REQUIRES_RECONCILIATION* ]]; then bad "reliability $legacy_state failed for another reason: $out"
+ elif [[ $(db "$RELIABILITY_DB" -c "SELECT to_regclass('app.webhook_inbox') IS NULL AND NOT EXISTS(SELECT FROM pg_attribute WHERE attrelid='app.outbox_events'::regclass AND attname='lease_owner' AND NOT attisdropped)") != t ]]; then bad "refused reliability $legacy_state left schema behind"
+ else pass "reliability refuses ambiguous legacy $legacy_state atomically"; fi
+ admin -c "DROP DATABASE $RELIABILITY_DB"; RELIABILITY_DB=""
+done
 # Existing catalog rows from 001..010 remain usable by the forward pricing DDL.
 # Apply every post-010 migration by its current filename, not a reserved number.
 DB=upgrade_pricing_$$
@@ -136,4 +182,4 @@ SQL
 fi
 admin -c "DROP DATABASE $DB"
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: hardening and pricing upgrade gates'
+echo 'PASS: security, reliability and pricing upgrade gates'

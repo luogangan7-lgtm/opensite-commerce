@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"example.com/opensite-commerce/internal/db"
-	"example.com/opensite-commerce/internal/money"
-	"example.com/opensite-commerce/internal/pricing"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )

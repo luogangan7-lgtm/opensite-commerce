@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 
-	"example.com/opensite-commerce/internal/tenanttx"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

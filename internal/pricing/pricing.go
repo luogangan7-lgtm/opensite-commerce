@@ -5,7 +5,7 @@ package pricing
 
 import (
 	"errors"
-	"example.com/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"time"
 )
 
