@@ -295,10 +295,10 @@ func TestPGIdempotencyExpiryAndCompletionFence(t *testing.T) {
 	f := idemFixture(t)
 	scope := f.scope("expired")
 	hash := idempotency.Fingerprint("POST", "/test", nil, nil, nil)
-	// Obtain the old owner through the public API, then expire the committed
-	// lease in the admin fixture; private Claim fields stay encapsulated.
+	// Obtain a genuinely expired owner through the public API. Expiry itself
+	// is immutable, so the fixture observes the DB clock without bypassing guards.
 	initialTx := f.tx(t, scope.TenantID)
-	initial, err := idempotency.ClaimTx(f.ctx, initialTx, scope, hash, time.Hour)
+	initial, err := idempotency.ClaimTx(f.ctx, initialTx, scope, hash, time.Microsecond)
 	if err != nil || initial.Claim == nil {
 		t.Fatal(err)
 	}
@@ -307,8 +307,15 @@ func TestPGIdempotencyExpiryAndCompletionFence(t *testing.T) {
 	}
 	stale := initial.Claim
 	var token pgtype.UUID
-	if err = f.admin.QueryRow(f.ctx, "UPDATE app.idempotency_records SET expires_at=clock_timestamp()-interval '1 day' WHERE tenant_id=$1 AND idempotency_key=$2 RETURNING claim_token", idemParseUUID(scope.TenantID), scope.Key).Scan(&token); err != nil {
-		t.Fatal(err)
+	for {
+		var expired bool
+		if err = f.admin.QueryRow(f.ctx, "SELECT claim_token, expires_at<=clock_timestamp() FROM app.idempotency_records WHERE tenant_id=$1 AND idempotency_key=$2", idemParseUUID(scope.TenantID), scope.Key).Scan(&token, &expired); err != nil {
+			t.Fatal(err)
+		}
+		if expired {
+			break
+		}
+		runtime.Gosched()
 	}
 	changed := hash
 	changed[0] ^= 1
