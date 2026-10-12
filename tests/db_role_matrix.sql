@@ -24,7 +24,8 @@ DECLARE
   'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
   'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
   'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
-  'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members','carts','cart_lines'];
+  'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
+  'ledger_accounts','ledger_transactions','ledger_entries','carts','cart_lines'];
  role_name text;
  r record;
  t record;
@@ -81,6 +82,7 @@ BEGIN
        allowed_columns := CASE t.relname
         WHEN 'carts' THEN ARRAY['tenant_id','id','customer_id','guest_token_hash','currency']
         WHEN 'cart_lines' THEN ARRAY['tenant_id','cart_id','sku_id','quantity']
+        WHEN 'ledger_accounts' THEN ARRAY['tenant_id','id','code','currency','account_type']
         WHEN 'tax_zones' THEN ARRAY['tenant_id','id','name']
         WHEN 'tax_zone_locations' THEN ARRAY['tenant_id','zone_id','country_code','subdivision']
         WHEN 'tax_categories' THEN ARRAY['tenant_id','code','name','is_exempt']
@@ -245,7 +247,8 @@ BEGIN
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
-   'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at') LOOP
+   'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
+   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -265,7 +268,8 @@ BEGIN
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
-   'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at'))<>10 THEN
+   'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
+   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -374,6 +378,79 @@ BEGIN
  END LOOP;
 END $customer_triggers$;
 SELECT 'PASS: customer trigger exact signature, privileged table owner, SECURITY INVOKER, search_path and no application EXECUTE' AS result;
+
+-- Ledger writes are an atomic command; no application/service can become owner.
+DO $ledger$
+DECLARE r record; t record; a record; f record; privilege text; role_name text;
+ expected_table boolean; expected_column boolean; allowed text[];
+ names text[]:=ARRAY['guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger'];
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_ledger_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole
+  OR r.rolreplication OR r.rolinherit
+  OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+  OR pg_has_role('app_runtime',r.oid,'SET')
+  OR has_schema_privilege(r.oid,'app','CREATE')
+  OR NOT has_schema_privilege(r.oid,'app','USAGE')
+  OR has_schema_privilege(r.oid,'app','USAGE WITH GRANT OPTION') THEN
+  RAISE EXCEPTION 'unsafe ledger executor role';
+ END IF;
+ FOR t IN SELECT c.oid,c.relname,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c
+  JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
+  IF t.relname=ANY(ARRAY['ledger_accounts','ledger_transactions','ledger_entries'])
+   AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN
+   RAISE EXCEPTION 'ledger must FORCE RLS: %',t.relname;
+  END IF;
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['ledger_accounts','ledger_transactions','ledger_entries']);
+   allowed:=ARRAY[]::text[];
+   IF expected_table THEN
+    SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+   ELSIF privilege='INSERT' THEN
+    allowed:=CASE t.relname
+     WHEN 'ledger_transactions' THEN ARRAY['tenant_id','id','currency','source_type','source_id','event']
+     WHEN 'ledger_entries' THEN ARRAY['tenant_id','transaction_id','line_no','account_id','currency','side','amount'] ELSE allowed END;
+   ELSIF privilege='UPDATE' AND t.relname='ledger_transactions' THEN allowed:=ARRAY['status','posted_at','revision'];
+   END IF;
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected_table
+    OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'ledger executor table capability: % %',t.relname,privilege;
+   END IF;
+   IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
+    FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     expected_column:=a.attname::text=ANY(allowed);
+     IF has_column_privilege(r.oid,t.oid,a.attnum,privilege) IS DISTINCT FROM expected_column
+      OR has_column_privilege(r.oid,t.oid,a.attnum,privilege||' WITH GRANT OPTION') THEN
+      RAISE EXCEPTION 'ledger executor column capability: %.% %',t.relname,a.attname,privilege;
+     END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl FROM pg_proc p
+  JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' LOOP
+  IF f.proname=ANY(names) THEN
+   IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM (f.proname=ANY(ARRAY['guard_ledger_entry','assert_ledger_balance','post_ledger']))
+    OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+    RAISE EXCEPTION 'unsafe ledger routine definition: %',f.proname;
+   END IF;
+   FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
+    'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth'] LOOP
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name='app_runtime' AND f.proname='post_ledger')
+     OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'ledger routine authority: % %',role_name,f.proname;
+    END IF;
+   END LOOP;
+  ELSIF has_function_privilege(r.oid,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'ledger has foreign routine capability: %',f.proname;
+  END IF;
+ END LOOP;
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>5
+ OR NOT EXISTS(SELECT FROM pg_proc WHERE oid='app.post_ledger(uuid,text,text,text,text,uuid[],text[],bigint[])'::regprocedure AND prorettype='uuid'::regtype) THEN
+  RAISE EXCEPTION 'ledger routine contract incomplete';
+ END IF;
+END $ledger$;
+SELECT 'PASS: ledger exact executor/runtime table-column-function capabilities and FORCE RLS' AS result;
 
 -- Cart borrows only the existing unreachable executor's tenant-read privilege.
 -- Runtime sees a boolean for its current context, never the tenant roster.
