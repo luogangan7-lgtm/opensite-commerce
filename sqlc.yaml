@@ -1,0 +1,19 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    # sqlc consumes schema DDL, not the role-policy DO blocks of migration 008.
+    schema:
+      - "migrations/001_identity.sql"
+      - "migrations/002_site.sql"
+      - "migrations/003_catalog.sql"
+      - "migrations/004_media.sql"
+      - "migrations/005_cms.sql"
+      - "migrations/006_publish.sql"
+      - "migrations/007_reliability.sql"
+    queries: "queries"
+    gen:
+      go:
+        package: "db"
+        out: "internal/db"
+        sql_package: "pgx/v5"
+        emit_json_tags: true

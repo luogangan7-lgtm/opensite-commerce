@@ -1,0 +1,535 @@
+openapi: 3.1.2
+info:
+  title: OpenSite Commerce Core API
+  version: 0.7.0-draft
+  description: >-
+    Contract-first first-vertical-slice API. Declared operations are not all
+    implemented in this increment. Tenant is derived from credentials.
+servers:
+  - url: /
+security:
+  - ApiKeyBearer: []
+tags:
+  - name: Organization
+  - name: Catalog
+  - name: Media
+  - name: Builder
+  - name: Inquiry
+paths:
+  /api/v1/organizations:
+    post:
+      tags: [Organization]
+      operationId: createOrganization
+      x-required-scope: organization.create
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrganization' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/v1/sites:
+    post:
+      tags: [Organization]
+      operationId: createSite
+      x-required-scope: site.create
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSite' }
+      responses:
+        '201':
+          description: Site created, initially unpublished
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Site' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /api/v1/products:
+    post:
+      tags: [Catalog]
+      operationId: createProduct
+      x-required-scope: catalog.write
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProduct' }
+      responses:
+        '201':
+          description: Product created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/v1/products/{product_id}/variants:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    post:
+      tags: [Catalog]
+      operationId: createVariant
+      x-required-scope: catalog.write
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateVariant' }
+      responses:
+        '201':
+          description: Variant created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Variant' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/v1/media/uploads:
+    post:
+      tags: [Media]
+      operationId: createMediaUpload
+      x-required-scope: media.write
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUpload' }
+      responses:
+        '201':
+          description: Upload reserved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UploadSession' }
+  /api/v1/media/uploads/{upload_id}/content:
+    parameters:
+      - $ref: '#/components/parameters/UploadId'
+    put:
+      tags: [Media]
+      operationId: putMediaUploadContent
+      x-required-scope: media.write
+      description: Streaming PUT for LocalFS; not resumable in V1.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '204': { description: Bytes received }
+        '413': { $ref: '#/components/responses/Problem' }
+  /api/v1/media/uploads/{upload_id}/complete:
+    parameters:
+      - $ref: '#/components/parameters/UploadId'
+    post:
+      tags: [Media]
+      operationId: completeMediaUpload
+      x-required-scope: media.write
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '202':
+          description: Verification or processing queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UploadSession' }
+  /api/v1/sites/{site_id}/drafts:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    post:
+      tags: [Builder]
+      operationId: createSiteDraft
+      x-required-scope: site.draft.write
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDraft' }
+      responses:
+        '201':
+          description: Draft created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Draft' }
+  /api/v1/sites/{site_id}/drafts/{draft_id}/operations:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/DraftId'
+    post:
+      tags: [Builder]
+      operationId: applyPageOperations
+      x-required-scope: site.draft.write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OperationBatch' }
+      responses:
+        '200':
+          description: Draft revision incremented
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Draft' }
+        '412': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /api/v1/sites/{site_id}/drafts/{draft_id}/validate:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/DraftId'
+    post:
+      tags: [Builder]
+      operationId: validateSiteDraft
+      x-required-scope: site.draft.write
+      responses:
+        '200':
+          description: Validation report
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationResult' }
+  /api/v1/sites/{site_id}/drafts/{draft_id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/DraftId'
+    post:
+      tags: [Builder]
+      operationId: publishSiteDraft
+      x-required-scope: site.publish
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '201':
+          description: New immutable release; commit is atomic in PostgreSQL
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublishedRelease' }
+        '412': { $ref: '#/components/responses/Problem' }
+  /api/public/v1/inquiries:
+    post:
+      tags: [Inquiry]
+      operationId: submitInquiry
+      security: []
+      description: Site determined from a verified Host mapping; must be rate-limited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInquiry' }
+      responses:
+        '202':
+          description: Inquiry persisted; notifications asynchronous
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InquiryReceipt' }
+        '429': { $ref: '#/components/responses/Problem' }
+components:
+  securitySchemes:
+    ApiKeyBearer: { type: http, scheme: bearer, bearerFormat: API-Key }
+  parameters:
+    SiteId:
+      name: site_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProductId:
+      name: product_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DraftId:
+      name: draft_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UploadId:
+      name: upload_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 128 }
+  responses:
+    Problem:
+      description: RFC 9457 error
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        code: { type: string }
+        detail: { type: string }
+      additionalProperties: true
+    CreateOrganization:
+      type: object
+      required: [display_name]
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 200 }
+        legal_name: { type: string, maxLength: 200 }
+      additionalProperties: false
+    Organization:
+      type: object
+      required: [id, display_name]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string }
+        legal_name: { type: string }
+      additionalProperties: false
+    CreateSite:
+      type: object
+      required: [organization_id, name, default_locale]
+      properties:
+        organization_id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        default_locale: { type: string, minLength: 2, maxLength: 20 }
+      additionalProperties: false
+    Site:
+      type: object
+      required: [id, organization_id, name, default_locale, status]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        default_locale: { type: string }
+        status: { enum: [draft, published] }
+        published_release_id: { type: [string, 'null'], format: uuid }
+      additionalProperties: false
+    CreateProduct:
+      type: object
+      required: [product_code]
+      properties:
+        product_code: { type: string, minLength: 1, maxLength: 128 }
+      additionalProperties: false
+    Product:
+      type: object
+      required: [id, product_code, lifecycle_status]
+      properties:
+        id: { type: string, format: uuid }
+        product_code: { type: string }
+        lifecycle_status: { enum: [draft, ready, archived] }
+      additionalProperties: false
+    CreateVariant:
+      type: object
+      required: [sku, option_value_ids]
+      properties:
+        sku: { type: string, minLength: 1, maxLength: 128 }
+        option_value_ids:
+          type: array
+          uniqueItems: true
+          items: { type: string, format: uuid }
+      additionalProperties: false
+    Variant:
+      type: object
+      required: [id, product_id, sku]
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        sku: { type: string }
+    CreateUpload:
+      type: object
+      required: [filename, size_bytes, sha256]
+      properties:
+        filename: { type: string, minLength: 1, maxLength: 255 }
+        size_bytes: { type: integer, minimum: 0 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        declared_mime: { type: string }
+      additionalProperties: false
+    UploadSession:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        status: { enum: [reserved, uploading, verifying, stored, processing, ready, failed] }
+        media_id: { type: [string, 'null'], format: uuid }
+      additionalProperties: false
+    CreateDraft:
+      type: object
+      properties:
+        base_release_id: { type: [string, 'null'], format: uuid }
+      additionalProperties: false
+    Draft:
+      type: object
+      required: [id, revision, status]
+      properties:
+        id: { type: string, format: uuid }
+        revision: { type: integer, minimum: 1 }
+        status: { enum: [open, published, abandoned] }
+      additionalProperties: false
+    PageDocument:
+      type: object
+      required: [schema_version, root_id, nodes]
+      properties:
+        schema_version: { const: 1 }
+        root_id: { type: string, minLength: 1 }
+        nodes:
+          type: object
+          maxProperties: 200
+          minProperties: 1
+          additionalProperties: { $ref: '#/components/schemas/ComponentNode' }
+      additionalProperties: false
+    ComponentNode:
+      type: object
+      required: [component, props, slots]
+      properties:
+        component:
+          enum: [core.page-layout@1, core.section@1, core.hero@1, catalog.product-grid@1, company.profile@1]
+        props: { type: object }
+        binding: { $ref: '#/components/schemas/DataBinding' }
+        slots:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+      additionalProperties: false
+    DataBinding:
+      type: object
+      required: [resolver, params]
+      properties:
+        resolver: { enum: [catalog.featured-products@1, catalog.collection-products@1, company.profile@1] }
+        params: { type: object }
+      additionalProperties: false
+    OperationBatch:
+      type: object
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: '#/components/schemas/PageOperation' }
+      additionalProperties: false
+    PageOperation:
+      oneOf:
+        - $ref: '#/components/schemas/ComponentAdd'
+        - $ref: '#/components/schemas/ComponentMove'
+        - $ref: '#/components/schemas/ComponentSetProps'
+      discriminator:
+        propertyName: type
+        mapping:
+          component.add: '#/components/schemas/ComponentAdd'
+          component.move: '#/components/schemas/ComponentMove'
+          component.set_props: '#/components/schemas/ComponentSetProps'
+    ComponentAdd:
+      type: object
+      required: [operation_id, type, target, arguments]
+      properties:
+        operation_id: { type: string, format: uuid }
+        type: { const: component.add }
+        target:
+          type: object
+          required: [page_key]
+          properties:
+            page_key: { type: string, minLength: 1 }
+          additionalProperties: false
+        arguments:
+          type: object
+          required: [component, node_id, parent_node_id, slot, props]
+          properties:
+            component: { type: string, minLength: 1 }
+            node_id: { type: string, minLength: 1 }
+            parent_node_id: { type: string, minLength: 1 }
+            slot: { type: string, minLength: 1 }
+            props: { type: object }
+            binding: { $ref: '#/components/schemas/DataBinding' }
+          additionalProperties: false
+      additionalProperties: false
+    ComponentMove:
+      type: object
+      required: [operation_id, type, target, arguments]
+      properties:
+        operation_id: { type: string, format: uuid }
+        type: { const: component.move }
+        target:
+          type: object
+          required: [page_key, node_id]
+          properties:
+            page_key: { type: string, minLength: 1 }
+            node_id: { type: string, minLength: 1 }
+          additionalProperties: false
+        arguments:
+          type: object
+          required: [parent_node_id, slot]
+          properties:
+            parent_node_id: { type: string, minLength: 1 }
+            slot: { type: string, minLength: 1 }
+          additionalProperties: false
+      additionalProperties: false
+    ComponentSetProps:
+      type: object
+      required: [operation_id, type, target, arguments]
+      properties:
+        operation_id: { type: string, format: uuid }
+        type: { const: component.set_props }
+        target:
+          type: object
+          required: [page_key, node_id]
+          properties:
+            page_key: { type: string, minLength: 1 }
+            node_id: { type: string, minLength: 1 }
+          additionalProperties: false
+        arguments:
+          type: object
+          required: [props]
+          properties:
+            props: { type: object }
+          additionalProperties: false
+      additionalProperties: false
+    ValidationResult:
+      type: object
+      required: [valid, issues]
+      properties:
+        valid: { type: boolean }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+    PublishedRelease:
+      type: object
+      required: [id, site_id, release_no]
+      properties:
+        id: { type: string, format: uuid }
+        site_id: { type: string, format: uuid }
+        release_no: { type: integer, minimum: 1 }
+    CreateInquiry:
+      type: object
+      required: [buyer_email, message]
+      properties:
+        product_id: { type: string, format: uuid }
+        buyer_email: { type: string, format: email }
+        buyer_name: { type: string, maxLength: 200 }
+        quantity: { type: number, exclusiveMinimum: 0 }
+        message: { type: string, minLength: 1, maxLength: 10000 }
+      additionalProperties: false
+    InquiryReceipt:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        status: { const: received }

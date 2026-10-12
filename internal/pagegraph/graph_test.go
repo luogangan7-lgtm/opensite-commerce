@@ -1,0 +1,87 @@
+package pagegraph
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func sample() Document {
+	return Document{1, "root", map[string]Node{
+		"root": {Component: "core.page-layout@1", Props: json.RawMessage(`{}`), Slots: map[string][]string{"main": {"hero", "grid"}}},
+		"hero": {Component: "core.hero@1", Props: json.RawMessage(`{"title":"Sample"}`), Slots: map[string][]string{}},
+		"grid": {Component: "catalog.product-grid@1", Props: json.RawMessage(`{"columns_desktop":4,"columns_mobile":2}`), Binding: &Binding{"catalog.featured-products@1", json.RawMessage(`{"limit":8}`)}, Slots: map[string][]string{}},
+	}}
+}
+func TestValid(t *testing.T) {
+	if err := Validate(sample()); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestMissingNode(t *testing.T) {
+	d := sample()
+	delete(d.Nodes, "grid")
+	if Validate(d) == nil {
+		t.Fatal("should reject missing child")
+	}
+}
+func TestDuplicateParent(t *testing.T) {
+	d := sample()
+	n := d.Nodes["root"]
+	n.Slots["main"] = append(n.Slots["main"], "hero")
+	d.Nodes["root"] = n
+	if Validate(d) == nil {
+		t.Fatal("should reject duplicate parent")
+	}
+}
+func TestUnknownComponent(t *testing.T) {
+	d := sample()
+	n := d.Nodes["hero"]
+	n.Component = "evil.js@1"
+	d.Nodes["hero"] = n
+	if Validate(d) == nil {
+		t.Fatal("unregistered component accepted")
+	}
+}
+func TestCycle(t *testing.T) {
+	d := sample()
+	n := d.Nodes["hero"]
+	n.Component = "core.section@1"
+	n.Props = json.RawMessage(`{}`)
+	n.Slots = map[string][]string{"content": {"root"}}
+	d.Nodes["hero"] = n
+	if Validate(d) == nil {
+		t.Fatal("cycle accepted")
+	}
+}
+func TestInvalidGrid(t *testing.T) {
+	d := sample()
+	n := d.Nodes["grid"]
+	n.Props = json.RawMessage(`{"columns_desktop":99,"columns_mobile":2}`)
+	d.Nodes["grid"] = n
+	if Validate(d) == nil {
+		t.Fatal("invalid grid accepted")
+	}
+}
+func TestUnknownProperty(t *testing.T) {
+	d := sample()
+	n := d.Nodes["hero"]
+	n.Props = json.RawMessage(`{"title":"x","onClick":"alert(1)"}`)
+	d.Nodes["hero"] = n
+	if Validate(d) == nil {
+		t.Fatal("unknown property accepted")
+	}
+}
+func TestDisconnected(t *testing.T) {
+	d := sample()
+	d.Nodes["unused"] = Node{Component: "core.section@1", Props: json.RawMessage(`{}`), Slots: map[string][]string{}}
+	if Validate(d) == nil {
+		t.Fatal("disconnected accepted")
+	}
+}
+
+func TestTrailingJSON(t *testing.T) {
+	data := []byte(`{"schema_version":1,"root_id":"root","nodes":{"root":{"component":"core.page-layout@1","props":{},"slots":{"main":[]}}}} {"other":1}`)
+	if ValidateJSON(data) == nil {
+		t.Fatal("trailing JSON accepted")
+	}
+}

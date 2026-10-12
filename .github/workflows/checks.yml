@@ -1,0 +1,62 @@
+name: foundation-contracts
+on: [push, pull_request]
+
+# One required CI job. No costly SKU/performance suite on every commit.
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+      - name: Go / PageGraph / LocalFS / Tenant Transaction
+        run: |
+          go test -race ./...
+          go vet ./...
+      - name: OpenAPI structural checks
+        run: |
+          python -m pip install --quiet pyyaml jsonschema
+          python scripts/check_contract.py
+      - name: PostgreSQL 18 forward-only migrations and security
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          ./scripts/check_pg.sh
+      - name: sqlc v1.31.1 (verified release artifact)
+        run: |
+          curl -fsSL --retry 3 \
+            https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz -o /tmp/sqlc.tar.gz
+          echo '497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354  /tmp/sqlc.tar.gz' | sha256sum -c -
+          mkdir -p /tmp/sqlc-bin
+          tar -xzf /tmp/sqlc.tar.gz -C /tmp/sqlc-bin
+          sudo install -m 0755 /tmp/sqlc-bin/sqlc /usr/local/bin/sqlc
+          sqlc version
+      - name: Typechecked pgx v5/sqlc integration
+        run: |
+          # This bootstrap increment cannot commit generated files/go.sum without
+          # sqlc and PGX tools in its offline authoring environment. This step
+          # MUST pass before merging a real GitHub PR.
+          go get github.com/jackc/pgx/v5@v5.10.0
+          ./scripts/check_codegen.sh
+          # CI-generated dependency and database artifacts must be committed,
+          # not silently regenerated differently on every downstream build.
+          if [ -n "$(git status --porcelain -- go.mod go.sum internal/db)" ]; then
+            echo "FAIL: pin go.mod/go.sum and commit generated internal/db before merge"
+            git status --short -- go.mod go.sum internal/db
+            exit 1
+          fi
