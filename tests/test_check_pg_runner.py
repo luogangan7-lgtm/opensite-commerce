@@ -67,6 +67,7 @@ expected = [
     'db_tax.sql',
     'db_customers.sql',
     'db_ledger.sql',
+    'db_catalog_api.sql',
     'db_identity_auth.sql',
     'db_identity_login.sql',
 ]
@@ -95,7 +96,6 @@ def identity_runner_contract(races, upgrade):
     assert 'IDENTITY_UPGRADE=4|4|4' in identity, 'legacy whole-row witnesses must remain exact'
 
 identity_runner_contract(races, upgrade)
-
 def login_runner_contract(races, upgrade):
     rotation = races[races.index('# C-02b: execute'):]
     assert "source = Path('queries/identity/login.sql').read_text()" in rotation

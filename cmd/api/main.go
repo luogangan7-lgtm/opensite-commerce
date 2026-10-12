@@ -1,5 +1,5 @@
 // API executable is the composition entry point: env, signals and bootstrap.
-// It depends only on stdlib/bootstrap; identity handlers are installed statically.
+// It depends only on stdlib/bootstrap; module handlers are installed through bootstrap.
 // Invalid registration fails startup; this executable delegates business IO to modules.
 package main
 
@@ -22,7 +22,12 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	config := bootstrap.Config{Address: address, Logger: logger}
+	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger})
+	if err != nil {
+		logger.Error("API configuration failed", "error", err)
+		os.Exit(1)
+	}
+	defer closeRuntime()
 	staff, err := bootstrap.StaffLogin(ctx, os.Getenv("OSC_AUTH_DATABASE_URL"), os.Getenv("OSC_ADMIN_ORIGIN"), os.Getenv("OSC_AUTH_SIGNING_KEY_HEX"), os.Getenv("OSC_AUTH_TRUSTED_PROXIES"))
 	if err != nil {
 		logger.Error("staff login startup failed")

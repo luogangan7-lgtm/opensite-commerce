@@ -55,7 +55,7 @@ func scope(op *openapi3.Operation) string {
 
 func TestConfiguredIdentityRouteContract(t *testing.T) {
 	// Construct the production transport without a repository. Route registration
-	// needs no database; nil service fails authentication closed if invoked.
+	// needs no database; this test inspects registrations without invoking handlers.
 	handler := transport.New(nil, "https://admin.example.test", 30*time.Minute)
 	server, err := bootstrap.New(bootstrap.Config{Routes: handler.Routes(), Authenticator: handler})
 	if err != nil {
@@ -72,7 +72,7 @@ func TestConfiguredIdentityRouteContract(t *testing.T) {
 	if err := reconcileRoutes(doc, snapshot.RouteSpecs()); err != nil {
 		t.Fatal(err)
 	}
-	// Removing any installed identity handler must fail the full contract.
+	// Removing any installed business handler must fail the full merged contract.
 	for i, route := range snapshot.RouteSpecs() {
 		if route.OperationID == "health" {
 			continue
@@ -81,7 +81,7 @@ func TestConfiguredIdentityRouteContract(t *testing.T) {
 			specs := snapshot.RouteSpecs()
 			specs = append(specs[:i:i], specs[i+1:]...)
 			if err := reconcileRoutes(doc, specs); err == nil {
-				t.Fatal("missing identity handler accepted")
+				t.Fatal("missing registered handler accepted")
 			}
 		})
 	}

@@ -70,8 +70,9 @@ func TestUnconfiguredIdentityRouteContract(t *testing.T) {
 	if err := reconcileRoutes(doc, router.RouteSpecs()); err == nil || !strings.Contains(err.Error(), "has no registered handler") {
 		t.Fatalf("unconfigured startup must fail the full implemented contract: %v", err)
 	}
-	// An unconfigured installation serves health only. The full implemented
-	// contract is tested with real identity handlers by identity/login_contract_test.
+	// Default startup registers health, catalog and media, but no login handlers.
+	// Remove exactly the optional login operations for this mode; every remaining
+	// operation stays under strict reconciliation. Identity tests cover full mode.
 	optional := map[string]bool{"getAdminLoginChallenge": true, "createStaffLoginSession": true,
 		"getAdminSession": true, "logoutCurrentStaffSession": true}
 	removed := 0
@@ -97,11 +98,14 @@ func TestUnconfiguredIdentityRouteContract(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("unconfigured health status %d", w.Code)
 	}
-	for _, path := range []string{"/api/v1/auth/login", "/api/v1/auth/session", "/api/v1/auth/logout"} {
+	for _, route := range []struct{ method, path string }{
+		{"GET", "/api/v1/auth/login"}, {"POST", "/api/v1/auth/login"},
+		{"GET", "/api/v1/auth/session"}, {"POST", "/api/v1/auth/logout"},
+	} {
 		w := httptest.NewRecorder()
-		server.Handler.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		server.Handler.ServeHTTP(w, httptest.NewRequest(route.method, route.path, nil))
 		if w.Code != http.StatusNotFound {
-			t.Fatalf("unconfigured identity route %s served status %d", path, w.Code)
+			t.Fatalf("unconfigured identity route %s %s served status %d", route.method, route.path, w.Code)
 		}
 	}
 }

@@ -478,78 +478,197 @@ paths:
     parameters:
       - $ref: '#/components/parameters/TenantId'
     post:
-      tags: [Catalog]
+      tags:
+        - Catalog
       operationId: createProduct
-      x-opensite-status: planned
+      x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
-      x-required-scope: catalog.write
+      x-required-scope: catalog:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/OriginIfCookie'
         - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/CreateProduct'}
+            schema:
+              $ref: '#/components/schemas/CreateProduct'
+    get:
+      tags:
+        - Catalog
+      operationId: listProducts
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:read
       responses:
-        '201':
-          description: Product created
+        '200':
+          description: Success
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Product'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
+              schema:
+                $ref: '#/components/schemas/ProductPage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
   /api/v1/t/{tenant_id}/products/{product_id}/variants:
     parameters:
       - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/ProductId'
     post:
-      tags: [Catalog]
+      tags:
+        - Catalog
       operationId: createVariant
-      x-opensite-status: planned
+      x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
-      x-required-scope: catalog.write
+      x-required-scope: catalog:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/OriginIfCookie'
         - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variant'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/CreateVariant'}
+            schema:
+              $ref: '#/components/schemas/CreateVariant'
+    get:
+      tags:
+        - Catalog
+      operationId: listVariants
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:read
       responses:
-        '201':
-          description: Variant created
+        '200':
+          description: Success
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Variant'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
+              schema:
+                $ref: '#/components/schemas/VariantList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
   /api/v1/t/{tenant_id}/media/uploads:
     parameters:
       - $ref: '#/components/parameters/TenantId'
     post:
-      tags: [Media]
+      tags:
+        - Media
       operationId: createMediaUpload
-      x-opensite-status: planned
+      x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
-      x-required-scope: media.write
+      x-required-scope: media:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/OriginIfCookie'
@@ -558,81 +677,136 @@ paths:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/CreateUpload'}
+            schema:
+              $ref: '#/components/schemas/CreateUpload'
       responses:
         '201':
           description: Upload reserved
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/UploadSession'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
+              schema:
+                $ref: '#/components/schemas/UploadSession'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/media/uploads/{upload_id}/content:
     parameters:
       - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/UploadId'
     put:
-      tags: [Media]
+      tags:
+        - Media
       operationId: putMediaUploadContent
-      x-opensite-status: planned
+      x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
-      x-required-scope: media.write
+      x-required-scope: media:write
       description: Streaming PUT for LocalFS; not resumable in V1.
       requestBody:
         required: true
         content:
           application/octet-stream:
-            schema: {type: string, format: binary}
+            schema:
+              type: string
+              format: binary
       parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/OriginIfCookie'
         - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
-        '204': {description: Bytes received}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '204':
+          description: Bytes received
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/media/uploads/{upload_id}/complete:
     parameters:
       - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/UploadId'
     post:
-      tags: [Media]
+      tags:
+        - Media
       operationId: completeMediaUpload
-      x-opensite-status: planned
+      x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
-      x-required-scope: media.write
+      x-required-scope: media:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/OriginIfCookie'
         - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '202':
-          description: Verification or processing queued
+          description: Content verified and private media persisted synchronously; no asynchronous transform in this
+            card.
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/UploadSession'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
+              schema:
+                $ref: '#/components/schemas/UploadSession'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -793,6 +967,361 @@ paths:
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
         '422': {$ref: '#/components/responses/UnprocessableEntity'}
         '428': {$ref: '#/components/responses/PreconditionRequired'}
+  /api/v1/t/{tenant_id}/products/{product_id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags:
+        - Catalog
+      operationId: getProduct
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:read
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
+    patch:
+      tags:
+        - Catalog
+      operationId: updateProduct
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProduct'
+    delete:
+      tags:
+        - Catalog
+      operationId: archiveProduct
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Success
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/t/{tenant_id}/products/{product_id}/variants/{variant_id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/VariantId'
+    get:
+      tags:
+        - Catalog
+      operationId: getVariant
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:read
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variant'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
+    patch:
+      tags:
+        - Catalog
+      operationId: updateVariant
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variant'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVariant'
+    delete:
+      tags:
+        - Catalog
+      operationId: archiveVariant
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Success
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/t/{tenant_id}/products/{product_id}/media:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProductId'
+    post:
+      tags:
+        - Media
+      operationId: linkProductMedia
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: media:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductMedia'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkProductMedia'
+  /api/v1/t/{tenant_id}/media/{media_id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/MediaId'
+    delete:
+      tags:
+        - Media
+      operationId: deleteMedia
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: media:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      responses:
+        '204':
+          description: Success
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     adminSession:
@@ -905,6 +1434,37 @@ components:
         (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header
         declares 409 and 422.
       schema: {type: string, minLength: 1, maxLength: 128}
+    VariantId:
+      name: variant_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MediaId:
+      name: media_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque base64url created_at/id cursor from the prior response.
+      schema:
+        type: string
+        maxLength: 512
   responses:
     Unauthorized:
       description: Authentication missing or invalid; bad login credentials are indistinguishable.
@@ -1139,11 +1699,31 @@ components:
       additionalProperties: false
     Product:
       type: object
-      required: [id, product_code, lifecycle_status]
+      required:
+      - id
+      - product_code
+      - lifecycle_status
+      - version
+      - created_at
       properties:
-        id: {type: string, format: uuid}
-        product_code: {type: string}
-        lifecycle_status: {type: string, enum: [draft, ready, archived]}
+        id:
+          type: string
+          format: uuid
+        product_code:
+          type: string
+        lifecycle_status:
+          type: string
+          enum:
+          - draft
+          - ready
+          - archived
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
       additionalProperties: false
     CreateVariant:
       type: object
@@ -1157,27 +1737,92 @@ components:
       additionalProperties: false
     Variant:
       type: object
-      required: [id, product_id, sku]
+      required:
+      - id
+      - product_id
+      - sku
+      - lifecycle_status
+      - version
+      - created_at
+      - option_value_ids
       properties:
-        id: {type: string, format: uuid}
-        product_id: {type: string, format: uuid}
-        sku: {type: string}
+        id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        lifecycle_status:
+          type: string
+          enum:
+          - draft
+          - ready
+          - archived
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        option_value_ids:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+      additionalProperties: false
     CreateUpload:
       type: object
-      required: [filename, size_bytes, sha256]
+      required:
+      - filename
+      - size_bytes
+      - sha256
       properties:
-        filename: {type: string, minLength: 1, maxLength: 255}
-        size_bytes: {type: integer, minimum: 0}
-        sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
-        declared_mime: {type: string}
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size_bytes:
+          type: integer
+          minimum: 0
+          format: int64
+        sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        declared_mime:
+          type: string
       additionalProperties: false
     UploadSession:
       type: object
-      required: [id, status]
+      required:
+      - id
+      - status
+      - expires_at
       properties:
-        id: {type: string, format: uuid}
-        status: {type: string, enum: [reserved, uploading, verifying, stored, processing, ready, failed]}
-        media_id: {type: [string, 'null'], format: uuid}
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - reserved
+          - uploading
+          - verifying
+          - stored
+          - processing
+          - ready
+          - failed
+        media_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        expires_at:
+          type: string
+          format: date-time
       additionalProperties: false
     CreateDraft:
       type: object
@@ -1348,3 +1993,110 @@ components:
       properties:
         id: {type: string, format: uuid}
         status: {type: string, const: received}
+
+    UpdateProduct:
+      type: object
+      minProperties: 1
+      properties:
+        product_code:
+          type: string
+          minLength: 1
+          maxLength: 128
+        lifecycle_status:
+          type: string
+          enum:
+          - draft
+          - ready
+      additionalProperties: false
+
+    UpdateVariant:
+      type: object
+      minProperties: 1
+      properties:
+        sku:
+          type: string
+          minLength: 1
+          maxLength: 128
+        lifecycle_status:
+          type: string
+          enum:
+          - draft
+          - ready
+      additionalProperties: false
+
+    ProductPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        next_cursor:
+          type: string
+      additionalProperties: false
+
+    VariantList:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Variant'
+        next_cursor:
+          type: string
+      additionalProperties: false
+
+    LinkProductMedia:
+      type: object
+      required:
+      - media_id
+      - role
+      properties:
+        media_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum:
+          - main
+          - gallery
+          - detail
+          - video
+          - size_chart
+        sort_order:
+          type: integer
+          format: int32
+          minimum: 0
+      additionalProperties: false
+
+    ProductMedia:
+      type: object
+      required:
+      - product_id
+      - media_id
+      - role
+      - sort_order
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        media_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum:
+          - main
+          - gallery
+          - detail
+          - video
+          - size_chart
+        sort_order:
+          type: integer
+          format: int32
+          minimum: 0
+      additionalProperties: false
