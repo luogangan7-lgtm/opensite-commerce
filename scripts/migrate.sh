@@ -48,7 +48,7 @@ for file in "${files[@]}"; do
   checksum="$(sha256sum "$file" | awk '{print $1}')"
   echo "CHECK $version"
   # File names are validated above. The file path is fixed by this repository.
-  # psql values use :'var' to ensure SQL-quoted strings (no raw interpolation).
+  # SQL values use :'var'; the include path is one psql variable argument.
   "${PSQL[@]}" -v m_version="$version" -v m_checksum="$checksum" -v m_known_versions="$known_versions" -v m_include="$INCLUDE_ROOT/$base" <<SQL
 BEGIN;
 SELECT pg_advisory_xact_lock(18004517::bigint);
@@ -82,7 +82,7 @@ SELECT EXISTS(SELECT 1 FROM public.schema_migrations WHERE version = :'m_version
   \if :m_newer_installed
     SELECT 'MIGRATION_OUT_OF_ORDER'::integer;
   \endif
-  \i :'m_include'
+  \i :m_include
   INSERT INTO public.schema_migrations(version, checksum)
     VALUES (:'m_version', :'m_checksum');
   \echo Applied: $version

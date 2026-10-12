@@ -28,7 +28,7 @@ else:
     includes = []
     for line in payload.splitlines():
         if line.strip().startswith('\\i '):
-            if line.strip() == "\\i :'m_include'":
+            if line.strip() == "\\i :m_include":
                 path = variables['m_include']
             else:
                 args = shlex.split(line.strip())
