@@ -167,7 +167,8 @@ Webhook Inbox 保存的是**已经通过签名验证，并完成可信商户账�
 必须真实执行：
 
 - 同一 Idempotency Key + 相同请求只产生一次业务副作用。
-- 相同 Key + 不同请求体返回 **HTTP 422**（错误码 `idempotency_key_reused`，与 REVIEW F-07 一致）；相同 Key + 相同请求体在原请求仍在处理时返回 409，处理完成后重放原响应。
+- request_hash 覆盖规范化后的整个请求：方法、路径模板、解析后的路径参数（如 upload_id）、规范化的 query、请求体（空 body 也参与哈希）。
+- 相同 Key + 不同请求（路径、query 或请求体任一不同）返回 **HTTP 422**（错误码 `idempotency_key_reused`，与 REVIEW F-07 一致）；相同 Key + 相同请求体在原请求仍在处理时返回 409，处理完成后重放原响应。
 - 重复、乱序 Webhook 不重复扣款或退款。
 - 事务回滚后，River Job 不可执行。
 - Worker 在提交后宕机，任务仍可恢复。
