@@ -100,7 +100,7 @@
       "name": "catalog",
       "status": "implemented",
       "go_path": "internal/modules/catalog",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "products",
         "product_options",
@@ -115,11 +115,43 @@
       "operations": [
         {
           "operation_id": "createProduct",
-          "status": "planned"
+          "status": "implemented"
+        },
+        {
+          "operation_id": "listProducts",
+          "status": "implemented"
         },
         {
           "operation_id": "createVariant",
-          "status": "planned"
+          "status": "implemented"
+        },
+        {
+          "operation_id": "listVariants",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getProduct",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "updateProduct",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "archiveProduct",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getVariant",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "updateVariant",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "archiveVariant",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -128,17 +160,21 @@
       ],
       "tests": [
         "tests/db_smoke.sql",
-        "tests/test_sqlc_contract_static.py"
+        "tests/test_sqlc_contract_static.py",
+        "tests/db_catalog_api.sql",
+        "internal/modules/catalog/integration_test.go"
       ],
       "scopes": [
-        "catalog.write"
-      ]
+        "catalog:read",
+        "catalog:write"
+      ],
+      "note": "C-07a typed handlers through platform authorized-tenant runner. Authentication and C-04b idempotency middleware are separate integration seams; default authentication denies."
     },
     {
       "name": "media",
       "status": "implemented",
       "go_path": "internal/modules/media",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "media_uploads",
         "media_blobs",
@@ -148,15 +184,23 @@
       "operations": [
         {
           "operation_id": "createMediaUpload",
-          "status": "planned"
+          "status": "implemented"
         },
         {
           "operation_id": "putMediaUploadContent",
-          "status": "planned"
+          "status": "implemented"
         },
         {
           "operation_id": "completeMediaUpload",
-          "status": "planned"
+          "status": "implemented"
+        },
+        {
+          "operation_id": "linkProductMedia",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "deleteMedia",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -166,11 +210,14 @@
       "tests": [
         "internal/storage/local/local_test.go",
         "tests/db_sealed_media.sql",
-        "tests/db_security_services.sql"
+        "tests/db_security_services.sql",
+        "tests/db_catalog_api.sql",
+        "internal/modules/media/integration_test.go"
       ],
       "scopes": [
-        "media.write"
-      ]
+        "media:write"
+      ],
+      "note": "C-07a typed handlers through platform authorized-tenant runner. Authentication and C-04b idempotency middleware are separate integration seams; default authentication denies."
     },
     {
       "name": "cms",
@@ -795,7 +842,18 @@
       ]
     },
     {
-      "file": "migrations/018_orders.sql",
+      "file": "migrations/018_catalog_api.sql",
+      "owner": "catalog",
+      "touches_tables": [
+        "products",
+        "product_variants",
+        "media_uploads",
+        "media_assets",
+        "product_media"
+      ]
+    },
+    {
+      "file": "migrations/020_orders.sql",
       "owner": "orders",
       "touches_tables": [
         "orders",
