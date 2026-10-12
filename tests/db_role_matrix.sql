@@ -136,3 +136,66 @@ BEGIN
  END LOOP;
 END $audit$;
 SELECT 'PASS: three internal roles; exact 40-table and every-column privilege matrix' AS result;
+
+-- Service capabilities are disjoint; publisher's only authority is two routines.
+DO $services$
+DECLARE role_name text; r record; t record; a record; privilege text;
+ expected_table boolean; expected_column boolean; allowed text[]; f record;
+BEGIN
+ FOREACH role_name IN ARRAY ARRAY['app_domain_verifier','app_media_service','app_publisher','app_publish_executor'] LOOP
+  SELECT * INTO r FROM pg_roles WHERE rolname=role_name;
+  IF NOT FOUND THEN RAISE EXCEPTION 'missing service role: %',role_name; END IF;
+  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole
+     OR r.rolreplication OR r.rolinherit OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid)
+     OR has_schema_privilege(role_name,'app','CREATE')
+     OR pg_has_role('app_runtime',r.oid,'SET') THEN
+   RAISE EXCEPTION 'unsafe service capability: %',role_name;
+  END IF;
+  FOR t IN SELECT c.oid,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='app' AND c.relkind='r' LOOP
+   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+    expected_table := false; allowed := ARRAY[]::text[];
+    IF role_name='app_domain_verifier' AND t.relname='site_domains' AND privilege=ANY(ARRAY['SELECT','INSERT','UPDATE'])
+    OR role_name='app_media_service' AND t.relname=ANY(ARRAY['media_uploads','media_blobs','media_assets']) AND privilege=ANY(ARRAY['SELECT','INSERT','UPDATE'])
+    OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['sites','site_releases','site_release_routes','site_release_templates','site_release_media','media_assets','media_blobs']) AND privilege='SELECT' THEN
+     expected_table := true;
+     SELECT array_agg(attname::text) INTO allowed FROM pg_attribute
+      WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+    ELSIF role_name='app_publish_executor' AND privilege='UPDATE' THEN
+     allowed := CASE t.relname WHEN 'sites' THEN ARRAY['published_release_id']
+                              WHEN 'site_releases' THEN ARRAY['sealed'] ELSE allowed END;
+    END IF;
+    IF has_table_privilege(role_name,t.oid,privilege) IS DISTINCT FROM expected_table
+     OR has_table_privilege(role_name,t.oid,privilege || ' WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'service table capability mismatch: % app.% %',role_name,t.relname,privilege;
+    END IF;
+    IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
+     FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+      expected_column := a.attname::text=ANY(allowed);
+      IF has_column_privilege(role_name,t.oid,a.attnum,privilege) IS DISTINCT FROM expected_column
+       OR has_column_privilege(role_name,t.oid,a.attnum,privilege || ' WITH GRANT OPTION') THEN
+       RAISE EXCEPTION 'service column capability mismatch: % app.%.% %',role_name,t.relname,a.attname,privilege;
+      END IF;
+     END LOOP;
+    END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' LOOP
+  IF f.proname NOT IN ('guard_release_children','seal_release','publish_release')
+   OR NOT f.prosecdef OR f.proowner<>'app_publish_executor'::regrole
+   OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE')
+   OR has_function_privilege('app_runtime',f.oid,'EXECUTE')
+   OR has_function_privilege('app_auth',f.oid,'EXECUTE')
+   OR has_function_privilege('app_domain_resolver',f.oid,'EXECUTE')
+   OR has_function_privilege('app_publisher',f.oid,'EXECUTE') IS DISTINCT FROM (f.proname<>'guard_release_children') THEN
+   RAISE EXCEPTION 'unsafe function capability: %',f.proname;
+  END IF;
+ END LOOP;
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app')<>3 THEN
+  RAISE EXCEPTION 'publisher function contract incomplete';
+ END IF;
+END $services$;
+SELECT 'PASS: isolated service matrix and SECURITY DEFINER owner/search_path/EXECUTE' AS result;
