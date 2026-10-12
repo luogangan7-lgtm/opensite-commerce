@@ -373,6 +373,34 @@
       "legacy_go_paths": [
         "internal/shipping"
       ]
+    },
+    {
+      "name": "tax",
+      "status": "implemented",
+      "go_path": "internal/modules/tax",
+      "go_status": "planned",
+      "owns_tables": [
+        "tax_zones",
+        "tax_zone_locations",
+        "tax_categories",
+        "tax_rates",
+        "tax_settings"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "money"
+      ],
+      "tests": [
+        "internal/tax/tax_test.go",
+        "tests/db_tax.sql",
+        "tests/test_sqlc_contract_static.py"
+      ],
+      "scopes": [],
+      "note": "Tenant regional rule tables and pure calculator from PR19. Existing internal/tax uses approved Money arithmetic; target module Go path and HTTP operations remain planned. Billing must consume saved Tax snapshots without recalculation.",
+      "legacy_go_paths": [
+        "internal/tax"
+      ]
     }
   ],
   "migrations": [
@@ -566,6 +594,17 @@
         "shipping_zone_destinations",
         "shipping_profiles",
         "shipping_rates"
+      ]
+    },
+    {
+      "file": "migrations/015_tax.sql",
+      "owner": "tax",
+      "touches_tables": [
+        "tax_zones",
+        "tax_zone_locations",
+        "tax_categories",
+        "tax_rates",
+        "tax_settings"
       ]
     }
   ]

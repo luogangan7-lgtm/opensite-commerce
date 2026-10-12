@@ -22,7 +22,8 @@ DECLARE
   'tenants','users','auth_sessions','api_keys','tenant_memberships','sites',
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
   'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
-  'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates'];
+  'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
+  'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings'];
  role_name text;
  r record;
  t record;
@@ -77,6 +78,11 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'tax_zones' THEN ARRAY['tenant_id','id','name']
+        WHEN 'tax_zone_locations' THEN ARRAY['tenant_id','zone_id','country_code','subdivision']
+        WHEN 'tax_categories' THEN ARRAY['tenant_id','code','name','is_exempt']
+        WHEN 'tax_rates' THEN ARRAY['tenant_id','id','zone_id','category_code','rate_bp','valid_from','valid_until']
+        WHEN 'tax_settings' THEN ARRAY['tenant_id','prices_include_tax']
         WHEN 'idempotency_records' THEN ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','request_hash','expires_at','claim_token','created_at']
         WHEN 'outbox_events' THEN ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key','created_at']
         WHEN 'webhook_inbox' THEN ARRAY['tenant_id','id','provider','provider_account_id','environment','provider_event_id','payload_hash','payload_reference','created_at']
@@ -95,6 +101,10 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'tax_zones' THEN ARRAY['name']
+        WHEN 'tax_categories' THEN ARRAY['name','is_exempt']
+        WHEN 'tax_rates' THEN ARRAY['rate_bp','valid_from','valid_until']
+        WHEN 'tax_settings' THEN ARRAY['prices_include_tax']
         WHEN 'webhook_inbox' THEN ARRAY['status','attempts','next_attempt_at','processed_at']
         WHEN 'sites' THEN ARRAY['name','default_locale']
         WHEN 'media_assets' THEN ARRAY['filename','mime_type','width','height']

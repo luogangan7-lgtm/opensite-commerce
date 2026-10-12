@@ -123,7 +123,15 @@ fresh_before_reliability() {
 apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
 RELIABILITY_DB=""
 SHIPPING_DB=""
-trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1; [[ -z $SHIPPING_DB ]] || admin -c "DROP DATABASE IF EXISTS $SHIPPING_DB" >/dev/null 2>&1' EXIT
+TAX_DB=""
+cleanup_forward_databases() {
+ # Attempt each owned database independently even when an earlier DROP fails.
+ local name
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB"; do
+  [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
+ done
+}
+trap cleanup_forward_databases EXIT
 RELIABILITY_DB=reliability_upgrade_$$
 fresh_before_reliability "$RELIABILITY_DB"
 db "$RELIABILITY_DB" <<'SQL' >/dev/null
@@ -272,5 +280,45 @@ db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 SHIPPING_DB=""
 
+# Tax upgrade: apply ALL predecessors in filename order, then seed real legacy
+# tenant/catalog data before applying the logical tax module (number may change).
+tax=(migrations/[0-9][0-9][0-9]_tax.sql)
+[[ ${#tax[@]} == 1 ]] || { echo 'FAIL: exactly one tax migration required' >&2; exit 1; }
+TAX_DB=tax_upgrade_$$
+admin -c "CREATE DATABASE $TAX_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${tax[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$TAX_DB" >/dev/null
+done
+db "$TAX_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('tax-existing-tenant') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES(:'t','tax-existing-product','draft');
+SQL
+{ echo 'BEGIN;'; cat "${tax[0]}"; echo 'COMMIT;'; } | db "$TAX_DB" >/dev/null
+# Exercise new settings/rules through runtime and preserve the existing product.
+result=$(db "$TAX_DB" <<'SQL'
+SELECT set_config('app.tenant_id',(SELECT id::text FROM app.tenants WHERE name='tax-existing-tenant'),false);
+SET ROLE app_runtime;
+INSERT INTO app.tax_settings(tenant_id,prices_include_tax) VALUES(current_setting('app.tenant_id')::uuid,true);
+INSERT INTO app.tax_zones(tenant_id,name) VALUES(current_setting('app.tenant_id')::uuid,'US') RETURNING id AS z \gset
+INSERT INTO app.tax_zone_locations(tenant_id,zone_id,country_code) VALUES(current_setting('app.tenant_id')::uuid,:'z','US');
+INSERT INTO app.tax_categories(tenant_id,code,name) VALUES(current_setting('app.tenant_id')::uuid,'standard','Standard');
+INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from) VALUES(current_setting('app.tenant_id')::uuid,:'z','standard',500,'2026-01-01Z');
+SELECT (SELECT count(*) FROM app.products WHERE product_code='tax-existing-product')||'|'||
+ (SELECT prices_include_tax FROM app.tax_settings)||'|'||(SELECT rate_bp FROM app.tax_rates);
+SQL
+)
+[[ $result == *'1|true|500'* ]] || bad "tax populated upgrade witness: $result"
+# Apply successors too: the complete-schema exact matrix must remain meaningful
+# when integration later puts another module after Tax.
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${tax[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$TAX_DB" >/dev/null
+done
+if ! db "$TAX_DB" < tests/db_tax.sql >/dev/null || ! db "$TAX_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'tax constraints/role matrix after populated upgrade'
+else pass 'tax upgrade preserves prior catalog data; new settings/rules and exact privileges pass'; fi
+admin -c "DROP DATABASE $TAX_DB" >/dev/null; TAX_DB=""
+
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing and shipping upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping and tax upgrade gates'

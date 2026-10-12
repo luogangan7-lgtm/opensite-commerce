@@ -482,6 +482,41 @@ type AppStockLevel struct {
 	Reserved    int64       `json:"reserved"`
 }
 
+type AppTaxCategory struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	Code     string      `json:"code"`
+	Name     string      `json:"name"`
+	IsExempt bool        `json:"is_exempt"`
+}
+
+type AppTaxRate struct {
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	ID           pgtype.UUID        `json:"id"`
+	ZoneID       pgtype.UUID        `json:"zone_id"`
+	CategoryCode string             `json:"category_code"`
+	RateBp       int32              `json:"rate_bp"`
+	ValidFrom    pgtype.Timestamptz `json:"valid_from"`
+	ValidUntil   pgtype.Timestamptz `json:"valid_until"`
+}
+
+type AppTaxSetting struct {
+	TenantID         pgtype.UUID `json:"tenant_id"`
+	PricesIncludeTax bool        `json:"prices_include_tax"`
+}
+
+type AppTaxZone struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+	Name     string      `json:"name"`
+}
+
+type AppTaxZoneLocation struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	ZoneID      pgtype.UUID `json:"zone_id"`
+	CountryCode string      `json:"country_code"`
+	Subdivision string      `json:"subdivision"`
+}
+
 type AppTenant struct {
 	ID        pgtype.UUID        `json:"id"`
 	Name      string             `json:"name"`
