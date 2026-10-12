@@ -11,7 +11,7 @@ if (process.argv.some(argument => argument.startsWith('--update-snapshots')) &&
 export default defineConfig({
   testDir: './tests/frontend',
   timeout: 180_000,
-  expect: { timeout: 10_000, toHaveScreenshot: { animations: 'disabled', maxDiffPixels: 0 } },
+  expect: { timeout: 10_000, toHaveScreenshot: { animations: 'disabled', threshold: 0, maxDiffPixels: 0 } },
   fullyParallel: false,
   workers: 1,
   retries: 0,

@@ -1,5 +1,5 @@
 /** Verifies real shared component states; depends on Playwright/axe; CI snapshots are bound to fixed container inputs. */
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Locator } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { CASE_IDS, variants } from '../../web/admin/src/gallery-cases';
 
@@ -10,6 +10,21 @@ async function catalog(page: Page) {
   expect(await page.evaluate(() => Array.from(document.fonts)
     .filter(face => face.family.replace(/['"]/g, '') === 'Inter' && face.status === 'loaded')
     .map(face => face.weight).sort())).toEqual(['400', '500', '600']);
+}
+
+async function focusFits(control: Locator, wrapper: Locator) {
+  const controlBox = await control.boundingBox();
+  const snapshotBox = await wrapper.boundingBox();
+  if (!controlBox || !snapshotBox) throw new Error('Focused control and snapshot must have geometry');
+  const extent = await control.evaluate(element => {
+    const style = getComputedStyle(element);
+    return parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+  });
+  expect(extent).toBeGreaterThan(0);
+  expect(controlBox.x - extent).toBeGreaterThanOrEqual(snapshotBox.x);
+  expect(controlBox.x + controlBox.width + extent).toBeLessThanOrEqual(snapshotBox.x + snapshotBox.width);
+  expect(controlBox.y - extent).toBeGreaterThanOrEqual(snapshotBox.y);
+  expect(controlBox.y + controlBox.height + extent).toBeLessThanOrEqual(snapshotBox.y + snapshotBox.height);
 }
 
 test('all component states have visual baselines', async ({ page }) => {
@@ -31,6 +46,7 @@ test('all component states have visual baselines', async ({ page }) => {
     await page.keyboard.press('Shift+Tab');
     await expect(control).toBeFocused();
     expect(await control.evaluate(element => element.matches(':focus-visible'))).toBe(true);
+    await focusFits(control, page.getByTestId(`case-button-${variant}-md-default`));
     await expect(page.getByTestId(`case-button-${variant}-md-default`)).toHaveScreenshot(`button-${variant}-focus.png`);
     await control.blur();
   }
@@ -45,12 +61,25 @@ test('all component states have visual baselines', async ({ page }) => {
     await page.keyboard.press('Shift+Tab');
     await expect(control).toBeFocused();
     expect(await control.evaluate(element => element.matches(':focus-visible'))).toBe(true);
+    await focusFits(control, wrapper);
     await expect(wrapper).toHaveScreenshot(`${id}-focus.png`);
     await control.blur();
   }
   await page.getByTestId('dialog-trigger').click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveScreenshot('dialog-open.png');
+});
+
+test('keyboard focus rings fit inside snapshot cases', async ({ page }) => {
+  await catalog(page);
+  const wrapper = page.getByTestId('case-button-primary-md-default');
+  const control = wrapper.getByRole('button');
+  await control.focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(control).toBeFocused();
+  expect(await control.evaluate(element => element.matches(':focus-visible'))).toBe(true);
+  await focusFits(control, wrapper);
 });
 
 test('axe rejects serious or critical violations', async ({ page }) => {

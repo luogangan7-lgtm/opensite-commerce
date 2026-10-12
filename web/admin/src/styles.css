@@ -21,7 +21,7 @@ a:focus-visible { outline: var(--focus-width) solid var(--color-brand); outline-
 .gallery-cases { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--layout-column-min)), 1fr)); gap: var(--space-6); }
 .gallery-case { min-inline-size: var(--space-0); padding-block: var(--space-4); border-block-start: var(--border-width) solid var(--color-border); display: flex; flex-direction: column; align-items: stretch; gap: var(--space-4); }
 .gallery-case h3 { margin: var(--space-0); font-size: var(--font-size-sm); line-height: var(--line-height-heading); font-weight: var(--font-weight-medium); }
-.gallery-example { min-inline-size: var(--space-0); }
+.gallery-example { min-inline-size: var(--space-0); padding: var(--space-2); }
 .gallery-case code { color: var(--color-muted); font-size: var(--font-size-sm); font-family: var(--font-family-mono); overflow-wrap: anywhere; margin-block-start: auto; }
 #tables .gallery-cases, #empty .gallery-cases, #cards .gallery-cases { grid-template-columns: 1fr; }
 .gallery-dialog-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }

@@ -14,7 +14,7 @@ export const tokens = {
   "color-blue-800": "#1e40af",
   "color-blue-900": "#1e3a8a",
   "color-border": "#64748b",
-  "color-brand": "#1d4ed8",
+  "color-brand": "#1e3a8a",
   "color-brand-hover": "#1e40af",
   "color-canvas": "#f7f8fa",
   "color-danger": "#991b1b",
