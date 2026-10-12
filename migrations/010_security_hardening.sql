@@ -31,12 +31,17 @@ END $executor_members$;
 GRANT USAGE ON SCHEMA app TO app_domain_verifier,app_media_service,app_publisher,app_publish_executor;
 REVOKE ALL ON ALL TABLES IN SCHEMA app FROM app_domain_verifier,app_media_service,app_publisher,app_publish_executor;
 
--- Online upgrade: take every lock the publication invariant needs first, in one
--- fixed order and at full strength, so legacy pointer/child/media writers either
--- finish before the published-media scan or wait and then meet the new grants.
--- (Weaker or later locks deadlock with them: CREATE POLICY needs ACCESS EXCLUSIVE.)
-LOCK TABLE app.sites,app.site_releases,app.site_release_media,app.media_assets,app.media_blobs
- IN ACCESS EXCLUSIVE MODE;
+-- Online upgrade: before anything else, take ACCESS EXCLUSIVE on every table
+-- this migration alters/policies/triggers and that sits on the publication FK
+-- graph, children before parents. A legacy writer that already holds a child
+-- and checks its parent FK then finishes first instead of deadlocking with the
+-- later DDL. sites<->site_releases is an FK cycle, so no order is deadlock-free
+-- for every writer: lock_timeout < deadlock_timeout makes 010 give up (and roll
+-- back untouched) rather than abort application traffic; rerun it.
+SET LOCAL lock_timeout='500ms';
+LOCK TABLE app.site_domains,app.site_release_routes,app.site_release_templates,
+ app.site_release_media,app.media_uploads,app.media_assets,app.media_blobs,
+ app.site_releases,app.sites IN ACCESS EXCLUSIVE MODE;
 
 -- Table-level grants override column revocations: remove both before narrowing.
 DO $runtime_columns$
