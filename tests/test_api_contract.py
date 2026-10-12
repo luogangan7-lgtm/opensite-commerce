@@ -34,7 +34,7 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual((cookie["type"], cookie["in"], cookie["name"]),
                          ("apiKey", "cookie", "__Host-osc_admin_session"))
 
-    def test_planned_identity_and_implemented_health(self):
+    def test_planned_identity_and_implemented_foundation(self):
         ops = operations(self.api)
         for name in ("createAdminSession", "deleteAdminSession", "getCurrentActor",
                      "listAdminSessions", "revokeAdminSession"):
@@ -44,8 +44,19 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(ops["health"][:2], ("/healthz", "get"))
         self.assertEqual(set(ops["health"][2]["responses"]), {"204"})
         self.assertNotIn("content", ops["health"][2]["responses"]["204"])
+        expected = {"health", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
+                    "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
+                    "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, {"health"})
+                          if op["x-opensite-status"] == "implemented"}, expected)
+        for name in expected - {"health"}:
+            path, method, operation = ops[name]
+            self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
+            self.assertIn(operation["x-required-scope"], {"catalog:read", "catalog:write", "media:write"})
+            if method != "get":
+                self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, operation["parameters"])
+            if name in {"updateProduct", "archiveProduct", "updateVariant", "archiveVariant"}:
+                self.assertIn({"$ref": "#/components/parameters/IfMatch"}, operation["parameters"])
 
     def test_all_business_paths_include_tenant_and_allow_cookie_or_key(self):
         ops = operations(self.api)

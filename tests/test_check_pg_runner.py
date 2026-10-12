@@ -67,6 +67,7 @@ expected = [
     'db_tax.sql',
     'db_customers.sql',
     'db_ledger.sql',
+    'db_catalog_api.sql',
     'db_identity_auth.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.

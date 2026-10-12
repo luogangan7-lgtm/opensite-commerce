@@ -21,7 +21,13 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := bootstrap.Run(ctx, bootstrap.Config{Address: address, Logger: logger}); err != nil {
+	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger})
+	if err != nil {
+		logger.Error("API configuration failed", "error", err)
+		os.Exit(1)
+	}
+	defer closeRuntime()
+	if err := bootstrap.Run(ctx, config); err != nil {
 		logger.Error("API stopped", "error", err)
 		os.Exit(1)
 	}
