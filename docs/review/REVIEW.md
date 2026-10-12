@@ -11,28 +11,28 @@ owner 提供了原始 ChatGPT 对话（`6acb3610`，51 轮）。从中取回了�
 - **V0.1 → V1.0 前置审查全文**：12 篇，约 28 万字，已放进 [`docs/history/`](../history/README.md)。
 - **3 个代码包和 4 份报告**：已取回，报告和校验和在 [`docs/history/artifacts/`](../history/artifacts/)。
 
-**F-01 改判：基线确实存在，但从未在真实数据库上验收。**
+**F-01 改判：基线确实存在。导入前，它从未在真实数据库上验收过；导入后的情况见下方「2026-10-12 已导入」。**
 - 最新一版是 `opensite-commerce-pr01-acceptance-gated.zip`，sha256 `c0be392b…`，共 56 个文件。内容包括 Go 1.23、迁移 001–009、5 个 SQL 行为测试、sqlc 配置、pgx 适配器、OpenAPI（12 个 operation），以及 ADR-070/071。
 - 它自带的验收报告写明：PG18 迁移、RLS/角色测试、`sqlc generate`、pgx 编译这几项全是 **BLOCKED / NOT RUN**（ChatGPT 沙箱里没有 PG、Docker、sqlc，也没有网络）。只有离线检查跑过，包括 `go test -race`、`go vet`、静态契约检查和假 psql 编排测试。
 - **2026-10-12 已导入（PR #2）**：Codex S1 做了安全审查，结论 IMPORT_WITH_FIXES；在真实 PG18.6 上 gate 1–3 全部通过，GitHub CI 也是绿的，Codex R2 独立复跑同样通过。证据见 [`docs/PR01A_ACCEPTANCE.md`](../PR01A_ACCEPTANCE.md)。S1 列出的 SQL P1 问题交给 010_security_hardening（PR-01B）处理。
 
 **F-02 已关闭**：附件包已全部找回。
 
-**F-22 先取默认值**：代码包里自带 Apache-2.0 LICENSE。代码随 PR-01A 导入时就沿用这个许可证，owner 想换可以另提。
+**F-22 采用默认值**：Apache-2.0 LICENSE 已随 PR-01A 导入；owner 想换可以另提。
 
 ## 结论
 
 大方向成立，可以作为 V1 的设计输入：模块化单体、PostgreSQL 作唯一事实源、pgx+sqlc 不用 ORM、River、默认 LocalFS、外部能力走 adapter、可选基础设施不作默认依赖。
-**但它还不能直接当实施基线用**，现行 P0 有 3 个：PR-01 基线代码从未在真实 PG18 上验收（F-01，已改判）；示例 DDL 有两处会在真实 PG18 上出错（F-03 / F-04）。F-02 已关闭。下表保留原始审查结论，被状态更新取代的行已标注。
+**原始审查时的 4 个 P0 现已全部处理**：F-01 已导入并在真实 PG18 上验收（PR #2）；F-02 已关闭；F-03 / F-04 指的是报告里的示例 DDL。真实迁移 001–009 中没有 payments 表，008 也已经用了 `nullif`，所以两条都不成立，只作为后续迁移的写法规则保留（见 V1_DECISIONS 第 7 节）。现在需要处理的是 S1 列出的 SQL P1 问题，由 `010_security_hardening` 负责。下表保留原始结论，被状态更新取代的行已标注。
 
 ## 全部发现
 
 | ID | 级 | 报告行 | 问题 | 来源 |
 |---|---|---|---|---|
-| F-01 | **P0** | 5–30, 2299, 2511 | ~~找不到任何对应工件~~（已被状态更新取代）。**现状**：V0.7 / PR-01 代码包已从 ChatGPT 对话取回（迁移 001–009、5 个 SQL 行为测试、sqlc、pgx 适配器、ADR-070/071），但真实 PG18 迁移、RLS/角色测试、`sqlc generate`、pgx 编译**一项都没跑过**，代码也还没进仓库 | Claude + A01 |
-| F-02 | ~~P0~~ 已关闭 | 152–156, 278, 2557–2559 | ~~附件从未交付~~。3 个代码包和 4 份报告已从原对话取回：报告原文和代码包 sha256 见 `docs/history/artifacts/`；代码包本身未入仓，走 PR-01A 导入。架构 PNG 没有找回，以 mermaid 为准 | A02 |
-| F-03 | **P0** | 1063–1067 | `payments` 表的 `UNIQUE NULLS NOT DISTINCT (tenant_id, provider, provider_payment_id)` 有问题。payment 在 `created` 状态时还没有 provider 引用（`provider_payment_id` 为 NULL），同一租户、同一 provider 下第二笔待创建的支付就会撞唯一约束，并发结账直接失败 | Claude |
-| F-04 | **P0** | 1235–1248 | RLS 模板里的 `current_setting('app.tenant_id', true)::uuid`：连接池复用的连接上，`SET LOCAL` 在事务结束后会把值复位为空串 `''`，`''::uuid` 直接报错。Humaux 项目 2026-08-25 在 PG18.6 上实测过这个行为 | Claude |
+| F-01 | ~~P0~~ 已验收 | 5–30, 2299, 2511 | ~~找不到任何对应工件~~（已被状态更新取代）。**现状**：V0.7 / PR-01 代码包已从 ChatGPT 对话取回（迁移 001–009、5 个 SQL 行为测试、sqlc、pgx 适配器、ADR-070/071），已于 2026-10-12 导入（PR #2），并在真实 PG18.6 上验收通过：9 份迁移跑两遍 + 5 个 SQL 行为测试、sqlc、pgx、race 全部通过，GitHub CI 绿，Codex R2 独立复跑也通过 | Claude + A01 |
+| F-02 | ~~P0~~ 已关闭 | 152–156, 278, 2557–2559 | ~~附件从未交付~~。3 个代码包和 4 份报告已从原对话取回：报告原文和代码包 sha256 见 `docs/history/artifacts/`；代码已经由 PR-01A 导入。架构 PNG 没有找回，以 mermaid 为准 | A02 |
+| F-03 | ~~P0~~ 001–009 中不成立 | 1063–1067 | `payments` 表的 `UNIQUE NULLS NOT DISTINCT (tenant_id, provider, provider_payment_id)` 有问题。payment 在 `created` 状态时还没有 provider 引用（`provider_payment_id` 为 NULL），同一租户、同一 provider 下第二笔待创建的支付就会撞唯一约束，并发结账直接失败 | Claude |
+| F-04 | ~~P0~~ 008 已用 nullif；还缺连接复用测试 | 1235–1248 | RLS 模板里的 `current_setting('app.tenant_id', true)::uuid`：连接池复用的连接上，`SET LOCAL` 在事务结束后会把值复位为空串 `''`，`''::uuid` 直接报错。Humaux 项目 2026-08-25 在 PG18.6 上实测过这个行为 | Claude |
 | F-05 | P1 | 1030–1212 | DDL 缺约束：`captured<=amount`、`refunded<=captured`、`on_hand>=reserved`（available 不变量）、`net=gross-fee+adjustment`、`period_end>period_start`；`payments.order_id`、`shipments.order_id`、`approval_requests.policy_id` 缺 `(tenant_id, …)` 复合外键；`tax_rules` 缺版本唯一键；RLS 只示范了一张表 | Claude |
 | F-06 | P1 | 1225–1231 | 「借贷平衡」只写成了一句 `SUM(debit)=SUM(credit)`，没有给出 DB 层的强制手段 | Claude |
 | F-07 | P1 | 1057, 1291–1319 | 幂等键只在 `payments` 表里按租户唯一。应改成统一的 `(tenant, operation, key)` 加请求哈希：同一个 key 换了请求体要返回 422。OpenAPI 片段也缺 401/403/422 和 `components` 定义 | Claude |
@@ -50,7 +50,7 @@ owner 提供了原始 ChatGPT 对话（`6acb3610`，51 轮）。从中取回了�
 | F-19 | P1 | 2197–2243 | 备份缺 WAL 归档新鲜度监控和 DB/blob 一致切点；restore drill 没有成为 gate | D08 |
 | F-20 | P1 | 2011–2067 | Agent 的 A0–A4 分级没有绑定到执行：审批应绑定命令哈希、资源版本和期限，单次消费 | D10 |
 | F-21 | P1 | 411, 927–935 | 没区分 River Community 和 Pro 的能力（工作流、并发限制、死信队列等是 Pro-only） | A05 |
-| F-22 | P1 → 默认值 | 2265–2293 | 项目自身许可证：代码包自带 Apache-2.0，随 PR-01A 导入时启用；owner 可以另行更换 | D11 |
+| F-22 | P1 → 已采用默认值 | 2265–2293 | 项目自身许可证：Apache-2.0，已随 PR-01A 导入；owner 可以另行更换 | D11 |
 | F-23 | P1 | 1, 403 | 命名冲突：GitHub 上已有 `opensite-ai` 组织，npm 上已有 `@opensite/ui` 包 | D13 |
 | F-24 | P2 | 2075–2101 | 内存预算上端约 8.25GB，超过 8GB 机器。Admin/Builder 应该静态构建、由 Caddy 托管，不需要常驻 Node | D07 |
 | F-25 | P2 | 1620–1693 | 截图基线需要锁定镜像、浏览器、字体哈希、locale 和时区 | D09, A07 |
@@ -93,5 +93,5 @@ owner 提供了原始 ChatGPT 对话（`6acb3610`，51 轮）。从中取回了�
 
 ## 待 owner 决断
 
-- 开源许可证（F-22）：默认采用代码包自带的 Apache-2.0，随 PR-01A 导入。owner 如果想要 AGPL-3.0（网络服务修改必须回馈），在导入前提出。
+- 开源许可证（F-22）：目前是 Apache-2.0。owner 如果想要 AGPL-3.0（网络服务修改必须回馈），可以另提 PR 更换。
 - 命名（F-23）：是否沿用 OpenSite 这个名字，npm scope 怎么定。
