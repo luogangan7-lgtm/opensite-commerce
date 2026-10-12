@@ -15,7 +15,13 @@ expected = [
     'db_isolation.sql',
     'db_role_boundaries.sql',
     'db_release_integrity.sql',
+    'db_security_hardening.sql',
+    'db_role_matrix.sql',
+    'db_connection_reuse.sql',
+    'db_security_services.sql',
+    'db_publish_isolation.sql',
 ]
+n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:
     assert (root / 'tests' / name).is_file(), name
 
@@ -43,8 +49,8 @@ fi
     for name in expected:
         assert f'RUN tests/{name}' in r.stdout, name
     contents = log.read_text()
-    assert contents.count('SELECT pg_advisory_xact_lock') == 20, '2 runs x (9 migrations + 1 history gate)'
-    assert contents.count('===SQL===') == 25, '2 x 10 migration checks + 5 actual test files'
+    assert contents.count('SELECT pg_advisory_xact_lock') == 2 * (n_migrations + 1), '2 runs x (migrations + 1 history gate)'
+    assert contents.count('===SQL===') == 2 * (n_migrations + 1) + len(expected), '2 x migration checks + actual test files'
     assert 'boundary-roles' in contents
     assert 'release-FK' in contents
     assert 'smoke-A' in contents
@@ -54,4 +60,4 @@ fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode != 0, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_release_integrity.sql' not in failed.stdout
-print('PASS: check_pg submits all 5 real-PG test files, repeats 9 migrations, propagates failures (mock psql; NO SQL executed)')
+print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, propagates failures (mock psql; NO SQL executed)')
