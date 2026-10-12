@@ -1,11 +1,12 @@
 // Package pricing selects exact SKU tiers from caller-authorized tenant lists.
 // It owns pricing rules, depends only on money/stdlib, and performs no I/O/auth.
-// sqlc consumers supply canonical UUID strings; SQL and Go use the same tie order.
+// Quote canonicalizes list UUID casing; SQL and Go use the same tie order.
 package pricing
 
 import (
 	"errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"strings"
 	"time"
 )
 
@@ -55,6 +56,8 @@ func Quote(lists []PriceList, request Request) (Result, error) {
 		if list.TenantID != request.TenantID {
 			continue
 		}
+		// Normalize the value copy so identity and tie ordering agree without mutating inputs.
+		list.ID = strings.ToLower(list.ID)
 		if list.ID == "" || ids[list.ID] || (list.Status != "draft" && list.Status != "active" && list.Status != "archived") {
 			return Result{}, ErrInvalid
 		}
