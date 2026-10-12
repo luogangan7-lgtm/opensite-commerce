@@ -167,7 +167,7 @@ Webhook Inbox 保存的是**已经通过签名验证，并完成可信商户账�
 必须真实执行：
 
 - 同一 Idempotency Key + 相同请求只产生一次业务副作用。
-- 相同 Key + 不同请求体返回冲突。
+- 相同 Key + 不同请求体返回 **HTTP 422**（错误码 `idempotency_key_reused`，与 REVIEW F-07 一致）；相同 Key + 相同请求体在原请求仍在处理时返回 409，处理完成后重放原响应。
 - 重复、乱序 Webhook 不重复扣款或退款。
 - 事务回滚后，River Job 不可执行。
 - Worker 在提交后宕机，任务仍可恢复。
@@ -316,7 +316,7 @@ SUM(amount_minor) FILTER (WHERE side = 'credit')
 
 同时要求 Posted 至少两行、总金额大于零，并验证币种一致。
 
-**锁必须在数据库内强制，而不是依赖 Go 服务约定**：Entry 的 BEFORE INSERT/UPDATE/DELETE 触发器与 Journal 的 Posting 触发器都先 `SELECT … FROM ledger_transactions WHERE id = … FOR UPDATE` 锁定父 Journal，再检查其状态（已 Posted 则拒绝 Entry 变更）。Entry 的父键 `(tenant_id, transaction_id)` 一律**不可变**：BEFORE UPDATE 触发器只要发现父键有变化就拒绝，要换 Journal 只能删掉再插入，删除和插入各自对所属 Journal 加锁、检查状态。这样就不会出现「从已 Posted 的 Journal 移出」或「移入已 Posted 的 Journal」这种单边漏检。这样直接 SQL 或未来其他写入方也无法让「过账校验看到旧 Entry、Entry 写入看到 Draft」两个事务同时提交出不平衡的 Posted Journal。验收 gate 增加：两个并发会话分别执行「过账」与「修改 Entry」，结果必须是其一失败或串行，最终 Posted Journal 始终借贷平衡。
+**锁必须在数据库内强制，而不是依赖 Go 服务约定**：Entry 的 BEFORE INSERT/UPDATE/DELETE 触发器与 Journal 的 Posting 触发器都先 `SELECT … FROM ledger_transactions WHERE id = … FOR UPDATE` 锁定父 Journal，再检查其状态（已 Posted 则拒绝 Entry 变更）。Entry 的父键 `(tenant_id, transaction_id)` 一律**不可变**：BEFORE UPDATE 触发器只要发现父键有变化就拒绝，要换 Journal 只能删掉再插入，删除和插入各自对所属 Journal 加锁、检查状态。这样就不会出现「从已 Posted 的 Journal 移出」或「移入已 Posted 的 Journal」这种单边漏检。**只加锁还不够**：Entry 的每次插入、更新、删除都必须对父 Journal 执行一次真实的 `UPDATE`（例如 `revision = revision + 1`），不能只做 `FOR UPDATE`。如果过账事务运行在 REPEATABLE READ 下，并且在 Entry 事务持锁期间就拿到了快照，那么它等锁释放后写同一行时，PostgreSQL 会报序列化冲突（40001），而不是基于旧快照把不平衡的 Journal 标成 Posted。可选的加强做法：过账命令强制使用 SERIALIZABLE。这样直接 SQL 或未来其他写入方也无法让「过账校验看到旧 Entry、Entry 写入看到 Draft」两个事务同时提交出不平衡的 Posted Journal。验收 gate 增加：两个并发会话分别执行「过账」与「修改 Entry」，在 READ COMMITTED、REPEATABLE READ、SERIALIZABLE 三种隔离级别下各跑一遍，结果必须是其一失败（含 40001）或串行，最终 Posted Journal 始终借贷平衡。另做一次注错：把父行 `UPDATE` 改回只加锁，REPEATABLE READ 那一轮必须变红。
 
 PostgreSQL 支持事务末尾执行的延迟 Constraint Trigger；但上述只是 DDL 契约示例，完整函数仍必须实现及实测（参见 PostgreSQL 18 文档 [CREATE TRIGGER · CONSTRAINT / DEFERRABLE](https://www.postgresql.org/docs/18/sql-createtrigger.html)）。
 
@@ -649,7 +649,7 @@ Payments 表实现后，再执行两类真实数据库断言：
 | PR-10 | Tax Engine、`016_tax` | 04、08 | 税区规则、税额舍入、税快照 |
 | PR-11 | Shipping Rate、`017_shipping` | 04、06、09 | 地区/重量运价、不可配送拒绝 |
 | PR-12 | Cart、`018_cart` | 04、06、08 | 数量修改、版本和幂等 |
-| PR-13 | Orders/GetPayable、`019_orders` | 09–12、F | 成交快照、不合法状态转换、订单幂等 |
+| PR-13 | Orders/GetPayable + **Payment Port 契约 v1**（见第九节）、`019_orders`（逻辑标识） | 09–12、F | 成交快照、不合法状态转换、订单幂等、Port 契约测试 |
 | **PR-14** | 单币复式账本、`020_ledger` | 08、F | 延迟借贷平衡、不可变及重复记账拒绝 |
 | PR-15 | Inquiry、Quote、单层审批、`021_quotes` | 05、06、08 | 报价到期、审批权限、预付条件 |
 | PR-16 | Checkout 编排、`022_checkout` | 09–15 | B2C/B2B 下单、重报价、失败恢复 |
