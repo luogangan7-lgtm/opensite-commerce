@@ -238,6 +238,39 @@ type AppInventoryReservation struct {
 	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
 }
 
+type AppLedgerAccount struct {
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	ID          pgtype.UUID        `json:"id"`
+	Currency    string             `json:"currency"`
+	Code        string             `json:"code"`
+	AccountType string             `json:"account_type"`
+	Status      string             `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppLedgerEntry struct {
+	TenantID      pgtype.UUID `json:"tenant_id"`
+	TransactionID pgtype.UUID `json:"transaction_id"`
+	LineNo        int32       `json:"line_no"`
+	AccountID     pgtype.UUID `json:"account_id"`
+	Currency      string      `json:"currency"`
+	Side          string      `json:"side"`
+	Amount        int64       `json:"amount"`
+}
+
+type AppLedgerTransaction struct {
+	TenantID   pgtype.UUID        `json:"tenant_id"`
+	ID         pgtype.UUID        `json:"id"`
+	Currency   string             `json:"currency"`
+	SourceType string             `json:"source_type"`
+	SourceID   string             `json:"source_id"`
+	Event      string             `json:"event"`
+	Status     string             `json:"status"`
+	Revision   int64              `json:"revision"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	PostedAt   pgtype.Timestamptz `json:"posted_at"`
+}
+
 type AppMediaAsset struct {
 	TenantID   pgtype.UUID        `json:"tenant_id"`
 	ID         pgtype.UUID        `json:"id"`
@@ -617,10 +650,11 @@ type AppTaxZoneLocation struct {
 }
 
 type AppTenant struct {
-	ID        pgtype.UUID        `json:"id"`
-	Name      string             `json:"name"`
-	Status    string             `json:"status"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID                 pgtype.UUID        `json:"id"`
+	Name               string             `json:"name"`
+	Status             string             `json:"status"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	SettlementCurrency pgtype.Text        `json:"settlement_currency"`
 }
 
 type AppTenantMembership struct {
