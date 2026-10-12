@@ -32,10 +32,18 @@ SELECT current_setting('race.ids');
 SQL
 }
 
-# tx <role> <tenant> <sql>: one transaction on its own connection; never aborts the gate.
+# tx <label> <role> <tenant> <sql>: one transaction on its own connection. Never
+# aborts the gate; stderr is kept per label so expect() can check who failed why.
+ERRDIR=$(mktemp -d); trap 'rm -rf "$ERRDIR"' EXIT
 tx() {
-  printf "BEGIN; SELECT set_config('app.tenant_id','%s',true); SET LOCAL ROLE %s; %s COMMIT;\n" "$2" "$1" "$3" \
-    | sql >/dev/null 2>&1 || true
+  printf "BEGIN; SELECT set_config('app.tenant_id','%s',true); SET LOCAL ROLE %s; %s COMMIT;\n" "$3" "$2" "$4" \
+    | sql >/dev/null 2>"$ERRDIR/$1" || true
+}
+# expect <label> <marker|ok>: winners must not error; losers only with their guard.
+expect() {
+  local err; err=$(cat "$ERRDIR/$1")
+  if [[ $2 == ok ]]; then [[ -z $err ]] && return; else [[ $err == *"$2"* ]] && return; fi
+  echo "  $1: expected ${2}, got: ${err:-no error}"; fail=1
 }
 
 witness() {  # sealed|asset visibility|blob status for release $1 and its fixture media
@@ -60,29 +68,33 @@ for downgrade in "UPDATE app.media_assets SET visibility='private' WHERE id='%a'
                  "UPDATE app.media_blobs SET status='deleting' WHERE id='%b';"; do
   read -r T S R B A <<<"$(fixture)"
   down=${downgrade//%a/$A}; down=${down//%b/$B}
-  tx app_runtime "$T" "INSERT INTO app.site_release_media(tenant_id,site_id,release_id,media_id) VALUES('$T','$S','$R','$A'); SELECT pg_sleep(1.5);" &
+  tx child app_runtime "$T" "INSERT INTO app.site_release_media(tenant_id,site_id,release_id,media_id) VALUES('$T','$S','$R','$A'); SELECT pg_sleep(1.5);" &
   sleep 0.5
-  tx app_media_service "$T" "$down SELECT pg_sleep(2.5);" &
+  tx down app_media_service "$T" "$down SELECT pg_sleep(2.5);" &
   sleep 1.5
-  tx app_publisher "$T" "SELECT app.publish_release('$T','$S','$R',NULL);" &
+  tx seal app_publisher "$T" "SELECT app.publish_release('$T','$S','$R',NULL);" &
   wait
   # Seal must wait for the downgrade, then refuse (23514): unsealed, downgrade kept.
   [[ $down == *media_assets* ]] && want='false|private|ready' || want='false|public|deleting'
   check "race child-uncommitted / ${down%% SET*}" "$want" "$R" "$A" "$B"
+  expect child ok; expect down ok; expect seal RELEASE_MEDIA_NOT_PUBLIC_READY
 done
 # Committed child; downgrade and seal race in both orders (the second must lose).
 for first in media seal; do
   read -r T S R B A <<<"$(fixture)"
-  tx app_runtime "$T" "INSERT INTO app.site_release_media(tenant_id,site_id,release_id,media_id) VALUES('$T','$S','$R','$A');"
+  tx child app_runtime "$T" "INSERT INTO app.site_release_media(tenant_id,site_id,release_id,media_id) VALUES('$T','$S','$R','$A');"
   down="UPDATE app.media_blobs SET status='deleting' WHERE id='$B'; SELECT pg_sleep(1.5);"
   seal="SELECT app.publish_release('$T','$S','$R',NULL); SELECT pg_sleep(1.5);"
-  if [[ $first == media ]]; then a=(app_media_service "$down"); b=(app_publisher "$seal")
-  else a=(app_publisher "$seal"); b=(app_media_service "$down"); fi
-  tx "${a[0]}" "$T" "${a[1]}" & sleep 0.5
-  tx "${b[0]}" "$T" "${b[1]}" & wait
+  if [[ $first == media ]]; then a=(down app_media_service "$down"); b=(seal app_publisher "$seal")
+  else a=(seal app_publisher "$seal"); b=(down app_media_service "$down"); fi
+  tx "${a[0]}" "${a[1]}" "$T" "${a[2]}" & sleep 0.5
+  tx "${b[0]}" "${b[1]}" "$T" "${b[2]}" & wait
   # The second writer loses: media-first -> seal refused; seal-first -> downgrade refused.
   [[ $first == media ]] && want='false|public|deleting' || want='true|public|ready'
   check "race committed-child / $first first" "$want" "$R" "$A" "$B"
+  expect child ok
+  if [[ $first == media ]]; then expect down ok; expect seal RELEASE_MEDIA_NOT_PUBLIC_READY
+  else expect seal ok; expect down SEALED_RELEASE_MEDIA_PINNED; fi
 done
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing contract" >&2; exit 1; fi
 echo 'PASS: 3-connection seal/downgrade/child-append races keep sealed media public+ready'

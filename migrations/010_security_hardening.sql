@@ -78,7 +78,7 @@ BEGIN
 END $media_policies$;
 
 ALTER TABLE app.site_releases ADD COLUMN sealed boolean NOT NULL DEFAULT false;
--- Already published releases are sealed before any application child writes.
+-- Pre-010 releases are sealed before any application child writes.
 -- 001-009 allowed publishing unsafe media; refuse to seal it silently. The
 -- operator must make that media public+ready (or unpublish) and rerun 010.
 -- Writers are excluded by the ACCESS EXCLUSIVE locks taken above.
@@ -94,8 +94,11 @@ BEGIN
    HINT='Make media of published releases public+ready, or unpublish them, then rerun migration 010.';
  END IF;
 END $published_media$;
-UPDATE app.site_releases r SET sealed=true FROM app.sites s
- WHERE s.tenant_id=r.tenant_id AND s.id=r.site_id AND s.published_release_id=r.id;
+-- 001-009 keep no reliable publish history (a release published then replaced
+-- looks like a candidate), so conservatively seal EVERY pre-010 release:
+-- history stays immutable; in-flight candidates must be rebuilt after 010.
+-- Republishing any of them still passes seal_release's media check.
+UPDATE app.site_releases SET sealed=true;
 GRANT INSERT(tenant_id,site_id,id,release_no,renderer_build_id,manifest,manifest_hash,
  restored_from,created_at) ON app.site_releases TO app_runtime;
 GRANT SELECT ON app.sites,app.site_releases,app.site_release_routes,
@@ -224,14 +227,17 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $med
 DECLARE pinned boolean;
 BEGIN
  IF TG_TABLE_NAME='media_assets' THEN
-  -- Only public assets can be referenced by a sealed release.
-  IF OLD.visibility<>'public' OR (NEW.tenant_id,NEW.id,NEW.blob_id,NEW.visibility,NEW.mime_type)
-   IS NOT DISTINCT FROM (OLD.tenant_id,OLD.id,OLD.blob_id,OLD.visibility,OLD.mime_type) THEN
+  -- Free: no pinned change, or only promotion to public. Upgrade-sealed history
+  -- may reference private media, so OLD state alone proves nothing.
+  IF (NEW.tenant_id,NEW.id,NEW.blob_id,NEW.mime_type) IS NOT DISTINCT FROM
+     (OLD.tenant_id,OLD.id,OLD.blob_id,OLD.mime_type)
+   AND (NEW.visibility=OLD.visibility OR NEW.visibility='public') THEN
    RETURN NEW;
   END IF;
  ELSE
-  IF OLD.status<>'ready' OR (NEW.tenant_id,NEW.id,NEW.backend,NEW.storage_key,NEW.sha256,NEW.size_bytes,NEW.status)
-   IS NOT DISTINCT FROM (OLD.tenant_id,OLD.id,OLD.backend,OLD.storage_key,OLD.sha256,OLD.size_bytes,OLD.status) THEN
+  IF (NEW.tenant_id,NEW.id,NEW.backend,NEW.storage_key,NEW.sha256,NEW.size_bytes) IS NOT DISTINCT FROM
+     (OLD.tenant_id,OLD.id,OLD.backend,OLD.storage_key,OLD.sha256,OLD.size_bytes)
+   AND (NEW.status=OLD.status OR NEW.status='ready') THEN
    RETURN NEW;
   END IF;
  END IF;
