@@ -71,6 +71,16 @@ await() {
   done
   echo "  sync timeout: ${RACE_PREFIX}$label never reached ${*} (last: $ev)"; fail=1; return 1
 }
+await_job() {
+  local label=$1 pid=$2 deadline=$((SECONDS + 15))
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( SECONDS >= deadline )); then
+      echo "  sync timeout: ${RACE_PREFIX}$label process did not finish"; fail=1; return 1
+    fi
+    sleep 0.05
+  done
+  wait "$pid"
+}
 ROWLOCK=(transactionid tuple)
 
 # expect <label> <marker|ok>: winners must not error; losers only with their guard.
