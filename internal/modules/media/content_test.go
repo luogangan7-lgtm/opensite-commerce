@@ -69,12 +69,12 @@ func TestModernImageContainers(t *testing.T) {
 	}
 }
 func TestFilenameBoundary(t *testing.T) {
-	for _, n := range []string{"../x.png", "a/b.png", "a\\b.png", "..", ".", "x\x00.png", ""} {
+	for _, n := range []string{"../x.png", "a/b.png", "a\\b.png", "..", ".", "x\x00.png", "", "a\tb.png", "a\x1b[0m.png", "a\x7f.png", "a\u0085b.png", "a\u009fb.png", "a\u202eexe.png", "a\u2066b.png", "a\u2069b.png"} {
 		if validFilename(n) {
 			t.Fatalf("unsafe filename accepted %q", n)
 		}
 	}
-	if !validFilename("photo.png") {
+	if !validFilename("photo.png") || !validFilename("фото 写真.png") {
 		t.Fatal("safe name rejected")
 	}
 }

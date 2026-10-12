@@ -31,7 +31,13 @@ BUYER_QUOTES = {
     "approveQuote": ("post", "/api/public/v1/quotes/{quote_id}/approve"),
     "rejectQuote": ("post", "/api/public/v1/quotes/{quote_id}/reject"),
 }
-SELLER_QUOTES = {"createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote"}
+SELLER_QUOTES = {
+    "createQuote": ("post", "/api/v1/t/{tenant_id}/quotes"),
+    "getQuote": ("get", "/api/v1/t/{tenant_id}/quotes/{quote_id}"),
+    "sendQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/send"),
+    "withdrawQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw"),
+    "expireQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/expire"),
+}
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -168,9 +174,10 @@ def validate_contract(api):
         elif "x-opensite-trusted-buyer" in op:
             raise ValueError(f"trusted buyer marker outside buyer quote operation: {ident}")
         if ident in SELLER_QUOTES:
-            require(access == "AdminOrAPIKey" and scope == ("quotes:read" if method == "get" else "quotes:write"),
+            require((method, path) == SELLER_QUOTES[ident], f"seller quote route drift: {ident}")
+            require(access == "AdminOrAPIKey" and scope == ("quotes:read" if ident == "getQuote" else "quotes:write"),
                     f"seller quotes scope required: {ident}")
-        if ident in SELLER_QUOTES | BUYER_QUOTES.keys() and method != "get":
+        if ident in SELLER_QUOTES.keys() | BUYER_QUOTES.keys() and method != "get":
             headers = {p["name"]: p for p in parameters if p["in"] == "header"}
             for header in ("If-Match", "Idempotency-Key"):
                 require(headers.get(header, {}).get("required") is True,

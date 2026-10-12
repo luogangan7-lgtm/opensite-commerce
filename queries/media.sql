@@ -6,6 +6,12 @@ VALUES ($1,$2,$3,$4,$5,now()+interval '1 hour') RETURNING *;
 -- name: LockMediaUpload :one
 SELECT * FROM app.media_uploads WHERE tenant_id=$1 AND id=$2 FOR UPDATE;
 
+-- name: MediaUploadExpired :one
+-- Run AFTER LockMediaUpload in the same transaction. Expiry is judged by the database
+-- clock (which stamped expires_at) at this instant: now() is the transaction start and
+-- a same-statement projection is computed before a lock wait, so both can be stale.
+SELECT expires_at <= clock_timestamp() FROM app.media_uploads WHERE tenant_id=$1 AND id=$2;
+
 -- name: StoreMediaUploadContent :exec
 UPDATE app.media_uploads SET temporary_key=$3, received_bytes=$4,status='stored' WHERE tenant_id=$1 AND id=$2;
 

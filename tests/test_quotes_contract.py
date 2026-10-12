@@ -54,4 +54,16 @@ class QuotesContractTests(unittest.TestCase):
                         op['parameters']=[p for p in op['parameters'] if '$ref' not in p or gate.resolve(api,p['$ref'])['name'] != header]+[param]
                     else:op['parameters']=[p for p in op['parameters'] if '$ref' not in p or gate.resolve(api,p['$ref'])['name'] != header]
                     with self.assertRaisesRegex(ValueError,'quote write'):gate.validate_contract(api)
+    def test_seller_route_and_method_bound(self):
+        api=gate.load_api(ROOT/'api/openapi.yaml')
+        path,method,op=gate.operation_inventory(api)['sendQuote']
+        del api['paths'][path][method]
+        api['paths'][path]['get']=op
+        op['x-required-scope']='quotes:read'
+        op.pop('requestBody',None)
+        with self.assertRaisesRegex(ValueError,'seller quote route'):gate.validate_contract(api)
+        api=gate.load_api(ROOT/'api/openapi.yaml')
+        path,_,_=gate.operation_inventory(api)['sendQuote']
+        api['paths'][path.replace('/send','/deliver')]=api['paths'].pop(path)
+        with self.assertRaisesRegex(ValueError,'seller quote route'):gate.validate_contract(api)
 if __name__=='__main__':unittest.main()

@@ -19,7 +19,8 @@ sql:
       - "migrations/016_customers_b2b.sql"
       - "migrations/017_ledger.sql"
       - "migrations/018_catalog_api.sql"
-      - "migrations/019_quotes.sql"
+      - "migrations/019_product_media_asset_index.sql"
+      - "migrations/020_quotes.sql"
     queries: "queries"
     gen:
       go:

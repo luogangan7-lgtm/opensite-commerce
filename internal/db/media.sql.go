@@ -188,6 +188,25 @@ func (q *Queries) MediaProductStatus(ctx context.Context, arg MediaProductStatus
 	return lifecycle_status, err
 }
 
+const mediaUploadExpired = `-- name: MediaUploadExpired :one
+SELECT expires_at <= clock_timestamp() FROM app.media_uploads WHERE tenant_id=$1 AND id=$2
+`
+
+type MediaUploadExpiredParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+}
+
+// Run AFTER LockMediaUpload in the same transaction. Expiry is judged by the database
+// clock (which stamped expires_at) at this instant: now() is the transaction start and
+// a same-statement projection is computed before a lock wait, so both can be stale.
+func (q *Queries) MediaUploadExpired(ctx context.Context, arg MediaUploadExpiredParams) (bool, error) {
+	row := q.db.QueryRow(ctx, mediaUploadExpired, arg.TenantID, arg.ID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const reserveMediaUpload = `-- name: ReserveMediaUpload :one
 INSERT INTO app.media_uploads (tenant_id,original_filename,declared_mime,expected_size,expected_sha256,expires_at)
 VALUES ($1,$2,$3,$4,$5,now()+interval '1 hour') RETURNING tenant_id, id, actor_id, original_filename, declared_mime, expected_size, expected_sha256, temporary_key, received_bytes, status, expires_at, created_at, media_id
