@@ -1,11 +1,10 @@
 // API executable is the composition entry point: env, signals and bootstrap.
-// It supplies the database transaction capability to cart and depends on pgx,
+// It supplies the database transaction capability to cart through pgxadapter,
 // bootstrap and stdlib. Customer session resolution remains a separate seam.
 package main
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func main() {
@@ -25,7 +25,7 @@ func main() {
 	defer stop()
 	config := bootstrap.Config{Address: address, Logger: logger}
 	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
-		pool, err := pgxpool.New(ctx, dsn)
+		pool, err := pgxadapter.NewPool(ctx, dsn, "")
 		if err != nil {
 			logger.Error("Invalid database configuration")
 			os.Exit(1)

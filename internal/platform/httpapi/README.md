@@ -42,3 +42,8 @@ Authenticator still denies it. Bootstrap delegates these routes only to the
 cart module, which admits anonymous creation and otherwise requires a guest
 capability or a trusted customer resolver. Staff cookies/API keys grant no cart
 access. Cart responses use no-store and strong whole-representation ETags.
+
+Generated server adapters belong only to this platform package. `CartHandler`
+consumes `cart/contract.Service`; bootstrap mounts `NewCartHandler(cartModule)`
+without exposing generated HTTP DTOs inside the cart business module. Its table
+tests live in `cart_test.go`, alongside shared admission and router tests.

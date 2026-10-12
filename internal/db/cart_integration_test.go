@@ -4,7 +4,7 @@
 // Dependencies: production cart/bootstrap, pgx and expendable migrated DATABASE_URL.
 // Caller: pgx acceptance gate; unique fixture tenants are cleaned in FK order.
 // Invariants: supplied DSN never skips; rejected writes roll back; cart never reserves stock.
-package cart_test
+package db_test
 
 import (
 	"bytes"
@@ -24,16 +24,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type cartFixture struct {
 	t                                                                               *testing.T
 	ctx                                                                             context.Context
-	pool                                                                            *pgxpool.Pool
+	pool                                                                            *pgxadapter.Pool
 	tenant, otherTenant, product, sku, otherSKU, customer, otherCustomer, priceList string
 	actor                                                                           contract.AuthorizedActor
 	module                                                                          *cart.Module
@@ -48,12 +48,7 @@ func newCartFixture(t *testing.T) *cartFixture {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	t.Cleanup(cancel)
-	config, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	config.ConnConfig.RuntimeParams["application_name"] = fmt.Sprintf("cart_acceptance_%d", time.Now().UnixNano())
-	pool, err := pgxpool.NewWithConfig(ctx, config)
+	pool, err := pgxadapter.NewPool(ctx, dsn, fmt.Sprintf("cart_acceptance_%d", time.Now().UnixNano()))
 	if err != nil {
 		t.Fatal(err)
 	}

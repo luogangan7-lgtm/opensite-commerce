@@ -22,6 +22,15 @@ type Beginner interface {
 	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 }
 
+// Service is the public cart application port consumed by the platform HTTP
+// adapter and future checkout. Generated HTTP DTOs never cross this boundary.
+type Service interface {
+	Create(context.Context, AuthorizedActor, string) (Created, error)
+	Get(context.Context, AuthorizedActor, string) (View, error)
+	PutLine(context.Context, AuthorizedActor, string, string, int64, string) (View, error)
+	DeleteLine(context.Context, AuthorizedActor, string, string, string) (View, error)
+}
+
 const MaxQuantity int64 = 1_000_000
 
 // AuthorizedActor is supplied by a trusted customer resolver or a verified

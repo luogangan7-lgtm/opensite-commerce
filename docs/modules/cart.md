@@ -6,15 +6,18 @@ version. It stores no quoted prices, stock reservation, coupon or checkout state
 Catalog owns SKUs, pricing supplies current money quotes, inventory supplies
 available quantities, and customer owns trusted customer identity/status.
 
-The public Go contract is `internal/modules/cart/contract`; transport and the
-service consume its typed actor and cart view. Persistence stays under cart's
+The public Go contract is `internal/modules/cart/contract`; its `Service` port,
+typed actor and cart view are consumed by the platform HTTP adapter. Generated
+server adaptation lives in `internal/platform/httpapi/cart.go`; cart business
+packages do not import generated HTTP types. Persistence stays under cart's
 internal store through a consumer-defined Repository transaction contract.
 Other modules cannot import cart internals or mutate its tables. Checkout must
 recompute prices, validate stock and reserve inventory in its own future flow.
 
 ## HTTP authority and shape
 
-Bootstrap mounts exactly four generated strict operations:
+Bootstrap mounts `httpapi.NewCartHandler(cartModule).Routes()` with exactly four
+generated strict operations:
 
 | Method | Path under `/api/v1/t/{tenant_id}` | Operation |
 | --- | --- | --- |

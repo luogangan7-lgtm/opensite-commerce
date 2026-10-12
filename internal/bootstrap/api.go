@@ -1,5 +1,6 @@
 // Package bootstrap statically wires the API using platform/httpapi only.
 // cmd/api calls it; it owns no business handlers, database pool or migrations.
+// Generated business HTTP adapters stay in platform/httpapi and consume public ports.
 // Registration errors stop construction, so invalid routes cannot be served.
 package bootstrap
 
@@ -29,7 +30,7 @@ func New(config Config) (*http.Server, error) {
 	}
 	router := httpapi.New(routeAuthenticator{cart: cartModule, staff: config.Authenticator}, config.Logger)
 	health := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "health", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })}
-	for _, route := range append(append([]httpapi.Route{health}, cartModule.Routes()...), config.Routes...) {
+	for _, route := range append(append([]httpapi.Route{health}, httpapi.NewCartHandler(cartModule).Routes()...), config.Routes...) {
 		if err := router.Register(route.Spec, route.Handler); err != nil {
 			return nil, err
 		}

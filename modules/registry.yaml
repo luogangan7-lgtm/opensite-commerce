@@ -515,10 +515,10 @@
         "pricing"
       ],
       "tests": [
-        "internal/modules/cart/internal/httpapi/handler_test.go",
+        "internal/platform/httpapi/cart_test.go",
         "internal/modules/cart/internal/service/service_test.go",
         "internal/bootstrap/contract_test.go",
-        "internal/integration/cart/integration_test.go"
+        "internal/db/cart_integration_test.go"
       ],
       "scopes": [],
       "note": "Cart intent has immutable tenant/owner/currency, absolute SKU quantities and optimistic version. Prices/stock are live hints; no reservations, checkout or HTTP guest merge. Storefront authority uses guest capability hash or trusted customer resolver; staff auth is separate."

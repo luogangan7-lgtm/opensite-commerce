@@ -1,5 +1,5 @@
 // Package cart is the storefront cart composition boundary. It depends on its
-// public contract, private service/store/transport and platform HTTP; bootstrap
+// public contract, private service/store and platform HTTP authentication; bootstrap
 // calls it. Only a trusted customer resolver or a guest capability grants access.
 package cart
 
@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
-	transport "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/internal/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/internal/service"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/internal/store"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
@@ -34,8 +33,6 @@ func New(repo contract.Repository, resolver ActorResolver) *Module {
 func NewPostgres(pool contract.Beginner, resolver ActorResolver) *Module {
 	return New(store.New(pool), resolver)
 }
-
-func (m *Module) Routes() []platform.Route { return transport.New(m.Service).Routes() }
 
 func (m *Module) Authenticate(ctx context.Context, r *http.Request, spec platform.RouteSpec) (context.Context, error) {
 	denied := func() (context.Context, error) { return ctx, apperrors.New(404, "cart_not_found", "Cart not found") }

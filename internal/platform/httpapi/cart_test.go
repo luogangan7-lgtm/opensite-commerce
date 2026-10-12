@@ -1,7 +1,7 @@
-// Cart transport tests execute mounted generated wrappers with trusted actor
+// Platform cart transport tests execute mounted generated wrappers with trusted actor
 // fixtures and an independent service port. No database or staff auth proof.
 // The gate rejects malformed JSON/preconditions before any service mutation.
-package httpapi_test
+package httpapi
 
 import (
 	"context"
@@ -13,9 +13,7 @@ import (
 	"testing"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
-	transport "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/internal/httpapi"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
-	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
 const tenant = "11111111-1111-4111-8111-111111111111"
@@ -53,27 +51,27 @@ func (s *fakeService) DeleteLine(ctx context.Context, a contract.AuthorizedActor
 	return s.PutLine(ctx, a, id, "", 0, tag)
 }
 
-type authFunc func(context.Context, *http.Request, platform.RouteSpec) (context.Context, error)
+type authFunc func(context.Context, *http.Request, RouteSpec) (context.Context, error)
 
-func (f authFunc) Authenticate(ctx context.Context, r *http.Request, s platform.RouteSpec) (context.Context, error) {
+func (f authFunc) Authenticate(ctx context.Context, r *http.Request, s RouteSpec) (context.Context, error) {
 	return f(ctx, r, s)
 }
 func view() contract.View {
 	return contract.View{ID: cartID, Currency: "USD", Version: 1, Subtotal: 200, Lines: []contract.Line{{SKUID: sku, Quantity: 2, UnitAmount: 100, LineAmount: 200, PriceListID: priceList, MinQuantity: 1, AvailableQuantity: 5, Sellable: true}}}
 }
-func router(t *testing.T, s *fakeService, a contract.AuthorizedActor) *platform.Router {
+func router(t *testing.T, s *fakeService, a contract.AuthorizedActor) *Router {
 	t.Helper()
-	r := platform.New(authFunc(func(ctx context.Context, _ *http.Request, _ platform.RouteSpec) (context.Context, error) {
+	r := New(authFunc(func(ctx context.Context, _ *http.Request, _ RouteSpec) (context.Context, error) {
 		return contract.WithActor(ctx, a), nil
 	}), nil)
-	for _, route := range transport.New(s).Routes() {
+	for _, route := range NewCartHandler(s).Routes() {
 		if err := r.Register(route.Spec, route.Handler); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return r
 }
-func request(r *platform.Router, method, path, body, tag string) *httptest.ResponseRecorder {
+func request(r *Router, method, path, body, tag string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	if tag != "" {
