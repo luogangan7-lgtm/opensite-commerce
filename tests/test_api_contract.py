@@ -101,6 +101,18 @@ class APIContractTests(unittest.TestCase):
                 with self.assertRaises((AssertionError, ValueError)):
                     contract.validate_contract(api)
 
+    def test_operation_parameter_overrides_path_item(self):
+        # OAS 3.1 Operation.parameters override path-level ones with the same (name, in).
+        def override(schema):
+            api = copy.deepcopy(self.api)
+            op = operations(api)["createProduct"][2]
+            op.setdefault("parameters", []).append(
+                {"name": "tenant_id", "in": "path", "required": True, "schema": schema})
+            return api
+        with self.assertRaises((AssertionError, ValueError)):
+            contract.validate_contract(override({"type": "string"}))
+        contract.validate_contract(override({"type": "string", "format": "uuid"}))
+
     def test_legacy_tenant_path_is_rejected(self):
         for suffix in ("products", "organizations"):
             with self.subTest(suffix=suffix):

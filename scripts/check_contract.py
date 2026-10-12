@@ -124,8 +124,12 @@ def validate_contract(api):
         access = op.get("x-opensite-access")
         scope = op.get("x-required-scope")
         security = op.get("security", api["security"])
-        parameters = [resolve(api, p["$ref"]) if "$ref" in p else p
-                      for p in api["paths"][path].get("parameters", []) + op.get("parameters", [])]
+        # OAS 3.1: operation parameters override path-level ones with the same (name, in).
+        effective = {}
+        for p in api["paths"][path].get("parameters", []) + op.get("parameters", []):
+            p = resolve(api, p["$ref"]) if "$ref" in p else p
+            effective[(p["name"], p["in"])] = p
+        parameters = list(effective.values())
         names = {p["name"] for p in parameters if p["in"] == "path"}
         tenant = "{tenant_id}" in path
         require(not any(n.lower().startswith("tenant") and n != "tenant_id" for n in names), f"tenant alias forbidden: {ident}")
