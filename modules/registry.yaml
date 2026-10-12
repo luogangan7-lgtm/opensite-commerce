@@ -10,7 +10,28 @@
         "users",
         "auth_sessions"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "createAdminSession",
+          "status": "planned"
+        },
+        {
+          "operation_id": "deleteAdminSession",
+          "status": "planned"
+        },
+        {
+          "operation_id": "getCurrentActor",
+          "status": "planned"
+        },
+        {
+          "operation_id": "listAdminSessions",
+          "status": "planned"
+        },
+        {
+          "operation_id": "revokeAdminSession",
+          "status": "planned"
+        }
+      ],
       "dependencies": [],
       "tests": [
         "tests/db_role_boundaries.sql",
@@ -243,7 +264,12 @@
         "outbox_events",
         "webhook_inbox"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "health",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [
         "tenant"
       ],
@@ -256,7 +282,7 @@
         "tests/db_queue.sql"
       ],
       "scopes": [],
-      "note": "The business module Go path and HTTP handlers remain planned. Platform idempotency, River and Outbox capabilities live under internal/platform; their controlled infrastructure adapters use tenanttx and are outside business-module repository boundaries. queue contains upstream River tables, outside app table ownership."
+      "note": "The business module Go path and business HTTP handlers remain planned. The platform health operation is implemented by bootstrap; this does not promote a business Go service. Platform idempotency, River and Outbox capabilities live under internal/platform; their controlled infrastructure adapters use tenanttx and are outside business-module repository boundaries. queue contains upstream River tables, outside app table ownership."
     },
     {
       "name": "platform-security",
