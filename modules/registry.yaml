@@ -786,6 +786,13 @@
         "media_assets",
         "product_media"
       ]
+    },
+    {
+      "file": "migrations/019_product_media_asset_index.sql",
+      "owner": "catalog",
+      "touches_tables": [
+        "product_media"
+      ]
     }
   ]
 }

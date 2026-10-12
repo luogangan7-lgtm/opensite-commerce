@@ -11,7 +11,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -101,8 +100,8 @@ func verify(u db.AppMediaUpload, b []byte) (string, int, int, error) {
 	}
 	return inspect(b, declared(u))
 }
-func usable(u db.AppMediaUpload) error {
-	if !u.ExpiresAt.Valid || !time.Now().Before(u.ExpiresAt.Time) {
+func usable(u db.AppMediaUpload, expired bool) error {
+	if expired {
 		return conflict("Upload session has expired")
 	}
 	if u.Status != "reserved" && u.Status != "stored" {
@@ -118,11 +117,12 @@ func (s *Service) PutMediaUploadContent(ctx context.Context, r httpapi.PutMediaU
 		return nil, err
 	}
 	err = s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
-		u, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
+		l, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
 		if e != nil {
 			return e
 		}
-		if e = usable(u); e != nil {
+		u := l.AppMediaUpload
+		if e = usable(u, l.Expired); e != nil {
 			return e
 		}
 		if _, _, _, e = verify(u, b); e != nil {
@@ -142,10 +142,11 @@ func (s *Service) PutMediaUploadContent(ctx context.Context, r httpapi.PutMediaU
 func (s *Service) CompleteMediaUpload(ctx context.Context, r httpapi.CompleteMediaUploadRequestObject) (httpapi.CompleteMediaUploadResponseObject, error) {
 	var result db.AppMediaUpload
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
-		u, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
+		l, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
 		if e != nil {
 			return e
 		}
+		u := l.AppMediaUpload
 		if u.Status == "ready" {
 			if !u.MediaID.Valid {
 				return conflict("Completed asset was deleted")
@@ -153,7 +154,7 @@ func (s *Service) CompleteMediaUpload(ctx context.Context, r httpapi.CompleteMed
 			result = u
 			return nil
 		}
-		if e = usable(u); e != nil {
+		if e = usable(u, l.Expired); e != nil {
 			return e
 		}
 		if u.Status != "stored" || !u.TemporaryKey.Valid {

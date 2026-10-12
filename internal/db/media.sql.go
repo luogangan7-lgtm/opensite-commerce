@@ -143,7 +143,8 @@ func (q *Queries) LockMediaAsset(ctx context.Context, arg LockMediaAssetParams) 
 }
 
 const lockMediaUpload = `-- name: LockMediaUpload :one
-SELECT tenant_id, id, actor_id, original_filename, declared_mime, expected_size, expected_sha256, temporary_key, received_bytes, status, expires_at, created_at, media_id FROM app.media_uploads WHERE tenant_id=$1 AND id=$2 FOR UPDATE
+SELECT u.tenant_id, u.id, u.actor_id, u.original_filename, u.declared_mime, u.expected_size, u.expected_sha256, u.temporary_key, u.received_bytes, u.status, u.expires_at, u.created_at, u.media_id, u.expires_at <= now() AS expired
+FROM app.media_uploads u WHERE u.tenant_id=$1 AND u.id=$2 FOR UPDATE
 `
 
 type LockMediaUploadParams struct {
@@ -151,23 +152,30 @@ type LockMediaUploadParams struct {
 	ID       pgtype.UUID `json:"id"`
 }
 
-func (q *Queries) LockMediaUpload(ctx context.Context, arg LockMediaUploadParams) (AppMediaUpload, error) {
+type LockMediaUploadRow struct {
+	AppMediaUpload AppMediaUpload `json:"app_media_upload"`
+	Expired        bool           `json:"expired"`
+}
+
+// expired is judged by the database clock that stamped expires_at, never the API host's.
+func (q *Queries) LockMediaUpload(ctx context.Context, arg LockMediaUploadParams) (LockMediaUploadRow, error) {
 	row := q.db.QueryRow(ctx, lockMediaUpload, arg.TenantID, arg.ID)
-	var i AppMediaUpload
+	var i LockMediaUploadRow
 	err := row.Scan(
-		&i.TenantID,
-		&i.ID,
-		&i.ActorID,
-		&i.OriginalFilename,
-		&i.DeclaredMime,
-		&i.ExpectedSize,
-		&i.ExpectedSha256,
-		&i.TemporaryKey,
-		&i.ReceivedBytes,
-		&i.Status,
-		&i.ExpiresAt,
-		&i.CreatedAt,
-		&i.MediaID,
+		&i.AppMediaUpload.TenantID,
+		&i.AppMediaUpload.ID,
+		&i.AppMediaUpload.ActorID,
+		&i.AppMediaUpload.OriginalFilename,
+		&i.AppMediaUpload.DeclaredMime,
+		&i.AppMediaUpload.ExpectedSize,
+		&i.AppMediaUpload.ExpectedSha256,
+		&i.AppMediaUpload.TemporaryKey,
+		&i.AppMediaUpload.ReceivedBytes,
+		&i.AppMediaUpload.Status,
+		&i.AppMediaUpload.ExpiresAt,
+		&i.AppMediaUpload.CreatedAt,
+		&i.AppMediaUpload.MediaID,
+		&i.Expired,
 	)
 	return i, err
 }

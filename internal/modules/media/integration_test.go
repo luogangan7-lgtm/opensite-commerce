@@ -106,6 +106,10 @@ func TestMediaPostgresHTTP(t *testing.T) {
 		}
 		return u
 	}
+	// Expiry belongs to the database clock: fixture rows are -1h and 'infinity'.
+	dead, _ := hex.DecodeString(deletingPNG)
+	call("PUT", mediaTenant, "/media/uploads/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1/content", "application/octet-stream", bytes.NewReader(dead), 409)
+	call("PUT", mediaTenant, "/media/uploads/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2/content", "application/octet-stream", bytes.NewReader(dead), 204)
 	data := pngBytes(t)
 	u := reserve(mediaTenant, "photo.png", "image/png", data)
 	// Same URL identifiers under a different tenant cannot observe the row.

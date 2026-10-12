@@ -4,7 +4,9 @@ INSERT INTO app.media_uploads (tenant_id,original_filename,declared_mime,expecte
 VALUES ($1,$2,$3,$4,$5,now()+interval '1 hour') RETURNING *;
 
 -- name: LockMediaUpload :one
-SELECT * FROM app.media_uploads WHERE tenant_id=$1 AND id=$2 FOR UPDATE;
+-- expired is judged by the database clock that stamped expires_at, never the API host's.
+SELECT sqlc.embed(u), u.expires_at <= now() AS expired
+FROM app.media_uploads u WHERE u.tenant_id=$1 AND u.id=$2 FOR UPDATE;
 
 -- name: StoreMediaUploadContent :exec
 UPDATE app.media_uploads SET temporary_key=$3, received_bytes=$4,status='stored' WHERE tenant_id=$1 AND id=$2;

@@ -51,6 +51,13 @@ INSERT INTO app.media_blobs(tenant_id,id,backend,storage_key,sha256,size_bytes,s
  ('11111111-1111-4111-8111-111111111111','66666666-6666-4666-8666-666666666668','s3','fixture-deleting',
   sha256('\x89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415478da63606165030000200010851878a00000000049454e44ae426082'::bytea),69,'deleting')
 ON CONFLICT (tenant_id,id) DO UPDATE SET backend='s3',storage_key=EXCLUDED.storage_key,status=EXCLUDED.status;
+-- Expiry is judged by the DB clock: -1h is expired, 'infinity' (which a Go clock cannot represent) is live.
+INSERT INTO app.media_uploads(tenant_id,id,original_filename,expected_size,expected_sha256,status,expires_at) VALUES
+ ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','expired.png',69,
+  sha256('\x89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415478da63606165030000200010851878a00000000049454e44ae426082'::bytea),'reserved',now()-interval '1 hour'),
+ ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','forever.png',69,
+  sha256('\x89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415478da63606165030000200010851878a00000000049454e44ae426082'::bytea),'reserved','infinity')
+ON CONFLICT (tenant_id,id) DO UPDATE SET status='reserved',temporary_key=NULL,received_bytes=0,expires_at=EXCLUDED.expires_at;
 INSERT INTO app.media_assets(tenant_id,id,blob_id,filename,mime_type,visibility)
 VALUES('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','66666666-6666-4666-8666-666666666666','pinned.png','image/png','public') ON CONFLICT DO NOTHING;
 INSERT INTO app.organizations(tenant_id,id,display_name) VALUES('11111111-1111-4111-8111-111111111111','77777777-7777-4777-8777-777777777777','C07 release') ON CONFLICT DO NOTHING;
