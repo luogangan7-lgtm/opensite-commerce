@@ -14,7 +14,7 @@ owner 提供了原始 ChatGPT 对话（`6acb3610`，51 轮）。从中取回了�
 **F-01 改判：基线确实存在，但从未在真实数据库上验收。**
 - 最新一版是 `opensite-commerce-pr01-acceptance-gated.zip`，sha256 `c0be392b…`，共 56 个文件。内容包括 Go 1.23、迁移 001–009、5 个 SQL 行为测试、sqlc 配置、pgx 适配器、OpenAPI（12 个 operation），以及 ADR-070/071。
 - 它自带的验收报告写明：PG18 迁移、RLS/角色测试、`sqlc generate`、pgx 编译这几项全是 **BLOCKED / NOT RUN**（ChatGPT 沙箱里没有 PG、Docker、sqlc，也没有网络）。只有离线检查跑过，包括 `go test -race`、`go vet`、静态契约检查和假 psql 编排测试。
-- 代码还**没有导入本仓库**：导入要经过安全审查和真实 PG18 验收，见 PR-01A 卡。
+- **2026-10-12 已导入（PR #2）**：Codex S1 做了安全审查，结论 IMPORT_WITH_FIXES；在真实 PG18.6 上 gate 1–3 全部通过，GitHub CI 也是绿的，Codex R2 独立复跑同样通过。证据见 [`docs/PR01A_ACCEPTANCE.md`](../PR01A_ACCEPTANCE.md)。S1 列出的 SQL P1 问题交给 010_security_hardening（PR-01B）处理。
 
 **F-02 已关闭**：附件包已全部找回。
 

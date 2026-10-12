@@ -17,15 +17,24 @@
 | 3 离线检查 | `scripts/check_all.sh` | **PASS** | [gate3.log](evidence/pr01a/gate3.log) |
 | race | `go test -race -tags pgx -count=1 ./...` | **PASS** | 本地运行 |
 
+| GitHub Actions | 代码包自带的 `.github/workflows/checks.yml`（`foundation` job） | **PASS**：在 `993e774` 和 `8915d3c` 上都是 success | `gh run list --branch feat/pr01a-import` |
+| 独立复核 | Codex R2 在自己的 worktree 里从头复跑 PG18、codegen、离线检查和 race（`993e774`） | 全部通过；生成物与 `sqlc generate` 结果一致；RLS 注错红 → 绿 | PR #2 评论 |
+
 ## 本 PR 相对代码包的改动
 
 - `go.mod`：`go` 版本提到 1.25.0，钉住 pgx v5.10.0；新增 `go.sum`。
 - 新增 `internal/db/`：由 sqlc v1.31.1 生成。
 - `scripts/check_all.sh`：`python` 改为 `python3`。macOS 默认没有 `python`，原写法会让 gate 3 以 exit 127 失败。
+- 修复 Codex review 在 PR 里发现的问题（每项都先写红测试再修）：
+  - `queries/catalog.sql` 的 ListProducts 游标 id 被生成成 Timestamptz，改为 UUID（`dad53fa`）；
+  - `company.profile@1` 的 `binding.params` 必须是对象（`dad53fa`）；
+  - `slots` 缺失时拒绝（`993e774`）；
+  - `props`、`binding` 以及每个 slot 数组显式写成 `null` 时，在解码阶段一律拒绝（`8915d3c`，从根上修掉这一类问题）。
+- 已合并 main（PR #1：docs/history 和 REVIEW 状态更新）。本 PR 合入后，REVIEW 的 F-01 状态从「未导入、未验收」更新为「已导入、PG18 已验收」。
 
 ## NOT_RUN 与已知缺口（交给后续卡）
 
-- **CI 还没在 GitHub 上跑过**：`.github/workflows/checks.yml` 用的是浮动版本，还在 CI 里执行 `go get`，要按 C1 方案重写（PR-01B）。
+- **CI 已在 GitHub 上跑过且为绿**，但工作流用的是浮动版本，还在 CI 里执行 `go get`，没钉 SHA，也没有设成必过检查。要按 C1 方案重写（PR-01B）。
 - **模块路径**仍是 `example.com/opensite-commerce`，PR-01B 改。
 - **镜像没钉 digest**：`deploy/compose.yaml` 写的是 `postgres:18`，没有钉 `18.6@sha256`。
 - **S1 列出的 P1 还没修**，对应模块接入生产前必须修：
