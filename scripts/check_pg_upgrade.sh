@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Upgrade gates for security hardening, forward reliability and additive inventory; real PG18 only.
+# Upgrade gates for security, reliability, inventory, pricing and customer/B2B; real PG18 only.
 # Depends on: a superuser DATABASE_URL (or Docker compose) able to CREATE DATABASE.
 # Called by: CI after check_pg.sh. Each case runs in its own throwaway database.
 # Invariants: 010 refuses to seal a live release with unsafe media; every pre-010
@@ -122,7 +122,12 @@ fresh_before_reliability() {
 }
 apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
 RELIABILITY_DB=""
-trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1' EXIT
+CUSTOMERS_DB=""
+cleanup_forward_upgrade() {
+ [[ -z $CUSTOMERS_DB ]] || admin -c "DROP DATABASE IF EXISTS $CUSTOMERS_DB" >/dev/null 2>&1 || true
+ [[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1 || true
+}
+trap cleanup_forward_upgrade EXIT
 RELIABILITY_DB=reliability_upgrade_$$
 fresh_before_reliability "$RELIABILITY_DB"
 db "$RELIABILITY_DB" <<'SQL' >/dev/null
@@ -225,5 +230,114 @@ SQL
  else bad "pricing upgrade witness: $result"; fi
 fi
 admin -c "DROP DATABASE $DB"
+# Customers/B2B must be additive over ALL preceding forward migrations. Match
+# by logical suffix and filename order, never a reserved number or octal value.
+customers=(migrations/[0-9][0-9][0-9]_customers_b2b.sql)
+[[ ${#customers[@]} == 1 ]] || { echo 'FAIL: exactly one customers/B2B migration required' >&2; exit 1; }
+fresh_before_customers() {
+ admin -c "DROP DATABASE IF EXISTS $1" -c "CREATE DATABASE $1" 2>/dev/null
+ local f
+ for f in migrations/[0-9][0-9][0-9]_*.sql; do
+  [[ $f < ${customers[0]} ]] || break
+  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$1" >/dev/null
+ done
+}
+apply_customers() { { echo 'BEGIN;'; cat "${customers[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
+CUSTOMERS_DB=customers_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('customer-upgrade') RETURNING id AS t \gset
+INSERT INTO app.users(email,password_hash) VALUES('staff-upgrade@example.com','legacy-staff-hash') RETURNING id AS u \gset
+INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES(:'t',:'u','owner');
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','CUSTOMER-LEGACY') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+ VALUES(:'t',:'p','CUSTOMER-LEGACY','default') RETURNING id AS k \gset
+INSERT INTO app.price_lists(tenant_id,currency,starts_at) VALUES(:'t','USD','2026-01-01Z') RETURNING id AS l \gset
+INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount)
+ VALUES(:'t',:'l',:'k',1,199);
+SQL
+# Earlier cases created this cluster-wide role. Simulate a legacy deployment's
+# unsafe attributes, memberships and independently granted column privileges;
+# the forward migration must scrub every path before granting its narrow API.
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+ALTER ROLE app_customer_auth LOGIN SUPERUSER BYPASSRLS CREATEDB CREATEROLE REPLICATION INHERIT;
+GRANT app_auth TO app_customer_auth;
+GRANT app_customer_auth TO app_runtime;
+GRANT CREATE ON SCHEMA app TO app_customer_auth;
+GRANT SELECT ON app.users TO app_customer_auth;
+GRANT SELECT(password_hash) ON app.users TO app_customer_auth;
+GRANT UPDATE(role) ON app.tenant_memberships TO app_customer_auth;
+GRANT EXECUTE ON FUNCTION app.guard_release_children() TO app_customer_auth;
+SQL
+if ! out=$(apply_customers "$CUSTOMERS_DB"); then bad "populated customers/B2B upgrade: $out"
+else
+ result=$(db "$CUSTOMERS_DB" <<'SQL'
+SELECT 'CUSTOMERS_ROLE_HYGIENE='||(
+ NOT r.rolcanlogin AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreatedb
+ AND NOT r.rolcreaterole AND NOT r.rolreplication AND NOT r.rolinherit
+ AND NOT EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+ AND has_schema_privilege(r.oid,'app','USAGE')
+ AND NOT has_schema_privilege(r.oid,'app','CREATE')
+ AND NOT has_table_privilege(r.oid,'app.users','SELECT')
+ AND NOT has_column_privilege(r.oid,'app.users','password_hash','SELECT')
+ AND NOT has_column_privilege(r.oid,'app.tenant_memberships','role','UPDATE')
+ AND NOT has_function_privilege(r.oid,'app.guard_release_children()','EXECUTE'))::text
+ FROM pg_roles r WHERE r.rolname='app_customer_auth';
+SQL
+ )
+ if [[ $result == 'CUSTOMERS_ROLE_HYGIENE=true' ]]; then
+  pass 'customers/B2B upgrade scrubs unsafe auth attributes, both membership directions, schema/table/column/function grants'
+ else bad "customers/B2B role hygiene witness: $result"; fi
+ result=$(db "$CUSTOMERS_DB" <<'SQL'
+SELECT 'CUSTOMERS_UPGRADE='||
+ (SELECT count(*) FROM app.users WHERE email='staff-upgrade@example.com' AND password_hash='legacy-staff-hash')||'|'||
+ (SELECT count(*) FROM app.tenant_memberships m JOIN app.users u ON u.id=m.user_id WHERE u.email='staff-upgrade@example.com' AND m.role='owner' AND m.status='active')||'|'||
+ (SELECT count(*) FROM app.price_entries e JOIN app.product_variants k ON (e.tenant_id,e.sku_id)=(k.tenant_id,k.id) WHERE k.sku='CUSTOMER-LEGACY' AND e.unit_amount=199)||'|'||
+ (SELECT string_agg(code,',' ORDER BY code) FROM app.buyer_roles WHERE tenant_id=(SELECT id FROM app.tenants WHERE name='customer-upgrade'))||'|'||
+ (SELECT count(*) FROM app.customers)||'|'||(SELECT count(*) FROM app.customer_credentials);
+SQL
+ )
+ if [[ $result == 'CUSTOMERS_UPGRADE=1|1|1|admin,approver,purchaser|0|0' ]]; then
+  pass 'customers/B2B upgrade preserves employee identity, membership and SKU pricing without synthesizing customers/credentials'
+ else bad "customers/B2B populated upgrade witness: $result"; fi
+ # Include any later module before evaluating the repository-wide role matrix.
+ for f in migrations/[0-9][0-9][0-9]_*.sql; do
+  [[ $f > ${customers[0]} ]] || continue
+  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$CUSTOMERS_DB" >/dev/null
+ done
+ if ! db "$CUSTOMERS_DB" -f tests/db_customers.sql >/dev/null; then bad 'customers/B2B SQL gate after populated upgrade'; fi
+ if ! db "$CUSTOMERS_DB" -f tests/db_role_matrix.sql >/dev/null; then bad 'customers/B2B role matrix after populated upgrade'; fi
+fi
+admin -c "DROP DATABASE $CUSTOMERS_DB"; CUSTOMERS_DB=""
+
+# Pricing intentionally had no company FK before B2B existed. An orphan legacy
+# target requires operator reconciliation: the migration cannot silently clear
+# its audience or install an unvalidated FK. Failure must roll back every DDL.
+CUSTOMERS_DB=customers_orphan_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('customer-orphan-upgrade') RETURNING id AS t \gset
+INSERT INTO app.price_lists(tenant_id,currency,starts_at,audience,buyer_company_id)
+ VALUES(:'t','USD','2026-01-01Z','buyer_company','00000000-0000-0000-0000-000000000005');
+SQL
+if out=$(apply_customers "$CUSTOMERS_DB"); then bad 'customers/B2B upgrade accepted an orphan legacy buyer-company price'
+elif [[ $out != *CUSTOMERS_UPGRADE_BUYER_COMPANY_RECONCILIATION_REQUIRED* ]]; then bad "orphan customers/B2B upgrade failed for another reason: $out"
+else
+ result=$(db "$CUSTOMERS_DB" <<'SQL'
+SELECT to_regclass('app.customers') IS NULL AND to_regclass('app.customer_credentials') IS NULL
+ AND to_regclass('app.buyer_companies') IS NULL
+ AND NOT EXISTS(SELECT FROM pg_constraint WHERE conrelid='app.price_lists'::regclass AND conname='price_lists_buyer_company_fk')
+ AND (SELECT count(*) FROM app.price_lists WHERE audience='buyer_company' AND buyer_company_id='00000000-0000-0000-0000-000000000005')=1;
+SQL
+ )
+ if [[ $result != t ]]; then bad "orphan customers/B2B refusal changed legacy data/schema: $result"
+ else pass 'customers/B2B rejects orphan legacy buyer-price target atomically without changing audience'; fi
+ # Explicit operator repair in the disposable fixture, then retry the SAME DDL.
+ db "$CUSTOMERS_DB" -c "UPDATE app.price_lists SET audience='all',buyer_company_id=NULL" >/dev/null
+ if ! out=$(apply_customers "$CUSTOMERS_DB"); then bad "customers/B2B retry after explicit reconciliation: $out"
+ elif [[ $(db "$CUSTOMERS_DB" -c "SELECT convalidated FROM pg_constraint WHERE conrelid='app.price_lists'::regclass AND conname='price_lists_buyer_company_fk'") != t ]]; then bad 'customers/B2B retry left an unvalidated or missing buyer-price FK'
+ else pass 'customers/B2B reconciliation retry installs the validated composite buyer-price FK'; fi
+fi
+admin -c "DROP DATABASE $CUSTOMERS_DB"; CUSTOMERS_DB=""
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory and pricing upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing and customers/B2B upgrade gates'

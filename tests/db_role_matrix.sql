@@ -6,7 +6,7 @@
 \set ON_ERROR_STOP on
 DO $audit$
 DECLARE
- roles text[] := ARRAY['app_runtime','app_auth','app_domain_resolver'];
+ roles text[] := ARRAY['app_runtime','app_auth','app_domain_resolver','app_customer_auth'];
  -- Named business boundaries, independent of the migration's grant generator.
  mutable_tables text[] := ARRAY[
   'organizations','site_locales','products','product_options','product_option_values',
@@ -21,7 +21,8 @@ DECLARE
  special_tables text[] := ARRAY[
   'tenants','users','auth_sessions','api_keys','tenant_memberships','sites',
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
-  'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries'];
+  'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
+  'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members'];
  role_name text;
  r record;
  t record;
@@ -67,7 +68,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','customer_credentials']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='INSERT' THEN
@@ -108,6 +109,18 @@ BEGIN
      ELSIF privilege='UPDATE' AND t.relname='auth_sessions' THEN
       allowed_columns := ARRAY['revoked_at'];
      END IF;
+    ELSIF role_name='app_customer_auth' THEN
+     IF privilege='SELECT' AND t.relname=ANY(ARRAY['customers','customer_credentials']) THEN
+      allowed_columns := all_columns;
+      expected_table := true;
+     ELSIF privilege='INSERT' THEN
+      allowed_columns := CASE t.relname
+       WHEN 'customers' THEN ARRAY['tenant_id','id','email','display_name']
+       WHEN 'customer_credentials' THEN ARRAY['tenant_id','customer_id','password_hash']
+       ELSE ARRAY[]::text[] END;
+     ELSIF privilege='UPDATE' AND t.relname='customer_credentials' THEN
+      allowed_columns := ARRAY['password_hash'];
+     END IF;
     ELSIF role_name='app_domain_resolver' AND privilege='SELECT' THEN
      allowed_columns := CASE t.relname
       WHEN 'site_domains' THEN ARRAY['tenant_id','site_id','normalized_hostname','status','verified_at']
@@ -140,7 +153,26 @@ BEGIN
   END LOOP;
  END LOOP;
 END $audit$;
-SELECT 'PASS: three internal roles; exact contracted-table and every-column privilege matrix' AS result;
+DO $customer_capability$
+DECLARE role_name text; f record;
+BEGIN
+ FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver',
+  'app_domain_verifier','app_media_service','app_publisher','app_publish_executor',
+  'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor'] LOOP
+  IF pg_has_role(role_name,'app_customer_auth','SET')
+   OR pg_has_role('app_customer_auth',role_name,'SET') THEN
+   RAISE EXCEPTION 'customer/staff/service capability path: %',role_name;
+  END IF;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' LOOP
+  IF has_function_privilege('app_customer_auth',f.oid,'EXECUTE')
+   OR has_function_privilege('app_customer_auth',f.oid,'EXECUTE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'customer auth can execute foreign routine: %',f.proname;
+  END IF;
+ END LOOP;
+END $customer_capability$;
+SELECT 'PASS: four internal roles; exact contracted-table and every-column privilege matrix' AS result;
 
 -- Service capabilities are disjoint; publisher's only authority is two routines.
 DO $services$

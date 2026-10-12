@@ -5,6 +5,8 @@
 # references media that is non-public or whose blob is not ready, whatever the
 # interleaving of runtime child insert, media downgrade and publish. Reliability
 # claims must be disjoint, expired attempts fenced and same-key occupancy unique.
+# Customer registration normalizes email inside the tenant's unique constraint;
+# concurrent registrations must commit once within a tenant and once per tenant.
 # Ordering is explicit, not timed: a participant that must hold its locks parks
 # on an advisory lock owned by a driver "gate" session, and the driver polls
 # pg_stat_activity (superuser) until each participant is parked or blocked on
@@ -70,6 +72,19 @@ await() {
     sleep 0.05
   done
   echo "  sync timeout: ${RACE_PREFIX}$label never reached ${*} (last: $ev)"; fail=1; return 1
+}
+# A new client may not yet appear in pg_stat_activity: absence cannot prove a
+# background job has finished. Poll its actual process, then reap it before
+# reading its logs or querying its commit. This delay only polls completion.
+await_job() {
+  local label=$1 pid=$2 deadline=$((SECONDS + 15))
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( SECONDS >= deadline )); then
+      echo "  sync timeout: ${RACE_PREFIX}$label process did not finish"; fail=1; return 1
+    fi
+    sleep 0.05
+  done
+  wait "$pid"
 }
 ROWLOCK=(transactionid tuple)
 
@@ -384,7 +399,48 @@ expect pricing_first ok; expect pricing_second price_entries_tier_unique
 got=$(sql <<<"SELECT count(*) FROM app.price_entries WHERE tenant_id='$T' AND price_list_id='$L' AND sku_id='$K' AND min_quantity=1;")
 [[ $got == 1 ]] || { echo "FAIL: pricing race persisted $got duplicate tiers"; fail=1; }
 echo "pricing duplicate-tier race: $got committed tier (expected 1)"
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability contract" >&2; exit 1; fi
+# Customer registration uses its own restricted auth role, never app_auth/users.
+# A's INSERT owns the unique-index entry while parked; B must wait on that
+# transaction before A commits. A valid failure includes both SQLSTATE and the
+# intended constraint, so permissions/fixture errors cannot count as a loser.
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('customer-register-race') RETURNING id;" | tail -1)
+gate_close 20
+tx customer_first app_customer_auth "$T" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$T',' Race.Customer@Example.COM ','first'); $(park 20)" &
+await customer_first advisory
+tx customer_second app_customer_auth "$T" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$T','race.customer@example.com','second');" &
+await customer_second "${ROWLOCK[@]}"
+gate_open 20; wait
+expect customer_first ok
+expect customer_second customers_tenant_email_unique
+expect customer_second 23505
+got=$(sql <<<"SELECT count(*)||'|'||min(display_name) FROM app.customers WHERE tenant_id='$T' AND email_normalized='race.customer@example.com';")
+echo "customer normalized registration race: $got (expected 1|first)"
+[[ $got == '1|first' ]] || fail=1
+
+# Equal normalized addresses in two tenants are independent identities. B must
+# commit while A is still parked, proving uniqueness is tenant-scoped.
+read -r TA TB <<<"$(sql <<'SQL'
+INSERT INTO app.tenants(name) VALUES('customer-independent-A') RETURNING id AS a \gset
+INSERT INTO app.tenants(name) VALUES('customer-independent-B') RETURNING id AS b \gset
+SELECT :'a'||' '||:'b';
+SQL
+)"
+gate_close 21
+tx customer_tenant_a app_customer_auth "$TA" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$TA',' Both@Example.COM ','tenant-A'); $(park 21)" &
+await customer_tenant_a advisory
+tx customer_tenant_b app_customer_auth "$TB" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$TB','both@example.com','tenant-B');" &
+customer_tenant_b_pid=$!
+await_job customer_tenant_b "$customer_tenant_b_pid"
+expect customer_tenant_b ok
+got=$(sql <<<"SELECT count(*) FROM app.customers WHERE tenant_id='$TB' AND email_normalized='both@example.com';")
+[[ $got == 1 ]] || { echo "FAIL: other-tenant registration did not commit before gate release: $got"; fail=1; }
+gate_open 21; wait
+expect customer_tenant_a ok
+got=$(sql <<<"SELECT count(*)||'|'||count(DISTINCT tenant_id) FROM app.customers WHERE tenant_id IN('$TA','$TB') AND email_normalized='both@example.com';")
+echo "customer independent-tenant registration race: $got (expected 2|2)"
+[[ $got == '2|2' ]] || fail=1
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/customer contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
+echo 'PASS: customer normalized email registrations commit once per tenant'

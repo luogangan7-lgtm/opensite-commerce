@@ -24,6 +24,7 @@ expected = [
     'db_reliability.sql',
     'db_inventory.sql',
     'db_pricing.sql',
+    'db_customers.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:
@@ -64,4 +65,11 @@ fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode != 0, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_release_integrity.sql' not in failed.stdout
+
+    # The new module's errors must also fail the real-PG runner rather than
+    # disappear after the established modules already passed. No SQL is parsed.
+    env['FAKE_FAIL_ON'] = 'CUSTOMERS_'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_customers.sql' in failed.stdout
 print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, propagates failures (mock psql; NO SQL executed)')
