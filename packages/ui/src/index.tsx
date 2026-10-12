@@ -68,8 +68,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
   }, [indeterminate]);
   return (
     <label htmlFor={controlId} className={classes('os-checkbox', className)}>
-      <input {...props} ref={inputRef} type="checkbox" id={controlId}
-        aria-checked={indeterminate ? 'mixed' : props['aria-checked']} />
+      <input {...props} ref={inputRef} type="checkbox" id={controlId} />
       <span>{label}</span>
     </label>
   );
