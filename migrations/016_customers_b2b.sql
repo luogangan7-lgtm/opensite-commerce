@@ -51,6 +51,8 @@ CREATE TABLE app.customers (
   AND email_normalized ~ '^[^[:space:]@]+@[^[:space:]@]+$'),
  CONSTRAINT customers_status_check CHECK(status IN ('active','disabled'))
 );
+-- Guest-to-registered conversion must first prove ownership of the customer
+-- email in the future authentication flow; the FK alone is not identity proof.
 CREATE TABLE app.customer_credentials (
  tenant_id uuid NOT NULL,
  customer_id uuid NOT NULL,
@@ -171,3 +173,40 @@ GRANT SELECT ON app.customers,app.customer_credentials TO app_customer_auth;
 GRANT INSERT(tenant_id,id,email,display_name) ON app.customers TO app_customer_auth;
 GRANT INSERT(tenant_id,customer_id,password_hash) ON app.customer_credentials TO app_customer_auth;
 GRANT UPDATE(password_hash) ON app.customer_credentials TO app_customer_auth;
+
+-- Trusted tenant provisioners already manage tenant-local reference data.
+-- INVOKER deliberately keeps that authority: a less-privileged future creator
+-- must acquire explicit provisioning rights, or the whole tenant insert fails.
+CREATE FUNCTION app.buyer_roles_seed_for_tenant() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+BEGIN
+ INSERT INTO app.buyer_roles(tenant_id,code)
+ VALUES(NEW.id,'purchaser'),(NEW.id,'approver'),(NEW.id,'admin');
+ RETURN NEW;
+END $fn$;
+
+-- Password changes update metadata without giving the authenticator permission
+-- to choose timestamps. The trigger condition excludes identical-hash updates.
+CREATE FUNCTION app.customer_credentials_touch_updated_at() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+BEGIN
+ NEW.updated_at:=clock_timestamp();
+ RETURN NEW;
+END $fn$;
+
+REVOKE ALL ON FUNCTION app.buyer_roles_seed_for_tenant(),
+ app.customer_credentials_touch_updated_at() FROM PUBLIC;
+DO $trigger_capabilities$
+DECLARE role_name text;
+BEGIN
+ FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+  EXECUTE format('REVOKE ALL ON FUNCTION app.buyer_roles_seed_for_tenant(), app.customer_credentials_touch_updated_at() FROM %I',role_name);
+ END LOOP;
+END $trigger_capabilities$;
+
+CREATE TRIGGER buyer_roles_seed_for_tenant AFTER INSERT ON app.tenants
+FOR EACH ROW EXECUTE FUNCTION app.buyer_roles_seed_for_tenant();
+CREATE TRIGGER customer_credentials_touch_updated_at
+BEFORE UPDATE OF password_hash ON app.customer_credentials
+FOR EACH ROW WHEN(OLD.password_hash IS DISTINCT FROM NEW.password_hash)
+EXECUTE FUNCTION app.customer_credentials_touch_updated_at();

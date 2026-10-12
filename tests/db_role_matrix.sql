@@ -23,6 +23,7 @@ DECLARE
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
   'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
   'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
+  'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members'];
  role_name text;
  r record;
@@ -78,6 +79,11 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'tax_zones' THEN ARRAY['tenant_id','id','name']
+        WHEN 'tax_zone_locations' THEN ARRAY['tenant_id','zone_id','country_code','subdivision']
+        WHEN 'tax_categories' THEN ARRAY['tenant_id','code','name','is_exempt']
+        WHEN 'tax_rates' THEN ARRAY['tenant_id','id','zone_id','category_code','rate_bp','valid_from','valid_until']
+        WHEN 'tax_settings' THEN ARRAY['tenant_id','prices_include_tax']
         WHEN 'idempotency_records' THEN ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','request_hash','expires_at','claim_token','created_at']
         WHEN 'outbox_events' THEN ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key','created_at']
         WHEN 'webhook_inbox' THEN ARRAY['tenant_id','id','provider','provider_account_id','environment','provider_event_id','payload_hash','payload_reference','created_at']
@@ -96,6 +102,10 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'tax_zones' THEN ARRAY['name']
+        WHEN 'tax_categories' THEN ARRAY['name','is_exempt']
+        WHEN 'tax_rates' THEN ARRAY['rate_bp','valid_from','valid_until']
+        WHEN 'tax_settings' THEN ARRAY['prices_include_tax']
         WHEN 'webhook_inbox' THEN ARRAY['status','attempts','next_attempt_at','processed_at']
         WHEN 'sites' THEN ARRAY['name','default_locale']
         WHEN 'media_assets' THEN ARRAY['filename','mime_type','width','height']
@@ -228,7 +238,8 @@ BEGIN
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
-   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due') LOOP
+   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+   'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -247,7 +258,8 @@ BEGIN
  END LOOP;
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
-   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due'))<>10 THEN
+   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+   'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -321,3 +333,38 @@ BEGIN
  END IF;
 END $inventory$;
 SELECT 'PASS: inventory exact owner/manager/runtime table-column-routine capabilities' AS result;
+
+-- Customer trigger routines inherit the caller's authority, never add a capability.
+DO $customer_triggers$
+DECLARE f record; role_name text; owner_role record;
+ names text[]:=ARRAY['buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at'];
+BEGIN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
+  RAISE EXCEPTION 'CUSTOMERS_TRIGGER_FUNCTION_CONTRACT_INCOMPLETE';
+ END IF;
+ FOR f IN SELECT p.oid,p.proname,p.proowner,p.prosecdef,p.proconfig,p.proacl,p.prorettype,p.pronargs,p.prokind
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' AND p.proname=ANY(names) LOOP
+  SELECT * INTO STRICT owner_role FROM pg_roles WHERE oid=f.proowner;
+  IF f.prokind<>'f' OR f.pronargs<>0 OR f.prorettype<>'trigger'::regtype
+   OR f.prosecdef OR NOT(owner_role.rolsuper OR owner_role.rolbypassrls)
+   OR EXISTS(SELECT FROM pg_class WHERE oid IN ('app.tenants'::regclass,
+     'app.customers'::regclass,'app.customer_credentials'::regclass,'app.customer_addresses'::regclass,
+     'app.buyer_companies'::regclass,'app.buyer_roles'::regclass,'app.buyer_company_members'::regclass)
+     AND relowner IS DISTINCT FROM f.proowner)
+   OR cardinality(f.proconfig) IS DISTINCT FROM 1
+   OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner)))
+     WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+   RAISE EXCEPTION 'CUSTOMERS_UNSAFE_TRIGGER_FUNCTION: %',f.proname;
+  END IF;
+  FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+   IF has_function_privilege(role_name,f.oid,'EXECUTE')
+    OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'CUSTOMERS_TRIGGER_EXECUTE_CAPABILITY: % %',role_name,f.proname;
+   END IF;
+  END LOOP;
+ END LOOP;
+END $customer_triggers$;
+SELECT 'PASS: customer trigger exact signature, privileged table owner, SECURITY INVOKER, search_path and no application EXECUTE' AS result;

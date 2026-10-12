@@ -1,6 +1,57 @@
 -- Customer/B2B data contract; depends on the customers_b2b forward migration.
 -- Called by check_pg on disposable PG18; all fixtures roll back.
 -- Expected failures identify the exact guard, never an unrelated SQL exception.
+-- BEGIN CUSTOMERS_PASSWORD_UPDATED_AT_PROBE: independent of buyer-role seeding.
+BEGIN;
+DO $password_fixture$
+DECLARE t uuid:=uuidv7(); customer uuid:=uuidv7();
+ phc text:='$argon2id$v=19$m=19456,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU';
+BEGIN
+ INSERT INTO app.tenants(id,name) VALUES(t,'customers-password-timestamp');
+ INSERT INTO app.customers(tenant_id,id,email) VALUES(t,customer,'timestamp@example.invalid');
+ INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash,updated_at)
+ VALUES(t,customer,phc,'2000-01-01 00:00:00+00');
+ PERFORM set_config('test.customers.password_tenant',t::text,true);
+ PERFORM set_config('test.customers.password_customer',customer::text,true);
+ PERFORM set_config('test.customers.password_phc',phc,true);
+ PERFORM set_config('app.tenant_id',t::text,true);
+END $password_fixture$;
+SET LOCAL ROLE app_customer_auth;
+DO $password_timestamp$
+DECLARE t uuid:=current_setting('test.customers.password_tenant')::uuid;
+ customer uuid:=current_setting('test.customers.password_customer')::uuid;
+ phc text:=current_setting('test.customers.password_phc');
+ old_timestamp timestamptz; new_timestamp timestamptz; changed integer;
+ before_change timestamptz;
+BEGIN
+ SELECT updated_at INTO STRICT old_timestamp FROM app.customer_credentials
+ WHERE tenant_id=t AND customer_id=customer;
+ UPDATE app.customer_credentials SET password_hash=phc WHERE tenant_id=t AND customer_id=customer;
+ SELECT updated_at INTO STRICT new_timestamp FROM app.customer_credentials
+ WHERE tenant_id=t AND customer_id=customer;
+ IF new_timestamp IS DISTINCT FROM old_timestamp THEN
+  RAISE EXCEPTION 'CUSTOMERS_PASSWORD_SAME_HASH_UPDATED_AT';
+ END IF;
+ before_change:=clock_timestamp();
+ UPDATE app.customer_credentials SET password_hash=replace(phc,'m=19456','m=19457')
+ WHERE tenant_id=t AND customer_id=customer;
+ GET DIAGNOSTICS changed=ROW_COUNT;
+ SELECT updated_at INTO STRICT new_timestamp FROM app.customer_credentials
+ WHERE tenant_id=t AND customer_id=customer;
+ IF changed<>1 OR new_timestamp IS NOT DISTINCT FROM old_timestamp
+  OR new_timestamp<before_change OR new_timestamp>clock_timestamp() THEN
+  RAISE EXCEPTION 'CUSTOMERS_PASSWORD_UPDATED_AT';
+ END IF;
+ BEGIN
+  UPDATE app.customer_credentials SET updated_at=old_timestamp
+  WHERE tenant_id=t AND customer_id=customer;
+  RAISE EXCEPTION 'CUSTOMERS_AUTH_TIMESTAMP_UPDATE_ACCEPTED';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $password_timestamp$;
+RESET ROLE;
+ROLLBACK;
+-- END CUSTOMERS_PASSWORD_UPDATED_AT_PROBE.
+
 BEGIN;
 DO $customers$
 DECLARE
@@ -13,6 +64,13 @@ DECLARE
  guard text; n integer; row_record record; role_record record;
 BEGIN
  INSERT INTO app.tenants(id,name) VALUES(t,'customers-A'),(other_t,'customers-B');
+ -- Privileged tenant creation alone seeds the complete fixed tenant-local role set.
+ FOR row_record IN SELECT fixture.tenant_id FROM (VALUES(t),(other_t)) fixture(tenant_id) LOOP
+  IF (SELECT array_agg(code ORDER BY code) FROM app.buyer_roles
+    WHERE tenant_id=row_record.tenant_id) IS DISTINCT FROM ARRAY['admin','approver','purchaser']::text[] THEN
+   RAISE EXCEPTION 'CUSTOMERS_NEW_TENANT_ROLE_SEED: %',row_record.tenant_id;
+  END IF;
+ END LOOP;
  -- Staff and storefront identifiers are independent, even for the same email.
  INSERT INTO app.users(email,password_hash)
  VALUES('mixed.case@example.invalid','non-secret-test-fixture');
@@ -115,10 +173,6 @@ BEGIN
  END LOOP;
  INSERT INTO app.buyer_companies(tenant_id,id,name)
  VALUES(t,company,'Purchasing A'),(t,second_company,'Purchasing A2'),(other_t,other_company,'Purchasing B');
- -- New tenant onboarding is owner-managed: seed the fixed, tenant-local role set.
- INSERT INTO app.buyer_roles(tenant_id,code)
- SELECT fixture.tenant_id,role_code FROM (VALUES(t),(other_t)) fixture(tenant_id)
- CROSS JOIN unnest(ARRAY['purchaser','approver','admin']) role_code;
  BEGIN
   INSERT INTO app.buyer_roles(tenant_id,code) VALUES(t,'owner');
   RAISE EXCEPTION 'CUSTOMERS_NON_MVP_ROLE_ACCEPTED';
@@ -399,4 +453,4 @@ BEGIN
 END $customer_auth$;
 RESET ROLE;
 ROLLBACK;
-SELECT 'PASS: customers email normalization, guest credentials, buyer tenant FKs, revocation, credential role isolation and RLS' AS result;
+SELECT 'PASS: customers email normalization, guest credentials, automatic tenant roles, password timestamps, buyer tenant FKs, revocation, credential role isolation and RLS' AS result;
