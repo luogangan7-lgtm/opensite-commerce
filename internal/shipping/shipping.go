@@ -1,6 +1,6 @@
 // Package shipping computes deterministic, tenant-scoped shipping quotes.
-// It depends only on the standard library; callers supply rules already scoped
-// to a tenant. Quote never mutates inputs or performs I/O.
+// It depends on shared money and the standard library; callers supply rules
+// already scoped to a tenant. Quote never mutates inputs or performs I/O.
 package shipping
 
 import (
@@ -9,12 +9,13 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 )
 
-type Money struct {
-	Amount   int64
-	Currency string
-}
+// Money aliases the shared type, preserving shipping callers without conversion
+// or duplicate validation/arithmetic semantics.
+type Money = money.Money
 
 type Destination struct {
 	Country     string
@@ -62,8 +63,11 @@ var (
 // shipping is evaluated first, then weight tiers, then fixed only without tiers.
 func Quote(zones []Zone, rates []Rate, request Request) (Result, error) {
 	if !validID(request.ProfileID) || !validDestination(request.Destination) ||
-		request.WeightG < 0 || request.Subtotal.Amount < 0 || !validCurrency(request.Subtotal.Currency) {
+		request.WeightG < 0 || request.Subtotal.Amount < 0 {
 		return Result{}, fmt.Errorf("%w: request", ErrInvalid)
+	}
+	if err := request.Subtotal.Validate(); err != nil {
+		return Result{}, fmt.Errorf("%w: request subtotal: %w", ErrInvalid, err)
 	}
 	if err := validate(zones, rates); err != nil {
 		return Result{}, err
@@ -79,8 +83,8 @@ func Quote(zones []Zone, rates []Rate, request Request) (Result, error) {
 		if r.ProfileID != request.ProfileID || r.ZoneID != zoneID {
 			continue
 		}
-		if r.Currency != request.Subtotal.Currency {
-			return Result{}, ErrCurrencyMismatch
+		if err := compatibleCurrency(r.Currency, request.Subtotal.Currency); err != nil {
+			return Result{}, err
 		}
 		switch r.Method {
 		case "fixed":
@@ -169,12 +173,17 @@ func validate(zones []Zone, rates []Rate) error {
 	rateIDs := make(map[string]bool, len(rates))
 	for _, r := range rates {
 		if !validID(r.ID) || rateIDs[r.ID] || !validID(r.ProfileID) || !zoneIDs[r.ZoneID] ||
-			!validCurrency(r.Currency) || r.Amount < 0 || r.MinWeightG < 0 {
+			r.Amount < 0 || r.MinWeightG < 0 {
 			return fmt.Errorf("%w: rate identity, currency, or amount", ErrInvalid)
 		}
+		if err := (money.Money{Amount: r.Amount, Currency: r.Currency}).Validate(); err != nil {
+			return fmt.Errorf("%w: rate currency: %w", ErrInvalid, err)
+		}
 		rateIDs[r.ID] = true
-		if currency, exists := profileCurrencies[r.ProfileID]; exists && currency != r.Currency {
-			return fmt.Errorf("%w: profile rate currencies", ErrCurrencyMismatch)
+		if currency, exists := profileCurrencies[r.ProfileID]; exists {
+			if err := compatibleCurrency(currency, r.Currency); err != nil {
+				return fmt.Errorf("profile rate currencies: %w", err)
+			}
 		}
 		profileCurrencies[r.ProfileID] = r.Currency
 		k := key{r.ProfileID, r.ZoneID}
@@ -216,16 +225,13 @@ func validID(value string) bool {
 	return value != "" && strings.TrimSpace(value) == value && !strings.ContainsFunc(value, unicode.IsControl)
 }
 
-func validCurrency(value string) bool {
-	if len(value) != 3 {
-		return false
+func compatibleCurrency(a, b string) error {
+	// Add zero-valued amounts solely to use shared currency compatibility. Fees
+	// and subtotals are never added here, so MaxInt64 quotes remain valid.
+	if _, err := (money.Money{Currency: a}).Add(money.Money{Currency: b}); err != nil {
+		return fmt.Errorf("%w: %w", ErrCurrencyMismatch, err)
 	}
-	for i := range value {
-		if value[i] < 'A' || value[i] > 'Z' {
-			return false
-		}
-	}
-	return true
+	return nil
 }
 
 func validDestination(d Destination) bool {

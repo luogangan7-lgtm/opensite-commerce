@@ -2,7 +2,7 @@
 package main
 
 import (
-	"example.com/opensite-commerce/internal/pagegraph"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/pagegraph"
 	"fmt"
 	"os"
 )

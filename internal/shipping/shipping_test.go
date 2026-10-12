@@ -3,9 +3,12 @@ package shipping
 
 import (
 	"errors"
+	"math"
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 )
 
 func number(n int64) *int64 { return &n }
@@ -309,5 +312,42 @@ func TestZeroThresholdAndUnselectedInvalidRules(t *testing.T) {
 	invalid.ProfileID = "other"
 	if got, err := Quote(standardZone(), []Rate{free, invalid}, standardRequest()); !errors.Is(err, ErrInvalid) || got != (Result{}) {
 		t.Fatalf("unselected invalid rules must be refused: %+v, %v", got, err)
+	}
+}
+
+func TestSharedMoneyContract(t *testing.T) {
+	request := standardRequest()
+	request.Subtotal = Money{Amount: math.MaxInt64, Currency: "USD"}
+	if _, ok := any(request.Subtotal).(money.Money); !ok {
+		t.Fatal("Request.Subtotal must be the shared money.Money type")
+	}
+	got, err := Quote(standardZone(), []Rate{rate("fixed", "fixed", math.MaxInt64)}, request)
+	if err != nil {
+		t.Fatalf("MaxInt64 quote: %v", err)
+	}
+	charge, ok := any(got.Charge).(money.Money)
+	if !ok {
+		t.Fatal("Result.Charge must be the shared money.Money type")
+	}
+	if charge.Amount != math.MaxInt64 || charge.Currency != "USD" || charge.Validate() != nil {
+		t.Fatalf("charge = %+v", charge)
+	}
+	// The returned shared type keeps checked arithmetic at the consuming boundary.
+	// Quote itself never adds the subtotal and fee.
+	if _, err := charge.Add(money.Money{Amount: 1, Currency: "USD"}); !errors.Is(err, money.ErrOverflow) {
+		t.Fatalf("shared Add overflow = %v", err)
+	}
+	if _, err := charge.Add(money.Money{Currency: "EUR"}); !errors.Is(err, money.ErrCurrencyMismatch) {
+		t.Fatalf("shared Add currency mismatch = %v", err)
+	}
+	free := rate("free", "free_over_amount", 0)
+	free.FreeOverAmount = number(math.MaxInt64)
+	got, err = Quote(standardZone(), []Rate{free}, request)
+	if err != nil || got.RateID != "free" || got.Charge.Amount != 0 {
+		t.Fatalf("MaxInt64 inclusive free threshold = %+v, %v", got, err)
+	}
+	request.Subtotal.Amount--
+	if _, err := Quote(standardZone(), []Rate{free}, request); !errors.Is(err, ErrNoRate) {
+		t.Fatalf("below MaxInt64 threshold = %v", err)
 	}
 }

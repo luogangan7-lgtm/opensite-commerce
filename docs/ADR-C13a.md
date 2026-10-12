@@ -46,10 +46,13 @@ used only without weight tiers. A free rule alone refuses below-threshold orders
 The result includes the chosen zone, rate ID, method and currency, so its basis
 can be explained. Currency mismatch and malformed configuration are errors.
 
-`internal/money` is absent on the branch base, so the card-authorized minimal
-`shipping.Money` holds only Amount/Currency. Shipping performs comparisons and
-selects stored fees; it performs no rounding, multiplication, allocation or FX.
-Replace this type with shared Money after that module merges, with caller tests.
+`shipping.Money` is a type alias of the shared `internal/money.Money`, preserving
+caller compatibility without conversion or a duplicate amount type. Request and
+rate currencies use shared `Money.Validate`; currency compatibility uses public
+`Money.Add` on zero-valued amounts. Shipping compares thresholds and selects
+stored fees without adding subtotal and fee, rounding, multiplication, allocation
+or FX. Its returned shared Money exposes checked arithmetic to consumers; the
+regression verifies MaxInt64 quotes, inclusive thresholds and `Add` overflow.
 In pure Go, MinWeightG is zero for fixed/free rows; a future database adapter must
 map their SQL NULL weight minimum to zero and preserve by-weight zero normally.
 

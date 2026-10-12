@@ -122,17 +122,20 @@ type AppDraftPage struct {
 }
 
 type AppIdempotencyRecord struct {
-	TenantID       pgtype.UUID        `json:"tenant_id"`
-	ActorKind      string             `json:"actor_kind"`
-	ActorID        pgtype.UUID        `json:"actor_id"`
-	Operation      string             `json:"operation"`
-	IdempotencyKey string             `json:"idempotency_key"`
-	RequestHash    []byte             `json:"request_hash"`
-	State          string             `json:"state"`
-	ResponseStatus pgtype.Int4        `json:"response_status"`
-	ResponseBody   []byte             `json:"response_body"`
-	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	TenantID              pgtype.UUID        `json:"tenant_id"`
+	ActorKind             string             `json:"actor_kind"`
+	ActorID               pgtype.UUID        `json:"actor_id"`
+	Operation             string             `json:"operation"`
+	IdempotencyKey        string             `json:"idempotency_key"`
+	RequestHash           []byte             `json:"request_hash"`
+	State                 string             `json:"state"`
+	ResponseStatus        pgtype.Int4        `json:"response_status"`
+	ResponseBody          []byte             `json:"response_body"`
+	ExpiresAt             pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	ClaimToken            pgtype.UUID        `json:"claim_token"`
+	ResponseBodyReference pgtype.Text        `json:"response_body_reference"`
+	CompletedAt           pgtype.Timestamptz `json:"completed_at"`
 }
 
 type AppInquiry struct {
@@ -146,6 +149,41 @@ type AppInquiry struct {
 	Message    string             `json:"message"`
 	Status     string             `json:"status"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppInventoryMovement struct {
+	TenantID      pgtype.UUID        `json:"tenant_id"`
+	ID            pgtype.UUID        `json:"id"`
+	WarehouseID   pgtype.UUID        `json:"warehouse_id"`
+	SkuID         pgtype.UUID        `json:"sku_id"`
+	ReservationID pgtype.UUID        `json:"reservation_id"`
+	OwnerType     string             `json:"owner_type"`
+	OwnerID       pgtype.UUID        `json:"owner_id"`
+	Kind          string             `json:"kind"`
+	Quantity      int64              `json:"quantity"`
+	OnHandDelta   int64              `json:"on_hand_delta"`
+	ReservedDelta int64              `json:"reserved_delta"`
+	OnHandAfter   int64              `json:"on_hand_after"`
+	ReservedAfter int64              `json:"reserved_after"`
+	Reason        string             `json:"reason"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppInventoryReservation struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	ID             pgtype.UUID        `json:"id"`
+	WarehouseID    pgtype.UUID        `json:"warehouse_id"`
+	SkuID          pgtype.UUID        `json:"sku_id"`
+	Quantity       int64              `json:"quantity"`
+	OwnerType      string             `json:"owner_type"`
+	OwnerID        pgtype.UUID        `json:"owner_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	RequestHash    []byte             `json:"request_hash"`
+	TtlSeconds     int32              `json:"ttl_seconds"`
+	State          string             `json:"state"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
 }
 
 type AppMediaAsset struct {
@@ -195,14 +233,20 @@ type AppOrganization struct {
 }
 
 type AppOutboxEvent struct {
-	TenantID      pgtype.UUID        `json:"tenant_id"`
-	ID            pgtype.UUID        `json:"id"`
-	EventType     string             `json:"event_type"`
-	Payload       []byte             `json:"payload"`
-	Attempts      int32              `json:"attempts"`
-	NextAttemptAt pgtype.Timestamptz `json:"next_attempt_at"`
-	Status        string             `json:"status"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	ID             pgtype.UUID        `json:"id"`
+	EventType      string             `json:"event_type"`
+	Payload        []byte             `json:"payload"`
+	Attempts       int32              `json:"attempts"`
+	NextAttemptAt  pgtype.Timestamptz `json:"next_attempt_at"`
+	Status         string             `json:"status"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	DeliveryTarget string             `json:"delivery_target"`
+	DedupKey       string             `json:"dedup_key"`
+	LeaseOwner     pgtype.UUID        `json:"lease_owner"`
+	LeaseUntil     pgtype.Timestamptz `json:"lease_until"`
+	LastError      pgtype.Text        `json:"last_error"`
+	DeliveredAt    pgtype.Timestamptz `json:"delivered_at"`
 }
 
 type AppPage struct {
@@ -220,6 +264,28 @@ type AppPageRevision struct {
 	Revision  int64              `json:"revision"`
 	Document  []byte             `json:"document"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppPriceEntry struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	ID          pgtype.UUID `json:"id"`
+	PriceListID pgtype.UUID `json:"price_list_id"`
+	SkuID       pgtype.UUID `json:"sku_id"`
+	MinQuantity int64       `json:"min_quantity"`
+	UnitAmount  int64       `json:"unit_amount"`
+}
+
+type AppPriceList struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ID              pgtype.UUID        `json:"id"`
+	Currency        string             `json:"currency"`
+	Status          string             `json:"status"`
+	StartsAt        pgtype.Timestamptz `json:"starts_at"`
+	EndsAt          pgtype.Timestamptz `json:"ends_at"`
+	Priority        int32              `json:"priority"`
+	Audience        string             `json:"audience"`
+	CustomerGroupID pgtype.UUID        `json:"customer_group_id"`
+	BuyerCompanyID  pgtype.UUID        `json:"buyer_company_id"`
 }
 
 type AppProduct struct {
@@ -379,6 +445,7 @@ type AppSiteRelease struct {
 	ManifestHash    []byte             `json:"manifest_hash"`
 	RestoredFrom    pgtype.UUID        `json:"restored_from"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Sealed          bool               `json:"sealed"`
 }
 
 type AppSiteReleaseMedium struct {
@@ -405,6 +472,14 @@ type AppSiteReleaseTemplate struct {
 	Locale       string      `json:"locale"`
 	TemplateKind string      `json:"template_kind"`
 	Document     []byte      `json:"document"`
+}
+
+type AppStockLevel struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	WarehouseID pgtype.UUID `json:"warehouse_id"`
+	SkuID       pgtype.UUID `json:"sku_id"`
+	OnHand      int64       `json:"on_hand"`
+	Reserved    int64       `json:"reserved"`
 }
 
 type AppTenant struct {
@@ -437,4 +512,27 @@ type AppVariantOptionValue struct {
 	VariantID pgtype.UUID `json:"variant_id"`
 	OptionID  pgtype.UUID `json:"option_id"`
 	ValueID   pgtype.UUID `json:"value_id"`
+}
+
+type AppWarehouse struct {
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppWebhookInbox struct {
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	ID                pgtype.UUID        `json:"id"`
+	Provider          string             `json:"provider"`
+	ProviderAccountID string             `json:"provider_account_id"`
+	Environment       string             `json:"environment"`
+	ProviderEventID   string             `json:"provider_event_id"`
+	PayloadHash       []byte             `json:"payload_hash"`
+	PayloadReference  string             `json:"payload_reference"`
+	Status            string             `json:"status"`
+	Attempts          int32              `json:"attempts"`
+	NextAttemptAt     pgtype.Timestamptz `json:"next_attempt_at"`
+	ProcessedAt       pgtype.Timestamptz `json:"processed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
