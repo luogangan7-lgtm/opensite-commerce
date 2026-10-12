@@ -213,6 +213,24 @@ got=$(sql <<<"SELECT status||'|'||attempts||'|'||(lease_owner='$WA')||'|'||(leas
 echo "race late ACK transaction clock: $got (expected processing|1|true|true|true|true)"
 [[ $got == 'processing|1|true|true|true|true' ]] || fail=1
 
+# Upload expiry (media): the completing transaction waits on a row lock held
+# past expires_at. Expiry must be judged by clock_timestamp() AFTER the lock is
+# granted (second statement, mirroring queries/media.sql MediaUploadExpired);
+# now() (transaction start) or a same-statement projection is stale.
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('upload-expiry-race') RETURNING id;" | tail -1)
+U=$(sql <<<"INSERT INTO app.media_uploads(tenant_id,original_filename,expected_size,expires_at) VALUES('$T','x.png',1,clock_timestamp()+interval '3 seconds') RETURNING id;" | tail -1)
+gate_close 9
+tx up_holder app_media_service "$T" "SELECT 'held='||count(*) FROM (SELECT 1 FROM app.media_uploads WHERE tenant_id='$T' AND id='$U' FOR UPDATE) l; $(park 9)" &
+await up_holder advisory
+tx up_late app_media_service "$T" "SELECT 'locked='||count(*) FROM (SELECT 1 FROM app.media_uploads WHERE tenant_id='$T' AND id='$U' FOR UPDATE) l; SELECT 'expired='||(expires_at <= clock_timestamp()) FROM app.media_uploads WHERE tenant_id='$T' AND id='$U';" &
+await up_late "${ROWLOCK[@]}"
+for _ in $(seq 1 150); do
+  [[ $(sql <<<"SELECT clock_timestamp() > expires_at FROM app.media_uploads WHERE id='$U';") == t ]] && break
+  sleep 0.1
+done
+gate_open 9; wait
+expect up_holder ok; expect up_late ok; result up_late locked=1; result up_late expired=true
+
 # Same-key occupancy: the second UPSERT must wait for the uncommitted winner,
 # then return its committed in_progress record with acquired=false.
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('idempotency-race') RETURNING id;" | tail -1)

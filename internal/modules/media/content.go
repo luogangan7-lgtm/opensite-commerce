@@ -9,6 +9,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"strings"
+	"unicode"
 
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 )
@@ -16,8 +17,19 @@ import (
 const MaxBytes int64 = 10 << 20
 const maxPixels = 16 << 20
 
+// validFilename rejects path separators, every Unicode control character (Cc:
+// C0, DEL, C1) and bidi override/isolate marks (U+202A-202E, U+2066-2069), which
+// can visually spoof extensions in admin UIs and logs.
 func validFilename(s string) bool {
-	return s != "" && len(s) <= 255 && s != "." && s != ".." && !strings.ContainsAny(s, "/\\\x00\r\n")
+	if s == "" || len(s) > 255 || s == "." || s == ".." || strings.ContainsAny(s, "/\\") {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) || r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069 {
+			return false
+		}
+	}
+	return true
 }
 func allowedMIME(s string) bool {
 	switch s {
