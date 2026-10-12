@@ -9,3 +9,8 @@ coverage/
 .DS_Store
 media/
 *.test
+dist-gallery/
+playwright-report/
+test-results/
+.work/
+work/
