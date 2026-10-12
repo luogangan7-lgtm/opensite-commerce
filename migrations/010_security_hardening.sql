@@ -1,7 +1,8 @@
 -- 010 / Forward-only authority boundaries; depends on 001-009, called by migrate.
 -- Runtime prepares pending/private inputs; isolated service roles own trust state.
--- Publish functions own the only application pointer write and lock release rows
--- against child writes. NOLOGIN roles require separately provisioned service logins.
+-- Publish functions own the only application pointer write and lock release rows.
+-- Only verifier/media/publisher may have private service login members; the
+-- publish executor is an unreachable function owner, never a login capability.
 DO $roles$
 DECLARE role_name text; inherited record;
 BEGIN
@@ -19,6 +20,14 @@ BEGIN
   END LOOP;
  END LOOP;
 END $roles$;
+DO $executor_members$
+DECLARE member_name text;
+BEGIN
+ FOR member_name IN SELECT r.rolname FROM pg_auth_members m
+  JOIN pg_roles r ON r.oid=m.member WHERE m.roleid='app_publish_executor'::regrole LOOP
+  EXECUTE format('REVOKE app_publish_executor FROM %I CASCADE',member_name);
+ END LOOP;
+END $executor_members$;
 GRANT USAGE ON SCHEMA app TO app_domain_verifier,app_media_service,app_publisher,app_publish_executor;
 REVOKE ALL ON ALL TABLES IN SCHEMA app FROM app_domain_verifier,app_media_service,app_publisher,app_publish_executor;
 
@@ -113,6 +122,11 @@ CREATE FUNCTION app.seal_release(p_tenant uuid,p_site uuid,p_release uuid) RETUR
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $seal$
 DECLARE is_sealed boolean;
 BEGIN
+ -- SHARE locks protect append/seal ordering, but do not version the parent.
+ -- An old RR snapshot could miss children committed before the sealer's lock.
+ IF current_setting('transaction_isolation')<>'read committed' THEN
+  RAISE EXCEPTION 'PUBLISH_READ_COMMITTED_REQUIRED' USING ERRCODE='25001';
+ END IF;
  IF p_tenant IS NULL OR p_tenant IS DISTINCT FROM nullif(current_setting('app.tenant_id',true),'')::uuid THEN
   RAISE EXCEPTION 'PUBLISH_TENANT_REQUIRED' USING ERRCODE='42501';
  END IF;
@@ -141,6 +155,9 @@ CREATE FUNCTION app.publish_release(p_tenant uuid,p_site uuid,p_release uuid,p_e
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $publish$
 DECLARE previous uuid;
 BEGIN
+ IF current_setting('transaction_isolation')<>'read committed' THEN
+  RAISE EXCEPTION 'PUBLISH_READ_COMMITTED_REQUIRED' USING ERRCODE='25001';
+ END IF;
  IF p_tenant IS NULL OR p_tenant IS DISTINCT FROM nullif(current_setting('app.tenant_id',true),'')::uuid THEN
   RAISE EXCEPTION 'PUBLISH_TENANT_REQUIRED' USING ERRCODE='42501';
  END IF;

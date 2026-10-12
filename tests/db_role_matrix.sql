@@ -147,6 +147,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'missing service role: %',role_name; END IF;
   IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole
      OR r.rolreplication OR r.rolinherit OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid)
+     OR (role_name='app_publish_executor' AND EXISTS(SELECT FROM pg_auth_members WHERE roleid=r.oid))
      OR has_schema_privilege(role_name,'app','CREATE')
      OR pg_has_role('app_runtime',r.oid,'SET') THEN
    RAISE EXCEPTION 'unsafe service capability: %',role_name;
