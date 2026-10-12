@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fail if CI is not hermetic: unpinned actions/images/Go, `go get`, unhashed pip. Stdlib only.
-Depends on: .github/workflows/*.yml, go.mod. Called by: scripts/check_all.sh.
+Depends on: .github/workflows/*.yml|*.yaml, go.mod. Called by: scripts/check_all.sh.
 Invariant: line-based scan (comments stripped), no YAML parser needed."""
 import re, sys
 from pathlib import Path
@@ -9,7 +9,7 @@ root = Path(__file__).resolve().parents[1]
 gomod = re.search(r'^go (\S+)$', (root / 'go.mod').read_text(), re.M)
 go_pin = gomod.group(1) if gomod else None
 errs = []
-for wf in sorted((root / '.github/workflows').glob('*.yml')):
+for wf in sorted(p for ext in ('*.yml', '*.yaml') for p in (root / '.github/workflows').glob(ext)):
     for n, raw in enumerate(wf.read_text().splitlines(), 1):
         line = re.sub(r'\s#.*$', '', raw).strip()
         where = f'{wf.name}:{n}'
