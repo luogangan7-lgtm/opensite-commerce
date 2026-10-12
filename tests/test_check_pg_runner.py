@@ -20,6 +20,7 @@ expected = [
     'db_connection_reuse.sql',
     'db_security_services.sql',
     'db_publish_isolation.sql',
+    'db_sealed_media.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:

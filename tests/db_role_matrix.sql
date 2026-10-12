@@ -184,18 +184,18 @@ BEGIN
  END LOOP;
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' LOOP
-  IF f.proname NOT IN ('guard_release_children','seal_release','publish_release')
+  IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release')
    OR NOT f.prosecdef OR f.proowner<>'app_publish_executor'::regrole
    OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE')
    OR has_function_privilege('app_runtime',f.oid,'EXECUTE')
    OR has_function_privilege('app_auth',f.oid,'EXECUTE')
    OR has_function_privilege('app_domain_resolver',f.oid,'EXECUTE')
-   OR has_function_privilege('app_publisher',f.oid,'EXECUTE') IS DISTINCT FROM (f.proname<>'guard_release_children') THEN
+   OR has_function_privilege('app_publisher',f.oid,'EXECUTE') IS DISTINCT FROM (f.proname NOT IN ('guard_release_children','guard_sealed_media')) THEN
    RAISE EXCEPTION 'unsafe function capability: %',f.proname;
   END IF;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app')<>3 THEN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app')<>4 THEN
   RAISE EXCEPTION 'publisher function contract incomplete';
  END IF;
 END $services$;

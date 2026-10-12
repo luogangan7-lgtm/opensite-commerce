@@ -67,6 +67,21 @@ END $media_policies$;
 
 ALTER TABLE app.site_releases ADD COLUMN sealed boolean NOT NULL DEFAULT false;
 -- Already published releases are sealed before any application child writes.
+-- 001-009 allowed publishing unsafe media; refuse to seal it silently. The
+-- operator must make that media public+ready (or unpublish) and rerun 010.
+LOCK TABLE app.media_assets,app.media_blobs,app.site_release_media IN SHARE MODE;
+DO $published_media$
+BEGIN
+ IF EXISTS (SELECT FROM app.sites s
+  JOIN app.site_release_media rm
+   ON (rm.tenant_id,rm.site_id,rm.release_id)=(s.tenant_id,s.id,s.published_release_id)
+  JOIN app.media_assets a ON (a.tenant_id,a.id)=(rm.tenant_id,rm.media_id)
+  JOIN app.media_blobs b ON (b.tenant_id,b.id)=(a.tenant_id,a.blob_id)
+  WHERE a.visibility<>'public' OR b.status<>'ready') THEN
+  RAISE EXCEPTION 'PUBLISHED_RELEASE_MEDIA_NOT_PUBLIC_READY' USING ERRCODE='23514',
+   HINT='Make media of published releases public+ready, or unpublish them, then rerun migration 010.';
+ END IF;
+END $published_media$;
 UPDATE app.site_releases r SET sealed=true FROM app.sites s
  WHERE s.tenant_id=r.tenant_id AND s.id=r.site_id AND s.published_release_id=r.id;
 GRANT INSERT(tenant_id,site_id,id,release_no,renderer_build_id,manifest,manifest_hash,
@@ -173,3 +188,49 @@ END $publish$;
 ALTER FUNCTION app.publish_release(uuid,uuid,uuid,uuid) OWNER TO app_publish_executor;
 REVOKE ALL ON FUNCTION app.publish_release(uuid,uuid,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.publish_release(uuid,uuid,uuid,uuid) TO app_publisher;
+
+-- Sealed releases pin their media: identity, content and public/ready state of
+-- referenced assets/blobs cannot change. FOR SHARE on each referencing release
+-- conflicts with seal_release's FOR UPDATE, so downgrade and seal serialize; the
+-- loser sees the winner's committed state (READ COMMITTED required, as above).
+CREATE FUNCTION app.guard_sealed_media() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $media$
+DECLARE pinned boolean;
+BEGIN
+ IF TG_TABLE_NAME='media_assets' THEN
+  -- Only public assets can be referenced by a sealed release.
+  IF OLD.visibility<>'public' OR (NEW.tenant_id,NEW.id,NEW.blob_id,NEW.visibility,NEW.mime_type)
+   IS NOT DISTINCT FROM (OLD.tenant_id,OLD.id,OLD.blob_id,OLD.visibility,OLD.mime_type) THEN
+   RETURN NEW;
+  END IF;
+ ELSE
+  IF OLD.status<>'ready' OR (NEW.tenant_id,NEW.id,NEW.backend,NEW.storage_key,NEW.sha256,NEW.size_bytes,NEW.status)
+   IS NOT DISTINCT FROM (OLD.tenant_id,OLD.id,OLD.backend,OLD.storage_key,OLD.sha256,OLD.size_bytes,OLD.status) THEN
+   RETURN NEW;
+  END IF;
+ END IF;
+ IF current_setting('transaction_isolation')<>'read committed' THEN
+  RAISE EXCEPTION 'MEDIA_CHANGE_READ_COMMITTED_REQUIRED' USING ERRCODE='25001';
+ END IF;
+ -- Fail closed: without tenant context RLS would hide the sealed reference.
+ IF OLD.tenant_id IS DISTINCT FROM nullif(current_setting('app.tenant_id',true),'')::uuid THEN
+  RAISE EXCEPTION 'MEDIA_TENANT_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ SELECT bool_or(r.sealed) INTO pinned FROM (
+  SELECT r.sealed FROM app.site_releases r
+   JOIN app.site_release_media rm ON (rm.tenant_id,rm.site_id,rm.release_id)=(r.tenant_id,r.site_id,r.id)
+   JOIN app.media_assets a ON (a.tenant_id,a.id)=(rm.tenant_id,rm.media_id)
+  WHERE r.tenant_id=OLD.tenant_id
+   AND CASE WHEN TG_TABLE_NAME='media_assets' THEN a.id=OLD.id ELSE a.blob_id=OLD.id END
+  FOR SHARE OF r) r;
+ IF pinned THEN
+  RAISE EXCEPTION 'SEALED_RELEASE_MEDIA_PINNED' USING ERRCODE='55000';
+ END IF;
+ RETURN NEW;
+END $media$;
+ALTER FUNCTION app.guard_sealed_media() OWNER TO app_publish_executor;
+REVOKE ALL ON FUNCTION app.guard_sealed_media() FROM PUBLIC;
+CREATE TRIGGER media_assets_sealed BEFORE UPDATE ON app.media_assets
+ FOR EACH ROW EXECUTE FUNCTION app.guard_sealed_media();
+CREATE TRIGGER media_blobs_sealed BEFORE UPDATE ON app.media_blobs
+ FOR EACH ROW EXECUTE FUNCTION app.guard_sealed_media();
