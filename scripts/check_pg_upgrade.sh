@@ -143,16 +143,17 @@ apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; 
 RELIABILITY_DB=""
 SHIPPING_DB=""
 TAX_DB=""
+CUSTOMERS_DB=""
+LEDGER_DB=""
+CATALOG_DB=""
 QUEUE_DB=""
 LIMITS_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
-CUSTOMERS_DB=""
-LEDGER_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$QUEUE_DB" "$INVENTORY_DB" "$PRICING_DB" "$LIMITS_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -650,6 +651,40 @@ if ! db "$LEDGER_DB" < tests/db_ledger.sql >/dev/null || ! db "$LEDGER_DB" < tes
 else pass 'ledger upgrade preserves existing catalog/unconfigured tenant; explicit currency runtime posting and exact privileges pass'; fi
 admin -c "DROP DATABASE $LEDGER_DB" >/dev/null; LEDGER_DB=""
 
+# Catalog API: apply every earlier forward migration by file order, then prove
+# legacy product/SKU/media metadata survives the additive columns and grants.
+catalog_api=(migrations/[0-9][0-9][0-9]_catalog_api.sql)
+[[ ${#catalog_api[@]} == 1 ]] || { echo 'FAIL: exactly one catalog API migration required' >&2; exit 1; }
+CATALOG_DB=catalog_api_upgrade_$$
+admin -c "CREATE DATABASE $CATALOG_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${catalog_api[0]} ]] || break
+ apply_forward "$CATALOG_DB" "$f"
+done
+db "$CATALOG_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('catalog-existing') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','catalog-existing') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','catalog-existing','');
+INSERT INTO app.media_uploads(tenant_id,original_filename,expected_size,expires_at) VALUES(:'t','old.png',0,now()+interval '1 hour');
+SQL
+{ echo 'BEGIN;'; cat "${catalog_api[0]}"; echo 'COMMIT;'; } | db "$CATALOG_DB" >/dev/null
+result=$(db "$CATALOG_DB" <<'SQL'
+SELECT (SELECT version FROM app.products WHERE product_code='catalog-existing')||'|'||
+ (SELECT version FROM app.product_variants WHERE sku='catalog-existing')||'|'||
+ (SELECT lifecycle_status FROM app.product_variants WHERE sku='catalog-existing')||'|'||
+ (SELECT count(*) FROM app.media_uploads WHERE original_filename='old.png' AND media_id IS NULL);
+SQL
+)
+[[ $result == *'1|1|draft|1'* ]] || bad "catalog populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${catalog_api[0]} ]] || continue
+ apply_forward "$CATALOG_DB" "$f"
+done
+if ! db "$CATALOG_DB" < tests/db_catalog_api.sql >/dev/null || ! db "$CATALOG_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'catalog constraints/role matrix after populated upgrade'
+else pass 'catalog additive upgrade preserves versions, lifecycle and old uploads'; fi
+admin -c "DROP DATABASE $CATALOG_DB" >/dev/null; CATALOG_DB=""
+
 # C04b: queue authorization over existing tenant + River job, suffix-discovered.
 queue_files=(migrations/[0-9][0-9][0-9]_queue_authorization.sql)
 [[ ${#queue_files[@]} -eq 1 && -f ${queue_files[0]} ]] || { echo 'FAIL: exactly one queue authorization migration required'; exit 1; }
@@ -714,4 +749,4 @@ admin -c "DROP DATABASE $DB"; LIMITS_DB=""
 pass 'reliability limits upgrade preserves delivery identity, retires exhausted work, accepts live final ACK'
 
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B ledger, queue and reliability limits upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, queue and reliability limits upgrade gates'

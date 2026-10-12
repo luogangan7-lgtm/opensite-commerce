@@ -7,7 +7,7 @@ node_modules/
 dist/
 coverage/
 .DS_Store
-media/
+/media/
 *.test
 dist-gallery/
 playwright-report/

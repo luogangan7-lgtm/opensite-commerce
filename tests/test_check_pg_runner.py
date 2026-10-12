@@ -67,6 +67,7 @@ expected = [
     'db_tax.sql',
     'db_customers.sql',
     'db_ledger.sql',
+    'db_catalog_api.sql',
     'db_queue.sql',
     'db_reliability_limits.sql',
 ]
@@ -123,12 +124,13 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
         assert f'RUN tests/{name}' in r.stdout, name
     contents = log.read_text()
     assert contents.count('SELECT pg_advisory_xact_lock') == 2 * (n_migrations + 1), '2 runs x (migrations + 1 history gate)'
-    assert contents.count('===SQL===') == 2 * (n_migrations + 1) + len(expected) + 1, '2 x migration checks + actual test files + catalog audit'
+    assert contents.count('===SQL===') == 2 * (n_migrations + 1) + len(expected) + 1, '2 x migration checks + test files + catalog audit'
     assert contents.count('MODULE_TABLE_OWNERSHIP') == 1
     assert 'PASS: module ownership' in r.stdout
     assert 'boundary-roles' in contents
     assert 'release-FK' in contents
     assert 'smoke-A' in contents
+
     migration_calls = 2 * (n_migrations + 1)
     assert flow.read_text().splitlines() == ['INSTALL', 'INSTALL'] + ['SQL'] * migration_calls + ['VERIFY'] + ['SQL'] * len(expected) + ['CATALOG'], 'River before app DDL; verify before SQL tests; catalog after all SQL'
 
@@ -149,19 +151,23 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode != 0, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_release_integrity.sql' not in failed.stdout
-
+    # The audit itself must propagate connection/catalog errors and owner drift.
+    env['FAKE_FAIL_ON'] = 'MODULE_TABLE_OWNERSHIP'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode != 0 and 'MODULE_DATABASE_ERROR' in failed.stderr
+    env.pop('FAKE_FAIL_ON')
+    env['FAKE_TABLES_JSON'] = json.dumps(tables + ['unregistered_table'])
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode != 0 and 'MODULE_UNOWNED_TABLE' in failed.stderr
+    env['FAKE_TABLES_JSON'] = json.dumps(tables)
     env['FAKE_FAIL_ON'] = 'SHIPPING_OVERLAP_ACCEPTED'
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_shipping.sql' in failed.stdout
-
     env['FAKE_FAIL_ON'] = 'TAX_EXPECTED_REFUSAL'
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_tax.sql' in failed.stdout
-    assert 'RUN tests/db_queue.sql' not in failed.stdout
-    assert 'PASS: module ownership' not in failed.stdout
-
     env['FAKE_FAIL_ON'] = 'LEDGER_EXPECTED_REFUSAL'
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
@@ -172,18 +178,12 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_customers.sql' in failed.stdout
 
-    env['FAKE_FAIL_ON'] = 'QUEUE_CROSS_TENANT_READ'
-    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
-    assert failed.returncode == 31, (failed.stdout, failed.stderr)
-    assert 'RUN tests/db_queue.sql' in failed.stdout
-    assert 'PASS: module ownership' not in failed.stdout
-
-    # The final catalog audit fails closed for connection errors and unowned tables.
-    env['FAKE_FAIL_ON'] = 'MODULE_TABLE_OWNERSHIP'
-    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
-    assert failed.returncode != 0 and 'MODULE_DATABASE_ERROR' in failed.stderr
-    env['FAKE_FAIL_ON'] = ''
-    env['FAKE_TABLES_JSON'] = json.dumps(tables + ['unregistered_table'])
-    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
-    assert failed.returncode != 0 and 'MODULE_UNOWNED_TABLE' in failed.stderr
-print(f'PASS: River/app ordering, {len(expected)} SQL files, repeated {n_migrations} migrations and all failure paths (mock go/psql; NO SQL executed)')
+    for marker, name in [('C07_EXPECTED_REFUSAL', 'db_catalog_api.sql'),
+                         ('QUEUE_CROSS_TENANT_READ', 'db_queue.sql'),
+                         ('RELIABILITY_LIMITS_GATE', 'db_reliability_limits.sql')]:
+        env['FAKE_FAIL_ON'] = marker
+        failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+        assert failed.returncode == 31, (failed.stdout, failed.stderr)
+        assert f'RUN tests/{name}' in failed.stdout
+        assert 'PASS: module ownership' not in failed.stdout
+print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, preserves River ordering and propagates failures (mock go/psql; NO SQL executed)')
