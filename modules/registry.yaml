@@ -475,6 +475,30 @@
       ],
       "scopes": [],
       "note": "Purchasing companies and memberships are separate from seller organizations. Fixed tenant roles are automatically provisioned; no HTTP operations."
+    },
+    {
+      "name": "ledger",
+      "status": "implemented",
+      "go_path": "internal/modules/ledger",
+      "go_status": "implemented",
+      "owns_tables": [
+        "ledger_accounts",
+        "ledger_transactions",
+        "ledger_entries"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "money"
+      ],
+      "tests": [
+        "tests/db_ledger.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Internal single-currency posting and account balances. Atomic posting is the only runtime write capability for transactions and entries; tenant settlement currency is explicit, with no automatic default."
     }
   ],
   "migrations": [
@@ -693,6 +717,16 @@
         "buyer_company_members",
         "price_lists",
         "tenants"
+      ]
+    },
+    {
+      "file": "migrations/017_ledger.sql",
+      "owner": "ledger",
+      "touches_tables": [
+        "tenants",
+        "ledger_accounts",
+        "ledger_transactions",
+        "ledger_entries"
       ]
     }
   ]

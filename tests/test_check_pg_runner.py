@@ -66,6 +66,7 @@ expected = [
     'db_shipping.sql',
     'db_tax.sql',
     'db_customers.sql',
+    'db_ledger.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:
@@ -132,6 +133,11 @@ fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_tax.sql' in failed.stdout
+    env['FAKE_FAIL_ON'] = 'LEDGER_EXPECTED_REFUSAL'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_ledger.sql' in failed.stdout
+    assert 'PASS: module ownership' not in failed.stdout
     env['FAKE_FAIL_ON'] = 'CUSTOMERS_PASSWORD_UPDATED_AT'
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)

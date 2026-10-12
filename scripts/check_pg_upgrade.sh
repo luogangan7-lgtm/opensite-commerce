@@ -125,10 +125,11 @@ RELIABILITY_DB=""
 SHIPPING_DB=""
 TAX_DB=""
 CUSTOMERS_DB=""
+LEDGER_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -569,5 +570,54 @@ result=$(db "$CUSTOMERS_DB" -c "SELECT string_agg(code,',' ORDER BY code) FROM a
 [[ $result == admin,approver,purchaser ]] && pass 'customers/B2B concurrent tenant insert gets exactly the three buyer roles' \
  || bad "customers/B2B concurrent tenant buyer roles: $result"
 admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+# Ledger upgrade is additive: a tenant created before the logical migration
+# remains explicitly unconfigured. Currency is an operator choice, never a
+# guessed USD backfill. All predecessors/successors use filename order.
+ledger=(migrations/[0-9][0-9][0-9]_ledger.sql)
+[[ ${#ledger[@]} == 1 ]] || { echo 'FAIL: exactly one ledger migration required' >&2; exit 1; }
+LEDGER_DB=ledger_upgrade_$$
+admin -c "CREATE DATABASE $LEDGER_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${ledger[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$LEDGER_DB" >/dev/null
+done
+db "$LEDGER_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('ledger-existing-tenant') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','ledger-existing-product');
+SQL
+{ echo 'BEGIN;'; cat "${ledger[0]}"; echo 'COMMIT;'; } | db "$LEDGER_DB" >/dev/null
+result=$(db "$LEDGER_DB" <<'SQL'
+SELECT 'LEDGER_UNCONFIGURED='||count(*) FROM app.tenants
+ WHERE name='ledger-existing-tenant' AND settlement_currency IS NULL;
+UPDATE app.tenants SET settlement_currency='USD' WHERE name='ledger-existing-tenant' RETURNING id AS t \gset
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_runtime;
+INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
+ VALUES(:'t','cash','asset','USD') RETURNING id AS a \gset
+INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
+ VALUES(:'t','revenue','revenue','USD') RETURNING id AS b \gset
+SELECT app.post_ledger(:'t','USD','upgrade','legacy','capture',ARRAY[:'a',:'b']::uuid[],ARRAY['debit','credit'],ARRAY[125,125]::bigint[]);
+COMMIT;
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_runtime;
+SELECT 'LEDGER_UPGRADE='||(SELECT count(*) FROM app.products WHERE product_code='ledger-existing-product')||'|'||
+ (SELECT count(*) FROM app.ledger_transactions WHERE status='posted' AND posted_at IS NOT NULL)||'|'||
+ (SELECT count(*) FROM app.ledger_entries)||'|'||
+ (SELECT sum(CASE side WHEN 'debit' THEN amount::numeric ELSE -amount::numeric END) FROM app.ledger_entries);
+COMMIT;
+SQL
+)
+[[ $result == *'LEDGER_UNCONFIGURED=1'* && $result == *'LEDGER_UPGRADE=1|1|2|0'* ]] || bad "ledger populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${ledger[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$LEDGER_DB" >/dev/null
+done
+if ! db "$LEDGER_DB" < tests/db_ledger.sql >/dev/null || ! db "$LEDGER_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'ledger constraints/role matrix after populated upgrade'
+else pass 'ledger upgrade preserves existing catalog/unconfigured tenant; explicit currency runtime posting and exact privileges pass'; fi
+admin -c "DROP DATABASE $LEDGER_DB" >/dev/null; LEDGER_DB=""
+
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax and customers/B2B upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B and ledger upgrade gates'
