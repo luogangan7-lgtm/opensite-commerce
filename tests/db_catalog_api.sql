@@ -76,5 +76,12 @@ DO $media$ DECLARE t uuid:=current_setting('c07.ta')::uuid; b uuid:=current_sett
  THEN RAISE EXCEPTION 'C07_MEDIA_UNSET_CONTEXT'; END IF;
 END $media$;
 RESET ROLE;
+-- Deleting links by asset must not scan the tenant's links (migration 019).
+DO $idx$ BEGIN
+ IF NOT EXISTS(SELECT FROM pg_index i WHERE i.indrelid='app.product_media'::regclass AND i.indisvalid
+   AND (SELECT array_agg(a.attname::text ORDER BY k.ord) FROM unnest(i.indkey) WITH ORDINALITY k(attnum,ord)
+        JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum)=ARRAY['tenant_id','media_id'])
+ THEN RAISE EXCEPTION 'C07_PRODUCT_MEDIA_ASSET_INDEX_MISSING'; END IF;
+END $idx$;
 ROLLBACK;
 SELECT 'PASS: catalog CAS/version bounds; media service exact scope, composite FK and pinned deletion';
