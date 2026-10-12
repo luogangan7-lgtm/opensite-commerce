@@ -97,6 +97,10 @@ func (s *Store) Put(ctx context.Context, src io.Reader) (Blob, error) {
 	if err := os.Rename(tmp, dst); err != nil {
 		return zero, err
 	}
+	// Persist removal of the staging entry so no orphan upload-* survives a crash.
+	if err := syncDir(filepath.Join(s.root, "staging")); err != nil {
+		return zero, err
+	}
 	// Persist the rename and any hash-prefix directories MkdirAll just created:
 	// leaf (bb/), its parent (aa/) and originals/ itself.
 	for dir := filepath.Dir(dst); ; dir = filepath.Dir(dir) {
@@ -151,11 +155,15 @@ func (s *Store) Remove(key string) error {
 	if !validKey(key) {
 		return errors.New("invalid blob key")
 	}
-	err := os.Remove(filepath.Join(s.root, "originals", filepath.FromSlash(key)))
+	path := filepath.Join(s.root, "originals", filepath.FromSlash(key))
+	err := os.Remove(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(path)) // make the acknowledged delete durable
 }
 func validKey(key string) bool {
 	if len(key) != 2+1+2+1+64 {

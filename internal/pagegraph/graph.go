@@ -216,11 +216,9 @@ func validateProps(id string, n Node) error {
 				return fmt.Errorf("node %s: image_id must be a non-empty string", id)
 			}
 		}
-		if _, ok := props["layout"]; ok {
-			var layout string
-			if json.Unmarshal(props["layout"], &layout) != nil || (layout != "split" && layout != "full" && layout != "contained") {
-				return fmt.Errorf("node %s: invalid hero layout", id)
-			}
+		var layout string // required by the hero component schema
+		if json.Unmarshal(props["layout"], &layout) != nil || (layout != "split" && layout != "full" && layout != "contained") {
+			return fmt.Errorf("node %s: hero layout required (split|full|contained)", id)
 		}
 	case "catalog.product-grid@1":
 		allowed = map[string]bool{"columns_desktop": true, "columns_mobile": true, "show_price": true}

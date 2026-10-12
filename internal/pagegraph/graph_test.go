@@ -8,7 +8,7 @@ import (
 func sample() Document {
 	return Document{1, "root", map[string]Node{
 		"root": {Component: "core.page-layout@1", Props: json.RawMessage(`{}`), Slots: map[string][]string{"main": {"hero", "grid"}}},
-		"hero": {Component: "core.hero@1", Props: json.RawMessage(`{"title":"Sample"}`), Slots: map[string][]string{}},
+		"hero": {Component: "core.hero@1", Props: json.RawMessage(`{"title":"Sample","layout":"full"}`), Slots: map[string][]string{}},
 		"grid": {Component: "catalog.product-grid@1", Props: json.RawMessage(`{"columns_desktop":4,"columns_mobile":2}`), Binding: &Binding{"catalog.featured-products@1", json.RawMessage(`{"limit":8}`)}, Slots: map[string][]string{}},
 	}}
 }
@@ -140,10 +140,19 @@ func TestHeroImageIDMustBeString(t *testing.T) {
 	for img, ok := range map[string]bool{`"media_1"`: true, `5`: false, `true`: false, `[]`: false, `{}`: false} {
 		d := sample()
 		h := d.Nodes["hero"]
-		h.Props = json.RawMessage(`{"title":"Sample","image_id":` + img + `}`)
+		h.Props = json.RawMessage(`{"title":"Sample","layout":"full","image_id":` + img + `}`)
 		d.Nodes["hero"] = h
 		if (Validate(d) == nil) != ok {
 			t.Fatalf("image_id %s: want ok=%v", img, ok)
 		}
+	}
+}
+func TestHeroLayoutRequired(t *testing.T) {
+	d := sample()
+	h := d.Nodes["hero"]
+	h.Props = json.RawMessage(`{"title":"Sample"}`)
+	d.Nodes["hero"] = h
+	if Validate(d) == nil {
+		t.Fatal("hero without layout should be rejected")
 	}
 }
