@@ -46,6 +46,16 @@ func TestRegisterInvalid(t *testing.T) {
 			s.Scope = ""
 			s.Pattern = "/t/{tenant_id...}"
 		}},
+		{"tenant camelCase no scope", func(s *httpapi.RouteSpec) { s.Access = httpapi.APIKey; s.Scope = ""; s.Pattern = "/t/{tenantId}/a" }},
+		{"tenant mixed case no scope", func(s *httpapi.RouteSpec) { s.Access = httpapi.APIKey; s.Scope = ""; s.Pattern = "/t/{Tenant_ID}/a" }},
+		{"tenant uuid no scope", func(s *httpapi.RouteSpec) { s.Access = httpapi.APIKey; s.Scope = ""; s.Pattern = "/t/{tenant_uuid}/a" }},
+		{"tenant alias no scope", func(s *httpapi.RouteSpec) { s.Access = httpapi.AdminSession; s.Scope = ""; s.Pattern = "/t/{tenant}/a" }},
+		{"self tenant upper", func(s *httpapi.RouteSpec) {
+			s.Access = httpapi.AuthenticatedSelf
+			s.Scope = ""
+			s.Pattern = "/t/{TENANT}/a"
+		}},
+		{"tenant non-canonical with scope", func(s *httpapi.RouteSpec) { s.Pattern = "/t/{tenantId}/products" }},
 		{"negative size", func(s *httpapi.RouteSpec) { s.MaxBodySize = -1 }},
 		{"public scope", func(s *httpapi.RouteSpec) { s.Access = httpapi.Public }},
 	}

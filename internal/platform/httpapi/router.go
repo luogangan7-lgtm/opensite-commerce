@@ -135,11 +135,22 @@ func validateRoute(s RouteSpec) error {
 	default:
 		return fail("unknown access class")
 	}
+	// The tenant path parameter has exactly one spelling, {tenant_id}: any other
+	// wildcard naming a tenant ({tenantId}, {Tenant_ID}, {tenant}, ...) would dodge
+	// the scope rule below and PR-02's tenant resolver, so it is rejected.
 	tenant := false
 	for _, segment := range strings.Split(s.Pattern, "/") {
-		if segment == "{tenant_id}" || segment == "{tenant_id...}" || segment == "{tenant}" || segment == "{tenant...}" {
-			tenant = true
+		if !strings.HasPrefix(segment, "{") || !strings.HasSuffix(segment, "}") {
+			continue
 		}
+		name := strings.TrimSuffix(strings.TrimSuffix(strings.TrimPrefix(segment, "{"), "}"), "...")
+		if !strings.Contains(strings.ToLower(name), "tenant") {
+			continue
+		}
+		if name != "tenant_id" {
+			return fail("tenant path parameter must be named {tenant_id}")
+		}
+		tenant = true
 	}
 	if s.Access == AuthenticatedSelf && (tenant || s.Scope != "") {
 		return fail("AuthenticatedSelf cannot declare tenant or scope")
