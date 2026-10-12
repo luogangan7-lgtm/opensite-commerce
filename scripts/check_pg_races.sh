@@ -38,15 +38,19 @@ tx() {
     | sql >/dev/null 2>&1 || true
 }
 
-witness() {  # prints 'unsafe' if a sealed release references non-public/non-ready media
+witness() {  # sealed|asset visibility|blob status for release $1 and its fixture media
   sql <<SQL
-SELECT CASE WHEN EXISTS (SELECT FROM app.site_releases r
- JOIN app.site_release_media rm ON (rm.tenant_id,rm.site_id,rm.release_id)=(r.tenant_id,r.site_id,r.id)
- JOIN app.media_assets a ON (a.tenant_id,a.id)=(rm.tenant_id,rm.media_id)
- JOIN app.media_blobs b ON (b.tenant_id,b.id)=(a.tenant_id,a.blob_id)
- WHERE r.id='$1' AND r.sealed AND (a.visibility<>'public' OR b.status<>'ready'))
- THEN 'unsafe' ELSE 'safe' END;
+SELECT r.sealed||'|'||a.visibility||'|'||b.status FROM app.site_releases r, app.media_assets a, app.media_blobs b
+ WHERE r.id='$1' AND a.id='$2' AND b.id='$3';
 SQL
+}
+
+# check <label> <expected> <R> <A> <B>: exact end state, so a broken fixture,
+# grant or timing cannot pass silently (a missing row prints nothing -> fail).
+check() {
+  local got; got=$(witness "$3" "$4" "$5")
+  echo "$1: $got (expected $2)"
+  [[ $got == "$2" ]] || fail=1
 }
 
 fail=0
@@ -62,9 +66,9 @@ for downgrade in "UPDATE app.media_assets SET visibility='private' WHERE id='%a'
   sleep 1.5
   tx app_publisher "$T" "SELECT app.publish_release('$T','$S','$R',NULL);" &
   wait
-  result=$(witness "$R")
-  echo "race child-uncommitted / ${down%% SET*}: $result"
-  [[ $result == safe ]] || fail=1
+  # Seal must wait for the downgrade, then refuse (23514): unsealed, downgrade kept.
+  [[ $down == *media_assets* ]] && want='false|private|ready' || want='false|public|deleting'
+  check "race child-uncommitted / ${down%% SET*}" "$want" "$R" "$A" "$B"
 done
 # Committed child; downgrade and seal race in both orders (the second must lose).
 for first in media seal; do
@@ -76,9 +80,9 @@ for first in media seal; do
   else a=(app_publisher "$seal"); b=(app_media_service "$down"); fi
   tx "${a[0]}" "$T" "${a[1]}" & sleep 0.5
   tx "${b[0]}" "$T" "${b[1]}" & wait
-  result=$(witness "$R")
-  echo "race committed-child / $first first: $result"
-  [[ $result == safe ]] || fail=1
+  # The second writer loses: media-first -> seal refused; seal-first -> downgrade refused.
+  [[ $first == media ]] && want='false|public|deleting' || want='true|public|ready'
+  check "race committed-child / $first first" "$want" "$R" "$A" "$B"
 done
-if [[ $fail -ne 0 ]]; then echo "FAIL: sealed release references unsafe media" >&2; exit 1; fi
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing contract" >&2; exit 1; fi
 echo 'PASS: 3-connection seal/downgrade/child-append races keep sealed media public+ready'

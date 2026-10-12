@@ -31,6 +31,13 @@ END $executor_members$;
 GRANT USAGE ON SCHEMA app TO app_domain_verifier,app_media_service,app_publisher,app_publish_executor;
 REVOKE ALL ON ALL TABLES IN SCHEMA app FROM app_domain_verifier,app_media_service,app_publisher,app_publish_executor;
 
+-- Online upgrade: take every lock the publication invariant needs first, in one
+-- fixed order and at full strength, so legacy pointer/child/media writers either
+-- finish before the published-media scan or wait and then meet the new grants.
+-- (Weaker or later locks deadlock with them: CREATE POLICY needs ACCESS EXCLUSIVE.)
+LOCK TABLE app.sites,app.site_releases,app.site_release_media,app.media_assets,app.media_blobs
+ IN ACCESS EXCLUSIVE MODE;
+
 -- Table-level grants override column revocations: remove both before narrowing.
 DO $runtime_columns$
 DECLARE table_name text; columns text;
@@ -69,7 +76,7 @@ ALTER TABLE app.site_releases ADD COLUMN sealed boolean NOT NULL DEFAULT false;
 -- Already published releases are sealed before any application child writes.
 -- 001-009 allowed publishing unsafe media; refuse to seal it silently. The
 -- operator must make that media public+ready (or unpublish) and rerun 010.
-LOCK TABLE app.media_assets,app.media_blobs,app.site_release_media IN SHARE MODE;
+-- Writers are excluded by the ACCESS EXCLUSIVE locks taken above.
 DO $published_media$
 BEGIN
  IF EXISTS (SELECT FROM app.sites s
