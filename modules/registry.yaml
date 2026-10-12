@@ -309,7 +309,7 @@
     },
     {
       "name": "inventory",
-      "status": "planned",
+      "status": "implemented",
       "go_path": "internal/modules/inventory",
       "go_status": "planned",
       "owns_tables": [
@@ -323,9 +323,14 @@
         "tenant",
         "catalog"
       ],
-      "tests": [],
+      "tests": [
+        "tests/db_inventory.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh",
+        "tests/db_role_matrix.sql"
+      ],
       "scopes": [],
-      "note": "Planned names read from PR14 candidate origin/feat/c11a-inventory; candidate SQL was not executed."
+      "note": "PR14 is on main at a2f02ca. Owns its four SQL inventory tables; Go service path and HTTP operations remain planned."
     },
     {
       "name": "shipping",
@@ -510,6 +515,17 @@
         "outbox_events",
         "idempotency_records",
         "audit_events"
+      ]
+    },
+    {
+      "file": "migrations/012_inventory.sql",
+      "owner": "inventory",
+      "touches_tables": [
+        "warehouses",
+        "stock_levels",
+        "inventory_reservations",
+        "inventory_movements",
+        "tenants"
       ]
     }
   ]
