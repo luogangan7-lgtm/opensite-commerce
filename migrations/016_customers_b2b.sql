@@ -3,24 +3,29 @@
 -- Tenant keys never reference employee users or seller organizations. Runtime reads
 -- nonsecret data only; a separate scoped capability registers/verifies customers.
 DO $customer_auth_role$
-DECLARE inherited record; t record; columns text;
+DECLARE m record; t record; columns text; residual text;
 BEGIN
  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
   CREATE ROLE app_customer_auth NOLOGIN;
  END IF;
  ALTER ROLE app_customer_auth NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB
   NOCREATEROLE NOREPLICATION NOINHERIT;
- FOR inherited IN SELECT DISTINCT parent.rolname FROM pg_auth_members m
-  JOIN pg_roles parent ON parent.oid=m.roleid
-  WHERE m.member='app_customer_auth'::regrole LOOP
-  EXECUTE format('REVOKE %I FROM app_customer_auth CASCADE',inherited.rolname);
+ -- pg_auth_members is cluster-wide. Revoke every outbound membership per actual
+ -- grantor: a superuser's plain REVOKE skips grants made by a non-superuser.
+ FOR m IN SELECT parent.rolname parent_name,grantor.rolname grantor_name
+  FROM pg_auth_members a JOIN pg_roles parent ON parent.oid=a.roleid
+  JOIN pg_roles grantor ON grantor.oid=a.grantor
+  WHERE a.member='app_customer_auth'::regrole LOOP
+  EXECUTE format('REVOKE %I FROM app_customer_auth GRANTED BY %I CASCADE',m.parent_name,m.grantor_name);
  END LOOP;
- -- This new capability has no preexisting legitimate pool: remove stale paths
- -- into it as well. Provision a dedicated login member AFTER this migration.
- FOR inherited IN SELECT DISTINCT child.rolname FROM pg_auth_members m
-  JOIN pg_roles child ON child.oid=m.member
-  WHERE m.roleid='app_customer_auth'::regrole LOOP
-  EXECUTE format('REVOKE app_customer_auth FROM %I CASCADE',inherited.rolname);
+ -- Inbound memberships are NOT stripped: dedicated customer-auth logins are
+ -- provisioned after this migration (possibly for another database on this
+ -- cluster) and are legitimate. Only other repository app_* roles never are.
+ FOR m IN SELECT child.rolname child_name,grantor.rolname grantor_name
+  FROM pg_auth_members a JOIN pg_roles child ON child.oid=a.member
+  JOIN pg_roles grantor ON grantor.oid=a.grantor
+  WHERE a.roleid='app_customer_auth'::regrole AND child.rolname LIKE 'app\_%' LOOP
+  EXECUTE format('REVOKE app_customer_auth FROM %I GRANTED BY %I CASCADE',m.child_name,m.grantor_name);
  END LOOP;
  REVOKE ALL ON SCHEMA app FROM app_customer_auth;
  REVOKE ALL ON ALL TABLES IN SCHEMA app FROM app_customer_auth;
@@ -33,6 +38,27 @@ BEGIN
   EXECUTE format('REVOKE SELECT (%s),INSERT (%s),UPDATE (%s),REFERENCES (%s) ON app.%I FROM app_customer_auth',
    columns,columns,columns,columns,t.relname);
  END LOOP;
+ -- Owner REVOKE cannot remove privileges a third party granted WITH GRANT
+ -- OPTION. Fail closed so the operator removes them explicitly.
+ SELECT string_agg(format('%s by %s',obj,g.rolname),'; ') INTO residual FROM (
+  SELECT 'schema app' obj,(aclexplode(nspacl)).* FROM pg_namespace WHERE nspname='app'
+  UNION ALL SELECT format('table app.%I',c.relname),(aclexplode(c.relacl)).* FROM pg_class c
+   WHERE c.relnamespace='app'::regnamespace
+  UNION ALL SELECT format('column app.%I.%I',c.relname,a.attname),(aclexplode(a.attacl)).*
+   FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid WHERE c.relnamespace='app'::regnamespace
+  UNION ALL SELECT format('function app.%s',p.oid::regprocedure),(aclexplode(p.proacl)).* FROM pg_proc p
+   WHERE p.pronamespace='app'::regnamespace
+ ) acl JOIN pg_roles g ON g.oid=acl.grantor WHERE acl.grantee='app_customer_auth'::regrole;
+ SELECT concat_ws('; ',residual,string_agg(format('membership in %s by %s',r.rolname,g.rolname),'; '))
+  INTO residual FROM pg_auth_members a JOIN pg_roles r ON r.oid=a.roleid
+  JOIN pg_roles g ON g.oid=a.grantor WHERE a.member='app_customer_auth'::regrole;
+ SELECT concat_ws('; ',NULLIF(residual,''),string_agg(format('effective membership in %s',rolname),'; '))
+  INTO residual FROM pg_roles WHERE rolname LIKE 'app\_%' AND rolname<>'app_customer_auth'
+  AND pg_has_role('app_customer_auth',oid,'MEMBER');
+ IF NULLIF(residual,'') IS NOT NULL THEN
+  RAISE EXCEPTION 'CUSTOMERS_AUTH_RESIDUAL_PRIVILEGE: app_customer_auth still holds %',residual
+   USING HINT='Revoke each listed privilege as its grantor (or REVOKE ... GRANTED BY), then rerun.';
+ END IF;
 END $customer_auth_role$;
 GRANT USAGE ON SCHEMA app TO app_customer_auth;
 

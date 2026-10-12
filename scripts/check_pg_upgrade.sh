@@ -430,5 +430,59 @@ SQL
  else pass 'customers/B2B reconciliation retry installs the validated composite buyer-price FK'; fi
 fi
 admin -c "DROP DATABASE $CUSTOMERS_DB"; CUSTOMERS_DB=""
+
+# Roles and pg_auth_members are cluster-wide. Grantor-aware cleanup must remove
+# a non-superuser provisioner's outbound grant, keep a dedicated login provisioned
+# for another database on the same cluster, and refuse (fail closed) when a
+# third-party grantor's object privilege cannot be revoked by the owner.
+drop_grantor_roles() {
+ admin <<'SQL' >/dev/null 2>&1 || true
+DO $d$ DECLARE m record; BEGIN
+ FOR m IN SELECT r.rolname role_name,mem.rolname member_name,g.rolname grantor_name FROM pg_auth_members a
+  JOIN pg_roles r ON r.oid=a.roleid JOIN pg_roles mem ON mem.oid=a.member JOIN pg_roles g ON g.oid=a.grantor
+  WHERE g.rolname IN ('cust_provisioner','cust_thirdparty') LOOP
+  EXECUTE format('REVOKE %I FROM %I GRANTED BY %I CASCADE',m.role_name,m.member_name,m.grantor_name);
+ END LOOP; END $d$;
+DROP ROLE IF EXISTS cust_provisioner; DROP ROLE IF EXISTS cust_thirdparty; DROP ROLE IF EXISTS cust_login_db1;
+SQL
+}
+drop_grantor_roles
+CUSTOMERS_DB=customers_grantor_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+DO $r$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
+ CREATE ROLE app_customer_auth NOLOGIN; END IF; END $r$;
+CREATE ROLE cust_provisioner NOLOGIN;
+GRANT app_auth TO cust_provisioner WITH ADMIN OPTION;
+SET ROLE cust_provisioner; GRANT app_auth TO app_customer_auth; RESET ROLE;
+CREATE ROLE cust_login_db1 LOGIN;
+GRANT app_customer_auth TO cust_login_db1;
+SQL
+if ! out=$(apply_customers "$CUSTOMERS_DB"); then bad "customers/B2B grantor upgrade: $out"
+else
+ result=$(db "$CUSTOMERS_DB" -c "SELECT pg_has_role('app_customer_auth','app_auth','SET')::text||'|'||pg_has_role('cust_login_db1','app_customer_auth','MEMBER')::text")
+ [[ ${result%%|*} == false ]] && pass 'customers/B2B revokes a non-superuser-granted outbound membership by its grantor' \
+  || bad "customers/B2B kept provisioner-granted app_auth membership: $result"
+ [[ ${result##*|} == true ]] && pass 'customers/B2B keeps a dedicated customer-auth login provisioned for another database' \
+  || bad "customers/B2B stripped a cluster-wide dedicated login: $result"
+fi
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+drop_grantor_roles
+CUSTOMERS_DB=customers_thirdparty_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+DO $r$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
+ CREATE ROLE app_customer_auth NOLOGIN; END IF; END $r$;
+CREATE ROLE cust_thirdparty NOLOGIN;
+GRANT USAGE ON SCHEMA app TO cust_thirdparty;
+GRANT SELECT ON app.users TO cust_thirdparty WITH GRANT OPTION;
+SET ROLE cust_thirdparty; GRANT SELECT ON app.users TO app_customer_auth; RESET ROLE;
+SQL
+if out=$(apply_customers "$CUSTOMERS_DB"); then bad 'customers/B2B accepted an unrevokable third-party grant to app_customer_auth'
+elif [[ $out != *CUSTOMERS_AUTH_RESIDUAL_PRIVILEGE*users*cust_thirdparty* ]]; then bad "third-party grant refusal failed for another reason: $out"
+else pass 'customers/B2B fails closed naming object and grantor of a residual third-party privilege'; fi
+db "$CUSTOMERS_DB" -c "REVOKE ALL ON app.users FROM cust_thirdparty CASCADE; REVOKE ALL ON SCHEMA app FROM cust_thirdparty" >/dev/null 2>&1 || true
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+drop_grantor_roles
 [[ $fail -eq 0 ]] || exit 1
 echo 'PASS: security, reliability, inventory, pricing, shipping, tax and customers/B2B upgrade gates'
