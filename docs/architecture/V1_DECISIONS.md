@@ -19,7 +19,7 @@
 | SQL 行为测试 | 已有五份测试的执行记录 |
 | FORCE RLS 注错 | 已有红→绿记录 |
 | sqlc 1.31.1 / pgx 5.10.0 | 已有代码生成和编译验收记录 |
-| GitHub Actions | 验收报告标记 NOT RUN，不能算 CI 通过 |
+| GitHub Actions | 起草时验收报告写的是 NOT RUN；之后查到有成功运行记录，见下方「GitHub CI 状态补充核验」（按 SHA 分栏） |
 | 生产 API / 交易系统 | 尚未完成 |
 
 以上“通过”指 **PR-01A 提交的可追溯本地执行证据**，不是我重新运行了 PostgreSQL，也不代表 GitHub CI 已通过。
@@ -159,7 +159,7 @@ Webhook Inbox 保存的是**已经通过签名验证，并完成可信商户账�
 - 扩展现有 Outbox。
 - 创建 Webhook Inbox。
 - 创建必要的投递租约或失败记录。
-- 收紧 Audit 的 UPDATE 权限。
+- Audit：008 已不授予 `audit_events` 的 UPDATE/DELETE 权限（008:43–54），这里不重复修复。改为保持普通 runtime 的审计不可变，并补齐权限矩阵和角色继承的回归负测。
 - 为新表增加 RLS、复合 FK 和最小权限 GRANT。
 
 ### 验收 gate
@@ -180,9 +180,12 @@ Webhook Inbox 保存的是**已经通过签名验证，并完成可信商户账�
 
 ### GitHub CI 状态补充核验
 
-随后查询到 PR #2 当前提交的 [GitHub Actions Run #38223245267](https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38223245267)：`foundation-contracts` 已显示 **success**，其中 PostgreSQL 18 迁移与安全、sqlc 生成、pgx 类型检查均为 success。
+| 时间点 | 绑定 SHA | 证据 |
+|---|---|---|
+| 起草时（历史证据） | [`1251b95`](https://github.com/luogangan7-lgtm/opensite-commerce/commit/1251b95f1cc4ce98e47ea4923f454efaa5c5ea3c) | [Run 38223245267](https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38223245267)：workflow `foundation-contracts`、job `foundation` 结果为 success（覆盖 PG18 迁移与安全、sqlc 生成、pgx 类型检查） |
+| PR #2 后续提交 | review 修复提交 | 每个推送都要各自看 `foundation` 的运行结果，以 PR #2 的 checks 页为准；本决议不替后续提交声明结果 |
 
-因此，以当前在线记录为准，**PR-01A 的 GitHub 基础 CI 也已有成功证据**；验收文档中的 NOT RUN 是提交时的旧状态。PR #2 目前仍为 Open，不能等同于已合并或生产就绪。
+`docs/PR01A_ACCEPTANCE.md` 早期版本写的 NOT RUN，以及 REVIEW / README 里「未导入、未在真实 PG 跑过」的说法，都是 PR #2 合入前的历史状态，不代表分支现状。PR #2 合入之前，不能视为已合并或生产就绪。
 
 ---
 
