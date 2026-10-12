@@ -27,6 +27,7 @@ jobs:
           go-version: '1.27.2'
       - name: Go / PageGraph / LocalFS / Tenant Transaction
         run: |
+          go mod download
           go test -race -count=1 ./...
           go vet ./...
       - name: Python tools (hash-locked)
@@ -39,6 +40,12 @@ jobs:
         run: |
           python scripts/check_contract.py
           openapi-spec-validator api/openapi.yaml
+      - name: Pinned strict OpenAPI generation and drift gate
+        run: |
+          python3 scripts/check_oapi_codegen.py
+          go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+          git diff --exit-code -- internal/platform/httpapi/generated/api.gen.go
+          test -z "$(git status --porcelain --untracked-files=all -- internal/platform/httpapi/generated/api.gen.go)"
       - name: PostgreSQL 18 forward-only migrations and security
         run: |
           sudo apt-get update -qq
