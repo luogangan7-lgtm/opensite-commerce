@@ -349,7 +349,7 @@
     },
     {
       "name": "shipping",
-      "status": "planned",
+      "status": "implemented",
       "go_path": "internal/modules/shipping",
       "go_status": "planned",
       "owns_tables": [
@@ -363,9 +363,16 @@
         "tenant",
         "money"
       ],
-      "tests": [],
+      "tests": [
+        "internal/shipping/shipping_test.go",
+        "tests/db_shipping.sql",
+        "tests/test_shipping_contract_static.py"
+      ],
       "scopes": [],
-      "note": "Planned names read from PR15 candidate origin/feat/c13a-shipping; candidate SQL was not executed."
+      "note": "SQL tables and pure legacy quote engine merged by PR15; target module Go path and HTTP operations remain planned.",
+      "legacy_go_paths": [
+        "internal/shipping"
+      ]
     }
   ],
   "migrations": [
@@ -549,6 +556,16 @@
       "touches_tables": [
         "price_lists",
         "price_entries"
+      ]
+    },
+    {
+      "file": "migrations/014_shipping.sql",
+      "owner": "shipping",
+      "touches_tables": [
+        "shipping_zones",
+        "shipping_zone_destinations",
+        "shipping_profiles",
+        "shipping_rates"
       ]
     }
   ]

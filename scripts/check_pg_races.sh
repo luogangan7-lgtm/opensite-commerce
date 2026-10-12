@@ -384,7 +384,44 @@ expect pricing_first ok; expect pricing_second price_entries_tier_unique
 got=$(sql <<<"SELECT count(*) FROM app.price_entries WHERE tenant_id='$T' AND price_list_id='$L' AND sku_id='$K' AND min_quantity=1;")
 [[ $got == 1 ]] || { echo "FAIL: pricing race persisted $got duplicate tiers"; fail=1; }
 echo "pricing duplicate-tier race: $got committed tier (expected 1)"
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability contract" >&2; exit 1; fi
+# Shipping exclusion must protect writes from different connections, including
+# UPDATE vs INSERT. No timing assumption: first holds its range exclusion lock
+# at an advisory gate until the driver observes the second transaction blocked.
+for scenario in insert_low_first insert_high_first update_first insert_before_update; do
+ read -r T Z P <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('shipping-race') RETURNING id AS t \gset
+INSERT INTO app.shipping_zones(tenant_id,name) VALUES(:'t','R') RETURNING id AS z \gset
+INSERT INTO app.shipping_profiles(tenant_id,name,currency) VALUES(:'t','R','USD') RETURNING id AS p \gset
+SELECT :'t'||' '||:'z'||' '||:'p';
+SQL
+)"
+ low="INSERT INTO app.shipping_rates(tenant_id,profile_id,zone_id,method,currency,amount,min_weight_g,max_weight_g) VALUES('$T','$P','$Z','by_weight','USD',10,0,500);"
+ high="INSERT INTO app.shipping_rates(tenant_id,profile_id,zone_id,method,currency,amount,min_weight_g,max_weight_g) VALUES('$T','$P','$Z','by_weight','USD',20,499,1000);"
+ expected=1
+ case $scenario in
+  insert_low_first) first=$low; second=$high; want='0:500' ;;
+  insert_high_first) first=$high; second=$low; want='499:1000' ;;
+  *) sql <<<"$low" >/dev/null
+     up="UPDATE app.shipping_rates SET max_weight_g=700 WHERE tenant_id='$T' AND profile_id='$P' AND zone_id='$Z';"
+     ins="INSERT INTO app.shipping_rates(tenant_id,profile_id,zone_id,method,currency,amount,min_weight_g,max_weight_g) VALUES('$T','$P','$Z','by_weight','USD',20,600,1000);"
+     if [[ $scenario == update_first ]]; then first=$up; second=$ins; want='0:700'
+     else first=$ins; second=$up; want='0:500,600:1000'; expected=2; fi ;;
+ esac
+ gate_close 20
+ tx shipping_first postgres "$T" "$first $(park 20)" &
+ await shipping_first advisory
+ tx shipping_second postgres "$T" "$second" &
+ await shipping_second "${ROWLOCK[@]}"
+ gate_open 20; wait
+ expect shipping_first ok; expect shipping_second shipping_weight_no_overlap; expect shipping_second 23P01
+ got=$(sql <<<"SELECT count(*)||'|'||string_agg(min_weight_g||':'||max_weight_g,',' ORDER BY min_weight_g) FROM app.shipping_rates WHERE tenant_id='$T' AND profile_id='$P' AND zone_id='$Z';")
+ echo "shipping race $scenario: $got (expected $expected|$want)"
+ [[ $got == "$expected|$want" ]] || fail=1
+done
+
+
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
+echo 'PASS: shipping range INSERT/UPDATE races preserve exact non-overlapping tiers'

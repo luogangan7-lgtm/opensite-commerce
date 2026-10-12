@@ -15,5 +15,6 @@ python3 tests/test_module_sql.py
 python3 tests/test_migration_runner.py
 python3 tests/test_check_pg_runner.py
 python3 tests/test_sqlc_contract_static.py
+python3 tests/test_shipping_contract_static.py
 bash -n scripts/*.sh
 echo 'PASS: offline checks (does not test PostgreSQL or production API)'

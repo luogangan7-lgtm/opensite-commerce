@@ -122,7 +122,8 @@ fresh_before_reliability() {
 }
 apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
 RELIABILITY_DB=""
-trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1' EXIT
+SHIPPING_DB=""
+trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1; [[ -z $SHIPPING_DB ]] || admin -c "DROP DATABASE IF EXISTS $SHIPPING_DB" >/dev/null 2>&1' EXIT
 RELIABILITY_DB=reliability_upgrade_$$
 fresh_before_reliability "$RELIABILITY_DB"
 db "$RELIABILITY_DB" <<'SQL' >/dev/null
@@ -225,5 +226,51 @@ SQL
  else bad "pricing upgrade witness: $result"; fi
 fi
 admin -c "DROP DATABASE $DB"
+# INT-15: apply ALL predecessor migrations, then upgrade populated Shipping data.
+# Filename ordering is the migration order; no shell octal/numeric conversion.
+shipping_files=(migrations/[0-9][0-9][0-9]_shipping.sql)
+[[ ${#shipping_files[@]} -eq 1 && -f ${shipping_files[0]} ]] || { echo 'FAIL: exactly one shipping migration required'; exit 1; }
+SHIPPING_DB=upgrade_shipping_$$
+DB=$SHIPPING_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${shipping_files[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('shipping-upgrade') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','shipping-legacy') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+VALUES(:'t',:'p','shipping-legacy','default');
+SQL
+{ echo 'BEGIN;'; cat "${shipping_files[0]}"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+result=$(db "$DB" <<'SQL'
+SELECT id AS t FROM app.tenants WHERE name='shipping-upgrade' \gset
+INSERT INTO app.shipping_zones(tenant_id,name) VALUES(:'t','legacy tenant') RETURNING id AS z \gset
+INSERT INTO app.shipping_profiles(tenant_id,name,currency) VALUES(:'t','P','USD') RETURNING id AS p \gset
+INSERT INTO app.shipping_zone_destinations VALUES(:'t',:'z','US','');
+INSERT INTO app.shipping_rates(tenant_id,profile_id,zone_id,method,currency,amount,min_weight_g,max_weight_g)
+VALUES(:'t',:'p',:'z','by_weight','USD',0,0,500);
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_runtime;
+SELECT 'SHIPPING_UPGRADE='||(SELECT count(*) FROM app.shipping_rates WHERE amount=0)||'|'||
+ (SELECT count(*) FROM app.products WHERE product_code='shipping-legacy')||'|'||
+ (SELECT count(*) FROM app.product_variants WHERE sku='shipping-legacy');
+COMMIT;
+SQL
+)
+if [[ $result == *'SHIPPING_UPGRADE=1|1|1'* ]]; then pass "shipping upgrade preserves existing tenant/catalog; runtime reads zero-cost tier"
+else bad "shipping upgrade witness: $result"; fi
+# Include any later modules before validating the exact whole-schema matrix.
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${shipping_files[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+db "$DB" -f tests/db_shipping.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"
+SHIPPING_DB=""
+
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory and pricing upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing and shipping upgrade gates'
