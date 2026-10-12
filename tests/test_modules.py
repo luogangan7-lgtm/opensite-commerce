@@ -233,6 +233,184 @@ class GovernanceTests(unittest.TestCase):
         self.source("internal/modules/a/module.go", 'package a\nimport "github.com/jackc/pgx/v5/pgxpool"\nvar Pool *pgxpool.Pool\n')
         self.assert_red("MODULE_RAW_POOL_IMPORT")
 
+    def vendor_pgx(self):
+        # Real Go resolution, offline: no checkout go.mod or downloaded dependency.
+        self.source("vendor/github.com/jackc/pgx/v5/pgx.go",
+                    "package pgx\ntype Conn struct{}\ntype ConnConfig struct{}\n"
+                    "type Tx interface{}\nfunc Connect() *Conn { return nil }\n"
+                    "func ConnectConfig(*ConnConfig) *Conn { return nil }\n")
+        self.source("vendor/modules.txt", "# github.com/jackc/pgx/v5 v5.10.0\n## explicit; go 1.27.2\ngithub.com/jackc/pgx/v5\n")
+        with (self.root / "go.mod").open("a") as output:
+            output.write("\nrequire github.com/jackc/pgx/v5 v5.10.0\n")
+
+    def test_raw_pgx_connection_selectors_red(self):
+        self.vendor_pgx()
+        for alias in ("pgx", "driver", "驱动"):
+            for expression in (f"(*{alias}.Conn)(nil)", f"{alias}.Connect", f"{alias}.ConnectConfig"):
+                with self.subTest(alias=alias, expression=expression):
+                    self.source("internal/modules/a/module.go",
+                                f'package a\nimport {alias} "github.com/jackc/pgx/v5"\nvar Value = {expression}\n')
+                    self.assert_red("MODULE_RAW_CONNECTION")
+
+    def test_raw_pgx_connection_in_test_and_ignored_sources_red(self):
+        self.vendor_pgx()
+        for name, prefix in (("module_test.go", ""), ("driver.go", "//go:build pgx\n\n"),
+                             ("future.go", "//go:build future\n\n")):
+            with self.subTest(name=name):
+                self.source("internal/modules/a/" + name,
+                            prefix + 'package a\nimport driver "github.com/jackc/pgx/v5"\nvar Connection *driver.Conn\n')
+                self.assert_red("MODULE_RAW_CONNECTION")
+                (self.root / "internal/modules/a" / name).unlink()
+
+    def test_raw_pgx_dot_import_red(self):
+        self.vendor_pgx()
+        self.source("internal/modules/a/module.go",
+                    'package a\nimport . "github.com/jackc/pgx/v5"\nvar Value Tx\n')
+        self.assert_red("MODULE_RAW_CONNECTION")
+
+    def test_pgx_tx_and_connection_decoys_green(self):
+        self.vendor_pgx()
+        self.source("internal/modules/a/module.go",
+                    'package a\nimport (driver "github.com/jackc/pgx/v5")\n'
+                    'var Value driver.Tx\n// driver.Conn driver.Connect driver.ConnectConfig\n'
+                    '/* driver.Conn */\nconst Text = `driver.Conn driver.Connect`\n'
+                    'const Quoted = "driver.ConnectConfig"\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_raw_pgx_pool_in_ignored_source_red(self):
+        self.source("internal/modules/a/future.go",
+                    '//go:build future\n\npackage a\nimport _ "github.com/jackc/pgx/v5/pgxpool"\n')
+        self.assert_red("MODULE_RAW_POOL_IMPORT")
+
+    def test_raw_pgx_connection_in_legacy_source_red(self):
+        self.vendor_pgx()
+        self.registry["modules"][0]["legacy_go_paths"] = ["internal/a"]
+        self.source("internal/a/public.go", 'package a\nimport driver "github.com/jackc/pgx/v5"\nvar Value *driver.Conn\n')
+        self.assert_red("MODULE_RAW_CONNECTION")
+
+    def test_multihop_bridge_module_root_red(self):
+        self.source("internal/modules/b/module.go", "package b\nconst Value=1\n")
+        self.source("internal/bridge/bridge.go", 'package bridge\nimport "example.test/shop/internal/bridge2"\nvar Value=bridge2.Value\n')
+        self.source("internal/bridge2/bridge.go", 'package bridge2\nimport "example.test/shop/internal/modules/b"\nvar Value=b.Value\n')
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/bridge"\nvar Value=bridge.Value\n')
+        self.assert_red("MODULE_NONCONTRACT_IMPORT")
+
+    def test_bridge_undeclared_contract_red(self):
+        self.registry["modules"][0]["dependencies"] = []
+        self.source("internal/bridge/bridge.go", 'package bridge\nimport "example.test/shop/internal/modules/b/contract"\nvar Value=contract.Value\n')
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/bridge"\nvar Value=bridge.Value\n')
+        self.assert_red("MODULE_UNDECLARED_DEPENDENCY")
+
+    def test_pgx_test_variant_bridge_undeclared_contract_red(self):
+        self.registry["modules"][0]["dependencies"] = []
+        self.source("internal/modules/a/module.go", "package a\n")
+        self.source("internal/bridge/bridge.go", 'package bridge\nimport "example.test/shop/internal/modules/b/contract"\nvar Value=contract.Value\n')
+        self.source("internal/modules/a/bridge_test.go", '//go:build pgx\n\npackage a_test\nimport "example.test/shop/internal/bridge"\nvar Value=bridge.Value\n')
+        self.assert_red("MODULE_UNDECLARED_DEPENDENCY")
+
+    def test_bridge_declared_contract_stops_at_foreign_module_green(self):
+        self.source("internal/modules/b/contract/port.go", 'package contract\nimport "example.test/shop/internal/modules/b/internal/store"\nvar Value=store.Value\n')
+        self.source("internal/bridge/bridge.go", 'package bridge\nimport "example.test/shop/internal/modules/b/contract"\nvar Value=contract.Value\n')
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/bridge"\nvar Value=bridge.Value\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_bridge_approved_legacy_port_green(self):
+        self.registry["modules"][1].update(legacy_go_paths=["internal/b"], approved_public_ports=["internal/b"])
+        self.source("internal/b/public.go", "package b\nconst Value=1\n")
+        self.source("internal/bridge/bridge.go", 'package bridge\nimport "example.test/shop/internal/b"\nvar Value=b.Value\n')
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/bridge"\nvar Value=bridge.Value\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_go_status_planned_loaded_target_red(self):
+        self.registry["modules"][0]["go_status"] = "planned"
+        self.assert_red("MODULE_GO_STATUS_MISMATCH")
+
+    def test_go_status_implemented_empty_target_red(self):
+        self.registry["modules"].append(module("empty"))
+        self.assert_red("MODULE_GO_STATUS_MISMATCH")
+
+    def test_go_status_test_only_target_red(self):
+        self.source("internal/modules/onlytests/only_test.go", "package onlytests\n")
+        target = module("onlytests")
+        self.registry["modules"].append(target)
+        for status in ("implemented", "planned"):
+            with self.subTest(status=status):
+                target["go_status"] = status
+                self.assert_red("MODULE_GO_STATUS_MISMATCH")
+
+    def test_go_status_pgx_only_target(self):
+        self.source("internal/modules/tagged/module.go", "//go:build pgx\n\npackage tagged\n")
+        target = module("tagged")
+        self.registry["modules"].append(target)
+        target["go_status"] = "planned"
+        self.assert_red("MODULE_GO_STATUS_MISMATCH")
+        target["go_status"] = "implemented"
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_go_status_legacy_does_not_promote_target_green(self):
+        target = module("legacy")
+        target.update(go_status="planned", legacy_go_paths=["internal/legacy"])
+        self.registry["modules"].append(target)
+        self.source("internal/legacy/public.go", "package legacy\n")
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_go_status_custom_tag_does_not_claim_implemented(self):
+        self.source("internal/modules/tagged/module.go", "//go:build future\n\npackage tagged\n")
+        target = module("tagged")
+        self.registry["modules"].append(target)
+        self.assert_red("MODULE_GO_STATUS_MISMATCH")
+        target["go_status"] = "planned"
+        self.assert_red("MODULE_GO_STATUS_MISMATCH")
+
+    def test_go_status_planned_ignored_source_red(self):
+        self.source("internal/modules/future/ignored.go", "//go:build ignore\n\npackage future\n")
+        target = module("future")
+        target["go_status"] = "planned"
+        self.registry["modules"].append(target)
+        self.assert_red("MODULE_GO_STATUS_MISMATCH")
+
+    def test_raw_pgx_default_and_raw_string_import_red(self):
+        self.vendor_pgx()
+        for imported in ('"github.com/jackc/pgx/v5"', '`github.com/jackc/pgx/v5`',
+                         '"github.com/jackc/pgx/v5"'.replace('github', r'\x67ithub')):
+            with self.subTest(imported=imported):
+                self.source("internal/modules/a/module.go", f"package a\nimport {imported}\nvar Value *pgx /* space */ . Conn\n")
+                self.assert_red("MODULE_RAW_CONNECTION")
+
+    def test_multihop_bridge_private_import_red(self):
+        self.source("internal/bridge/bridge.go", 'package bridge\nimport "example.test/shop/internal/bridge2"\nvar Value=bridge2.Value\n')
+        self.source("internal/bridge2/bridge.go", 'package bridge2\nimport "example.test/shop/internal/modules/b/internal/store"\nvar Value=store.Value\n')
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/bridge"\nvar Value=bridge.Value\n')
+        self.assert_red("MODULE_PRIVATE_IMPORT")
+
+    def test_bridge_foreign_implementation_dependency_not_attributed_to_caller(self):
+        self.registry["modules"].append(module("c"))
+        self.registry["modules"][1]["dependencies"] = ["c"]
+        self.source("internal/modules/c/contract/port.go", "package contract\nconst Value=1\n")
+        self.source("internal/modules/b/contract/port.go", 'package contract\nimport "example.test/shop/internal/modules/c/contract"\nvar Value=contract.Value\n')
+        self.source("internal/bridge/bridge.go", 'package bridge\nimport "example.test/shop/internal/modules/b/contract"\nvar Value=contract.Value\n')
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/bridge"\nvar Value=bridge.Value\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_go_status_planned_ignored_filename_red(self):
+        target = module("future")
+        target["go_status"] = "planned"
+        self.registry["modules"].append(target)
+        self.source("internal/modules/future/_ignored.go", "package future\n")
+        self.assert_red("MODULE_GO_STATUS_MISMATCH")
+
+    def test_raw_pgx_connection_in_owned_source_file_alias_red(self):
+        self.vendor_pgx()
+        self.source("shared/connection.go", 'package a\nimport "github.com/jackc/pgx/v5"\nvar Connection *pgx.Conn\n')
+        (self.root / "internal/modules/a/connection.go").symlink_to(self.root / "shared/connection.go")
+        self.assert_red("MODULE_RAW_CONNECTION")
+
     def test_explicit_legacy_public_port_green(self):
         self.registry["modules"][1].update(legacy_go_paths=["internal/b"],
                                            approved_public_ports=["internal/b"])
@@ -437,6 +615,51 @@ class GovernanceTests(unittest.TestCase):
         self.assertIn("python3 scripts/check_modules.py", (ROOT / "scripts/check_all.sh").read_text())
         self.assertIn("python3 tests/test_module_sql.py", (ROOT / "scripts/check_all.sh").read_text())
         self.assertIn("python3 scripts/check_modules.py --tables", (ROOT / "scripts/check_pg.sh").read_text())
+
+
+    def test_openapi_action_path_quote_styles_and_double_colon_are_green(self):
+        # A colon followed by a non-space is a path character, not YAML's
+        # mapping separator. Each variant is an independent valid Path Item.
+        cases = (
+            ('/orders/{id}:cancel', 'post', 'cancelOrder'),
+            ('"/orders/{id}:refund"', 'put', 'refundOrder'),
+            ("'/orders/{id}:archive'", 'delete', 'archiveOrder'),
+            ('/orders/{id}:preview:validate', 'patch', 'validateOrderPreview'),
+            ('"/orders/{id}:preview:commit"', 'get', 'getOrderPreviewCommit'),
+            ("'/orders/{id}:preview:discard'", 'head', 'headOrderPreviewDiscard'),
+        )
+        path = self.root / 'api/openapi.yaml'
+        for key, method, operation in cases:
+            with self.subTest(key=key, method=method):
+                path.write_text(f'openapi: 3.1.0\npaths:\n  {key}:\n    {method}:\n      operationId: {operation}\n')
+                self.assertEqual(checker.openapi_operations(path), {operation})
+
+    def test_openapi_distinct_action_paths_keep_independent_methods_and_ids(self):
+        path = self.root / 'api/openapi.yaml'
+        path.write_text(
+            'paths:\n'
+            '  /orders/{id}:cancel:\n    post:\n      operationId: cancelOrder\n'
+            '  "/orders/{id}:refund":\n    put:\n      operationId: refundOrder\n'
+            "  '/orders/{id}:archive':\n    delete:\n      operationId: archiveOrder\n"
+            '  /orders/{id}:preview:validate:\n    patch:\n      operationId: validateOrderPreview\n')
+        self.assertEqual(checker.openapi_operations(path),
+                         {'cancelOrder', 'refundOrder', 'archiveOrder', 'validateOrderPreview'})
+
+    def test_openapi_action_path_operations_reconcile_both_directions(self):
+        path = self.root / 'api/openapi.yaml'
+        path.write_text(
+            'paths:\n'
+            '  /orders/{id}:cancel:\n    post:\n      operationId: cancelOrder\n'
+            '  "/orders/{id}:preview:validate":\n    patch:\n      operationId: validateOrderPreview\n')
+        operations = [{'operation_id': 'cancelOrder', 'status': 'planned'},
+                      {'operation_id': 'validateOrderPreview', 'status': 'implemented'}]
+        registry = {'modules': [{'operations': operations}]}
+        checker.check_operations(registry, path)
+        with self.assertRaisesRegex(checker.GovernanceError, 'MODULE_MISSING_OPERATION'):
+            checker.check_operations({'modules': [{'operations': operations + [
+                {'operation_id': 'missingOrderAction', 'status': 'planned'}]}]}, path)
+        with self.assertRaisesRegex(checker.GovernanceError, 'MODULE_UNREGISTERED_OPERATION'):
+            checker.check_operations({'modules': [{'operations': operations[:1]}]}, path)
 
 
 if __name__ == "__main__":

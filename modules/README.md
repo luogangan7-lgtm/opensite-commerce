@@ -14,6 +14,11 @@ and flow/block combinations are not accepted.
   package is an explicit `approved_public_ports` exception at `internal/money`;
   pricing's import still requires its declared money dependency. This exception
   exposes no private subpackages and does not promote the future target path.
+  The actual default/`pgx` package inventory must agree with `go_status` under
+  the target `go_path`: `planned` cannot contain Go source, including tests and
+  files behind custom build tags; `implemented` requires a loaded production
+  package. Tests alone or custom tags outside default/`pgx` do not establish an
+  implementation; legacy paths do not promote the target's status.
 - Operations have `operation_id` and `status`. Every declared ID, whether
   `planned` or `implemented`, must exist under an inline OpenAPI
   `paths/<path>/<method>/operationId`; every OpenAPI ID has exactly one module
@@ -29,6 +34,9 @@ and flow/block combinations are not accepted.
   through `internal/modules/<other>/contract`, with that dependency declared.
   Its own private packages remain allowed. `tests` contains repository-relative
   file pointers, not commands for the checker to execute.
+  This also applies through any number of first-party bridge packages, using
+  resolved package directories. Traversal stops at another module's checked
+  contract/public port: that module checks its own implementation dependencies.
 
 `bash scripts/check_all.sh` runs the registry/operation/DAG checks, real
 `go list -e -deps -json -test ./...` in both default and `pgx` modes, and regression
@@ -45,6 +53,11 @@ their package name and linker target use a foreign prefix.
 First-party Go source cannot
 use `go:linkname` to bypass visibility through an unregistered bridge package;
 business packages also cannot directly import raw `pgxpool`.
+They cannot use `pgx.Conn`, `pgx.Connect` or `pgx.ConnectConfig`, including renamed
+imports, tests and sources behind custom build tags; dot imports of pgx are
+forbidden. Transaction types such as `pgx.Tx` remain allowed. Connection creation
+belongs to the approved platform transaction/authorization entry points, outside
+business modules. The same rule covers registered legacy business paths.
 Vendor Go files are scanned too: linker directives targeting this repository
 are forbidden, including private package roots and symlink aliases that omit
 `internal` from the import name. Unrelated external targets and directive text
@@ -55,6 +68,8 @@ module check. This prevents artifacts from becoming bridges around the scan.
 OpenAPI extraction accepts this repository's inline block mappings and literal
 identifiers, including colon-containing and quoted path keys; referenced/merged
 Path Items and unsupported path structures fail.
+Action paths such as `/orders/{id}:cancel` retain their entire key; each path's
+method and operation ID is accounted independently, including multiple colons.
 
 Business queries at `queries/<module>.sql` or `queries/<module>/*.sql` may write
 only their module's implemented app tables. `module_sql.py` lexes comments,
@@ -63,6 +78,8 @@ including writable CTEs. Direct write targets must explicitly name `app.<table>`
 DDL, dynamic SQL and SELECT INTO fail the gate. Cross-module reads remain allowed.
 This checks direct DML targets; stored-function side effects and SQL validity
 still require the database role and sqlc gates.
+Regression fixtures cover every writer in multiple writable CTEs and the final
+statement in both query layouts, while preserving cross-module reads.
 
 `scripts/check_pg.sh` runs `python3 scripts/check_modules.py --tables` after the
 migrations and SQL suite. It queries `pg_catalog` for ordinary and partitioned
@@ -75,3 +92,9 @@ fault probes without editing the checked source. No database writes are performe
 by the checker. The Go/SQL gates still run their complete suites; downstream test
 selection and impact routing belong to C-03e. The API skeleton and shared HTTP
 platform paths belong to C-03ac and are unchanged here.
+
+The threat model is accidental boundary violations by honest authors and agents.
+This gate is not an adversarial sandbox or a proof that every handler authorizes
+its actor. The connection rule checks business-source imports and selectors,
+not capabilities returned by platform/bridge functions; the runtime authorization
+and database gates remain required.

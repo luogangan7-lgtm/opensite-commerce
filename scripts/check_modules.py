@@ -225,6 +225,63 @@ def json_stream(text):
         yield value
 
 
+def check_raw_connection(text, location):
+    # A small lexical rule, not a Go type checker: inspect import aliases and
+    # selector tokens while keeping comments and literals opaque. All owned
+    # source (including tests and ignored tags) is checked before go list.
+    token_pattern = re.compile(r'''//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\W\d]\w*|[^\s]''', re.S)
+    tokens = [match.group() for match in token_pattern.finditer(text)
+              if not match.group().startswith(("//", "/*"))]
+    aliases = set()
+    for index, token in enumerate(tokens):
+        if token != "import":
+            continue
+        cursor = index + 1
+        grouped = cursor < len(tokens) and tokens[cursor] == "("
+        if grouped:
+            cursor += 1
+        while cursor < len(tokens) and tokens[cursor] != ")":
+            alias = None
+            if re.fullmatch(r"[^\W\d]\w*|\.", tokens[cursor]):
+                alias = tokens[cursor]
+                cursor += 1
+            if cursor >= len(tokens):
+                break
+            literal = tokens[cursor]
+            cursor += 1
+            if literal.startswith('"'):
+                # Go permits octal and hex escapes in quoted import paths.
+                def unescape(match):
+                    value = match.group(1)
+                    if value.startswith(("x", "u", "U")):
+                        return chr(int(value[1:], 16))
+                    if value.isdigit():
+                        return chr(int(value, 8))
+                    return {"a": "\a", "b": "\b", "f": "\f", "n": "\n", "r": "\r",
+                            "t": "\t", "v": "\v", "\\": "\\", '"': '"'}.get(value, value)
+                imported = re.sub(r'\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|[0-7]{3}|.)',
+                                  unescape, literal[1:-1])
+            elif literal.startswith("`"):
+                imported = literal[1:-1].replace("\r", "")
+            else:
+                if not grouped:
+                    break
+                continue
+            require(imported != "github.com/jackc/pgx/v5/pgxpool",
+                    "MODULE_RAW_POOL_IMPORT", location)
+            if imported == "github.com/jackc/pgx/v5":
+                # Dot imports hide the origin of Conn and connector functions.
+                require(alias != ".", "MODULE_RAW_CONNECTION", location + " (pgx dot import)")
+                if alias != "_":
+                    aliases.add(alias or "pgx")
+            if not grouped:
+                break
+    for index in range(len(tokens) - 2):
+        require(not (tokens[index] in aliases and tokens[index + 1] == "." and
+                     tokens[index + 2] in ("Conn", "Connect", "ConnectConfig")),
+                "MODULE_RAW_CONNECTION", location)
+
+
 def check_go(registry, root):
     # go list ./... silently skips nested modules. Reject them before trusting
     # its inventory, including vendor and unused replacements. Package owners
@@ -235,6 +292,8 @@ def check_go(registry, root):
     require(all(path.resolve() == path for path, _ in paths),
             "MODULE_REGISTRY_INVALID", "registered Go roots must be canonical repository directories")
     owned_paths = dict(paths)
+    target_paths = {root / module["go_path"]: name for name, module in modules.items()}
+    target_source = set()
 
     def reject_vendor_source_alias(path):
         # Vendored package names and linker targets can both be foreign while
@@ -278,9 +337,16 @@ def check_go(registry, root):
             if not file.endswith(".go"):
                 continue
             source = directory / file
-            require(not re.search(r'^\s*import\s*(?:\(\s*)?"C"', source.read_text(), re.M),
+            for target, name in target_paths.items():
+                if source.is_relative_to(target):
+                    target_source.add(name)
+            text = source.read_text()
+            if any(source.is_relative_to(owned) or source.resolve().is_relative_to(owned)
+                   for owned in owned_paths):
+                check_raw_connection(text, str(source.relative_to(root)))
+            require(not re.search(r'^\s*import\s*(?:\(\s*)?"C"', text, re.M),
                     "MODULE_NON_GO_SOURCE", str(source.relative_to(root)) + " (cgo)")
-            for token in go_tokens.finditer(source.read_text()):
+            for token in go_tokens.finditer(text):
                 directive = re.match(r"//go:linkname(?:\s|$)", token.group())
                 vendored = relative_parts and relative_parts[0] == "vendor"
                 # Repository aliases can omit /internal/ in a linker target.
@@ -307,13 +373,47 @@ def check_go(registry, root):
             raise GovernanceError("MODULE_UNREGISTERED_PACKAGE: " + directory.relative_to(root / "internal/modules").parts[0])
         return None
 
+    implementation_source = set()
     for tags in ([], ["-tags", "pgx"]):
         result = subprocess.run(["go", "list", "-e", "-deps", "-json", "-test", *tags, "./..."],
                                 cwd=root, env=env, capture_output=True, text=True, timeout=90)
         errors = result.returncode != 0
         packages = list(json_stream(result.stdout))
         # Test variants carry suffixes, but their Dir still names real source.
-        by_import = {package["ImportPath"].split(" [", 1)[0]: package for package in packages}
+        by_import = {package["ImportPath"]: package for package in packages}
+
+        def imported_package(imported):
+            return by_import.get(imported) or by_import.get(imported.split(" [", 1)[0], {})
+
+        def first_party_package(package):
+            directory = Path(package.get("Dir", "/")).resolve()
+            return directory.is_relative_to(root) and not directory.is_relative_to(root / "vendor")
+
+        def check_reachable_imports(package, source):
+            # Keep the importing module's context across same-module packages
+            # and unregistered first-party bridges. Stop at a foreign module's
+            # public entry: its implementation dependencies belong to it.
+            pending = list(package.get("Imports", []))
+            seen = set()
+            while pending:
+                imported = pending.pop()
+                if imported in seen:
+                    continue
+                seen.add(imported)
+                target = imported_package(imported)
+                destination = module_path(target)
+                if destination is not None and destination[0] != source[0]:
+                    edge = f"{source[0]} -> {destination[0]}"
+                    require("internal" not in destination[1:], "MODULE_PRIVATE_IMPORT", edge)
+                    relative = str(Path(target["Dir"]).resolve().relative_to(root))
+                    public_port = relative in modules[destination[0]].get("approved_public_ports", [])
+                    require((len(destination) > 1 and destination[1] == "contract") or public_port,
+                            "MODULE_NONCONTRACT_IMPORT", edge)
+                    require(destination[0] in modules[source[0]]["dependencies"],
+                            "MODULE_UNDECLARED_DEPENDENCY", edge)
+                    continue
+                if first_party_package(target):
+                    pending.extend(target.get("Imports", []))
         for package in packages:
             # Excluded receipts are harmless only when not compiled/imported.
             # The actual Go stream also exposes local replacements skipped by
@@ -341,21 +441,26 @@ def check_go(registry, root):
             errors = errors or bool(package.get("Error") or package.get("DepsErrors"))
             if source is None:
                 continue
+            # Use actual Dir and real files, never an import-name prefix or a
+            # synthetic .test main. Legacy roots have separate ownership but
+            # cannot promote the reserved target's implementation status.
+            target_root = root / modules[source[0]]["go_path"]
+            if directory.is_relative_to(target_root):
+                for field in ("GoFiles", "CgoFiles", "TestGoFiles", "XTestGoFiles"):
+                    for file in package.get(field, []):
+                        path = (directory / file).resolve()
+                        if path.is_file() and path.is_relative_to(target_root):
+                            if field in ("GoFiles", "CgoFiles") and not path.name.endswith("_test.go"):
+                                implementation_source.add(source[0])
             for imported in package.get("Imports", []):
                 require(imported.split(" [", 1)[0] != "github.com/jackc/pgx/v5/pgxpool",
                         "MODULE_RAW_POOL_IMPORT", source[0])
-                imported_package = by_import.get(imported.split(" [", 1)[0], {})
-                destination = module_path(imported_package)
-                if destination is None or destination[0] == source[0]:
-                    continue
-                edge = f"{source[0]} -> {destination[0]}"
-                require("internal" not in destination[1:], "MODULE_PRIVATE_IMPORT", edge)
-                relative = str(Path(imported_package["Dir"]).resolve().relative_to(root))
-                public_port = relative in modules[destination[0]].get("approved_public_ports", [])
-                require((len(destination) > 1 and destination[1] == "contract") or public_port,
-                        "MODULE_NONCONTRACT_IMPORT", edge)
-                require(destination[0] in modules[source[0]]["dependencies"], "MODULE_UNDECLARED_DEPENDENCY", edge)
+            check_reachable_imports(package, source)
         require(not errors, "MODULE_GO_LIST_ERROR", "Go package loading failed (default/pgx, including tests)")
+    for name, module in modules.items():
+        consistent = (name in implementation_source if module["go_status"] == "implemented"
+                      else name not in target_source)
+        require(consistent, "MODULE_GO_STATUS_MISMATCH", name + ": target go_path differs from go_status")
 
 
 CATALOG_SQL = """-- MODULE_TABLE_OWNERSHIP: real app tables, including partitioned tables
