@@ -35,7 +35,8 @@ legacy dev-api remains diagnostic and is excluded from the production route set.
 `Router.RouteSpecs()` reads actual successful registrations. Bootstrap contract
 tests reconcile their operation IDs, methods, paths, access classes and scopes
 with implemented operations in the source OpenAPI in both directions. PR #18's
-module registry reconciliation is complementary and was still open at this base.
+module registry reconciliation is complementary. Its merged checker is reused;
+identity owns the five planned session operations and reliability owns health.
 
 `createOrganization` creates a seller company **within an existing tenant**
 (`002_site.sql`), so it also uses the tenant path and `organization.create`.

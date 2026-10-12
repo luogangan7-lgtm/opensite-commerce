@@ -10,7 +10,28 @@
         "users",
         "auth_sessions"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "createAdminSession",
+          "status": "planned"
+        },
+        {
+          "operation_id": "deleteAdminSession",
+          "status": "planned"
+        },
+        {
+          "operation_id": "getCurrentActor",
+          "status": "planned"
+        },
+        {
+          "operation_id": "listAdminSessions",
+          "status": "planned"
+        },
+        {
+          "operation_id": "revokeAdminSession",
+          "status": "planned"
+        }
+      ],
       "dependencies": [],
       "tests": [
         "tests/db_role_boundaries.sql",
@@ -243,14 +264,20 @@
         "outbox_events",
         "webhook_inbox"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "health",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [
         "tenant"
       ],
       "tests": [
         "tests/db_reliability.sql"
       ],
-      "scopes": []
+      "scopes": [],
+      "note": "Owns the platform health operation implemented by bootstrap; this does not promote a business Go service."
     },
     {
       "name": "platform-security",

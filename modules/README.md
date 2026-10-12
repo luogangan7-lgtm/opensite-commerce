@@ -18,9 +18,10 @@ and flow/block combinations are not accepted.
   `planned` or `implemented`, must exist under an inline OpenAPI
   `paths/<path>/<method>/operationId`; every OpenAPI ID has exactly one module
   owner. Status affects handler readiness and the C-03e coverage gate, never ID
-  accounting. All current operations are planned; the registry does not claim
-  handlers or HTTP acceptance. Future operations without an OAS contract cannot
-  be put in `operations`; a separate future-operation model is outside this card.
+  accounting. Identity/business operations remain planned; platform `health` is
+  implemented by bootstrap and owned by reliability. RouteSpec/OpenAPI tests
+  independently verify actual registration readiness. Future operations without an
+  OAS contract cannot be put in `operations`; a separate future-operation model is outside this card.
 - `owns_tables` contains unqualified `app` table names, each with one owner.
   Cross-cutting `migrations` record an owner and `touches_tables`, without changing
   business table ownership. Migration filenames refer to this branch's inventory.
