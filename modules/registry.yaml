@@ -440,6 +440,9 @@
       "note": "SQL tables and pure legacy quote engine merged by PR15; target module Go path and HTTP operations remain planned.",
       "legacy_go_paths": [
         "internal/shipping"
+      ],
+      "approved_public_ports": [
+        "internal/shipping"
       ]
     },
     {
@@ -467,6 +470,9 @@
       "scopes": [],
       "note": "Tenant regional rule tables and pure calculator from PR19. Existing internal/tax uses approved Money arithmetic; target module Go path and HTTP operations remain planned. Billing must consume saved Tax snapshots without recalculation.",
       "legacy_go_paths": [
+        "internal/tax"
+      ],
+      "approved_public_ports": [
         "internal/tax"
       ]
     },
