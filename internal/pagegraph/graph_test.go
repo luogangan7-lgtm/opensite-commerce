@@ -12,6 +12,13 @@ func sample() Document {
 		"grid": {Component: "catalog.product-grid@1", Props: json.RawMessage(`{"columns_desktop":4,"columns_mobile":2}`), Binding: &Binding{"catalog.featured-products@1", json.RawMessage(`{"limit":8}`)}, Slots: map[string][]string{}},
 	}}
 }
+
+func assertError(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil || err.Error() != want {
+		t.Fatalf("error=%v, want %q", err, want)
+	}
+}
 func TestValid(t *testing.T) {
 	if err := Validate(sample()); err != nil {
 		t.Fatal(err)
@@ -20,70 +27,54 @@ func TestValid(t *testing.T) {
 func TestMissingNode(t *testing.T) {
 	d := sample()
 	delete(d.Nodes, "grid")
-	if Validate(d) == nil {
-		t.Fatal("should reject missing child")
-	}
+	assertError(t, Validate(d), `node root: child "grid" does not exist`)
 }
 func TestDuplicateParent(t *testing.T) {
 	d := sample()
 	n := d.Nodes["root"]
 	n.Slots["main"] = append(n.Slots["main"], "hero")
 	d.Nodes["root"] = n
-	if Validate(d) == nil {
-		t.Fatal("should reject duplicate parent")
-	}
+	assertError(t, Validate(d), "node hero has multiple parents")
 }
 func TestUnknownComponent(t *testing.T) {
 	d := sample()
 	n := d.Nodes["hero"]
 	n.Component = "evil.js@1"
 	d.Nodes["hero"] = n
-	if Validate(d) == nil {
-		t.Fatal("unregistered component accepted")
-	}
+	assertError(t, Validate(d), `node hero: unregistered component "evil.js@1"`)
 }
-func TestCycle(t *testing.T) {
+func TestRootCannotHaveParent(t *testing.T) {
 	d := sample()
 	n := d.Nodes["hero"]
 	n.Component = "core.section@1"
 	n.Props = json.RawMessage(`{}`)
 	n.Slots = map[string][]string{"content": {"root"}}
 	d.Nodes["hero"] = n
-	if Validate(d) == nil {
-		t.Fatal("cycle accepted")
-	}
+	assertError(t, Validate(d), "root cannot have a parent")
 }
 func TestInvalidGrid(t *testing.T) {
 	d := sample()
 	n := d.Nodes["grid"]
 	n.Props = json.RawMessage(`{"columns_desktop":99,"columns_mobile":2}`)
 	d.Nodes["grid"] = n
-	if Validate(d) == nil {
-		t.Fatal("invalid grid accepted")
-	}
+	assertError(t, Validate(d), "node grid: columns_desktop must be in [1,6]")
 }
 func TestUnknownProperty(t *testing.T) {
 	d := sample()
 	n := d.Nodes["hero"]
-	n.Props = json.RawMessage(`{"title":"x","onClick":"alert(1)"}`)
+	n.Props = json.RawMessage(`{"title":"x","layout":"full","onClick":"alert(1)"}`)
 	d.Nodes["hero"] = n
-	if Validate(d) == nil {
-		t.Fatal("unknown property accepted")
-	}
+	assertError(t, Validate(d), `node hero: unsupported prop "onClick"`)
 }
 func TestDisconnected(t *testing.T) {
 	d := sample()
 	d.Nodes["unused"] = Node{Component: "core.section@1", Props: json.RawMessage(`{}`), Slots: map[string][]string{}}
-	if Validate(d) == nil {
-		t.Fatal("disconnected accepted")
-	}
+	assertError(t, Validate(d), "node unused disconnected")
 }
 
 func TestTrailingJSON(t *testing.T) {
 	data := []byte(`{"schema_version":1,"root_id":"root","nodes":{"root":{"component":"core.page-layout@1","props":{},"slots":{"main":[]}}}} {"other":1}`)
-	if ValidateJSON(data) == nil {
-		t.Fatal("trailing JSON accepted")
-	}
+	assertError(t, ValidateJSON(data), "trailing document data")
 }
 func TestCompanyParamsMustBeObject(t *testing.T) {
 	for _, params := range []string{`{}`, `"not-an-object"`, `null`, `[]`, ``} {
@@ -93,8 +84,12 @@ func TestCompanyParamsMustBeObject(t *testing.T) {
 		d.Nodes["root"] = n
 		d.Nodes["company"] = Node{Component: "company.profile@1", Props: json.RawMessage(`{}`), Binding: &Binding{"company.profile@1", json.RawMessage(params)}, Slots: map[string][]string{}}
 		err := Validate(d)
-		if (params == `{}`) != (err == nil) {
-			t.Fatalf("params %q: err=%v", params, err)
+		if params == `{}` {
+			if err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			assertError(t, err, "node company: binding params must be an object")
 		}
 	}
 }
@@ -103,9 +98,7 @@ func TestSlotsRequired(t *testing.T) {
 	n := d.Nodes["hero"]
 	n.Slots = nil // omitted or "slots": null
 	d.Nodes["hero"] = n
-	if Validate(d) == nil {
-		t.Fatal("should reject node without slots object")
-	}
+	assertError(t, Validate(d), "node hero: slots object required")
 }
 func TestExplicitNullRejected(t *testing.T) {
 	doc := func(root string) string {
@@ -145,6 +138,9 @@ func TestHeroImageIDMustBeString(t *testing.T) {
 		if (Validate(d) == nil) != ok {
 			t.Fatalf("image_id %s: want ok=%v", img, ok)
 		}
+		if !ok {
+			assertError(t, Validate(d), "node hero: image_id must be a non-empty string")
+		}
 	}
 }
 func TestHeroLayoutRequired(t *testing.T) {
@@ -152,7 +148,5 @@ func TestHeroLayoutRequired(t *testing.T) {
 	h := d.Nodes["hero"]
 	h.Props = json.RawMessage(`{"title":"Sample"}`)
 	d.Nodes["hero"] = h
-	if Validate(d) == nil {
-		t.Fatal("hero without layout should be rejected")
-	}
+	assertError(t, Validate(d), "node hero: hero layout required (split|full|contained)")
 }
