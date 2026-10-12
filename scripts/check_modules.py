@@ -231,15 +231,17 @@ def check_go(registry, root):
     modules = {module["name"]: module for module in registry["modules"]}
     owned_paths = {path: name for name, module in modules.items()
                    for path in [module["go_path"], *module.get("legacy_go_paths", [])]}
+    go_tokens = re.compile(r'''//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*' ''', re.S | re.X)
     for directory, dirs, files in os.walk(root):
         directory = Path(directory)
         if directory == root:
             dirs[:] = [name for name in dirs if name not in (".git", ".worktrees", "work", "vendor", "node_modules")]
         require(directory == root or "go.mod" not in files,
                 "MODULE_NESTED_GO_MODULE", str(directory.relative_to(root)))
-    go_tokens = re.compile(r'''//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*' ''', re.S | re.X)
-    for package_path in owned_paths:
-        for source in (root / package_path).rglob("*.go"):
+        for file in files:
+            if not file.endswith(".go"):
+                continue
+            source = directory / file
             for token in go_tokens.finditer(source.read_text()):
                 require(not re.match(r"//go:linkname(?:\s|$)", token.group()),
                         "MODULE_LINKNAME_FORBIDDEN", str(source.relative_to(root)))

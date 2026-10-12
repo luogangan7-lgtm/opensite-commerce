@@ -71,9 +71,30 @@ class GovernanceTests(unittest.TestCase):
         self.source("internal/modules/a/module.go", 'package a\nimport "x.test/bstore"\nvar Value = store.Value\n')
         self.assert_red("MODULE_NESTED_GO_MODULE")
 
+    def test_nested_go_module_in_nonmodule_source_red(self):
+        self.source("internal/bridge/go.mod", "module x.test/bridge\n\ngo 1.27.2\n")
+        self.source("internal/bridge/bridge.go", "package bridge\n")
+        self.assert_red("MODULE_NESTED_GO_MODULE")
+
+    def test_root_receipt_artifacts_are_excluded_from_source(self):
+        self.source("work/probe/go.mod", "module x.test/probe\n\ngo 1.27.2\n")
+        self.source("work/probe/probe.go", 'package probe\nimport _ "unsafe"\n//go:linkname hidden x.test/other.hidden\nfunc hidden() int\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_linkname_private_access_red(self):
         self.source("internal/modules/a/module.go", 'package a\nimport _ "unsafe"\n//go:linkname hidden example.test/shop/internal/modules/b/internal/store.hidden\nfunc hidden() int\n')
         self.assert_red("MODULE_LINKNAME_FORBIDDEN")
+
+    def test_linkname_private_access_via_unregistered_bridge_red(self):
+        self.source("internal/bridge/bridge.go", 'package bridge\nimport _ "unsafe"\n//go:linkname hidden example.test/shop/internal/modules/b/internal/store.hidden\nfunc hidden() int\nfunc Read() int { return hidden() }\n')
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/bridge"\nvar Value = bridge.Read\n')
+        self.assert_red("MODULE_LINKNAME_FORBIDDEN")
+
+    def test_linkname_text_in_literals_and_block_comments_is_green(self):
+        self.source("internal/bridge/bridge.go", 'package bridge\n/*\n//go:linkname harmless\n*/\nconst Text = `\n//go:linkname harmless\n`\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_raw_pgxpool_import_red(self):
         # A local fixture supplies the third-party path without a network fetch.

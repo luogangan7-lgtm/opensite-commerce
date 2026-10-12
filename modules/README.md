@@ -32,8 +32,9 @@ and flow/block combinations are not accepted.
 fault probes. Package-load errors fail the gate, even with `go list -e` exit 0.
 Nested `go.mod` files in repository source are forbidden, because `go list ./...`
 skips those packages. Root-level vendor, node_modules, work receipts and Git
-worktree metadata are excluded from source discovery. Business source cannot use
-`go:linkname` to bypass package visibility or directly import raw `pgxpool`.
+worktree metadata are excluded from source discovery. First-party Go source cannot
+use `go:linkname` to bypass visibility through an unregistered bridge package;
+business packages also cannot directly import raw `pgxpool`.
 OpenAPI extraction accepts this repository's inline block mappings and literal
 identifiers, including colon-containing and quoted path keys; referenced/merged
 Path Items and unsupported path structures fail.
