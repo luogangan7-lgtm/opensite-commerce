@@ -150,19 +150,21 @@ def openapi_operations(path):
             require(not saw_paths, "MODULE_OPENAPI_INVALID", "duplicate paths mapping")
             saw_paths = True
             require(not value or value.startswith("#"), "MODULE_OPENAPI_INVALID", "paths must be a block mapping")
-        if parents and parents[0] == "paths" and len(parents) <= 3:
+        if parents and parents[0] == "paths" and (len(parents) <= 2 or
+                                                 (len(parents) == 3 and parents[2] in methods)):
             location = (*parents, key)
             require(location not in mapping_keys, "MODULE_OPENAPI_INVALID", "duplicate path/operation key")
             mapping_keys.add(location)
         if parents == ["paths"]:
             require(key.startswith("/") or key.startswith("x-"), "MODULE_OPENAPI_INVALID", "invalid path item")
             require(not value or value.startswith("#"), "MODULE_OPENAPI_INVALID", "Path Items must be inline block mappings")
-        if len(parents) == 2 and parents[0] == "paths" and key in methods:
+        if len(parents) == 2 and parents[0] == "paths" and parents[1].startswith("/") and key in methods:
             require(not value or value.startswith("#"), "MODULE_OPENAPI_INVALID", "operations must be block mappings")
             operation_locations.add((*parents, key))
         if parents and parents[0] == "paths" and len(parents) <= 3 and key in ("$ref", "<<"):
             raise GovernanceError("MODULE_OPENAPI_INVALID: referenced or merged Path Items are unsupported")
-        if key == "operationId" and len(parents) == 3 and parents[0] == "paths" and parents[2] in methods:
+        if (key == "operationId" and len(parents) == 3 and parents[0] == "paths" and
+                parents[1].startswith("/") and parents[2] in methods):
             match_id = re.fullmatch(r"(?:([A-Za-z][A-Za-z0-9_]*)|'([A-Za-z][A-Za-z0-9_]*)'|\"([A-Za-z][A-Za-z0-9_]*)\")(?:\s+#.*)?", value)
             require(match_id, "MODULE_OPENAPI_INVALID", "operationId must be a literal identifier")
             identifier = next(part for part in match_id.groups() if part is not None)

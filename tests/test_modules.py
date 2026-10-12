@@ -74,6 +74,16 @@ class GovernanceTests(unittest.TestCase):
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_external_test_private_import_red(self):
+        self.source("internal/modules/a/external_test.go", 'package a_test\nimport "example.test/shop/internal/modules/b/internal/store"\nvar Value = store.Value\n')
+        self.assert_red("MODULE_PRIVATE_IMPORT")
+
+    def test_external_test_undeclared_import_red(self):
+        self.source("internal/modules/a/module.go", "package a\n")
+        self.source("internal/modules/a/external_test.go", 'package a_test\nimport "example.test/shop/internal/modules/b/contract"\nvar Value = contract.Value\n')
+        self.registry["modules"][0]["dependencies"] = []
+        self.assert_red("MODULE_UNDECLARED_DEPENDENCY")
+
     def test_own_private_import_is_green(self):
         self.source("internal/modules/b/module.go", 'package b\nimport "example.test/shop/internal/modules/b/internal/store"\nvar Value = store.Value\n')
         result = self.run_gate()
@@ -93,6 +103,18 @@ class GovernanceTests(unittest.TestCase):
         with (self.root / "api/openapi.yaml").open("a") as output:
             output.write("  /things:\n    get:\n      operationId: anotherThings\n")
         self.assert_red("MODULE_OPENAPI_INVALID")
+
+    def test_openapi_multiple_path_parameters_are_green(self):
+        (self.root / "api/openapi.yaml").write_text(
+            "paths:\n  /things:\n    parameters:\n      - name: first\n        in: path\n      - name: second\n        in: path\n    get:\n      operationId: listThings\n")
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_openapi_extension_decoy_does_not_count(self):
+        self.registry["modules"][0]["operations"] = [{"operation_id": "decoy", "status": "implemented"}]
+        with (self.root / "api/openapi.yaml").open("a") as output:
+            output.write("  x-example:\n    get:\n      operationId: decoy\n")
+        self.assert_red("MODULE_MISSING_OPERATION")
 
     def test_openapi_operation_without_id_fails_closed(self):
         with (self.root / "api/openapi.yaml").open("a") as output:
