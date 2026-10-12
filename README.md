@@ -8,8 +8,8 @@
 
 - [V1 架构研究报告](docs/research/architecture-v1-report.md)：设计输入
 - [架构演进史 V0.1 → V1.0](docs/history/README.md)：原始设计对话全文 + ChatGPT 沙箱工件的报告与校验和
-- [架构审查 2026-10-12](docs/review/REVIEW.md)：4 个 P0 · 19 个 P1 · 3 个 P2、修正后的 PR 序列、MVP 切线
+- [架构审查 2026-10-12](docs/review/REVIEW.md)：3 个现行 P0（F-01 已改判，F-02 已关闭）· 19 个 P1 · 3 个 P2、修正后的 PR 序列、MVP 切线
 
 ## 许可证
 
-还没有选定。在添加 LICENSE 文件之前，本仓库公开可读，但不授予复用、修改或再分发的权利。
+拟采用 Apache-2.0（PR-01 代码包自带），LICENSE 文件随 PR-01A 代码导入时加入。在此之前，本仓库公开可读，但不授予复用、修改或再分发的权利。
