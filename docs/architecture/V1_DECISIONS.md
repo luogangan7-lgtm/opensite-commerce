@@ -674,6 +674,8 @@ Ledger 可以与 Cart/Orders 的后续工作并行开发，但**必须在账期�
 
 Checkout 统一负责交易集成，不允许各模块自行建立第二套结账入口。
 
+> **2026-10-12 补充修订**：第八节 PR 序列表中的固定迁移号（`010_…`–`026_…`）一律改为**逻辑迁移标识**，正式编号在合入时分配；PR-12 / PR-16 / PR-17 的依赖与验收 gate 以第九节为准。
+
 ## 最终拍板
 
 架构现在应冻结以下顺序：
@@ -683,3 +685,164 @@ Checkout 统一负责交易集成，不允许各模块自行建立第二套结�
 这份决议保持 001–009 不变，将真实缺口放入 010+，并以每个模块的数据库不变量、API 契约、故障注入及可追溯 CI 结果作为合并依据。
 
 **PR-01A 的本地与 GitHub 基础验收已有成功证据；本决议中 PR-01B 及之后的所有新功能和 Gate 仍是待实施要求，不能预先标记为通过。**
+
+---
+
+## 九、补充修订（2026-10-12，P1-a / P1-b，取代前文冲突条款）
+
+适用文件：`docs/architecture/V1_DECISIONS.md`  
+修订范围：迁移编号分配、PR 依赖、Cart/Checkout/Payments 契约。  
+约束：已验收的 001–009 永久冻结，所有后续数据库变更仅通过前向迁移实施。
+
+### 一、P1-a：迁移编号与并行 PR 合入规则
+
+### 决策：选择方案 A——合入前由集成者分配正式迁移号
+
+**迁移编号表示进入受保护主干的数据库演进顺序，不表示模块开发顺序，也不与 PR 编号绑定。**
+
+自本决议起，取消 `010–026` 与具体功能模块之间的永久编号预留关系。原文中的 `012_customers.sql`、`020_ledger.sql` 等名称改为逻辑迁移标识，实际数字以合入时分配的版本为准。
+
+执行规则：
+
+1. **并行开发阶段**：数据库变更以 `db/migration-proposals/<module>_<description>.sql` 保存，不得在功能 PR 中预占未来编号。每个迁移提案注明所属模块、前置迁移、数据兼容性与回滚预案。
+2. **PR 验证阶段**：CI 基于受保护主干的完整迁移历史，在临时工作树中将本 PR 的迁移提案物化为下一个连续编号；先执行全部现有迁移，再执行本 PR 的迁移及 PostgreSQL 18 测试。临时编号不视为正式分配。
+3. **合入准备阶段**：集成者更新 PR 到最新主干，检查业务依赖，将迁移提案移动到 `migrations/` 并分配当前下一个连续编号。若有多个提案，同一 PR 内按显式依赖拓扑排序。
+4. **正式验收阶段**：对最终编号、最终文件内容和最终 Commit SHA 重新执行真实 PostgreSQL 18 迁移、空库测试、升级测试、`sqlc generate`、Go 编译、RLS/约束检查。更新后的 CI 与独立审核必须通过才能合入。
+5. **合入后**：迁移文件名及内容永久冻结，禁止改号、改名、改内容或复用已合入编号。修复只能新增下一份迁移。
+
+PR-01B 仍是首个需要合入的基础变更，因此正常情况下其安全加固迁移将获得 `010`；但其他 PR 不预留 `011+`。
+
+### 被否方案：B——所有迁移 PR 严格串行合入
+
+该方案虽然简单，但会人为制造无业务必要的依赖。例如 Customer 与 Reliability、Pricing 与 B2B Buyer Company 即使没有直接数据依赖，也必须等待编号前序 PR，降低多 Agent 并行效率。
+
+采用 A 不意味着允许忽略真实业务依赖。涉及外键、接口、数据迁移或领域行为的依赖必须保持；只取消由迁移数字造成的虚假依赖。
+
+### 必须新增的 CI 检查
+
+| Gate | 检查要求 |
+|---|---|
+| Migration History | 001 起连续、无重复、无缺号、无历史 SHA 漂移 |
+| Migration Ownership | 新迁移必须归属一个模块和 PR |
+| Pending Validation | 提案必须在临时连续编号下通过真实 PG18 验证 |
+| Final Number Validation | 合入前正式编号与最新主干连续 |
+| Forward Compatibility | 空库安装、既有数据库升级均通过 |
+| Codegen | `sqlc.yaml` 覆盖实际新 DDL，生成代码无未提交差异 |
+| Merge Gate | 最终 PR SHA 对应的数据库、代码生成和独立审核全部通过 |
+
+**以下情况必须阻断合并：** 迁移缺号、旧迁移被修改、数据库已应用版本在源码中消失、提案仍未转成正式迁移、编号分配后未重新验收，或测试使用的 SHA 与最终提交不一致。
+
+影响分析和必需检查集合由受保护主干的 CI 策略确定，不能通过 PR 自行修改模块清单来跳过测试。必需测试出现 `skipped`、`cancelled`、`failure` 或未产生执行记录，均不得视为通过。
+
+---
+
+### 二、P1-b：Cart / Checkout / Payments 的 Port 与 Gate 边界
+
+### 决策一：PR-12 只管理购物意图；Checkout 提交统一由 PR-16 承担
+
+PR-12 不新增对 PR-F 的强制依赖，但必须严格限制职责：
+
+**Cart 负责：**
+
+- 创建和读取购物车。
+- SKU、数量、选项的修改与移除。
+- 购物车版本控制。
+- 顾客与访客购物车关联。
+- 购物车数据持久化。
+
+**Cart 不负责：**
+
+- 创建订单。
+- 最终成交价格及税运快照。
+- 库存预留。
+- 发起支付。
+- 正式提交 Checkout。
+
+Cart 修改优先使用设置绝对数量的幂等 `PUT/PATCH` 操作，配合 ETag / `If-Match`、数据库唯一约束及乐观并发控制。不得提供未经统一幂等保护的“重复请求即继续加一件”操作。
+
+原决议中的“F 必须先于购物车提交”修订为：
+
+**PR-F 必须先于 Checkout 确认提交、Orders 业务命令及 Payments 外部副作用；普通 Cart 意图编辑不必等待 PR-F。**
+
+如果 PR-12 将来扩展为非幂等批量命令，则该扩展必须显式依赖 F。
+
+### 决策二：支付 Port 在 PR-13 定义，PR-16 使用 Fake，PR-17 实现真实支付
+
+为消除 PR-16 与 PR-17 的循环依赖，采用 Contract First。
+
+**PR-13：冻结最小 Payment Port 契约。**
+
+建议位置：
+
+- `internal/contracts/payment/v1/`：与 Provider 无关的支付请求、结果、状态及接口。
+- `internal/modules/orders/port/payable.go`：Orders 提供只读 `GetPayable` 契约。
+
+支付 Port 至少定义：
+
+- `CreatePaymentIntent`：订单、金额、币种、幂等键及订单版本。
+- `PaymentIntentResult`：Intent ID、状态、下一步支付动作。
+- `PaymentStatus`：Pending、RequiresAction、Authorized、Captured、Failed 等语义。
+- `PaymentError`：可重试、不可重试、金额不符及状态冲突。
+- 经验证支付结果交付 Orders 的事件契约。
+
+不得在 Port 中暴露 Stripe 专有对象作为核心业务类型。
+
+**PR-16：实现 Checkout 编排。**
+
+Checkout 依赖抽象 Payment Port，不导入具体 Stripe Provider。
+
+使用测试专用 Fake Payment 实现验证：
+
+- 订单创建与支付意图请求顺序。
+- 金额、币种及订单版本一致性。
+- 重复提交。
+- 支付处理中断。
+- Fake Provider 失败。
+- 超时和状态恢复。
+- B2B 预付与 B2C 购买路径。
+
+Fake 不得在生产配置中充当真实收款渠道，也不得凭客户端返回值直接将订单标记为已付款。
+
+**PR-17：实现 Payments 领域服务与 Stripe Adapter。**
+
+真实 Payment Service 实现前述 Port，并通过 Orders 的 `GetPayable` 获取权威应付金额。
+
+模块依赖方向：
+
+```text
+Checkout → Payment Port
+Checkout → Orders
+Payments Service → Orders.GetPayable
+Stripe Adapter → Payment Provider Interface
+
+Orders 不依赖 Payments 实现
+Payments 不依赖 Checkout 实现
+```
+
+真实支付结果由经过签名验证、可信账户映射和 Inbox 去重的事件处理流程提交，Orders 通过受控命令更新付款状态。
+
+### 修订后的三行 PR 序列
+
+| PR 号 | 模块与依赖 | 验收 Gate |
+|---|---|---|
+| **PR-12** | Cart；依赖 PR-04、06、08；不强制依赖 F | 购物车 CRUD、绝对数量更新幂等、ETag 冲突、访客购物车隔离；禁止订单创建、库存预留及支付副作用 |
+| **PR-16** | Checkout 编排；依赖 PR-F、09–15，其中 PR-13 已提供 Payment Port | Fake Provider 完成 B2B/B2C Checkout 编排、重复提交、重报价、支付失败及恢复测试；只验收支付编排，不宣称真实收款可用 |
+| **PR-17** | Payments Core + Stripe；依赖 PR-13 Payment Port、14 Ledger、16 Checkout、PR-F | Stripe 沙箱支付、原始 Webhook 验签、账户映射、Inbox 去重、授权/扣款、取消、部分及全额退款、账本对账与故障恢复 |
+
+### 合并与首发限制
+
+PR-16 可以在没有真实 Stripe Adapter 时合并，但生产环境的在线支付与 Checkout 完成能力必须保持未启用状态。
+
+PR-17 必须通过真实 Stripe 沙箱流程，不能以 Fake Provider 的结果替代。
+
+**MVP 首发 Gate** 必须在同一最终 SHA 上验证完整 B2C/B2B 购买、支付、退款、账务、订单状态以及重复 Webhook 和宕机恢复。
+
+---
+
+### 三、修订生效规则
+
+本次只修正迁移编号分配和交易 Port 依赖关系，不改变已经确定的业务模块所有权、MVP 范围及 001–009 冻结规则。
+
+所有原 PR 序列表中的固定迁移数字统一改为**逻辑迁移标识**；后续由集成者在合入前分配正式连续编号。
+
+**架构决议不等于测试结果。以上新增 Gate 均为待实施要求，必须获得真实 CI 证据后才能标记 PASS。**
