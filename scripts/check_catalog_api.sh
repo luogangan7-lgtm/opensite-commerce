@@ -52,6 +52,15 @@ DO $check$ BEGIN
  IF NOT EXISTS(SELECT FROM app.sites WHERE tenant_id='11111111-1111-4111-8111-111111111111'
   AND published_release_id='99999999-9999-4999-8999-999999999999')
  THEN RAISE EXCEPTION 'C07_PINNED_RELEASE_NOT_PUBLISHED'; END IF;
+ -- Staging blob was taken over only with the verified LocalFS content key.
+ IF NOT EXISTS(SELECT FROM app.media_blobs WHERE id='66666666-6666-4666-8666-666666666667' AND status='ready'
+  AND backend='local' AND storage_key=substr(encode(sha256,'hex'),1,2)||'/'||substr(encode(sha256,'hex'),3,2)||'/'||encode(sha256,'hex'))
+ THEN RAISE EXCEPTION 'C07_STAGING_BLOB_NOT_VERIFIED_TAKEOVER'; END IF;
+ IF NOT EXISTS(SELECT FROM app.media_blobs WHERE id='66666666-6666-4666-8666-666666666668' AND status='deleting' AND storage_key='fixture-deleting')
+  OR EXISTS(SELECT FROM app.media_assets WHERE blob_id='66666666-6666-4666-8666-666666666668')
+ THEN RAISE EXCEPTION 'C07_DELETING_BLOB_REVIVED'; END IF;
+ IF EXISTS(SELECT FROM app.product_media WHERE product_id='33333333-3333-4333-8333-333333333336')
+ THEN RAISE EXCEPTION 'C07_ARCHIVED_PRODUCT_LINKED'; END IF;
 END $check$;
 SQL
-echo 'PASS: real catalog/media HTTP gates; pinned release and product association retained'
+echo 'PASS: real catalog/media HTTP gates; pinned release, product association and blob takeover rules retained'

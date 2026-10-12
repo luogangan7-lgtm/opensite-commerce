@@ -4,8 +4,11 @@ package media
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -57,4 +60,50 @@ func TestMediaTrustAndAdmission(t *testing.T) {
 			t.Fatalf("body=%s got %d want %d: %s", tc.body, w.Code, tc.want, w.Body.String())
 		}
 	}
+}
+
+// eofReader records whether the request body was fully consumed.
+type eofReader struct {
+	r    *strings.Reader
+	done *bool
+}
+
+func (e eofReader) Read(b []byte) (int, error) {
+	n, err := e.r.Read(b)
+	if err != nil {
+		*e.done = true
+	}
+	return n, err
+}
+
+// A slow client must not hold a pooled connection or upload row lock: the
+// bounded body is read before the tenant transaction is opened.
+func TestPutReadsBodyBeforeTransaction(t *testing.T) {
+	read, readFirst := false, false
+	s := New(Config{Root: t.TempDir(), Run: func(_ context.Context, _ string, _ func(*db.Queries) error) error {
+		readFirst = read
+		return errors.New("stop")
+	}})
+	router := mediaRouter(t, s)
+	id := "11111111-1111-4111-8111-111111111111"
+	req := httptest.NewRequest("PUT", "/api/v1/t/"+id+"/media/uploads/"+id+"/content", eofReader{strings.NewReader("bytes"), &read})
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Idempotency-Key", "media-read-first")
+	router.ServeHTTP(httptest.NewRecorder(), req)
+	if !readFirst {
+		t.Fatal("transaction opened before the upload body was read")
+	}
+}
+
+func TestConfiguredInvalidRootFailsStartup(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	if e := os.WriteFile(file, nil, 0o600); e != nil {
+		t.Fatal(e)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("invalid configured media root did not stop startup")
+		}
+	}()
+	New(Config{Root: filepath.Join(file, "media")})
 }

@@ -21,8 +21,10 @@ func variantDTO(v db.AppProductVariant, values []uuid.UUID) httpapi.Variant {
 	}
 	return httpapi.Variant{Id: uuid.UUID(v.ID.Bytes), ProductId: uuid.UUID(v.ProductID.Bytes), Sku: v.Sku, LifecycleStatus: httpapi.VariantLifecycleStatus(v.LifecycleStatus), CreatedAt: v.CreatedAt.Time, Version: v.Version, OptionValueIds: values}
 }
-func optionValues(ctx context.Context, q *db.Queries, tenant, product uuid.UUID) (map[uuid.UUID][]uuid.UUID, error) {
-	rows, err := q.ListCatalogVariantOptionValues(ctx, db.ListCatalogVariantOptionValuesParams{TenantID: dbID(tenant), ProductID: dbID(product)})
+
+// optionValues loads assignments only for the given variants (one, or one page).
+func optionValues(ctx context.Context, q *db.Queries, tenant, product uuid.UUID, variants ...pgtype.UUID) (map[uuid.UUID][]uuid.UUID, error) {
+	rows, err := q.ListCatalogVariantOptionValues(ctx, db.ListCatalogVariantOptionValuesParams{TenantID: dbID(tenant), ProductID: dbID(product), VariantIds: variants})
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +206,7 @@ func (s *Service) CreateVariant(ctx context.Context, r httpapi.CreateVariantRequ
 		if e != nil {
 			return e
 		}
-		values, e := optionValues(ctx, q, r.TenantId, r.ProductId)
+		values, e := optionValues(ctx, q, r.TenantId, r.ProductId, v.ID)
 		if e != nil {
 			return e
 		}
@@ -223,7 +225,7 @@ func (s *Service) GetVariant(ctx context.Context, r httpapi.GetVariantRequestObj
 		if e != nil {
 			return e
 		}
-		values, e := optionValues(ctx, q, r.TenantId, r.ProductId)
+		values, e := optionValues(ctx, q, r.TenantId, r.ProductId, v.ID)
 		if e != nil {
 			return e
 		}
@@ -235,22 +237,49 @@ func (s *Service) GetVariant(ctx context.Context, r httpapi.GetVariantRequestObj
 	}
 	return httpapi.GetVariant200JSONResponse(result), nil
 }
+
+// ListVariants is keyset-paged (created_at, id) so a page of at most 100
+// variants x 128 values stays below the buffered 1 MiB response cap.
 func (s *Service) ListVariants(ctx context.Context, r httpapi.ListVariantsRequestObject) (httpapi.ListVariantsResponseObject, error) {
+	if _, err := authorize(ctx, r.TenantId); err != nil {
+		return nil, err
+	}
+	limit, err := pageLimit(r.Params.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	at, id, has, err := parseCursor(r.Params.Cursor)
+	if err != nil {
+		return nil, err
+	}
 	result := httpapi.VariantList{Items: []httpapi.Variant{}}
-	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
+	err = s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		if _, e := q.GetProduct(ctx, db.GetProductParams{TenantID: dbID(r.TenantId), ID: dbID(r.ProductId)}); e != nil {
 			return e
 		}
-		rows, e := q.ListVariants(ctx, db.ListVariantsParams{TenantID: dbID(r.TenantId), ProductID: dbID(r.ProductId)})
+		rows, e := q.ListVariants(ctx, db.ListVariantsParams{TenantID: dbID(r.TenantId), ProductID: dbID(r.ProductId), HasCursor: has, CursorCreatedAt: pgtype.Timestamptz{Time: at, Valid: true}, CursorID: dbID(id), PageSize: limit + 1})
 		if e != nil {
 			return e
 		}
-		values, e := optionValues(ctx, q, r.TenantId, r.ProductId)
+		more := len(rows) > int(limit)
+		if more {
+			rows = rows[:limit]
+		}
+		ids := make([]pgtype.UUID, len(rows))
+		for i, v := range rows {
+			ids[i] = v.ID
+		}
+		values, e := optionValues(ctx, q, r.TenantId, r.ProductId, ids...)
 		if e != nil {
 			return e
 		}
 		for _, v := range rows {
 			result.Items = append(result.Items, variantDTO(v, values[uuid.UUID(v.ID.Bytes)]))
+		}
+		if more {
+			last := rows[len(rows)-1]
+			c := encodeCursor(last.CreatedAt.Time, uuid.UUID(last.ID.Bytes))
+			result.NextCursor = &c
 		}
 		return nil
 	})
@@ -311,7 +340,7 @@ func (s *Service) UpdateVariant(ctx context.Context, r httpapi.UpdateVariantRequ
 		if e != nil {
 			return e
 		}
-		values, e := optionValues(ctx, q, r.TenantId, r.ProductId)
+		values, e := optionValues(ctx, q, r.TenantId, r.ProductId, v.ID)
 		if e != nil {
 			return e
 		}

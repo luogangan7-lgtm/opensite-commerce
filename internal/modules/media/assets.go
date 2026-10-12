@@ -6,6 +6,7 @@ package media
 import (
 	"context"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
@@ -28,12 +29,14 @@ func (s *Service) LinkProductMedia(ctx context.Context, r httpapi.LinkProductMed
 		if order < 0 {
 			return invalid("sort_order must be nonnegative")
 		}
-		exists, e := q.MediaProductExists(ctx, db.MediaProductExistsParams{TenantID: dbID(r.TenantId), ID: dbID(r.ProductId)})
+		// ponytail: plain read, not FOR SHARE (media role has no products UPDATE
+		// grant); an archive committing concurrently can still race one link in.
+		status, e := q.MediaProductStatus(ctx, db.MediaProductStatusParams{TenantID: dbID(r.TenantId), ID: dbID(r.ProductId)})
 		if e != nil {
 			return e
 		}
-		if !exists {
-			return notFound()
+		if status == "archived" {
+			return apperrors.New(409, "resource_archived", "Archived products cannot be changed")
 		}
 		if _, e = q.LockMediaAsset(ctx, db.LockMediaAssetParams{TenantID: dbID(r.TenantId), ID: dbID(b.MediaId)}); e != nil {
 			return e

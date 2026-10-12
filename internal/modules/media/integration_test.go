@@ -31,6 +31,12 @@ const mediaTenant = "11111111-1111-4111-8111-111111111111"
 const mediaOtherTenant = "22222222-2222-4222-8222-222222222222"
 const mediaProduct = "33333333-3333-4333-8333-333333333333"
 const mediaPinned = "55555555-5555-4555-8555-555555555555"
+const mediaArchivedProduct = "33333333-3333-4333-8333-333333333336"
+
+// Fixture blobs with these exact bytes exist as staging / deleting rows.
+const stagingPNG = "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415478da636064620600000e0007e99237d40000000049454e44ae426082"
+const deletingPNG = "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415478da63606165030000200010851878a00000000049454e44ae426082"
+const racePNG = "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415478da6360e7e0040000320019b119ceaa0000000049454e44ae426082"
 
 type uploadReceipt struct {
 	ID        string    `json:"id"`
@@ -161,6 +167,55 @@ func TestMediaPostgresHTTP(t *testing.T) {
 		call("PUT", tenant, "/media/uploads/"+d.ID+"/content", "application/octet-stream", bytes.NewReader(data), 204)
 		receipt(call("POST", tenant, "/media/uploads/"+d.ID+"/complete", "application/json", nil, 202))
 	}
+	unhex := func(h string) []byte {
+		b, e := hex.DecodeString(h)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return b
+	}
+	// A staging blob row is taken over only with the bytes verified here; a
+	// deleting row is never revived and the completion must be retried.
+	for _, tc := range []struct {
+		hex  string
+		want int
+	}{{stagingPNG, 202}, {deletingPNG, 409}} {
+		b := unhex(tc.hex)
+		d := reserve(mediaTenant, "conflict.png", "image/png", b)
+		call("PUT", mediaTenant, "/media/uploads/"+d.ID+"/content", "application/octet-stream", bytes.NewReader(b), 204)
+		call("POST", mediaTenant, "/media/uploads/"+d.ID+"/complete", "application/json", nil, tc.want)
+	}
+	// Two uploads of the same new content race on the blob unique key.
+	raceBytes := unhex(racePNG)
+	var raceIDs []string
+	for range 2 {
+		d := reserve(mediaTenant, "race.png", "image/png", raceBytes)
+		call("PUT", mediaTenant, "/media/uploads/"+d.ID+"/content", "application/octet-stream", bytes.NewReader(raceBytes), 204)
+		raceIDs = append(raceIDs, d.ID)
+	}
+	var raceWG sync.WaitGroup
+	for _, id := range raceIDs {
+		raceWG.Add(1)
+		go func() {
+			defer raceWG.Done()
+			req, e := http.NewRequestWithContext(ctx, "POST", srv.URL+"/api/v1/t/"+mediaTenant+"/media/uploads/"+id+"/complete", nil)
+			if e != nil {
+				t.Error(e)
+				return
+			}
+			req.Header.Set("Idempotency-Key", "media-race-"+id)
+			res, e := http.DefaultClient.Do(req)
+			if e != nil {
+				t.Error(e)
+				return
+			}
+			res.Body.Close()
+			if res.StatusCode != 202 {
+				t.Errorf("race completion status=%d", res.StatusCode)
+			}
+		}()
+	}
+	raceWG.Wait()
 	n := 0
 	if e := filepath.WalkDir(filepath.Join(root, "originals"), func(_ string, d fs.DirEntry, e error) error {
 		if e == nil && !d.IsDir() {
@@ -170,8 +225,8 @@ func TestMediaPostgresHTTP(t *testing.T) {
 	}); e != nil {
 		t.Fatal(e)
 	}
-	if n != 1 {
-		t.Fatalf("content dedup wrote %d physical files", n)
+	if n != 4 {
+		t.Fatalf("content dedup wrote %d physical files, want 4 distinct contents", n)
 	}
 	for _, bad := range []struct {
 		mime string
@@ -185,6 +240,7 @@ func TestMediaPostgresHTTP(t *testing.T) {
 	link := func(id string, want int) {
 		call("POST", mediaTenant, "/products/"+mediaProduct+"/media", "application/json", strings.NewReader(fmt.Sprintf(`{"media_id":%q,"role":"gallery","sort_order":2}`, id)), want)
 	}
+	call("POST", mediaTenant, "/products/"+mediaArchivedProduct+"/media", "application/json", strings.NewReader(fmt.Sprintf(`{"media_id":%q,"role":"gallery"}`, *done.MediaID)), 409)
 	call("DELETE", mediaOtherTenant, "/media/"+*done.MediaID, "application/json", nil, 404)
 	link(*done.MediaID, 201)
 	call("DELETE", mediaTenant, "/media/"+*done.MediaID, "application/json", nil, 204)
@@ -200,7 +256,7 @@ func TestMediaPostgresHTTP(t *testing.T) {
 		}
 		return e
 	})
-	if n != 1 {
+	if n != 4 {
 		t.Fatal("logical deletion removed shared bytes")
 	}
 }

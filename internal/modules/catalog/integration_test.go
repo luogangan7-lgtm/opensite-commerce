@@ -8,6 +8,7 @@ package catalog
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -207,6 +208,41 @@ func TestPGCatalogPagination(t *testing.T) {
 		t.Fatalf("pagination lost products: %d", len(seen))
 	}
 }
+func TestPGCatalogVariantPagination(t *testing.T) {
+	a, _ := pgRouter(t)
+	// Fixture product ...337 has one PAGE option whose values are md5("c07-page-n").
+	base := "/api/v1/t/" + tenantA + "/products/33333333-3333-4333-8333-333333333337/variants"
+	for n := 1; n <= 45; n++ {
+		value := uuid.UUID(md5.Sum([]byte(fmt.Sprintf("c07-page-%d", n))))
+		expect(t, a, "POST", base, fmt.Sprintf(`{"sku":"PAGE-%s","option_value_ids":[%q]}`, uuid.NewString(), value), "", 201)
+	}
+	expect(t, a, "GET", base+"?cursor=bad", "", "", 400)
+	expect(t, a, "GET", base+"?page_size=101", "", "", 400)
+	seen := map[uuid.UUID]bool{}
+	sizes := []int{}
+	next := ""
+	for len(sizes) < 10 {
+		path := base
+		if next != "" {
+			path += "?cursor=" + url.QueryEscape(next)
+		}
+		page := decode[generated.VariantList](t, expect(t, a, "GET", path, "", "", 200))
+		sizes = append(sizes, len(page.Items))
+		for _, v := range page.Items {
+			if seen[v.Id] {
+				t.Fatalf("duplicate variant %s", v.Id)
+			}
+			seen[v.Id] = true
+		}
+		if page.NextCursor == nil {
+			break
+		}
+		next = *page.NextCursor
+	}
+	if fmt.Sprint(sizes) != "[20 20 5]" || len(seen) != 45 {
+		t.Fatalf("variant pages %v seen %d", sizes, len(seen))
+	}
+}
 func TestPGCatalogOptions(t *testing.T) {
 	a, _ := pgRouter(t)
 	base := "/api/v1/t/" + tenantA + "/products/33333333-3333-4333-8333-333333333333/variants"
@@ -220,6 +256,11 @@ func TestPGCatalogOptions(t *testing.T) {
 		return string(b)
 	}
 	expect(t, a, "POST", base, body(red, blue), "", 422)
+	// Every configured option (COLOR and SIZE) needs exactly one value.
+	expect(t, a, "POST", base, body(red), "", 422)
+	expect(t, a, "POST", base, `{"sku":"OPTIONS-EMPTY","option_value_ids":[]}`, "", 422)
+	// Repeated value IDs violate the contract's uniqueItems before persistence.
+	expect(t, a, "POST", base, body(large, red, red), "", 400)
 	expect(t, a, "POST", base, body(foreign), "", 422)
 	expect(t, a, "POST", base, body(missingID), "", 422)
 	expect(t, a, "POST", base, body(ambiguous), "", 422)

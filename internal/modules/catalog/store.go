@@ -80,6 +80,16 @@ func createVariant(ctx context.Context, q *db.Queries, tenant, product uuid.UUID
 		values = append(values, value)
 		keys = append(keys, option.String()+"="+uuid.UUID(value.ID.Bytes).String())
 	}
+	// Option assignments are immutable, so a variant must pick exactly one value
+	// for every configured option at creation. Values already proved unique per
+	// option and owned by this locked product, so equal counts mean full coverage.
+	configured, err := q.CountCatalogProductOptions(ctx, db.CountCatalogProductOptionsParams{TenantID: dbID(tenant), ProductID: dbID(product)})
+	if err != nil {
+		return db.AppProductVariant{}, err
+	}
+	if int64(len(seen)) != configured {
+		return db.AppProductVariant{}, invalid("A value is required for every product option")
+	}
 	sort.Strings(keys)
 	variant, err := q.CreateVariant(ctx, db.CreateVariantParams{TenantID: dbID(tenant), ProductID: dbID(product), Sku: sku, OptionKey: strings.Join(keys, ";")})
 	if err != nil {

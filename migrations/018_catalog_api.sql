@@ -13,6 +13,10 @@ ALTER TABLE app.media_uploads ADD COLUMN media_id uuid;
 ALTER TABLE app.media_uploads ADD CONSTRAINT media_uploads_completed_asset_fk
  FOREIGN KEY(tenant_id,media_id) REFERENCES app.media_assets(tenant_id,id)
  ON DELETE SET NULL (media_id);
+-- Indexes for keyset pages and for the media_id FK lookup on asset delete.
+CREATE INDEX products_by_tenant_created ON app.products(tenant_id,created_at,id);
+CREATE INDEX product_variants_by_product_created ON app.product_variants(tenant_id,product_id,created_at,id);
+CREATE INDEX media_uploads_by_media ON app.media_uploads(tenant_id,media_id) WHERE media_id IS NOT NULL;
 
 -- This service may associate tenant products and logically delete unpinned media.
 -- It may never update products or delete blob records/physical shared hash content.

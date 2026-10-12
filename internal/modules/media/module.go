@@ -7,6 +7,7 @@ package media
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -38,8 +39,11 @@ func New(c Config) *Service {
 	s := &Service{run: c.Run}
 	if c.Root == "" {
 		s.initErr = errors.New("media root is required")
-	} else {
-		s.store, s.initErr = local.New(c.Root, MaxBytes)
+	} else if s.store, s.initErr = local.New(c.Root, MaxBytes); s.initErr != nil {
+		// A configured but unusable root is a deployment error: refuse startup
+		// (bootstrap.New recovers this into a construction error) instead of
+		// serving healthy /healthz while every media call returns 503.
+		panic(fmt.Errorf("media root %q: %w", c.Root, s.initErr))
 	}
 	return s
 }

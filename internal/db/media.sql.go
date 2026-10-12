@@ -172,20 +172,20 @@ func (q *Queries) LockMediaUpload(ctx context.Context, arg LockMediaUploadParams
 	return i, err
 }
 
-const mediaProductExists = `-- name: MediaProductExists :one
-SELECT EXISTS(SELECT FROM app.products WHERE tenant_id=$1 AND id=$2)
+const mediaProductStatus = `-- name: MediaProductStatus :one
+SELECT lifecycle_status FROM app.products WHERE tenant_id=$1 AND id=$2
 `
 
-type MediaProductExistsParams struct {
+type MediaProductStatusParams struct {
 	TenantID pgtype.UUID `json:"tenant_id"`
 	ID       pgtype.UUID `json:"id"`
 }
 
-func (q *Queries) MediaProductExists(ctx context.Context, arg MediaProductExistsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, mediaProductExists, arg.TenantID, arg.ID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
+func (q *Queries) MediaProductStatus(ctx context.Context, arg MediaProductStatusParams) (string, error) {
+	row := q.db.QueryRow(ctx, mediaProductStatus, arg.TenantID, arg.ID)
+	var lifecycle_status string
+	err := row.Scan(&lifecycle_status)
+	return lifecycle_status, err
 }
 
 const reserveMediaUpload = `-- name: ReserveMediaUpload :one
@@ -253,7 +253,11 @@ func (q *Queries) StoreMediaUploadContent(ctx context.Context, arg StoreMediaUpl
 const upsertReadyMediaBlob = `-- name: UpsertReadyMediaBlob :one
 INSERT INTO app.media_blobs (tenant_id,backend,storage_key,sha256,size_bytes,status)
 VALUES ($1,'local',$2,$3,$4,'ready')
-ON CONFLICT (tenant_id,sha256,size_bytes) DO UPDATE SET status='ready'
+ON CONFLICT (tenant_id,sha256,size_bytes) DO UPDATE SET
+ backend = CASE WHEN media_blobs.status='ready' THEN media_blobs.backend ELSE EXCLUDED.backend END,
+ storage_key = CASE WHEN media_blobs.status='ready' THEN media_blobs.storage_key ELSE EXCLUDED.storage_key END,
+ status = 'ready'
+WHERE media_blobs.status IN ('ready','staging')
 RETURNING tenant_id, id, backend, storage_key, sha256, size_bytes, status, created_at
 `
 
@@ -264,6 +268,9 @@ type UpsertReadyMediaBlobParams struct {
 	SizeBytes  int64       `json:"size_bytes"`
 }
 
+// The caller has just verified the bytes at the LocalFS key. A conflicting READY
+// row is reused unchanged; a STAGING row is taken over with the verified key; a
+// DELETING row is never revived (no row returned -> caller reports retryable 409).
 func (q *Queries) UpsertReadyMediaBlob(ctx context.Context, arg UpsertReadyMediaBlobParams) (AppMediaBlob, error) {
 	row := q.db.QueryRow(ctx, upsertReadyMediaBlob,
 		arg.TenantID,

@@ -31,7 +31,10 @@ VALUES ($1, $2, $3, $4) RETURNING *;
 SELECT * FROM app.product_variants WHERE tenant_id = $1 AND product_id = $2 AND id = $3;
 
 -- name: ListVariants :many
-SELECT * FROM app.product_variants WHERE tenant_id = $1 AND product_id = $2 ORDER BY id;
+SELECT * FROM app.product_variants
+WHERE tenant_id = sqlc.arg(tenant_id) AND product_id = sqlc.arg(product_id)
+  AND (NOT sqlc.arg(has_cursor)::boolean OR (created_at, id) > (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_id)::uuid))
+ORDER BY created_at, id LIMIT sqlc.arg(page_size);
 
 -- name: UpdateVariant :one
 UPDATE app.product_variants SET sku = COALESCE(sqlc.narg(sku)::text, sku),
@@ -63,7 +66,12 @@ SELECT * FROM app.products WHERE tenant_id = $1 AND id = $2 FOR UPDATE;
 
 -- name: ListCatalogVariantOptionValues :many
 SELECT variant_id, value_id FROM app.variant_option_values
-WHERE tenant_id = $1 AND product_id = $2 ORDER BY variant_id, option_id;
+WHERE tenant_id = sqlc.arg(tenant_id) AND product_id = sqlc.arg(product_id)
+  AND variant_id = ANY(sqlc.arg(variant_ids)::uuid[])
+ORDER BY variant_id, option_id;
+
+-- name: CountCatalogProductOptions :one
+SELECT count(*) FROM app.product_options WHERE tenant_id = $1 AND product_id = $2;
 
 -- name: GetProductVariants :many
 SELECT id, sku, option_key, created_at

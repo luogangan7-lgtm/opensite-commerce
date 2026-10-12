@@ -97,6 +97,22 @@ func (q *Queries) ArchiveVariant(ctx context.Context, arg ArchiveVariantParams) 
 	return i, err
 }
 
+const countCatalogProductOptions = `-- name: CountCatalogProductOptions :one
+SELECT count(*) FROM app.product_options WHERE tenant_id = $1 AND product_id = $2
+`
+
+type CountCatalogProductOptionsParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	ProductID pgtype.UUID `json:"product_id"`
+}
+
+func (q *Queries) CountCatalogProductOptions(ctx context.Context, arg CountCatalogProductOptionsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countCatalogProductOptions, arg.TenantID, arg.ProductID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createProduct = `-- name: CreateProduct :one
 INSERT INTO app.products (tenant_id, product_code, lifecycle_status)
 VALUES ($1, $2, 'draft') RETURNING tenant_id, id, product_code, product_code_normalized, lifecycle_status, created_at, version
@@ -305,12 +321,15 @@ func (q *Queries) GetVariant(ctx context.Context, arg GetVariantParams) (AppProd
 
 const listCatalogVariantOptionValues = `-- name: ListCatalogVariantOptionValues :many
 SELECT variant_id, value_id FROM app.variant_option_values
-WHERE tenant_id = $1 AND product_id = $2 ORDER BY variant_id, option_id
+WHERE tenant_id = $1 AND product_id = $2
+  AND variant_id = ANY($3::uuid[])
+ORDER BY variant_id, option_id
 `
 
 type ListCatalogVariantOptionValuesParams struct {
-	TenantID  pgtype.UUID `json:"tenant_id"`
-	ProductID pgtype.UUID `json:"product_id"`
+	TenantID   pgtype.UUID   `json:"tenant_id"`
+	ProductID  pgtype.UUID   `json:"product_id"`
+	VariantIds []pgtype.UUID `json:"variant_ids"`
 }
 
 type ListCatalogVariantOptionValuesRow struct {
@@ -319,7 +338,7 @@ type ListCatalogVariantOptionValuesRow struct {
 }
 
 func (q *Queries) ListCatalogVariantOptionValues(ctx context.Context, arg ListCatalogVariantOptionValuesParams) ([]ListCatalogVariantOptionValuesRow, error) {
-	rows, err := q.db.Query(ctx, listCatalogVariantOptionValues, arg.TenantID, arg.ProductID)
+	rows, err := q.db.Query(ctx, listCatalogVariantOptionValues, arg.TenantID, arg.ProductID, arg.VariantIds)
 	if err != nil {
 		return nil, err
 	}
@@ -388,16 +407,30 @@ func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]A
 }
 
 const listVariants = `-- name: ListVariants :many
-SELECT tenant_id, id, product_id, sku, sku_normalized, option_key, created_at, version, lifecycle_status FROM app.product_variants WHERE tenant_id = $1 AND product_id = $2 ORDER BY id
+SELECT tenant_id, id, product_id, sku, sku_normalized, option_key, created_at, version, lifecycle_status FROM app.product_variants
+WHERE tenant_id = $1 AND product_id = $2
+  AND (NOT $3::boolean OR (created_at, id) > ($4::timestamptz, $5::uuid))
+ORDER BY created_at, id LIMIT $6
 `
 
 type ListVariantsParams struct {
-	TenantID  pgtype.UUID `json:"tenant_id"`
-	ProductID pgtype.UUID `json:"product_id"`
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ProductID       pgtype.UUID        `json:"product_id"`
+	HasCursor       bool               `json:"has_cursor"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        pgtype.UUID        `json:"cursor_id"`
+	PageSize        int32              `json:"page_size"`
 }
 
 func (q *Queries) ListVariants(ctx context.Context, arg ListVariantsParams) ([]AppProductVariant, error) {
-	rows, err := q.db.Query(ctx, listVariants, arg.TenantID, arg.ProductID)
+	rows, err := q.db.Query(ctx, listVariants,
+		arg.TenantID,
+		arg.ProductID,
+		arg.HasCursor,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}

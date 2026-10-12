@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
@@ -110,16 +111,18 @@ func usable(u db.AppMediaUpload) error {
 	return nil
 }
 func (s *Service) PutMediaUploadContent(ctx context.Context, r httpapi.PutMediaUploadContentRequestObject) (httpapi.PutMediaUploadContentResponseObject, error) {
-	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
+	// Read the size-capped body first so a slow client never holds a pooled
+	// connection or the upload row lock while streaming.
+	b, err := readContent(ctx, r.Body)
+	if err != nil {
+		return nil, err
+	}
+	err = s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		u, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
 		if e != nil {
 			return e
 		}
 		if e = usable(u); e != nil {
-			return e
-		}
-		b, e := readContent(ctx, r.Body)
-		if e != nil {
 			return e
 		}
 		if _, _, _, e = verify(u, b); e != nil {
@@ -170,6 +173,10 @@ func (s *Service) CompleteMediaUpload(ctx context.Context, r httpapi.CompleteMed
 			return e
 		}
 		blob, e := q.UpsertReadyMediaBlob(ctx, db.UpsertReadyMediaBlobParams{TenantID: dbID(r.TenantId), StorageKey: u.TemporaryKey.String, Sha256: u.ExpectedSha256, SizeBytes: int64(len(b))})
+		if errors.Is(e, pgx.ErrNoRows) {
+			// Same content is being deleted; never revive it. Retry after deletion.
+			return conflict("Identical content is being deleted; retry completion later")
+		}
 		if e != nil {
 			return e
 		}
