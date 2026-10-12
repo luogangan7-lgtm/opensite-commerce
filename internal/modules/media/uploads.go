@@ -17,12 +17,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/oapi-codegen/nullable"
 )
 
-func session(u db.AppMediaUpload) generated.UploadSession {
-	out := generated.UploadSession{Id: uuid.UUID(u.ID.Bytes), Status: generated.UploadSessionStatus(u.Status), ExpiresAt: u.ExpiresAt.Time}
+func session(u db.AppMediaUpload) httpapi.UploadSession {
+	out := httpapi.UploadSession{Id: uuid.UUID(u.ID.Bytes), Status: httpapi.UploadSessionStatus(u.Status), ExpiresAt: u.ExpiresAt.Time}
 	if u.MediaID.Valid {
 		out.MediaId = nullable.NewNullableWithValue(uuid.UUID(u.MediaID.Bytes))
 	} else {
@@ -31,7 +31,7 @@ func session(u db.AppMediaUpload) generated.UploadSession {
 	return out
 }
 func declared(u db.AppMediaUpload) string { return u.DeclaredMime.String }
-func (s *Service) CreateMediaUpload(ctx context.Context, r generated.CreateMediaUploadRequestObject) (generated.CreateMediaUploadResponseObject, error) {
+func (s *Service) CreateMediaUpload(ctx context.Context, r httpapi.CreateMediaUploadRequestObject) (httpapi.CreateMediaUploadResponseObject, error) {
 	var result db.AppMediaUpload
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		if r.Body == nil {
@@ -64,7 +64,7 @@ func (s *Service) CreateMediaUpload(ctx context.Context, r generated.CreateMedia
 	if err != nil {
 		return nil, err
 	}
-	return generated.CreateMediaUpload201JSONResponse(session(result)), nil
+	return httpapi.CreateMediaUpload201JSONResponse(session(result)), nil
 }
 
 func readContent(ctx context.Context, r io.Reader) ([]byte, error) {
@@ -109,7 +109,7 @@ func usable(u db.AppMediaUpload) error {
 	}
 	return nil
 }
-func (s *Service) PutMediaUploadContent(ctx context.Context, r generated.PutMediaUploadContentRequestObject) (generated.PutMediaUploadContentResponseObject, error) {
+func (s *Service) PutMediaUploadContent(ctx context.Context, r httpapi.PutMediaUploadContentRequestObject) (httpapi.PutMediaUploadContentResponseObject, error) {
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		u, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
 		if e != nil {
@@ -134,9 +134,9 @@ func (s *Service) PutMediaUploadContent(ctx context.Context, r generated.PutMedi
 	if err != nil {
 		return nil, err
 	}
-	return generated.PutMediaUploadContent204Response{}, nil
+	return httpapi.PutMediaUploadContent204Response{}, nil
 }
-func (s *Service) CompleteMediaUpload(ctx context.Context, r generated.CompleteMediaUploadRequestObject) (generated.CompleteMediaUploadResponseObject, error) {
+func (s *Service) CompleteMediaUpload(ctx context.Context, r httpapi.CompleteMediaUploadRequestObject) (httpapi.CompleteMediaUploadResponseObject, error) {
 	var result db.AppMediaUpload
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		u, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
@@ -188,5 +188,5 @@ func (s *Service) CompleteMediaUpload(ctx context.Context, r generated.CompleteM
 	if err != nil {
 		return nil, err
 	}
-	return generated.CompleteMediaUpload202JSONResponse(session(result)), nil
+	return httpapi.CompleteMediaUpload202JSONResponse(session(result)), nil
 }

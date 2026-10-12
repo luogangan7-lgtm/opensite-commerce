@@ -17,7 +17,6 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/storage/local"
 )
 
@@ -26,7 +25,7 @@ type Config struct {
 	Root string
 }
 type Service struct {
-	generated.StrictServerInterface
+	httpapi.StrictServerInterface
 	run     func(context.Context, string, func(*db.Queries) error) error
 	store   *local.Store
 	initErr error

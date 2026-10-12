@@ -6,11 +6,11 @@ package media
 import (
 	"context"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
-func (s *Service) LinkProductMedia(ctx context.Context, r generated.LinkProductMediaRequestObject) (generated.LinkProductMediaResponseObject, error) {
-	var result generated.ProductMedia
+func (s *Service) LinkProductMedia(ctx context.Context, r httpapi.LinkProductMediaRequestObject) (httpapi.LinkProductMediaResponseObject, error) {
+	var result httpapi.ProductMedia
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		if r.Body == nil {
 			return invalid("Media link is required")
@@ -42,15 +42,15 @@ func (s *Service) LinkProductMedia(ctx context.Context, r generated.LinkProductM
 		if e != nil {
 			return e
 		}
-		result = generated.ProductMedia{ProductId: r.ProductId, MediaId: b.MediaId, Role: generated.ProductMediaRole(b.Role), SortOrder: order}
+		result = httpapi.ProductMedia{ProductId: r.ProductId, MediaId: b.MediaId, Role: httpapi.ProductMediaRole(b.Role), SortOrder: order}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return generated.LinkProductMedia201JSONResponse(result), nil
+	return httpapi.LinkProductMedia201JSONResponse(result), nil
 }
-func (s *Service) DeleteMedia(ctx context.Context, r generated.DeleteMediaRequestObject) (generated.DeleteMediaResponseObject, error) {
+func (s *Service) DeleteMedia(ctx context.Context, r httpapi.DeleteMediaRequestObject) (httpapi.DeleteMediaResponseObject, error) {
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		if _, e := q.LockMediaAsset(ctx, db.LockMediaAssetParams{TenantID: dbID(r.TenantId), ID: dbID(r.MediaId)}); e != nil {
 			return e
@@ -63,5 +63,5 @@ func (s *Service) DeleteMedia(ctx context.Context, r generated.DeleteMediaReques
 	if err != nil {
 		return nil, err
 	}
-	return generated.DeleteMedia204Response{}, nil
+	return httpapi.DeleteMedia204Response{}, nil
 }

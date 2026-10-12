@@ -9,17 +9,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
-func productDTO(p db.AppProduct) generated.Product {
-	return generated.Product{Id: uuid.UUID(p.ID.Bytes), ProductCode: p.ProductCode, LifecycleStatus: generated.ProductLifecycleStatus(p.LifecycleStatus), CreatedAt: p.CreatedAt.Time, Version: p.Version}
+func productDTO(p db.AppProduct) httpapi.Product {
+	return httpapi.Product{Id: uuid.UUID(p.ID.Bytes), ProductCode: p.ProductCode, LifecycleStatus: httpapi.ProductLifecycleStatus(p.LifecycleStatus), CreatedAt: p.CreatedAt.Time, Version: p.Version}
 }
-func variantDTO(v db.AppProductVariant, values []uuid.UUID) generated.Variant {
+func variantDTO(v db.AppProductVariant, values []uuid.UUID) httpapi.Variant {
 	if values == nil {
 		values = []uuid.UUID{}
 	}
-	return generated.Variant{Id: uuid.UUID(v.ID.Bytes), ProductId: uuid.UUID(v.ProductID.Bytes), Sku: v.Sku, LifecycleStatus: generated.VariantLifecycleStatus(v.LifecycleStatus), CreatedAt: v.CreatedAt.Time, Version: v.Version, OptionValueIds: values}
+	return httpapi.Variant{Id: uuid.UUID(v.ID.Bytes), ProductId: uuid.UUID(v.ProductID.Bytes), Sku: v.Sku, LifecycleStatus: httpapi.VariantLifecycleStatus(v.LifecycleStatus), CreatedAt: v.CreatedAt.Time, Version: v.Version, OptionValueIds: values}
 }
 func optionValues(ctx context.Context, q *db.Queries, tenant, product uuid.UUID) (map[uuid.UUID][]uuid.UUID, error) {
 	rows, err := q.ListCatalogVariantOptionValues(ctx, db.ListCatalogVariantOptionValuesParams{TenantID: dbID(tenant), ProductID: dbID(product)})
@@ -48,7 +48,7 @@ func optionalLifecycle(value *string) (pgtype.Text, error) {
 	return pgtype.Text{String: *value, Valid: err == nil}, err
 }
 
-func (s *Service) CreateProduct(ctx context.Context, r generated.CreateProductRequestObject) (generated.CreateProductResponseObject, error) {
+func (s *Service) CreateProduct(ctx context.Context, r httpapi.CreateProductRequestObject) (httpapi.CreateProductResponseObject, error) {
 	if _, err := authorize(ctx, r.TenantId); err != nil {
 		return nil, err
 	}
@@ -68,9 +68,9 @@ func (s *Service) CreateProduct(ctx context.Context, r generated.CreateProductRe
 	if err != nil {
 		return nil, err
 	}
-	return generated.CreateProduct201JSONResponse(productDTO(result)), nil
+	return httpapi.CreateProduct201JSONResponse(productDTO(result)), nil
 }
-func (s *Service) GetProduct(ctx context.Context, r generated.GetProductRequestObject) (generated.GetProductResponseObject, error) {
+func (s *Service) GetProduct(ctx context.Context, r httpapi.GetProductRequestObject) (httpapi.GetProductResponseObject, error) {
 	var result db.AppProduct
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		var e error
@@ -80,9 +80,9 @@ func (s *Service) GetProduct(ctx context.Context, r generated.GetProductRequestO
 	if err != nil {
 		return nil, err
 	}
-	return generated.GetProduct200JSONResponse(productDTO(result)), nil
+	return httpapi.GetProduct200JSONResponse(productDTO(result)), nil
 }
-func (s *Service) ListProducts(ctx context.Context, r generated.ListProductsRequestObject) (generated.ListProductsResponseObject, error) {
+func (s *Service) ListProducts(ctx context.Context, r httpapi.ListProductsRequestObject) (httpapi.ListProductsResponseObject, error) {
 	if _, err := authorize(ctx, r.TenantId); err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (s *Service) ListProducts(ctx context.Context, r generated.ListProductsRequ
 	if err != nil {
 		return nil, err
 	}
-	result := generated.ProductPage{Items: []generated.Product{}}
+	result := httpapi.ProductPage{Items: []httpapi.Product{}}
 	err = s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		rows, e := q.ListProducts(ctx, db.ListProductsParams{TenantID: dbID(r.TenantId), HasCursor: has, CursorCreatedAt: pgtype.Timestamptz{Time: at, Valid: true}, CursorID: dbID(id), PageSize: limit + 1})
 		if e != nil {
@@ -117,9 +117,9 @@ func (s *Service) ListProducts(ctx context.Context, r generated.ListProductsRequ
 	if err != nil {
 		return nil, err
 	}
-	return generated.ListProducts200JSONResponse(result), nil
+	return httpapi.ListProducts200JSONResponse(result), nil
 }
-func (s *Service) UpdateProduct(ctx context.Context, r generated.UpdateProductRequestObject) (generated.UpdateProductResponseObject, error) {
+func (s *Service) UpdateProduct(ctx context.Context, r httpapi.UpdateProductRequestObject) (httpapi.UpdateProductResponseObject, error) {
 	if _, err := authorize(ctx, r.TenantId); err != nil {
 		return nil, err
 	}
@@ -161,9 +161,9 @@ func (s *Service) UpdateProduct(ctx context.Context, r generated.UpdateProductRe
 	if err != nil {
 		return nil, err
 	}
-	return generated.UpdateProduct200JSONResponse(productDTO(result)), nil
+	return httpapi.UpdateProduct200JSONResponse(productDTO(result)), nil
 }
-func (s *Service) ArchiveProduct(ctx context.Context, r generated.ArchiveProductRequestObject) (generated.ArchiveProductResponseObject, error) {
+func (s *Service) ArchiveProduct(ctx context.Context, r httpapi.ArchiveProductRequestObject) (httpapi.ArchiveProductResponseObject, error) {
 	if _, err := authorize(ctx, r.TenantId); err != nil {
 		return nil, err
 	}
@@ -185,9 +185,9 @@ func (s *Service) ArchiveProduct(ctx context.Context, r generated.ArchiveProduct
 	if err != nil {
 		return nil, err
 	}
-	return generated.ArchiveProduct204Response{}, nil
+	return httpapi.ArchiveProduct204Response{}, nil
 }
-func (s *Service) CreateVariant(ctx context.Context, r generated.CreateVariantRequestObject) (generated.CreateVariantResponseObject, error) {
+func (s *Service) CreateVariant(ctx context.Context, r httpapi.CreateVariantRequestObject) (httpapi.CreateVariantResponseObject, error) {
 	if _, err := authorize(ctx, r.TenantId); err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (s *Service) CreateVariant(ctx context.Context, r generated.CreateVariantRe
 	if err != nil {
 		return nil, err
 	}
-	var result generated.Variant
+	var result httpapi.Variant
 	err = s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		v, e := createVariant(ctx, q, r.TenantId, r.ProductId, sku, r.Body.OptionValueIds)
 		if e != nil {
@@ -214,10 +214,10 @@ func (s *Service) CreateVariant(ctx context.Context, r generated.CreateVariantRe
 	if err != nil {
 		return nil, err
 	}
-	return generated.CreateVariant201JSONResponse(result), nil
+	return httpapi.CreateVariant201JSONResponse(result), nil
 }
-func (s *Service) GetVariant(ctx context.Context, r generated.GetVariantRequestObject) (generated.GetVariantResponseObject, error) {
-	var result generated.Variant
+func (s *Service) GetVariant(ctx context.Context, r httpapi.GetVariantRequestObject) (httpapi.GetVariantResponseObject, error) {
+	var result httpapi.Variant
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		v, e := q.GetVariant(ctx, db.GetVariantParams{TenantID: dbID(r.TenantId), ProductID: dbID(r.ProductId), ID: dbID(r.VariantId)})
 		if e != nil {
@@ -233,10 +233,10 @@ func (s *Service) GetVariant(ctx context.Context, r generated.GetVariantRequestO
 	if err != nil {
 		return nil, err
 	}
-	return generated.GetVariant200JSONResponse(result), nil
+	return httpapi.GetVariant200JSONResponse(result), nil
 }
-func (s *Service) ListVariants(ctx context.Context, r generated.ListVariantsRequestObject) (generated.ListVariantsResponseObject, error) {
-	result := generated.VariantList{Items: []generated.Variant{}}
+func (s *Service) ListVariants(ctx context.Context, r httpapi.ListVariantsRequestObject) (httpapi.ListVariantsResponseObject, error) {
+	result := httpapi.VariantList{Items: []httpapi.Variant{}}
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		if _, e := q.GetProduct(ctx, db.GetProductParams{TenantID: dbID(r.TenantId), ID: dbID(r.ProductId)}); e != nil {
 			return e
@@ -257,7 +257,7 @@ func (s *Service) ListVariants(ctx context.Context, r generated.ListVariantsRequ
 	if err != nil {
 		return nil, err
 	}
-	return generated.ListVariants200JSONResponse(result), nil
+	return httpapi.ListVariants200JSONResponse(result), nil
 }
 func writableVariant(ctx context.Context, q *db.Queries, tenant, product, variant uuid.UUID, version int64) error {
 	p, err := q.GetCatalogProductForUpdate(ctx, db.GetCatalogProductForUpdateParams{TenantID: dbID(tenant), ID: dbID(product)})
@@ -275,7 +275,7 @@ func writableVariant(ctx context.Context, q *db.Queries, tenant, product, varian
 	}
 	return requireCurrent(v.Version, version, v.LifecycleStatus)
 }
-func (s *Service) UpdateVariant(ctx context.Context, r generated.UpdateVariantRequestObject) (generated.UpdateVariantResponseObject, error) {
+func (s *Service) UpdateVariant(ctx context.Context, r httpapi.UpdateVariantRequestObject) (httpapi.UpdateVariantResponseObject, error) {
 	if _, err := authorize(ctx, r.TenantId); err != nil {
 		return nil, err
 	}
@@ -302,7 +302,7 @@ func (s *Service) UpdateVariant(ctx context.Context, r generated.UpdateVariantRe
 	if err != nil {
 		return nil, err
 	}
-	var result generated.Variant
+	var result httpapi.Variant
 	err = s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		if e := writableVariant(ctx, q, r.TenantId, r.ProductId, r.VariantId, version); e != nil {
 			return e
@@ -321,9 +321,9 @@ func (s *Service) UpdateVariant(ctx context.Context, r generated.UpdateVariantRe
 	if err != nil {
 		return nil, err
 	}
-	return generated.UpdateVariant200JSONResponse(result), nil
+	return httpapi.UpdateVariant200JSONResponse(result), nil
 }
-func (s *Service) ArchiveVariant(ctx context.Context, r generated.ArchiveVariantRequestObject) (generated.ArchiveVariantResponseObject, error) {
+func (s *Service) ArchiveVariant(ctx context.Context, r httpapi.ArchiveVariantRequestObject) (httpapi.ArchiveVariantResponseObject, error) {
 	if _, err := authorize(ctx, r.TenantId); err != nil {
 		return nil, err
 	}
@@ -341,5 +341,5 @@ func (s *Service) ArchiveVariant(ctx context.Context, r generated.ArchiveVariant
 	if err != nil {
 		return nil, err
 	}
-	return generated.ArchiveVariant204Response{}, nil
+	return httpapi.ArchiveVariant204Response{}, nil
 }

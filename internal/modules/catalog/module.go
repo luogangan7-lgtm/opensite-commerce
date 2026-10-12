@@ -11,14 +11,13 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
 )
 
 type Config struct {
 	Run func(context.Context, string, func(*db.Queries) error) error
 }
 type Service struct {
-	generated.StrictServerInterface
+	httpapi.StrictServerInterface
 	run func(context.Context, string, func(*db.Queries) error) error
 }
 
