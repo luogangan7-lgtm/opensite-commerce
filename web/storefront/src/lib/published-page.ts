@@ -1,20 +1,23 @@
 /** Responsibility: load a published view and prepare the top-level SSR response before rendering.
  * Dependencies: public API client, presentation validation, UI copy; callers: published Astro routes.
- * Invariants: one request-scoped read, URL hostname only, no cross-host cache; children only render.
+ * Invariants: one request-scoped read, URL hostname/canonical only, no cross-host cache; children only render.
  */
 import type { AstroGlobal } from 'astro';
 import { readPublishedSite, PublicSiteNotFoundError, type PublishedSite } from '@opensite/api-client';
 import { copy } from './copy';
 import { normalizeHostname, readAPIOrigin } from './presentation';
+import { requestCanonical } from './host-policy';
 
 export async function preparePublishedPage(
-  context: Pick<AstroGlobal, 'url' | 'response'>,
+  context: Pick<AstroGlobal, 'url' | 'request' | 'response'>,
   path: string,
   apiOrigin = process.env.OSC_READ_API_ORIGIN ?? 'http://127.0.0.1:8080',
 ) {
   let site: PublishedSite | undefined;
   let status: 404 | 502 | undefined;
+  const canonical = requestCanonical(context);
   try {
+    if (!canonical) throw new PublicSiteNotFoundError();
     site = await readPublishedSite(readAPIOrigin(apiOrigin), normalizeHostname(context.url.hostname));
   } catch (error) {
     status = error instanceof PublicSiteNotFoundError ? 404 : 502;
@@ -29,7 +32,7 @@ export async function preparePublishedPage(
   const description = product?.description ?? (isList ? site?.description : page?.description) ?? '';
   context.response.status = status ?? 200;
   context.response.headers.set('Cache-Control', 'no-store');
-  return { site, status, ui, isList, product, page, title, description };
+  return { site, status, ui, isList, product, page, title, description, canonical };
 }
 
 export type PublishedPageView = Awaited<ReturnType<typeof preparePublishedPage>>;

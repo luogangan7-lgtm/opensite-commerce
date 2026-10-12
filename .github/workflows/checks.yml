@@ -77,6 +77,7 @@ jobs:
           sqlc version
       - name: Typechecked pgx v5/sqlc integration and generated-code cleanliness
         run: |
+          psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f tests/fixtures/catalog_api.sql
           ./scripts/check_codegen.sh
           # Generated code and module files must be committed, not regenerated differently per build.
           git diff --exit-code -- go.mod go.sum internal/db

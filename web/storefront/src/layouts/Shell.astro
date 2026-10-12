@@ -12,12 +12,11 @@ import '../styles.css';
 import { copy } from '../lib/copy';
 import { safeHref } from '../lib/presentation';
 interface Props {
-  title: string; description: string; siteTitle?: string; locale?: string;
+  title: string; description: string; canonical: string | undefined; siteTitle?: string; locale?: string;
   navigation?: { label: string; href: string }[]; noindex?: boolean;
 }
-const { title, description, siteTitle, locale = 'en', navigation = [], noindex = false } = Astro.props;
+const { title, description, canonical, siteTitle, locale = 'en', navigation = [], noindex = false } = Astro.props;
 const ui = copy(locale);
-const canonical = new URL(Astro.url.pathname, Astro.url.origin).href;
 const links = navigation.map(link => ({ ...link, href: safeHref(link.href) })).filter(link => link.href);
 ---
 <!doctype html>
@@ -27,7 +26,7 @@ const links = navigation.map(link => ({ ...link, href: safeHref(link.href) })).f
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <link rel="canonical" href={canonical} />
+    {canonical && <link rel="canonical" href={canonical} />}
     {noindex && <meta name="robots" content="noindex" />}
   </head>
   <body>

@@ -10,10 +10,10 @@ import ProductSummary from './ProductSummary';
 import { formatAmount } from '../lib/presentation';
 import type { PublishedPageView } from '../lib/published-page';
 interface Props { view: PublishedPageView }
-const { site, status, ui, isList, product, page, title, description } = Astro.props.view;
+const { site, status, ui, isList, product, page, title, description, canonical } = Astro.props.view;
 ---
-{status ? <ErrorPage status={status} /> : site && <Shell
-  title={`${title} | ${site.title}`} description={description}
+{status ? <ErrorPage status={status} canonical={canonical} /> : site && <Shell
+  title={`${title} | ${site.title}`} description={description} canonical={canonical}
   siteTitle={site.title} locale={site.locale} navigation={site.navigation}>
   <div data-storefront-ready="true" data-release-id={site.release_id}>
     <h1>{title}</h1>

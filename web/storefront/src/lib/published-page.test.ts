@@ -4,6 +4,11 @@
 import { describe, expect, test } from 'bun:test';
 import type { PublishedSite } from '@opensite/api-client';
 import { preparePublishedPage } from './published-page';
+import { readAllowedHosts } from './host-policy';
+
+function requestContext(url: URL, response: { status: number; statusText: string; headers: Headers }, headers: Record<string, string> = {}) {
+  return { url, response, request: new Request(url, { headers: { host: url.host, ...headers } }) };
+}
 
 const site: PublishedSite = {
   site_id: 'test-site', release_id: 'test-release', hostname: 'shop.example.test', locale: 'en',
@@ -14,6 +19,20 @@ const site: PublishedSite = {
 };
 
 describe('published page prepares the route response before rendering', () => {
+  test('canonical stays with each top-level request origin/path and excludes query/fragment', async () => {
+    const upstream = Bun.serve({ port: 0, fetch() { return Response.json(site); } });
+    try {
+      for (const [requested, path, expected] of [
+        ['http://127.0.0.1:4321/guides/setup?campaign=one#section', '/guides/setup', 'http://127.0.0.1:4321/guides/setup'],
+        ['https://other.example.test/products/tote?campaign=two#details', '/products/tote', 'https://other.example.test/products/tote'],
+        ['https://other.example.test/missing?campaign=three#details', '/missing', 'https://other.example.test/missing'],
+      ] as const) {
+        const response = { status: 200, statusText: 'OK', headers: new Headers() };
+        const view = await preparePublishedPage(requestContext(new URL(requested), response), path, upstream.url.origin);
+        expect(view.canonical).toBe(expected);
+      }
+    } finally { upstream.stop(true); }
+  });
   test('all successful views reuse exactly one request and return page/product metadata', async () => {
     const requests: URL[] = [];
     const upstream = Bun.serve({ port: 0, fetch(request) {
@@ -26,7 +45,7 @@ describe('published page prepares the route response before rendering', () => {
         ['/products', 'Products', 'Published description'], ['/products/tote', 'Tote', 'Tote description'],
       ]) {
         const response = { status: 200, statusText: 'OK', headers: new Headers() };
-        const view = await preparePublishedPage({ url: new URL(`https://SHOP.Example.test${path}`), response }, path!, upstream.url.origin);
+        const view = await preparePublishedPage(requestContext(new URL(`https://SHOP.Example.test${path}`), response), path!, upstream.url.origin);
         expect(response.status).toBe(200);
         expect(response.headers.get('Cache-Control')).toBe('no-store');
         expect(view.status).toBeUndefined();
@@ -46,7 +65,7 @@ describe('published page prepares the route response before rendering', () => {
       ] as const) {
         upstreamStatus = apiStatus;
         const response = { status: 200, statusText: 'OK', headers: new Headers() };
-        const view = await preparePublishedPage({ url: new URL(`https://shop.example.test${path}`), response }, path, upstream.url.origin);
+        const view = await preparePublishedPage(requestContext(new URL(`https://shop.example.test${path}`), response), path, upstream.url.origin);
         expect(view.status).toBe(expected);
         expect(response.status).toBe(expected);
         expect(response.headers.get('Cache-Control')).toBe('no-store');
@@ -55,9 +74,32 @@ describe('published page prepares the route response before rendering', () => {
   });
   test('invalid server configuration fails closed before rendering', async () => {
     const response = { status: 200, statusText: 'OK', headers: new Headers() };
-    const view = await preparePublishedPage({ url: new URL('https://shop.example.test/'), response }, '/', 'file:///private');
+    const view = await preparePublishedPage(requestContext(new URL('https://shop.example.test/'), response), '/', 'file:///private');
     expect(view.status).toBe(502);
     expect(response.status).toBe(502);
     expect(response.headers.get('Cache-Control')).toBe('no-store');
+  });
+  test('adapter fallback and forwarded host cannot select another tenant', async () => {
+    let requests = 0;
+    const upstream = Bun.serve({ port: 0, fetch() { requests++; return Response.json(site); } });
+    try {
+      const spoofed: Record<string, string>[] = [{ host: 'unknown.example.test:4321' }, { 'x-forwarded-host': 'localhost:4321' },
+        { 'x-forwarded-proto': 'https' }, { 'x-forwarded-port': '443' }, { forwarded: 'host=localhost;proto=https' }];
+      for (const headers of spoofed) {
+        const response = { status: 200, statusText: 'OK', headers: new Headers() };
+        const view = await preparePublishedPage(requestContext(new URL('http://localhost:4321/'), response, headers), '/', upstream.url.origin);
+        expect(view.status).toBe(404);
+        expect(response.status).toBe(404);
+        expect(view.canonical).toBeUndefined();
+      }
+      expect(requests).toBe(0);
+    } finally { upstream.stop(true); }
+  });
+  test('configured host allowlist is explicit and contains no wildcard or URL authority', () => {
+    expect(readAllowedHosts(undefined)).toEqual(['127.0.0.1', 'localhost']);
+    expect(readAllowedHosts('SHOP.Example.test.,other.example.test')).toEqual(['shop.example.test', 'other.example.test']);
+    for (const value of ['', '*', '*.example.test', 'https://shop.example.test', 'shop.example.test:443', 'user@shop.example.test']) {
+      expect(() => readAllowedHosts(value)).toThrow();
+    }
   });
 });

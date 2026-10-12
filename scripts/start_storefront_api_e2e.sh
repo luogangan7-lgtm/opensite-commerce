@@ -23,7 +23,7 @@ if source.fragment or any(key not in allowed for key, _ in params):
 password = secrets.token_hex(32)
 role = 'c09_public_e2e'
 # A reused cluster role must already be OUR restricted disposable fixture.
-# Never repair, assume control of, or grant capabilities to a stranger's role.
+# Never repair, assume control of, or grant capabilities to an unrelated role.
 sql = """
 BEGIN;
 SELECT pg_advisory_xact_lock(18000902::bigint);
@@ -71,7 +71,7 @@ PY
 )"
 export OSC_PUBLIC_DATABASE_URL
 # Privileged fixture connection must not reach the API process environment.
-unset DATABASE_URL OPENSITE_DATABASE_URL OPENSITE_MEDIA_DATABASE_URL PGDATABASE PGPASSWORD PGUSER PGHOST PGPORT PGSSLMODE PGCONNECT_TIMEOUT
+unset DATABASE_URL OPENSITE_DATABASE_URL OPENSITE_MEDIA_DATABASE_URL C07_DATABASE_URL C07_MEDIA_DATABASE_URL C07_FIXTURE_PASSWORD PGDATABASE PGPASSWORD PGUSER PGHOST PGPORT PGSSLMODE PGCONNECT_TIMEOUT
 mkdir -p .work/c09-e2e
 go build -tags pgx -o .work/c09-e2e/api ./cmd/api
 export OSC_API_ADDR=127.0.0.1:4175
