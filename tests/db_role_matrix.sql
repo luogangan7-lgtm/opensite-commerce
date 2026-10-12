@@ -21,7 +21,7 @@ DECLARE
  special_tables text[] := ARRAY[
   'tenants','users','auth_sessions','api_keys','tenant_memberships','sites',
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
-  'warehouses','stock_levels','inventory_reservations','inventory_movements'];
+  'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries'];
  role_name text;
  r record;
  t record;
@@ -33,8 +33,8 @@ DECLARE
  expected_column boolean;
 BEGIN
  IF (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-     WHERE n.nspname='app' AND c.relkind IN ('r','p')) <> 45 THEN
-  RAISE EXCEPTION 'role matrix requires exactly the 45 contracted app tables';
+     WHERE n.nspname='app' AND c.relkind IN ('r','p')) <> cardinality(mutable_tables || append_tables || special_tables) THEN
+  RAISE EXCEPTION 'role matrix requires exactly the classified app tables';
  END IF;
  FOREACH role_name IN ARRAY roles LOOP
   SELECT * INTO r FROM pg_roles WHERE rolname=role_name;
@@ -140,7 +140,7 @@ BEGIN
   END LOOP;
  END LOOP;
 END $audit$;
-SELECT 'PASS: three internal roles; exact 45-table and every-column privilege matrix' AS result;
+SELECT 'PASS: three internal roles; exact contracted-table and every-column privilege matrix' AS result;
 
 -- Service capabilities are disjoint; publisher's only authority is two routines.
 DO $services$

@@ -12,8 +12,9 @@ sql = config['sql'][0]
 assert sql['engine'] == 'postgresql'
 assert sql['gen']['go']['sql_package'] == 'pgx/v5'
 assert sql['gen']['go']['out'] == 'internal/db'
-assert len(sql['schema']) >= 9
-for suffix in ('_security_hardening.sql', '_platform_reliability.sql'):
+assert len(sql['schema']) >= 10
+assert set(sql['schema']) == {str(p.relative_to(root)) for p in (root/'migrations').glob('*.sql') if p.name[:3] not in ('008','009')}
+for suffix in ('_security_hardening.sql', '_platform_reliability.sql', '_money_pricing.sql'):
     matches = list((root/'migrations').glob('[0-9][0-9][0-9]'+suffix))
     assert len(matches) == 1, suffix
     assert str(matches[0].relative_to(root)) in sql['schema'], suffix
@@ -45,6 +46,7 @@ ci = (root/'.github/workflows/checks.yml').read_text()
 gov = re.search(r'^go (\d+\.\d+\.\d+)$', (root/'go.mod').read_text(), re.M).group(1)
 assert f"go-version: '{gov}'" in ci, 'CI go-version must equal go.mod go directive'
 assert './scripts/check_codegen.sh' in ci
+assert ci.index('name: PostgreSQL 18 forward-only') < ci.index('name: Go pgx-tagged'), 'real generated-query race tests require migrated PostgreSQL'
 codegen=(root/'scripts/check_codegen.sh').read_text()
 assert 'sqlc generate' in codegen and '-tags pgx' in codegen
 print(f'PASS: static sqlc config/query sanity: {len(tables)} schema tables, {len(query_names)} named queries (NOT sqlc generate)')
