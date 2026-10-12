@@ -72,3 +72,28 @@ test('quoted physical spacing cannot bypass the logical direction rule', () => {
     expect(lintText(source, 'probe.tsx').length).toBeGreaterThan(0);
   }
 });
+
+for (const source of [
+  'a { BACKGROUND: red; }',
+  'a { bAcKgRoUnD: white; }',
+  'a { BORDER-COLOR: white; }',
+  'a { bOrDeR-cOlOr: red; }',
+  'a { OUTLINE: var(--focus-width) solid red; }',
+  'a { FONT-SIZE: 50%; }',
+  'a { MARGIN-LEFT: var(--space-2); }',
+  'a { border-image: linear-gradient(red, blue) 1; }',
+  'a { BORDER-IMAGE: linear-gradient(red, blue) 1; }',
+  'a { border-image-source: linear-gradient(var(--color-brand), white); }',
+  'const style = { borderImage: "linear-gradient(red, blue) 1" };',
+]) {
+  test(`reject case-insensitive CSS/image color ${source}`, () => expect(lintText(source, 'probe.css').length).toBeGreaterThan(0));
+}
+for (const source of [
+  'a { BACKGROUND: var(--color-surface); bOrDeR-cOlOr: var(--color-border); }',
+  'a { OUTLINE: var(--focus-width) solid currentColor; FONT-SIZE: var(--font-size-md); }',
+  'a { border-image: linear-gradient(var(--color-surface), var(--color-brand)) 1; }',
+  'a { BORDER-IMAGE-SOURCE: linear-gradient(var(--color-surface), var(--color-brand)); }',
+  'const style = { backgroundColor: "var(--color-surface)", borderImage: "linear-gradient(var(--color-surface), var(--color-brand)) 1", paddingInline: "var(--space-2)" };',
+]) {
+  test(`accept case-insensitive CSS/image token ${source}`, () => expect(lintText(source, 'probe.tsx')).toEqual([]));
+}

@@ -32,7 +32,12 @@ function* declarations(text:string) {
    if(depth===0&&(char===';'||char==='}'||(char===','&&/^\s*["']?[a-zA-Z][\w-]*["']?\s*:/.test(text.slice(end+1))))) break;
   }
   const value=text.slice(start,end).trim().replace(/,\s*$/,'').replace(/^['"`]|['"`]$/g,'');
-  yield {property:match[1].replace(/^['"]|['"]$/g,'').replace(/[A-Z]/g,char=>`-${char.toLowerCase()}`),value,index:match.index};
+  const raw=match[1].replace(/^['"]|['"]$/g,'');
+  // CSS names are case insensitive; React multiword names use camelCase.
+  const folded=raw.toLowerCase();
+  const property=raw.includes('-')||/^(?:color|background|border|outline|fill|stroke|margin|padding|gap)$/.test(folded)
+   ?folded:raw.replace(/[A-Z]/g,char=>`-${char.toLowerCase()}`);
+  yield {property,value,index:match.index};
   cursor=end;
  }
 }
@@ -67,7 +72,7 @@ export function lintText(source:string,path:string): string[] {
    errors.push(`${path}:${text.slice(0,index).split('\n').length}: physical spacing: ${property}`);
    continue;
   }
-  const color=property==='color'||property.endsWith('-color')||/^(?:background(?:-image)?|border(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?|outline|(?:box|text)-shadow|fill|stroke)$/.test(property);
+  const color=property==='color'||property.endsWith('-color')||/^(?:background(?:-image)?|border(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?|border-image(?:-source)?|outline|(?:box|text)-shadow|fill|stroke)$/.test(property);
   if(color) {
    if(!tokenColor(value)) errors.push(`${path}:${text.slice(0,index).split('\n').length}: non-token ${property}: ${value}`);
    continue;
