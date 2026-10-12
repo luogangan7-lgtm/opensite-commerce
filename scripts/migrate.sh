@@ -28,6 +28,8 @@ expected_number=1
 for file in "${files[@]}"; do
   base="${file##*/}"
   number="${base%%_*}"
+  version="${base%.sql}"
+  [[ "$version" =~ ^[0-9]{3}_[a-z][a-z0-9_]*$ ]] || { echo "Invalid migration: $version" >&2; exit 2; }
   [[ "$number" =~ ^[0-9]{3}$ ]] || { echo "Bad migration prefix: $base" >&2; exit 2; }
   if (( 10#$number != expected_number )); then
     echo "Migration numbering must be contiguous: expected $expected_number, found $number ($base)" >&2
@@ -44,7 +46,6 @@ known_versions="$(IFS=,; echo "${versions[*]}")"
 for file in "${files[@]}"; do
   base="${file##*/}"
   version="${base%.sql}"
-  [[ "$version" =~ ^[0-9]{3}_[a-z_]+$ ]] || { echo "Invalid migration: $version" >&2; exit 2; }
   checksum="$(sha256sum "$file" | awk '{print $1}')"
   echo "CHECK $version"
   # File names are validated above. The file path is fixed by this repository.
@@ -91,7 +92,7 @@ COMMIT;
 SQL
 done
 # Detect applied DB migrations removed from source control (or unknown history).
-# All migration names are constrained to [0-9]{3}_[a-z_]+ before use.
+# All migration names are constrained to [0-9]{3}_[a-z][a-z0-9_]* before use.
 "${PSQL[@]}" -v m_known_versions="$known_versions" <<'SQL'
 BEGIN;
 SELECT pg_advisory_xact_lock(18004517::bigint);

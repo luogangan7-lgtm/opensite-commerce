@@ -38,8 +38,8 @@ const (
 )
 
 // Contact is a frozen buyer contact, never a lookup of a mutable profile.
-// A customer UUID is accepted by the customer contract; its FK is an integration
-// follow-up until the customers migration is available on the base branch.
+// Customer buyers use the tenant-scoped customer FK. Authorization to select a
+// buyer still belongs to the trusted caller's transaction boundary.
 type Contact struct {
 	Email string `json:"email"`
 	Name  string `json:"name,omitempty"`

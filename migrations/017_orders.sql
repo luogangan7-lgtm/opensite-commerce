@@ -1,7 +1,7 @@
 -- Responsibility: immutable order snapshots and fenced order/inventory transitions.
 -- Depends on catalog, inventory and reliability; called by orders' trusted service.
 -- Invariants: tenant RLS, sealed snapshots, exact reservation ownership, unique events.
--- Customer FK is deferred until the customers branch is integrated. No HTTP/payment PSP.
+-- Customer references are tenant-bound; guest contact is an immutable alternative. No HTTP/payment PSP.
 DO $roles$
 DECLARE member_name text;
 BEGIN
@@ -52,6 +52,7 @@ CREATE TABLE app.orders(
  version bigint NOT NULL DEFAULT 1 CHECK(version>0), sealed boolean NOT NULL DEFAULT false,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(), updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,order_number), UNIQUE(tenant_id,creation_key),
+ CONSTRAINT orders_customer_fk FOREIGN KEY(tenant_id,customer_id) REFERENCES app.customers(tenant_id,id),
  CHECK((customer_id IS NOT NULL AND guest_contact IS NULL) OR
   (customer_id IS NULL AND guest_contact IS NOT NULL AND jsonb_typeof(guest_contact)='object'
    AND nullif(btrim(guest_contact->>'email'),'') IS NOT NULL AND length(guest_contact->>'email')<=320)),

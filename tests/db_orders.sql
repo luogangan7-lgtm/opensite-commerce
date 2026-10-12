@@ -6,6 +6,14 @@
 BEGIN;
 INSERT INTO app.tenants(name) VALUES('orders-A') RETURNING id AS t \gset
 INSERT INTO app.tenants(name) VALUES('orders-B') RETURNING id AS other_t \gset
+-- Two local customers keep the immutability negative test valid under the FK;
+-- the foreign customer is a real row, so rejection proves the composite tenant key.
+INSERT INTO app.customers(tenant_id,email) VALUES(:'t','orders-customer@example.invalid') RETURNING id AS customer \gset
+INSERT INTO app.customers(tenant_id,email) VALUES(:'t','orders-alternate@example.invalid') RETURNING id AS alternate_customer \gset
+INSERT INTO app.customers(tenant_id,email) VALUES(:'other_t','orders-foreign@example.invalid') RETURNING id AS foreign_customer \gset
+SELECT set_config('test.orders_customer',:'customer',true),
+ set_config('test.orders_alternate_customer',:'alternate_customer',true),
+ set_config('test.orders_foreign_customer',:'foreign_customer',true);
 INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','orders') RETURNING id AS product \gset
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
  VALUES(:'t',:'product','orders-sku','default') RETURNING id AS sku \gset
@@ -243,5 +251,52 @@ BEGIN
   RAISE EXCEPTION 'ORDERS_GATE expired cancellation invalid';
  END IF;
 END $expiry_cancel$;
+-- Customer-backed orders share the sealed guest snapshot contract, with a real
+-- composite FK. These run last so earlier monotonic-number assertions stay fixed.
+DO $customer_orders$
+DECLARE sku uuid:=current_setting('test.orders_sku')::uuid; order_id_v uuid:=uuidv7();
+ foreign_order_id uuid:=uuidv7(); r app.inventory_reservations; o app.orders; replay app.orders;
+ lines jsonb;
+BEGIN
+ r:=app.inventory_reserve(sku,1,'order',order_id_v,'orders-customer-reserve',900);
+ lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','customer-sku','quantity',1,
+  'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
+  'reservation_id',r.id,'tax_snapshot','{}'::jsonb));
+ o:=app.orders_create(order_id_v,'orders-customer-create',sha256('customer'::bytea),
+  current_setting('test.orders_customer')::uuid,NULL,'USD',0,'{}',lines,'[]');
+ replay:=app.orders_create(order_id_v,'orders-customer-create',sha256('customer'::bytea),
+  current_setting('test.orders_customer')::uuid,NULL,'USD',0,'{}',lines,'[]');
+ IF o.customer_id<>current_setting('test.orders_customer')::uuid OR o.guest_contact IS NOT NULL
+  OR NOT o.sealed OR o.total_minor<>100 OR o.state<>'pending_payment' OR replay.id<>o.id
+  OR (SELECT count(*) FROM app.orders WHERE app.orders.id=o.id)<>1 THEN
+  RAISE EXCEPTION 'ORDERS_GATE valid customer snapshot/replay';
+ END IF;
+ PERFORM set_config('test.orders_customer_order',o.id::text,true);
+ r:=app.inventory_reserve(sku,1,'order',foreign_order_id,'orders-foreign-customer-reserve',900);
+ lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','foreign-customer-sku','quantity',1,
+  'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
+  'reservation_id',r.id,'tax_snapshot','{}'::jsonb));
+ BEGIN
+  PERFORM app.orders_create(foreign_order_id,'orders-foreign-customer-create',sha256('foreign-customer'::bytea),
+   current_setting('test.orders_foreign_customer')::uuid,NULL,'USD',0,'{}',lines,'[]');
+  RAISE EXCEPTION 'ORDERS_GATE cross-tenant customer FK absent';
+ EXCEPTION WHEN foreign_key_violation THEN NULL; END;
+ IF EXISTS(SELECT FROM app.orders WHERE app.orders.id=foreign_order_id)
+  OR EXISTS(SELECT FROM app.order_lines WHERE order_id=foreign_order_id)
+  OR EXISTS(SELECT FROM app.outbox_events WHERE payload->>'order_id'=foreign_order_id::text) THEN
+  RAISE EXCEPTION 'ORDERS_GATE rejected customer FK left partial snapshot';
+ END IF;
+END $customer_orders$;
+RESET ROLE;
+DO $customer_snapshot$
+BEGIN
+ BEGIN
+  -- The replacement is another existing customer in the same tenant: neither
+  -- XOR nor FK can hide a missing immutable-snapshot trigger.
+  UPDATE app.orders SET customer_id=current_setting('test.orders_alternate_customer')::uuid
+   WHERE id=current_setting('test.orders_customer_order')::uuid;
+  RAISE EXCEPTION 'ORDERS_GATE immutable customer snapshot absent';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+END $customer_snapshot$;
 ROLLBACK;
 \echo 'ORDERS_GATE PASS snapshot, ownership, tenant, state, inventory and outbox'

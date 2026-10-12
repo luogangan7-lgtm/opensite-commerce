@@ -344,7 +344,7 @@
         "tests/db_pricing.sql"
       ],
       "scopes": [],
-      "note": "PR16 is merged on main at 9a17e2f. Owns price_lists and price_entries created by migrations/013_money_pricing.sql. Quote code exists at internal/pricing/pricing.go with generated queries at internal/db/pricing.sql.go; no HTTP operations are implemented. go_status describes the planned internal/modules/pricing target path, not the existing source packages. C-15a approves the existing pure calculator package as the snapshot input contract; it performs no database I/O.",
+      "note": "PR16 is merged on main at 9a17e2f. Owns price_lists and price_entries created by migrations/013_money_pricing.sql. Quote code exists at internal/pricing/pricing.go with generated queries at internal/db/pricing.sql.go; no HTTP operations are implemented. go_status describes the planned internal/modules/pricing target path, not the existing source packages.",
       "legacy_go_paths": [
         "internal/pricing"
       ],
@@ -399,7 +399,7 @@
         "tests/test_shipping_contract_static.py"
       ],
       "scopes": [],
-      "note": "SQL tables and pure legacy quote engine merged by PR15; target module Go path and HTTP operations remain planned. C-15a approves the existing pure calculator package as the snapshot input contract; it performs no database I/O.",
+      "note": "SQL tables and pure legacy quote engine merged by PR15; target module Go path and HTTP operations remain planned.",
       "legacy_go_paths": [
         "internal/shipping"
       ],
@@ -430,13 +430,60 @@
         "tests/test_sqlc_contract_static.py"
       ],
       "scopes": [],
-      "note": "Tenant regional rule tables and pure calculator from PR19. Existing internal/tax uses approved Money arithmetic; target module Go path and HTTP operations remain planned. Billing must consume saved Tax snapshots without recalculation. C-15a approves the existing pure calculator package as the snapshot input contract; it performs no database I/O.",
+      "note": "Tenant regional rule tables and pure calculator from PR19. Existing internal/tax uses approved Money arithmetic; target module Go path and HTTP operations remain planned. Billing must consume saved Tax snapshots without recalculation.",
       "legacy_go_paths": [
         "internal/tax"
       ],
       "approved_public_ports": [
         "internal/tax"
       ]
+    },
+    {
+      "name": "customer",
+      "status": "implemented",
+      "go_path": "internal/modules/customer",
+      "go_status": "planned",
+      "owns_tables": [
+        "customers",
+        "customer_credentials",
+        "customer_addresses"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant"
+      ],
+      "tests": [
+        "tests/db_customers.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Storefront customer identity is independent of employee users. Dedicated customer-auth credentials; HTTP and module Go path remain planned."
+    },
+    {
+      "name": "b2b",
+      "status": "implemented",
+      "go_path": "internal/modules/b2b",
+      "go_status": "planned",
+      "owns_tables": [
+        "buyer_companies",
+        "buyer_roles",
+        "buyer_company_members"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "customer"
+      ],
+      "tests": [
+        "tests/db_customers.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Purchasing companies and memberships are separate from seller organizations. Fixed tenant roles are automatically provisioned; no HTTP operations."
     },
     {
       "name": "orders",
@@ -457,7 +504,8 @@
         "tax",
         "shipping",
         "money",
-        "reliability"
+        "reliability",
+        "customer"
       ],
       "tests": [
         "tests/db_orders.sql",
@@ -467,7 +515,7 @@
         "tests/db_role_matrix.sql"
       ],
       "scopes": [],
-      "note": "C-15a owns immutable order snapshots, controlled state transitions and GetPayable. No HTTP operation is implemented. Customer ID follows PR21 contract without FK until integration; checkout and real payment adapters remain separate."
+      "note": "Tenant-bound immutable order snapshots and caller-transaction financial state transitions. Customer references use the integrated tenant/customer foreign key. Checkout orchestration and real payment adapters remain separate."
     },
     {
       "name": "payments",
@@ -699,7 +747,21 @@
       ]
     },
     {
-      "file": "migrations/016_orders.sql",
+      "file": "migrations/016_customers_b2b.sql",
+      "owner": "customer",
+      "touches_tables": [
+        "customers",
+        "customer_credentials",
+        "customer_addresses",
+        "buyer_companies",
+        "buyer_roles",
+        "buyer_company_members",
+        "price_lists",
+        "tenants"
+      ]
+    },
+    {
+      "file": "migrations/017_orders.sql",
       "owner": "orders",
       "touches_tables": [
         "orders",

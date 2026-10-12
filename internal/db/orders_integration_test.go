@@ -294,3 +294,55 @@ func TestOrdersServiceExpiredReservationCancel(t *testing.T) {
 		})
 	}
 }
+
+func TestOrdersServiceCustomerBuyer(t *testing.T) {
+	f := newOrderFixture(t)
+	svc := orders.New()
+	customer, foreignCustomer := uuid.NewString(), uuid.NewString()
+	// Fixture setup is privileged; the service still runs as the tenant runtime.
+	// A customer row alone is not authentication evidence. The caller is trusted
+	// to bind authenticated buyer identity before invoking the order command.
+	if _, err := f.tx.Exec(f.ctx, "RESET ROLE"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.tx.Exec(f.ctx, "INSERT INTO app.customers(tenant_id,id,email,display_name) VALUES($1,$2,'order-customer@example.test','Order buyer'),($3,$4,'foreign-customer@example.test','Foreign buyer')", f.tenant, customer, f.foreign, foreignCustomer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.tx.Exec(f.ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+		t.Fatal(err)
+	}
+	in := f.input(t)
+	in.Buyer = contract.Buyer{CustomerID: customer}
+	created, err := svc.Create(f.ctx, f.tx, f.tenant, in)
+	if err != nil || created.State != contract.PendingPayment || created.Total.Amount != 270 {
+		t.Fatalf("registered customer order: %+v %v", created, err)
+	}
+	var storedCustomer string
+	var guestNull bool
+	if err = f.tx.QueryRow(f.ctx, "SELECT customer_id::text,guest_contact IS NULL FROM app.orders WHERE tenant_id=$1 AND id=$2", f.tenant, in.ID).Scan(&storedCustomer, &guestNull); err != nil {
+		t.Fatal(err)
+	}
+	if storedCustomer != customer || !guestNull {
+		t.Fatalf("customer snapshot mismatch: %s guest_null=%v", storedCustomer, guestNull)
+	}
+	replay, err := svc.Create(f.ctx, f.tx, f.tenant, in)
+	if err != nil || replay != created {
+		t.Fatalf("registered creation replay: %+v %v", replay, err)
+	}
+	for _, invalidCustomer := range []string{foreignCustomer, uuid.NewString()} {
+		refused := f.input(t)
+		refused.Buyer = contract.Buyer{CustomerID: invalidCustomer}
+		f.errorAtSavepoint(t, func() error { _, e := svc.Create(f.ctx, f.tx, f.tenant, refused); return e }, contract.ErrInvalid)
+	}
+	var ordersCount, reservations, events int
+	var reserved, onHand int64
+	if err = f.tx.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM app.orders WHERE tenant_id=$1),(SELECT count(*) FROM app.inventory_reservations WHERE tenant_id=$1),(SELECT count(*) FROM app.outbox_events WHERE tenant_id=$1 AND delivery_target='orders.events')", f.tenant).Scan(&ordersCount, &reservations, &events); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.tx.QueryRow(f.ctx, "SELECT reserved,on_hand FROM app.stock_levels WHERE tenant_id=$1 AND sku_id=$2", f.tenant, f.sku).Scan(&reserved, &onHand); err != nil {
+		t.Fatal(err)
+	}
+	if ordersCount != 1 || reservations != 1 || events != 1 || reserved != 2 || onHand != 30 {
+		t.Fatalf("customer rejection leaked writes: orders=%d reservations=%d events=%d reserved=%d on_hand=%d", ordersCount, reservations, events, reserved, onHand)
+	}
+}

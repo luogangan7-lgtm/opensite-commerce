@@ -71,6 +71,16 @@ await() {
   done
   echo "  sync timeout: ${RACE_PREFIX}$label never reached ${*} (last: $ev)"; fail=1; return 1
 }
+await_job() {
+  local label=$1 pid=$2 deadline=$((SECONDS + 15))
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( SECONDS >= deadline )); then
+      echo "  sync timeout: ${RACE_PREFIX}$label process did not finish"; fail=1; return 1
+    fi
+    sleep 0.05
+  done
+  wait "$pid"
+}
 ROWLOCK=(transactionid tuple)
 
 # expect <label> <marker|ok>: winners must not error; losers only with their guard.
@@ -452,7 +462,46 @@ got=$(sql <<<"SELECT count(*)||'|'||bool_and(CASE rate_bp WHEN 500 THEN valid_un
 echo "race tax overlapping updates: $got (expected 2|true)"
 [[ $got == '2|true' ]] || fail=1
 
+# Customer registration uses its own restricted auth role, never app_auth/users.
+# A's INSERT owns the unique-index entry while parked; B must wait on that
+# transaction before A commits. A valid failure includes both SQLSTATE and the
+# intended constraint, so permissions/fixture errors cannot count as a loser.
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('customer-register-race') RETURNING id;" | tail -1)
+gate_close 23
+tx customer_first app_customer_auth "$T" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$T',' Race.Customer@Example.COM ','first'); $(park 23)" &
+await customer_first advisory
+tx customer_second app_customer_auth "$T" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$T','race.customer@example.com','second');" &
+await customer_second "${ROWLOCK[@]}"
+gate_open 23; wait
+expect customer_first ok
+expect customer_second customers_tenant_email_unique
+expect customer_second 23505
+got=$(sql <<<"SELECT count(*)||'|'||min(display_name) FROM app.customers WHERE tenant_id='$T' AND email_normalized='race.customer@example.com';")
+echo "customer normalized registration race: $got (expected 1|first)"
+[[ $got == '1|first' ]] || fail=1
 
+# Equal normalized addresses in two tenants are independent identities. B must
+# commit while A is still parked, proving uniqueness is tenant-scoped.
+read -r TA TB <<<"$(sql <<'SQL'
+INSERT INTO app.tenants(name) VALUES('customer-independent-A') RETURNING id AS a \gset
+INSERT INTO app.tenants(name) VALUES('customer-independent-B') RETURNING id AS b \gset
+SELECT :'a'||' '||:'b';
+SQL
+)"
+gate_close 24
+tx customer_tenant_a app_customer_auth "$TA" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$TA',' Both@Example.COM ','tenant-A'); $(park 24)" &
+await customer_tenant_a advisory
+tx customer_tenant_b app_customer_auth "$TB" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$TB','both@example.com','tenant-B');" &
+customer_tenant_b_pid=$!
+await_job customer_tenant_b "$customer_tenant_b_pid"
+expect customer_tenant_b ok
+got=$(sql <<<"SELECT count(*) FROM app.customers WHERE tenant_id='$TB' AND email_normalized='both@example.com';")
+[[ $got == 1 ]] || { echo "FAIL: other-tenant registration did not commit before gate release: $got"; fail=1; }
+gate_open 24; wait
+expect customer_tenant_a ok
+got=$(sql <<<"SELECT count(*)||'|'||count(DISTINCT tenant_id) FROM app.customers WHERE tenant_id IN('$TA','$TB') AND email_normalized='both@example.com';")
+echo "customer independent-tenant registration race: $got (expected 2|2)"
+[[ $got == '2|2' ]] || fail=1
 # C-15a: both commands target one sealed order and its exact owned reservation.
 # Park the first after its transition, witness the contender's order-row wait,
 # then release. RC rejects the obsolete command; RR/Serializable serialize-fail.
@@ -561,11 +610,12 @@ got=$(sql <<<"SELECT o.state||'|'||s.on_hand||'|'||s.reserved||'|'||
 echo "orders prelock expiry/cancel conservation: $got (expected cancelled|2|0|5|2)"
 [[ $got == 'cancelled|2|0|5|2' ]] || fail=1
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax contract" >&2; exit 1; fi
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/orders contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
 echo 'PASS: shipping range INSERT/UPDATE races preserve exact non-overlapping tiers'
 echo 'PASS: tax INSERT/UPDATE exclusion races preserve non-overlapping windows'
+echo 'PASS: customer normalized email registrations commit once per tenant'
 
-echo 'PASS: orders pay/cancel races serialize one winner at RC/RR/Serializable with conserved inventory and one transition event'
+echo 'PASS: orders pay/cancel and prelock/expiry races conserve inventory and events'

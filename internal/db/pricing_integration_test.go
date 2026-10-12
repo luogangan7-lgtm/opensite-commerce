@@ -106,6 +106,10 @@ func TestPricingGeneratedQuery(t *testing.T) {
 		if l.StartsAt.IsZero() {
 			l.StartsAt = start
 		}
+		// B2B now owns the buyer target referenced by Pricing's composite FK.
+		if l.BuyerCompanyID != "" {
+			exec("INSERT INTO app.buyer_companies(tenant_id,id,name) VALUES($1,$2,'query buyer')", uuid(l.TenantID), uuid(l.BuyerCompanyID))
+		}
 		exec("INSERT INTO app.price_lists(tenant_id,id,currency,status,priority,audience,starts_at,ends_at,customer_group_id,buyer_company_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", uuid(l.TenantID), uuid(l.ID), l.Currency, l.Status, l.Priority, l.Audience, l.StartsAt, l.EndsAt, uuid(l.CustomerGroupID), uuid(l.BuyerCompanyID))
 		for j := range l.Entries {
 			e := &l.Entries[j]

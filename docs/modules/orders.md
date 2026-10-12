@@ -16,8 +16,11 @@ from Pricing, Tax and Shipping. It validates checked Money arithmetic, quantity
 binding, tax net plus tax equals gross, inclusive/exclusive price binding, one
 currency, and signed adjustments. The JSON snapshots copy the supplied values;
 the database seals them and rejects later edits, including owner-role writes.
-Customer identity follows the customer contract; the composite customer foreign
-key must be added when the customers migration is integrated.
+Customer identity follows the customer contract. The orders migration enforces
+`FOREIGN KEY (tenant_id, customer_id) REFERENCES customers(tenant_id, id)` after
+the customers migration. A nonexistent or foreign-tenant customer is rejected;
+guest orders keep `customer_id` null. This reference proves tenant ownership,
+while customer identity/authentication remains the trusted caller's obligation.
 
 Automatic reservations acquire SKU locks in canonical SKU/line order while
 preserving the input snapshot order, avoiding reversed-cart deadlocks.
@@ -51,6 +54,9 @@ and stable error classes. Tagged real-PG tests in
 `internal/db/orders_integration_test.go` call the public service with production
 queries, checking create/replay, authoritative payable, foreign tenant denial,
 reservation owner denial, stock/outbox conservation and transaction rollback.
+Customer integration tests also seed real customer rows and check the registered
+buyer branch, foreign/nonexistent customer rejection, and rollback of any
+reservation created by a rejected command.
 `tests/db_orders.sql` and race gates independently enforce database boundaries.
 
 No checkout orchestration, Stripe integration, fulfillment command transport,
