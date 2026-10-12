@@ -428,6 +428,30 @@
       "legacy_go_paths": [
         "internal/tax"
       ]
+    },
+    {
+      "name": "ledger",
+      "status": "implemented",
+      "go_path": "internal/modules/ledger",
+      "go_status": "implemented",
+      "owns_tables": [
+        "ledger_accounts",
+        "ledger_transactions",
+        "ledger_entries"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "money"
+      ],
+      "tests": [
+        "tests/db_ledger.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Internal single-currency posting and account balances. Atomic posting is the only runtime write capability for transactions and entries; tenant settlement currency is explicit, with no automatic default."
     }
   ],
   "migrations": [
@@ -632,6 +656,16 @@
         "tax_categories",
         "tax_rates",
         "tax_settings"
+      ]
+    },
+    {
+      "file": "migrations/016_ledger.sql",
+      "owner": "ledger",
+      "touches_tables": [
+        "tenants",
+        "ledger_accounts",
+        "ledger_transactions",
+        "ledger_entries"
       ]
     }
   ]
