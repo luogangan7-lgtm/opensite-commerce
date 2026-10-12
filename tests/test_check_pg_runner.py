@@ -48,6 +48,7 @@ probe = subprocess.run(['python3', '-', '019abcd0-1111-7222-8333-000000000001', 
                        input=extractor, cwd=root, capture_output=True, text=True)
 assert probe.returncode == 0, probe.stderr
 assert '2040-' not in probe.stdout, 'new sessions must use current DB time'
+assert "(clock_timestamp()+interval '1 hour')::timestamptz" in probe.stdout, 'expiry expression must be grouped before sqlc parameter cast'
 assert probe.stdout.count('\\gset') == 1 and 'sqlc.' not in probe.stdout
 assert probe.stdout.index('UPDATE app.auth_sessions') < probe.stdout.index('INSERT INTO app.auth_sessions')
 assert 's.user_id=' in probe.stdout and 's.revoked_at IS NULL' in probe.stdout

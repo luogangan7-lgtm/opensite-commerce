@@ -471,7 +471,7 @@ def query(name, token_hash):
     sql = match[1].strip()
     values = {'at': "clock_timestamp()", 'user_id': "'"+user_id+"'",
               'token_hash': "decode('"+token_hash+"','hex')", 'idle_seconds': '1800',
-              'created_at': "clock_timestamp()", 'expires_at': "clock_timestamp()+interval '1 hour'"}
+              'created_at': "clock_timestamp()", 'expires_at': "(clock_timestamp()+interval '1 hour')"}
     sql = re.sub(r'sqlc.arg\((\w+)\)', lambda m: values[m[1]], sql)
     assert 'sqlc.' not in sql
     return sql
