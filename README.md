@@ -8,6 +8,7 @@
 
 - [V1 架构研究报告](docs/research/architecture-v1-report.md)：设计输入
 - [架构演进史 V0.1 → V1.0](docs/history/README.md)：原始设计对话全文 + ChatGPT 沙箱工件的报告与校验和
+- [V1 架构收敛决议](docs/architecture/V1_DECISIONS.md)：身份三分、平台基础层、交易边界、账本、MVP 切线、修正后的 PR 序列（PR-01B → MVP）
 - [架构审查 2026-10-12](docs/review/REVIEW.md)：现行 P0 已全部处理（F-01 已验收，F-02 已关闭，F-03 / F-04 在 001–009 中不成立）· 19 个 P1 · 3 个 P2、修正后的 PR 序列、MVP 切线
 
 ## 许可证
