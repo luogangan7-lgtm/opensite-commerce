@@ -51,7 +51,7 @@ CREATE TABLE app.orders(
  state text NOT NULL DEFAULT 'pending_payment' CHECK(state IN('pending_payment','paid','partially_fulfilled','fulfilled','cancelled','partially_refunded','refunded')),
  version bigint NOT NULL DEFAULT 1 CHECK(version>0), sealed boolean NOT NULL DEFAULT false,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(), updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,order_number), UNIQUE(tenant_id,creation_key),
+ PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,order_number), CONSTRAINT orders_creation_key_unique UNIQUE(tenant_id,creation_key),
  CONSTRAINT orders_customer_fk FOREIGN KEY(tenant_id,customer_id) REFERENCES app.customers(tenant_id,id),
  CHECK((customer_id IS NOT NULL AND guest_contact IS NULL) OR
   (customer_id IS NULL AND guest_contact IS NOT NULL AND jsonb_typeof(guest_contact)='object'

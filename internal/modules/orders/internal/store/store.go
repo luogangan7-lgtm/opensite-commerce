@@ -16,6 +16,9 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 )
 
+// creationKeyConstraint names UNIQUE(tenant_id,creation_key) in 020_orders.sql.
+const creationKeyConstraint = "orders_creation_key_unique"
+
 func UUID(id string) (pgtype.UUID, error) {
 	var value pgtype.UUID
 	err := value.Scan(id)
@@ -68,6 +71,10 @@ func MapError(err error) error {
 	case e.Code == "22023" || e.Code == "22003" || e.Code == "23514" || e.Code == "23503" || e.Code == "22P02":
 		return contract.ErrInvalid
 	case e.Code == "40001" || e.Code == "40P01":
+		return contract.ErrRetry
+	case e.Code == "23505" && e.ConstraintName == creationKeyConstraint:
+		// Concurrent identical creates under RR/Serializable both miss the key
+		// lookup; a retried transaction sees the winner and replays it.
 		return contract.ErrRetry
 	case e.Code == "55000" || e.Code == "23505":
 		return contract.ErrConflict

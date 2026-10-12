@@ -21,6 +21,13 @@ SELECT set_config('test.orders_t',:'t',true),set_config('test.orders_other_t',:'
  set_config('test.orders_sku',:'sku',true),set_config('app.tenant_id',:'t',true);
 SET LOCAL ROLE app_inventory_manager;
 SELECT app.inventory_adjust(:'sku',30,'orders receipt',uuidv7(),'inbound');
+DO $constraint$ BEGIN
+ -- Go store maps 23505 on this exact name to ErrRetry (RR create race).
+ IF NOT EXISTS(SELECT FROM pg_constraint WHERE conrelid='app.orders'::regclass
+  AND conname='orders_creation_key_unique' AND contype='u') THEN
+  RAISE EXCEPTION 'ORDERS_GATE creation-key constraint name changed';
+ END IF;
+END $constraint$;
 SET LOCAL ROLE app_runtime;
 DO $orders$
 DECLARE

@@ -97,6 +97,12 @@ func TestRejectSnapshotMismatch(t *testing.T) {
 				x.Adjustments[i] = contract.Adjustment{ID: fmt.Sprintf("44444444-4444-4444-8444-%012d", i), Kind: "surcharge", AmountMinor: 1, Reason: "x"}
 			}
 		}},
+		{"invalid UTF-8 adjustment reason", func(x *contract.CreateInput) {
+			x.Adjustments = []contract.Adjustment{{ID: skuID, Kind: "surcharge", AmountMinor: 1, Reason: string([]byte{0xff})}}
+		}},
+		{"other invalid UTF-8 adjustment reason", func(x *contract.CreateInput) {
+			x.Adjustments = []contract.Adjustment{{ID: skuID, Kind: "surcharge", AmountMinor: 1, Reason: string([]byte{0xfe})}}
+		}},
 		{"overflow multiply", func(x *contract.CreateInput) { x.Lines[0].Price.Unit.Amount = math.MaxInt64 }},
 		{"overflow total", func(x *contract.CreateInput) { x.Shipping.Charge.Amount = math.MaxInt64 }},
 	}

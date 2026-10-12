@@ -25,6 +25,9 @@ func TestErrorBoundary(t *testing.T) {
 		{&pgconn.PgError{Code: "40001", Message: "could not serialize"}, contract.ErrRetry},
 		{&pgconn.PgError{Code: "40P01", Message: "deadlock detected"}, contract.ErrRetry},
 		{&pgconn.PgError{Code: "23505", Message: "duplicate key"}, contract.ErrConflict},
+		{&pgconn.PgError{Code: "23505", Message: "duplicate key", ConstraintName: "orders_pkey"}, contract.ErrConflict},
+		// RR/Serializable: concurrent identical creates both miss the key lookup.
+		{&pgconn.PgError{Code: "23505", Message: "duplicate key", ConstraintName: "orders_creation_key_unique"}, contract.ErrRetry},
 	}
 	for _, x := range tests {
 		if err := MapError(x.err); !errors.Is(err, x.want) {

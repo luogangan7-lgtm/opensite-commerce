@@ -167,7 +167,7 @@ func prepare(in contract.CreateInput) (prepared, error) {
 	}
 	for _, a := range in.Adjustments {
 		id := strings.ToLower(a.ID)
-		if !validID(id) || ids[id] || strings.TrimSpace(a.Reason) == "" || len(a.Reason) > 500 {
+		if !validID(id) || ids[id] || strings.TrimSpace(a.Reason) == "" || len(a.Reason) > 500 || !utf8.ValidString(a.Reason) {
 			return invalid("adjustment")
 		}
 		ids[id] = true
