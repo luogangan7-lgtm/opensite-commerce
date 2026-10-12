@@ -271,6 +271,22 @@ def check_go(registry, root):
                                 cwd=root, env=env, capture_output=True, text=True, timeout=90)
         errors = result.returncode != 0
         for package in json_stream(result.stdout):
+            # Excluded receipts are harmless only when not compiled/imported.
+            # The actual Go stream also exposes local replacements skipped by
+            # ./... and lets us reject artifact bridges or a second go.mod.
+            directory = Path(package.get("Dir", "/")).resolve()
+            module = package.get("Module") or {}
+            module_directory = Path(module.get("Dir", "/")).resolve()
+            first_party = (package["ImportPath"].startswith(prefix) or
+                           module_directory.is_relative_to(root))
+            if first_party and directory.is_relative_to(root):
+                go_mod = module.get("GoMod")
+                require(not go_mod or Path(go_mod).resolve() == root / "go.mod",
+                        "MODULE_NESTED_GO_MODULE", str(directory.relative_to(root)))
+                relative_parts = directory.relative_to(root).parts
+                require(not relative_parts or relative_parts[0] not in
+                        ("work", ".worktrees", ".git", "vendor", "node_modules"),
+                        "MODULE_ARTIFACT_SOURCE", str(directory.relative_to(root)))
             source = module_path(package.get("ForTest") or package["ImportPath"])
             errors = errors or bool(package.get("Error") or package.get("DepsErrors"))
             if source is None:

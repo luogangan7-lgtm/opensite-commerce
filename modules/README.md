@@ -35,6 +35,9 @@ skips those packages. Root-level vendor, node_modules, work receipts and Git
 worktree metadata are excluded from source discovery. First-party Go source cannot
 use `go:linkname` to bypass visibility through an unregistered bridge package;
 business packages also cannot directly import raw `pgxpool`.
+The actual Go package stream must never compile/import a root artifact package or
+a local replacement with another `go.mod`; unreferenced receipt fixtures remain
+excluded. This prevents artifacts from becoming bridges around the source scan.
 OpenAPI extraction accepts this repository's inline block mappings and literal
 identifiers, including colon-containing and quoted path keys; referenced/merged
 Path Items and unsupported path structures fail.

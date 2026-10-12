@@ -82,6 +82,19 @@ class GovernanceTests(unittest.TestCase):
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_imported_root_artifact_bridge_red(self):
+        self.source("work/bridge/bridge.go", 'package bridge\nimport _ "unsafe"\n//go:linkname hidden example.test/shop/internal/modules/b/internal/store.hidden\nfunc hidden() int\nfunc Read() int { return hidden() }\n')
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/work/bridge"\nvar Value = bridge.Read\n')
+        self.assert_red("MODULE_ARTIFACT_SOURCE")
+
+    def test_local_replace_nested_receipt_module_red(self):
+        self.source("work/bridge/go.mod", "module x.test/bridge\n\ngo 1.27.2\n")
+        self.source("work/bridge/bridge.go", "package bridge\nconst Value=1\n")
+        with (self.root / "go.mod").open("a") as output:
+            output.write("\nrequire x.test/bridge v0.0.0\nreplace x.test/bridge => ./work/bridge\n")
+        self.source("internal/modules/a/module.go", 'package a\nimport "x.test/bridge"\nvar Value=bridge.Value\n')
+        self.assert_red("MODULE_NESTED_GO_MODULE")
+
     def test_linkname_private_access_red(self):
         self.source("internal/modules/a/module.go", 'package a\nimport _ "unsafe"\n//go:linkname hidden example.test/shop/internal/modules/b/internal/store.hidden\nfunc hidden() int\n')
         self.assert_red("MODULE_LINKNAME_FORBIDDEN")
