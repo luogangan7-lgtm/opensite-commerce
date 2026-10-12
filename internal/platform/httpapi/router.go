@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 
@@ -57,7 +58,7 @@ type Router struct {
 	auth       Authenticator
 	handler    http.Handler
 	mu         sync.Mutex
-	operations map[string]bool
+	operations map[string]RouteSpec
 }
 
 func New(auth Authenticator, logger *slog.Logger) *Router {
@@ -67,7 +68,7 @@ func New(auth Authenticator, logger *slog.Logger) *Router {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	r := &Router{mux: http.NewServeMux(), auth: auth, operations: make(map[string]bool)}
+	r := &Router{mux: http.NewServeMux(), auth: auth, operations: make(map[string]RouteSpec)}
 	r.mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		WriteProblem(w, req, apperrors.New(404, "not_found", "Route not found"))
 	})
@@ -86,7 +87,7 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.operations[spec.OperationID] {
+	if _, exists := s.operations[spec.OperationID]; exists {
 		return fmt.Errorf("duplicate operation %q", spec.OperationID)
 	}
 	defer func() {
@@ -112,8 +113,21 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 		ctx = context.WithValue(ctx, bodyLimitKey{}, spec.MaxBodySize)
 		handler.ServeHTTP(w, r.WithContext(ctx))
 	}))
-	s.operations[spec.OperationID] = true
+	s.operations[spec.OperationID] = spec
 	return nil
+}
+
+// RouteSpecs exposes a copy of successfully registered routes for contract gates.
+// It is derived from actual registration, never a second manually maintained list.
+func (s *Router) RouteSpecs() []RouteSpec {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	specs := make([]RouteSpec, 0, len(s.operations))
+	for _, spec := range s.operations {
+		specs = append(specs, spec)
+	}
+	sort.Slice(specs, func(i, j int) bool { return specs[i].OperationID < specs[j].OperationID })
+	return specs
 }
 
 func validateRoute(s RouteSpec) error {

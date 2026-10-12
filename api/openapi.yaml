@@ -4,10 +4,12 @@ info:
   version: 0.7.0-draft
   description: >-
     Contract-first first-vertical-slice API. Declared operations are not all
-    implemented in this increment. Tenant is derived from credentials.
+    implemented in this increment. Tenant business targets come from the URL path; credentials authorize them.
+    Only health is implemented; other operations are planned contracts.
 servers:
   - url: /
 security:
+  - adminSession: []
   - ApiKeyBearer: []
 tags:
   - name: Organization
@@ -15,13 +17,234 @@ tags:
   - name: Media
   - name: Builder
   - name: Inquiry
+  - name: Identity
+  - name: Health
 paths:
-  /api/v1/organizations:
+  /healthz:
+    get:
+      tags: [Health]
+      operationId: health
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      responses:
+        '204': { description: Process is healthy }
+  /api/v1/auth/admin-sessions:
+    post:
+      tags:
+      - Identity
+      operationId: createAdminSession
+      x-opensite-status: planned
+      x-opensite-access: Public
+      security: []
+      description: Login uses exact Origin plus short-lived anonymous pre-login CSRF material. Bad credentials, disabled
+        and unknown users have the same 401 response and work. Implemented by PR-02.
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAdminSession'
+      responses:
+        '201':
+          description: New server-side session; never returns the session bearer token in JSON.
+          headers:
+            Set-Cookie:
+              description: __Host-osc_admin_session; Secure; HttpOnly; SameSite=Lax; Path=/; no Domain. Issued only
+                on the dedicated admin host.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSessionCreated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    get:
+      tags:
+      - Identity
+      operationId: listAdminSessions
+      x-opensite-status: planned
+      x-opensite-access: AuthenticatedSelf
+      security:
+      - adminSession: []
+      description: List only the active caller own sessions. Requires a valid session and active user, even when no
+        tenant membership remains.
+      responses:
+        '200':
+          description: Caller sessions; no tokens or hashes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSessionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/v1/auth/admin-sessions/current:
+    delete:
+      tags:
+      - Identity
+      operationId: deleteAdminSession
+      x-opensite-status: planned
+      x-opensite-access: AuthenticatedSelf
+      security:
+      - adminSession: []
+      description: Revoke the current session and clear its cookie. No membership or scope required. Exact Origin
+        and session-bound HMAC CSRF token required.
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '204':
+          description: Current session revoked.
+          headers:
+            Set-Cookie:
+              description: Clears __Host-osc_admin_session with Max-Age=0, Secure, HttpOnly, SameSite=Lax, Path=/
+                and no Domain.
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/v1/auth/admin-sessions/{session_id}:
+    parameters:
+    - $ref: '#/components/parameters/SessionId'
+    delete:
+      tags:
+      - Identity
+      operationId: revokeAdminSession
+      x-opensite-status: planned
+      x-opensite-access: AuthenticatedSelf
+      security:
+      - adminSession: []
+      description: Revoke only a session owned by the caller. Exact Origin and session-bound HMAC CSRF token required.
+        No tenant membership or scope required.
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '204':
+          description: Owned session revoked.
+        '404':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/v1/auth/current-actor:
+    get:
+      tags:
+      - Identity
+      operationId: getCurrentActor
+      x-opensite-status: planned
+      x-opensite-access: AuthenticatedSelf
+      security:
+      - adminSession: []
+      description: The active caller identity only; no tenant membership or tenant authorization is inferred.
+      responses:
+        '200':
+          description: Current active user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentActor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/v1/t/{tenant_id}/organizations:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
     post:
       tags: [Organization]
       operationId: createOrganization
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: organization.create
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      description: >-
+        Create a seller organization within the target tenant, with membership
+        and organization.create scope. This does not create a tenant or owner.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -33,14 +256,28 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Organization' }
-        '409': { $ref: '#/components/responses/Problem' }
-        '422': { $ref: '#/components/responses/Problem' }
-  /api/v1/sites:
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/t/{tenant_id}/sites:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
     post:
       tags: [Organization]
       operationId: createSite
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: site.create
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -52,14 +289,28 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Site' }
-        '422': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
-  /api/v1/products:
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/t/{tenant_id}/products:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
     post:
       tags: [Catalog]
       operationId: createProduct
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog.write
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -71,16 +322,29 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Product' }
-        '409': { $ref: '#/components/responses/Problem' }
-        '422': { $ref: '#/components/responses/Problem' }
-  /api/v1/products/{product_id}/variants:
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/t/{tenant_id}/products/{product_id}/variants:
     parameters:
+      - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/ProductId'
     post:
       tags: [Catalog]
       operationId: createVariant
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog.write
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -92,14 +356,28 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Variant' }
-        '409': { $ref: '#/components/responses/Problem' }
-        '422': { $ref: '#/components/responses/Problem' }
-  /api/v1/media/uploads:
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/t/{tenant_id}/media/uploads:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
     post:
       tags: [Media]
       operationId: createMediaUpload
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: media.write
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -111,14 +389,24 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/UploadSession' }
-        '409': { $ref: '#/components/responses/Problem' }
-        '422': { $ref: '#/components/responses/Problem' }
-  /api/v1/media/uploads/{upload_id}/content:
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/t/{tenant_id}/media/uploads/{upload_id}/content:
     parameters:
+      - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/UploadId'
     put:
       tags: [Media]
       operationId: putMediaUploadContent
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: media.write
       description: Streaming PUT for LocalFS; not resumable in V1.
       requestBody:
@@ -126,33 +414,63 @@ paths:
         content:
           application/octet-stream:
             schema: { type: string, format: binary }
+      parameters:
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '204': { description: Bytes received }
-        '413': { $ref: '#/components/responses/Problem' }
-  /api/v1/media/uploads/{upload_id}/complete:
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/t/{tenant_id}/media/uploads/{upload_id}/complete:
     parameters:
+      - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/UploadId'
     post:
       tags: [Media]
       operationId: completeMediaUpload
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: media.write
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '202':
           description: Verification or processing queued
           content:
             application/json:
               schema: { $ref: '#/components/schemas/UploadSession' }
-        '409': { $ref: '#/components/responses/Problem' }
-        '422': { $ref: '#/components/responses/Problem' }
-  /api/v1/sites/{site_id}/drafts:
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts:
     parameters:
+      - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/SiteId'
     post:
       tags: [Builder]
       operationId: createSiteDraft
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: site.draft.write
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -164,19 +482,31 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Draft' }
-        '409': { $ref: '#/components/responses/Problem' }
-        '422': { $ref: '#/components/responses/Problem' }
-  /api/v1/sites/{site_id}/drafts/{draft_id}/operations:
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations:
     parameters:
+      - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/SiteId'
       - $ref: '#/components/parameters/DraftId'
     post:
       tags: [Builder]
       operationId: applyPageOperations
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: site.draft.write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       requestBody:
         required: true
         content:
@@ -190,47 +520,81 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Draft' }
-        '412': { $ref: '#/components/responses/Problem' }
-        '422': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
-  /api/v1/sites/{site_id}/drafts/{draft_id}/validate:
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/validate:
     parameters:
+      - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/SiteId'
       - $ref: '#/components/parameters/DraftId'
     post:
       tags: [Builder]
       operationId: validateSiteDraft
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: site.draft.write
+      parameters:
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '200':
           description: Validation report
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ValidationResult' }
-  /api/v1/sites/{site_id}/drafts/{draft_id}/publish:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/publish:
     parameters:
+      - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/SiteId'
       - $ref: '#/components/parameters/DraftId'
     post:
       tags: [Builder]
       operationId: publishSiteDraft
+      x-opensite-status: planned
+      x-opensite-access: AdminOrAPIKey
       x-required-scope: site.publish
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '201':
           description: New immutable release; commit is atomic in PostgreSQL
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PublishedRelease' }
-        '412': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
-        '422': { $ref: '#/components/responses/Problem' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
   /api/public/v1/inquiries:
     post:
       tags: [Inquiry]
       operationId: submitInquiry
+      x-opensite-status: planned
+      x-opensite-access: Public
       security: []
       description: Site determined from a verified Host mapping; must be rate-limited.
       requestBody:
@@ -244,11 +608,79 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/InquiryReceipt' }
-        '429': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
 components:
   securitySchemes:
+    adminSession:
+      type: apiKey
+      in: cookie
+      name: __Host-osc_admin_session
+      description: >-
+        Secure, HttpOnly, SameSite=Lax, Path=/ and no Domain on a dedicated admin host.
+        Unsafe cookie-authenticated requests require exact Origin and a session-bound
+        HMAC X-CSRF-Token; API-key bearer requests do not require CSRF.
     ApiKeyBearer: { type: http, scheme: bearer, bearerFormat: API-Key }
   parameters:
+    TenantId:
+      name: tenant_id
+      in: path
+      required: true
+      description: Target tenant UUID from the URL; credentials still require matching membership and scope. An API
+        key must belong to this exact tenant.
+      schema:
+        type: string
+        format: uuid
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      description: Session owned by the caller; never a token.
+      schema:
+        type: string
+        format: uuid
+    Origin:
+      name: Origin
+      in: header
+      required: true
+      description: Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token.
+      schema:
+        type: string
+        format: uri
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned
+        double-submit is not accepted.
+      schema:
+        type: string
+        minLength: 1
+    OriginIfCookie:
+      name: Origin
+      in: header
+      required: false
+      description: Required and checked for exact admin origin when authenticating with adminSession. API-key bearer
+        requests are exempt from the cookie CSRF/Origin checks.
+      schema:
+        type: string
+        format: uri
+    CSRFTokenIfCookie:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      description: Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key
+        bearer calls.
+      schema:
+        type: string
+        minLength: 1
     SiteId:
       name: site_id
       in: path
@@ -289,12 +721,142 @@ components:
         `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
       schema: { type: string, minLength: 1, maxLength: 128 }
   responses:
+    Unauthorized:
+      description: Authentication missing or invalid; bad login credentials are indistinguishable.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Origin, CSRF, tenant membership, API-key tenant binding or required scope denied.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Conflict, including idempotency_in_progress.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    PreconditionFailed:
+      description: If-Match precondition failed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    PayloadTooLarge:
+      description: Request body exceeds the admission limit.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnsupportedMediaType:
+      description: Unsupported request media type.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnprocessableEntity:
+      description: Validation failure or idempotency_key_reused.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    PreconditionRequired:
+      description: Required precondition such as If-Match is missing.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: Rate limit exceeded.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     Problem:
       description: RFC 9457 error
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
   schemas:
+    CreateAdminSession:
+      type: object
+      required:
+      - identifier
+      - password
+      properties:
+        identifier:
+          type: string
+          minLength: 1
+          maxLength: 320
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          writeOnly: true
+      additionalProperties: false
+    CurrentActor:
+      type: object
+      required:
+      - user_id
+      properties:
+        user_id:
+          type: string
+          format: uuid
+      additionalProperties: false
+    AdminSession:
+      type: object
+      required:
+      - id
+      - created_at
+      - expires_at
+      - is_current
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        is_current:
+          type: boolean
+      additionalProperties: false
+    AdminSessionCreated:
+      type: object
+      required:
+      - actor
+      - session
+      - csrf_token
+      properties:
+        actor:
+          $ref: '#/components/schemas/CurrentActor'
+        session:
+          $ref: '#/components/schemas/AdminSession'
+        csrf_token:
+          type: string
+          minLength: 1
+          description: Session-bound HMAC CSRF material; never the authentication bearer token.
+      additionalProperties: false
+    AdminSessionList:
+      type: object
+      required:
+      - sessions
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminSession'
+      additionalProperties: false
     Problem:
       type: object
       required: [type, title, status, code]
@@ -336,7 +898,7 @@ components:
         organization_id: { type: string, format: uuid }
         name: { type: string }
         default_locale: { type: string }
-        status: { enum: [draft, published] }
+        status: { type: string, enum: [draft, published] }
         published_release_id: { type: [string, 'null'], format: uuid }
       additionalProperties: false
     CreateProduct:
@@ -351,7 +913,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         product_code: { type: string }
-        lifecycle_status: { enum: [draft, ready, archived] }
+        lifecycle_status: { type: string, enum: [draft, ready, archived] }
       additionalProperties: false
     CreateVariant:
       type: object
@@ -384,7 +946,7 @@ components:
       required: [id, status]
       properties:
         id: { type: string, format: uuid }
-        status: { enum: [reserved, uploading, verifying, stored, processing, ready, failed] }
+        status: { type: string, enum: [reserved, uploading, verifying, stored, processing, ready, failed] }
         media_id: { type: [string, 'null'], format: uuid }
       additionalProperties: false
     CreateDraft:
@@ -398,13 +960,13 @@ components:
       properties:
         id: { type: string, format: uuid }
         revision: { type: integer, minimum: 1 }
-        status: { enum: [open, published, abandoned] }
+        status: { type: string, enum: [open, published, abandoned] }
       additionalProperties: false
     PageDocument:
       type: object
       required: [schema_version, root_id, nodes]
       properties:
-        schema_version: { const: 1 }
+        schema_version: { type: integer, const: 1 }
         root_id: { type: string, minLength: 1 }
         nodes:
           type: object
@@ -417,6 +979,7 @@ components:
       required: [component, props, slots]
       properties:
         component:
+          type: string
           enum: [core.page-layout@1, core.section@1, core.hero@1, catalog.product-grid@1, company.profile@1]
         props: { type: object }
         binding: { $ref: '#/components/schemas/DataBinding' }
@@ -430,7 +993,7 @@ components:
       type: object
       required: [resolver, params]
       properties:
-        resolver: { enum: [catalog.featured-products@1, catalog.collection-products@1, company.profile@1] }
+        resolver: { type: string, enum: [catalog.featured-products@1, catalog.collection-products@1, company.profile@1] }
         params: { type: object }
       additionalProperties: false
     OperationBatch:
@@ -459,7 +1022,7 @@ components:
       required: [operation_id, type, target, arguments]
       properties:
         operation_id: { type: string, format: uuid }
-        type: { const: component.add }
+        type: { type: string, const: component.add }
         target:
           type: object
           required: [page_key]
@@ -483,7 +1046,7 @@ components:
       required: [operation_id, type, target, arguments]
       properties:
         operation_id: { type: string, format: uuid }
-        type: { const: component.move }
+        type: { type: string, const: component.move }
         target:
           type: object
           required: [page_key, node_id]
@@ -504,7 +1067,7 @@ components:
       required: [operation_id, type, target, arguments]
       properties:
         operation_id: { type: string, format: uuid }
-        type: { const: component.set_props }
+        type: { type: string, const: component.set_props }
         target:
           type: object
           required: [page_key, node_id]
@@ -554,4 +1117,4 @@ components:
       required: [id, status]
       properties:
         id: { type: string, format: uuid }
-        status: { const: received }
+        status: { type: string, const: received }

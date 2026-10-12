@@ -1,0 +1,11 @@
+# Strict transport is generated; auth and JSON admission stay in platform/httpapi.
+package: generated
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+  embedded-spec: true
+output: internal/platform/httpapi/generated/api.gen.go
+output-options:
+  skip-prune: true
+  nullable-type: true
