@@ -109,7 +109,8 @@ CREATE TABLE app.buyer_companies (
  PRIMARY KEY(tenant_id,id)
 );
 CREATE TABLE app.buyer_roles (
- tenant_id uuid NOT NULL REFERENCES app.tenants(id),
+ -- Automatically provisioned vocabulary must not retain an empty tenant.
+ tenant_id uuid NOT NULL REFERENCES app.tenants(id) ON DELETE CASCADE,
  code text NOT NULL,
  PRIMARY KEY(tenant_id,code),
  CONSTRAINT buyer_roles_code_check CHECK(code IN ('purchaser','approver','admin'))

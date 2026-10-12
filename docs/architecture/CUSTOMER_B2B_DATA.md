@@ -26,7 +26,9 @@ tenant, including after the migration. The trigger is SECURITY INVOKER, so it
 uses that provisioner's existing authority and creates no elevated application
 capability; a future tenant-creation service must explicitly own provisioning
 rights for both tables, including applicable RLS policies for a non-bypass
-provisioner. Failed provisioning rolls back the new tenant.
+provisioner. Failed provisioning rolls back the new tenant. Fixed role rows cascade
+when an otherwise empty tenant is deleted; real company/customer membership FKs
+still protect business records.
 
 Every new table has composite tenant keys and ENABLE + FORCE RLS, with blank
 tenant settings selecting no rows. The capability matrix is deliberately small:

@@ -52,6 +52,25 @@ RESET ROLE;
 ROLLBACK;
 -- END CUSTOMERS_PASSWORD_UPDATED_AT_PROBE.
 
+-- Fixed reference rows must not prevent removal of an otherwise empty tenant.
+-- BEGIN CUSTOMERS_EMPTY_TENANT_ROLE_CLEANUP_PROBE.
+BEGIN;
+DO $empty_tenant$
+DECLARE t uuid:=uuidv7();
+BEGIN
+ INSERT INTO app.tenants(id,name) VALUES(t,'customers-empty-tenant');
+ BEGIN
+  DELETE FROM app.tenants WHERE id=t;
+ EXCEPTION WHEN foreign_key_violation THEN
+  RAISE EXCEPTION 'CUSTOMERS_EMPTY_TENANT_ROLE_CLEANUP';
+ END;
+ IF EXISTS(SELECT FROM app.buyer_roles WHERE tenant_id=t) THEN
+  RAISE EXCEPTION 'CUSTOMERS_EMPTY_TENANT_ROLE_CLEANUP';
+ END IF;
+END $empty_tenant$;
+ROLLBACK;
+-- END CUSTOMERS_EMPTY_TENANT_ROLE_CLEANUP_PROBE.
+
 BEGIN;
 DO $customers$
 DECLARE
