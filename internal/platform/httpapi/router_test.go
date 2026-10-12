@@ -56,6 +56,9 @@ func TestRegisterInvalid(t *testing.T) {
 			s.Pattern = "/t/{TENANT}/a"
 		}},
 		{"tenant non-canonical with scope", func(s *httpapi.RouteSpec) { s.Pattern = "/t/{tenantId}/products" }},
+		{"wildcard cyrillic lookalike", func(s *httpapi.RouteSpec) { s.Scope = ""; s.Pattern = "/t/{t\u0435nant_id}/a" }},
+		{"wildcard fullwidth lookalike", func(s *httpapi.RouteSpec) { s.Scope = ""; s.Pattern = "/t/{\uff54enant_id}/a" }},
+		{"wildcard uppercase name", func(s *httpapi.RouteSpec) { s.Pattern = "/t/{tenant_id}/{Product}" }},
 		{"negative size", func(s *httpapi.RouteSpec) { s.MaxBodySize = -1 }},
 		{"public scope", func(s *httpapi.RouteSpec) { s.Access = httpapi.Public }},
 	}

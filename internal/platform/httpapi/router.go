@@ -144,6 +144,11 @@ func validateRoute(s RouteSpec) error {
 			continue
 		}
 		name := strings.TrimSuffix(strings.TrimSuffix(strings.TrimPrefix(segment, "{"), "}"), "...")
+		// ASCII snake_case only: lookalike letters (Cyrillic е, fullwidth ｔ) must not
+		// smuggle a tenant parameter past the canonical-name check below.
+		if name == "" || strings.IndexFunc(name, func(c rune) bool { return !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_') }) >= 0 {
+			return fail("path wildcard names must be [a-z0-9_]")
+		}
 		if !strings.Contains(strings.ToLower(name), "tenant") {
 			continue
 		}
