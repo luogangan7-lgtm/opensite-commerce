@@ -14,11 +14,13 @@ and flow/block combinations are not accepted.
   package is an explicit `approved_public_ports` exception at `internal/money`;
   pricing's import still requires its declared money dependency. This exception
   exposes no private subpackages and does not promote the future target path.
-- Operations have `operation_id` and `status`. An `implemented` operation must
-  exist under an inline OpenAPI `paths/<path>/<method>/operationId`. All current
-  operations are planned; the registry does not claim handlers or HTTP acceptance.
-  Every operation present in OpenAPI must also have a registered owner; absent
-  future planned operations remain permitted.
+- Operations have `operation_id` and `status`. Every declared ID, whether
+  `planned` or `implemented`, must exist under an inline OpenAPI
+  `paths/<path>/<method>/operationId`; every OpenAPI ID has exactly one module
+  owner. Status affects handler readiness and the C-03e coverage gate, never ID
+  accounting. All current operations are planned; the registry does not claim
+  handlers or HTTP acceptance. Future operations without an OAS contract cannot
+  be put in `operations`; a separate future-operation model is outside this card.
 - `owns_tables` contains unqualified `app` table names, each with one owner.
   Cross-cutting `migrations` record an owner and `touches_tables`, without changing
   business table ownership. Migration filenames refer to this branch's inventory.
@@ -30,14 +32,21 @@ and flow/block combinations are not accepted.
 `bash scripts/check_all.sh` runs the registry/operation/DAG checks, real
 `go list -e -deps -json -test ./...` in both default and `pgx` modes, and regression
 fault probes. Package-load errors fail the gate, even with `go list -e` exit 0.
-Nested `go.mod` files in repository source are forbidden, because `go list ./...`
-skips those packages. Root-level vendor, node_modules, work receipts and Git
-worktree metadata are excluded from source discovery. First-party Go source cannot
+Nested `go.mod` files anywhere in this checkout are forbidden, including vendor
+and unreferenced receipts, because `go list ./...` skips nested modules. Git
+metadata and separate managed worktree checkouts are excluded. Every local
+`replace` resolving inside this checkout is rejected, even when unused. Package
+ownership follows resolved `go list` directories and module/replacement metadata,
+so an alias import or symlink cannot rename another module's private directory.
+First-party Go source cannot
 use `go:linkname` to bypass visibility through an unregistered bridge package;
 business packages also cannot directly import raw `pgxpool`.
-The actual Go package stream must never compile/import a root artifact package or
-a local replacement with another `go.mod`; unreferenced receipt fixtures remain
-excluded. This prevents artifacts from becoming bridges around the source scan.
+Vendor Go files are scanned too: linker directives targeting this repository's
+`internal/modules/<module>/internal/...` are forbidden, while unrelated external
+targets and directive text in strings/block comments are allowed. The actual Go
+package stream must never compile/import a root artifact package; uncompiled Go
+receipt files remain excluded from directive checks, but never from the nested
+module check. This prevents artifacts from becoming bridges around the scan.
 OpenAPI extraction accepts this repository's inline block mappings and literal
 identifiers, including colon-containing and quoted path keys; referenced/merged
 Path Items and unsupported path structures fail.

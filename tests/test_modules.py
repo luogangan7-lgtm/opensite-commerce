@@ -77,8 +77,71 @@ class GovernanceTests(unittest.TestCase):
         self.assert_red("MODULE_NESTED_GO_MODULE")
 
     def test_root_receipt_artifacts_are_excluded_from_source(self):
+        self.source("work/_probe/probe.go", 'package probe\nimport _ "unsafe"\n//go:linkname hidden x.test/other.hidden\nfunc hidden() int\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_nested_go_module_in_vendor_red(self):
+        self.source("vendor/x.test/hidden/go.mod", "module x.test/hidden\n\ngo 1.27.2\n")
+        self.assert_red("MODULE_NESTED_GO_MODULE")
+
+    def test_unreferenced_nested_receipt_module_red(self):
         self.source("work/probe/go.mod", "module x.test/probe\n\ngo 1.27.2\n")
-        self.source("work/probe/probe.go", 'package probe\nimport _ "unsafe"\n//go:linkname hidden x.test/other.hidden\nfunc hidden() int\n')
+        self.assert_red("MODULE_NESTED_GO_MODULE")
+
+    def test_unused_in_repository_replace_red(self):
+        # An unused replace has no package in go list: inspect go.mod too.
+        for target in ("./internal/modules/b/internal/store",
+                       str(self.root / "internal/modules/b/internal/store")):
+            with self.subTest(target=target):
+                (self.root / "go.mod").write_text(
+                    "module example.test/shop\n\ngo 1.27.2\n" +
+                    f"replace x.test/bstore => {target}\n")
+                self.assert_red("MODULE_LOCAL_REPLACE")
+
+    def test_vendor_linkname_bridge_red(self):
+        self.source("internal/modules/b/internal/store/store.go",
+                    "package store\nfunc secret() int { return 713 }\n")
+        self.source("internal/modules/b/module.go",
+                    'package b\nimport _ "example.test/shop/internal/modules/b/internal/store"\n')
+        self.source("vendor/x.test/bridge/bridge.go",
+                    'package bridge\nimport _ "unsafe"\n//go:linkname hidden example.test/shop/internal/modules/b/internal/store.secret\nfunc hidden() int\nfunc Read() int { return hidden() }\n')
+        self.source("vendor/modules.txt",
+                    "# x.test/bridge v0.0.0\n## explicit; go 1.27.2\nx.test/bridge\n")
+        with (self.root / "go.mod").open("a") as output:
+            output.write("\nrequire x.test/bridge v0.0.0\n")
+        self.source("internal/modules/a/module.go",
+                    'package a\nimport "x.test/bridge"\nfunc Read() int { return bridge.Read() }\n')
+        self.source("cmd/probe/main.go",
+                    'package main\nimport ("fmt"; "example.test/shop/internal/modules/a"; _ "example.test/shop/internal/modules/b")\nfunc main() { fmt.Println(a.Read()) }\n')
+        witness = subprocess.run(["go", "run", "-mod=vendor", "./cmd/probe"],
+                                 cwd=self.root, capture_output=True, text=True,
+                                 env=dict(os.environ, GOPROXY="off", GOSUMDB="off"), timeout=90)
+        self.assertEqual(witness.returncode, 0, witness.stderr)
+        self.assertEqual(witness.stdout.strip(), "713")
+        self.assert_red("MODULE_LINKNAME_FORBIDDEN")
+
+    def test_real_directory_private_alias_red(self):
+        # A same-module import name can hide a symlink to another module's
+        # private directory. Go permits it; resolved Dir must remain the owner.
+        (self.root / "internal/modules/a/alias").symlink_to(
+            self.root / "internal/modules/b/internal/store", target_is_directory=True)
+        self.source("internal/modules/a/module.go",
+                    'package a\nimport "example.test/shop/internal/modules/a/alias"\nvar Value = store.Value\n')
+        witness = subprocess.run(["go", "test", "./internal/modules/a"],
+                                 cwd=self.root, capture_output=True, text=True,
+                                 env=dict(os.environ, GOPROXY="off", GOSUMDB="off"), timeout=90)
+        self.assertEqual(witness.returncode, 0, witness.stderr)
+        self.assert_red("MODULE_PRIVATE_IMPORT")
+
+    def test_vendor_without_private_linkname_green(self):
+        self.source("vendor/x.test/bridge/bridge.go",
+                    'package bridge\nimport _ "unsafe"\n//go:linkname timer runtime.nanotime\nfunc timer() int64\nconst Value=1\nconst Text=`//go:linkname hidden example.test/shop/internal/modules/b/internal/store.secret`\n/* //go:linkname hidden example.test/shop/internal/modules/b/internal/store.secret */\n')
+        self.source("vendor/modules.txt", "# x.test/bridge v0.0.0\n## explicit; go 1.27.2\nx.test/bridge\n")
+        with (self.root / "go.mod").open("a") as output:
+            output.write("\nrequire x.test/bridge v0.0.0\n")
+        self.source("internal/modules/a/module.go",
+                    'package a\nimport "x.test/bridge"\nvar Value=bridge.Value\n')
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -191,7 +254,17 @@ class GovernanceTests(unittest.TestCase):
 
     def test_renamed_planned_operation_leaves_existing_operation_unowned(self):
         self.registry["modules"][0]["operations"][0]["operation_id"] = "orphanThings"
-        self.assert_red("MODULE_UNREGISTERED_OPERATION")
+        self.assert_red("MODULE_MISSING_OPERATION")
+
+    def test_openapi_renamed_operation_red(self):
+        path = self.root / "api/openapi.yaml"
+        path.write_text(path.read_text().replace("listThings", "orphanThings"))
+        self.assert_red("MODULE_MISSING_OPERATION")
+
+    def test_duplicate_operation_owner_red(self):
+        self.registry["modules"][1]["operations"] = [
+            {"operation_id": "listThings", "status": "planned"}]
+        self.assert_red("MODULE_REGISTRY_INVALID")
 
     def test_openapi_colon_and_quoted_path_keys_are_green(self):
         for key in ('/things/{id}:cancel', '"/things/{id}:cancel"', "'/things/{id}:cancel'"):
@@ -254,10 +327,14 @@ class GovernanceTests(unittest.TestCase):
             output.write("components:\n  examples:\n    fake:\n      operationId: decoy\n")
         self.assert_red("MODULE_MISSING_OPERATION")
 
-    def test_present_implemented_and_missing_planned_operations_green(self):
+    def test_missing_planned_operation_red(self):
         self.registry["modules"][0]["operations"] = [
             {"operation_id": "listThings", "status": "implemented"},
             {"operation_id": "future", "status": "planned"}]
+        self.assert_red("MODULE_MISSING_OPERATION")
+
+    def test_operation_status_does_not_change_id_accounting(self):
+        self.registry["modules"][0]["operations"][0]["status"] = "implemented"
         self.assertEqual(self.run_gate().returncode, 0)
 
     def test_go_list_errors_fail_closed(self):

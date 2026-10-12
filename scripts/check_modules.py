@@ -208,8 +208,9 @@ def check_operations(registry, path):
     for module in registry["modules"]:
         for operation in module["operations"]:
             registered.add(operation["operation_id"])
-            if operation["status"] == "implemented":
-                require(operation["operation_id"] in available, "MODULE_MISSING_OPERATION", operation["operation_id"])
+    # Status governs handler readiness, never whether a declared ID is a
+    # contract. Both planned and implemented operations must exist in the OAS.
+    require(registered <= available, "MODULE_MISSING_OPERATION", ", ".join(sorted(registered - available)))
     require(available <= registered, "MODULE_UNREGISTERED_OPERATION", ", ".join(sorted(available - registered)))
 
 
@@ -226,59 +227,78 @@ def json_stream(text):
 
 def check_go(registry, root):
     # go list ./... silently skips nested modules. Reject them before trusting
-    # its package inventory; caches, vendor and private receipt directories
-    # are not repository source. Also deny linker-level private symbol access.
+    # its inventory, including vendor and unused replacements. Package owners
+    # come from resolved directories, not a renameable import-path prefix.
     modules = {module["name"]: module for module in registry["modules"]}
-    owned_paths = {path: name for name, module in modules.items()
+    owned_paths = {(root / path).resolve(): name for name, module in modules.items()
                    for path in [module["go_path"], *module.get("legacy_go_paths", [])]}
+    require(all(path.is_relative_to(root) for path in owned_paths),
+            "MODULE_REGISTRY_INVALID", "Go path resolves outside repository")
+    env = dict(os.environ, GOPROXY="off", GOSUMDB="off", GOWORK="off")
+    metadata = subprocess.run(["go", "mod", "edit", "-json"], cwd=root, env=env,
+                              capture_output=True, text=True, timeout=90)
+    require(metadata.returncode == 0, "MODULE_GO_LIST_ERROR", "cannot identify repository module")
+    manifest = json.loads(metadata.stdout)
+    prefix = manifest["Module"]["Path"] + "/"
+    private_target = re.compile(re.escape(prefix) + r"internal/modules/[^/]+/internal/")
     go_tokens = re.compile(r'''//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*' ''', re.S | re.X)
     for directory, dirs, files in os.walk(root):
         directory = Path(directory)
         if directory == root:
-            dirs[:] = [name for name in dirs if name not in (".git", ".worktrees", "work", "vendor", "node_modules")]
+            # Sibling managed checkouts and Git metadata are not this checkout.
+            dirs[:] = [name for name in dirs if name not in (".git", ".worktrees")]
         require(directory == root or "go.mod" not in files,
                 "MODULE_NESTED_GO_MODULE", str(directory.relative_to(root)))
+        relative_parts = directory.relative_to(root).parts
+        # Uncompiled receipts have no source authority; nested modules above
+        # are still forbidden. Compiled artifacts are rejected below.
+        if relative_parts and relative_parts[0] in ("work", "node_modules"):
+            continue
         for file in files:
             if not file.endswith(".go"):
                 continue
             source = directory / file
             for token in go_tokens.finditer(source.read_text()):
-                require(not re.match(r"//go:linkname(?:\s|$)", token.group()),
+                directive = re.match(r"//go:linkname(?:\s|$)", token.group())
+                vendored = relative_parts and relative_parts[0] == "vendor"
+                require(not directive or (vendored and not private_target.search(token.group())),
                         "MODULE_LINKNAME_FORBIDDEN", str(source.relative_to(root)))
-    env = dict(os.environ, GOPROXY="off", GOSUMDB="off", GOWORK="off")
-    prefix_result = subprocess.run(["go", "list", "-m"], cwd=root, env=env,
-                                   capture_output=True, text=True, timeout=90)
-    require(prefix_result.returncode == 0, "MODULE_GO_LIST_ERROR", "cannot identify repository module")
-    prefix = prefix_result.stdout.strip() + "/"
 
-    def module_path(path):
-        # Go test variants append ' [package.test]' to ImportPath and Imports.
-        path = path.split(" [", 1)[0]
-        if not path.startswith(prefix):
-            return None
-        relative = path[len(prefix):]
-        if relative.endswith(".test"):
-            return None  # synthetic test executable, not a module package
+    def reject_local_replace(replacement):
+        if replacement and not replacement.get("Version"):
+            path = Path(replacement["Path"])
+            require(not (root / path).resolve().is_relative_to(root),
+                    "MODULE_LOCAL_REPLACE", "replacement resolves inside repository")
+
+    for replacement in manifest.get("Replace") or []:
+        reject_local_replace(replacement["New"])
+
+    def module_path(package):
+        directory = Path(package.get("Dir", "/")).resolve()
         for package_path, name in owned_paths.items():
-            if relative == package_path or relative.startswith(package_path + "/"):
-                return [name, *relative[len(package_path):].strip("/").split("/")] if relative != package_path else [name]
-        if relative.startswith("internal/modules/"):
-            raise GovernanceError("MODULE_UNREGISTERED_PACKAGE: " + relative.split("/")[2])
+            if directory.is_relative_to(package_path):
+                return [name, *directory.relative_to(package_path).parts]
+        if directory.is_relative_to(root / "internal/modules"):
+            raise GovernanceError("MODULE_UNREGISTERED_PACKAGE: " + directory.relative_to(root / "internal/modules").parts[0])
         return None
 
     for tags in ([], ["-tags", "pgx"]):
         result = subprocess.run(["go", "list", "-e", "-deps", "-json", "-test", *tags, "./..."],
                                 cwd=root, env=env, capture_output=True, text=True, timeout=90)
         errors = result.returncode != 0
-        for package in json_stream(result.stdout):
+        packages = list(json_stream(result.stdout))
+        # Test variants carry suffixes, but their Dir still names real source.
+        by_import = {package["ImportPath"].split(" [", 1)[0]: package for package in packages}
+        for package in packages:
             # Excluded receipts are harmless only when not compiled/imported.
             # The actual Go stream also exposes local replacements skipped by
             # ./... and lets us reject artifact bridges or a second go.mod.
             directory = Path(package.get("Dir", "/")).resolve()
             module = package.get("Module") or {}
+            reject_local_replace(module.get("Replace"))
             module_directory = Path(module.get("Dir", "/")).resolve()
-            first_party = (package["ImportPath"].startswith(prefix) or
-                           module_directory.is_relative_to(root))
+            first_party = (directory.is_relative_to(root) and
+                           not directory.is_relative_to(root / "vendor")) or module_directory.is_relative_to(root)
             if first_party and directory.is_relative_to(root):
                 go_mod = module.get("GoMod")
                 require(not go_mod or Path(go_mod).resolve() == root / "go.mod",
@@ -287,19 +307,20 @@ def check_go(registry, root):
                 require(not relative_parts or relative_parts[0] not in
                         ("work", ".worktrees", ".git", "vendor", "node_modules"),
                         "MODULE_ARTIFACT_SOURCE", str(directory.relative_to(root)))
-            source = module_path(package.get("ForTest") or package["ImportPath"])
+            source = module_path(package)
             errors = errors or bool(package.get("Error") or package.get("DepsErrors"))
             if source is None:
                 continue
             for imported in package.get("Imports", []):
                 require(imported.split(" [", 1)[0] != "github.com/jackc/pgx/v5/pgxpool",
                         "MODULE_RAW_POOL_IMPORT", source[0])
-                destination = module_path(imported)
+                imported_package = by_import.get(imported.split(" [", 1)[0], {})
+                destination = module_path(imported_package)
                 if destination is None or destination[0] == source[0]:
                     continue
                 edge = f"{source[0]} -> {destination[0]}"
                 require("internal" not in destination[1:], "MODULE_PRIVATE_IMPORT", edge)
-                relative = imported.split(" [", 1)[0].removeprefix(prefix)
+                relative = str(Path(imported_package["Dir"]).resolve().relative_to(root))
                 public_port = relative in modules[destination[0]].get("approved_public_ports", [])
                 require((len(destination) > 1 and destination[1] == "contract") or public_port,
                         "MODULE_NONCONTRACT_IMPORT", edge)
