@@ -60,7 +60,7 @@ func (s *Store) Put(ctx context.Context, src io.Reader) (Blob, error) {
 		return zero, err
 	}
 	hash := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, hash), io.LimitReader(src, s.maxBytes+1))
+	n, err := io.Copy(io.MultiWriter(f, hash), io.LimitReader(ctxReader{ctx, src}, s.maxBytes+1))
 	if err != nil {
 		f.Close()
 		return zero, err
@@ -90,10 +90,32 @@ func (s *Store) Put(ctx context.Context, src io.Reader) (Blob, error) {
 	if err := os.Rename(tmp, dst); err != nil {
 		return zero, err
 	}
-	if err := syncDir(filepath.Dir(dst)); err != nil {
-		return zero, err
+	// Persist the rename and any hash-prefix directories MkdirAll just created:
+	// leaf (bb/), its parent (aa/) and originals/ itself.
+	for dir := filepath.Dir(dst); ; dir = filepath.Dir(dir) {
+		if err := syncDir(dir); err != nil {
+			return zero, err
+		}
+		if dir == filepath.Join(s.root, "originals") {
+			break
+		}
 	}
 	return Blob{Key: filepath.ToSlash(key), SHA256: sha, Size: n}, nil
+}
+
+// ctxReader stops a copy between reads once ctx is done.
+// ponytail: cannot interrupt a single Read that blocks forever; callers must
+// pass a reader that unblocks on cancellation (net/http request bodies do).
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }
 
 func (s *Store) Open(key string) (*os.File, error) {

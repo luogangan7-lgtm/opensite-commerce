@@ -67,3 +67,33 @@ func TestMalformedKeyDoesNotPanic(t *testing.T) {
 		t.Fatal("invalid blob key accepted")
 	}
 }
+
+// cancelAfterFirst cancels the context after its first chunk, then keeps
+// supplying data forever; Put must stop instead of reading to maxBytes.
+type cancelAfterFirst struct {
+	cancel context.CancelFunc
+	reads  int
+}
+
+func (r *cancelAfterFirst) Read(p []byte) (int, error) {
+	r.reads++
+	if r.reads == 1 {
+		r.cancel()
+	}
+	for i := range p {
+		p[i] = 'x'
+	}
+	return len(p), nil
+}
+
+func TestCancelledMidCopy(t *testing.T) {
+	s, _ := New(t.TempDir(), 1<<30)
+	ctx, cancel := context.WithCancel(context.Background())
+	r := &cancelAfterFirst{cancel: cancel}
+	if _, err := s.Put(ctx, r); !errors.Is(err, context.Canceled) {
+		t.Fatalf("want context.Canceled, got %v", err)
+	}
+	if r.reads > 2 {
+		t.Fatalf("kept reading after cancellation: %d reads", r.reads)
+	}
+}
