@@ -4,6 +4,11 @@
 -- tenant isolation, trusted-only adjustment and immutable matching movements.
 \set ON_ERROR_STOP on
 BEGIN;
+-- C-15a removes these runtime capabilities. This rollback-only inventory unit
+-- harness temporarily restores them to exercise the unchanged 012 terminal
+-- algorithm; db_role_matrix/db_orders verify the deployed denial and order
+-- ownership entry point without these grants. No authority escapes ROLLBACK.
+GRANT EXECUTE ON FUNCTION app.inventory_commit(uuid),app.inventory_release(uuid) TO app_runtime;
 INSERT INTO app.tenants(name) VALUES('inventory-A') RETURNING id AS t \gset
 INSERT INTO app.tenants(name) VALUES('inventory-B') RETURNING id AS foreign_t \gset
 INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','inventory') RETURNING id AS p \gset
