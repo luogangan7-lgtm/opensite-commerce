@@ -1,5 +1,6 @@
 -- Disposable storefront sample, owned by C-09a. seed_storefront.sh opts in.
 -- Inputs use runtime RLS; verifier and publisher alone confer public trust.
+-- Products snapshot actual published catalog listings/revisions; prices remain release-time samples.
 -- Reruns verify fixed ownership/content and never reassign an existing hostname.
 BEGIN ISOLATION LEVEL READ COMMITTED;
 SELECT pg_advisory_xact_lock(18000901::bigint);
@@ -23,7 +24,7 @@ SELECT n,
  '{"title":"About this shop","description":"About this published shop.","blocks":[{"kind":"heading","text":"About this shop"},{"kind":"paragraph","text":"This page belongs to the published release."}]}'::jsonb AS about_doc
 FROM generate_series(1,2) n;
 DO $seed$
-DECLARE e record; exists_fixture boolean; unpublished uuid := 'c0900003-0000-4000-8000-000000000003';
+DECLARE e record; item jsonb; catalog_products jsonb; built_manifest jsonb; exists_fixture boolean; unpublished uuid := 'c0900003-0000-4000-8000-000000000003';
 BEGIN
  FOR e IN SELECT * FROM sample_expected ORDER BY n LOOP
   SELECT EXISTS(SELECT FROM app.tenants WHERE id=e.tenant) INTO exists_fixture;
@@ -36,12 +37,44 @@ BEGIN
    EXECUTE 'SET LOCAL ROLE app_runtime';
    INSERT INTO app.organizations(tenant_id,id,display_name) VALUES(e.tenant,e.org,'C09 sample organization');
    INSERT INTO app.sites(tenant_id,id,organization_id,name,default_locale) VALUES(e.tenant,e.site,e.org,e.title,'en');
+   FOR item IN SELECT value FROM jsonb_array_elements(e.manifest->'products') LOOP
+    INSERT INTO app.products(tenant_id,id,product_code,lifecycle_status)
+     VALUES(e.tenant,(item->>'id')::uuid,item->>'slug','ready');
+    INSERT INTO app.product_content_revisions(tenant_id,product_id,locale,revision,title,seo) VALUES
+     (e.tenant,(item->>'id')::uuid,'en',1,item->>'name',jsonb_build_object('description',item->>'description')),
+     (e.tenant,(item->>'id')::uuid,'en',2,'DRAFT_CATALOG_SECRET',jsonb_build_object('description','DRAFT_CATALOG_SECRET'));
+    INSERT INTO app.product_listings(tenant_id,site_id,product_id,locale,slug,status,published_content_revision)
+     VALUES(e.tenant,e.site,(item->>'id')::uuid,'en',item->>'slug','published',1);
+   END LOOP;
+   INSERT INTO app.products(tenant_id,id,product_code,lifecycle_status)
+    VALUES(e.tenant,'c0900007-0000-4000-8000-000000000003','unpublished-sample','ready');
+   INSERT INTO app.product_content_revisions(tenant_id,product_id,locale,revision,title,seo)
+    VALUES(e.tenant,'c0900007-0000-4000-8000-000000000003','en',1,'UNPUBLISHED_CATALOG_SECRET','{"description":"UNPUBLISHED_CATALOG_SECRET"}');
+   INSERT INTO app.product_listings(tenant_id,site_id,product_id,locale,slug,status,published_content_revision)
+    VALUES(e.tenant,e.site,'c0900007-0000-4000-8000-000000000003','en','unpublished-sample','unpublished',1);
+   -- Mutable catalog pointers are resolved ONCE while building this immutable release.
+   -- Only unit_amount/currency use sample price snapshots; no pricing write authority.
+   SELECT coalesce(jsonb_agg(jsonb_build_object('id',p.id::text,'slug',l.slug,
+    'name',c.title,'description',c.seo->>'description',
+    'unit_amount',price.value->>'unit_amount','currency',price.value->>'currency') ORDER BY p.id),'[]'::jsonb)
+    INTO catalog_products
+    FROM app.product_listings l
+    JOIN app.products p ON (p.tenant_id,p.id)=(l.tenant_id,l.product_id)
+    JOIN app.product_content_revisions c ON (c.tenant_id,c.product_id,c.locale,c.revision)=
+     (l.tenant_id,l.product_id,l.locale,l.published_content_revision)
+    JOIN jsonb_array_elements(e.manifest->'products') price(value) ON (price.value->>'id')::uuid=p.id
+    WHERE l.tenant_id=e.tenant AND l.site_id=e.site AND l.locale='en'
+     AND l.status='published' AND p.lifecycle_status='ready';
+   IF catalog_products IS DISTINCT FROM e.manifest->'products' THEN
+    RAISE EXCEPTION 'SAMPLE_CATALOG_SNAPSHOT_MISMATCH';
+   END IF;
+   built_manifest:=jsonb_set(e.manifest,'{products}',catalog_products);
    INSERT INTO app.pages(tenant_id,site_id,id,page_key) VALUES(e.tenant,e.site,e.home,'home'),(e.tenant,e.site,e.about,'about');
    INSERT INTO app.page_revisions(tenant_id,site_id,page_id,locale,revision,document) VALUES
     (e.tenant,e.site,e.home,'en',1,e.home_doc),(e.tenant,e.site,e.about,'en',1,e.about_doc),
     (e.tenant,e.site,e.home,'en',2,'{"title":"DRAFT_REVISION_SECRET","blocks":[{"kind":"paragraph","text":"DRAFT_REVISION_SECRET"}]}');
    INSERT INTO app.site_releases(tenant_id,site_id,id,release_no,renderer_build_id,manifest,manifest_hash) VALUES
-    (e.tenant,e.site,e.release,1,'c09-fixture-v1',e.manifest,sha256(convert_to(e.manifest::text,'UTF8'))),
+    (e.tenant,e.site,e.release,1,'c09-fixture-v1',built_manifest,sha256(convert_to(built_manifest::text,'UTF8'))),
     (e.tenant,e.site,e.candidate,2,'c09-fixture-v1','{"version":1,"locale":"en","title":"CANDIDATE_RELEASE_SECRET"}',sha256(convert_to('{"version":1,"locale":"en","title":"CANDIDATE_RELEASE_SECRET"}'::jsonb::text,'UTF8')));
    INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,page_id,page_revision) VALUES
     (e.tenant,e.site,e.release,'en','/',e.home,1),(e.tenant,e.site,e.release,'en','/about',e.about,1),
@@ -68,6 +101,29 @@ BEGIN
    EXECUTE 'SET LOCAL ROLE app_publisher';
    PERFORM app.publish_release(e.tenant,e.site,e.release,NULL);
    EXECUTE 'RESET ROLE';
+  END IF;
+  -- Reruns check catalog ownership, exact content and listing pointer; never repair drift.
+  FOR item IN SELECT value FROM jsonb_array_elements(e.manifest->'products') LOOP
+   IF NOT EXISTS(SELECT FROM app.products WHERE tenant_id=e.tenant AND id=(item->>'id')::uuid
+     AND product_code=item->>'slug' AND lifecycle_status='ready')
+    OR NOT EXISTS(SELECT FROM app.product_content_revisions WHERE tenant_id=e.tenant
+     AND product_id=(item->>'id')::uuid AND locale='en' AND revision=1 AND title=item->>'name'
+     AND body_blocks='[]'::jsonb AND seo=jsonb_build_object('description',item->>'description'))
+    OR NOT EXISTS(SELECT FROM app.product_content_revisions WHERE tenant_id=e.tenant
+     AND product_id=(item->>'id')::uuid AND locale='en' AND revision=2 AND title='DRAFT_CATALOG_SECRET'
+     AND seo='{"description":"DRAFT_CATALOG_SECRET"}'::jsonb)
+    OR NOT EXISTS(SELECT FROM app.product_listings WHERE tenant_id=e.tenant AND site_id=e.site
+     AND product_id=(item->>'id')::uuid AND locale='en' AND slug=item->>'slug'
+     AND status='published' AND published_content_revision=1) THEN
+    RAISE EXCEPTION 'SAMPLE_CATALOG_OWNERSHIP_OR_CONTENT_DRIFT';
+   END IF;
+  END LOOP;
+  IF NOT EXISTS(SELECT FROM app.product_listings l JOIN app.product_content_revisions c
+   ON (c.tenant_id,c.product_id,c.locale,c.revision)=(l.tenant_id,l.product_id,l.locale,l.published_content_revision)
+   WHERE l.tenant_id=e.tenant AND l.site_id=e.site AND l.product_id='c0900007-0000-4000-8000-000000000003'
+    AND l.locale='en' AND l.slug='unpublished-sample' AND l.status='unpublished'
+    AND l.published_content_revision=1 AND c.title='UNPUBLISHED_CATALOG_SECRET') THEN
+   RAISE EXCEPTION 'SAMPLE_UNPUBLISHED_CATALOG_WITNESS_DRIFT';
   END IF;
   -- An existing fixture must match every release-pinned public input.
   IF NOT EXISTS(SELECT FROM app.organizations WHERE tenant_id=e.tenant AND id=e.org AND display_name='C09 sample organization')

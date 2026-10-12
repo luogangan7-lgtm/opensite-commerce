@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
@@ -17,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -88,6 +90,49 @@ func TestPublicPublishedReadPG(t *testing.T) {
 	got, err := module.Current(ctx, "LOCALHOST.")
 	if err != nil || got.Title != "OpenSite sample shop" || len(got.Pages) != 3 || len(got.Products) != 2 {
 		t.Fatalf("public snapshot: %+v %v", got, err)
+	}
+	wantProducts := []contract.Product{
+		{ID: "c0900007-0000-4000-8000-000000000001", Slug: "canvas-tote", Name: "Canvas tote", Description: "A reusable cotton tote for daily essentials.", UnitAmount: "2400", Currency: "USD"},
+		{ID: "c0900007-0000-4000-8000-000000000002", Slug: "ceramic-mug", Name: "Ceramic mug", Description: "A simple mug for your morning routine.", UnitAmount: "1800", Currency: "USD"},
+	}
+	if !reflect.DeepEqual(got.Products, wantProducts) {
+		t.Fatalf("published catalog snapshot: %+v", got.Products)
+	}
+	// Commit a catalog publication change: a fresh public read must still use
+	// the sealed release, rather than joining mutable listings or draft revisions.
+	setCatalogPointer := func(ctx context.Context, revision int64) error {
+		return admin.InTenant(ctx, "c0900001-0000-4000-8000-000000000001", func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+				return err
+			}
+			tag, err := tx.Exec(ctx, `UPDATE app.product_listings SET published_content_revision=$1
+				WHERE tenant_id=$2 AND site_id=$3 AND product_id=$4 AND locale='en' AND status='published'`,
+				revision, "c0900001-0000-4000-8000-000000000001", "c0900003-0000-4000-8000-000000000001", "c0900007-0000-4000-8000-000000000001")
+			if err != nil {
+				return err
+			}
+			if tag.RowsAffected() != 1 {
+				return fmt.Errorf("catalog pointer changed %d rows", tag.RowsAffected())
+			}
+			return nil
+		})
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := setCatalogPointer(cleanup, 1); err != nil {
+			t.Errorf("restore catalog fixture pointer: %v", err)
+		}
+	}()
+	if err := setCatalogPointer(ctx, 2); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := module.Current(ctx, "localhost")
+	if err != nil || fresh.ReleaseID != got.ReleaseID || !reflect.DeepEqual(fresh.Products, wantProducts) {
+		t.Fatalf("mutable catalog change leaked into sealed release: %+v %v", fresh.Products, err)
+	}
+	if err := setCatalogPointer(ctx, 1); err != nil {
+		t.Fatal(err)
 	}
 	for _, host := range []string{"unknown.c09.test", "pending.c09.test", "disabled.c09.test", "unpublished.c09.test"} {
 		if _, err := module.Current(ctx, host); !errors.Is(err, contract.ErrNotFound) {

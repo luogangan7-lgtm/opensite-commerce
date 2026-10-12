@@ -1,5 +1,5 @@
 -- Responsibility: real public-role host/current/pinned visibility regression.
--- Dependencies: migrations 001..018; caller: expendable PG gate.
+-- Dependencies: all forward migrations through storefront_read; caller: expendable PG gate.
 -- Invariant: positive public page exists, drafts/history/other hosts never appear.
 \set ON_ERROR_STOP on
 BEGIN;

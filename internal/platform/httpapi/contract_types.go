@@ -1,0 +1,72 @@
+// Responsibility: expose the platform typed API contract port to business services.
+// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish strict services.
+// Invariant: generated server mounting stays in StrictRoutes behind Router admission.
+// Type aliases preserve compiler-checked oneOf/nullable/responses without copies.
+package httpapi
+
+import "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+
+type ArchiveProduct204Response = generated.ArchiveProduct204Response
+type ArchiveProductRequestObject = generated.ArchiveProductRequestObject
+type ArchiveProductResponseObject = generated.ArchiveProductResponseObject
+type ArchiveVariant204Response = generated.ArchiveVariant204Response
+type ArchiveVariantRequestObject = generated.ArchiveVariantRequestObject
+type ArchiveVariantResponseObject = generated.ArchiveVariantResponseObject
+type CompleteMediaUpload202JSONResponse = generated.CompleteMediaUpload202JSONResponse
+type CompleteMediaUploadRequestObject = generated.CompleteMediaUploadRequestObject
+type CompleteMediaUploadResponseObject = generated.CompleteMediaUploadResponseObject
+type CreateMediaUpload201JSONResponse = generated.CreateMediaUpload201JSONResponse
+type CreateMediaUploadRequestObject = generated.CreateMediaUploadRequestObject
+type CreateMediaUploadResponseObject = generated.CreateMediaUploadResponseObject
+type CreateProduct = generated.CreateProduct
+type CreateProduct201JSONResponse = generated.CreateProduct201JSONResponse
+type CreateProductRequestObject = generated.CreateProductRequestObject
+type CreateProductResponseObject = generated.CreateProductResponseObject
+type CreateVariant201JSONResponse = generated.CreateVariant201JSONResponse
+type CreateVariantRequestObject = generated.CreateVariantRequestObject
+type CreateVariantResponseObject = generated.CreateVariantResponseObject
+type DeleteMedia204Response = generated.DeleteMedia204Response
+type DeleteMediaRequestObject = generated.DeleteMediaRequestObject
+type DeleteMediaResponseObject = generated.DeleteMediaResponseObject
+type GetProduct200JSONResponse = generated.GetProduct200JSONResponse
+type GetProductRequestObject = generated.GetProductRequestObject
+type GetProductResponseObject = generated.GetProductResponseObject
+type GetVariant200JSONResponse = generated.GetVariant200JSONResponse
+type GetVariantRequestObject = generated.GetVariantRequestObject
+type GetVariantResponseObject = generated.GetVariantResponseObject
+type LinkProductMedia201JSONResponse = generated.LinkProductMedia201JSONResponse
+type LinkProductMediaRequestObject = generated.LinkProductMediaRequestObject
+type LinkProductMediaResponseObject = generated.LinkProductMediaResponseObject
+type ListProducts200JSONResponse = generated.ListProducts200JSONResponse
+type ListProductsRequestObject = generated.ListProductsRequestObject
+type ListProductsResponseObject = generated.ListProductsResponseObject
+type ListVariants200JSONResponse = generated.ListVariants200JSONResponse
+type ListVariantsRequestObject = generated.ListVariantsRequestObject
+type ListVariantsResponseObject = generated.ListVariantsResponseObject
+type Product = generated.Product
+type ProductLifecycleStatus = generated.ProductLifecycleStatus
+type ProductMedia = generated.ProductMedia
+type ProductMediaRole = generated.ProductMediaRole
+type ProductPage = generated.ProductPage
+type PutMediaUploadContent204Response = generated.PutMediaUploadContent204Response
+type PutMediaUploadContentRequestObject = generated.PutMediaUploadContentRequestObject
+type PutMediaUploadContentResponseObject = generated.PutMediaUploadContentResponseObject
+type StrictServerInterface = generated.StrictServerInterface
+type UpdateProduct200JSONResponse = generated.UpdateProduct200JSONResponse
+type UpdateProductRequestObject = generated.UpdateProductRequestObject
+type UpdateProductResponseObject = generated.UpdateProductResponseObject
+type UpdateVariant200JSONResponse = generated.UpdateVariant200JSONResponse
+type UpdateVariantRequestObject = generated.UpdateVariantRequestObject
+type UpdateVariantResponseObject = generated.UpdateVariantResponseObject
+type UploadSession = generated.UploadSession
+type UploadSessionStatus = generated.UploadSessionStatus
+type Variant = generated.Variant
+type VariantLifecycleStatus = generated.VariantLifecycleStatus
+type VariantList = generated.VariantList
+type GetPublishedSiteRequestObject = generated.GetPublishedSiteRequestObject
+type GetPublishedSiteResponseObject = generated.GetPublishedSiteResponseObject
+type GetPublishedSite200JSONResponse = generated.GetPublishedSite200JSONResponse
+type GetPublishedSite404ApplicationProblemPlusJSONResponse = generated.GetPublishedSite404ApplicationProblemPlusJSONResponse
+type GetPublishedSite503ApplicationProblemPlusJSONResponse = generated.GetPublishedSite503ApplicationProblemPlusJSONResponse
+type Problem = generated.Problem
+type PublishedSite = generated.PublishedSite

@@ -6,7 +6,7 @@ The renderer asks the internal Go `getPublishedSite` API at `OSC_READ_API_ORIGIN
 
 Routes: `/`, nested CMS paths, `/products`, `/products/[slug]`, and accessible 404/502 pages. CMS paths under `/products`, `/404` and `/502` are reserved. Titles, descriptions and canonical URLs are server rendered; the currency amount remains an integer string through the transport and uses BigInt for formatting.
 
-The version-1 release manifest contains public `locale`, `title`, `description`, `navigation` and `products`. Page documents contain only `title`, `description`, and heading/paragraph text blocks; HTML is escaped. Product models are immutable release snapshots while catalog PR #32 awaits integration. There is no live catalog, Builder, write-publish/restore or checkout implementation here.
+The version-1 release manifest contains public `locale`, `title`, `description`, `navigation` and `products`. Page documents contain only `title`, `description`, and heading/paragraph text blocks; HTML is escaped. Product models are immutable release snapshots derived from catalog published listings; the seed uses real catalog revisions. Production release generation belongs to C-09b. There is no live catalog, Builder, write-publish/restore or checkout implementation here.
 
 For a disposable PostgreSQL 18 database, apply migrations and run `OSC_STOREFRONT_SAMPLE_SEED=1 bash scripts/seed_storefront.sh` with `DATABASE_URL` provided through the environment. The atomic, repeatable sample contains published pages/products, two tenants and unpublished/draft witnesses. `scripts/start_storefront_api_e2e.sh` provisions a restricted ephemeral login and owns the test API process; Playwright starts it before SSR.
 

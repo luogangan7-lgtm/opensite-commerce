@@ -8,7 +8,7 @@ that capability; there is no runtime/admin pool fallback. All public connection
 handling belongs to `pgxadapter`. Each request uses a local host scope and role,
 a read-only repeatable-read transaction, and one snapshot SQL statement.
 
-Migration 018 extends the existing 009 resolver role without a new table,
+The storefront forward migration extends the existing 009 resolver role without a new table,
 SECURITY DEFINER routine or RLS bypass. The visibility dependency chain is domains
 → sites → current sealed release → routes → exact pinned page revisions. Existing
 FORCE RLS remains in force. Unknown, unverified, disabled and unpublished hosts
@@ -20,8 +20,10 @@ Version 1 release manifests contain only `version`, `locale`, `title`,
 products are `{id,slug,name,description,unit_amount,currency}`. Amounts are decimal
 strings, never JavaScript numbers. The manifest locale must equal the site's
 current default locale or projection fails closed. Product data is an immutable
-publish snapshot; live catalog integration is pending PR #32. No mutable catalog
-fallback exists.
+publish snapshot derived from catalog published listings and pinned content revisions.
+The sample fixture constructs it from real catalog rows. Later catalog drafts
+never replace a sealed snapshot. Production publish generation belongs to C-09b;
+there is no mutable catalog fallback.
 
 A pinned page document contains only `{title,description,blocks}`, with blocks
 `{kind:'heading'|'paragraph',text}`. There is no raw HTML field or HTML rendering

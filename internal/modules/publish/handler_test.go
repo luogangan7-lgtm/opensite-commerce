@@ -1,6 +1,6 @@
 // Responsibility: exercise anonymous strict transport and host admission.
 // Dependencies: router/publish contract; caller: Go gate; invariant: bad query never reads.
-package httpapi_test
+package publish
 
 import (
 	"context"
@@ -26,7 +26,7 @@ func (r *publishedReader) Current(_ context.Context, host string) (contract.Site
 func TestStorefrontAdmission(t *testing.T) {
 	reader := &publishedReader{}
 	router := httpapi.New(nil, nil)
-	route := httpapi.StorefrontRoute(reader)
+	route := StorefrontRoute(reader)
 	if err := router.Register(route.Spec, route.Handler); err != nil {
 		t.Fatal(err)
 	}

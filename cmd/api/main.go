@@ -21,13 +21,19 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	routes, close, err := storefrontRoutes(ctx)
+	routes, closePublic, err := storefrontRoutes(ctx)
 	if err != nil {
 		logger.Error("Public read initialization failed", "error", err)
 		os.Exit(1)
 	}
-	defer close()
-	if err := bootstrap.Run(ctx, bootstrap.Config{Address: address, Logger: logger, Routes: routes}); err != nil {
+	defer closePublic()
+	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger, Routes: routes})
+	if err != nil {
+		logger.Error("API configuration failed", "error", err)
+		os.Exit(1)
+	}
+	defer closeRuntime()
+	if err := bootstrap.Run(ctx, config); err != nil {
 		logger.Error("API stopped", "error", err)
 		os.Exit(1)
 	}
