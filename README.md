@@ -7,6 +7,7 @@
 ## 文档
 
 - [V1 架构研究报告](docs/research/architecture-v1-report.md)：设计输入
+- [V1 架构收敛决议](docs/architecture/V1_DECISIONS.md)：身份三分、平台基础层、交易边界、账本、MVP 切线、修正后的 PR 序列（PR-01B → MVP）
 - [架构审查 2026-10-12](docs/review/REVIEW.md)：4 个 P0 · 19 个 P1 · 3 个 P2、修正后的 PR 序列、MVP 切线
 
 ## 许可证
