@@ -73,6 +73,9 @@ CREATE TABLE app.inventory_reservations(
 );
 CREATE INDEX inventory_due ON app.inventory_reservations(tenant_id,warehouse_id,sku_id,id)
  WHERE state='active';
+-- Expiry sweep finds due rows by time (O(due), not O(active)); inventory_due keeps lock order.
+CREATE INDEX inventory_expiry ON app.inventory_reservations(tenant_id,expires_at)
+ WHERE state='active';
 CREATE TABLE app.inventory_movements(
  tenant_id uuid NOT NULL, id uuid NOT NULL DEFAULT uuidv7(), warehouse_id uuid NOT NULL, sku_id uuid NOT NULL,
  reservation_id uuid, owner_type text NOT NULL CHECK(btrim(owner_type)<>''), owner_id uuid NOT NULL,
@@ -226,13 +229,17 @@ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp
 AS 'SELECT app.inventory_finish(p_id,''committed'')';
 CREATE FUNCTION app.inventory_expire_due(p_batch integer DEFAULT 100) RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
-DECLARE t uuid:=app.inventory_context(); r record; finished app.inventory_reservations; n integer:=0;
+DECLARE t uuid:=app.inventory_context(); r record; finished app.inventory_reservations; n integer:=0; cutoff timestamptz;
 BEGIN
  IF p_batch IS NULL OR p_batch<1 OR p_batch>1000 THEN
   RAISE EXCEPTION 'INVENTORY_INVALID_BATCH' USING ERRCODE='22023';
  END IF;
- FOR r IN SELECT id FROM app.inventory_reservations WHERE tenant_id=t AND state='active' AND expires_at<=clock_timestamp()
-  ORDER BY warehouse_id,sku_id,id LIMIT p_batch FOR UPDATE SKIP LOCKED LOOP
+ cutoff:=clock_timestamp();  -- a parameter, not a volatile call, so inventory_expiry is usable
+ -- Pick due candidates by time (O(due)), then lock them in deterministic stock order.
+ FOR r IN SELECT id FROM app.inventory_reservations WHERE tenant_id=t AND state='active' AND expires_at<=cutoff
+  AND id IN (SELECT id FROM app.inventory_reservations WHERE tenant_id=t AND state='active' AND expires_at<=cutoff
+             ORDER BY expires_at LIMIT p_batch)
+  ORDER BY warehouse_id,sku_id,id FOR UPDATE SKIP LOCKED LOOP
   finished:=app.inventory_finish(r.id,'expired');
   IF finished.id IS NOT NULL THEN n:=n+1; END IF;
  END LOOP;
