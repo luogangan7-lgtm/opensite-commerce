@@ -117,12 +117,15 @@ func (s *Service) PutMediaUploadContent(ctx context.Context, r httpapi.PutMediaU
 		return nil, err
 	}
 	err = s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
-		l, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
+		u, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
 		if e != nil {
 			return e
 		}
-		u := l.AppMediaUpload
-		if e = usable(u, l.Expired); e != nil {
+		expired, e := q.MediaUploadExpired(ctx, db.MediaUploadExpiredParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
+		if e != nil {
+			return e
+		}
+		if e = usable(u, expired); e != nil {
 			return e
 		}
 		if _, _, _, e = verify(u, b); e != nil {
@@ -142,11 +145,14 @@ func (s *Service) PutMediaUploadContent(ctx context.Context, r httpapi.PutMediaU
 func (s *Service) CompleteMediaUpload(ctx context.Context, r httpapi.CompleteMediaUploadRequestObject) (httpapi.CompleteMediaUploadResponseObject, error) {
 	var result db.AppMediaUpload
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
-		l, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
+		u, e := q.LockMediaUpload(ctx, db.LockMediaUploadParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
 		if e != nil {
 			return e
 		}
-		u := l.AppMediaUpload
+		expired, e := q.MediaUploadExpired(ctx, db.MediaUploadExpiredParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
+		if e != nil {
+			return e
+		}
 		if u.Status == "ready" {
 			if !u.MediaID.Valid {
 				return conflict("Completed asset was deleted")
@@ -154,7 +160,7 @@ func (s *Service) CompleteMediaUpload(ctx context.Context, r httpapi.CompleteMed
 			result = u
 			return nil
 		}
-		if e = usable(u, l.Expired); e != nil {
+		if e = usable(u, expired); e != nil {
 			return e
 		}
 		if u.Status != "stored" || !u.TemporaryKey.Valid {

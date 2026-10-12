@@ -4,9 +4,13 @@ INSERT INTO app.media_uploads (tenant_id,original_filename,declared_mime,expecte
 VALUES ($1,$2,$3,$4,$5,now()+interval '1 hour') RETURNING *;
 
 -- name: LockMediaUpload :one
--- expired is judged by the database clock that stamped expires_at, never the API host's.
-SELECT sqlc.embed(u), u.expires_at <= now() AS expired
-FROM app.media_uploads u WHERE u.tenant_id=$1 AND u.id=$2 FOR UPDATE;
+SELECT * FROM app.media_uploads WHERE tenant_id=$1 AND id=$2 FOR UPDATE;
+
+-- name: MediaUploadExpired :one
+-- Run AFTER LockMediaUpload in the same transaction. Expiry is judged by the database
+-- clock (which stamped expires_at) at this instant: now() is the transaction start and
+-- a same-statement projection is computed before a lock wait, so both can be stale.
+SELECT expires_at <= clock_timestamp() FROM app.media_uploads WHERE tenant_id=$1 AND id=$2;
 
 -- name: StoreMediaUploadContent :exec
 UPDATE app.media_uploads SET temporary_key=$3, received_bytes=$4,status='stored' WHERE tenant_id=$1 AND id=$2;
