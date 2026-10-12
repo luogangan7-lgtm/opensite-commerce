@@ -1,8 +1,8 @@
-// Service owns password login, session admission and bounded backoff.
+// Service owns password login, session admission and immediate cooldown rejection.
 // Dependencies: Repository port and crypto helpers; called by identity HTTP transport.
 // Invariants: no DB error escapes; rejected attempts never increment durable failures;
 // only server-validated sessions create Actor; old-token replacement is atomic in SaveLogin.
-// Ordinary arrivals cannot consume reserved candidate DB/backoff or IP-map capacity.
+// Ordinary arrivals cannot consume reserved candidate DB or IP-map capacity.
 package login
 
 import (
@@ -49,6 +49,9 @@ func New(repo Repository, cfg Config) (*Service, error) {
 	if cfg.DeviceLifetime == 0 {
 		cfg.DeviceLifetime = 90 * 24 * time.Hour
 	}
+	if cfg.HashTimeout == 0 {
+		cfg.HashTimeout = 5 * time.Second
+	}
 	if cfg.HashSlots == 0 {
 		cfg.HashSlots = 2
 	}
@@ -61,24 +64,18 @@ func New(repo Repository, cfg Config) (*Service, error) {
 	if cfg.GlobalBurst == 0 {
 		cfg.GlobalBurst = 300
 	}
-	if cfg.IdleTimeout < time.Minute || cfg.IdleTimeout > 24*time.Hour || cfg.AbsoluteTimeout < cfg.IdleTimeout || cfg.AbsoluteTimeout > 7*24*time.Hour || cfg.DeviceLifetime < time.Hour || cfg.DeviceLifetime > 365*24*time.Hour || cfg.HashSlots < 1 || cfg.KnownDeviceHashSlots < 1 || cfg.HashSlots+cfg.KnownDeviceHashSlots > 16 || cfg.IPBurst < 1 || cfg.IPBurst > 10000 || cfg.GlobalBurst < 2 || cfg.GlobalBurst > 100000 {
+	if cfg.HashTimeout < time.Millisecond || cfg.HashTimeout > 30*time.Second || cfg.IdleTimeout < time.Minute || cfg.IdleTimeout > 24*time.Hour || cfg.AbsoluteTimeout < cfg.IdleTimeout || cfg.AbsoluteTimeout > 7*24*time.Hour || cfg.DeviceLifetime < time.Hour || cfg.DeviceLifetime > 365*24*time.Hour || cfg.HashSlots < 1 || cfg.KnownDeviceHashSlots < 1 || cfg.HashSlots+cfg.KnownDeviceHashSlots > 16 || cfg.IPBurst < 1 || cfg.IPBurst > 10000 || cfg.GlobalBurst < 2 || cfg.GlobalBurst > 100000 {
 		return nil, ErrDatabase
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	if cfg.Wait == nil {
-		cfg.Wait = func(ctx context.Context, d time.Duration) error {
-			timer := time.NewTimer(d)
-			defer timer.Stop()
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-timer.C:
-				return nil
-			}
+	for _, prefix := range cfg.TrustedProxies {
+		if !prefix.IsValid() {
+			return nil, ErrDatabase
 		}
 	}
+	cfg.TrustedProxies = append([]netip.Prefix(nil), cfg.TrustedProxies...)
 	cfg.SigningKey = append([]byte(nil), cfg.SigningKey...)
 	return &Service{repo: repo, cfg: cfg, hashSlots: make(chan struct{}, cfg.HashSlots), knownSlots: make(chan struct{}, cfg.KnownDeviceHashSlots), admissionSlots: make(chan struct{}, cfg.HashSlots), candidateSlots: make(chan struct{}, cfg.KnownDeviceHashSlots), ips: make(map[netip.Addr]ipWindow), knownIPs: make(map[netip.Addr]ipWindow), deriveKey: argon2.IDKey}, nil
 }
@@ -94,12 +91,14 @@ func NormalizeIdentifier(identifier string) string {
 }
 
 func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.HashTimeout)
+	defer cancel()
 	arrival := s.cfg.Now()
 	in.Identifier = NormalizeIdentifier(in.Identifier)
 	if !ValidIdentifier(in.Identifier) || len(in.Password) == 0 || len(in.Password) > 1024 || !utf8.ValidString(in.Password) || strings.ContainsAny(in.Password, "\r\n\x00") || !in.IP.IsValid() || ctx.Err() != nil {
 		return LoginResult{}, ErrCredentials
 	}
-	in.IP = in.IP.Unmap()
+	in.IP = rateLimitIP(in.IP)
 	// A MAC-valid, canonical device token is only a candidate. DB validation
 	// below still decides account exemption and reserved Argon2 eligibility.
 	var candidateHash [32]byte
@@ -121,9 +120,13 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	default:
 		return LoginResult{}, ErrRateLimited
 	}
-	// Includes database work and any bounded account-backoff wait; every return
-	// releases admission even when no password hash was started.
-	defer func() { <-admission }()
+	// Bounds pre-KDF database admission only; cooldowns never sleep. Every return
+	// releases admission if it has not already been released before hashing.
+	defer func() {
+		if admission != nil {
+			<-admission
+		}
+	}()
 	var oldHash *[32]byte
 	if in.OldSessionToken != "" {
 		h, e := tokenHash(in.OldSessionToken)
@@ -133,6 +136,9 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		oldHash = &h
 	}
 	credential, e := s.repo.Credential(ctx, in.Identifier)
+	if ctx.Err() != nil {
+		return LoginResult{}, ErrRateLimited
+	}
 	if e != nil && !errors.Is(e, ErrNotFound) {
 		return LoginResult{}, ErrDatabase
 	}
@@ -142,6 +148,9 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	if candidate {
 		var err error
 		device, err = s.repo.Device(ctx, candidateHash)
+		if ctx.Err() != nil {
+			return LoginResult{}, ErrRateLimited
+		}
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return LoginResult{}, ErrDatabase
 		}
@@ -162,6 +171,9 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		admission = s.admissionSlots
 	}
 	account, accountIP, e := s.repo.Cooldowns(ctx, in.Identifier, in.IP)
+	if ctx.Err() != nil {
+		return LoginResult{}, ErrRateLimited
+	}
 	if e != nil {
 		return LoginResult{}, ErrDatabase
 	}
@@ -169,17 +181,14 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		return LoginResult{}, ErrRateLimited
 	}
 	if !known && account.After(arrival) {
-		delay := account.Sub(arrival)
-		if delay > 60*time.Second {
-			delay = 60 * time.Second
-		}
-		if s.cfg.Wait(ctx, delay) != nil {
-			return LoginResult{}, ErrRateLimited
-		}
+		return LoginResult{}, ErrRateLimited
 	}
 	if ctx.Err() != nil {
 		return LoginResult{}, ErrRateLimited
 	}
+	// DB admission is distinct from KDF capacity; never retain it while hashing.
+	<-admission
+	admission = nil
 	slots := s.hashSlots
 	if known {
 		slots = s.knownSlots
@@ -189,8 +198,24 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	default:
 		return LoginResult{}, ErrRateLimited
 	}
-	verifiedPassword := s.verifyPassword(in.Password, credential.PasswordHash, eligible)
-	<-slots
+	// IDKey cannot be preempted. The worker owns its slot until real completion;
+	// deadline responses cannot release capacity for additional background KDFs.
+	// The buffered result lets late completion exit without any repository writes.
+	result := make(chan bool, 1)
+	go func() {
+		matched := s.verifyPassword(in.Password, credential.PasswordHash, eligible)
+		<-slots
+		result <- matched
+	}()
+	var verifiedPassword bool
+	select {
+	case verifiedPassword = <-result:
+	case <-ctx.Done():
+		return LoginResult{}, ErrRateLimited
+	}
+	if ctx.Err() != nil {
+		return LoginResult{}, ErrRateLimited
+	}
 	if !verifiedPassword {
 		now := s.cfg.Now()
 		failureErr := s.repo.RecordFailure(ctx, in.Identifier, in.IP, now)
@@ -258,6 +283,16 @@ func (s *Service) Logout(ctx context.Context, a Actor) error {
 	return nil
 }
 
+// IPv6 privacy addresses share a /64 in both in-memory and durable limits.
+// IPv4 and IPv4-mapped addresses retain their individual IPv4 key.
+func rateLimitIP(ip netip.Addr) netip.Addr {
+	ip = ip.Unmap().WithZone("")
+	if ip.Is6() {
+		return netip.PrefixFrom(ip, 64).Masked().Addr()
+	}
+	return ip
+}
+
 func takeWindow(w ipWindow, now time.Time, burst int) (ipWindow, bool) {
 	if w.start.IsZero() || !now.Before(w.start.Add(time.Minute)) {
 		w = ipWindow{start: now}
@@ -272,6 +307,7 @@ func (s *Service) admitIP(ip netip.Addr, now time.Time) bool {
 	return s.admitIPClass(ip, now, false)
 }
 func (s *Service) admitIPClass(ip netip.Addr, now time.Time, candidate bool) bool {
+	ip = rateLimitIP(ip)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Both arrival classes share an existing IP counter. Presenting or removing

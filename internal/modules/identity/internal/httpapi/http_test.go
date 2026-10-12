@@ -22,17 +22,26 @@ import (
 )
 
 type fakeRepo struct {
-	saved, revoked, failures int
-	session                  login.Session
-	hash                     [32]byte
-	dead                     bool
+	saved, revoked, failures, credentials int
+	credential                            login.Credential
+	accountCooldown, pairCooldown         time.Time
+	saveErr                               error
+	lastIP                                netip.Addr
+	session                               login.Session
+	hash                                  [32]byte
+	dead                                  bool
 }
 
 func (f *fakeRepo) Credential(context.Context, string) (login.Credential, error) {
+	f.credentials++
+	if f.credential.UserID != "" {
+		return f.credential, nil
+	}
 	return login.Credential{}, login.ErrNotFound
 }
-func (f *fakeRepo) Cooldowns(context.Context, string, netip.Addr) (time.Time, time.Time, error) {
-	return time.Time{}, time.Time{}, nil
+func (f *fakeRepo) Cooldowns(_ context.Context, _ string, ip netip.Addr) (time.Time, time.Time, error) {
+	f.lastIP = ip
+	return f.accountCooldown, f.pairCooldown, nil
 }
 func (f *fakeRepo) RecordFailure(context.Context, string, netip.Addr, time.Time) error {
 	f.failures++
@@ -42,8 +51,11 @@ func (f *fakeRepo) Device(context.Context, [32]byte) (login.Device, error) {
 	return login.Device{}, login.ErrNotFound
 }
 func (f *fakeRepo) FailDevice(context.Context, string, time.Time) error { return nil }
-func (f *fakeRepo) SaveLogin(context.Context, login.SessionInput) (login.Session, error) {
+func (f *fakeRepo) SaveLogin(_ context.Context, in login.SessionInput) (login.Session, error) {
 	f.saved++
+	if in.OldTokenHash != nil {
+		return f.session, f.saveErr
+	}
 	return f.session, nil
 }
 func (f *fakeRepo) LookupSession(_ context.Context, h [32]byte, _ time.Time, _ time.Duration) (login.Session, error) {
@@ -59,7 +71,8 @@ func (f *fakeRepo) RevokeSession(context.Context, string, time.Time) error {
 }
 func transportFixture(t *testing.T) (*Handler, *platform.Router, *fakeRepo, *login.Service, string) {
 	t.Helper()
-	now := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
+	// Intentionally historical: browser MaxAge must follow service time, not wall time.
+	now := time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 	raw := strings.Repeat("A", 43)
 	f := &fakeRepo{session: login.Session{ID: "session", UserID: "user", CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(time.Hour)}, hash: sha256.Sum256(make([]byte, 32))}
 	s, e := login.New(f, login.Config{Origin: "https://admin.example.test", SigningKey: []byte(strings.Repeat("k", 32)), Now: func() time.Time { return now }})
@@ -128,7 +141,7 @@ func TestSessionCookieIdleExpiryAndRefresh(t *testing.T) {
 			want = f.session.ExpiresAt
 		}
 		cookies := w.Result().Cookies()
-		if len(cookies) != 1 || cookies[0].Name != SessionCookie || !cookies[0].Expires.Equal(want) || cookies[0].Value != raw {
+		if len(cookies) != 1 || cookies[0].Name != SessionCookie || !cookies[0].Expires.Equal(want) || cookies[0].Value != raw || cookies[0].MaxAge != int(want.Sub(f.session.LastSeenAt)/time.Second) {
 			t.Fatal("idle cookie missing, reused beyond idle or extended beyond absolute")
 		}
 	}

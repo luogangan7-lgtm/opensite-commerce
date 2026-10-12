@@ -9,7 +9,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -32,10 +31,11 @@ type Handler struct {
 	service *login.Service
 	origin  string
 	idle    time.Duration
+	trusted []netip.Prefix
 }
 
-func New(s *login.Service, origin string, idle time.Duration) *Handler {
-	return &Handler{service: s, origin: origin, idle: idle}
+func New(s *login.Service, origin string, idle time.Duration, trusted ...netip.Prefix) *Handler {
+	return &Handler{service: s, origin: origin, idle: idle, trusted: append([]netip.Prefix(nil), trusted...)}
 }
 func (h *Handler) Routes() []platform.Route {
 	return []platform.Route{
@@ -118,12 +118,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, apperrors.New(400, "invalid_login_input", "Login input is invalid"))
 		return
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		writeError(w, r, apperrors.New(400, "invalid_client_address", "Client address is invalid"))
-		return
-	}
-	ip, err := netip.ParseAddr(host)
+	ip, err := h.clientIP(r)
 	if err != nil {
 		writeError(w, r, apperrors.New(400, "invalid_client_address", "Client address is invalid"))
 		return
@@ -136,10 +131,13 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.service.Login(r.Context(), login.LoginInput{Identifier: *dto.Email, Password: *dto.Password, DeviceToken: device, OldSessionToken: old, IP: ip.Unmap()})
 	if err != nil {
+		if errors.Is(err, login.ErrSession) {
+			setCookie(w, SessionCookie, "", -1, time.Unix(1, 0))
+		}
 		writeError(w, r, err)
 		return
 	}
-	setCookie(w, SessionCookie, result.SessionToken, 0, h.cookieExpiry(result.Session))
+	h.setSessionCookie(w, result.SessionToken, result.Session)
 	setCookie(w, DeviceCookie, result.DeviceToken, 90*24*60*60, time.Time{})
 	setCookie(w, ChallengeCookie, "", -1, time.Unix(1, 0))
 	writeJSON(w, 201, sessionBody(result.Session, result.CSRFToken))
@@ -155,8 +153,18 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	setCookie(w, SessionCookie, token, 0, h.cookieExpiry(s))
+	h.setSessionCookie(w, token, s)
 	writeJSON(w, 200, sessionBody(s, h.service.SessionCSRF(token)))
+}
+func (h *Handler) setSessionCookie(w http.ResponseWriter, token string, s login.Session) {
+	expires := h.cookieExpiry(s)
+	// The repository returns last_seen_at from its execution clock. Derive a
+	// relative browser lifetime from that clock, never the HTTP host wall clock.
+	maxAge := int(expires.Sub(s.LastSeenAt) / time.Second)
+	if maxAge < 1 {
+		maxAge = 1
+	}
+	setCookie(w, SessionCookie, token, maxAge, expires)
 }
 func (h *Handler) cookieExpiry(s login.Session) time.Time {
 	expires := s.LastSeenAt.Add(h.idle)

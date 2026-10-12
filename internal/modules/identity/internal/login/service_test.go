@@ -9,6 +9,7 @@ import (
 	"errors"
 	"golang.org/x/crypto/argon2"
 	"net/netip"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,6 +17,8 @@ import (
 )
 
 type fakeRepo struct {
+	credentialHook                                 func(context.Context, string) (Credential, error)
+	cooldownIP, failureIP                          netip.Addr
 	credential                                     Credential
 	credentialErr                                  error
 	credentialCalls                                int
@@ -26,10 +29,14 @@ type fakeRepo struct {
 	saved                                          SessionInput
 	failureErr, deviceFailureErr                   error
 	lookupHook                                     func() (Session, error)
+	cooldownHook                                   func(string, netip.Addr) (time.Time, time.Time, error)
 }
 
-func (f *fakeRepo) Credential(context.Context, string) (Credential, error) {
+func (f *fakeRepo) Credential(ctx context.Context, identifier string) (Credential, error) {
 	f.credentialCalls++
+	if f.credentialHook != nil {
+		return f.credentialHook(ctx, identifier)
+	}
 	return f.credential, f.credentialErr
 }
 
@@ -67,58 +74,63 @@ func TestKnownNewIPWhenOrdinaryMapFull(t *testing.T) {
 	}
 }
 
-func TestInFlightWaitBoundedAndKnownReserved(t *testing.T) {
+// Two +60s requests for one account previously held both default ordinary slots.
+// Channel rendezvous make the unrelated-owner observation deterministic without sleeps.
+func TestCooldownDoesNotStarveUnrelatedOwner(t *testing.T) {
 	now := time.Unix(10000, 0)
-	r := &fakeRepo{credential: activeCredential(), account: now.Add(time.Hour), device: Device{ID: "dev", UserID: "user", ExpiresAt: now.Add(time.Hour)}}
+	r := &fakeRepo{credential: activeCredential()}
+	r.cooldownHook = func(identifier string, _ netip.Addr) (time.Time, time.Time, error) {
+		if identifier == "staff@example.com" {
+			return now.Add(60 * time.Second), time.Time{}, nil
+		}
+		return time.Time{}, time.Time{}, nil
+	}
 	cfg := testConfig(&now)
-	cfg.HashSlots = 1
-	entered := make(chan struct{})
+	entered := make(chan time.Duration, 2)
 	release := make(chan struct{})
-	done := make(chan error, 1)
-	cfg.Wait = func(context.Context, time.Duration) error { close(entered); <-release; return context.Canceled }
+	done := make(chan error, 2)
+	cfg.Wait = func(_ context.Context, d time.Duration) error { entered <- d; <-release; return context.Canceled }
 	s, _ := New(r, cfg)
-	var hashes atomic.Int32
-	s.deriveKey = func(password, salt []byte, times, memory uint32, threads uint8, size uint32) []byte {
-		hashes.Add(1)
-		return argon2.IDKey(password, salt, times, memory, threads, size)
-	}
-	go func() { _, e := s.Login(context.Background(), input()); done <- e }()
-	select {
-	case <-entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("wait did not begin")
-	}
-	defer func() {
+	completed := 0
+	for i := 0; i < 2; i++ {
+		go func() { _, e := s.Login(context.Background(), input()); done <- e }()
 		select {
-		case <-release:
-		default:
+		case d := <-entered:
+			if d != 60*time.Second {
+				t.Fatalf("cooldown %v", d)
+			}
+		case e := <-done:
+			completed++
+			if !errors.Is(e, ErrRateLimited) {
+				t.Fatalf("cooldown returned %v", e)
+			}
+		case <-time.After(3 * time.Second):
 			close(release)
+			t.Fatal("cooldown failed to respond")
 		}
-	}()
-	if len(s.admissionSlots) != 1 || hashes.Load() != 0 {
-		t.Fatal("backoff not admitted before hash")
 	}
-	if _, e := s.Login(context.Background(), input()); !errors.Is(e, ErrRateLimited) || r.credentialCalls != 1 {
-		t.Fatalf("ordinary in-flight not bounded err=%v reads=%d", e, r.credentialCalls)
-	}
-	raw, _ := newToken()
-	known := input()
-	known.DeviceToken = s.sign("device", raw)
-	known.IP = netip.MustParseAddr("198.51.100.2")
-	if _, e := s.Login(context.Background(), known); e != nil {
-		t.Fatalf("known DB admission starved by ordinary wait %v", e)
-	}
+	owner := input()
+	owner.Identifier = "owner@example.com"
+	owner.IP = netip.MustParseAddr("198.51.100.2")
+	_, ownerErr := s.Login(context.Background(), owner)
+	held := len(s.admissionSlots)
 	close(release)
-	select {
-	case e := <-done:
-		if !errors.Is(e, ErrRateLimited) {
-			t.Fatalf("wait canceled returned %v", e)
+	for completed < 2 {
+		select {
+		case e := <-done:
+			completed++
+			if !errors.Is(e, ErrRateLimited) {
+				t.Fatalf("cooldown returned %v", e)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("cooldown did not release")
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("wait did not release")
 	}
-	if len(s.admissionSlots) != 0 || len(s.candidateSlots) != 0 || hashes.Load() != 1 || r.failures != 0 {
-		t.Fatal("admission leaked or rejected wait hashed/recorded")
+	if ownerErr != nil {
+		t.Fatalf("unrelated owner rejected: %v; cooldown held %d ordinary admission slots", ownerErr, held)
+	}
+	if held != 0 || r.failures != 0 || r.saves != 1 {
+		t.Fatalf("cooldown consumed resources: held=%d failures=%d saves=%d", held, r.failures, r.saves)
 	}
 }
 
@@ -173,12 +185,17 @@ func TestReservedIPMapBoundedAndCounterShared(t *testing.T) {
 		t.Fatal("expired capacity not reclaimed")
 	}
 }
-func (f *fakeRepo) Cooldowns(context.Context, string, netip.Addr) (time.Time, time.Time, error) {
+func (f *fakeRepo) Cooldowns(_ context.Context, identifier string, ip netip.Addr) (time.Time, time.Time, error) {
 	f.cooldownCalls++
+	f.cooldownIP = ip
+	if f.cooldownHook != nil {
+		return f.cooldownHook(identifier, ip)
+	}
 	return f.account, f.accountIP, nil
 }
-func (f *fakeRepo) RecordFailure(context.Context, string, netip.Addr, time.Time) error {
+func (f *fakeRepo) RecordFailure(_ context.Context, _ string, ip netip.Addr, _ time.Time) error {
 	f.failures++
+	f.failureIP = ip
 	return f.failureErr
 }
 func (f *fakeRepo) Device(context.Context, [32]byte) (Device, error) {
@@ -342,8 +359,6 @@ func TestDeviceAdmissionBoundaries(t *testing.T) {
 				r.device.ExpiresAt = now
 			}
 			cfg := testConfig(&now)
-			waits := 0
-			cfg.Wait = func(context.Context, time.Duration) error { waits++; return nil }
 			s, _ := New(r, cfg)
 			raw, _ := newToken()
 			in := input()
@@ -351,8 +366,8 @@ func TestDeviceAdmissionBoundaries(t *testing.T) {
 			if tc.forged {
 				in.DeviceToken += "x"
 			}
-			if _, e := s.Login(context.Background(), in); e != nil || waits != 1 {
-				t.Fatalf("invalid device exempted: %v waits=%d", e, waits)
+			if _, e := s.Login(context.Background(), in); !errors.Is(e, ErrRateLimited) || r.saves != 0 {
+				t.Fatalf("invalid device exempted: %v saves=%d", e, r.saves)
 			}
 		})
 	}
@@ -472,22 +487,13 @@ func TestConfigOriginAndKeyCopy(t *testing.T) {
 	}
 }
 
-func TestCooldownFixedArrivalCapAndKnownExemption(t *testing.T) {
+func TestCooldownImmediateAndKnownExemption(t *testing.T) {
 	for _, known := range []bool{false, true} {
 		t.Run(map[bool]string{false: "new", true: "known"}[known], func(t *testing.T) {
 			now := time.Unix(10000, 0)
 			r := &fakeRepo{credential: activeCredential(), account: now.Add(10 * time.Hour)}
 			cfg := testConfig(&now)
-			waits := 0
-			cfg.Wait = func(_ context.Context, d time.Duration) error {
-				waits++
-				if d != 60*time.Second {
-					t.Fatalf("wait %v", d)
-				}
-				now = now.Add(d)
-				r.account = now.Add(10 * time.Hour)
-				return nil
-			}
+			cfg.Wait = func(context.Context, time.Duration) error { t.Fatal("cooldown slept"); return nil }
 			s, _ := New(r, cfg)
 			in := input()
 			if known {
@@ -496,8 +502,15 @@ func TestCooldownFixedArrivalCapAndKnownExemption(t *testing.T) {
 				in.DeviceToken = s.sign("device", raw)
 			}
 			out, e := s.Login(context.Background(), in)
-			if e != nil || out.SessionToken == "" || r.cooldownCalls != 1 || waits != map[bool]int{false: 1, true: 0}[known] {
-				t.Fatalf("err %v waits %d reads %d", e, waits, r.cooldownCalls)
+			if known {
+				if e != nil || out.SessionToken == "" {
+					t.Fatalf("known cooldown exemption lost: %v", e)
+				}
+			} else if !errors.Is(e, ErrRateLimited) || r.saves != 0 || r.failures != 0 {
+				t.Fatalf("cooldown not rejected: %v", e)
+			}
+			if r.cooldownCalls != 1 || len(s.admissionSlots) != 0 || len(s.candidateSlots) != 0 {
+				t.Fatal("cooldown leaked admission")
 			}
 		})
 	}
@@ -523,5 +536,159 @@ func TestKnownDeviceCapacityAndFailure(t *testing.T) {
 	in.DeviceToken = ""
 	if _, e := s.Login(context.Background(), in); !errors.Is(e, ErrRateLimited) || r.failures != 1 {
 		t.Fatalf("rejected request recorded %v", e)
+	}
+}
+
+// Cancellation bounds the client response but cannot cancel Argon2 itself.
+// Both success and failure results arriving late must have zero durable writes.
+func TestHashDeadlineRetainsCapacityAndNeverWritesLate(t *testing.T) {
+	for _, correct := range []bool{false, true} {
+		t.Run(map[bool]string{false: "wrong", true: "correct"}[correct], func(t *testing.T) {
+			now := time.Unix(10000, 0)
+			credential := activeCredential()
+			r := &fakeRepo{credential: credential}
+			var requestContext context.Context
+			r.credentialHook = func(ctx context.Context, _ string) (Credential, error) { requestContext = ctx; return credential, nil }
+			cfg := testConfig(&now)
+			cfg.HashSlots = 1
+			cfg.HashTimeout = 100 * time.Millisecond
+			s, _ := New(r, cfg)
+			entered := make(chan struct{})
+			release := make(chan struct{})
+			derived := make(chan struct{})
+			var calls atomic.Int32
+			s.deriveKey = func(password, salt []byte, times, memory uint32, threads uint8, size uint32) []byte {
+				calls.Add(1)
+				close(entered)
+				<-release
+				key := argon2.IDKey(password, salt, times, memory, threads, size)
+				close(derived)
+				return key
+			}
+			done := make(chan error, 1)
+			in := input()
+			if !correct {
+				in.Password = "wrong"
+			}
+			go func() { _, e := s.Login(context.Background(), in); done <- e }()
+			select {
+			case <-entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("KDF did not begin")
+			}
+			select {
+			case <-requestContext.Done():
+			case <-time.After(time.Second):
+				close(release)
+				t.Fatal("configured deadline missing")
+			}
+			select {
+			case e := <-done:
+				if !errors.Is(e, ErrRateLimited) {
+					t.Fatalf("deadline response %v", e)
+				}
+			case <-time.After(time.Second):
+				close(release)
+				t.Fatal("blocked KDF blocked client response")
+			}
+			if len(s.hashSlots) != 1 || len(s.admissionSlots) != 0 || r.saves != 0 || r.failures != 0 {
+				close(release)
+				t.Fatal("deadline released KDF or retained DB admission/wrote")
+			}
+			if _, e := s.Login(context.Background(), input()); !errors.Is(e, ErrRateLimited) || calls.Load() != 1 {
+				close(release)
+				t.Fatalf("deadline allowed another KDF: %v calls=%d", e, calls.Load())
+			}
+			close(release)
+			select {
+			case <-derived:
+			case <-time.After(3 * time.Second):
+				t.Fatal("KDF did not finish")
+			}
+			deadline := time.Now().Add(time.Second)
+			for len(s.hashSlots) != 0 {
+				if time.Now().After(deadline) {
+					t.Fatal("completed KDF leaked capacity")
+				}
+				runtime.Gosched()
+			}
+			if r.saves != 0 || r.failures != 0 || r.deviceFailures != 0 {
+				t.Fatal("late KDF wrote durable state")
+			}
+		})
+	}
+}
+
+func TestIPv6NetworkKeySharedAcrossAdmissionAndRepository(t *testing.T) {
+	now := time.Unix(10000, 0)
+	r := &fakeRepo{credential: activeCredential()}
+	cfg := testConfig(&now)
+	cfg.IPBurst = 1
+	s, _ := New(r, cfg)
+	in := input()
+	in.Password = "wrong"
+	in.IP = netip.MustParseAddr("2001:db8:1234:5678::1")
+	if _, e := s.Login(context.Background(), in); !errors.Is(e, ErrCredentials) {
+		t.Fatal(e)
+	}
+	want := netip.MustParseAddr("2001:db8:1234:5678::")
+	if r.cooldownIP != want || r.failureIP != want {
+		t.Fatalf("durable key cooldown=%v failure=%v", r.cooldownIP, r.failureIP)
+	}
+	in.IP = netip.MustParseAddr("2001:db8:1234:5678:ffff::2")
+	if _, e := s.Login(context.Background(), in); !errors.Is(e, ErrRateLimited) || r.credentialCalls != 1 {
+		t.Fatalf("same /64 bypassed admission %v reads=%d", e, r.credentialCalls)
+	}
+	in.IP = netip.MustParseAddr("2001:db8:1234:5679::1")
+	if _, e := s.Login(context.Background(), in); !errors.Is(e, ErrCredentials) || r.credentialCalls != 2 {
+		t.Fatalf("different /64 denied %v", e)
+	}
+	for _, raw := range []string{"192.0.2.1", "::ffff:192.0.2.1"} {
+		if got := rateLimitIP(netip.MustParseAddr(raw)); got != netip.MustParseAddr("192.0.2.1") {
+			t.Fatalf("IPv4 key %v", got)
+		}
+	}
+}
+
+func TestPasswordByteCapPrecedesDatabaseAndKDF(t *testing.T) {
+	for _, length := range []int{1024, 1025} {
+		t.Run(map[int]string{1024: "boundary", 1025: "over-cap"}[length], func(t *testing.T) {
+			now := time.Unix(10000, 0)
+			r := &fakeRepo{credential: activeCredential()}
+			s, _ := New(r, testConfig(&now))
+			var hashes atomic.Int32
+			s.deriveKey = func([]byte, []byte, uint32, uint32, uint8, uint32) []byte { hashes.Add(1); return make([]byte, 32) }
+			in := input()
+			in.Password = strings.Repeat("p", length)
+			if _, e := s.Login(context.Background(), in); !errors.Is(e, ErrCredentials) {
+				t.Fatal(e)
+			}
+			want := map[int]int{1024: 1, 1025: 0}[length]
+			if r.credentialCalls != want || int(hashes.Load()) != want || r.failures != want {
+				t.Fatalf("length=%d reads=%d KDF=%d writes=%d", length, r.credentialCalls, hashes.Load(), r.failures)
+			}
+		})
+	}
+}
+
+func TestDatabaseAdmissionHonorsLoginDeadline(t *testing.T) {
+	now := time.Unix(10000, 0)
+	r := &fakeRepo{}
+	cfg := testConfig(&now)
+	cfg.HashTimeout = 10 * time.Millisecond
+	r.credentialHook = func(ctx context.Context, _ string) (Credential, error) {
+		if _, ok := ctx.Deadline(); !ok {
+			t.Fatal("repository context lacks deadline")
+		}
+		<-ctx.Done()
+		return Credential{}, ctx.Err()
+	}
+	s, _ := New(r, cfg)
+	s.deriveKey = func([]byte, []byte, uint32, uint32, uint8, uint32) []byte {
+		t.Error("expired DB started KDF")
+		return nil
+	}
+	if _, e := s.Login(context.Background(), input()); !errors.Is(e, ErrRateLimited) || len(s.admissionSlots) != 0 || r.cooldownCalls != 0 || r.failures != 0 || r.saves != 0 {
+		t.Fatalf("DB deadline leaked or progressed: %v", e)
 	}
 }

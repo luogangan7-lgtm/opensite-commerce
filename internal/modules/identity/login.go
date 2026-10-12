@@ -33,7 +33,7 @@ func OpenLogin(ctx context.Context, dsn string, cfg LoginConfig) (*LoginModule, 
 		_ = repository.Close(ctx)
 		return nil, err
 	}
-	return &LoginModule{repository: repository, handler: transport.New(service, cfg.Origin, idle)}, nil
+	return &LoginModule{repository: repository, handler: transport.New(service, cfg.Origin, idle, cfg.TrustedProxies...)}, nil
 }
 func (m *LoginModule) Routes() []platform.Route              { return m.handler.Routes() }
 func (m *LoginModule) Authenticator() platform.Authenticator { return m.handler }

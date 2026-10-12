@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -129,7 +130,7 @@ func fixtureRouter(t *testing.T, ctx context.Context, dsn string, cfg LoginConfi
 }
 func requestPG(r *platform.Router, method, path, body, csrf, ip string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	q := httptest.NewRequest(method, path, strings.NewReader(body))
-	q.RemoteAddr = ip + ":12345"
+	q.RemoteAddr = net.JoinHostPort(ip, "12345")
 	q.Header.Set("Origin", "https://admin.example.test")
 	q.Header.Set("Content-Type", "application/json")
 	if csrf != "" {
@@ -368,8 +369,15 @@ func TestLoginDeviceRevocationPostgres(t *testing.T) {
 		t.Fatal("revoked device cooldown fixture failed", safeCode(e))
 	}
 	w := loginPG(t, router, "device@example.test", testPassword, "192.0.2.56", device)
-	if w.Code != 201 || waits != 1 {
+	if w.Code != 429 || waits != 0 || w.Header().Get("Retry-After") != "60" {
 		t.Fatal("revoked device retained account exemption", w.Code, waits)
+	}
+	if tag, e := db.Exec(ctx, "UPDATE app.auth_account_attempts SET cooldown_until=clock_timestamp()-interval '1 second' WHERE identifier_normalized='device@example.test'"); e != nil || tag.RowsAffected() != 1 {
+		t.Fatal("device cooldown reset failed", safeCode(e))
+	}
+	w = loginPG(t, router, "device@example.test", testPassword, "192.0.2.56", device)
+	if w.Code != 201 || waits != 0 {
+		t.Fatal("new login after cooldown refused", w.Code, waits)
 	}
 	newDevice := cookiePG(t, w, "__Host-osc_known_device")
 	other := seedLoginPG(t, ctx, db, "otherdevice@example.test")
@@ -377,7 +385,7 @@ func TestLoginDeviceRevocationPostgres(t *testing.T) {
 		t.Fatal("other account cooldown fixture failed", safeCode(e))
 	}
 	w = loginPG(t, router, "otherdevice@example.test", testPassword, "192.0.2.57", newDevice)
-	if w.Code != 201 || waits != 2 {
+	if w.Code != 429 || waits != 0 {
 		t.Fatal("different-user device retained account exemption", w.Code, waits)
 	}
 	_ = other

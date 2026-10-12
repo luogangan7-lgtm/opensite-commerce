@@ -23,7 +23,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	config := bootstrap.Config{Address: address, Logger: logger}
-	staff, err := bootstrap.StaffLogin(ctx, os.Getenv("OSC_AUTH_DATABASE_URL"), os.Getenv("OSC_ADMIN_ORIGIN"), os.Getenv("OSC_AUTH_SIGNING_KEY_HEX"))
+	staff, err := bootstrap.StaffLogin(ctx, os.Getenv("OSC_AUTH_DATABASE_URL"), os.Getenv("OSC_ADMIN_ORIGIN"), os.Getenv("OSC_AUTH_SIGNING_KEY_HEX"), os.Getenv("OSC_AUTH_TRUSTED_PROXIES"))
 	if err != nil {
 		logger.Error("staff login startup failed")
 		os.Exit(1)

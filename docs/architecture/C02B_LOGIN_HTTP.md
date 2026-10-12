@@ -21,12 +21,23 @@ challenge and known-device cookies are Secure, HttpOnly, SameSite=Lax, Path=/
 without Domain. Tokens in JSON are CSRF material; opaque session/device tokens
 are delivered only in cookies. Responses prevent caching. The session cookie expires at the earlier of idle
 and absolute expiry; GET session refreshes it after successful admission.
-Authentication uses the direct peer IP; proxy forwarding trust belongs to a
-later deployment card. Per-IP and global admission limiters are process-local;
+Authentication uses the direct peer IP by default. `OSC_AUTH_TRUSTED_PROXIES`
+optionally lists comma-separated IPv4/IPv6 network CIDRs; surrounding whitespace
+is trimmed, while empty elements, trailing separators, invalid or zoned addresses,
+IPv4-mapped IPv6 prefixes and prefixes with host bits fail startup. IPv6 spelling
+is normalized by the standard parser; network host bits are never silently masked.
+Only configure networks controlled by the deployment. A trusted direct peer enables
+`X-Forwarded-For` resolution from right to left, stopping at the first untrusted
+hop; an untrusted peer cannot assert a forwarded client. `Forwarded` is ignored.
+Both in-memory IP admission and durable account-IP counters group IPv6 clients by
+/64 (IPv4 remains per-address). Per-IP and global admission limiters are process-local;
 account and account-IP failure counters are durable database state. Multiple
 application instances need a deployment-level admission policy.
 
-A login creates a new session. When a valid old token is supplied, the private
+A login creates a new session. If an explicit old-session token is invalid, stale
+or belongs to another account, the login returns HTTP 401 and clears that cookie;
+the next credential submission can recover without a manual cookie clear.
+Other failures do not clear the session cookie. When a valid same-user old token is supplied, the private
 store conditionally revokes only the same user's active, unexpired, non-idle
 session, then inserts its successor in the same transaction. Zero updated rows
 roll back before insertion. Admission checks active user status, finite clocks,
@@ -54,7 +65,9 @@ complete latest identity/role SQL gates. Static checks alone do not establish
 HTTP or PostgreSQL runtime acceptance.
 
 Bootstrap applies a 75-second request context deadline; the HTTP server write
-timeout is 90 seconds. These are request bounds, not throughput guarantees.
+timeout is 90 seconds. Login applies its own five-second `HashTimeout` context
+by default across admission and repository work. These are request bounds, not
+throughput guarantees.
 
 `cmd/api` installs these routes only when all three environment variables are
 present: `OSC_AUTH_DATABASE_URL` (a dedicated LOGIN inheriting only `app_auth`),
@@ -62,19 +75,33 @@ present: `OSC_AUTH_DATABASE_URL` (a dedicated LOGIN inheriting only `app_auth`),
 `OSC_AUTH_SIGNING_KEY_HEX` (32 random bytes encoded as hex). Supply credentials
 through secret management; partial configuration and excessive DB privileges
 fail startup. No credentials are created by this card. Missing configuration
-leaves the module uninstalled and private admission denied.
+leaves the module uninstalled and private admission denied. A nonempty proxy
+setting without the three required credentials is partial configuration and also
+fails startup.
 
 Ordinary/known-device hashing defaults to two/one slots. Per-IP admission is 30
 requests per minute; ordinary/reserved global buckets together default to 300.
 The ordinary IP map is bounded to 4096 entries; signed device candidates have
 a separate 256-entry overflow map, with shared counters for an existing IP.
-Account backoff is sampled once and waits at most 60 seconds; a validated known
-device skips that layer but retains IP/account-IP checks. Five failed passwords
-revoke the device. Invalid explicit old-session tokens remain rejected without
-creating a replacement; switch accounts by logging out first.
+Account cooldown returns an immediate generic HTTP 429 with `Retry-After: 60`;
+there is no server-side cooldown sleep. Registered and nonexistent identifiers
+use the same persistent account/account-IP counter path. Wrong-password HTTP 401
+and cooldown HTTP 429 remain observably different policy states; neither status
+claims that an account exists. A validated known device skips account cooldown
+but retains IP/account-IP checks. Ordinary and reserved hash slots are held only
+for actual password KDF work, never during repository IO or cooldown processing.
+Database admission is released before the KDF starts. A bounded worker owns its
+actual hash slot until the primitive returns: Argon2 cannot be cancelled. On
+request timeout the response returns rate limited, capacity is not freed early,
+and the worker cannot perform late failure-counter or session writes. Worker
+growth is bounded by the configured actual KDF slots (at most 16 total). The
+legacy `Config.Wait` hook is deprecated and unused.
+Five failed passwords revoke the device; the existing 90-day device expiry is
+enforced. **FOLLOWUP CARD d:** per-user active known-device cap and expired-row
+cleanup remain deferred; this card does not implement either lifecycle policy.
 
 These handlers are handwritten adapters to the existing strict HTTP platform;
-the separately reviewed 03b generated-server POC remains pending. Registry and
+the 03b generated-server POC is outside this repair's scope. Registry and
 OpenAPI include all four implemented operations now. Target-host Argon2 timing,
-browser/proxy integration, signing-key rotation and multi-instance IP/global
+real browser/proxy integration, signing-key rotation and shared multi-instance IP/global
 admission are deployment acceptance work and are NOT_RUN in this card.

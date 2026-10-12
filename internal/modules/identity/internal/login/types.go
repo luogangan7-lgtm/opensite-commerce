@@ -68,10 +68,15 @@ type Config struct {
 	Origin                                       string
 	SigningKey                                   []byte
 	IdleTimeout, AbsoluteTimeout, DeviceLifetime time.Duration
-	HashSlots, KnownDeviceHashSlots              int
-	IPBurst, GlobalBurst                         int
-	Now                                          func() time.Time
-	Wait                                         func(context.Context, time.Duration) error
+	// HashTimeout bounds admission/database work and forbids writes after KDF deadline.
+	// A bounded worker retains its slot until Argon2 completes; it cannot be preempted.
+	HashTimeout                     time.Duration
+	TrustedProxies                  []netip.Prefix
+	HashSlots, KnownDeviceHashSlots int
+	IPBurst, GlobalBurst            int
+	Now                             func() time.Time
+	// Deprecated: cooldowns reject immediately. Kept for config source compatibility.
+	Wait func(context.Context, time.Duration) error
 }
 type LoginInput struct {
 	Identifier, Password, DeviceToken, OldSessionToken string
