@@ -12,7 +12,8 @@ sql = config['sql'][0]
 assert sql['engine'] == 'postgresql'
 assert sql['gen']['go']['sql_package'] == 'pgx/v5'
 assert sql['gen']['go']['out'] == 'internal/db'
-assert len(sql['schema']) == 7
+assert len(sql['schema']) >= 7
+assert set(sql['schema']) == {str(p.relative_to(root)) for p in (root/'migrations').glob('*.sql') if p.name[:3] not in ('008','009','010')}
 for path in sql['schema']:
     assert (root/path).is_file(), path
 assert all('008_' not in name and '009_' not in name for name in sql['schema'])

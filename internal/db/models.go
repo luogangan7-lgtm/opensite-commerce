@@ -222,6 +222,28 @@ type AppPageRevision struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type AppPriceEntry struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	ID          pgtype.UUID `json:"id"`
+	PriceListID pgtype.UUID `json:"price_list_id"`
+	SkuID       pgtype.UUID `json:"sku_id"`
+	MinQuantity int64       `json:"min_quantity"`
+	UnitAmount  int64       `json:"unit_amount"`
+}
+
+type AppPriceList struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ID              pgtype.UUID        `json:"id"`
+	Currency        string             `json:"currency"`
+	Status          string             `json:"status"`
+	StartsAt        pgtype.Timestamptz `json:"starts_at"`
+	EndsAt          pgtype.Timestamptz `json:"ends_at"`
+	Priority        int32              `json:"priority"`
+	Audience        string             `json:"audience"`
+	CustomerGroupID pgtype.UUID        `json:"customer_group_id"`
+	BuyerCompanyID  pgtype.UUID        `json:"buyer_company_id"`
+}
+
 type AppProduct struct {
 	TenantID              pgtype.UUID        `json:"tenant_id"`
 	ID                    pgtype.UUID        `json:"id"`

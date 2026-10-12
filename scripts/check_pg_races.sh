@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Multi-connection race gates for release sealing (migration 010); real PG18 only.
+# Multi-connection gates for release sealing and pricing tier uniqueness; real PG18.
 # Depends on: an expendable DB already migrated by check_pg.sh; psql or Docker compose.
 # Called by: CI after check_pg.sh. Invariant checked: a sealed release never
 # references media that is non-public or whose blob is not ready, whatever the
 # interleaving of runtime child insert, media downgrade and publish.
+# Pricing also rejects two concurrent inserts for the same list/SKU/quantity tier.
 # Ordering is explicit, not timed: a participant that must hold its locks parks
 # on an advisory lock owned by a driver "gate" session, and the driver polls
 # pg_stat_activity (superuser) until each participant is parked or blocked on
@@ -130,5 +131,28 @@ for first in media seal; do
   if [[ $first == media ]]; then expect down ok; expect seal RELEASE_MEDIA_NOT_PUBLIC_READY
   else expect seal ok; expect down SEALED_RELEASE_MEDIA_PINNED; fi
 done
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing contract" >&2; exit 1; fi
-echo 'PASS: lock-synchronized seal/downgrade/child-append races keep sealed media public+ready'
+# Pricing's unique tier must survive two trusted writers on separate connections.
+# No numbered migration is assumed; this is an invariant of the pricing tables.
+read -r T L K <<<"$(sql <<'SQL'
+INSERT INTO app.tenants(name) VALUES('pricing-race') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','R') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+ VALUES(:'t',:'p','R','default') RETURNING id AS k \gset
+INSERT INTO app.price_lists(tenant_id,currency,status,starts_at)
+ VALUES(:'t','USD','active',now()) RETURNING id AS l \gset
+SELECT :'t'||' '||:'l'||' '||:'k';
+SQL
+)"
+insert="INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) VALUES('$T','$L','$K',1,100);"
+gate_close 10
+tx pricing_first postgres "$T" "$insert $(park 10)" &
+await pricing_first advisory
+tx pricing_second postgres "$T" "$insert" &
+await pricing_second "${ROWLOCK[@]}"
+gate_open 10; wait
+expect pricing_first ok; expect pricing_second price_entries_tier_unique
+got=$(sql <<<"SELECT count(*) FROM app.price_entries WHERE tenant_id='$T' AND price_list_id='$L' AND sku_id='$K' AND min_quantity=1;")
+[[ $got == 1 ]] || { echo "FAIL: pricing race persisted $got duplicate tiers"; fail=1; }
+echo "pricing duplicate-tier race: $got committed tier (expected 1)"
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/pricing contract" >&2; exit 1; fi
+echo 'PASS: lock-synchronized sealing and pricing races preserve media and tier uniqueness'

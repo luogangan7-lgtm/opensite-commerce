@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Upgrade gates for migration 010 on data written under 001-009; real PG18 only.
+# Upgrade gates for frozen hardening and forward pricing DDL; real PG18 only.
 # Depends on: a superuser DATABASE_URL (or Docker compose) able to CREATE DATABASE.
 # Called by: CI after check_pg.sh. Each case runs in its own throwaway database.
 # Invariants: 010 refuses to seal a live release with unsafe media; every pre-010
 # release ends up sealed (history is immutable); releases created after 010 are not.
+# Forward pricing preserves existing catalog SKU identities and exact zero amounts.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -106,5 +107,33 @@ SQL
 fi
 admin -c "DROP DATABASE $DB"
 
+# Existing catalog rows from 001..010 remain usable by the forward pricing DDL.
+# Apply every post-010 migration by its current filename, not a reserved number.
+DB=upgrade_pricing_$$
+fresh_009 $DB
+if ! out=$(apply_010 $DB); then bad "pricing base hardening: $out"; else
+ db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('pricing-upgrade') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','OLD') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+ VALUES(:'t',:'p','OLD','default');
+SQL
+ for f in migrations/[0-9][0-9][0-9]_*.sql; do
+  number=${f##*/}; number=${number%%_*}
+  if ((10#$number>10)); then db "$DB" < "$f" >/dev/null; fi
+ done
+ result=$(db "$DB" <<'SQL'
+INSERT INTO app.price_lists(tenant_id,currency,starts_at)
+ SELECT id,'USD',now() FROM app.tenants WHERE name='pricing-upgrade' RETURNING id AS l \gset
+INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount)
+ SELECT tenant_id,:'l',id,1,0 FROM app.product_variants WHERE sku='OLD';
+SELECT count(*) FROM app.price_entries e JOIN app.product_variants v
+ ON (e.tenant_id,e.sku_id)=(v.tenant_id,v.id) WHERE v.sku='OLD' AND e.unit_amount=0;
+SQL
+ )
+ if [[ $result == 1 ]]; then pass "pricing upgrade preserves existing SKU and exact zero price"
+ else bad "pricing upgrade witness: $result"; fi
+fi
+admin -c "DROP DATABASE $DB"
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: 010 upgrade gates'
+echo 'PASS: hardening and pricing upgrade gates'
