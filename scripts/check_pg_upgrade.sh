@@ -524,5 +524,50 @@ if out=$(apply_customers "$CUSTOMERS_DB"); then bad 'customers/B2B accepted migr
 elif [[ $out != *CUSTOMERS_DEFAULT_PRIVILEGES*app_customer_auth* ]]; then bad "default-privilege refusal failed for another reason: $out"
 else pass 'customers/B2B fails closed on default privileges that would pre-grant new tables'; fi
 admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+# A preserved dedicated login must not keep ADMIN OPTION on the capability,
+# otherwise it can delegate credential access to any role.
+drop_admin_roles() { admin -c "DROP ROLE IF EXISTS cust_login_admin" -c "DROP ROLE IF EXISTS cust_victim" >/dev/null 2>&1 || true; }
+drop_admin_roles
+CUSTOMERS_DB=customers_admin_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+DO $r$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
+ CREATE ROLE app_customer_auth NOLOGIN; END IF; END $r$;
+CREATE ROLE cust_login_admin LOGIN;
+CREATE ROLE cust_victim NOLOGIN;
+GRANT app_customer_auth TO cust_login_admin WITH ADMIN OPTION;
+SQL
+if ! out=$(apply_customers "$CUSTOMERS_DB"); then bad "customers/B2B admin-option upgrade: $out"
+else
+ result=$(db "$CUSTOMERS_DB" -c "SELECT pg_has_role('cust_login_admin','app_customer_auth','MEMBER')::text||'|'||bool_or(admin_option)::text FROM pg_auth_members WHERE roleid='app_customer_auth'::regrole AND member='cust_login_admin'::regrole")
+ if [[ $result != 'true|false' ]]; then bad "customers/B2B preserved login membership/admin option: $result"
+ elif db "$CUSTOMERS_DB" -c "SET SESSION AUTHORIZATION cust_login_admin; GRANT app_customer_auth TO cust_victim" >/dev/null 2>&1; then bad 'customers/B2B preserved login can still delegate app_customer_auth'
+ else pass 'customers/B2B keeps a dedicated login but strips its admin option (no delegation)'; fi
+fi
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+drop_admin_roles
+
+# A tenant inserted concurrently (uncommitted when 016 starts) must end up with
+# exactly the three buyer roles: backfill and trigger leave no gap between them.
+CUSTOMERS_DB=customers_tenant_race_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null &
+BEGIN;
+INSERT INTO app.tenants(name) VALUES('race-tenant');
+SELECT pg_sleep(0.5);
+DO $w$ BEGIN FOR i IN 1..300 LOOP PERFORM pg_stat_clear_snapshot();
+ EXIT WHEN EXISTS(SELECT FROM pg_stat_activity WHERE datname=current_database()
+  AND pid<>pg_backend_pid() AND wait_event_type='Lock');
+ PERFORM pg_sleep(0.1); END LOOP; END $w$;
+COMMIT;
+SQL
+race_pid=$!
+until [[ $(db "$CUSTOMERS_DB" -c "SELECT count(*) FROM pg_locks WHERE relation='app.tenants'::regclass AND mode='RowExclusiveLock' AND granted") != 0 ]]; do sleep 0.1; done
+out=$(apply_customers "$CUSTOMERS_DB") || bad "customers/B2B upgrade with concurrent tenant insert: $out"
+wait "$race_pid" || bad 'customers/B2B concurrent tenant insert session failed'
+result=$(db "$CUSTOMERS_DB" -c "SELECT string_agg(code,',' ORDER BY code) FROM app.buyer_roles r JOIN app.tenants t ON t.id=r.tenant_id WHERE t.name='race-tenant'")
+[[ $result == admin,approver,purchaser ]] && pass 'customers/B2B concurrent tenant insert gets exactly the three buyer roles' \
+ || bad "customers/B2B concurrent tenant buyer roles: $result"
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
 [[ $fail -eq 0 ]] || exit 1
 echo 'PASS: security, reliability, inventory, pricing, shipping, tax and customers/B2B upgrade gates'
