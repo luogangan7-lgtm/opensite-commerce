@@ -38,6 +38,13 @@ func New(root string, maxBytes int64) (*Store, error) {
 			return nil, err
 		}
 	}
+	// Make the staging/ and originals/ entries (and root itself) durable once, so
+	// Put's per-upload fsync chain can stop at originals/.
+	for _, dir := range []string{abs, filepath.Dir(abs)} {
+		if err = syncDir(dir); err != nil {
+			return nil, err
+		}
+	}
 	return &Store{root: abs, maxBytes: maxBytes}, nil
 }
 
