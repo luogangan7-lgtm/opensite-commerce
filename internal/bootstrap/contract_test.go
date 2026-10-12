@@ -72,7 +72,8 @@ func TestUnconfiguredIdentityRouteContract(t *testing.T) {
 	}
 	// Default startup registers health, catalog and media, but no login handlers.
 	// Remove exactly the optional login operations for this mode; every remaining
-	// operation stays under strict reconciliation. Identity tests cover full mode.
+	// operation stays under strict reconciliation. TestConfiguredIdentityRouteContract
+	// covers the full mode with real login registrations.
 	optional := map[string]bool{"getAdminLoginChallenge": true, "createStaffLoginSession": true,
 		"getAdminSession": true, "logoutCurrentStaffSession": true}
 	removed := 0
