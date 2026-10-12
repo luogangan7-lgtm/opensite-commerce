@@ -125,3 +125,25 @@ func TestExplicitNullRejected(t *testing.T) {
 		}
 	}
 }
+func TestCollectionBindingNeedsCollectionID(t *testing.T) {
+	for params, ok := range map[string]bool{`{"limit":8,"collection_id":"c1"}`: true, `{"limit":8}`: false, `{"limit":8,"collection_id":""}`: false, `{"limit":8,"collection_id":5}`: false} {
+		d := sample()
+		g := d.Nodes["grid"]
+		g.Binding = &Binding{"catalog.collection-products@1", json.RawMessage(params)}
+		d.Nodes["grid"] = g
+		if (Validate(d) == nil) != ok {
+			t.Fatalf("params %s: want ok=%v", params, ok)
+		}
+	}
+}
+func TestHeroImageIDMustBeString(t *testing.T) {
+	for img, ok := range map[string]bool{`"media_1"`: true, `5`: false, `true`: false, `[]`: false, `{}`: false} {
+		d := sample()
+		h := d.Nodes["hero"]
+		h.Props = json.RawMessage(`{"title":"Sample","image_id":` + img + `}`)
+		d.Nodes["hero"] = h
+		if (Validate(d) == nil) != ok {
+			t.Fatalf("image_id %s: want ok=%v", img, ok)
+		}
+	}
+}

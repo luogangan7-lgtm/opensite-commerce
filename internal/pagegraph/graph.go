@@ -210,6 +210,12 @@ func validateProps(id string, n Node) error {
 		if err := requireString(props, "title", 1, 120); err != nil {
 			return fmt.Errorf("node %s: %w", id, err)
 		}
+		if raw, ok := props["image_id"]; ok {
+			var s string
+			if json.Unmarshal(raw, &s) != nil || s == "" {
+				return fmt.Errorf("node %s: image_id must be a non-empty string", id)
+			}
+		}
 		if _, ok := props["layout"]; ok {
 			var layout string
 			if json.Unmarshal(props["layout"], &layout) != nil || (layout != "split" && layout != "full" && layout != "contained") {
@@ -228,10 +234,14 @@ func validateProps(id string, n Node) error {
 			return fmt.Errorf("node %s: missing or unregistered catalog binding", id)
 		}
 		var params struct {
-			Limit int `json:"limit"`
+			Limit        int     `json:"limit"`
+			CollectionID *string `json:"collection_id"`
 		}
 		if json.Unmarshal(n.Binding.Params, &params) != nil || params.Limit < 1 || params.Limit > 48 {
 			return fmt.Errorf("node %s: limit must be in [1,48]", id)
+		}
+		if n.Binding.Resolver == "catalog.collection-products@1" && (params.CollectionID == nil || *params.CollectionID == "") {
+			return fmt.Errorf("node %s: collection_id required", id)
 		}
 		if raw, ok := props["show_price"]; ok {
 			var b bool
