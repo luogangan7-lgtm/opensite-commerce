@@ -1,5 +1,5 @@
 // Package store connects the offline CLI using its dedicated bootstrap login.
-// Dependencies: pgx and generated internal/db queries; called by identity service.
+// Dependencies: identitydb adapter and generated db; called by identity service.
 // Invariant: validate authority before bootstrap; no driver/SQL/DSN error escapes.
 package store
 
@@ -8,19 +8,14 @@ import (
 	"errors"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/identitydb/pgxadapter"
 )
 
 var errDatabase = errors.New("bootstrap database operation failed")
 
 func Bootstrap(ctx context.Context, dsn, email, tenantName, passwordHash string) (string, error) {
-	config, err := pgx.ParseConfig(dsn)
-	if err != nil {
-		return "", errDatabase
-	}
-	config.ConnectTimeout = 10 * time.Second
-	conn, err := pgx.ConnectConfig(ctx, config)
+	conn, err := pgxadapter.Open(ctx, dsn)
 	if err != nil {
 		return "", errDatabase
 	}

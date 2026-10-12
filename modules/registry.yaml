@@ -5,7 +5,7 @@
       "name": "identity",
       "status": "implemented",
       "go_path": "internal/modules/identity",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "users",
         "auth_sessions",
@@ -42,7 +42,7 @@
         "tests/db_identity_auth.sql"
       ],
       "scopes": [],
-      "note": "Global staff identity and sessions have no tenant_id. Module status describes the existing database model; all module Go paths and HTTP operations remain planned."
+      "note": "Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented; HTTP operations remain planned."
     },
     {
       "name": "tenant",
@@ -742,7 +742,9 @@
         "tenant_memberships",
         "auth_account_attempts",
         "auth_login_attempts",
-        "known_devices"
+        "known_devices",
+        "api_keys",
+        "buyer_roles"
       ]
     }
   ]

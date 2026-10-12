@@ -13,3 +13,5 @@ CLI 密码只取重定向 stdin 或 `OSC_BOOTSTRAP_PASSWORD`；DSN 取 `OSC_BOOT
 本卡提供持久化原语和离线 CLI，尚未提供登录 HTTP、dummy-hash 等时路径、cookie 签名/轮换、全局 IP 层、已知设备豁免、三池或 API key 验证。02b 必须用固定 arrival+cap 截止时间证明持续攻击下新设备不会反复排队；60 秒数据库退避上限本身不等于该验收完成。受限 app.auth_prune_attempts(limit) 清理 24 小时未失败、15 分钟窗口与冷却均已到期的计数行；每表单次至多 1000 行，锁繁忙账号跳过并在锁后复核，app_auth 无直接 DELETE 权限。部署定时任务应每小时调用并按返回数量继续小批清理；本卡提供能力与并发 gate，调度器接线留给运维卡。PR #28 已实现每 IP 限流、IPv6 /64 聚合、已知设备冷却豁免与独立保留哈希槽。
 
 验收：`db_identity_auth.sql`、精确 `db_role_matrix.sql`、advisory-lock 两连接 +2 竞态、应用全部前置迁移后的存量升级、真实专用 LOGIN 的 CLI 成功/已有 owner 拒绝/并发唯一、至少两项注错红→恢复绿，以及卡片要求的全量离线/Go/PG18 gate。测试按迁移逻辑后缀发现文件，集成可重编号。
+
+离线 bootstrap 与全局员工认证连接创建统一放在 `internal/platform/identitydb/pgxadapter`；该目录是治理检查中的窄边界例外，业务模块只能持有 Connection 接口，仍须先用生成查询验证专用 LOGIN 权限。没有放开模块内 pgx.ConnectConfig 或 pgxpool，也未引入三池接线。

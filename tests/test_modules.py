@@ -737,6 +737,19 @@ class GovernanceTests(unittest.TestCase):
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_identity_connection_adapter_green(self):
+        self.vendor_pgx()
+        self.source("internal/platform/identitydb/pgxadapter/adapter.go",
+                    'package pgxadapter\nimport "github.com/jackc/pgx/v5"\nvar Open = pgx.ConnectConfig\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_identity_business_connection_still_red(self):
+        self.vendor_pgx()
+        self.source("internal/modules/a/internal/store/store.go",
+                    'package store\nimport "github.com/jackc/pgx/v5"\nvar Open = pgx.ConnectConfig\n')
+        self.assert_red("MODULE_RAW_CONNECTION")
+
     def generated_server(self):
         self.source("internal/platform/httpapi/generated/api.gen.go", "package generated\nfunc HandlerFromMux() {}\n")
 

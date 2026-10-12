@@ -296,10 +296,14 @@ def check_raw_connection(text, location):
                 "MODULE_RAW_CONNECTION", location)
 
 
-# Default deny: only the tenant-transaction adapter may hold a pgxpool or open
-# a raw pgx connection; the generated db package's integration tests open a
-# maintenance connection. Everything else gets connections via tenanttx.
-RAW_CONNECTION_ALLOWED = {Path("internal/tenanttx/pgxadapter"): "", Path("internal/db"): "_test.go"}
+# Default deny: dedicated tenant and identity adapters open raw connections;
+# generated db integration tests may open a maintenance connection. Business
+# modules receive connections through adapters and never open them directly.
+RAW_CONNECTION_ALLOWED = {
+    Path("internal/tenanttx/pgxadapter"): "",
+    Path("internal/platform/identitydb/pgxadapter"): "",
+    Path("internal/db"): "_test.go",
+}
 # Only the httpapi chain may mount the oapi-codegen server; tests anywhere may
 # exercise it.
 GENERATED_SERVER = "internal/platform/httpapi/generated"
