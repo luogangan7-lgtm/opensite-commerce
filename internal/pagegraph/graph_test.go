@@ -98,3 +98,12 @@ func TestCompanyParamsMustBeObject(t *testing.T) {
 		}
 	}
 }
+func TestSlotsRequired(t *testing.T) {
+	d := sample()
+	n := d.Nodes["hero"]
+	n.Slots = nil // omitted or "slots": null
+	d.Nodes["hero"] = n
+	if Validate(d) == nil {
+		t.Fatal("should reject node without slots object")
+	}
+}

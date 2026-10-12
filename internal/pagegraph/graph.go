@@ -96,6 +96,9 @@ func Validate(doc Document) error {
 		if err := validateProps(id, node); err != nil {
 			return err
 		}
+		if node.Slots == nil { // ComponentNode.slots is a required object in api/openapi.yaml
+			return fmt.Errorf("node %s: slots object required", id)
+		}
 		if len(node.Slots) > len(allowedSlots) {
 			return fmt.Errorf("node %s: unsupported slot", id)
 		}
