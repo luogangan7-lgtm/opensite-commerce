@@ -235,11 +235,14 @@ BEGIN
   RAISE EXCEPTION 'INVENTORY_INVALID_BATCH' USING ERRCODE='22023';
  END IF;
  cutoff:=clock_timestamp();  -- a parameter, not a volatile call, so inventory_expiry is usable
- -- Pick due candidates by time (O(due)), then lock them in deterministic stock order.
- FOR r IN SELECT id FROM app.inventory_reservations WHERE tenant_id=t AND state='active' AND expires_at<=cutoff
-  AND id IN (SELECT id FROM app.inventory_reservations WHERE tenant_id=t AND state='active' AND expires_at<=cutoff
-             ORDER BY expires_at LIMIT p_batch)
-  ORDER BY warehouse_id,sku_id,id FOR UPDATE SKIP LOCKED LOOP
+ -- Claim up to p_batch UNLOCKED due rows by time (O(due); SKIP LOCKED never waits and
+ -- fills the batch past locked ones), then finish them in deterministic stock order so
+ -- the stock-row locks taken by inventory_finish cannot deadlock between sweeps.
+ FOR r IN WITH due AS MATERIALIZED (
+   SELECT id,warehouse_id,sku_id FROM app.inventory_reservations
+   WHERE tenant_id=t AND state='active' AND expires_at<=cutoff
+   ORDER BY expires_at LIMIT p_batch FOR UPDATE SKIP LOCKED)
+  SELECT id FROM due ORDER BY warehouse_id,sku_id,id LOOP
   finished:=app.inventory_finish(r.id,'expired');
   IF finished.id IS NOT NULL THEN n:=n+1; END IF;
  END LOOP;

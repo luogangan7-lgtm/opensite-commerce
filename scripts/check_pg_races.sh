@@ -342,6 +342,25 @@ gate_open 15; wait
 expect inv_init_first ok; expect inv_init_second ok
 inventory_check 'race inventory concurrent first warehouse+stock' '3|0|0|2' "$T" "$SKU"
 
+# Expiry sweep must advance past a LOCKED oldest due reservation: with batch 1 it
+# still expires another due row (it must not keep re-selecting the locked one).
+read -r T SKU OWNER <<<"$(inventory_fixture 2)"
+R1=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve('$SKU',1,'checkout','$OWNER','sweep-old',1)).id;" | tail -1)
+R2=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve('$SKU',1,'checkout','$OWNER','sweep-new',2)).id;" | tail -1)
+for _ in $(seq 1 100); do  # poll the database clock until both are due; never order actors by sleep
+  [[ $(sql <<<"SELECT count(*) FROM app.inventory_reservations WHERE tenant_id='$T' AND expires_at<=clock_timestamp();") == 2 ]] && break
+  sleep 0.05
+done
+gate_close 16
+tx sweep_hold postgres "$T" "SELECT 1 FROM app.inventory_reservations WHERE id='$R1' FOR UPDATE; $(park 16)" &
+await sweep_hold advisory
+SWEPT=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT app.inventory_expire_due(1);" | tail -1)
+gate_open 16; wait
+echo "race expiry sweep skips locked oldest: expired=$SWEPT (expected 1)"
+[[ $SWEPT == 1 ]] || fail=1
+got=$(sql <<<"SELECT string_agg(state,',' ORDER BY expires_at) FROM app.inventory_reservations WHERE tenant_id='$T';")
+echo "race expiry sweep states: $got (expected active,expired)"
+[[ $got == 'active,expired' ]] || fail=1
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
