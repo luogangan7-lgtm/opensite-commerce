@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"github.com/riverqueue/river"
@@ -24,10 +23,10 @@ const rollbackTimeout = 5 * time.Second
 type Expirer interface {
 	Expire(context.Context, string, int) error
 }
-type ControlledInventory struct{ Pool *pgxpool.Pool }
+type ControlledInventory struct{ Pool *pgxadapter.QueuePool }
 
 func (s ControlledInventory) Expire(ctx context.Context, tenant string, batch int) error {
-	return (pgxadapter.Runner{Pool: s.Pool}).InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+	return pgxadapter.InQueueTenant(ctx, s.Pool, tenant, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := db.New(tx).ExpireInventoryJob(ctx, int32(batch))
 		return err
 	})
@@ -75,11 +74,19 @@ func (admissionErrors) HandlePanic(context.Context, *rivertype.JobRow, any, stri
 	return nil
 }
 
-func NewWorker(pool *pgxpool.Pool, signer *Signer, cfg WorkerConfig) (*river.Client[pgx.Tx], error) {
-	return buildWorker(pool, signer, ControlledInventory{Pool: pool}, cfg, river.Config{})
+func NewWorker(pool *pgxadapter.QueuePool, signer *Signer, cfg WorkerConfig) (*river.Client[pgx.Tx], error) {
+	return NewWorkerWithService(pool, signer, ControlledInventory{Pool: pool}, cfg, river.Config{})
 }
 
-func buildWorker(pool *pgxpool.Pool, signer *Signer, service Expirer, cfg WorkerConfig, tuning river.Config) (*river.Client[pgx.Tx], error) {
+// NewWorkerWithService is a trusted infrastructure composition port for an
+// Expirer implementation and River scheduling settings. Admission, schema,
+// queues, workers and periodic tenant scope remain fixed by this package;
+// tuning must never come from request or job payload data.
+func NewWorkerWithService(pool *pgxadapter.QueuePool, signer *Signer, service Expirer, cfg WorkerConfig, tuning river.Config) (*river.Client[pgx.Tx], error) {
+	return buildWorker(pool, signer, service, cfg, tuning)
+}
+
+func buildWorker(pool *pgxadapter.QueuePool, signer *Signer, service Expirer, cfg WorkerConfig, tuning river.Config) (*river.Client[pgx.Tx], error) {
 	if pool == nil || signer == nil || len(signer.key) < 32 || service == nil {
 		return nil, errors.New("invalid worker configuration")
 	}

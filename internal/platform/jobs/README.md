@@ -46,6 +46,17 @@ loop until zero. Expiry's inventory state transition/movement is idempotent, so 
 recovered or duplicate task has no repeated release side effect.
 
 Operators must provision the restricted login membership, protect the signing
-key and choose the tenant list. Multi-key rotation and tenant discovery are future
+key and choose the tenant list. Multi-key rotation and inventory-task tenant discovery are future
 work: replacing the key invalidates pending signatures, so drain or explicitly
 reissue pending tasks under a controlled rotation procedure.
+
+INT-25 also wires optional Outbox lifecycle into the same executable. Its separate
+`app_outbox_worker` pool discovers work tenant IDs through a narrow broker and
+sets tenant context per dispatch. This does not change the static JOB_TENANTS
+inventory scheduler. See `internal/platform/outbox/README.md` for the fail-closed
+Sender opt-in; this card implements no external network Sender.
+
+Connection creation is centralized in the approved pgxadapter infrastructure
+entry. `OpenQueuePool` accepts only fixed queue/Outbox/migrator roles; the privileged
+installer bootstrap is a separate `OpenMigrationPool` entry. Native River pools
+stay inside infrastructure composition, and business writes use `InQueueTenant`.

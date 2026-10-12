@@ -109,6 +109,36 @@ func (q *Queries) CompleteIdempotency(ctx context.Context, arg CompleteIdempoten
 	return result.RowsAffected(), nil
 }
 
+const listOutboxActiveTenants = `-- name: ListOutboxActiveTenants :many
+SELECT tenant_id::text AS tenant_id
+FROM app.outbox_active_tenants($1::uuid,$2::integer)
+`
+
+type ListOutboxActiveTenantsParams struct {
+	AfterTenant pgtype.UUID `json:"after_tenant"`
+	TenantLimit int32       `json:"tenant_limit"`
+}
+
+func (q *Queries) ListOutboxActiveTenants(ctx context.Context, arg ListOutboxActiveTenantsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listOutboxActiveTenants, arg.AfterTenant, arg.TenantLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var tenant_id string
+		if err := rows.Scan(&tenant_id); err != nil {
+			return nil, err
+		}
+		items = append(items, tenant_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readIdempotencyTenant = `-- name: ReadIdempotencyTenant :one
 SELECT coalesce(nullif(current_setting('app.tenant_id',true),''),'')::text AS tenant_id
 `

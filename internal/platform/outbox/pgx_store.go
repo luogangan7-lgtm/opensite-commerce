@@ -12,16 +12,15 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
-type PGStore struct{ Pool *pgxpool.Pool }
+type PGStore struct{ Pool *pgxadapter.QueuePool }
 
 func (s PGStore) Claim(ctx context.Context, tenantID, workerID string, limit, seconds int32) ([]Lease, error) {
 	var leases []Lease
-	err := (pgxadapter.Runner{Pool: s.Pool}).InTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+	err := pgxadapter.InQueueTenant(ctx, s.Pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := db.New(tx).ClaimOutboxLease(ctx, db.ClaimOutboxLeaseParams{TenantID: tenantID, WorkerID: workerID, ClaimLimit: limit, LeaseSeconds: seconds})
 		if err != nil {
 			return err
@@ -39,7 +38,7 @@ func (s PGStore) Claim(ctx context.Context, tenantID, workerID string, limit, se
 
 func (s PGStore) Complete(ctx context.Context, l Lease) (bool, error) {
 	var accepted bool
-	err := (pgxadapter.Runner{Pool: s.Pool}).InTenant(ctx, l.Delivery.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+	err := pgxadapter.InQueueTenant(ctx, s.Pool, l.Delivery.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		accepted, err = db.New(tx).CompleteOutboxLease(ctx, db.CompleteOutboxLeaseParams{TenantID: l.Delivery.TenantID, EventID: l.Delivery.EventID, WorkerID: l.WorkerID, Attempt: l.Attempt})
 		return err
@@ -52,7 +51,7 @@ func (s PGStore) Fail(ctx context.Context, l Lease, code string, retry int32) (b
 		return false, errors.New("OUTBOX_UNSAFE_FAILURE_CODE")
 	}
 	var accepted bool
-	err := (pgxadapter.Runner{Pool: s.Pool}).InTenant(ctx, l.Delivery.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+	err := pgxadapter.InQueueTenant(ctx, s.Pool, l.Delivery.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		accepted, err = db.New(tx).FailOutboxLease(ctx, db.FailOutboxLeaseParams{TenantID: l.Delivery.TenantID, EventID: l.Delivery.EventID, WorkerID: l.WorkerID, Attempt: l.Attempt, ErrorCode: code, RetrySeconds: retry})
 		return err

@@ -1,8 +1,9 @@
 //go:build pgx
 
-// Worker composition uses a dedicated queue-processing login and a signing key
-// supplied through the environment. Trusted configured tenants drive periodic
-// expiry; queue JSON is verified before controlled tenant services are invoked.
+// Responsibility: jobs and outbox worker startup, capabilities and graceful stop.
+// Dependencies: jobs, outbox, pgx pools, environment/signals; called by main.
+// Invariants: queue/outbox roles use separate pools; OUTBOX_ENABLED defaults off
+// and no production Sender is registered. No unconfigured event is ever claimed.
 package main
 
 import (
@@ -16,9 +17,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/google/uuid"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/jobs"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/outbox"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func main() {
@@ -30,46 +32,116 @@ func main() {
 func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	url := os.Getenv("WORKER_DATABASE_URL")
-	if url == "" {
-		return errors.New("WORKER_DATABASE_URL required")
+	// Only tests inject a Sender. Enabling dispatch in this executable fails closed
+	// until a separately reviewed destination-validation/dedup adapter is added.
+	return runContext(ctx, os.Getenv, nil, composeWorkers)
+}
+
+// jobWorker keeps startup orchestration injectable without replacing Dispatcher.
+// Tests use the same runContext path as main with controlled jobs and a test Sender.
+type jobWorker interface {
+	Start(context.Context) error
+	Stop(context.Context) error
+}
+type workerFactory func(context.Context, func(string) string, outbox.Sender) (jobWorker, *outbox.Runner, func(), error)
+
+func runContext(parent context.Context, getenv func(string) string, sender outbox.Sender, compose workerFactory) error {
+	enabled := getenv("OUTBOX_ENABLED")
+	if enabled != "" && enabled != "false" && enabled != "true" {
+		return errors.New("invalid OUTBOX_ENABLED")
 	}
-	key, err := hex.DecodeString(os.Getenv("JOB_SIGNING_KEY"))
+	if enabled == "true" && sender == nil {
+		return errors.New("OUTBOX_SENDER_NOT_CONFIGURED")
+	}
+	if enabled == "true" && getenv("OUTBOX_DATABASE_URL") == "" {
+		return errors.New("OUTBOX_DATABASE_URL required")
+	}
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	worker, runner, cleanup, err := compose(ctx, getenv, sender)
 	if err != nil {
-		return errors.New("JOB_SIGNING_KEY must be hexadecimal")
+		return err
+	}
+	defer cleanup()
+	if err := worker.Start(ctx); err != nil {
+		return errors.New("worker startup failed")
+	}
+	runnerDone := make(chan error, 1)
+	if runner != nil {
+		go func() { runnerDone <- runner.Run(ctx) }()
+	}
+	var runErr error
+	joined := false
+	select {
+	case <-ctx.Done():
+	case runErr = <-runnerDone:
+		joined = true
+	}
+	cancel()
+	stop, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer stopCancel()
+	stopErr := worker.Stop(stop)
+	if runner != nil && !joined {
+		select {
+		case runErr = <-runnerDone:
+		case <-stop.Done():
+			return errors.New("outbox worker stop timed out")
+		}
+	}
+	if runErr != nil {
+		return runErr
+	}
+	if stopErr != nil {
+		return errors.New("worker stop failed")
+	}
+	return nil
+}
+
+func composeWorkers(ctx context.Context, getenv func(string) string, sender outbox.Sender) (jobWorker, *outbox.Runner, func(), error) {
+	url := getenv("WORKER_DATABASE_URL")
+	if url == "" {
+		return nil, nil, nil, errors.New("WORKER_DATABASE_URL required")
+	}
+	key, err := hex.DecodeString(getenv("JOB_SIGNING_KEY"))
+	if err != nil {
+		return nil, nil, nil, errors.New("JOB_SIGNING_KEY must be hexadecimal")
 	}
 	signer, err := jobs.NewSigner(key)
 	if err != nil {
-		return err
+		return nil, nil, nil, err
 	}
-	cfg, err := pgxpool.ParseConfig(url)
+	startupCtx, startupCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer startupCancel()
+	pool, err := pgxadapter.OpenQueuePool(startupCtx, url, "app_queue_worker")
 	if err != nil {
-		return errors.New("invalid worker database configuration")
+		return nil, nil, nil, errors.New("worker database capability unavailable")
 	}
-	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		_, err := conn.Exec(ctx, "SET ROLE app_queue_worker")
-		return err
-	}
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		return errors.New("worker database pool unavailable")
-	}
-	defer pool.Close()
+	cleanup := pool.Close
+	success := false
+	defer func() {
+		if !success {
+			cleanup()
+		}
+	}()
 	var tenants []string
-	if value := strings.TrimSpace(os.Getenv("JOB_TENANTS")); value != "" {
+	if value := strings.TrimSpace(getenv("JOB_TENANTS")); value != "" {
 		for _, tenant := range strings.Split(value, ",") {
 			tenants = append(tenants, strings.TrimSpace(tenant))
 		}
 	}
 	worker, err := jobs.NewWorker(pool, signer, jobs.WorkerConfig{Tenants: tenants})
 	if err != nil {
-		return err
+		return nil, nil, nil, err
 	}
-	if err := worker.Start(ctx); err != nil {
-		return errors.New("worker startup failed")
+	var runner *outbox.Runner
+	if getenv("OUTBOX_ENABLED") == "true" {
+		outboxPool, err := pgxadapter.OpenQueuePool(startupCtx, getenv("OUTBOX_DATABASE_URL"), "app_outbox_worker")
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		cleanup = func() { outboxPool.Close(); pool.Close() }
+		runner = &outbox.Runner{Source: outbox.PGTenantSource{Pool: outboxPool}, Dispatcher: outbox.Dispatcher{Store: outbox.PGStore{Pool: outboxPool}, Sender: sender, Config: outbox.Config{WorkerID: uuid.NewString(), LeaseSeconds: 60, BaseRetrySeconds: 2, MaxRetrySeconds: 300}}, PollInterval: time.Second, CycleTimeout: 30 * time.Second, TenantBatchSize: 100, EventsPerTenant: 10}
 	}
-	<-ctx.Done()
-	stop, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer stopCancel()
-	return worker.Stop(stop)
+	success = true
+	return worker, runner, cleanup, nil
 }

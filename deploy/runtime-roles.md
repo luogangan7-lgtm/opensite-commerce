@@ -39,3 +39,23 @@ application signing secret. Avoid giving it to the Astro renderer.
 identities. The Go service enforces Host normalization and internal service
 authorization; the role does not make DNS validation or TLS authorization
 unnecessary.
+
+## Deployment constraint
+
+V1 supports exactly one OpenSite application database per PostgreSQL cluster.
+All capability roles (`app_runtime`, `app_auth`, `app_customer_auth`, ...) are
+cluster-wide, so a second OpenSite database on the same cluster would share
+their memberships and grants. Deployment preflight will refuse a cluster that
+already hosts another OpenSite database, and operators must `REVOKE CONNECT ON
+DATABASE ... FROM PUBLIC` so capability logins reach only their own database.
+
+### Reliability integration (INT-25)
+
+The River worker login may SET ROLE only to `app_queue_worker`; optional Outbox
+composition uses a separate login allowed only `app_outbox_worker`. Neither is
+permitted to SET ROLE to either DDL owner or `app_outbox_tenant_broker`.
+The broker is NOLOGIN/NOBYPASSRLS and has no memberships; its sole controlled
+function enumerates active Outbox tenant IDs using only tenant_id/status SELECT.
+It has no payload or table-wide privilege. Queue ownership remains isolated in
+`app_river_migrator`; the application and upstream migration histories are separate.
+`OUTBOX_ENABLED` defaults off and a missing Sender fails before any claim.

@@ -13,7 +13,7 @@ assert sql['engine'] == 'postgresql'
 assert sql['gen']['go']['sql_package'] == 'pgx/v5'
 assert sql['gen']['go']['out'] == 'internal/db'
 assert set(sql['schema']) == {str(p.relative_to(root)) for p in (root/'migrations').glob('*.sql') if p.name[:3] not in ('008','009')}
-for suffix in ('_security_hardening.sql', '_platform_reliability.sql', '_money_pricing.sql', '_shipping.sql', '_tax.sql'):
+for suffix in ('_security_hardening.sql', '_platform_reliability.sql', '_money_pricing.sql', '_shipping.sql', '_tax.sql', '_customers_b2b.sql', '_queue_authorization.sql', '_reliability_limits.sql'):
     matches = list((root/'migrations').glob('[0-9][0-9][0-9]'+suffix))
     assert len(matches) == 1, suffix
     assert str(matches[0].relative_to(root)) in sql['schema'], suffix

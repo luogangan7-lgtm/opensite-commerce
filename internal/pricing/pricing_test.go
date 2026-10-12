@@ -4,10 +4,12 @@ package pricing
 
 import (
 	"errors"
+	"fmt"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"math"
 	"math/rand"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -117,4 +119,82 @@ func TestQuoteOrderIndependent(t *testing.T) {
 			t.Fatalf("order affected result: %+v %v", got, err)
 		}
 	}
+}
+
+// UUID text casing must not change identity, ordering, or the explained result.
+func TestQuoteCanonicalPriceListID(t *testing.T) {
+	const first = "019a0000-0000-7000-8000-00000000000a"
+	const second = "019a0000-0000-7000-8000-00000000000b"
+	variants := func(id string) []string {
+		return []string{id, strings.ToUpper(id), strings.Replace(id, "019a", "019A", 1)}
+	}
+	for _, aID := range variants(first) {
+		for _, bID := range variants(second) {
+			for _, reverse := range []bool{false, true} {
+				t.Run(aID+"/"+bID+"/reverse="+fmt.Sprint(reverse), func(t *testing.T) {
+					lists, request := fixture()
+					lists[0].ID, lists[1].ID = bID, aID
+					if reverse {
+						lists[0], lists[1] = lists[1], lists[0]
+					}
+					before := clonePriceLists(lists)
+					got, err := Quote(lists, request)
+					if err != nil || got.PriceListID != first || got.Unit.Amount != 120 || got.Line.Amount != 1200 || got.MinQuantity != 10 || got.Priority != 5 {
+						t.Errorf("canonical tie result=%+v err=%v", got, err)
+					}
+					if !reflect.DeepEqual(lists, before) {
+						t.Fatal("Quote mutated caller price lists")
+					}
+				})
+			}
+		}
+	}
+	t.Run("single uppercase returned canonical", func(t *testing.T) {
+		lists, request := fixture()
+		lists = lists[1:]
+		lists[0].ID = strings.ToUpper(first)
+		before := clonePriceLists(lists)
+		got, err := Quote(lists, request)
+		if err != nil || got.PriceListID != first {
+			t.Errorf("result=%+v err=%v", got, err)
+		}
+		if !reflect.DeepEqual(lists, before) {
+			t.Fatal("Quote mutated caller price lists")
+		}
+	})
+	t.Run("lowercase non UUID compatibility", func(t *testing.T) {
+		lists, request := fixture()
+		lists[0].ID, lists[1].ID = "price-list-b", "price-list-a"
+		got, err := Quote(lists, request)
+		if err != nil || got.PriceListID != "price-list-a" || got.Unit.Amount != 120 {
+			t.Fatalf("result=%+v err=%v", got, err)
+		}
+	})
+	for _, id := range variants(first) {
+		for _, reverse := range []bool{false, true} {
+			t.Run("duplicate/"+id+"/reverse="+fmt.Sprint(reverse), func(t *testing.T) {
+				lists, request := fixture()
+				lists[0].ID, lists[1].ID = first, id
+				if reverse {
+					lists[0], lists[1] = lists[1], lists[0]
+				}
+				before := clonePriceLists(lists)
+				got, err := Quote(lists, request)
+				if !errors.Is(err, ErrInvalid) || got != (Result{}) {
+					t.Errorf("duplicate result=%+v err=%v want ErrInvalid", got, err)
+				}
+				if !reflect.DeepEqual(lists, before) {
+					t.Fatal("Quote mutated caller price lists on invalid input")
+				}
+			})
+		}
+	}
+}
+
+func clonePriceLists(lists []PriceList) []PriceList {
+	before := append([]PriceList(nil), lists...)
+	for i := range before {
+		before[i].Entries = append([]Entry(nil), lists[i].Entries...)
+	}
+	return before
 }

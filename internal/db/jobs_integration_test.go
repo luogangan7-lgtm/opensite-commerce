@@ -3,14 +3,19 @@
 // Real queue/inventory contract gates use runtime/worker role pools and an admin
 // fixture connection. They are called by go test -tags pgx; fixtures belong to a
 // disposable database and immutable inventory history remains until teardown.
-package jobs
+package db_test
 
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	jobs "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/jobs"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"os"
 	"os/exec"
 	"strconv"
@@ -30,8 +35,8 @@ type jobsPG struct {
 	t                                            *testing.T
 	ctx                                          context.Context
 	admin, runtime, worker                       *pgxpool.Pool
-	signer                                       *Signer
-	enqueue                                      *Enqueuer
+	signer                                       *jobs.Signer
+	enqueue                                      *jobs.Enqueuer
 	tenant, other, reservation, otherReservation string
 }
 
@@ -85,11 +90,11 @@ func newJobsPG(t *testing.T) *jobsPG {
 	f.runtime = jobsRolePool(t, ctx, "app_runtime", "c04b-jobs-runtime")
 	f.worker = jobsRolePool(t, ctx, "app_queue_worker", "c04b-jobs-worker")
 	var err error
-	f.signer, err = NewSigner([]byte(jobsTestKey))
+	f.signer, err = jobs.NewSigner([]byte(jobsTestKey))
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.enqueue, err = NewEnqueuer(f.signer)
+	f.enqueue, err = jobs.NewEnqueuer(f.signer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +251,7 @@ func (f *jobsPG) state(id int64, want string, timeout time.Duration) {
 
 func (f *jobsPG) start() *river.Client[pgx.Tx] {
 	f.t.Helper()
-	c, err := buildWorker(f.worker, f.signer, ControlledInventory{Pool: f.worker}, WorkerConfig{Batch: 1}, river.Config{TestOnly: true, FetchCooldown: 10 * time.Millisecond, FetchPollInterval: 20 * time.Millisecond, JobTimeout: time.Second, RescueStuckJobsAfter: 2 * time.Second})
+	c, err := jobs.NewWorkerWithService(f.worker, f.signer, jobs.ControlledInventory{Pool: f.worker}, jobs.WorkerConfig{Batch: 1}, river.Config{TestOnly: true, FetchCooldown: 10 * time.Millisecond, FetchPollInterval: 20 * time.Millisecond, JobTimeout: time.Second, RescueStuckJobsAfter: 2 * time.Second})
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -330,11 +335,15 @@ func TestJobsPGQueueRLSAndNoDDL(t *testing.T) {
 	}
 	_ = tx.Rollback(f.ctx)
 	tx = f.tx(f.tenant)
-	forged, err := f.signer.inventoryArgs(f.other, 1)
+	forged := jobs.InventoryExpireArgs{TenantID: f.other, Batch: 1}
+	h := hmac.New(sha256.New, []byte(jobsTestKey))
+	fmt.Fprintf(h, "opensite-job-v1\x00%s\x00%s\x00%d", jobs.InventoryExpireKind, forged.TenantID, forged.Batch)
+	forged.Proof = hex.EncodeToString(h.Sum(nil))
+	rawClient, err := river.NewClient(riverpgxv5.New(nil), &river.Config{Schema: "queue"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.enqueue.client.InsertTx(f.ctx, tx, forged, nil)
+	_, err = rawClient.InsertTx(f.ctx, tx, forged, nil)
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
 		t.Fatalf("foreign-tenant insert not denied by RLS: %v", err)
@@ -392,12 +401,12 @@ func TestJobsPGSameDeliveryTwiceHasSingleEffect(t *testing.T) {
 	if err := f.admin.QueryRow(f.ctx, "SELECT args FROM queue.river_job WHERE id=$1", id).Scan(&raw); err != nil {
 		t.Fatal(err)
 	}
-	var args InventoryExpireArgs
+	var args jobs.InventoryExpireArgs
 	if err := json.Unmarshal(raw, &args); err != nil {
 		t.Fatal(err)
 	}
-	job := &river.Job[InventoryExpireArgs]{JobRow: &rivertype.JobRow{ID: id, Kind: InventoryExpireKind}, Args: args}
-	w := &InventoryWorker{Signer: f.signer, Service: ControlledInventory{Pool: f.worker}}
+	job := &river.Job[jobs.InventoryExpireArgs]{JobRow: &rivertype.JobRow{ID: id, Kind: jobs.InventoryExpireKind}, Args: args}
+	w := &jobs.InventoryWorker{Signer: f.signer, Service: jobs.ControlledInventory{Pool: f.worker}}
 	for range 2 {
 		if err := w.Work(f.ctx, job); err != nil {
 			t.Fatal(err)
@@ -495,7 +504,7 @@ func (s jobsBlockingExpirer) Expire(ctx context.Context, tenant string, batch in
 		return err
 	}
 	defer c.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", s.key)
-	return (ControlledInventory{Pool: s.pool}).Expire(ctx, tenant, batch)
+	return (jobs.ControlledInventory{Pool: s.pool}).Expire(ctx, tenant, batch)
 }
 
 func TestJobsPGCrashHelper(t *testing.T) {
@@ -509,11 +518,11 @@ func TestJobsPGCrashHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := jobsRolePool(t, ctx, "app_queue_worker", os.Getenv("JOBS_CRASH_APP"))
-	s, err := NewSigner([]byte(jobsTestKey))
+	s, err := jobs.NewSigner([]byte(jobsTestKey))
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := buildWorker(p, s, jobsBlockingExpirer{p, key}, WorkerConfig{Batch: 1}, river.Config{TestOnly: true, FetchCooldown: 10 * time.Millisecond, FetchPollInterval: 20 * time.Millisecond, JobTimeout: 30 * time.Second, RescueStuckJobsAfter: 31 * time.Second})
+	c, err := jobs.NewWorkerWithService(p, s, jobsBlockingExpirer{p, key}, jobs.WorkerConfig{Batch: 1}, river.Config{TestOnly: true, FetchCooldown: 10 * time.Millisecond, FetchPollInterval: 20 * time.Millisecond, JobTimeout: 30 * time.Second, RescueStuckJobsAfter: 31 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}

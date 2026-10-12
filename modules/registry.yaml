@@ -276,10 +276,16 @@
       "tests": [
         "tests/db_reliability.sql",
         "internal/platform/idempotency/request_test.go",
-        "internal/platform/idempotency/postgres_test.go",
-        "internal/platform/jobs/jobs_integration_test.go",
-        "internal/platform/outbox/pgx_integration_test.go",
-        "tests/db_queue.sql"
+        "internal/db/idempotency_integration_test.go",
+        "internal/db/jobs_integration_test.go",
+        "internal/db/outbox_integration_test.go",
+        "tests/db_queue.sql",
+        "tests/db_reliability_limits.sql",
+        "internal/platform/idempotency/ttl_test.go",
+        "internal/platform/outbox/runner_test.go",
+        "internal/db/outbox_runner_integration_test.go",
+        "cmd/worker/main_test.go",
+        "tests/test_reliability_contract_static.py"
       ],
       "scopes": [],
       "note": "The business module Go path and business HTTP handlers remain planned. The platform health operation is implemented by bootstrap; this does not promote a business Go service. Platform idempotency, River and Outbox capabilities live under internal/platform; their controlled infrastructure adapters use tenanttx and are outside business-module repository boundaries. queue contains upstream River tables, outside app table ownership."
@@ -433,6 +439,77 @@
       "legacy_go_paths": [
         "internal/tax"
       ]
+    },
+    {
+      "name": "customer",
+      "status": "implemented",
+      "go_path": "internal/modules/customer",
+      "go_status": "planned",
+      "owns_tables": [
+        "customers",
+        "customer_credentials",
+        "customer_addresses"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant"
+      ],
+      "tests": [
+        "tests/db_customers.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Storefront customer identity is independent of employee users. Dedicated customer-auth credentials; HTTP and module Go path remain planned."
+    },
+    {
+      "name": "b2b",
+      "status": "implemented",
+      "go_path": "internal/modules/b2b",
+      "go_status": "planned",
+      "owns_tables": [
+        "buyer_companies",
+        "buyer_roles",
+        "buyer_company_members"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "customer"
+      ],
+      "tests": [
+        "tests/db_customers.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Purchasing companies and memberships are separate from seller organizations. Fixed tenant roles are automatically provisioned; no HTTP operations."
+    },
+    {
+      "name": "ledger",
+      "status": "implemented",
+      "go_path": "internal/modules/ledger",
+      "go_status": "implemented",
+      "owns_tables": [
+        "ledger_accounts",
+        "ledger_transactions",
+        "ledger_entries"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "money"
+      ],
+      "tests": [
+        "tests/db_ledger.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Internal single-currency posting and account balances. Atomic posting is the only runtime write capability for transactions and entries; tenant settlement currency is explicit, with no automatic default."
     }
   ],
   "migrations": [
@@ -640,9 +717,41 @@
       ]
     },
     {
-      "file": "migrations/016_queue_authorization.sql",
+      "file": "migrations/016_customers_b2b.sql",
+      "owner": "customer",
+      "touches_tables": [
+        "customers",
+        "customer_credentials",
+        "customer_addresses",
+        "buyer_companies",
+        "buyer_roles",
+        "buyer_company_members",
+        "price_lists",
+        "tenants"
+      ]
+    },
+    {
+      "file": "migrations/017_ledger.sql",
+      "owner": "ledger",
+      "touches_tables": [
+        "tenants",
+        "ledger_accounts",
+        "ledger_transactions",
+        "ledger_entries"
+      ]
+    },
+    {
+      "file": "migrations/018_queue_authorization.sql",
       "owner": "reliability",
       "touches_tables": []
+    },
+    {
+      "file": "migrations/019_reliability_limits.sql",
+      "owner": "reliability",
+      "touches_tables": [
+        "outbox_events",
+        "idempotency_records"
+      ]
     }
   ]
 }

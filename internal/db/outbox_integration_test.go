@@ -4,11 +4,12 @@
 // Dependencies: disposable migrated PG18 DATABASE_URL and pgx. Caller: PG gate;
 // OUTBOX_REQUIRE_PG=1 turns missing DB into failure. Committed fixtures are scoped
 // to unique tenants, cleaned by admin; expiry is admin fixture update, never sleep.
-package outbox
+package db_test
 
 import (
 	"context"
 	"errors"
+	outbox "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/outbox"
 	"os"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func pgFixture(t *testing.T) (context.Context, *pgxpool.Pool, PGStore, string, string) {
+func outboxPGFixture(t *testing.T) (context.Context, *pgxpool.Pool, outbox.PGStore, string, string) {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -77,17 +78,17 @@ func pgFixture(t *testing.T) (context.Context, *pgxpool.Pool, PGStore, string, s
 	if err := pool.Ping(ctx); err != nil {
 		t.Fatal(err)
 	}
-	return ctx, admin, PGStore{Pool: pool}, tenantID, eventID
+	return ctx, admin, outbox.PGStore{Pool: pool}, tenantID, eventID
 }
 
-func pgDispatcher(s Store, send senderFunc) Dispatcher {
-	return Dispatcher{Store: s, Sender: send, Config: Config{WorkerID: worker, LeaseSeconds: 60, BaseRetrySeconds: 2, MaxRetrySeconds: 8}}
+func outboxPGDispatcher(s outbox.Store, send outboxSenderFunc) outbox.Dispatcher {
+	return outbox.Dispatcher{Store: s, Sender: send, Config: outbox.Config{WorkerID: outboxWorker, LeaseSeconds: 60, BaseRetrySeconds: 2, MaxRetrySeconds: 8}}
 }
 
 func TestPGDispatchCommittedClaimAndWorkerScope(t *testing.T) {
-	ctx, admin, store, tenantID, eventID := pgFixture(t)
+	ctx, admin, store, tenantID, eventID := outboxPGFixture(t)
 	sent := 0
-	d := pgDispatcher(store, func(sendCtx context.Context, e Delivery) error {
+	d := outboxPGDispatcher(store, func(sendCtx context.Context, e outbox.Delivery) error {
 		sent++
 		var status, owner string
 		var attempt int32
@@ -95,7 +96,7 @@ func TestPGDispatchCommittedClaimAndWorkerScope(t *testing.T) {
 		if err := admin.QueryRow(sendCtx, "SELECT status,lease_owner::text,attempts,lease_until FROM app.outbox_events WHERE tenant_id=$1::text::uuid AND id=$2::text::uuid", tenantID, eventID).Scan(&status, &owner, &attempt, &until); err != nil {
 			t.Fatal(err)
 		}
-		if status != "processing" || attempt != 1 || owner != worker {
+		if status != "processing" || attempt != 1 || owner != outboxWorker {
 			t.Fatalf("claim not committed before sender: %s %d %s", status, attempt, owner)
 		}
 		deadline, ok := sendCtx.Deadline()
@@ -108,7 +109,7 @@ func TestPGDispatchCommittedClaimAndWorkerScope(t *testing.T) {
 		return nil
 	})
 	r, err := d.Dispatch(ctx, tenantID, 1)
-	if err != nil || r != (Result{Claimed: 1, Sent: 1, Completed: 1}) || sent != 1 {
+	if err != nil || r != (outbox.Result{Claimed: 1, Sent: 1, Completed: 1}) || sent != 1 {
 		t.Fatalf("dispatch %+v %v", r, err)
 	}
 	var status string
@@ -125,8 +126,8 @@ func TestPGDispatchCommittedClaimAndWorkerScope(t *testing.T) {
 }
 
 func TestPGSendFailurePersistsExponentialRetry(t *testing.T) {
-	ctx, admin, store, tenantID, eventID := pgFixture(t)
-	d := pgDispatcher(store, func(context.Context, Delivery) error {
+	ctx, admin, store, tenantID, eventID := outboxPGFixture(t)
+	d := outboxPGDispatcher(store, func(context.Context, outbox.Delivery) error {
 		return errors.New("secret body and credentials must not persist")
 	})
 	for attempt, delay := range []int{2, 4, 8, 8} {
@@ -135,7 +136,7 @@ func TestPGSendFailurePersistsExponentialRetry(t *testing.T) {
 			t.Fatal(err)
 		}
 		r, err := d.Dispatch(ctx, tenantID, 1)
-		if err != nil || r != (Result{Claimed: 1, Failed: 1}) {
+		if err != nil || r != (outbox.Result{Claimed: 1, Failed: 1}) {
 			t.Fatalf("retry %+v %v", r, err)
 		}
 		var status, code string
@@ -146,7 +147,7 @@ func TestPGSendFailurePersistsExponentialRetry(t *testing.T) {
 		if status != "failed" || code != "OUTBOX_SEND_FAILED" || attempts != attempt+1 || next.Before(before.Add(time.Duration(delay)*time.Second)) || next.After(after.Add(time.Duration(delay)*time.Second)) {
 			t.Fatalf("incorrect retry: %s %s %d %v", status, code, attempts, next)
 		}
-		leases, err := store.Claim(ctx, tenantID, worker, 1, 60)
+		leases, err := store.Claim(ctx, tenantID, outboxWorker, 1, 60)
 		if err != nil || len(leases) != 0 {
 			t.Fatalf("retry claimed before due %v %v", leases, err)
 		}
@@ -156,18 +157,18 @@ func TestPGSendFailurePersistsExponentialRetry(t *testing.T) {
 	}
 }
 
-type ackCrashStore struct {
-	Store
-	lost Lease
+type outboxAckCrashStore struct {
+	outbox.Store
+	lost outbox.Lease
 }
 
-func (s *ackCrashStore) Complete(_ context.Context, l Lease) (bool, error) {
+func (s *outboxAckCrashStore) Complete(_ context.Context, l outbox.Lease) (bool, error) {
 	s.lost = l
 	return false, errors.New("OUTBOX_TEST_ACK_CRASH")
 }
 
 func TestPGAckCrashTakeoverDedupAndPreviousAttemptFence(t *testing.T) {
-	ctx, admin, store, tenantID, eventID := pgFixture(t)
+	ctx, admin, store, tenantID, eventID := outboxPGFixture(t)
 	consumer, err := admin.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -183,9 +184,9 @@ func TestPGAckCrashTakeoverDedupAndPreviousAttemptFence(t *testing.T) {
 			t.Errorf("consumer fixture cleanup: %v", err)
 		}
 	}()
-	crash := &ackCrashStore{Store: store}
+	crash := &outboxAckCrashStore{Store: store}
 	sends := 0
-	sender := func(sendCtx context.Context, e Delivery) error {
+	sender := func(sendCtx context.Context, e outbox.Delivery) error {
 		sends++
 		if e.EventID != eventID || e.Target != "test:consumer" || e.DedupKey != "stable-key" {
 			t.Fatal("unstable consumer dedup identity")
@@ -202,14 +203,14 @@ func TestPGAckCrashTakeoverDedupAndPreviousAttemptFence(t *testing.T) {
 		_, err := consumer.Exec(sendCtx, "INSERT INTO c04b_consumer_receipts(tenant_id,event_id,target) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", e.TenantID, e.EventID, e.Target)
 		return err
 	}
-	r, err := pgDispatcher(crash, sender).Dispatch(ctx, tenantID, 1)
+	r, err := outboxPGDispatcher(crash, sender).Dispatch(ctx, tenantID, 1)
 	if err == nil || err.Error() != "OUTBOX_TEST_ACK_CRASH" || r.Sent != 1 || r.Completed != 0 {
 		t.Fatalf("crash evidence %+v %v", r, err)
 	}
 	if _, err := admin.Exec(ctx, "UPDATE app.outbox_events SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1::text::uuid", eventID); err != nil {
 		t.Fatal(err)
 	}
-	r, err = pgDispatcher(store, sender).Dispatch(ctx, tenantID, 1)
+	r, err = outboxPGDispatcher(store, sender).Dispatch(ctx, tenantID, 1)
 	if err != nil || r.Completed != 1 || sends != 2 {
 		t.Fatalf("takeover %+v %v sends=%d", r, err, sends)
 	}
@@ -227,20 +228,20 @@ func TestPGAckCrashTakeoverDedupAndPreviousAttemptFence(t *testing.T) {
 }
 
 func TestPGWorkerCannotWriteTablesOrClaimWithoutScope(t *testing.T) {
-	ctx, _, store, tenantID, _ := pgFixture(t)
+	ctx, _, store, tenantID, _ := outboxPGFixture(t)
 	_, err := store.Pool.Exec(ctx, "UPDATE app.outbox_events SET attempts=0 WHERE tenant_id=$1::text::uuid", tenantID)
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
 		t.Fatalf("worker direct write not denied: %v", err)
 	}
-	_, err = store.Pool.Exec(ctx, "SELECT app.claim_outbox($1::text::uuid,$2::text::uuid,1,60)", tenantID, worker)
+	_, err = store.Pool.Exec(ctx, "SELECT app.claim_outbox($1::text::uuid,$2::text::uuid,1,60)", tenantID, outboxWorker)
 	if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
 		t.Fatalf("unscoped worker claim not denied: %v", err)
 	}
 }
 
 func TestPGClaimSkipsLockedAndExpiredSendCannotAck(t *testing.T) {
-	ctx, admin, store, tenantID, eventID := pgFixture(t)
+	ctx, admin, store, tenantID, eventID := outboxPGFixture(t)
 	tx, err := admin.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -249,19 +250,25 @@ func TestPGClaimSkipsLockedAndExpiredSendCannotAck(t *testing.T) {
 	if _, err := tx.Exec(ctx, "SELECT id FROM app.outbox_events WHERE id=$1::text::uuid FOR UPDATE", eventID); err != nil {
 		t.Fatal(err)
 	}
-	leases, err := store.Claim(ctx, tenantID, worker, 1, 60)
+	leases, err := store.Claim(ctx, tenantID, outboxWorker, 1, 60)
 	if err != nil || len(leases) != 0 {
 		t.Fatalf("locked claim not skipped %v %v", leases, err)
 	}
 	if err := tx.Rollback(ctx); err != nil {
 		t.Fatal(err)
 	}
-	d := pgDispatcher(store, func(context.Context, Delivery) error {
+	d := outboxPGDispatcher(store, func(context.Context, outbox.Delivery) error {
 		_, err := admin.Exec(ctx, "UPDATE app.outbox_events SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1::text::uuid", eventID)
 		return err
 	})
 	r, err := d.Dispatch(ctx, tenantID, 1)
-	if !errors.Is(err, ErrLeaseLost) || r.Completed != 0 || r.Sent != 1 {
+	if !errors.Is(err, outbox.ErrLeaseLost) || r.Completed != 0 || r.Sent != 1 {
 		t.Fatalf("expired send confirmed %+v %v", r, err)
 	}
 }
+
+const outboxWorker = "22222222-2222-4222-8222-222222222222"
+
+type outboxSenderFunc func(context.Context, outbox.Delivery) error
+
+func (f outboxSenderFunc) Send(ctx context.Context, d outbox.Delivery) error { return f(ctx, d) }

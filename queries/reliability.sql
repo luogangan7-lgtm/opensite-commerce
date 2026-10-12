@@ -28,3 +28,7 @@ WHERE tenant_id=sqlc.arg(tenant_id)::uuid AND actor_kind=sqlc.arg(actor_kind)::t
  AND idempotency_key=sqlc.arg(idempotency_key)::text
  AND request_hash=sqlc.arg(request_hash)::bytea
  AND claim_token=sqlc.arg(claim_token)::uuid AND state='in_progress';
+
+-- name: ListOutboxActiveTenants :many
+SELECT tenant_id::text AS tenant_id
+FROM app.outbox_active_tenants(sqlc.narg(after_tenant)::uuid,sqlc.arg(tenant_limit)::integer);

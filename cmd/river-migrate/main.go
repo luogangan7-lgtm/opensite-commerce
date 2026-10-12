@@ -6,8 +6,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 	"os"
@@ -21,7 +20,7 @@ func run() error {
 	if url == "" {
 		return fmt.Errorf("DATABASE_URL is required")
 	}
-	pool, err := pgxpool.New(ctx, url)
+	pool, err := pgxadapter.OpenMigrationPool(ctx, url)
 	if err != nil {
 		return fmt.Errorf("installer connection configuration failed")
 	}
@@ -65,15 +64,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("queue capability verification failed: %w", err)
 	}
-	config, err := pgxpool.ParseConfig(url)
-	if err != nil {
-		return err
-	}
-	config.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
-		_, e := c.Exec(ctx, "SET ROLE app_river_migrator")
-		return e
-	}
-	owner, err := pgxpool.NewWithConfig(ctx, config)
+	owner, err := pgxadapter.OpenQueuePool(ctx, url, "app_river_migrator")
 	if err != nil {
 		return err
 	}

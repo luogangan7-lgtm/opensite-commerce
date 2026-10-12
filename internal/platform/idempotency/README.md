@@ -87,3 +87,10 @@ hash, rerun green and retain both logs. This mutation compiles and changes the
 semantic branch rather than producing a compile-only red. A second simple
 HTTP-boundary mutation is validKey's max128 to129; TestValidateKey must turn red
 on the129-byte case, then restore and rerun.
+
+Claims accept durations from one microsecond through 24 hours. Both ClaimTx and
+the SQL function reject values outside that window; SQL validates elapsed seconds
+rather than calendar interval comparison. Request bodies intentionally use raw
+bytes: equivalent JSON with different whitespace/key order has a different hash
+and returns 422 on key reuse. Local response blobs have no encryption/retention GC
+in this card; production storage and lifecycle remain separate work.

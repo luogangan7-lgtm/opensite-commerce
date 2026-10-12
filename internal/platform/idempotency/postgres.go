@@ -22,8 +22,11 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
 )
 
+// MaxClaimTTL bounds accidental lease lockout; SQL enforces the same window.
+const MaxClaimTTL = 24 * time.Hour
+
 var ErrInvalidScope = errors.New("invalid idempotency scope")
-var ErrInvalidTTL = errors.New("idempotency TTL must be at least one microsecond")
+var ErrInvalidTTL = errors.New("idempotency TTL must be between one microsecond and 24 hours")
 var ErrStaleClaim = errors.New("idempotency claim is no longer current")
 var ErrInvalidRecord = errors.New("invalid idempotency record")
 
@@ -49,7 +52,7 @@ func ClaimTx(ctx context.Context, tx pgx.Tx, scope Scope, hash [32]byte, ttl tim
 	if tx == nil || !validScope(scope) {
 		return Result{}, ErrInvalidScope
 	}
-	if ttl.Microseconds() < 1 {
+	if ttl < time.Microsecond || ttl > MaxClaimTTL {
 		return Result{}, ErrInvalidTTL
 	}
 	queries := db.New(tx)
