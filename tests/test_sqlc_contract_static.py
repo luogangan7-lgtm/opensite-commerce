@@ -12,7 +12,11 @@ sql = config['sql'][0]
 assert sql['engine'] == 'postgresql'
 assert sql['gen']['go']['sql_package'] == 'pgx/v5'
 assert sql['gen']['go']['out'] == 'internal/db'
-assert len(sql['schema']) == 7
+assert len(sql['schema']) >= 9
+for suffix in ('_security_hardening.sql', '_platform_reliability.sql'):
+    matches = list((root/'migrations').glob('[0-9][0-9][0-9]'+suffix))
+    assert len(matches) == 1, suffix
+    assert str(matches[0].relative_to(root)) in sql['schema'], suffix
 for path in sql['schema']:
     assert (root/path).is_file(), path
 assert all('008_' not in name and '009_' not in name for name in sql['schema'])

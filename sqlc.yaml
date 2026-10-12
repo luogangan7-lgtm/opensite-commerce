@@ -10,6 +10,8 @@ sql:
       - "migrations/005_cms.sql"
       - "migrations/006_publish.sql"
       - "migrations/007_reliability.sql"
+      - "migrations/010_security_hardening.sql"
+      - "migrations/011_platform_reliability.sql"
     queries: "queries"
     gen:
       go:
