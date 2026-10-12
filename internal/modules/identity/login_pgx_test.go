@@ -32,7 +32,14 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-const testPassword = "test-only-good-password"
+// testPassword is generated per run so no credential-shaped literal is committed.
+var testPassword = func() string {
+	b := make([]byte, 18)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return "t-" + hex.EncodeToString(b)
+}()
 
 func setupLoginPG(t *testing.T) (context.Context, *pgx.Conn, string, LoginConfig) {
 	t.Helper()
@@ -464,7 +471,7 @@ func TestLoginConcurrentPostgres(t *testing.T) {
 		}
 		c1, s1 := challengePG(t, a)
 		c2, s2 := challengePG(t, b)
-		body := `{"email":"race@example.test","password":"test-only-good-password"}`
+		body := `{"email":"race@example.test","password":"` + testPassword + `"}`
 		ch := make(chan int, 2)
 		go func() { ch <- requestPG(a, "POST", "/api/v1/auth/login", body, s1, "203.0.113.41", old, c1).Code }()
 		go func() { ch <- requestPG(b, "POST", "/api/v1/auth/login", body, s2, "203.0.113.42", old, c2).Code }()
