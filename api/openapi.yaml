@@ -10,12 +10,97 @@ servers:
 security:
   - ApiKeyBearer: []
 tags:
+  - name: Identity
   - name: Organization
   - name: Catalog
   - name: Media
   - name: Builder
   - name: Inquiry
 paths:
+  /api/v1/auth/login:
+    get:
+      tags: [Identity]
+      operationId: getAdminLoginChallenge
+      security: []
+      description: >-
+        Issues short-lived signed anonymous CSRF material in a Secure HttpOnly
+        host-only cookie and returns the matching header token. No tenant context.
+      responses:
+        '200':
+          description: Anonymous login challenge; Cache-Control no-store
+          headers:
+            Set-Cookie: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginChallenge' }
+        '503': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Identity]
+      operationId: createAdminSession
+      security: []
+      description: >-
+        Requires the signed anonymous challenge cookie and matching X-CSRF-Token,
+        plus the exact configured Origin. Always creates a fresh opaque session;
+        rotation consumes a valid same-user old session atomically. Credentials
+        and raw tokens are never included in problem details.
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/LoginChallengeCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminLogin' }
+      responses:
+        '201':
+          description: New admin session and signed known-device cookies; Cache-Control no-store
+          headers:
+            Set-Cookie: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSessionView' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+        '415': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+  /api/v1/auth/logout:
+    post:
+      tags: [Identity]
+      operationId: revokeAdminSession
+      security: [{ AdminSession: [] }]
+      description: >-
+        Checks only active user and session, even after the last membership is
+        suspended. Requires session-bound signed CSRF and exact configured Origin.
+        Revokes the current session and clears the admin session cookie.
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+        - $ref: '#/components/parameters/Origin'
+      responses:
+        '204':
+          description: Session revoked; cookie cleared; Cache-Control no-store
+          headers:
+            Set-Cookie: { schema: { type: string } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+  /api/v1/auth/session:
+    get:
+      tags: [Identity]
+      operationId: getAdminSession
+      security: [{ AdminSession: [] }]
+      description: Active global user/session admission with idle and absolute expiry; no membership required.
+      responses:
+        '200':
+          description: Current actor and session-bound CSRF; Cache-Control no-store
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSessionView' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
   /api/v1/organizations:
     post:
       tags: [Organization]
@@ -247,8 +332,31 @@ paths:
         '429': { $ref: '#/components/responses/Problem' }
 components:
   securitySchemes:
+    AdminSession:
+      type: apiKey
+      in: cookie
+      name: __Host-osc_admin_session
+      description: Secure HttpOnly SameSite=Lax Path=/ host-only opaque staff session; bearer keys cannot admit self-session operations.
     ApiKeyBearer: { type: http, scheme: bearer, bearerFormat: API-Key }
   parameters:
+    LoginChallengeCookie:
+      name: __Host-osc_login_csrf
+      in: cookie
+      required: true
+      schema: { type: string, minLength: 1 }
+      description: Signed anonymous login challenge with five-minute expiry; Secure HttpOnly SameSite=Lax Path=/ and no Domain.
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string, minLength: 1 }
+      description: Signed HMAC bound to anonymous challenge or admitted session.
+    Origin:
+      name: Origin
+      in: header
+      required: true
+      schema: { type: string, format: uri }
+      description: Must exactly equal the configured admin origin.
     SiteId:
       name: site_id
       in: path
@@ -295,6 +403,28 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
   schemas:
+    LoginChallenge:
+      type: object
+      required: [csrf_token]
+      properties:
+        csrf_token: { type: string, minLength: 1 }
+      additionalProperties: false
+    AdminLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, minLength: 1, maxLength: 254 }
+        password: { type: string, minLength: 1, maxLength: 1024 }
+      additionalProperties: false
+    AdminSessionView:
+      type: object
+      required: [user_id, session_id, expires_at, csrf_token]
+      properties:
+        user_id: { type: string, format: uuid }
+        session_id: { type: string, format: uuid }
+        expires_at: { type: string, format: date-time }
+        csrf_token: { type: string, minLength: 1 }
+      additionalProperties: false
     Problem:
       type: object
       required: [type, title, status, code]

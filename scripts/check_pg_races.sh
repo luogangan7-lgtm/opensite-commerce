@@ -452,6 +452,62 @@ got=$(sql <<<"SELECT a.failure_count||'|'||i.failure_count FROM app.auth_account
 echo "race auth account+IP failure increments: $got (expected 2|2)"
 [[ $got == '2|2' ]] || fail=1
 
+
+# C-02b: execute the production sqlc rotation/insert statements. The UPDATE's
+# zero-row result aborts the transaction before INSERT, matching SaveLogin.
+# Extract named queries instead of cloning predicates that could silently drift.
+login_rotation_sql() {
+ python3 - "$1" "$2" "$3" <<'PYSQL'
+from pathlib import Path
+import re
+import sys
+user_id, old_hash, new_hash = sys.argv[1:]
+assert re.fullmatch(r'[0-9a-f-]{36}', user_id)
+assert all(re.fullmatch(r'[0-9a-f]{64}', h) for h in (old_hash, new_hash))
+source = Path('queries/identity/login.sql').read_text()
+def query(name, token_hash):
+    match = re.search(r'^-- name: '+name+r' :\w+\n(.*?)(?=^-- name:|\Z)', source, re.M | re.S)
+    assert match, name
+    sql = match[1].strip()
+    values = {'at': "clock_timestamp()", 'user_id': "'"+user_id+"'",
+              'token_hash': "decode('"+token_hash+"','hex')", 'idle_seconds': '1800',
+              'created_at': "clock_timestamp()", 'expires_at': "clock_timestamp()+interval '1 hour'"}
+    sql = re.sub(r'sqlc.arg\((\w+)\)', lambda m: values[m[1]], sql)
+    assert 'sqlc.' not in sql
+    return sql
+rotate = query('LoginRotateOldSession', old_hash)
+assert rotate.endswith(';')
+print(rotate[:-1] + ' RETURNING s.id AS rotated \\gset')
+print(query('LoginInsertSession', new_hash))
+print("SELECT 'LOGIN_ROTATED=1';")
+PYSQL
+}
+read -r LOGIN_USER LOGIN_OLD_HASH LOGIN_NEW_A LOGIN_NEW_B <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.users(email,password_hash) VALUES('rotation-race-'||uuidv7()||'@example.test','fixture-only') RETURNING id AS u \gset
+INSERT INTO app.auth_sessions(user_id,token_hash,created_at,last_seen_at,expires_at)
+ VALUES(:'u',sha256(uuidv7()::text::bytea),clock_timestamp()-interval '10 minutes',clock_timestamp()-interval '5 minutes',clock_timestamp()+interval '1 hour') RETURNING encode(token_hash,'hex') AS old \gset
+SELECT :'u'||' '||:'old'||' '||encode(sha256(uuidv7()::text::bytea),'hex')||' '||encode(sha256(uuidv7()::text::bytea),'hex');
+SQL
+)"
+LOGIN_FIRST_SQL=$(login_rotation_sql "$LOGIN_USER" "$LOGIN_OLD_HASH" "$LOGIN_NEW_A")
+LOGIN_SECOND_SQL=$(login_rotation_sql "$LOGIN_USER" "$LOGIN_OLD_HASH" "$LOGIN_NEW_B")
+gate_close 21
+auth_tx login_rotate_first "$LOGIN_FIRST_SQL $(park 21)" &
+login_first_pid=$!
+await login_rotate_first advisory
+auth_tx login_rotate_second "$LOGIN_SECOND_SQL" &
+login_second_pid=$!
+await login_rotate_second "${ROWLOCK[@]}"
+blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}login_rotate_first' AND second.application_name='${RACE_PREFIX}login_rotate_second';")
+[[ $blocked == t ]] || { echo 'FAIL: login second did not block on old session'; fail=1; }
+gate_open 21
+wait "$login_first_pid" "$login_second_pid"
+expect login_rotate_first ok; expect login_rotate_second 'no rows returned for'
+result login_rotate_first 'LOGIN_ROTATED=1'
+got=$(sql <<<"SELECT 'LOGIN_ROTATION_RACE='||count(*) FILTER(WHERE revoked_at IS NOT NULL)||'|'||count(*) FILTER(WHERE revoked_at IS NULL AND expires_at>clock_timestamp() AND last_seen_at>clock_timestamp()-interval '30 minutes')||'|'||count(*) FILTER(WHERE token_hash=decode('$LOGIN_NEW_A','hex'))||'|'||count(*) FILTER(WHERE token_hash=decode('$LOGIN_NEW_B','hex')) FROM app.auth_sessions WHERE user_id='$LOGIN_USER';")
+echo "race conditional session rotation: $got (expected LOGIN_ROTATION_RACE=1|1|1|0)"
+[[ $got == 'LOGIN_ROTATION_RACE=1|1|1|0' ]] || fail=1
+
 # First-owner is installation-wide: use an empty independently migrated database,
 # because earlier gates legitimately created owners. Preserve the caller's psql
 # target and clean our database even on a synchronization or migration failure.
@@ -500,3 +556,4 @@ echo 'PASS: pricing duplicate-tier race keeps one committed tier'
 echo 'PASS: shipping range INSERT/UPDATE races preserve exact non-overlapping tiers'
 echo 'PASS: auth concurrent normalized-identifier failures preserve account and account+IP counts'
 echo 'PASS: bootstrap concurrent first-owner creation commits one installation owner only'
+echo 'PASS: conditional staff-session rotation commits exactly one valid successor'

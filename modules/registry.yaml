@@ -5,19 +5,42 @@
       "name": "identity",
       "status": "implemented",
       "go_path": "internal/modules/identity",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "users",
-        "auth_sessions"
+        "auth_sessions",
+        "auth_account_attempts",
+        "auth_login_attempts",
+        "known_devices"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "getAdminLoginChallenge",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createAdminSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "revokeAdminSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getAdminSession",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [],
       "tests": [
         "tests/db_role_boundaries.sql",
-        "tests/db_role_matrix.sql"
+        "tests/db_role_matrix.sql",
+        "tests/db_identity_auth.sql",
+        "tests/db_identity_login.sql",
+        "tests/test_identity_login_contract.py"
       ],
       "scopes": [],
-      "note": "Global staff identity and sessions have no tenant_id. Module status describes the existing database model; all module Go paths and HTTP operations remain planned."
+      "note": "Global staff authentication, signed anonymous login CSRF, and opaque admin sessions have no tenant context. Self-session/logout admission checks active user/session without membership or API-key scopes."
     },
     {
       "name": "tenant",
@@ -566,6 +589,26 @@
         "shipping_zone_destinations",
         "shipping_profiles",
         "shipping_rates"
+      ]
+    },
+    {
+      "file": "migrations/015_identity_auth.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "auth_account_attempts",
+        "auth_login_attempts",
+        "known_devices",
+        "users",
+        "api_keys",
+        "tenant_memberships",
+        "tenants"
+      ]
+    },
+    {
+      "file": "migrations/016_identity_login.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "auth_sessions"
       ]
     }
   ]

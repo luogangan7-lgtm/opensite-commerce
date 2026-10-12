@@ -16,7 +16,10 @@ sql:
       - "migrations/013_money_pricing.sql"
       - "migrations/014_shipping.sql"
       - "migrations/015_identity_auth.sql"
-    queries: "queries"
+      - "migrations/016_identity_login.sql"
+    queries:
+      - "queries"
+      - "queries/identity"
     gen:
       go:
         package: "db"

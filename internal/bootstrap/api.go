@@ -28,7 +28,14 @@ func New(config Config) (*http.Server, error) {
 			return nil, err
 		}
 	}
-	return &http.Server{Addr: config.Address, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}, nil
+	// Socket write deadlines do not cancel PostgreSQL queries or lock waits.
+	// This covers authentication and handlers together, including the 60s backoff.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
+		defer cancel()
+		router.ServeHTTP(w, r.WithContext(ctx))
+	})
+	return &http.Server{Addr: config.Address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second}, nil
 }
 
 func Run(ctx context.Context, config Config) error {

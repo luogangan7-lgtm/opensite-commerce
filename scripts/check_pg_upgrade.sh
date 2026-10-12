@@ -125,7 +125,8 @@ apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; 
 RELIABILITY_DB=""
 SHIPPING_DB=""
 IDENTITY_DB=""
-trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1; [[ -z $SHIPPING_DB ]] || admin -c "DROP DATABASE IF EXISTS $SHIPPING_DB" >/dev/null 2>&1; [[ -z $IDENTITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $IDENTITY_DB" >/dev/null 2>&1' EXIT
+LOGIN_DB=""
+trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1; [[ -z $SHIPPING_DB ]] || admin -c "DROP DATABASE IF EXISTS $SHIPPING_DB" >/dev/null 2>&1; [[ -z $IDENTITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $IDENTITY_DB" >/dev/null 2>&1; [[ -z $LOGIN_DB ]] || admin -c "DROP DATABASE IF EXISTS $LOGIN_DB" >/dev/null 2>&1' EXIT
 RELIABILITY_DB=reliability_upgrade_$$
 fresh_before_reliability "$RELIABILITY_DB"
 db "$RELIABILITY_DB" <<'SQL' >/dev/null
@@ -379,6 +380,51 @@ db "$DB" -f tests/db_identity_auth.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 IDENTITY_DB=""
+
+
+# C-02b: start immediately before the logical session-activity migration, after
+# every predecessor (including identity-auth), then compare all legacy row fields.
+login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)
+[[ ${#login_files[@]} -eq 1 && -f ${login_files[0]} ]] || { echo 'FAIL: exactly one identity login migration required'; exit 1; }
+LOGIN_DB=upgrade_login_$$
+DB=$LOGIN_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${login_files[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.users(email,password_hash) VALUES('login-upgrade@example.test','fixture-only') RETURNING id AS u \gset
+INSERT INTO app.auth_sessions(user_id,token_hash,created_at,expires_at,revoked_at) VALUES
+ (:'u',sha256('legacy-live'::bytea),'2040-01-01Z','2040-01-02Z',NULL),
+ (:'u',sha256('legacy-expired'::bytea),'2020-01-01Z','2020-01-02Z',NULL),
+ (:'u',sha256('legacy-revoked'::bytea),'2040-01-01Z','2040-01-02Z','2040-01-01T00:01Z');
+CREATE TABLE public.login_upgrade_expected AS SELECT id,to_jsonb(s) AS payload FROM app.auth_sessions s;
+SQL
+{ echo 'BEGIN;'; cat "${login_files[0]}"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+result=$(db "$DB" <<'SQL'
+SELECT 'LOGIN_UPGRADE='||(SELECT count(*) FROM app.auth_sessions)||'|'||
+ (SELECT count(*) FROM app.auth_sessions s JOIN public.login_upgrade_expected e ON e.id=s.id
+  AND e.payload=to_jsonb(s)-'last_seen_at')||'|'||
+ (SELECT count(*) FROM app.auth_sessions WHERE last_seen_at=created_at)||'|'||
+ (SELECT a.attnotnull FROM pg_attribute a WHERE a.attrelid='app.auth_sessions'::regclass
+  AND a.attname='last_seen_at' AND NOT a.attisdropped)||'|'||
+ has_column_privilege('app_auth','app.auth_sessions','last_seen_at','UPDATE')||'|'||
+ has_column_privilege('app_runtime','app.auth_sessions','last_seen_at','UPDATE');
+SQL
+)
+if [[ $result == 'LOGIN_UPGRADE=3|3|3|true|true|false' ]]; then
+ pass 'login upgrade preserves old session ids/hashes/expiry/revocation, backfills original creation and restricts activity writes'
+else bad "login upgrade witness: $result"; fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${login_files[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+db "$DB" -f tests/db_identity_login.sql >/dev/null
+db "$DB" -f tests/db_identity_auth.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"
+LOGIN_DB=""
 
 [[ $fail -eq 0 ]] || exit 1
 echo 'PASS: security, reliability, inventory, pricing, shipping and identity upgrade gates'

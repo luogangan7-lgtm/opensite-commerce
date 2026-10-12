@@ -117,7 +117,7 @@ BEGIN
      ELSIF t.relname='tenants' AND privilege='SELECT' THEN
       allowed_columns:=ARRAY['id','status'];
      ELSIF privilege='UPDATE' AND t.relname='auth_sessions' THEN
-      allowed_columns := ARRAY['revoked_at'];
+      allowed_columns := ARRAY['revoked_at','last_seen_at'];
      END IF;
     ELSIF role_name='app_domain_resolver' AND privilege='SELECT' THEN
      allowed_columns := CASE t.relname

@@ -29,11 +29,29 @@ expected = [
     'db_pricing.sql',
     'db_shipping.sql',
     'db_identity_auth.sql',
+    'db_identity_login.sql',
 ]
 assert 'tests/db_identity_auth.sql' in (root / 'scripts/check_pg.sh').read_text(), 'identity auth SQL gate missing from runner manifest'
 # Coverage guards only: the real-PG runners execute these bootstrap cases.
 assert 'BOOTSTRAP_RACE=' in (root / 'scripts/check_pg_races.sh').read_text(), 'first-owner concurrency case missing'
 assert 'BOOTSTRAP_UPGRADE=' in (root / 'scripts/check_pg_upgrade.sh').read_text(), 'bootstrap populated-upgrade cases missing'
+assert 'LOGIN_ROTATION_RACE=' in (root / 'scripts/check_pg_races.sh').read_text(), 'login conditional rotation concurrency missing'
+assert 'LOGIN_UPGRADE=' in (root / 'scripts/check_pg_upgrade.sh').read_text(), 'session last_seen populated upgrade missing'
+# Exercise the production-query extraction without connecting to PG. The real
+# race still has to establish row-lock ordering and exactly one valid successor.
+race_source = (root / 'scripts/check_pg_races.sh').read_text()
+login_race = race_source.split('# C-02b:', 1)[1].split('# First-owner is installation-wide:', 1)[0]
+assert '2040-' not in login_race, 'login rotation fixture must use current database time'
+assert "clock_timestamp()-interval '10 minutes'" in login_race, 'old session must be valid against DB execution clock'
+extractor = race_source.split("<<'PYSQL'\n", 1)[1].split('\nPYSQL', 1)[0]
+probe = subprocess.run(['python3', '-', '019abcd0-1111-7222-8333-000000000001', 'a'*64, 'b'*64],
+                       input=extractor, cwd=root, capture_output=True, text=True)
+assert probe.returncode == 0, probe.stderr
+assert '2040-' not in probe.stdout, 'new sessions must use current DB time'
+assert probe.stdout.count('\\gset') == 1 and 'sqlc.' not in probe.stdout
+assert probe.stdout.index('UPDATE app.auth_sessions') < probe.stdout.index('INSERT INTO app.auth_sessions')
+assert 's.user_id=' in probe.stdout and 's.revoked_at IS NULL' in probe.stdout
+assert 's.expires_at>' in probe.stdout and 's.last_seen_at>' in probe.stdout
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:
     assert (root / 'tests' / name).is_file(), name
@@ -100,4 +118,8 @@ fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_identity_auth.sql' in failed.stdout
+    env['FAKE_FAIL_ON'] = 'LOGIN_GATE'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_identity_login.sql' in failed.stdout
 print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, propagates failures (mock psql; NO SQL executed)')
