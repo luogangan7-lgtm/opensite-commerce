@@ -39,3 +39,12 @@ application signing secret. Avoid giving it to the Astro renderer.
 identities. The Go service enforces Host normalization and internal service
 authorization; the role does not make DNS validation or TLS authorization
 unnecessary.
+
+## Deployment constraint
+
+V1 supports exactly one OpenSite application database per PostgreSQL cluster.
+All capability roles (`app_runtime`, `app_auth`, `app_customer_auth`, ...) are
+cluster-wide, so a second OpenSite database on the same cluster would share
+their memberships and grants. Deployment preflight will refuse a cluster that
+already hosts another OpenSite database, and operators must `REVOKE CONNECT ON
+DATABASE ... FROM PUBLIC` so capability logins reach only their own database.

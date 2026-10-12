@@ -74,16 +74,37 @@ test('all component states have visual baselines', async ({ page }) => {
   await expect(page.getByRole('dialog')).toHaveScreenshot('dialog-open.png');
 });
 
-test('keyboard focus rings fit inside snapshot cases', async ({ page }) => {
+test('every keyboard focus ring fits on all four screenshot edges', async ({ page }, testInfo) => {
   await catalog(page);
-  const wrapper = page.getByTestId('case-button-primary-md-default');
-  const control = wrapper.getByRole('button');
-  await control.focus();
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Shift+Tab');
-  await expect(control).toBeFocused();
-  expect(await control.evaluate(element => element.matches(':focus-visible'))).toBe(true);
-  await focusFits(control, wrapper);
+  const cases = [
+    ...variants.map(variant => [`button-${variant}-md-default`, 'button'] as const),
+    ['input-default', 'textbox'], ['select-default', 'combobox'], ['checkbox-unchecked', 'checkbox'],
+    ['field-default', 'textbox'], ['table-populated', 'region']
+  ] as const;
+  const evidence = [];
+  for (const [id, role] of cases) {
+    const wrapper = page.getByTestId(`case-${id}`);
+    const control = wrapper.getByRole(role);
+    await control.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(control).toBeFocused();
+    expect(await control.evaluate(element => element.matches(':focus-visible'))).toBe(true);
+    await focusFits(control, wrapper);
+    const padding = await wrapper.locator('.gallery-example').evaluate(element => {
+      const style = getComputedStyle(element);
+      return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].map(parseFloat);
+    });
+    const extent = await control.evaluate(element => {
+      const style = getComputedStyle(element);
+      return parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+    });
+    // Capture padding tracks the outline tokens, with clear space beyond every painted edge.
+    for (const edge of padding) expect(edge, `${id}: all four capture insets`).toBeGreaterThan(extent);
+    evidence.push({ id, extent, padding, control: await control.boundingBox(), screenshot: await wrapper.boundingBox() });
+    await control.blur();
+  }
+  await testInfo.attach('focus-ring-bounds', { body: JSON.stringify(evidence, null, 2), contentType: 'application/json' });
 });
 
 test('axe rejects serious or critical violations', async ({ page }) => {
@@ -140,7 +161,10 @@ test('native controls expose actual loading, checked, error and help states', as
   await expect(page.getByTestId('case-button-primary-md-loading').getByRole('button')).toBeDisabled();
   await expect(page.getByTestId('case-button-primary-md-loading').getByRole('button')).toHaveAttribute('aria-busy', 'true');
   await expect(page.getByTestId('case-checkbox-checked').getByRole('checkbox')).toBeChecked();
-  await expect(page.getByTestId('case-checkbox-indeterminate').getByRole('checkbox')).toHaveAttribute('aria-checked', 'mixed');
+  const mixed = page.getByTestId('case-checkbox-indeterminate').getByRole('checkbox');
+  await expect(mixed).toBeChecked({ indeterminate: true });
+  await expect(mixed).toMatchAriaSnapshot('- checkbox "Checkbox example" [checked=mixed]');
+  await expect(mixed).not.toHaveAttribute('aria-checked');
   const field = page.getByTestId('case-field-error').getByRole('textbox', { name: 'Field example' });
   await expect(field).toHaveAttribute('aria-invalid', 'true');
   await expect(field).toHaveAttribute('aria-describedby', 'field-error-error');
@@ -149,7 +173,7 @@ test('native controls expose actual loading, checked, error and help states', as
   await expect(page.getByTestId('case-input-default').getByRole('textbox')).toHaveValue('Controlled input');
 });
 
-test('production route and bundle exclude the component gallery', async ({ page }) => {
+test('production route excludes the component gallery', async ({ page }) => {
   await page.goto('http://127.0.0.1:4174/_gallery');
   await expect(page.getByTestId('gallery')).toHaveCount(0);
   await expect(page.getByText('OpenSite admin')).toBeVisible();

@@ -1,7 +1,8 @@
 /** Demonstrates shared component states; depends only on UI/messages; called by the guarded gallery route. Examples are controlled, with no commerce data. */
 import { useState, type ReactNode } from 'react';
 import { Badge, Button, Card, Checkbox, DataTable, Dialog, EmptyState, FormField, Select, StatusBadge, TextInput } from '@opensite/ui';
-import { t } from '@opensite/component-contracts';
+import './gallery.css';
+import { t } from '@opensite/component-contracts/gallery';
 
 import { variants, sizes, buttonStates, tones, inputStates, selectStates, checkboxStates, fieldStates } from './gallery-cases';
 
