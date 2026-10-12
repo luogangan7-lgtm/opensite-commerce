@@ -164,7 +164,9 @@ BEGIN
       WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
     ELSIF role_name='app_publish_executor' AND privilege='UPDATE' THEN
      allowed := CASE t.relname WHEN 'sites' THEN ARRAY['published_release_id']
-                              WHEN 'site_releases' THEN ARRAY['sealed'] ELSE allowed END;
+                              WHEN 'site_releases' THEN ARRAY['sealed']
+                              WHEN 'media_assets' THEN ARRAY['visibility']
+                              WHEN 'media_blobs' THEN ARRAY['status'] ELSE allowed END;
     END IF;
     IF has_table_privilege(role_name,t.oid,privilege) IS DISTINCT FROM expected_table
      OR has_table_privilege(role_name,t.oid,privilege || ' WITH GRANT OPTION') THEN

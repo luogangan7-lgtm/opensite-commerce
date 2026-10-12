@@ -90,6 +90,10 @@ GRANT SELECT ON app.sites,app.site_releases,app.site_release_routes,
  app.site_release_templates,app.site_release_media,app.media_assets,app.media_blobs TO app_publish_executor;
 GRANT UPDATE(published_release_id) ON app.sites TO app_publish_executor;
 GRANT UPDATE(sealed) ON app.site_releases TO app_publish_executor;
+-- Row locks (FOR SHARE) need an UPDATE column privilege; no executor function
+-- writes these columns and the executor has no login or members.
+GRANT UPDATE(visibility) ON app.media_assets TO app_publish_executor;
+GRANT UPDATE(status) ON app.media_blobs TO app_publish_executor;
 DO $publish_policies$
 DECLARE table_name text;
 BEGIN
@@ -148,6 +152,14 @@ BEGIN
  SELECT sealed INTO is_sealed FROM app.site_releases
   WHERE tenant_id=p_tenant AND site_id=p_site AND id=p_release FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'RELEASE_NOT_VISIBLE' USING ERRCODE='23503'; END IF;
+ -- Lock referenced media first: a downgrade that could not see a just-committed
+ -- child is still uncommitted here, so wait for it; the next statement's fresh
+ -- READ COMMITTED snapshot then sees its outcome.
+ PERFORM FROM app.site_release_media rm
+  JOIN app.media_assets a ON (a.tenant_id,a.id)=(rm.tenant_id,rm.media_id)
+  JOIN app.media_blobs b ON (b.tenant_id,b.id)=(a.tenant_id,a.blob_id)
+  WHERE rm.tenant_id=p_tenant AND rm.site_id=p_site AND rm.release_id=p_release
+  FOR SHARE OF a,b;
  IF EXISTS (SELECT FROM app.site_release_media rm
   JOIN app.media_assets a ON (a.tenant_id,a.id)=(rm.tenant_id,rm.media_id)
   JOIN app.media_blobs b ON (b.tenant_id,b.id)=(a.tenant_id,a.blob_id)
@@ -190,9 +202,11 @@ REVOKE ALL ON FUNCTION app.publish_release(uuid,uuid,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.publish_release(uuid,uuid,uuid,uuid) TO app_publisher;
 
 -- Sealed releases pin their media: identity, content and public/ready state of
--- referenced assets/blobs cannot change. FOR SHARE on each referencing release
--- conflicts with seal_release's FOR UPDATE, so downgrade and seal serialize; the
--- loser sees the winner's committed state (READ COMMITTED required, as above).
+-- referenced assets/blobs cannot change. Serialization comes from row locks:
+-- seal_release takes FOR SHARE on the media rows, this UPDATE holds their row
+-- lock, so whichever commits second sees the other's committed state through a
+-- fresh READ COMMITTED snapshot. No release lock here: it would invert seal's
+-- release-then-media lock order and invite deadlocks.
 CREATE FUNCTION app.guard_sealed_media() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $media$
 DECLARE pinned boolean;
@@ -221,8 +235,7 @@ BEGIN
    JOIN app.site_release_media rm ON (rm.tenant_id,rm.site_id,rm.release_id)=(r.tenant_id,r.site_id,r.id)
    JOIN app.media_assets a ON (a.tenant_id,a.id)=(rm.tenant_id,rm.media_id)
   WHERE r.tenant_id=OLD.tenant_id
-   AND CASE WHEN TG_TABLE_NAME='media_assets' THEN a.id=OLD.id ELSE a.blob_id=OLD.id END
-  FOR SHARE OF r) r;
+   AND CASE WHEN TG_TABLE_NAME='media_assets' THEN a.id=OLD.id ELSE a.blob_id=OLD.id END) r;
  IF pinned THEN
   RAISE EXCEPTION 'SEALED_RELEASE_MEDIA_PINNED' USING ERRCODE='55000';
  END IF;
