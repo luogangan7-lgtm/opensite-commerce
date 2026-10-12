@@ -18,8 +18,6 @@ SELECT id, organization_id, name, default_locale, published_release_id, created_
 FROM app.sites
 WHERE tenant_id = $1 AND id = $2;
 
--- name: GetProductVariants :many
-SELECT id, sku, option_key, created_at
-FROM app.product_variants
-WHERE tenant_id = $1 AND product_id = $2
-ORDER BY id;
+-- name: GetPublishedSite :one
+SELECT id, organization_id, published_release_id
+FROM app.sites WHERE tenant_id=$1 AND id=$2;
