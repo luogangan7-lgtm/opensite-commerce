@@ -102,3 +102,12 @@ test('image-only backgrounds carry no color literal', () => {
     expect(lintText(source, 'probe.css')).toEqual([]);
   expect(lintText("a { background: url(/a.png) red; }", 'probe.css').length).toBeGreaterThan(0);
 });
+test('conditional at-rule parentheses do not hide nested or later declarations', () => {
+  for (const at of ['@media (prefers-reduced-motion: reduce)', '@supports (display: grid)']) {
+    for (const bad of ['color: red;', 'margin-left: var(--space-2);', 'font-size: 50%;']) {
+      expect(lintText(`${at} { .x { ${bad} } }`, 'probe.css').length).toBeGreaterThan(0);
+      expect(lintText(`${at} { .x { color: var(--color-text); } } .y { ${bad} }`, 'probe.css').length).toBeGreaterThan(0);
+    }
+    expect(lintText(`${at} { .x { color: var(--color-text); padding-inline: var(--space-2); } }`, 'probe.css')).toEqual([]);
+  }
+});

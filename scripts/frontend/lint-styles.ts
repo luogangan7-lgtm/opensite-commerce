@@ -27,6 +27,9 @@ function* declarations(text:string) {
    // A selector pseudo-class or an enclosing JS object is not a declaration;
    // resume inside its block so its first actual property is still checked.
    if(depth===0&&char==='{') {end++;break;}
+   // An unmatched closer belongs to an enclosing at-rule condition such as
+   // @media (x: y); end here so the scan resumes and checks the block body.
+   if(depth===0&&(char===')'||char===']')) break;
    if(char==='('||char==='[') depth++;
    else if(char===')'||char===']') depth--;
    if(depth===0&&(char===';'||char==='}'||(char===','&&/^\s*["']?[a-zA-Z][\w-]*["']?\s*:/.test(text.slice(end+1))))) break;
