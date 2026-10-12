@@ -100,12 +100,26 @@ class GovernanceTests(unittest.TestCase):
                 self.assert_red("MODULE_LOCAL_REPLACE")
 
     def test_vendor_linkname_bridge_red(self):
-        self.source("internal/modules/b/internal/store/store.go",
+        self.vendor_private_bridge("internal/modules/b/internal/store")
+
+    def test_vendor_private_package_root_linkname_red(self):
+        self.vendor_private_bridge("internal/modules/b/internal")
+
+    def test_vendor_private_symlink_linkname_red(self):
+        self.vendor_private_bridge("internal/modules/b/internal/store", alias=True)
+
+    def vendor_private_bridge(self, private_directory, alias=False):
+        self.source(private_directory + "/store.go",
                     "package store\nfunc secret() int { return 713 }\n")
+        target_package = private_directory
+        if alias:
+            (self.root / "internal/modules/a/alias").symlink_to(
+                self.root / private_directory, target_is_directory=True)
+            target_package = "internal/modules/a/alias"
         self.source("internal/modules/b/module.go",
-                    'package b\nimport _ "example.test/shop/internal/modules/b/internal/store"\n')
+                    f'package b\nimport _ "example.test/shop/{target_package}"\n')
         self.source("vendor/x.test/bridge/bridge.go",
-                    'package bridge\nimport _ "unsafe"\n//go:linkname hidden example.test/shop/internal/modules/b/internal/store.secret\nfunc hidden() int\nfunc Read() int { return hidden() }\n')
+                    f'package bridge\nimport _ "unsafe"\n//go:linkname hidden example.test/shop/{target_package}.secret\nfunc hidden() int\nfunc Read() int {{ return hidden() }}\n')
         self.source("vendor/modules.txt",
                     "# x.test/bridge v0.0.0\n## explicit; go 1.27.2\nx.test/bridge\n")
         with (self.root / "go.mod").open("a") as output:

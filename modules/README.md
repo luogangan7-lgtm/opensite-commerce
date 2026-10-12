@@ -41,9 +41,10 @@ so an alias import or symlink cannot rename another module's private directory.
 First-party Go source cannot
 use `go:linkname` to bypass visibility through an unregistered bridge package;
 business packages also cannot directly import raw `pgxpool`.
-Vendor Go files are scanned too: linker directives targeting this repository's
-`internal/modules/<module>/internal/...` are forbidden, while unrelated external
-targets and directive text in strings/block comments are allowed. The actual Go
+Vendor Go files are scanned too: linker directives targeting this repository
+are forbidden, including private package roots and symlink aliases that omit
+`internal` from the import name. Unrelated external targets and directive text
+in strings/block comments are allowed. The actual Go
 package stream must never compile/import a root artifact package; uncompiled Go
 receipt files remain excluded from directive checks, but never from the nested
 module check. This prevents artifacts from becoming bridges around the scan.

@@ -240,7 +240,6 @@ def check_go(registry, root):
     require(metadata.returncode == 0, "MODULE_GO_LIST_ERROR", "cannot identify repository module")
     manifest = json.loads(metadata.stdout)
     prefix = manifest["Module"]["Path"] + "/"
-    private_target = re.compile(re.escape(prefix) + r"internal/modules/[^/]+/internal/")
     go_tokens = re.compile(r'''//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*' ''', re.S | re.X)
     for directory, dirs, files in os.walk(root):
         directory = Path(directory)
@@ -261,7 +260,10 @@ def check_go(registry, root):
             for token in go_tokens.finditer(source.read_text()):
                 directive = re.match(r"//go:linkname(?:\s|$)", token.group())
                 vendored = relative_parts and relative_parts[0] == "vendor"
-                require(not directive or (vendored and not private_target.search(token.group())),
+                # Repository aliases can omit /internal/ in a linker target.
+                # Vendor has no legitimate linker port into first-party code;
+                # deny the repository prefix, including private package roots.
+                require(not directive or (vendored and prefix not in token.group()),
                         "MODULE_LINKNAME_FORBIDDEN", str(source.relative_to(root)))
 
     def reject_local_replace(replacement):
