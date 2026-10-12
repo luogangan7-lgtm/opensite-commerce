@@ -118,6 +118,16 @@ BEGIN
    END IF;
   END;
  END LOOP;
+ -- The raw column is bounded too: whitespace padding cannot bloat storage.
+ BEGIN
+  INSERT INTO app.customers(tenant_id,email) VALUES(t,repeat(' ',400)||'padded@example.invalid');
+  RAISE EXCEPTION 'CUSTOMERS_PADDED_EMAIL_ACCEPTED';
+ EXCEPTION WHEN check_violation THEN
+  GET STACKED DIAGNOSTICS guard=CONSTRAINT_NAME;
+  IF guard IS DISTINCT FROM 'customers_email_check' THEN
+   RAISE EXCEPTION 'CUSTOMERS_WRONG_EMAIL_GUARD: %',guard;
+  END IF;
+ END;
  BEGIN
   INSERT INTO app.customers(tenant_id,email) VALUES(t,E' \t\n ');
   RAISE EXCEPTION 'CUSTOMERS_BLANK_EMAIL_ACCEPTED';

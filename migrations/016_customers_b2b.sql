@@ -2,6 +2,25 @@
 -- Depends on identity 001 and money_pricing; called by the privileged migrator.
 -- Tenant keys never reference employee users or seller organizations. Runtime reads
 -- nonsecret data only; a separate scoped capability registers/verifies customers.
+-- Migrator default privileges would pre-grant the tables created below before the
+-- narrow grants; refuse them (global entries only beyond the built-in defaults).
+DO $default_privileges$
+DECLARE found text;
+BEGIN
+ SELECT string_agg(DISTINCT format('%s %s on objtype %s %s',
+   CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END,a.privilege_type,
+   d.defaclobjtype,CASE WHEN d.defaclnamespace=0 THEN 'globally' ELSE 'in schema app' END),'; ')
+  INTO found FROM pg_default_acl d CROSS JOIN LATERAL (
+   SELECT grantee,privilege_type FROM aclexplode(d.defaclacl)
+   EXCEPT SELECT grantee,privilege_type FROM aclexplode(acldefault(d.defaclobjtype,d.defaclrole))
+    WHERE d.defaclnamespace=0) a
+  WHERE d.defaclrole=current_user::regrole AND d.defaclnamespace IN (0,'app'::regnamespace)
+   AND (a.grantee=0 OR a.grantee IN (SELECT oid FROM pg_roles WHERE starts_with(rolname,'app_')));
+ IF found IS NOT NULL THEN
+  RAISE EXCEPTION 'CUSTOMERS_DEFAULT_PRIVILEGES: migrator default privileges grant %',found
+   USING HINT='ALTER DEFAULT PRIVILEGES ... REVOKE these grants for the migrator role, then rerun.';
+ END IF;
+END $default_privileges$;
 DO $customer_auth_role$
 DECLARE m record; t record; columns text; residual text;
 BEGIN
@@ -59,6 +78,20 @@ BEGIN
   RAISE EXCEPTION 'CUSTOMERS_AUTH_RESIDUAL_PRIVILEGE: app_customer_auth still holds %',residual
    USING HINT='Revoke each listed privilege as its grantor (or REVOKE ... GRANTED BY), then rerun.';
  END IF;
+ -- Inbound members outside app_* are kept, so an internal role can still reach
+ -- the capability through a bridge group. Fail closed for the roles that
+ -- tests/db_role_matrix.sql forbids from holding app_customer_auth.
+ SELECT string_agg(rolname,', ' ORDER BY rolname) INTO residual FROM pg_roles
+  WHERE rolname=ANY(ARRAY['app_runtime','app_auth','app_domain_resolver',
+   'app_domain_verifier','app_media_service','app_publisher','app_publish_executor',
+   'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor'])
+  AND (pg_has_role(oid,'app_customer_auth'::regrole,'MEMBER')
+   OR pg_has_role(oid,'app_customer_auth'::regrole,'SET')
+   OR pg_has_role(oid,'app_customer_auth'::regrole,'USAGE'));
+ IF residual IS NOT NULL THEN
+  RAISE EXCEPTION 'CUSTOMERS_AUTH_FORBIDDEN_PATH: % can still reach app_customer_auth',residual
+   USING HINT='Remove the intermediate role membership chain (e.g. a legacy bridge group), then rerun.';
+ END IF;
 END $customer_auth_role$;
 GRANT USAGE ON SCHEMA app TO app_customer_auth;
 
@@ -73,7 +106,7 @@ CREATE TABLE app.customers (
  created_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(tenant_id,id),
  CONSTRAINT customers_tenant_email_unique UNIQUE(tenant_id,email_normalized),
- CONSTRAINT customers_email_check CHECK(length(email_normalized)<=320
+ CONSTRAINT customers_email_check CHECK(length(email)<=320 AND length(email_normalized)<=320
   AND email_normalized ~ '^[^[:space:]@]+@[^[:space:]@]+$'),
  CONSTRAINT customers_status_check CHECK(status IN ('active','disabled'))
 );
@@ -177,13 +210,17 @@ ALTER TABLE app.price_lists ADD CONSTRAINT price_lists_buyer_company_fk
  FOREIGN KEY(tenant_id,buyer_company_id) REFERENCES app.buyer_companies(tenant_id,id);
 
 DO $customer_rls$
-DECLARE table_name text;
+DECLARE table_name text; role_name text;
 BEGIN
  FOREACH table_name IN ARRAY ARRAY['customers','customer_credentials','customer_addresses',
   'buyer_companies','buyer_roles','buyer_company_members'] LOOP
   EXECUTE format('ALTER TABLE app.%I ENABLE ROW LEVEL SECURITY',table_name);
   EXECUTE format('ALTER TABLE app.%I FORCE ROW LEVEL SECURITY',table_name);
+  -- Drop anything default privileges attached at CREATE before the narrow grants.
   EXECUTE format('REVOKE ALL ON app.%I FROM PUBLIC',table_name);
+  FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+   EXECUTE format('REVOKE ALL ON app.%I FROM %I',table_name,role_name);
+  END LOOP;
   IF table_name='customer_credentials' THEN
    EXECUTE format('CREATE POLICY tenant_scope ON app.%I TO app_customer_auth USING(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',table_name);
   ELSE

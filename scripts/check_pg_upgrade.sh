@@ -484,5 +484,45 @@ else pass 'customers/B2B fails closed naming object and grantor of a residual th
 db "$CUSTOMERS_DB" -c "REVOKE ALL ON app.users FROM cust_thirdparty CASCADE; REVOKE ALL ON SCHEMA app FROM cust_thirdparty" >/dev/null 2>&1 || true
 admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
 drop_grantor_roles
+# An inbound path through a non-app_ bridge group (app_auth -> legacy_bridge ->
+# app_customer_auth) survives selective cleanup, so 016 must refuse it; once the
+# bridge is removed the retry succeeds and a dedicated login keeps its membership.
+drop_bridge_roles() { admin -c "DROP ROLE IF EXISTS legacy_bridge" -c "DROP ROLE IF EXISTS cust_login_ok" >/dev/null 2>&1 || true; }
+drop_bridge_roles
+CUSTOMERS_DB=customers_bridge_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+DO $r$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
+ CREATE ROLE app_customer_auth NOLOGIN; END IF; END $r$;
+CREATE ROLE legacy_bridge NOLOGIN;
+GRANT app_customer_auth TO legacy_bridge;
+GRANT legacy_bridge TO app_auth;
+CREATE ROLE cust_login_ok LOGIN;
+GRANT app_customer_auth TO cust_login_ok;
+SQL
+if out=$(apply_customers "$CUSTOMERS_DB"); then bad 'customers/B2B accepted an indirect app_auth path to app_customer_auth via a bridge group'
+elif [[ $out != *CUSTOMERS_AUTH_FORBIDDEN_PATH*app_auth* ]]; then bad "bridge path refusal failed for another reason: $out"
+else
+ pass 'customers/B2B fails closed on an indirect internal-role path through a non-app_ bridge'
+ admin -c "DROP ROLE legacy_bridge" >/dev/null
+ if ! out=$(apply_customers "$CUSTOMERS_DB"); then bad "customers/B2B retry after bridge removal: $out"
+ elif [[ $(db "$CUSTOMERS_DB" -c "SELECT pg_has_role('cust_login_ok','app_customer_auth','MEMBER')") != t ]]; then bad 'customers/B2B bridge refusal path stripped a dedicated login'
+ else pass 'customers/B2B retry after bridge removal keeps the dedicated customer-auth login'; fi
+fi
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
+drop_bridge_roles
+
+# Migrator default privileges would pre-grant the new tables; 016 refuses them.
+CUSTOMERS_DB=customers_defacl_upgrade_$$
+fresh_before_customers "$CUSTOMERS_DB"
+db "$CUSTOMERS_DB" <<'SQL' >/dev/null
+DO $r$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_customer_auth') THEN
+ CREATE ROLE app_customer_auth NOLOGIN; END IF; END $r$;
+ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON TABLES TO app_customer_auth;
+SQL
+if out=$(apply_customers "$CUSTOMERS_DB"); then bad 'customers/B2B accepted migrator default privileges granting app_customer_auth'
+elif [[ $out != *CUSTOMERS_DEFAULT_PRIVILEGES*app_customer_auth* ]]; then bad "default-privilege refusal failed for another reason: $out"
+else pass 'customers/B2B fails closed on default privileges that would pre-grant new tables'; fi
+admin -c "DROP DATABASE $CUSTOMERS_DB" >/dev/null; CUSTOMERS_DB=""
 [[ $fail -eq 0 ]] || exit 1
 echo 'PASS: security, reliability, inventory, pricing, shipping, tax and customers/B2B upgrade gates'
