@@ -23,6 +23,15 @@ PROBLEM_RESPONSES = {
 SELF_OPERATIONS = {"deleteAdminSession", "getCurrentActor", "listAdminSessions", "revokeAdminSession"}
 COOKIE = [{"adminSession": []}]
 COOKIE_OR_KEY = [{"adminSession": []}, {"ApiKeyBearer": []}]
+# Buyer identity is supplied by the customer-auth seam; Public here describes
+# the platform router access class, never permission to bypass trusted actors.
+BUYER_QUOTES = {
+    "getBuyerQuote": ("get", "/api/public/v1/quotes/{quote_id}"),
+    "acceptQuote": ("post", "/api/public/v1/quotes/{quote_id}/accept"),
+    "approveQuote": ("post", "/api/public/v1/quotes/{quote_id}/approve"),
+    "rejectQuote": ("post", "/api/public/v1/quotes/{quote_id}/reject"),
+}
+SELLER_QUOTES = {"createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote"}
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -139,7 +148,7 @@ def validate_contract(api):
             require(tenant_parameter.get("required") is True and tenant_parameter.get("schema") ==
                     {"type": "string", "format": "uuid"}, f"required tenant UUID parameter missing: {ident}")
         if access == "Public":
-            require(ident in {"health", "createAdminSession", "submitInquiry"} and security == [] and
+            require(ident in {"health", "createAdminSession", "submitInquiry"} | BUYER_QUOTES.keys() and security == [] and
                     "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
         elif access == "AuthenticatedSelf":
             require(ident in SELF_OPERATIONS and not tenant and "tenant_id" not in names and "x-required-scope" not in op,
@@ -152,6 +161,20 @@ def validate_contract(api):
             require(security in (COOKIE_OR_KEY, list(reversed(COOKIE_OR_KEY))), f"cookie OR API key required: {ident}")
         else:
             raise ValueError(f"access policy missing or unsupported: {ident}")
+        if ident in BUYER_QUOTES:
+            require((method, path) == BUYER_QUOTES[ident], f"buyer quote route drift: {ident}")
+            require(access == "Public" and op.get("x-opensite-trusted-buyer") == "required",
+                    f"trusted buyer declaration required: {ident}")
+        elif "x-opensite-trusted-buyer" in op:
+            raise ValueError(f"trusted buyer marker outside buyer quote operation: {ident}")
+        if ident in SELLER_QUOTES:
+            require(access == "AdminOrAPIKey" and scope == ("quotes:read" if method == "get" else "quotes:write"),
+                    f"seller quotes scope required: {ident}")
+        if ident in SELLER_QUOTES | BUYER_QUOTES.keys() and method != "get":
+            headers = {p["name"]: p for p in parameters if p["in"] == "header"}
+            for header in ("If-Match", "Idempotency-Key"):
+                require(headers.get(header, {}).get("required") is True,
+                        f"quote write {header} required: {ident}")
         if ident in SELF_OPERATIONS:
             require(access == "AuthenticatedSelf", f"self identity access drift: {ident}")
         if access in {"AdminSession", "AdminOrAPIKey"}:

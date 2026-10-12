@@ -126,10 +126,11 @@ SHIPPING_DB=""
 TAX_DB=""
 CUSTOMERS_DB=""
 LEDGER_DB=""
+QUOTES_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$QUOTES_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -164,6 +165,7 @@ for legacy_state in processing delivered failed completed; do
  else pass "reliability refuses ambiguous legacy $legacy_state atomically"; fi
  admin -c "DROP DATABASE $RELIABILITY_DB"; RELIABILITY_DB=""
 done
+
 [[ $fail -eq 0 ]] || exit 1
 # C-11a: install additive inventory over preexisting tenant/catalog data. Discover
 # the module file by suffix, so integration renumbering does not alter this gate.
@@ -619,5 +621,35 @@ if ! db "$LEDGER_DB" < tests/db_ledger.sql >/dev/null || ! db "$LEDGER_DB" < tes
 else pass 'ledger upgrade preserves existing catalog/unconfigured tenant; explicit currency runtime posting and exact privileges pass'; fi
 admin -c "DROP DATABASE $LEDGER_DB" >/dev/null; LEDGER_DB=""
 
+# Quotes takes over the existing005 inquiry table without rebuilding contacts.
+# Filename order applies every predecessor, including any integrator renumbering.
+quotes=(migrations/[0-9][0-9][0-9]_quotes.sql)
+[[ ${#quotes[@]} == 1 ]] || { echo 'FAIL: exactly one quotes migration required' >&2; exit 1; }
+QUOTES_DB=quotes_upgrade_$$
+admin -c "CREATE DATABASE $QUOTES_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${quotes[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$QUOTES_DB" >/dev/null
+done
+db "$QUOTES_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('quote-existing') RETURNING id AS t \gset
+INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','legacy') RETURNING id AS o \gset
+INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','legacy') RETURNING id AS s \gset
+INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,buyer_name,message,status)
+VALUES(:'t',:'s','legacy@example.invalid','Legacy contact','preserve this inquiry','contacted');
+SQL
+{ echo 'BEGIN;'; cat "${quotes[0]}"; echo 'COMMIT;'; } | db "$QUOTES_DB" >/dev/null
+result=$(db "$QUOTES_DB" -c "SELECT 'QUOTES_UPGRADE='||count(*) FROM app.inquiries WHERE buyer_email='legacy@example.invalid' AND buyer_name='Legacy contact' AND message='preserve this inquiry' AND status='contacted' AND buyer_company_id IS NULL;")
+[[ $result == 'QUOTES_UPGRADE=1' ]] || bad "quotes existing inquiry contact preservation: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${quotes[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$QUOTES_DB" >/dev/null
+done
+if ! db "$QUOTES_DB" < tests/db_quotes.sql >/dev/null || ! db "$QUOTES_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'quotes lifecycle and exact role matrix after populated inquiry upgrade'
+else pass 'quotes forward ALTER preserves existing contact inquiry and runtime lifecycle/grants'; fi
+admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
+
+
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B and ledger upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger and quotes upgrade gates'

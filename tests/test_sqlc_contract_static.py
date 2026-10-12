@@ -31,14 +31,29 @@ all_schema = '\n'.join((root / name).read_text() for name in sql['schema'])
 tables = set(re.findall(r'\bCREATE\s+TABLE\s+app\.([a-z_]+)', all_schema, re.I))
 assert len(tables) >= 25, f'only {len(tables)} tables'
 assert {'warehouses','stock_levels','inventory_reservations','inventory_movements'} <= tables
+functions = set(re.findall(r'\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+app\.([a-z_]+)', all_schema, re.I))
+
+def declared_relation(text):
+    # FROM app.function(...) is a declared routine, never an unknown table.
+    for keyword, name, call in re.findall(r'\b(FROM|INTO|JOIN|UPDATE)\s+app\.([a-z_]+)(\s*\()?', text, re.I):
+        assert name in (functions if call and keyword.upper() in ('FROM', 'JOIN') else tables), name
+
+# Misspellings remain fail-closed in both relation classes.
+declared_relation('SELECT * FROM app.idempotency_claim(NULL); SELECT * FROM app.quotes;')
+for bad in ('SELECT * FROM app.unknown_quote_table;', 'SELECT * FROM app.unknown_quote_function(NULL);'):
+    try:
+        declared_relation(bad)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError('undeclared SQL relation accepted')
 query_names = []
 query_text = []
 for qpath in (root/sql['queries']).glob('*.sql'):
     q = qpath.read_text()
     query_text.append(q)
     query_names += re.findall(r'^-- name: (\w+) :(one|many|exec|execrows)',q,re.M)
-    for table in re.findall(r'\b(?:FROM|INTO|JOIN|UPDATE)\s+app\.([a-z_]+)',q,re.I):
-        assert table in tables, (qpath.name,table)
+    declared_relation(q)
 assert len(query_names) == len(set(name for name,_ in query_names)), 'duplicate SQL query names'
 assert len(query_names) >= 6
 ci = (root/'.github/workflows/checks.yml').read_text()

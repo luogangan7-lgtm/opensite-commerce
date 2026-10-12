@@ -45,7 +45,7 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(set(ops["health"][2]["responses"]), {"204"})
         self.assertNotIn("content", ops["health"][2]["responses"]["204"])
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, {"health"})
+                          if op["x-opensite-status"] == "implemented"}, {"health", "submitInquiry", "createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote", "getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote"})
 
     def test_all_business_paths_include_tenant_and_allow_cookie_or_key(self):
         ops = operations(self.api)
@@ -56,6 +56,29 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(ops["createOrganization"][2]["x-opensite-access"], "AdminOrAPIKey")
         self.assertEqual(ops["createOrganization"][2]["x-required-scope"], "organization.create")
         self.assertEqual(ops["submitInquiry"][2]["security"], [])
+
+    def test_quotes_have_cas_scope_and_trusted_buyer_contract(self):
+        ops = operations(self.api)
+        for name in ("createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote"):
+            path, method, op = ops[name]
+            self.assertTrue(path.startswith("/api/v1/t/{tenant_id}/quotes"))
+            self.assertEqual(op["x-opensite-access"], "AdminOrAPIKey")
+            self.assertEqual(op["x-required-scope"], "quotes:read" if method == "get" else "quotes:write")
+        for name in ("getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote"):
+            path, method, op = ops[name]
+            self.assertTrue(path.startswith("/api/public/v1/quotes/{quote_id}"))
+            self.assertEqual(op["x-opensite-trusted-buyer"], "required")
+            self.assertEqual(op["security"], [])
+            self.assertNotIn("x-required-scope", op)
+        for name in ("createQuote", "sendQuote", "withdrawQuote", "expireQuote", "acceptQuote", "approveQuote", "rejectQuote"):
+            params = ops[name][2]["parameters"]
+            self.assertIn({"$ref": "#/components/parameters/IfMatch"}, params)
+            self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, params)
+            self.assertIn("428", ops[name][2]["responses"])
+            self.assertIn("412", ops[name][2]["responses"])
+        inquiry = self.api["components"]["schemas"]["CreateInquiry"]
+        self.assertEqual(set(inquiry["properties"]), {"product_id", "buyer_email", "buyer_name", "quantity", "message"})
+        self.assertFalse(inquiry["additionalProperties"])
 
     def test_self_identity_has_no_scope_or_tenant(self):
         ops = operations(self.api)

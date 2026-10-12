@@ -184,15 +184,9 @@
         "page_revisions",
         "blog_posts",
         "blog_post_revisions",
-        "blog_post_publications",
-        "inquiries"
+        "blog_post_publications"
       ],
-      "operations": [
-        {
-          "operation_id": "submitInquiry",
-          "status": "planned"
-        }
-      ],
+      "operations": [],
       "dependencies": [
         "tenant",
         "site",
@@ -203,7 +197,7 @@
         "tests/db_isolation.sql"
       ],
       "scopes": [],
-      "note": "submitInquiry is public in the current OpenAPI and declares no required scope."
+      "note": "Inquiries ownership transferred to quotes by C-17a; historical 005 migration remains owned by cms."
     },
     {
       "name": "publish",
@@ -347,6 +341,9 @@
       "note": "PR16 is merged on main at 9a17e2f. Owns price_lists and price_entries created by migrations/013_money_pricing.sql. Quote code exists at internal/pricing/pricing.go with generated queries at internal/db/pricing.sql.go; no HTTP operations are implemented. go_status describes the planned internal/modules/pricing target path, not the existing source packages.",
       "legacy_go_paths": [
         "internal/pricing"
+      ],
+      "approved_public_ports": [
+        "internal/pricing"
       ]
     },
     {
@@ -399,6 +396,9 @@
       "note": "SQL tables and pure legacy quote engine merged by PR15; target module Go path and HTTP operations remain planned.",
       "legacy_go_paths": [
         "internal/shipping"
+      ],
+      "approved_public_ports": [
+        "internal/shipping"
       ]
     },
     {
@@ -426,6 +426,9 @@
       "scopes": [],
       "note": "Tenant regional rule tables and pure calculator from PR19. Existing internal/tax uses approved Money arithmetic; target module Go path and HTTP operations remain planned. Billing must consume saved Tax snapshots without recalculation.",
       "legacy_go_paths": [
+        "internal/tax"
+      ],
+      "approved_public_ports": [
         "internal/tax"
       ]
     },
@@ -499,6 +502,82 @@
       ],
       "scopes": [],
       "note": "Internal single-currency posting and account balances. Atomic posting is the only runtime write capability for transactions and entries; tenant settlement currency is explicit, with no automatic default."
+    },
+    {
+      "name": "quotes",
+      "status": "implemented",
+      "go_path": "internal/modules/quotes",
+      "go_status": "implemented",
+      "owns_tables": [
+        "inquiries",
+        "quotes",
+        "quote_lines",
+        "quote_approvals"
+      ],
+      "operations": [
+        {
+          "operation_id": "submitInquiry",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "sendQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "withdrawQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "expireQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getBuyerQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "acceptQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "approveQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "rejectQuote",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "b2b",
+        "customer",
+        "catalog",
+        "money",
+        "pricing",
+        "tax",
+        "shipping",
+        "reliability"
+      ],
+      "tests": [
+        "internal/modules/quotes/module_test.go",
+        "internal/modules/quotes/quotes_pgx_test.go",
+        "internal/platform/httpapi/quotes_test.go",
+        "tests/db_quotes.sql"
+      ],
+      "scopes": [
+        "quotes:read",
+        "quotes:write"
+      ],
+      "note": "C-17a contact collection and immutable quote lifecycle; buyer endpoints require an externally verified sealed customer actor, default denied. No customer authentication implementation or order/payment creation."
     }
   ],
   "migrations": [
@@ -727,6 +806,38 @@
         "ledger_accounts",
         "ledger_transactions",
         "ledger_entries"
+      ]
+    },
+    {
+      "file": "migrations/018_quotes.sql",
+      "owner": "quotes",
+      "touches_tables": [
+        "inquiries",
+        "quotes",
+        "quote_lines",
+        "quote_approvals",
+        "outbox_events",
+        "idempotency_records",
+        "buyer_companies",
+        "buyer_company_members",
+        "customers",
+        "users",
+        "tenant_memberships",
+        "tenants",
+        "sites",
+        "products",
+        "product_variants",
+        "price_lists",
+        "price_entries",
+        "shipping_zones",
+        "shipping_zone_destinations",
+        "shipping_profiles",
+        "shipping_rates",
+        "tax_zones",
+        "tax_zone_locations",
+        "tax_categories",
+        "tax_rates",
+        "tax_settings"
       ]
     }
   ]

@@ -14,16 +14,23 @@ import (
 )
 
 type Config struct {
-	Address       string
-	Logger        *slog.Logger
-	Authenticator httpapi.Authenticator
-	Routes        []httpapi.Route
+	Address                  string
+	Logger                   *slog.Logger
+	Authenticator            httpapi.Authenticator
+	Routes                   []httpapi.Route
+	Quotes                   httpapi.QuotesService
+	QuotesBuyerAuthenticator httpapi.Authenticator
+	QuotesInquiryResolver    httpapi.QuotesInquiryResolver
 }
 
 func New(config Config) (*http.Server, error) {
 	router := httpapi.New(config.Authenticator, config.Logger)
 	health := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "health", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })}
-	for _, route := range append([]httpapi.Route{health}, config.Routes...) {
+	routes := append([]httpapi.Route{health}, config.Routes...)
+	if config.Quotes != nil {
+		routes = append(routes, httpapi.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
+	}
+	for _, route := range routes {
 		if err := router.Register(route.Spec, route.Handler); err != nil {
 			return nil, err
 		}

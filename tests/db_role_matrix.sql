@@ -25,7 +25,7 @@ DECLARE
   'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
   'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
-  'ledger_accounts','ledger_transactions','ledger_entries'];
+  'ledger_accounts','ledger_transactions','ledger_entries','quotes','quote_lines','quote_approvals'];
  role_name text;
  r record;
  t record;
@@ -242,7 +242,8 @@ BEGIN
   AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
-   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger') LOOP
+   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -263,7 +264,8 @@ BEGIN
   AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
-   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger'))<>10 THEN
+   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -445,3 +447,59 @@ BEGIN
  END IF;
 END $ledger$;
 SELECT 'PASS: ledger exact executor/runtime table-column-function capabilities and FORCE RLS' AS result;
+
+-- Quotes uses a non-login, non-inheritable command capability with no identity secrets.
+DO $quotes$
+DECLARE r record; t record; a record; f record; privilege text; role_name text;
+ expected_table boolean; expected_column boolean; allowed text[];
+ names text[]:=ARRAY['quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote'];
+ public_names text[]:=ARRAY['quote_actor_access','create_quote','transition_quote'];
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_quotes_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+ OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+ OR pg_has_role('app_runtime',r.oid,'SET') OR has_schema_privilege(r.oid,'app','CREATE')
+ OR NOT has_schema_privilege(r.oid,'app','USAGE') OR has_schema_privilege(r.oid,'app','USAGE WITH GRANT OPTION') THEN
+  RAISE EXCEPTION 'QUOTES_UNSAFE_EXECUTOR'; END IF;
+ FOR t IN SELECT c.oid,c.relname,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
+  IF t.relname=ANY(ARRAY['inquiries','quotes','quote_lines','quote_approvals']) AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN RAISE EXCEPTION 'QUOTES_FORCE_RLS %',t.relname; END IF;
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['quotes','quote_lines','quote_approvals']);
+   allowed:=ARRAY[]::text[];
+   IF expected_table THEN
+    SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+   ELSIF privilege='SELECT' THEN
+    allowed:=CASE t.relname WHEN 'users' THEN ARRAY['id','status'] WHEN 'tenants' THEN ARRAY['id','status']
+     WHEN 'tenant_memberships' THEN ARRAY['tenant_id','user_id','role','status']
+     WHEN 'inquiries' THEN ARRAY['tenant_id','site_id','id','buyer_company_id']
+     WHEN 'buyer_companies' THEN ARRAY['tenant_id','id','status'] WHEN 'customers' THEN ARRAY['tenant_id','id','status']
+     WHEN 'buyer_company_members' THEN ARRAY['tenant_id','buyer_company_id','customer_id','role_code','status'] ELSE allowed END;
+   ELSIF privilege='INSERT' THEN
+    allowed:=CASE t.relname WHEN 'quotes' THEN ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','created_by','currency','subtotal','tax','shipping','total','snapshot','expires_at']
+     WHEN 'quote_lines' THEN ARRAY['tenant_id','quote_id','line_no','product_id','variant_id','description','quantity','unit_price','line_total','snapshot']
+     WHEN 'quote_approvals' THEN ARRAY['tenant_id','quote_id','buyer_company_id','requested_by','decided_by','decision']
+     WHEN 'outbox_events' THEN ARRAY['tenant_id','event_type','payload','delivery_target','dedup_key'] ELSE allowed END;
+   ELSIF privilege='UPDATE' AND t.relname='quotes' THEN allowed:=ARRAY['status','version','accepted_by','updated_at']; END IF;
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected_table OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'QUOTES_TABLE_CAPABILITY % %',t.relname,privilege; END IF;
+   IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
+    FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     expected_column:=a.attname::text=ANY(allowed);
+     IF has_column_privilege(r.oid,t.oid,a.attnum,privilege) IS DISTINCT FROM expected_column OR has_column_privilege(r.oid,t.oid,a.attnum,privilege||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'QUOTES_COLUMN_CAPABILITY %.% %',t.relname,a.attname,privilege; END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname,p.proowner,p.prosecdef,p.proconfig,p.proacl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' LOOP
+  IF f.proname=ANY(names) THEN
+   IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM (f.proname=ANY(public_names))
+   OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN RAISE EXCEPTION 'QUOTES_UNSAFE_ROUTINE %',f.proname; END IF;
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') AND rolname<>'app_quotes_executor' LOOP
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name='app_runtime' AND f.proname=ANY(public_names)) OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN RAISE EXCEPTION 'QUOTES_ROUTINE_CAPABILITY % %',role_name,f.proname; END IF;
+   END LOOP;
+  ELSIF has_function_privilege(r.oid,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'QUOTES_FOREIGN_ROUTINE %',f.proname; END IF;
+ END LOOP;
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>6 THEN RAISE EXCEPTION 'QUOTES_ROUTINE_CONTRACT_INCOMPLETE'; END IF;
+END $quotes$;
+SELECT 'PASS: quotes exact table/column/function grants, bounded definer authority and FORCE RLS' AS result;
