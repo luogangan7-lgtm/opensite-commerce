@@ -4,6 +4,7 @@
 Depends on shell runners; check_all calls it. Fake go/psql never execute DB code.
 """
 from pathlib import Path
+import json
 import os
 import subprocess
 import tempfile
@@ -25,6 +26,7 @@ expected = [
     'db_inventory.sql',
     'db_pricing.sql',
     'db_shipping.sql',
+    'db_tax.sql',
     'db_queue.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
@@ -41,10 +43,17 @@ payload="$(cat)"
 if [[ "$payload" == *"SHOW server_version_num"* ]]; then
   echo '180002'
 else
-  echo SQL >> "$FAKE_FLOW_LOG"
+  if [[ "$payload" == *"MODULE_TABLE_OWNERSHIP"* ]]; then
+    echo CATALOG >> "$FAKE_FLOW_LOG"
+  else
+    echo SQL >> "$FAKE_FLOW_LOG"
+  fi
   printf '===SQL===\n%s\n' "$payload" >> "$FAKE_PSQL_LOG"
   if [[ -n "${FAKE_FAIL_ON:-}" && "$payload" == *"$FAKE_FAIL_ON"* ]]; then
     exit 31
+  fi
+  if [[ "$payload" == *"MODULE_TABLE_OWNERSHIP"* ]]; then
+    printf '%s\n' "$FAKE_TABLES_JSON"
   fi
 fi
 ''')
@@ -58,7 +67,11 @@ echo "$kind" >> "$FAKE_FLOW_LOG"
 if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
 ''')
     fake_go.chmod(0o755)
+    registry = json.loads((root / 'modules/registry.yaml').read_text())
+    tables = sorted(table for module in registry['modules'] if module['status'] == 'implemented'
+                    for table in module['owns_tables'])
     env = dict(os.environ, DATABASE_URL='postgresql://fake/opensite',
+               FAKE_TABLES_JSON=json.dumps(tables),
                FAKE_PSQL_LOG=str(log), FAKE_FLOW_LOG=str(flow),
                FAKE_FAIL_ON='', FAKE_GO_FAIL_ON='',
                PATH=str(binpath)+os.pathsep+os.environ['PATH'])
@@ -69,12 +82,14 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
         assert f'RUN tests/{name}' in r.stdout, name
     contents = log.read_text()
     assert contents.count('SELECT pg_advisory_xact_lock') == 2 * (n_migrations + 1), '2 runs x (migrations + 1 history gate)'
-    assert contents.count('===SQL===') == 2 * (n_migrations + 1) + len(expected), '2 x migration checks + actual test files'
+    assert contents.count('===SQL===') == 2 * (n_migrations + 1) + len(expected) + 1, '2 x migration checks + actual test files + catalog audit'
+    assert contents.count('MODULE_TABLE_OWNERSHIP') == 1
+    assert 'PASS: module ownership' in r.stdout
     assert 'boundary-roles' in contents
     assert 'release-FK' in contents
     assert 'smoke-A' in contents
     migration_calls = 2 * (n_migrations + 1)
-    assert flow.read_text().splitlines() == ['INSTALL', 'INSTALL'] + ['SQL'] * migration_calls + ['VERIFY'] + ['SQL'] * len(expected), 'River before app DDL; verify before all SQL tests'
+    assert flow.read_text().splitlines() == ['INSTALL', 'INSTALL'] + ['SQL'] * migration_calls + ['VERIFY'] + ['SQL'] * len(expected) + ['CATALOG'], 'River before app DDL; verify before SQL tests; catalog after all SQL'
 
     # Installer and verification failures must not be masked by later SQL gates.
     for phase in ('INSTALL', 'VERIFY'):
@@ -99,8 +114,25 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_shipping.sql' in failed.stdout
 
+    env['FAKE_FAIL_ON'] = 'TAX_EXPECTED_REFUSAL'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_tax.sql' in failed.stdout
+    assert 'RUN tests/db_queue.sql' not in failed.stdout
+    assert 'PASS: module ownership' not in failed.stdout
+
     env['FAKE_FAIL_ON'] = 'QUEUE_CROSS_TENANT_READ'
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_queue.sql' in failed.stdout
+    assert 'PASS: module ownership' not in failed.stdout
+
+    # The final catalog audit fails closed for connection errors and unowned tables.
+    env['FAKE_FAIL_ON'] = 'MODULE_TABLE_OWNERSHIP'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode != 0 and 'MODULE_DATABASE_ERROR' in failed.stderr
+    env['FAKE_FAIL_ON'] = ''
+    env['FAKE_TABLES_JSON'] = json.dumps(tables + ['unregistered_table'])
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode != 0 and 'MODULE_UNOWNED_TABLE' in failed.stderr
 print(f'PASS: River/app ordering, {len(expected)} SQL files, repeated {n_migrations} migrations and all failure paths (mock go/psql; NO SQL executed)')

@@ -420,11 +420,44 @@ SQL
 done
 
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping contract" >&2; exit 1; fi
+# Concurrent INSERTs and UPDATEs must serialize on the EXCLUDE constraint.
+# Driver parks the winner after its write, witnesses the contender blocked on
+# its transaction, then releases it; no timed ordering or silent generic error.
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('tax-window-race') RETURNING id;" | tail -1)
+Z=$(sql <<<"INSERT INTO app.tax_zones(tenant_id,name) VALUES('$T','US') RETURNING id;" | tail -1)
+sql <<<"INSERT INTO app.tax_categories(tenant_id,code,name) VALUES('$T','standard','Standard');" >/dev/null
+rate_a="INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from,valid_until) VALUES('$T','$Z','standard',500,'2026-01-01Z','2027-01-01Z');"
+rate_b="INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from,valid_until) VALUES('$T','$Z','standard',600,'2026-06-01Z','2027-06-01Z');"
+gate_close 21
+tx tax_a app_runtime "$T" "$rate_a $(park 21)" &
+await tax_a advisory
+tx tax_b app_runtime "$T" "$rate_b" &
+await tax_b "${ROWLOCK[@]}"
+gate_open 21; wait
+expect tax_a ok; expect tax_b tax_rate_no_overlap
+got=$(sql <<<"SELECT count(*)||'|'||min(rate_bp) FROM app.tax_rates WHERE tenant_id='$T';")
+echo "race tax overlapping inserts: $got (expected 1|500)"
+[[ $got == '1|500' ]] || fail=1
+# Both original windows are valid and disjoint. Concurrent expansions overlap
+# each other although the losing expansion was valid against the old winner.
+sql <<<"UPDATE app.tax_rates SET valid_until='2026-02-01Z' WHERE tenant_id='$T'; INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from,valid_until) VALUES('$T','$Z','standard',600,'2026-03-01Z','2026-04-01Z');" >/dev/null
+gate_close 22
+tx tax_up_a app_runtime "$T" "UPDATE app.tax_rates SET valid_until='2026-02-20Z' WHERE tenant_id='$T' AND rate_bp=500; $(park 22)" &
+await tax_up_a advisory
+tx tax_up_b app_runtime "$T" "UPDATE app.tax_rates SET valid_from='2026-02-10Z' WHERE tenant_id='$T' AND rate_bp=600;" &
+await tax_up_b "${ROWLOCK[@]}"
+gate_open 22; wait
+expect tax_up_a ok; expect tax_up_b tax_rate_no_overlap
+got=$(sql <<<"SELECT count(*)||'|'||bool_and(CASE rate_bp WHEN 500 THEN valid_until='2026-02-20Z'::timestamptz ELSE valid_from='2026-03-01Z'::timestamptz END) FROM app.tax_rates WHERE tenant_id='$T';")
+echo "race tax overlapping updates: $got (expected 2|true)"
+[[ $got == '2|true' ]] || fail=1
+
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
 echo 'PASS: shipping range INSERT/UPDATE races preserve exact non-overlapping tiers'
+echo 'PASS: tax INSERT/UPDATE exclusion races preserve non-overlapping windows'
 
 # Focused native River/claim/fence gates cannot silently skip for missing PG.
 reliability_packages=(./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)

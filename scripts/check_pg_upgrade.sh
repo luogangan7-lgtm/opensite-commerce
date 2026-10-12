@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Upgrade gates for security hardening, forward reliability and additive inventory; real PG18 only.
+# Upgrade gates preserve security, reliability, inventory, pricing, shipping, tax and queue data; real PG18 only.
 # Depends on: a superuser DATABASE_URL (or Docker compose) able to CREATE DATABASE.
 # Called by: CI after check_pg.sh. Each case runs in its own throwaway database.
 # Invariants: 010 refuses to seal a live release with unsafe media; every pre-010
@@ -31,6 +31,15 @@ river_db() {
  else
   RIVER_DATABASE_NAME="$name" ./scripts/migrate_river.sh "$@"
  fi
+}
+
+
+# Filename suffix, not an integration-assigned number, identifies app queue ACL.
+# Every predecessor/successor loop goes through this guard before app SQL runs.
+apply_forward() {
+ local name=$1 file=$2
+ if [[ $file == *_queue_authorization.sql ]]; then river_db "$name"; fi
+ { echo 'BEGIN;'; cat "$file"; echo 'COMMIT;'; } | db "$name" >/dev/null
 }
 
 SEED_SITE=$(cat <<'SQL'
@@ -127,7 +136,7 @@ fresh_before_reliability() {
  local f
  for f in migrations/[0-9][0-9][0-9]_*.sql; do
   [[ $f < ${reliability[0]} ]] || break
-  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$1" >/dev/null
+  apply_forward "$1" "$f"
  done
 }
 apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
@@ -136,7 +145,15 @@ SHIPPING_DB=""
 QUEUE_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
-trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1; [[ -z $SHIPPING_DB ]] || admin -c "DROP DATABASE IF EXISTS $SHIPPING_DB" >/dev/null 2>&1; [[ -z $QUEUE_DB ]] || admin -c "DROP DATABASE IF EXISTS $QUEUE_DB" >/dev/null 2>&1; [[ -z $INVENTORY_DB ]] || admin -c "DROP DATABASE IF EXISTS $INVENTORY_DB" >/dev/null 2>&1; [[ -z $PRICING_DB ]] || admin -c "DROP DATABASE IF EXISTS $PRICING_DB" >/dev/null 2>&1' EXIT
+TAX_DB=""
+cleanup_forward_databases() {
+ # Attempt each owned database independently even when an earlier DROP fails.
+ local name
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$QUEUE_DB" "$INVENTORY_DB" "$PRICING_DB" "$TAX_DB"; do
+  [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
+ done
+}
+trap cleanup_forward_databases EXIT
 RELIABILITY_DB=reliability_upgrade_$$
 fresh_before_reliability "$RELIABILITY_DB"
 db "$RELIABILITY_DB" <<'SQL' >/dev/null
@@ -177,7 +194,7 @@ fresh_009 $DB
 # Only predecessors: future authorization may depend on inventory's functions.
 for f in migrations/0[1-9][0-9]_*.sql; do
   [[ $f < ${inventory_files[0]} ]] || break
-  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db $DB >/dev/null
+  apply_forward $DB "$f"
 done
 # No inventory tables existed when this tenant and SKU were written.
 db $DB <<'SQL' >/dev/null
@@ -212,7 +229,7 @@ else bad "inventory upgrade: $result"; fi
 river_db "$DB"
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${inventory_files[0]} ]] || continue
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+ apply_forward "$DB" "$f"
 done
 river_db "$DB" --verify
 # Full scoped SQL and exact authority matrix also run against the upgraded DB.
@@ -234,7 +251,7 @@ SQL
  river_db "$DB"
  for f in migrations/[0-9][0-9][0-9]_*.sql; do
   number=${f##*/}; number=${number%%_*}
-  if ((10#$number>10)); then { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null; fi
+  if ((10#$number>10)); then apply_forward "$DB" "$f"; fi
  done
  result=$(db "$DB" <<'SQL'
 INSERT INTO app.price_lists(tenant_id,currency,starts_at)
@@ -258,7 +275,7 @@ DB=$SHIPPING_DB
 admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f < ${shipping_files[0]} ]] || break
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+ apply_forward "$DB" "$f"
 done
 db "$DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('shipping-upgrade') RETURNING id AS t \gset
@@ -289,13 +306,54 @@ else bad "shipping upgrade witness: $result"; fi
 river_db "$DB"
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${shipping_files[0]} ]] || continue
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+ apply_forward "$DB" "$f"
 done
 river_db "$DB" --verify
 db "$DB" -f tests/db_shipping.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 SHIPPING_DB=""
+
+# Tax upgrade: apply ALL predecessors in filename order, then seed real legacy
+# tenant/catalog data before applying the logical tax module (number may change).
+tax=(migrations/[0-9][0-9][0-9]_tax.sql)
+[[ ${#tax[@]} == 1 ]] || { echo 'FAIL: exactly one tax migration required' >&2; exit 1; }
+TAX_DB=tax_upgrade_$$
+admin -c "CREATE DATABASE $TAX_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${tax[0]} ]] || break
+ apply_forward "$TAX_DB" "$f"
+done
+db "$TAX_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('tax-existing-tenant') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES(:'t','tax-existing-product','draft');
+SQL
+{ echo 'BEGIN;'; cat "${tax[0]}"; echo 'COMMIT;'; } | db "$TAX_DB" >/dev/null
+# Exercise new settings/rules through runtime and preserve the existing product.
+result=$(db "$TAX_DB" <<'SQL'
+SELECT set_config('app.tenant_id',(SELECT id::text FROM app.tenants WHERE name='tax-existing-tenant'),false);
+SET ROLE app_runtime;
+INSERT INTO app.tax_settings(tenant_id,prices_include_tax) VALUES(current_setting('app.tenant_id')::uuid,true);
+INSERT INTO app.tax_zones(tenant_id,name) VALUES(current_setting('app.tenant_id')::uuid,'US') RETURNING id AS z \gset
+INSERT INTO app.tax_zone_locations(tenant_id,zone_id,country_code) VALUES(current_setting('app.tenant_id')::uuid,:'z','US');
+INSERT INTO app.tax_categories(tenant_id,code,name) VALUES(current_setting('app.tenant_id')::uuid,'standard','Standard');
+INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from) VALUES(current_setting('app.tenant_id')::uuid,:'z','standard',500,'2026-01-01Z');
+SELECT (SELECT count(*) FROM app.products WHERE product_code='tax-existing-product')||'|'||
+ (SELECT prices_include_tax FROM app.tax_settings)||'|'||(SELECT rate_bp FROM app.tax_rates);
+SQL
+)
+[[ $result == *'1|true|500'* ]] || bad "tax populated upgrade witness: $result"
+# Apply successors too: the complete-schema exact matrix must remain meaningful
+# when integration later puts another module after Tax.
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${tax[0]} ]] || continue
+ apply_forward "$TAX_DB" "$f"
+done
+river_db "$TAX_DB" --verify
+if ! db "$TAX_DB" < tests/db_tax.sql >/dev/null || ! db "$TAX_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'tax constraints/role matrix after populated upgrade'
+else pass 'tax upgrade preserves prior catalog data; new settings/rules and exact privileges pass'; fi
+admin -c "DROP DATABASE $TAX_DB" >/dev/null; TAX_DB=""
 
 # C04b: queue authorization over existing tenant + River job, suffix-discovered.
 queue_files=(migrations/[0-9][0-9][0-9]_queue_authorization.sql)
@@ -304,7 +362,7 @@ QUEUE_DB=upgrade_queue_$$; DB=$QUEUE_DB
 admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f < ${queue_files[0]} ]] || break
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+ apply_forward "$DB" "$f"
 done
 river_db "$DB"
 river_db "$DB"  # repeated upstream migration is also safe before app authorization
@@ -316,7 +374,7 @@ SQL
 )
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f < ${queue_files[0]} ]] && continue
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+ apply_forward "$DB" "$f"
 done
 river_db "$DB" --verify
 [[ $(db "$DB" -c "SELECT count(*) FROM queue.river_job WHERE kind='queue_legacy' AND id=$legacy AND args->>'tenant_id'=(SELECT id::text FROM app.tenants WHERE name='queue-upgrade')") == 1 ]] || { bad 'queue upgrade changed existing job/tenant identity'; }
@@ -326,4 +384,4 @@ admin -c "DROP DATABASE $DB"; QUEUE_DB=""
 pass 'queue upgrade preserves job identity; isolated ACL/RLS + both upstream history passes'
 
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping and queue upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax and queue upgrade gates'
