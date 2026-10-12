@@ -361,6 +361,12 @@ func TestLoginDeviceRevocationPostgres(t *testing.T) {
 	if e := db.QueryRow(ctx, "SELECT failure_count,revoked_at IS NOT NULL FROM app.known_devices WHERE user_id=$1", uid).Scan(&failures, &revoked); e != nil || failures != 5 || !revoked {
 		t.Fatal("five failed device passwords not revoked", failures, revoked, safeCode(e))
 	}
+	// Password work can outlast the initial one-second account backoff. Make
+	// the active cooldown explicit so this tests revoked-device admission,
+	// independently of machine speed or concurrent race-gate CPU contention.
+	if tag, e := db.Exec(ctx, "UPDATE app.auth_account_attempts SET cooldown_until=clock_timestamp()+interval '60 seconds' WHERE identifier_normalized='device@example.test'"); e != nil || tag.RowsAffected() != 1 {
+		t.Fatal("revoked device cooldown fixture failed", safeCode(e))
+	}
 	w := loginPG(t, router, "device@example.test", testPassword, "192.0.2.56", device)
 	if w.Code != 201 || waits != 1 {
 		t.Fatal("revoked device retained account exemption", w.Code, waits)
