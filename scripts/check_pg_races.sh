@@ -39,7 +39,7 @@ SQL
 # tx <label> <role> <tenant> <sql>: one transaction on its own connection, named
 # race_<label> for the driver. Never aborts the gate; stderr is kept per label.
 ERRDIR=$(mktemp -d)
-RACE_PREFIX="race_${BASHPID}_"
+RACE_PREFIX="race_$$_"
 cleanup() {  # never leave parked participants or gate sessions behind
   sql <<<"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND left(application_name,length('$RACE_PREFIX'))='$RACE_PREFIX';" >/dev/null 2>&1 || true
   rm -rf "$ERRDIR"
@@ -198,12 +198,25 @@ inventory_check 'race inventory expiry beats commit' '1|0|0|3' "$T" "$SKU"
 # its counter. Once the stock wait ends, the expired commit must refuse.
 read -r T SKU OWNER <<<"$(inventory_fixture)"
 RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SELECT (app.inventory_reserve('$SKU',1,'order','$OWNER','skip-race',900)).id;" | tail -1)
-sql <<<"UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id='$T' AND id='$RID';" >/dev/null
 gate_close 14
 tx inv_stock app_inventory_manager "$T" "SELECT app.inventory_adjust('$SKU',1,'concurrent receipt','$OWNER','inbound'); $(park 14)" &
 await inv_stock advisory
+# Establish a future expiry AFTER the stock-holder is parked. Commit must be
+# observed waiting while still valid; the clock predicate is the expiry barrier.
+sql <<<"UPDATE app.inventory_reservations SET expires_at=clock_timestamp()+interval '3 seconds' WHERE tenant_id='$T' AND id='$RID';" >/dev/null
 tx inv_commit_wait app_runtime "$T" "SELECT app.inventory_commit('$RID');" &
 await inv_commit_wait "${ROWLOCK[@]}"
+VALID_WAIT=$(sql <<<"SELECT clock_timestamp()<r.expires_at AND a.xact_start<r.expires_at
+ FROM app.inventory_reservations r JOIN pg_stat_activity a ON a.application_name='${RACE_PREFIX}inv_commit_wait'
+ WHERE r.tenant_id='$T' AND r.id='$RID';")
+[[ $VALID_WAIT == t ]] || { echo 'FAIL: commit was not waiting before expiry'; exit 1; }
+EXPIRED=f
+for i in $(seq 1 300); do
+  EXPIRED=$(sql <<<"SELECT clock_timestamp()>=expires_at FROM app.inventory_reservations WHERE tenant_id='$T' AND id='$RID';")
+  [[ $EXPIRED == t ]] && break
+  sleep 0.05  # Poll the observed database clock; never use delay to order actors.
+done
+[[ $EXPIRED == t ]] || { echo 'FAIL: database expiry barrier timed out'; exit 1; }
 SKIPPED=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT app.inventory_expire_due(1);" | tail -1)
 [[ $SKIPPED == 0 ]] || fail=1
 gate_open 14; wait

@@ -69,6 +69,10 @@ BEGIN
  EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
  PERFORM app.inventory_release(r.id);
  PERFORM app.inventory_release(r.id);
+ replay:=app.inventory_reserve(s,3,'checkout',owner_id,'inventory-key',900);
+ IF replay.id<>r.id OR replay.state<>'released' OR replay.expires_at<>r.expires_at THEN
+  RAISE EXCEPTION 'INVENTORY_GATE released key was reused or expiry extended';
+ END IF;
  IF (SELECT reserved FROM app.stock_levels WHERE tenant_id=t)<>0
   OR (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=t)<>3 THEN
   RAISE EXCEPTION 'INVENTORY_GATE release not exactly once';
@@ -80,6 +84,10 @@ BEGIN
  r:=app.inventory_reserve(s,2,'order',owner_id,'commit-key',900);
  PERFORM app.inventory_commit(r.id);
  PERFORM app.inventory_commit(r.id);
+ replay:=app.inventory_reserve(s,2,'order',owner_id,'commit-key',900);
+ IF replay.id<>r.id OR replay.state<>'committed' OR replay.expires_at<>r.expires_at THEN
+  RAISE EXCEPTION 'INVENTORY_GATE committed key was reused or expiry extended';
+ END IF;
  IF (SELECT on_hand FROM app.stock_levels WHERE tenant_id=t)<>3
   OR (SELECT reserved FROM app.stock_levels WHERE tenant_id=t)<>0
   OR (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=t)<>5 THEN
@@ -114,6 +122,7 @@ UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 s
 SET LOCAL ROLE app_runtime;
 DO $expiry$
 DECLARE r uuid:=current_setting('test.inventory_expire_id')::uuid; n integer;
+ original app.inventory_reservations; replay app.inventory_reservations; movements bigint;
 BEGIN
  BEGIN
   PERFORM app.inventory_commit(r);
@@ -121,6 +130,7 @@ BEGIN
  EXCEPTION WHEN object_not_in_prerequisite_state THEN
   IF SQLERRM<>'INVENTORY_RESERVATION_EXPIRED' THEN RAISE; END IF;
  END;
+ SELECT * INTO original FROM app.inventory_reservations WHERE id=r;
  n:=app.inventory_expire_due(1);
  IF n<>1 OR app.inventory_expire_due(1)<>0 THEN
   RAISE EXCEPTION 'INVENTORY_GATE expiry not bounded/exactly once';
@@ -129,6 +139,14 @@ BEGIN
   OR (SELECT on_hand FROM app.stock_levels)<>3
   OR (SELECT state FROM app.inventory_reservations WHERE id=r)<>'expired' THEN
   RAISE EXCEPTION 'INVENTORY_GATE expiration changed physical stock';
+ END IF;
+ SELECT count(*) INTO movements FROM app.inventory_movements;
+ replay:=app.inventory_reserve(original.sku_id,original.quantity,original.owner_type,
+  original.owner_id,original.idempotency_key,original.ttl_seconds);
+ IF replay.id<>r OR replay.state<>'expired' OR replay.expires_at<>original.expires_at
+  OR (SELECT count(*) FROM app.inventory_movements)<>movements
+  OR (SELECT reserved FROM app.stock_levels)<>0 THEN
+  RAISE EXCEPTION 'INVENTORY_GATE expired key reserved again or changed evidence';
  END IF;
 END $expiry$;
 RESET ROLE;

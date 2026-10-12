@@ -64,5 +64,10 @@ not-found, and 55000 `INVENTORY_INVALID_TRANSITION` /
 
 Acceptance: `tests/db_inventory.sql`; exact ACL/role matrix; and lock-synchronized
 last-unit, same-key, expiry/commit and first-initialization cases in
-`scripts/check_pg_races.sh`. Tests discover migration history by glob/count; no
+`scripts/check_pg_races.sh`. The waiting-commit case witnesses a valid reservation
+blocked on stock, waits for the database clock to cross its expiry, then requires
+55000 with unchanged physical stock; the sweep skips the busy reservation.
+Terminal-key replay is checked after release, commit and expiry.
+`sqlc.yaml` consumes this DDL and the generated data types in `internal/db`;
+`check_codegen.sh` verifies real sqlc/pgx generation and compilation. Tests discover migration history by glob/count; no
 test depends on this branch's provisional migration number.

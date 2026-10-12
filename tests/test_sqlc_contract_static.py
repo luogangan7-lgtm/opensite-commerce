@@ -12,13 +12,18 @@ sql = config['sql'][0]
 assert sql['engine'] == 'postgresql'
 assert sql['gen']['go']['sql_package'] == 'pgx/v5'
 assert sql['gen']['go']['out'] == 'internal/db'
-assert len(sql['schema']) == 7
+# New DDL must participate in real codegen, independent of provisional number.
+assert len(sql['schema']) == 8
+inventory = list((root/'migrations').glob('*_inventory.sql'))
+assert len(inventory) == 1
+assert inventory[0].relative_to(root).as_posix() in sql['schema']
 for path in sql['schema']:
     assert (root/path).is_file(), path
 assert all('008_' not in name and '009_' not in name for name in sql['schema'])
 all_schema = '\n'.join((root / name).read_text() for name in sql['schema'])
 tables = set(re.findall(r'\bCREATE\s+TABLE\s+app\.([a-z_]+)', all_schema, re.I))
 assert len(tables) >= 25, f'only {len(tables)} tables'
+assert {'warehouses','stock_levels','inventory_reservations','inventory_movements'} <= tables
 query_names = []
 query_text = []
 for qpath in (root/sql['queries']).glob('*.sql'):
