@@ -4,6 +4,7 @@
 This is NOT a PostgreSQL execution test. Its fake psql never parses SQL.
 """
 from pathlib import Path
+import json
 import os
 import subprocess
 import tempfile
@@ -43,10 +44,17 @@ else
   if [[ -n "${FAKE_FAIL_ON:-}" && "$payload" == *"$FAKE_FAIL_ON"* ]]; then
     exit 31
   fi
+  if [[ "$payload" == *"MODULE_TABLE_OWNERSHIP"* ]]; then
+    printf '%s\n' "$FAKE_TABLES_JSON"
+  fi
 fi
 ''')
     fake.chmod(0o755)
+    registry = json.loads((root / 'modules/registry.yaml').read_text())
+    tables = sorted(table for module in registry['modules'] if module['status'] == 'implemented'
+                    for table in module['owns_tables'])
     env = dict(os.environ, DATABASE_URL='postgresql://fake/opensite',
+               FAKE_TABLES_JSON=json.dumps(tables),
                FAKE_PSQL_LOG=str(log), PATH=str(binpath)+os.pathsep+os.environ['PATH'])
     command = ['bash', str(root / 'scripts' / 'check_pg.sh')]
     r = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
@@ -55,7 +63,9 @@ fi
         assert f'RUN tests/{name}' in r.stdout, name
     contents = log.read_text()
     assert contents.count('SELECT pg_advisory_xact_lock') == 2 * (n_migrations + 1), '2 runs x (migrations + 1 history gate)'
-    assert contents.count('===SQL===') == 2 * (n_migrations + 1) + len(expected), '2 x migration checks + actual test files'
+    assert contents.count('===SQL===') == 2 * (n_migrations + 1) + len(expected) + 1, '2 x migration checks + test files + catalog audit'
+    assert contents.count('MODULE_TABLE_OWNERSHIP') == 1
+    assert 'PASS: module ownership' in r.stdout
     assert 'boundary-roles' in contents
     assert 'release-FK' in contents
     assert 'smoke-A' in contents
@@ -65,7 +75,15 @@ fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode != 0, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_release_integrity.sql' not in failed.stdout
-
+    # The audit itself must propagate connection/catalog errors and owner drift.
+    env['FAKE_FAIL_ON'] = 'MODULE_TABLE_OWNERSHIP'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode != 0 and 'MODULE_DATABASE_ERROR' in failed.stderr
+    env.pop('FAKE_FAIL_ON')
+    env['FAKE_TABLES_JSON'] = json.dumps(tables + ['unregistered_table'])
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode != 0 and 'MODULE_UNOWNED_TABLE' in failed.stderr
+    env['FAKE_TABLES_JSON'] = json.dumps(tables)
     env['FAKE_FAIL_ON'] = 'SHIPPING_OVERLAP_ACCEPTED'
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)

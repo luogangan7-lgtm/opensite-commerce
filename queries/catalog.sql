@@ -20,6 +20,8 @@ INSERT INTO app.product_variants (tenant_id, product_id, sku, option_key)
 VALUES ($1, $2, $3, $4)
 RETURNING id, product_id, sku, option_key;
 
--- name: GetPublishedSite :one
-SELECT id, organization_id, published_release_id
-FROM app.sites WHERE tenant_id=$1 AND id=$2;
+-- name: GetProductVariants :many
+SELECT id, sku, option_key, created_at
+FROM app.product_variants
+WHERE tenant_id = $1 AND product_id = $2
+ORDER BY id;
