@@ -52,7 +52,11 @@ func TestQuoteBoundaries(t *testing.T) {
 		{"unlimited exact min", []Rate{tier1, unlimited}, 2000, 0, "unlimited", 900, nil},
 		{"unlimited int64 max", []Rate{unlimited}, 1<<63 - 1, 0, "unlimited", 900, nil},
 		{"fixed", []Rate{fixed}, 20000, 0, "fixed", 1500, nil},
-		{"free inclusive", []Rate{tier1, fixed, free}, 2000, 10000, "free", 0, nil},
+		{"free inclusive", []Rate{tier1, fixed, free}, 500, 10000, "free", 0, nil},
+		// Free shipping waives the charge only for a deliverable weight: when weight
+		// bands exist, a weight outside every band is refused even above the threshold.
+		{"free above top band refused", []Rate{tier1, tier2, free}, 10_000_000, 10000, "", 0, ErrNoRate},
+		{"free in band gap refused", []Rate{tier1, unlimited, free}, 1500, 10000, "", 0, ErrNoRate},
 		{"free above", []Rate{free}, 0, 10001, "free", 0, nil},
 		{"below free with fixed", []Rate{free, fixed}, 0, 9999, "fixed", 1500, nil},
 		{"below free alone", []Rate{free}, 0, 9999, "", 0, ErrNoRate},

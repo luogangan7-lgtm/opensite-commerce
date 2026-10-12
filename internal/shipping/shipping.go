@@ -98,6 +98,12 @@ func Quote(zones []Zone, rates []Rate, request Request) (Result, error) {
 			}
 		}
 	}
+	// Weight bands define deliverability: a weight outside every band is refused,
+	// even when the subtotal qualifies for free shipping (free waives the charge,
+	// it does not make an undeliverable parcel deliverable).
+	if hasWeight && weight == nil {
+		return Result{}, ErrNoRate
+	}
 	var selected *Rate
 	switch {
 	case free != nil && request.Subtotal.Amount >= *free.FreeOverAmount:

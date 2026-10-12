@@ -38,11 +38,13 @@ This is a bundled PostgreSQL extension, with no additional Go dependency; see
 [PG18 range constraints](https://www.postgresql.org/docs/18/rangetypes.html) and
 [UUID GiST operators](https://www.postgresql.org/docs/18/btree-gist.html).
 
-Selection order is explicit: an inclusive free threshold (`subtotal >= threshold`)
-returns its zero amount first. Otherwise, if any weight tiers are configured,
-exactly one matching tier is required: gaps and weights at/above a finite final
-upper bound return `ErrNoRate`, even when a fixed rule exists. Fixed pricing is
-used only without weight tiers. A free rule alone refuses below-threshold orders.
+Selection order is explicit. Deliverability comes first: if any weight tiers are
+configured, exactly one matching tier is required, and gaps or weights at/above a
+finite final upper bound return `ErrNoRate`, even when a fixed rule exists and even
+when the subtotal reaches the free threshold (free waives the charge; it never makes
+an undeliverable parcel deliverable). Then an inclusive free threshold
+(`subtotal >= threshold`) returns its zero amount; otherwise the matching tier, or,
+without weight tiers, the fixed rule. A free rule alone refuses below-threshold orders.
 The result includes the chosen zone, rate ID, method and currency, so its basis
 can be explained. Currency mismatch and malformed configuration are errors.
 
