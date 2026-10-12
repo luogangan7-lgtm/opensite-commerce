@@ -2,7 +2,7 @@
 -- Dependencies: 005/006/009/010; caller: restricted publish Read Context service.
 -- Invariants: FORCE RLS retained, acyclic visibility DAG, no draft/mutable catalog ACL.
 -- The version-1 manifest is exclusively public locale/title/description/navigation/
--- products. Live catalog integration remains pending; products are immutable here.
+-- products. Publication snapshots published catalog revisions; no live catalog ACL.
 DROP POLICY public_verified_domains ON app.site_domains;
 CREATE POLICY public_verified_domains ON app.site_domains FOR SELECT TO app_domain_resolver
  USING (status='verified' AND verified_at IS NOT NULL

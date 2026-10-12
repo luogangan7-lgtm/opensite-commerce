@@ -796,7 +796,14 @@
       ]
     },
     {
-      "file": "migrations/019_storefront_read.sql",
+      "file": "migrations/019_product_media_asset_index.sql",
+      "owner": "catalog",
+      "touches_tables": [
+        "product_media"
+      ]
+    },
+    {
+      "file": "migrations/020_storefront_read.sql",
       "owner": "publish",
       "touches_tables": [
         "site_domains",
