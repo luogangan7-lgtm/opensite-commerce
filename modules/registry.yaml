@@ -278,19 +278,21 @@
     },
     {
       "name": "money",
-      "status": "planned",
+      "status": "implemented",
       "go_path": "internal/modules/money",
       "go_status": "planned",
       "owns_tables": [],
       "operations": [],
       "dependencies": [],
-      "tests": [],
+      "tests": [
+        "internal/money/money_test.go"
+      ],
       "scopes": [],
-      "note": "PR16 candidate is pure Go money arithmetic; no app table ownership is proposed."
+      "note": "PR16 is merged on main at 9a17e2f. Pure Go money arithmetic exists at internal/money/money.go with no app tables or HTTP operations. go_status describes the planned internal/modules/money target path, not the existing source package."
     },
     {
       "name": "pricing",
-      "status": "planned",
+      "status": "implemented",
       "go_path": "internal/modules/pricing",
       "go_status": "planned",
       "owns_tables": [
@@ -303,9 +305,13 @@
         "catalog",
         "money"
       ],
-      "tests": [],
+      "tests": [
+        "internal/pricing/pricing_test.go",
+        "internal/db/pricing_integration_test.go",
+        "tests/db_pricing.sql"
+      ],
       "scopes": [],
-      "note": "Planned names read from PR16 candidate origin/feat/c10a-money-pricing; candidate migration numbering is not a main migration registration."
+      "note": "PR16 is merged on main at 9a17e2f. Owns price_lists and price_entries created by migrations/013_money_pricing.sql. Quote code exists at internal/pricing/pricing.go with generated queries at internal/db/pricing.sql.go; no HTTP operations are implemented. go_status describes the planned internal/modules/pricing target path, not the existing source packages."
     },
     {
       "name": "inventory",
@@ -526,6 +532,14 @@
         "inventory_reservations",
         "inventory_movements",
         "tenants"
+      ]
+    },
+    {
+      "file": "migrations/013_money_pricing.sql",
+      "owner": "pricing",
+      "touches_tables": [
+        "price_lists",
+        "price_entries"
       ]
     }
   ]
