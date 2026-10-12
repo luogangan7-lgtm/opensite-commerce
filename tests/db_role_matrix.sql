@@ -1,4 +1,4 @@
--- Responsibility: audit the least-privilege contract for the three base roles.
+-- Responsibility: audit the least-privilege contract for the four internal roles.
 -- Dependencies: PostgreSQL 18 catalogs and app tables from migrations 001..009.
 -- Caller: privileged psql test runner on an expendable database, after hardening.
 -- Invariant: effective privileges (including PUBLIC/inheritance) match the contract
@@ -22,6 +22,7 @@ DECLARE
   'tenants','users','auth_sessions','api_keys','tenant_memberships','sites',
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
   'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
+  'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members'];
  role_name text;
  r record;
