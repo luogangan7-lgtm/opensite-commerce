@@ -264,3 +264,18 @@ func TestPanicRecoveryAndPrivateLogs(t *testing.T) {
 		t.Fatal("log correlation or redaction failed", logs.String())
 	}
 }
+
+func TestBufferedWriteSniffsContentType(t *testing.T) {
+	r := httpapi.New(nil, nil)
+	spec := httpapi.RouteSpec{OperationID: "sniff", Method: "GET", Pattern: "/sniff", Access: httpapi.Public}
+	if err := r.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<!doctype html><html><body>hi</body></html>"))
+	})); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/sniff", nil))
+	if got := w.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Fatalf("Content-Type = %q, want sniffed text/html", got)
+	}
+}

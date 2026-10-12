@@ -70,6 +70,10 @@ func (w *bufferedResponse) Write(body []byte) (int, error) {
 	if w.status == 0 {
 		w.status = 200
 	}
+	// Same contract as net/http: sniff the type from the first write when unset.
+	if w.body.Len() == 0 && w.header.Get("Content-Type") == "" && w.header.Get("Transfer-Encoding") == "" && len(body) > 0 {
+		w.header.Set("Content-Type", http.DetectContentType(body))
+	}
 	if len(body) > (1<<20)-w.body.Len() {
 		panic("response limit exceeded")
 	}
