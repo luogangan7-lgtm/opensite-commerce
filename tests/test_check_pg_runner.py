@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Offline CLI flow test: verifies expected PG files are submitted to psql.
+"""Offline CLI flow: River-before-app ordering, SQL coverage, failure propagation.
 
-This is NOT a PostgreSQL execution test. Its fake psql never parses SQL.
+Depends on shell runners; check_all calls it. Fake go/psql never execute DB code.
 """
 from pathlib import Path
 import os
@@ -25,6 +25,7 @@ expected = [
     'db_inventory.sql',
     'db_pricing.sql',
     'db_shipping.sql',
+    'db_queue.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:
@@ -33,12 +34,14 @@ for name in expected:
 with tempfile.TemporaryDirectory() as tmp:
     binpath = Path(tmp)
     log = binpath / 'calls.log'
+    flow = binpath / 'flow.log'
     fake = binpath / 'psql'
     fake.write_text(r'''#!/bin/bash
 payload="$(cat)"
 if [[ "$payload" == *"SHOW server_version_num"* ]]; then
   echo '180002'
 else
+  echo SQL >> "$FAKE_FLOW_LOG"
   printf '===SQL===\n%s\n' "$payload" >> "$FAKE_PSQL_LOG"
   if [[ -n "${FAKE_FAIL_ON:-}" && "$payload" == *"$FAKE_FAIL_ON"* ]]; then
     exit 31
@@ -46,8 +49,19 @@ else
 fi
 ''')
     fake.chmod(0o755)
+    fake_go = binpath / 'go'
+    fake_go.write_text(r'''#!/bin/bash
+[[ "$1" == run && "$2" == ./cmd/river-migrate ]] || { echo 'unexpected Go command' >&2; exit 35; }
+kind=INSTALL
+[[ " $* " != *" --verify "* ]] || kind=VERIFY
+echo "$kind" >> "$FAKE_FLOW_LOG"
+if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
+''')
+    fake_go.chmod(0o755)
     env = dict(os.environ, DATABASE_URL='postgresql://fake/opensite',
-               FAKE_PSQL_LOG=str(log), PATH=str(binpath)+os.pathsep+os.environ['PATH'])
+               FAKE_PSQL_LOG=str(log), FAKE_FLOW_LOG=str(flow),
+               FAKE_FAIL_ON='', FAKE_GO_FAIL_ON='',
+               PATH=str(binpath)+os.pathsep+os.environ['PATH'])
     command = ['bash', str(root / 'scripts' / 'check_pg.sh')]
     r = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert r.returncode == 0, (r.stdout, r.stderr)
@@ -59,6 +73,20 @@ fi
     assert 'boundary-roles' in contents
     assert 'release-FK' in contents
     assert 'smoke-A' in contents
+    migration_calls = 2 * (n_migrations + 1)
+    assert flow.read_text().splitlines() == ['INSTALL', 'INSTALL'] + ['SQL'] * migration_calls + ['VERIFY'] + ['SQL'] * len(expected), 'River before app DDL; verify before all SQL tests'
+
+    # Installer and verification failures must not be masked by later SQL gates.
+    for phase in ('INSTALL', 'VERIFY'):
+        log.write_text('')
+        flow.write_text('')
+        env['FAKE_GO_FAIL_ON'] = phase
+        failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+        assert failed.returncode == 32, (failed.stdout, failed.stderr)
+        assert 'RUN tests/' not in failed.stdout
+        if phase == 'INSTALL':
+            assert log.read_text() == ''
+    env['FAKE_GO_FAIL_ON'] = ''
 
     # A failed database test must stop the acceptance script with a nonzero code.
     env['FAKE_FAIL_ON'] = 'boundary-roles'
@@ -70,4 +98,9 @@ fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_shipping.sql' in failed.stdout
-print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, propagates failures (mock psql; NO SQL executed)')
+
+    env['FAKE_FAIL_ON'] = 'QUEUE_CROSS_TENANT_READ'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_queue.sql' in failed.stdout
+print(f'PASS: River/app ordering, {len(expected)} SQL files, repeated {n_migrations} migrations and all failure paths (mock go/psql; NO SQL executed)')

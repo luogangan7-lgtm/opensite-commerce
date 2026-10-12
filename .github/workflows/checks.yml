@@ -19,6 +19,9 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       GOTOOLCHAIN: local
+      JOBS_REQUIRE_PG: '1'
+      IDEMPOTENCY_REQUIRE_PG: '1'
+      OUTBOX_REQUIRE_PG: '1'
       DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1

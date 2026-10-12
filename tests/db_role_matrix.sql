@@ -289,3 +289,98 @@ BEGIN
  END IF;
 END $inventory$;
 SELECT 'PASS: inventory exact owner/manager/runtime table-column-routine capabilities' AS result;
+
+-- Queue ACL is a separate schema contract; upstream tables have no app tenant column.
+DO $queue_matrix$
+DECLARE role_name text; r record; t record; a record; f record; s record; privilege text;
+ expected_table boolean; expected_column boolean; allowed text[];
+ roles text[]:=ARRAY['app_runtime','app_queue_worker','app_auth','app_domain_resolver',
+ 'app_domain_verifier','app_media_service','app_publisher','app_publish_executor',
+ 'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor'];
+ tables text[]:=ARRAY['river_job','river_queue','river_leader','river_migration','river_notification'];
+ insert_columns text[]:=ARRAY['id','args','created_at','kind','max_attempts','metadata','priority','queue','scheduled_at','state','tags','unique_key','unique_states'];
+BEGIN
+ IF (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='queue' AND c.relkind IN('r','p'))<>cardinality(tables)
+ OR EXISTS(SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='queue' AND c.relkind IN('r','p') AND NOT c.relname=ANY(tables)) THEN
+  RAISE EXCEPTION 'QUEUE_MATRIX_TABLE_SET_INVALID'; END IF;
+ IF (SELECT nspowner FROM pg_namespace WHERE nspname='queue') IS DISTINCT FROM 'app_river_migrator'::regrole THEN
+  RAISE EXCEPTION 'QUEUE_MATRIX_OWNER_INVALID'; END IF;
+ FOREACH role_name IN ARRAY ARRAY['app_queue_worker','app_river_migrator'] LOOP
+  SELECT * INTO STRICT r FROM pg_roles WHERE rolname=role_name;
+  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+   OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid) THEN
+   RAISE EXCEPTION 'QUEUE_MATRIX_UNSAFE_ROLE %',role_name; END IF;
+ END LOOP;
+ -- Effective transitive memberships, including an indirect NOLOGIN bridge.
+ IF EXISTS(SELECT FROM pg_roles x WHERE NOT x.rolcanlogin AND NOT x.rolsuper
+  AND (x.rolname<>'app_river_migrator' AND pg_has_role(x.oid,'app_river_migrator','MEMBER')
+    OR x.rolname<>'app_queue_worker' AND pg_has_role(x.oid,'app_queue_worker','MEMBER'))) THEN
+  RAISE EXCEPTION 'QUEUE_MATRIX_TRANSITIVE_ROLE_ESCALATION'; END IF;
+ IF pg_has_role('app_runtime','app_queue_worker','SET') OR pg_has_role('app_queue_worker','app_runtime','SET')
+ OR pg_has_role('app_runtime','app_river_migrator','SET') OR pg_has_role('app_queue_worker','app_river_migrator','SET') THEN
+  RAISE EXCEPTION 'QUEUE_MATRIX_ROLE_ESCALATION'; END IF;
+ IF NOT has_schema_privilege('app_queue_worker','app','USAGE') OR has_schema_privilege('app_queue_worker','app','CREATE') THEN
+  RAISE EXCEPTION 'QUEUE_MATRIX_APP_SCHEMA_INVALID'; END IF;
+ IF NOT EXISTS(SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='queue' AND c.relname='river_job' AND c.relrowsecurity AND c.relforcerowsecurity) THEN
+  RAISE EXCEPTION 'QUEUE_MATRIX_RLS_REQUIRED'; END IF;
+ FOREACH role_name IN ARRAY roles LOOP
+  IF has_schema_privilege(role_name,'queue','USAGE') IS DISTINCT FROM (role_name IN('app_runtime','app_queue_worker'))
+  OR has_schema_privilege(role_name,'queue','CREATE') OR has_schema_privilege(role_name,'queue','USAGE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'QUEUE_MATRIX_SCHEMA_PRIVILEGE %',role_name; END IF;
+  FOR t IN SELECT c.oid,c.relname,c.relowner,c.relacl FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='queue' AND c.relkind IN('r','p') LOOP
+   IF t.relowner<>'app_river_migrator'::regrole
+   OR EXISTS(SELECT FROM aclexplode(coalesce(t.relacl,acldefault('r',t.relowner))) WHERE grantee=0) THEN
+    RAISE EXCEPTION 'QUEUE_MATRIX_TABLE_OWNER_PUBLIC %',t.relname; END IF;
+   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+    expected_table:=role_name='app_runtime' AND t.relname='river_job' AND privilege='SELECT'
+     OR role_name='app_queue_worker' AND (t.relname=ANY(ARRAY['river_job','river_queue','river_leader']) AND privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','DELETE']) OR t.relname='river_migration' AND privilege='SELECT');
+    IF has_table_privilege(role_name,t.oid,privilege) IS DISTINCT FROM expected_table OR has_table_privilege(role_name,t.oid,privilege||' WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'QUEUE_MATRIX_TABLE_PRIVILEGE % %.%',role_name,t.relname,privilege; END IF;
+    IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
+     allowed:=ARRAY[]::text[];
+     IF role_name='app_runtime' AND t.relname='river_job' AND privilege='INSERT' THEN allowed:=insert_columns;
+     ELSIF role_name='app_runtime' AND t.relname='river_job' AND privilege='UPDATE' THEN allowed:=ARRAY['kind']; END IF;
+     FOR a IN SELECT attnum,attname,attacl FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+      expected_column:=expected_table OR a.attname::text=ANY(allowed);
+      IF has_column_privilege(role_name,t.oid,a.attnum,privilege) IS DISTINCT FROM expected_column
+      OR has_column_privilege(role_name,t.oid,a.attnum,privilege||' WITH GRANT OPTION')
+      OR EXISTS(SELECT FROM aclexplode(a.attacl) WHERE grantee=0) THEN
+       RAISE EXCEPTION 'QUEUE_MATRIX_COLUMN_PRIVILEGE % %.% %',role_name,t.relname,a.attname,privilege; END IF;
+     END LOOP;
+    END IF;
+   END LOOP;
+  END LOOP;
+  FOR s IN SELECT c.oid,c.relname,c.relowner,c.relacl FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='queue' AND c.relkind='S' LOOP
+   IF s.relowner<>'app_river_migrator'::regrole OR EXISTS(SELECT FROM aclexplode(coalesce(s.relacl,acldefault('s',s.relowner))) WHERE grantee=0) THEN
+    RAISE EXCEPTION 'QUEUE_MATRIX_SEQUENCE_OWNER_PUBLIC'; END IF;
+   FOREACH privilege IN ARRAY ARRAY['USAGE','SELECT','UPDATE'] LOOP
+    expected_table:=role_name IN('app_runtime','app_queue_worker') AND s.relname='river_job_id_seq' AND privilege='USAGE';
+    IF has_sequence_privilege(role_name,s.oid,privilege) IS DISTINCT FROM expected_table OR has_sequence_privilege(role_name,s.oid,privilege||' WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'QUEUE_MATRIX_SEQUENCE_PRIVILEGE % % %',role_name,s.relname,privilege; END IF;
+   END LOOP;
+  END LOOP;
+  FOR f IN SELECT p.oid,p.proname,p.proowner,p.proacl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='queue' LOOP
+   expected_table:=role_name IN('app_runtime','app_queue_worker') AND f.oid='queue.river_job_state_in_bitmask(bit,queue.river_job_state)'::regprocedure;
+   IF f.proowner<>'app_river_migrator'::regrole OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE')
+   OR has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected_table OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'QUEUE_MATRIX_FUNCTION_PRIVILEGE % %',role_name,f.proname; END IF;
+  END LOOP;
+ END LOOP;
+ -- Worker has only the controlled inventory expiry business command, no table ACL.
+ FOR t IN SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   IF has_table_privilege('app_queue_worker',t.oid,privilege) OR has_table_privilege('app_queue_worker',t.oid,privilege||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'QUEUE_MATRIX_BUSINESS_TABLE_PRIVILEGE'; END IF;
+   IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
+    FOR a IN SELECT attnum FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     IF has_column_privilege('app_queue_worker',t.oid,a.attnum,privilege) THEN RAISE EXCEPTION 'QUEUE_MATRIX_BUSINESS_COLUMN_PRIVILEGE'; END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' LOOP
+  IF has_function_privilege('app_queue_worker',f.oid,'EXECUTE') IS DISTINCT FROM (f.oid='app.inventory_expire_due(integer)'::regprocedure)
+  OR has_function_privilege('app_queue_worker',f.oid,'EXECUTE WITH GRANT OPTION') THEN RAISE EXCEPTION 'QUEUE_MATRIX_BUSINESS_FUNCTION_PRIVILEGE'; END IF;
+ END LOOP;
+END $queue_matrix$;
+SELECT 'PASS: queue exact table-column-sequence-function matrix and isolated worker capability' AS result;

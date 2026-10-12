@@ -23,6 +23,16 @@ fresh_009() {  # $1 = database name; applies 001-009 exactly as shipped
 }
 apply_010() { { echo 'BEGIN;'; cat migrations/010_security_hardening.sql; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
 
+# Upstream River history stays separate from app migration checksums.
+river_db() {
+ local name=$1; shift
+ if [[ -n "${DATABASE_URL:-}" ]]; then
+  DATABASE_URL="${base%/*}/$name$query" ./scripts/migrate_river.sh "$@"
+ else
+  RIVER_DATABASE_NAME="$name" ./scripts/migrate_river.sh "$@"
+ fi
+}
+
 SEED_SITE=$(cat <<'SQL'
 INSERT INTO app.tenants(name) VALUES('upgrade') RETURNING id AS t \gset
 INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','U') RETURNING id AS o \gset
@@ -123,7 +133,10 @@ fresh_before_reliability() {
 apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
 RELIABILITY_DB=""
 SHIPPING_DB=""
-trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1; [[ -z $SHIPPING_DB ]] || admin -c "DROP DATABASE IF EXISTS $SHIPPING_DB" >/dev/null 2>&1' EXIT
+QUEUE_DB=""
+INVENTORY_DB=""
+PRICING_DB=""
+trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1; [[ -z $SHIPPING_DB ]] || admin -c "DROP DATABASE IF EXISTS $SHIPPING_DB" >/dev/null 2>&1; [[ -z $QUEUE_DB ]] || admin -c "DROP DATABASE IF EXISTS $QUEUE_DB" >/dev/null 2>&1; [[ -z $INVENTORY_DB ]] || admin -c "DROP DATABASE IF EXISTS $INVENTORY_DB" >/dev/null 2>&1; [[ -z $PRICING_DB ]] || admin -c "DROP DATABASE IF EXISTS $PRICING_DB" >/dev/null 2>&1' EXIT
 RELIABILITY_DB=reliability_upgrade_$$
 fresh_before_reliability "$RELIABILITY_DB"
 db "$RELIABILITY_DB" <<'SQL' >/dev/null
@@ -157,11 +170,13 @@ done
 [[ $fail -eq 0 ]] || exit 1
 # C-11a: install additive inventory over preexisting tenant/catalog data. Discover
 # the module file by suffix, so integration renumbering does not alter this gate.
-DB=upgrade_inventory_$$
+inventory_files=(migrations/[0-9][0-9][0-9]_inventory.sql)
+[[ ${#inventory_files[@]} -eq 1 && -f ${inventory_files[0]} ]] || { echo 'FAIL: exactly one inventory migration required'; exit 1; }
+DB=upgrade_inventory_$$; INVENTORY_DB=$DB
 fresh_009 $DB
-# Every forward migration that precedes inventory (010, 011, ...), in order.
+# Only predecessors: future authorization may depend on inventory's functions.
 for f in migrations/0[1-9][0-9]_*.sql; do
-  [[ $f == *_inventory.sql ]] && continue  # the glob already excludes 001-009
+  [[ $f < ${inventory_files[0]} ]] || break
   { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db $DB >/dev/null
 done
 # No inventory tables existed when this tenant and SKU were written.
@@ -193,14 +208,21 @@ SQL
 if [[ $result == *'INVENTORY_UPGRADE=1|0|3|1|1'* ]]; then
   pass 'inventory upgrade preserves existing tenant/catalog and commits with bounded counters +3 movements'
 else bad "inventory upgrade: $result"; fi
+# Apply all successors before the exact matrix, installing River before queue ACL.
+river_db "$DB"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${inventory_files[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+river_db "$DB" --verify
 # Full scoped SQL and exact authority matrix also run against the upgraded DB.
 db $DB -f tests/db_inventory.sql >/dev/null
 db $DB -f tests/db_role_matrix.sql >/dev/null
-admin -c "DROP DATABASE $DB"
+admin -c "DROP DATABASE $DB"; INVENTORY_DB=""
 
 # Existing catalog rows from 001..010 remain usable by the forward pricing DDL.
 # Apply every post-010 migration by its current filename, not a reserved number.
-DB=upgrade_pricing_$$
+DB=upgrade_pricing_$$; PRICING_DB=$DB
 fresh_009 $DB
 if ! out=$(apply_010 $DB); then bad "pricing base hardening: $out"; else
  db "$DB" <<'SQL' >/dev/null
@@ -209,9 +231,10 @@ INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','OLD') RETURNING id
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
  VALUES(:'t',:'p','OLD','default');
 SQL
+ river_db "$DB"
  for f in migrations/[0-9][0-9][0-9]_*.sql; do
   number=${f##*/}; number=${number%%_*}
-  if ((10#$number>10)); then db "$DB" < "$f" >/dev/null; fi
+  if ((10#$number>10)); then { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null; fi
  done
  result=$(db "$DB" <<'SQL'
 INSERT INTO app.price_lists(tenant_id,currency,starts_at)
@@ -225,7 +248,7 @@ SQL
  if [[ $result == 1 ]]; then pass "pricing upgrade preserves existing SKU and exact zero price"
  else bad "pricing upgrade witness: $result"; fi
 fi
-admin -c "DROP DATABASE $DB"
+admin -c "DROP DATABASE $DB"; PRICING_DB=""
 # INT-15: apply ALL predecessor migrations, then upgrade populated Shipping data.
 # Filename ordering is the migration order; no shell octal/numeric conversion.
 shipping_files=(migrations/[0-9][0-9][0-9]_shipping.sql)
@@ -263,14 +286,44 @@ SQL
 if [[ $result == *'SHIPPING_UPGRADE=1|1|1'* ]]; then pass "shipping upgrade preserves existing tenant/catalog; runtime reads zero-cost tier"
 else bad "shipping upgrade witness: $result"; fi
 # Include any later modules before validating the exact whole-schema matrix.
+river_db "$DB"
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${shipping_files[0]} ]] || continue
  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
 done
+river_db "$DB" --verify
 db "$DB" -f tests/db_shipping.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 SHIPPING_DB=""
 
+# C04b: queue authorization over existing tenant + River job, suffix-discovered.
+queue_files=(migrations/[0-9][0-9][0-9]_queue_authorization.sql)
+[[ ${#queue_files[@]} -eq 1 && -f ${queue_files[0]} ]] || { echo 'FAIL: exactly one queue authorization migration required'; exit 1; }
+QUEUE_DB=upgrade_queue_$$; DB=$QUEUE_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${queue_files[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+river_db "$DB"
+river_db "$DB"  # repeated upstream migration is also safe before app authorization
+legacy=$(db "$DB" <<'SQL'
+INSERT INTO app.tenants(name) VALUES('queue-upgrade') RETURNING id AS t \gset
+INSERT INTO queue.river_job(args,kind,queue)
+ VALUES(jsonb_build_object('tenant_id',:'t'),'queue_legacy','default') RETURNING id;
+SQL
+)
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${queue_files[0]} ]] && continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+river_db "$DB" --verify
+[[ $(db "$DB" -c "SELECT count(*) FROM queue.river_job WHERE kind='queue_legacy' AND id=$legacy AND args->>'tenant_id'=(SELECT id::text FROM app.tenants WHERE name='queue-upgrade')") == 1 ]] || { bad 'queue upgrade changed existing job/tenant identity'; }
+db "$DB" -f tests/db_queue.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"; QUEUE_DB=""
+pass 'queue upgrade preserves job identity; isolated ACL/RLS + both upstream history passes'
+
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing and shipping upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping and queue upgrade gates'

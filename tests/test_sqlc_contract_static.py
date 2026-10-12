@@ -29,16 +29,34 @@ for path in sql['schema']:
 assert all('008_' not in name and '009_' not in name for name in sql['schema'])
 all_schema = '\n'.join((root / name).read_text() for name in sql['schema'])
 tables = set(re.findall(r'\bCREATE\s+TABLE\s+app\.([a-z_]+)', all_schema, re.I))
+functions = set(re.findall(r'\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+app\.([a-z_]+)', all_schema, re.I))
 assert len(tables) >= 25, f'only {len(tables)} tables'
 assert {'warehouses','stock_levels','inventory_reservations','inventory_movements'} <= tables
 query_names = []
 query_text = []
+def check_app_references(query, label):
+    # FROM can address a set-returning function, not just a table. Validate
+    # every app-qualified call against DDL; real sqlc checks SQL/type semantics.
+    source = re.sub(r"'(?:[^']|'')*'|--[^\n]*|/\*.*?\*/", '', query, flags=re.S)
+    for operation, name, call in re.findall(r'\b(?:(FROM|INTO|JOIN|UPDATE)\s+)?app\.([a-z_]+)\s*(\()?', source, re.I):
+        function_call = call and operation.upper() not in ('INTO', 'UPDATE')
+        assert name in (functions if function_call else tables), (label, name)
+
+check_app_references('SELECT * FROM app.claim_outbox(NULL,NULL,1,30)', 'known function')
+check_app_references("INSERT INTO app.products(tenant_id) VALUES(current_setting('app.tenant_id'))", 'table with columns and GUC')
+for invalid in ('SELECT * FROM app.c04b_missing_function()',
+                'SELECT * FROM app.c04b_missing_table'):
+    try:
+        check_app_references(invalid, 'negative fixture')
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError('unknown app object accepted')
 for qpath in (root/sql['queries']).glob('*.sql'):
     q = qpath.read_text()
     query_text.append(q)
     query_names += re.findall(r'^-- name: (\w+) :(one|many|exec|execrows)',q,re.M)
-    for table in re.findall(r'\b(?:FROM|INTO|JOIN|UPDATE)\s+app\.([a-z_]+)',q,re.I):
-        assert table in tables, (qpath.name,table)
+    check_app_references(q, qpath.name)
 assert len(query_names) == len(set(name for name,_ in query_names)), 'duplicate SQL query names'
 assert len(query_names) >= 6
 ci = (root/'.github/workflows/checks.yml').read_text()

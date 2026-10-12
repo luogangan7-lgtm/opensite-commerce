@@ -425,3 +425,31 @@ echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
 echo 'PASS: shipping range INSERT/UPDATE races preserve exact non-overlapping tiers'
+
+# Focused native River/claim/fence gates cannot silently skip for missing PG.
+reliability_packages=(./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)
+if [[ -n "${DATABASE_URL:-}" ]]; then
+ JOBS_REQUIRE_PG=1 IDEMPOTENCY_REQUIRE_PG=1 OUTBOX_REQUIRE_PG=1 GOTOOLCHAIN=local \
+  go test -race -tags pgx -count=1 -timeout=120s -run '^(TestPG|TestJobsPG)' "${reliability_packages[@]}"
+else
+ # Compose has no host port. Test binaries run against its loopback database;
+ # the external/CI path above also runs the race detector.
+ (
+  compose=(docker compose -f deploy/compose.yaml)
+  arch="$("${compose[@]}" exec -T postgres uname -m)"
+  case "$arch" in aarch64|arm64) arch=arm64 ;; x86_64) arch=amd64 ;; *) echo 'Unsupported test architecture' >&2; exit 4 ;; esac
+  temp="$(mktemp -d "${TMPDIR:-/tmp}/opensite-reliability.XXXXXX")"
+  container_bin="/tmp/opensite-reliability-$(basename "$temp")"
+  cleanup_go() { "${compose[@]}" exec -T postgres rm -f "$container_bin" >/dev/null 2>&1 || true; rm -rf "$temp"; }
+  trap cleanup_go EXIT
+  for package in "${reliability_packages[@]}"; do
+   GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c -tags pgx -o "$temp/gate" "$package"
+   "${compose[@]}" cp "$temp/gate" "postgres:$container_bin"
+   "${compose[@]}" exec -T -e DATABASE_URL=postgresql://postgres@localhost/opensite?sslmode=disable \
+    -e JOBS_REQUIRE_PG=1 -e IDEMPOTENCY_REQUIRE_PG=1 -e OUTBOX_REQUIRE_PG=1 postgres \
+    sh -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec "$@"' sh "$container_bin" \
+    '-test.run=^(TestPG|TestJobsPG)' -test.count=1 -test.timeout=120s -test.v
+  done
+ )
+fi
+echo 'PASS: native River transaction/admission/restart and Go idempotency/outbox PG gates'
