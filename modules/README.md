@@ -47,8 +47,10 @@ metadata and separate managed worktree checkouts are excluded. Every local
 `replace` resolving inside this checkout is rejected, even when unused. Package
 ownership follows resolved `go list` directories and module/replacement metadata,
 so an alias import or symlink cannot rename another module's private directory.
-Registered Go roots must themselves be canonical directories. Vendor directories
-and individual Go files cannot resolve into a business module, even when both
+Registered Go roots must themselves be canonical directories. Directory symlinks
+inside target/legacy business roots are forbidden; source file aliases are checked
+using both lexical and resolved ownership. Vendor directories and individual Go
+files cannot resolve into a business module, even when both
 their package name and linker target use a foreign prefix.
 First-party Go source cannot
 use `go:linkname` to bypass visibility through an unregistered bridge package;

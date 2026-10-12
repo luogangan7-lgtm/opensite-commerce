@@ -164,7 +164,8 @@ class GovernanceTests(unittest.TestCase):
                                  env=dict(os.environ, GOPROXY="off", GOSUMDB="off"), timeout=90)
         self.assertEqual(witness.returncode, 0, witness.stderr)
         self.assertEqual(witness.stdout.strip(), "713")
-        self.assert_red("MODULE_PRIVATE_SOURCE_ALIAS" if vendor_alias else "MODULE_LINKNAME_FORBIDDEN")
+        self.assert_red("MODULE_SOURCE_DIRECTORY_ALIAS" if alias else
+                        "MODULE_PRIVATE_SOURCE_ALIAS" if vendor_alias else "MODULE_LINKNAME_FORBIDDEN")
 
     def test_registered_go_root_cannot_alias_private_directory(self):
         (self.root / "internal/modules/a/module.go").unlink()
@@ -184,7 +185,7 @@ class GovernanceTests(unittest.TestCase):
                                  cwd=self.root, capture_output=True, text=True,
                                  env=dict(os.environ, GOPROXY="off", GOSUMDB="off"), timeout=90)
         self.assertEqual(witness.returncode, 0, witness.stderr)
-        self.assert_red("MODULE_PRIVATE_IMPORT")
+        self.assert_red("MODULE_SOURCE_DIRECTORY_ALIAS")
 
     def test_vendor_without_private_linkname_green(self):
         self.source("vendor/x.test/bridge/bridge.go",
@@ -410,6 +411,28 @@ class GovernanceTests(unittest.TestCase):
         self.source("shared/connection.go", 'package a\nimport "github.com/jackc/pgx/v5"\nvar Connection *pgx.Conn\n')
         (self.root / "internal/modules/a/connection.go").symlink_to(self.root / "shared/connection.go")
         self.assert_red("MODULE_RAW_CONNECTION")
+
+    def test_go_status_planned_directory_alias_red(self):
+        (self.root / "internal/modules/a/module.go").unlink()
+        self.registry["modules"][0]["go_status"] = "planned"
+        self.source("internal/bridgeimpl/source.go", "package bridgeimpl\nconst Value=1\n")
+        (self.root / "internal/modules/a/alias").symlink_to(self.root / "internal/bridgeimpl", target_is_directory=True)
+        self.source("internal/modules/b/contract/port.go", 'package contract\nimport "example.test/shop/internal/modules/a/alias"\nconst Value=bridgeimpl.Value\n')
+        self.assert_red("MODULE_SOURCE_DIRECTORY_ALIAS")
+
+    def test_raw_pgx_connection_directory_alias_red(self):
+        self.vendor_pgx()
+        self.source("internal/bridgeimpl/source.go", 'package bridgeimpl\nimport "github.com/jackc/pgx/v5"\nvar Connection *pgx.Conn\n')
+        (self.root / "internal/modules/a/alias").symlink_to(self.root / "internal/bridgeimpl", target_is_directory=True)
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/modules/a/alias"\nvar Value=bridgeimpl.Connection\n')
+        self.assert_red("MODULE_SOURCE_DIRECTORY_ALIAS")
+
+    def test_legacy_source_directory_alias_red(self):
+        self.registry["modules"][0]["legacy_go_paths"] = ["internal/a"]
+        self.source("internal/a/public.go", "package a\n")
+        self.source("internal/bridgeimpl/source.go", "package bridgeimpl\nconst Value=1\n")
+        (self.root / "internal/a/alias").symlink_to(self.root / "internal/bridgeimpl", target_is_directory=True)
+        self.assert_red("MODULE_SOURCE_DIRECTORY_ALIAS")
 
     def test_explicit_legacy_public_port_green(self):
         self.registry["modules"][1].update(legacy_go_paths=["internal/b"],
@@ -660,7 +683,6 @@ class GovernanceTests(unittest.TestCase):
                 {'operation_id': 'missingOrderAction', 'status': 'planned'}]}]}, path)
         with self.assertRaisesRegex(checker.GovernanceError, 'MODULE_UNREGISTERED_OPERATION'):
             checker.check_operations({'modules': [{'operations': operations[:1]}]}, path)
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

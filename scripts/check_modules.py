@@ -325,6 +325,15 @@ def check_go(registry, root):
                 "MODULE_GO_WORK_FORBIDDEN", str(directory.relative_to(root) / "go.work"))
         for name in [*dirs, *files]:
             reject_vendor_source_alias(directory / name)
+        for name in dirs:
+            path = directory / name
+            # os.walk deliberately does not follow directory symlinks. An
+            # owned tree cannot hide source in an untraversed alias, including
+            # ignored or currently unimported packages. Individual Go files
+            # remain scanned through logical and resolved ownership below.
+            require(not (path.is_symlink() and any(path.is_relative_to(owned)
+                                                  for owned in owned_paths)),
+                    "MODULE_SOURCE_DIRECTORY_ALIAS", str(path.relative_to(root)))
         relative_parts = directory.relative_to(root).parts
         # Uncompiled receipts have no source authority; nested modules above
         # are still forbidden. Compiled artifacts are rejected below.
