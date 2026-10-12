@@ -21,7 +21,8 @@ DECLARE
  special_tables text[] := ARRAY[
   'tenants','users','auth_sessions','api_keys','tenant_memberships','sites',
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
-  'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries'];
+  'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
+  'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates'];
  role_name text;
  r record;
  t record;
