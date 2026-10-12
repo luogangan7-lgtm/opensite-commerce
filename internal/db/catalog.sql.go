@@ -108,27 +108,48 @@ func (q *Queries) GetProduct(ctx context.Context, arg GetProductParams) (GetProd
 	return i, err
 }
 
-const getPublishedSite = `-- name: GetPublishedSite :one
-SELECT id, organization_id, published_release_id
-FROM app.sites WHERE tenant_id=$1 AND id=$2
+const getProductVariants = `-- name: GetProductVariants :many
+SELECT id, sku, option_key, created_at
+FROM app.product_variants
+WHERE tenant_id = $1 AND product_id = $2
+ORDER BY id
 `
 
-type GetPublishedSiteParams struct {
-	TenantID pgtype.UUID `json:"tenant_id"`
-	ID       pgtype.UUID `json:"id"`
+type GetProductVariantsParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	ProductID pgtype.UUID `json:"product_id"`
 }
 
-type GetPublishedSiteRow struct {
-	ID                 pgtype.UUID `json:"id"`
-	OrganizationID     pgtype.UUID `json:"organization_id"`
-	PublishedReleaseID pgtype.UUID `json:"published_release_id"`
+type GetProductVariantsRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	Sku       string             `json:"sku"`
+	OptionKey string             `json:"option_key"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
-func (q *Queries) GetPublishedSite(ctx context.Context, arg GetPublishedSiteParams) (GetPublishedSiteRow, error) {
-	row := q.db.QueryRow(ctx, getPublishedSite, arg.TenantID, arg.ID)
-	var i GetPublishedSiteRow
-	err := row.Scan(&i.ID, &i.OrganizationID, &i.PublishedReleaseID)
-	return i, err
+func (q *Queries) GetProductVariants(ctx context.Context, arg GetProductVariantsParams) ([]GetProductVariantsRow, error) {
+	rows, err := q.db.Query(ctx, getProductVariants, arg.TenantID, arg.ProductID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetProductVariantsRow
+	for rows.Next() {
+		var i GetProductVariantsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Sku,
+			&i.OptionKey,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listProducts = `-- name: ListProducts :many
