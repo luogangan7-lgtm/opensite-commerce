@@ -71,6 +71,19 @@ class GovernanceTests(unittest.TestCase):
         self.source("internal/modules/a/module.go", 'package a\nimport "x.test/bstore"\nvar Value = store.Value\n')
         self.assert_red("MODULE_NESTED_GO_MODULE")
 
+    def test_assembly_source_red(self):
+        # Assembly reads another module's private symbol without import or linkname.
+        self.source("internal/modules/a/peek_amd64.s", "#include \"textflag.h\"\nTEXT ·peek(SB),NOSPLIT,$0-8\n\tRET\n")
+        self.assert_red("MODULE_NON_GO_SOURCE")
+
+    def test_cgo_import_red(self):
+        self.source("internal/modules/a/cgo.go", 'package a\n/*\nint x;\n*/\nimport "C"\n')
+        self.assert_red("MODULE_NON_GO_SOURCE")
+
+    def test_go_work_red(self):
+        self.source("go.work", "go 1.27.2\n\nuse .\n")
+        self.assert_red("MODULE_GO_WORK_FORBIDDEN")
+
     def test_nested_go_module_in_nonmodule_source_red(self):
         self.source("internal/bridge/go.mod", "module x.test/bridge\n\ngo 1.27.2\n")
         self.source("internal/bridge/bridge.go", "package bridge\n")

@@ -257,6 +257,13 @@ def check_go(registry, root):
             dirs[:] = [name for name in dirs if name not in (".git", ".worktrees")]
         require(directory == root or "go.mod" not in files,
                 "MODULE_NESTED_GO_MODULE", str(directory.relative_to(root)))
+        # Threat model: this gate stops ACCIDENTAL boundary breaks by honest
+        # authors/agents, not a determined adversary. Close whole classes with
+        # blunt rules: no workspace files (go.work can splice in unscanned
+        # modules) and no non-Go compiled sources (assembly/cgo/syso can reach
+        # private symbols with no import or linkname).
+        require(not ({"go.work", "go.work.sum"} & set(files)),
+                "MODULE_GO_WORK_FORBIDDEN", str(directory.relative_to(root) / "go.work"))
         for name in [*dirs, *files]:
             reject_vendor_source_alias(directory / name)
         relative_parts = directory.relative_to(root).parts
@@ -265,9 +272,14 @@ def check_go(registry, root):
         if relative_parts and relative_parts[0] in ("work", "node_modules"):
             continue
         for file in files:
+            require(not file.endswith((".s", ".S", ".sx", ".c", ".cc", ".cpp", ".cxx", ".h", ".hh",
+                                       ".hpp", ".m", ".f", ".F", ".for", ".f90", ".syso", ".swig", ".swigcxx")),
+                    "MODULE_NON_GO_SOURCE", str((directory / file).relative_to(root)))
             if not file.endswith(".go"):
                 continue
             source = directory / file
+            require(not re.search(r'^\s*import\s*(?:\(\s*)?"C"', source.read_text(), re.M),
+                    "MODULE_NON_GO_SOURCE", str(source.relative_to(root)) + " (cgo)")
             for token in go_tokens.finditer(source.read_text()):
                 directive = re.match(r"//go:linkname(?:\s|$)", token.group())
                 vendored = relative_parts and relative_parts[0] == "vendor"
