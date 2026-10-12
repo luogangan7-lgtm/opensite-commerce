@@ -126,10 +126,11 @@ SHIPPING_DB=""
 TAX_DB=""
 CUSTOMERS_DB=""
 LEDGER_DB=""
+STOREFRONT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$STOREFRONT_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -618,6 +619,45 @@ if ! db "$LEDGER_DB" < tests/db_ledger.sql >/dev/null || ! db "$LEDGER_DB" < tes
  bad 'ledger constraints/role matrix after populated upgrade'
 else pass 'ledger upgrade preserves existing catalog/unconfigured tenant; explicit currency runtime posting and exact privileges pass'; fi
 admin -c "DROP DATABASE $LEDGER_DB" >/dev/null; LEDGER_DB=""
+
+# Public content capability is added only after all logical predecessors; the
+# same committed release/secret witnesses survive the forward role migration.
+storefront=(migrations/[0-9][0-9][0-9]_storefront_read.sql)
+[[ ${#storefront[@]} == 1 ]] || { echo 'FAIL: exactly one storefront read migration required' >&2; exit 1; }
+STOREFRONT_DB=storefront_upgrade_$$
+admin -c "CREATE DATABASE $STOREFRONT_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${storefront[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$STOREFRONT_DB" >/dev/null
+done
+db "$STOREFRONT_DB" < tests/fixtures/storefront_seed.sql >/dev/null
+before=$(db "$STOREFRONT_DB" -c "SELECT has_column_privilege('app_domain_resolver','app.page_revisions','document','SELECT')")
+[[ $before == f ]] || bad 'storefront predecessors unexpectedly grant page content'
+if red=$(db "$STOREFRONT_DB" < tests/db_storefront.sql 2>&1); then
+ bad 'storefront new SQL invariants unexpectedly pass before capability migration'
+elif [[ $red == *'permission denied for table site_releases'* ]]; then
+ pass 'storefront pre-migration negative: published content capability is absent (42501)'
+else bad "storefront pre-migration failed for an unexpected reason: $red"; fi
+{ echo 'BEGIN;'; cat "${storefront[0]}"; echo 'COMMIT;'; } | db "$STOREFRONT_DB" >/dev/null
+result=$(db "$STOREFRONT_DB" <<'SQL'
+BEGIN READ ONLY;
+SET LOCAL ROLE app_domain_resolver;
+SELECT set_config('app.public_hostname','localhost',true);
+SELECT 'STOREFRONT_UPGRADE='||(SELECT count(*) FROM app.site_releases)||'|'||
+ (SELECT count(*) FROM app.page_revisions)||'|'||
+ (SELECT count(*) FROM app.page_revisions WHERE document::text LIKE '%DRAFT%');
+COMMIT;
+SQL
+)
+[[ $result == *'STOREFRONT_UPGRADE=1|2|0'* ]] || bad "storefront populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${storefront[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$STOREFRONT_DB" >/dev/null
+done
+if ! db "$STOREFRONT_DB" < tests/db_storefront.sql >/dev/null || ! db "$STOREFRONT_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'storefront RLS/role matrix after populated upgrade'
+else pass 'storefront upgrade exposes current sealed pinned pages; draft witnesses stay hidden'; fi
+admin -c "DROP DATABASE $STOREFRONT_DB" >/dev/null; STOREFRONT_DB=""
 
 [[ $fail -eq 0 ]] || exit 1
 echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B and ledger upgrade gates'

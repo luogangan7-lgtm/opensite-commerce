@@ -1,0 +1,23 @@
+---
+/** Responsibility: accessible 404/502 states; dependencies: Shell/shared retry Button island.
+ * Callers: SSR loader/custom error routes; invariants: actual HTTP status and no backend error disclosure.
+ */
+import Shell from '../layouts/Shell.astro';
+import Retry from './Retry';
+import { copy } from '../lib/copy';
+const { status = 404 } = Astro.props as { status?: 404 | 502 };
+const ui = copy();
+Astro.response.status = status;
+Astro.response.headers.set('Cache-Control', 'no-store');
+const title = status === 404 ? ui.notFound : ui.unavailable;
+const description = status === 404 ? ui.notFoundDescription : ui.unavailableDescription;
+---
+<Shell title={title} description={description} noindex>
+  <section class="error-page" data-storefront-status={status}>
+    <h1>{title}</h1><p>{description}</p>
+    <div class="error-actions">
+      {status === 502 && <Retry label={ui.retry} client:load />}
+      <a href="/">{ui.returnHome}</a>
+    </div>
+  </section>
+</Shell>

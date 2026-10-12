@@ -53,7 +53,7 @@ func scope(op *openapi3.Operation) string {
 }
 
 func TestImplementedRouteContract(t *testing.T) {
-	server, err := bootstrap.New(bootstrap.Config{})
+	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{httpapi.StorefrontRoute(nil)}})
 	if err != nil {
 		t.Fatal(err)
 	}

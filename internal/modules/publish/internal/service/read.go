@@ -1,0 +1,85 @@
+// Package service validates and projects the public version-1 release snapshot.
+// Dependencies: publish contract + stdlib; callers: publish facade.
+// Invariants: no private/unknown keys or raw HTML; bounded collections and local links.
+package service
+
+import (
+	"bytes"
+	"encoding/json"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
+	"io"
+	"regexp"
+	"strings"
+	"unicode/utf8"
+)
+
+type manifest struct {
+	Version     int                   `json:"version"`
+	Locale      string                `json:"locale"`
+	Title       string                `json:"title"`
+	Description string                `json:"description"`
+	Navigation  []contract.Navigation `json:"navigation"`
+	Products    []contract.Product    `json:"products"`
+}
+
+var decimal = regexp.MustCompile(`^(0|[1-9][0-9]{0,37})$`)
+var currency = regexp.MustCompile(`^[A-Z]{3}$`)
+var localePattern = regexp.MustCompile(`^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$`)
+
+func decode(raw []byte, v any) error {
+	if len(raw) > 1<<20 {
+		return contract.ErrUnavailable
+	}
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.DisallowUnknownFields()
+	if err := d.Decode(v); err != nil {
+		return contract.ErrUnavailable
+	}
+	if d.Decode(new(any)) != io.EOF {
+		return contract.ErrUnavailable
+	}
+	return nil
+}
+func text(v string, max int, required bool) bool {
+	return utf8.ValidString(v) && len(v) <= max && !strings.ContainsRune(v, 0) && (!required || strings.TrimSpace(v) != "")
+}
+func Project(siteID, releaseID, host, locale string, rawManifest, rawPages []byte) (contract.Site, error) {
+	fail := func() (contract.Site, error) { return contract.Site{}, contract.ErrUnavailable }
+	var m manifest
+	var pages []contract.Page
+	if decode(rawManifest, &m) != nil || decode(rawPages, &pages) != nil {
+		return fail()
+	}
+	if m.Version != 1 || m.Locale != locale || !localePattern.MatchString(m.Locale) || !text(m.Title, 300, true) || !text(m.Description, 2000, false) || m.Navigation == nil || m.Products == nil || pages == nil || len(m.Navigation) > 50 || len(m.Products) > 500 || len(pages) > 100 {
+		return fail()
+	}
+	targets := map[string]bool{"/": true, "/products": true}
+	seenPages := map[string]bool{}
+	seenProducts := map[string]bool{}
+	for _, p := range pages {
+		if !contract.SafeCMSPath(p.Path) || seenPages[p.Path] || !text(p.Title, 300, true) || !text(p.Description, 2000, false) || p.Blocks == nil || len(p.Blocks) > 200 {
+			return fail()
+		}
+		seenPages[p.Path] = true
+		targets[p.Path] = true
+		for _, b := range p.Blocks {
+			if (b.Kind != "heading" && b.Kind != "paragraph") || !text(b.Text, 10000, true) {
+				return fail()
+			}
+		}
+	}
+	for _, p := range m.Products {
+		path := "/products/" + p.Slug
+		if !text(p.ID, 128, true) || !text(p.Name, 300, true) || !text(p.Description, 10000, false) || !contract.SafePath(path) || strings.Contains(p.Slug, "/") || p.Slug == "" || seenProducts[p.Slug] || !decimal.MatchString(p.UnitAmount) || !currency.MatchString(p.Currency) {
+			return fail()
+		}
+		seenProducts[p.Slug] = true
+		targets[path] = true
+	}
+	for _, n := range m.Navigation {
+		if !text(n.Label, 200, true) || !contract.SafePath(n.Href) || !targets[n.Href] {
+			return fail()
+		}
+	}
+	return contract.Site{SiteID: siteID, ReleaseID: releaseID, Hostname: host, Locale: m.Locale, Title: m.Title, Description: m.Description, Navigation: m.Navigation, Pages: pages, Products: m.Products}, nil
+}

@@ -6,14 +6,15 @@ export const BASELINES = 'tests/frontend/baselines';
 export function filesAt(directory: string): string[] {
   return readdirSync(directory).sort().flatMap(name => {
     const path = `${directory}/${name}`;
-    if (['node_modules', 'dist', 'dist-gallery', 'baselines'].includes(name)) return [];
+    if (['node_modules', 'dist', 'dist-gallery', '.astro', 'baselines'].includes(name)) return [];
     return statSync(path).isDirectory() ? filesAt(path) : [path];
   });
 }
 export function sha256(path: string) { return createHash('sha256').update(readFileSync(path)).digest('hex'); }
 export function sourceFingerprint() {
   const inputs = ['package.json', 'bun.lock', 'tsconfig.json', 'playwright.config.ts', 'scripts/check_frontend.sh',
-    ...['packages', 'web/admin', 'scripts/frontend', 'tests/frontend'].flatMap(filesAt)
+    ...['packages', 'web/admin', 'web/storefront', 'scripts/frontend', 'tests/frontend'].flatMap(filesAt),
+    'tests/fixtures/storefront_seed.sql', 'scripts/start_storefront_api_e2e.sh', 'scripts/seed_storefront.sh', 'scripts/start_storefront_ssr.sh'
   ].filter(path => !path.endsWith('.md') && !path.endsWith('provenance.json')).sort();
   return createHash('sha256').update(inputs.map(path => `${path}\0${sha256(path)}\n`).join('')).digest('hex');
 }
