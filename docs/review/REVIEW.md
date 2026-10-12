@@ -4,6 +4,22 @@
 - 审查方式：Claude 统筹，3 路 Codex 只读子审查（A 事实/基线 · C 需求/模块/路线 · D 安全/运维/治理），原始输出在 [`raw/`](raw/)。B 路（SQL/事务）因 Codex 模型容量报错未跑成，改由 Claude 完成。
 - 证据级别：**E1**。只审了文档，没有可运行的代码。下面所有「验收 gate」都还**没有执行（NOT_RUN）**。例外：F-03 和 F-04 已在 PostgreSQL 18.6 一次性容器里复现了 bug 并验证了修复（**E2**，[`repro/p0-ddl.sql`](repro/p0-ddl.sql) → [`repro/p0-ddl.pg18.log`](repro/p0-ddl.pg18.log)）。
 
+## 状态更新 2026-10-12（找到了完整来源）
+
+owner 提供了原始 ChatGPT 对话（`6acb3610`，51 轮）。从中取回了以下内容：
+
+- **V0.1 → V1.0 前置审查全文**：12 篇，约 28 万字，已放进 [`docs/history/`](../history/README.md)。
+- **3 个代码包和 4 份报告**：已取回，报告和校验和在 [`docs/history/artifacts/`](../history/artifacts/)。
+
+**F-01 改判：基线确实存在，但从未在真实数据库上验收。**
+- 最新一版是 `opensite-commerce-pr01-acceptance-gated.zip`，sha256 `c0be392b…`，共 56 个文件。内容包括 Go 1.23、迁移 001–009、5 个 SQL 行为测试、sqlc 配置、pgx 适配器、OpenAPI（12 个 operation），以及 ADR-070/071。
+- 它自带的验收报告写明：PG18 迁移、RLS/角色测试、`sqlc generate`、pgx 编译这几项全是 **BLOCKED / NOT RUN**（ChatGPT 沙箱里没有 PG、Docker、sqlc，也没有网络）。只有离线检查跑过，包括 `go test -race`、`go vet`、静态契约检查和假 psql 编排测试。
+- 代码还**没有导入本仓库**：导入要经过安全审查和真实 PG18 验收，见 PR-01A 卡。
+
+**F-02 已关闭**：附件包已全部找回。
+
+**F-22 先取默认值**：代码包里自带 Apache-2.0 LICENSE。代码随 PR-01A 导入时就沿用这个许可证，owner 想换可以另提。
+
 ## 结论
 
 大方向成立，可以作为 V1 的设计输入：模块化单体、PostgreSQL 作唯一事实源、pgx+sqlc 不用 ORM、River、默认 LocalFS、外部能力走 adapter、可选基础设施不作默认依赖。
