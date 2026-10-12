@@ -38,13 +38,20 @@ BEGIN
   EXECUTE format('REVOKE %I FROM app_customer_auth GRANTED BY %I CASCADE',m.parent_name,m.grantor_name);
  END LOOP;
  -- Inbound memberships are NOT stripped: dedicated customer-auth logins are
- -- provisioned after this migration (possibly for another database on this
+ -- provisioned out-of-band (deploy/runtime-roles.md: one OpenSite database per
  -- cluster) and are legitimate. Only other repository app_* roles never are.
  FOR m IN SELECT child.rolname child_name,grantor.rolname grantor_name
   FROM pg_auth_members a JOIN pg_roles child ON child.oid=a.member
   JOIN pg_roles grantor ON grantor.oid=a.grantor
   WHERE a.roleid='app_customer_auth'::regrole AND child.rolname LIKE 'app\_%' LOOP
   EXECUTE format('REVOKE app_customer_auth FROM %I GRANTED BY %I CASCADE',m.child_name,m.grantor_name);
+ END LOOP;
+ -- Preserved members keep the capability, never the right to delegate it.
+ FOR m IN SELECT child.rolname child_name,grantor.rolname grantor_name
+  FROM pg_auth_members a JOIN pg_roles child ON child.oid=a.member
+  JOIN pg_roles grantor ON grantor.oid=a.grantor
+  WHERE a.roleid='app_customer_auth'::regrole AND a.admin_option LOOP
+  EXECUTE format('REVOKE ADMIN OPTION FOR app_customer_auth FROM %I GRANTED BY %I CASCADE',m.child_name,m.grantor_name);
  END LOOP;
  REVOKE ALL ON SCHEMA app FROM app_customer_auth;
  REVOKE ALL ON ALL TABLES IN SCHEMA app FROM app_customer_auth;
@@ -88,6 +95,11 @@ BEGIN
   AND (pg_has_role(oid,'app_customer_auth'::regrole,'MEMBER')
    OR pg_has_role(oid,'app_customer_auth'::regrole,'SET')
    OR pg_has_role(oid,'app_customer_auth'::regrole,'USAGE'));
+ IF residual IS NULL THEN
+  SELECT string_agg(format('%s (admin option)',rolname),', ' ORDER BY rolname) INTO residual
+   FROM pg_roles WHERE NOT rolsuper
+   AND pg_has_role(oid,'app_customer_auth'::regrole,'MEMBER WITH ADMIN OPTION');
+ END IF;
  IF residual IS NOT NULL THEN
   RAISE EXCEPTION 'CUSTOMERS_AUTH_FORBIDDEN_PATH: % can still reach app_customer_auth',residual
    USING HINT='Remove the intermediate role membership chain (e.g. a legacy bridge group), then rerun.';
@@ -174,9 +186,24 @@ CREATE TABLE app.buyer_roles (
  PRIMARY KEY(tenant_id,code),
  CONSTRAINT buyer_roles_code_check CHECK(code IN ('purchaser','approver','admin'))
 );
+-- Trusted tenant provisioners already manage tenant-local reference data.
+-- INVOKER deliberately keeps that authority: a less-privileged future creator
+-- must acquire explicit provisioning rights, or the whole tenant insert fails.
+CREATE FUNCTION app.buyer_roles_seed_for_tenant() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+BEGIN
+ INSERT INTO app.buyer_roles(tenant_id,code)
+ VALUES(NEW.id,'purchaser'),(NEW.id,'approver'),(NEW.id,'admin');
+ RETURN NEW;
+END $fn$;
+-- Trigger first, then backfill: a tenant inserted at any point is seen by one or
+-- both (never neither); ON CONFLICT absorbs the overlap.
+CREATE TRIGGER buyer_roles_seed_for_tenant AFTER INSERT ON app.tenants
+FOR EACH ROW EXECUTE FUNCTION app.buyer_roles_seed_for_tenant();
 INSERT INTO app.buyer_roles(tenant_id,code)
  SELECT t.id,r.code FROM app.tenants t CROSS JOIN
-  (VALUES('purchaser'),('approver'),('admin')) AS r(code);
+  (VALUES('purchaser'),('approver'),('admin')) AS r(code)
+ ON CONFLICT DO NOTHING;
 CREATE TABLE app.buyer_company_members (
  tenant_id uuid NOT NULL,
  buyer_company_id uuid NOT NULL,
@@ -238,17 +265,6 @@ GRANT INSERT(tenant_id,id,email,display_name) ON app.customers TO app_customer_a
 GRANT INSERT(tenant_id,customer_id,password_hash) ON app.customer_credentials TO app_customer_auth;
 GRANT UPDATE(password_hash) ON app.customer_credentials TO app_customer_auth;
 
--- Trusted tenant provisioners already manage tenant-local reference data.
--- INVOKER deliberately keeps that authority: a less-privileged future creator
--- must acquire explicit provisioning rights, or the whole tenant insert fails.
-CREATE FUNCTION app.buyer_roles_seed_for_tenant() RETURNS trigger
-LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
-BEGIN
- INSERT INTO app.buyer_roles(tenant_id,code)
- VALUES(NEW.id,'purchaser'),(NEW.id,'approver'),(NEW.id,'admin');
- RETURN NEW;
-END $fn$;
-
 -- Password changes update metadata without giving the authenticator permission
 -- to choose timestamps. The trigger condition excludes identical-hash updates.
 CREATE FUNCTION app.customer_credentials_touch_updated_at() RETURNS trigger
@@ -268,8 +284,6 @@ BEGIN
  END LOOP;
 END $trigger_capabilities$;
 
-CREATE TRIGGER buyer_roles_seed_for_tenant AFTER INSERT ON app.tenants
-FOR EACH ROW EXECUTE FUNCTION app.buyer_roles_seed_for_tenant();
 CREATE TRIGGER customer_credentials_touch_updated_at
 BEFORE UPDATE OF password_hash ON app.customer_credentials
 FOR EACH ROW WHEN(OLD.password_hash IS DISTINCT FROM NEW.password_hash)
