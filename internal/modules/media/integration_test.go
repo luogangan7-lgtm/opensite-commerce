@@ -52,7 +52,7 @@ func TestMediaPostgresHTTP(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	runner, e := pgxadapter.Open(ctx, dsn)
+	runner, e := pgxadapter.OpenQueryRunner(ctx, dsn)
 	if e != nil {
 		t.Fatal(e)
 	}

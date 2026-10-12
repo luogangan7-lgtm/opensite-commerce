@@ -17,7 +17,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 	}
 	if url := os.Getenv("OPENSITE_DATABASE_URL"); url != "" {
-		runner, err := pgxadapter.Open(ctx, url)
+		runner, err := pgxadapter.OpenQueryRunner(ctx, url)
 		if err != nil {
 			closeRuntime()
 			return Config{}, nil, err
@@ -26,7 +26,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		config.Catalog.Run = runner.RunAuthorized
 	}
 	if url := os.Getenv("OPENSITE_MEDIA_DATABASE_URL"); url != "" {
-		runner, err := pgxadapter.Open(ctx, url)
+		runner, err := pgxadapter.OpenQueryRunner(ctx, url)
 		if err != nil {
 			closeRuntime()
 			return Config{}, nil, err

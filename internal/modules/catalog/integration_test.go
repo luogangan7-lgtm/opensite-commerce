@@ -40,7 +40,7 @@ func pgRouter(t *testing.T) (*httpapi.Router, *httpapi.Router) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	runner, err := pgxadapter.Open(ctx, dsn)
+	runner, err := pgxadapter.OpenQueryRunner(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}

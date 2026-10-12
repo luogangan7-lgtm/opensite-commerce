@@ -13,7 +13,7 @@ import (
 
 type QueryRunner struct{}
 
-func Open(context.Context, string) (*QueryRunner, error) {
+func OpenQueryRunner(context.Context, string) (*QueryRunner, error) {
 	return nil, errors.New("database configuration requires the pgx build tag")
 }
 func (*QueryRunner) Close() {}
