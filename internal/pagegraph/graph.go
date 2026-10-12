@@ -3,6 +3,7 @@
 package pagegraph
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +27,38 @@ type Node struct {
 	Props     json.RawMessage     `json:"props"`
 	Binding   *Binding            `json:"binding,omitempty"`
 	Slots     map[string][]string `json:"slots"`
+}
+
+// UnmarshalJSON keeps unknown-field rejection and rejects explicit nulls where
+// api/openapi.yaml ComponentNode requires an object or array: decoding null
+// into a pointer/map/slice is otherwise indistinguishable from "absent"/empty.
+func (n *Node) UnmarshalJSON(b []byte) error {
+	type alias Node
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	var a alias
+	if err := d.Decode(&a); err != nil {
+		return err
+	}
+	var raw struct {
+		Props   json.RawMessage            `json:"props"`
+		Binding json.RawMessage            `json:"binding"`
+		Slots   map[string]json.RawMessage `json:"slots"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	isNull := func(m json.RawMessage) bool { return bytes.Equal(bytes.TrimSpace(m), []byte("null")) }
+	if isNull(raw.Props) || isNull(raw.Binding) {
+		return errors.New("props/binding must not be null")
+	}
+	for slot, v := range raw.Slots {
+		if isNull(v) {
+			return fmt.Errorf("slot %q must be an array", slot)
+		}
+	}
+	*n = Node(a)
+	return nil
 }
 
 type Document struct {

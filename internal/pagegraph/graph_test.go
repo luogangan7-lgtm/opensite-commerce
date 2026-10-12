@@ -107,3 +107,21 @@ func TestSlotsRequired(t *testing.T) {
 		t.Fatal("should reject node without slots object")
 	}
 }
+func TestExplicitNullRejected(t *testing.T) {
+	doc := func(root string) string {
+		return `{"schema_version":1,"root_id":"root","nodes":{"root":` + root + `}}`
+	}
+	if err := ValidateJSON([]byte(doc(`{"component":"core.page-layout@1","props":{},"slots":{"main":[]}}`))); err != nil {
+		t.Fatalf("baseline should pass: %v", err)
+	}
+	for _, root := range []string{
+		`{"component":"core.page-layout@1","props":{},"binding":null,"slots":{"main":[]}}`,
+		`{"component":"core.page-layout@1","props":{},"slots":{"main":null}}`,
+		`{"component":"core.page-layout@1","props":null,"slots":{"main":[]}}`,
+		`{"component":"core.page-layout@1","props":{},"slots":{"main":[]},"extra":1}`,
+	} {
+		if ValidateJSON([]byte(doc(root))) == nil {
+			t.Fatalf("should reject %s", root)
+		}
+	}
+}
