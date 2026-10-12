@@ -16,10 +16,14 @@ async function focusFits(control: Locator, wrapper: Locator) {
   const controlBox = await control.boundingBox();
   const snapshotBox = await wrapper.boundingBox();
   if (!controlBox || !snapshotBox) throw new Error('Focused control and snapshot must have geometry');
-  const extent = await control.evaluate(element => {
+  const outline = await control.evaluate(element => {
     const style = getComputedStyle(element);
-    return parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+    return { style: style.outlineStyle, width: parseFloat(style.outlineWidth), offset: parseFloat(style.outlineOffset) };
   });
+  expect(outline.style).not.toBe('none');
+  expect(outline.style).not.toBe('hidden');
+  expect(outline.width).toBeGreaterThan(0);
+  const extent = outline.width + outline.offset;
   expect(extent).toBeGreaterThan(0);
   expect(controlBox.x - extent).toBeGreaterThanOrEqual(snapshotBox.x);
   expect(controlBox.x + controlBox.width + extent).toBeLessThanOrEqual(snapshotBox.x + snapshotBox.width);
@@ -111,6 +115,24 @@ test('keyboard dialog traps focus, closes with Escape and restores opener', asyn
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
   await expect(trigger).toBeFocused();
+});
+
+test('queued close event cannot dismiss a reopened native dialog', async ({ page }) => {
+  await catalog(page);
+  await page.getByTestId('dialog-trigger').click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.evaluate(async element => {
+    const native = element as HTMLDialogElement;
+    const closed = new Promise<void>(resolve => native.addEventListener('close', () => resolve(), { once: true }));
+    native.close();
+    native.showModal();
+    await closed;
+  });
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate(element => element instanceof HTMLDialogElement && element.open && element.matches(':modal'))).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
 });
 
 test('native controls expose actual loading, checked, error and help states', async ({ page }) => {

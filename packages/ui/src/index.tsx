@@ -200,7 +200,8 @@ export function Dialog({ open, onOpenChange, title, description, children }: Dia
       event.preventDefault();
       changeRef.current(false);
     };
-    const handleClose = () => changeRef.current(false);
+    // Native close events are queued: an earlier cleanup must not dismiss a reopened modal.
+    const handleClose = () => { if (!dialog.open) changeRef.current(false); };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Tab') return;
       const elements = focusableElements(dialog);

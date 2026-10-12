@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BASELINES, sha256 } from './baseline-provenance';
+import { assertProducerWorkflow } from './workflow-provenance';
 
 const repository = 'luogangan7-lgtm/opensite-commerce';
 const provenance = JSON.parse(readFileSync(`${BASELINES}/provenance.json`, 'utf8'));
@@ -20,6 +21,9 @@ async function api(path: string, raw = false) {
 const runId = match[1];
 const run = await api(`actions/runs/${runId}`);
 if (run.head_sha !== provenance.sourceSha || run.event !== 'push' || run.repository.full_name !== repository) throw new Error('Golden source SHA does not match CI run');
+const workflow = await api(`contents/.github/workflows/checks.yml?ref=${run.head_sha}`);
+if (workflow.encoding !== 'base64') throw new Error('Golden producer workflow source unavailable');
+assertProducerWorkflow(run.path, Buffer.from(workflow.content, 'base64').toString('utf8'));
 const jobs = await api(`actions/runs/${runId}/jobs?per_page=100`);
 if (!jobs.jobs.some((job: { name: string; conclusion: string }) => job.name === 'frontend-baselines' && job.conclusion === 'success')) throw new Error('Golden CI producer did not succeed');
 const artifacts = await api(`actions/runs/${runId}/artifacts?per_page=100`);
