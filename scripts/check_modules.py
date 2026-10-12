@@ -230,10 +230,19 @@ def check_go(registry, root):
     # its inventory, including vendor and unused replacements. Package owners
     # come from resolved directories, not a renameable import-path prefix.
     modules = {module["name"]: module for module in registry["modules"]}
-    owned_paths = {(root / path).resolve(): name for name, module in modules.items()
-                   for path in [module["go_path"], *module.get("legacy_go_paths", [])]}
-    require(all(path.is_relative_to(root) for path in owned_paths),
-            "MODULE_REGISTRY_INVALID", "Go path resolves outside repository")
+    paths = [(root / path, name) for name, module in modules.items()
+             for path in [module["go_path"], *module.get("legacy_go_paths", [])]]
+    require(all(path.resolve() == path for path, _ in paths),
+            "MODULE_REGISTRY_INVALID", "registered Go roots must be canonical repository directories")
+    owned_paths = dict(paths)
+
+    def reject_vendor_source_alias(path):
+        # Vendored package names and linker targets can both be foreign while
+        # the compiled directory or individual Go file is our private source.
+        require(not path.is_relative_to(root / "vendor") or
+                not any(path.resolve().is_relative_to(owned) for owned in owned_paths),
+                "MODULE_PRIVATE_SOURCE_ALIAS", "vendor source resolves into a business module")
+
     env = dict(os.environ, GOPROXY="off", GOSUMDB="off", GOWORK="off")
     metadata = subprocess.run(["go", "mod", "edit", "-json"], cwd=root, env=env,
                               capture_output=True, text=True, timeout=90)
@@ -248,6 +257,8 @@ def check_go(registry, root):
             dirs[:] = [name for name in dirs if name not in (".git", ".worktrees")]
         require(directory == root or "go.mod" not in files,
                 "MODULE_NESTED_GO_MODULE", str(directory.relative_to(root)))
+        for name in [*dirs, *files]:
+            reject_vendor_source_alias(directory / name)
         relative_parts = directory.relative_to(root).parts
         # Uncompiled receipts have no source authority; nested modules above
         # are still forbidden. Compiled artifacts are rejected below.
@@ -295,7 +306,12 @@ def check_go(registry, root):
             # Excluded receipts are harmless only when not compiled/imported.
             # The actual Go stream also exposes local replacements skipped by
             # ./... and lets us reject artifact bridges or a second go.mod.
-            directory = Path(package.get("Dir", "/")).resolve()
+            lexical_directory = Path(package.get("Dir", "/"))
+            reject_vendor_source_alias(lexical_directory)
+            for field in ("GoFiles", "CgoFiles", "TestGoFiles", "XTestGoFiles"):
+                for name in package.get(field, []):
+                    reject_vendor_source_alias(lexical_directory / name)
+            directory = lexical_directory.resolve()
             module = package.get("Module") or {}
             reject_local_replace(module.get("Replace"))
             module_directory = Path(module.get("Dir", "/")).resolve()

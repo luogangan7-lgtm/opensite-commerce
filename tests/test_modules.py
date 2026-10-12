@@ -108,22 +108,40 @@ class GovernanceTests(unittest.TestCase):
     def test_vendor_private_symlink_linkname_red(self):
         self.vendor_private_bridge("internal/modules/b/internal/store", alias=True)
 
-    def vendor_private_bridge(self, private_directory, alias=False):
+    def test_vendor_foreign_directory_private_alias_red(self):
+        self.vendor_private_bridge("internal/modules/b/internal/store", vendor_alias="directory")
+
+    def test_vendor_foreign_file_private_alias_red(self):
+        self.vendor_private_bridge("internal/modules/b/internal/store", vendor_alias="file")
+
+    def vendor_private_bridge(self, private_directory, alias=False, vendor_alias=None):
         self.source(private_directory + "/store.go",
                     "package store\nfunc secret() int { return 713 }\n")
-        target_package = private_directory
+        target_package = "example.test/shop/" + private_directory
         if alias:
             (self.root / "internal/modules/a/alias").symlink_to(
                 self.root / private_directory, target_is_directory=True)
-            target_package = "internal/modules/a/alias"
+            target_package = "example.test/shop/internal/modules/a/alias"
+        if vendor_alias:
+            target = self.root / "vendor/x.test/privatealias"
+            target.parent.mkdir(parents=True)
+            if vendor_alias == "directory":
+                target.symlink_to(self.root / private_directory, target_is_directory=True)
+            else:
+                target.mkdir()
+                (target / "store.go").symlink_to(self.root / private_directory / "store.go")
+            target_package = "x.test/privatealias"
         self.source("internal/modules/b/module.go",
-                    f'package b\nimport _ "example.test/shop/{target_package}"\n')
+                    f'package b\nimport _ "{target_package}"\n')
         self.source("vendor/x.test/bridge/bridge.go",
-                    f'package bridge\nimport _ "unsafe"\n//go:linkname hidden example.test/shop/{target_package}.secret\nfunc hidden() int\nfunc Read() int {{ return hidden() }}\n')
+                    f'package bridge\nimport _ "unsafe"\n//go:linkname hidden {target_package}.secret\nfunc hidden() int\nfunc Read() int {{ return hidden() }}\n')
         self.source("vendor/modules.txt",
-                    "# x.test/bridge v0.0.0\n## explicit; go 1.27.2\nx.test/bridge\n")
+                    "# x.test/bridge v0.0.0\n## explicit; go 1.27.2\nx.test/bridge\n" +
+                    ("# x.test/privatealias v0.0.0\n## explicit; go 1.27.2\nx.test/privatealias\n" if vendor_alias else ""))
         with (self.root / "go.mod").open("a") as output:
             output.write("\nrequire x.test/bridge v0.0.0\n")
+            if vendor_alias:
+                output.write("require x.test/privatealias v0.0.0\n")
         self.source("internal/modules/a/module.go",
                     'package a\nimport "x.test/bridge"\nfunc Read() int { return bridge.Read() }\n')
         self.source("cmd/probe/main.go",
@@ -133,7 +151,14 @@ class GovernanceTests(unittest.TestCase):
                                  env=dict(os.environ, GOPROXY="off", GOSUMDB="off"), timeout=90)
         self.assertEqual(witness.returncode, 0, witness.stderr)
         self.assertEqual(witness.stdout.strip(), "713")
-        self.assert_red("MODULE_LINKNAME_FORBIDDEN")
+        self.assert_red("MODULE_PRIVATE_SOURCE_ALIAS" if vendor_alias else "MODULE_LINKNAME_FORBIDDEN")
+
+    def test_registered_go_root_cannot_alias_private_directory(self):
+        (self.root / "internal/modules/a/module.go").unlink()
+        (self.root / "internal/modules/a").rmdir()
+        (self.root / "internal/modules/a").symlink_to(
+            self.root / "internal/modules/b/internal/store", target_is_directory=True)
+        self.assert_red("MODULE_REGISTRY_INVALID")
 
     def test_real_directory_private_alias_red(self):
         # A same-module import name can hide a symlink to another module's
