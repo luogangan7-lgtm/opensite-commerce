@@ -181,7 +181,15 @@ func (s *Store) Remove(key string) error {
 		return err
 	}
 	// Retry the directory sync even after an earlier unlink already succeeded.
-	return s.syncDir(filepath.Dir(path)) // make the acknowledged delete durable
+	// A missing hash dir means the key never existed there: sync the nearest
+	// existing ancestor (originals always exists) and keep Remove idempotent.
+	originals := filepath.Join(s.root, "originals")
+	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+		err = s.syncDir(dir) // make the acknowledged delete durable
+		if !errors.Is(err, os.ErrNotExist) || dir == originals {
+			return err
+		}
+	}
 }
 func validKey(key string) bool {
 	if len(key) != 2+1+2+1+64 {

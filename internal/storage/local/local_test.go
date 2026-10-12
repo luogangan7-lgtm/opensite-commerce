@@ -202,3 +202,29 @@ func TestNewCreatesNestedRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRemoveNeverStoredKeyIsIdempotent(t *testing.T) {
+	key := "00/00/" + strings.Repeat("0", 64)
+	for _, tc := range []struct {
+		name string
+		mk   string // hash dir that already exists under originals, if any
+	}{{"empty store", ""}, {"only first-level dir", "00"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			s, err := New(root, 16)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.mk != "" {
+				if err := os.Mkdir(filepath.Join(root, "originals", tc.mk), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := 0; i < 2; i++ {
+				if err := s.Remove(key); err != nil {
+					t.Fatalf("Remove #%d: %v", i+1, err)
+				}
+			}
+		})
+	}
+}
