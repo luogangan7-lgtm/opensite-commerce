@@ -13,6 +13,7 @@ sql:
       - "migrations/010_security_hardening.sql"
       - "migrations/011_platform_reliability.sql"
       - "migrations/012_inventory.sql"
+      - "migrations/013_money_pricing.sql"
     queries: "queries"
     gen:
       go:

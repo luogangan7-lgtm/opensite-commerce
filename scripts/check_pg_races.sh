@@ -361,6 +361,30 @@ echo "race expiry sweep skips locked oldest: expired=$SWEPT (expected 1)"
 got=$(sql <<<"SELECT string_agg(state,',' ORDER BY expires_at) FROM app.inventory_reservations WHERE tenant_id='$T';")
 echo "race expiry sweep states: $got (expected active,expired)"
 [[ $got == 'active,expired' ]] || fail=1
+# Pricing's unique tier must survive two trusted writers on separate connections.
+# No numbered migration is assumed; this is an invariant of the pricing tables.
+read -r T L K <<<"$(sql <<'SQL'
+INSERT INTO app.tenants(name) VALUES('pricing-race') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','R') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+ VALUES(:'t',:'p','R','default') RETURNING id AS k \gset
+INSERT INTO app.price_lists(tenant_id,currency,status,starts_at)
+ VALUES(:'t','USD','active',now()) RETURNING id AS l \gset
+SELECT :'t'||' '||:'l'||' '||:'k';
+SQL
+)"
+insert="INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) VALUES('$T','$L','$K',1,100);"
+gate_close 17
+tx pricing_first postgres "$T" "$insert $(park 17)" &
+await pricing_first advisory
+tx pricing_second postgres "$T" "$insert" &
+await pricing_second "${ROWLOCK[@]}"
+gate_open 17; wait
+expect pricing_first ok; expect pricing_second price_entries_tier_unique
+got=$(sql <<<"SELECT count(*) FROM app.price_entries WHERE tenant_id='$T' AND price_list_id='$L' AND sku_id='$K' AND min_quantity=1;")
+[[ $got == 1 ]] || { echo "FAIL: pricing race persisted $got duplicate tiers"; fail=1; }
+echo "pricing duplicate-tier race: $got committed tier (expected 1)"
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
+echo 'PASS: pricing duplicate-tier race keeps one committed tier'
