@@ -1,0 +1,16 @@
+{
+  "name": "@opensite/admin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@opensite/ui": "workspace:*",
+    "@opensite/design-tokens": "workspace:*",
+    "@opensite/component-contracts": "workspace:*",
+    "@fontsource/inter": "5.3.0",
+    "@tanstack/react-query": "5.104.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router": "8.4.0"
+  }
+}

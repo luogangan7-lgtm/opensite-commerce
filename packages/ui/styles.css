@@ -1,0 +1,163 @@
+/* Responsibility: token-only base UI styling. Dependencies: @opensite/design-tokens.
+ * Callers: @opensite/ui consumers. Invariants: logical geometry, visible states, no business styles. */
+.os-button,
+.os-input,
+.os-select,
+.os-checkbox,
+.os-field,
+.os-badge,
+.os-card,
+.os-table,
+.os-empty-state,
+.os-dialog {
+  box-sizing: border-box;
+  font-family: var(--font-family);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-body);
+  color: var(--color-text);
+}
+
+.os-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-block-size: var(--control-size-md);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  text-align: center;
+  transition: background-color var(--duration-fast), border-color var(--duration-fast);
+}
+.os-button--primary { background: var(--color-brand); color: var(--color-on-brand); }
+.os-button--primary:hover:not(:disabled) { background: var(--color-brand-hover); }
+.os-button--secondary { background: var(--color-surface); border-color: var(--color-border); }
+.os-button--secondary:hover:not(:disabled),
+.os-button--ghost:hover:not(:disabled) { background: var(--color-canvas); border-color: var(--color-brand); }
+.os-button--ghost { background: transparent; color: var(--color-brand); }
+.os-button--danger { background: var(--color-danger-bg); border-color: var(--color-danger); color: var(--color-danger); }
+.os-button--danger:hover:not(:disabled) { background: var(--color-danger); color: var(--color-on-brand); }
+.os-button--sm { min-block-size: var(--control-size-sm); padding-block: var(--space-1); padding-inline: var(--space-3); font-size: var(--font-size-sm); }
+.os-button--lg { min-block-size: var(--control-size-lg); padding-block: var(--space-3); padding-inline: var(--space-6); font-size: var(--font-size-lg); }
+.os-button:disabled,
+.os-input:disabled,
+.os-select:disabled { background: var(--color-disabled-bg); color: var(--color-disabled); border-color: var(--color-border); cursor: not-allowed; }
+.os-button[aria-busy="true"] { cursor: progress; }
+
+.os-button:focus-visible,
+.os-input:focus-visible,
+.os-select:focus-visible,
+.os-checkbox input:focus-visible,
+.os-table-scroll:focus-visible,
+.os-dialog:focus-visible {
+  outline: var(--focus-width) solid var(--color-brand);
+  outline-offset: var(--focus-offset);
+}
+
+.os-input,
+.os-select {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: var(--space-0);
+  min-block-size: var(--control-size-md);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  caret-color: var(--color-brand);
+}
+.os-input:hover:not(:disabled),
+.os-select:hover:not(:disabled) { border-color: var(--color-muted); }
+.os-input::placeholder { color: var(--color-muted); opacity: 1; }
+.os-input[aria-invalid="true"],
+.os-select[aria-invalid="true"] { border-color: var(--color-danger); }
+.os-input::selection,
+.os-dialog ::selection,
+.os-card ::selection,
+.os-table ::selection { background: var(--color-brand); color: var(--color-on-brand); }
+
+.os-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-block-size: var(--control-size-md);
+  cursor: pointer;
+}
+.os-checkbox input {
+  flex-shrink: 0;
+  inline-size: var(--space-5);
+  block-size: var(--space-5);
+  margin-block: var(--space-0);
+  margin-inline: var(--space-0);
+  accent-color: var(--color-brand);
+}
+.os-checkbox:has(input:disabled) { color: var(--color-disabled); cursor: not-allowed; }
+.os-checkbox span { overflow-wrap: anywhere; }
+.os-field { display: grid; gap: var(--space-2); min-inline-size: var(--space-0); }
+.os-field__label { font-weight: var(--font-weight-medium); }
+.os-field__help,
+.os-field__error { margin-block: var(--space-0); margin-inline: var(--space-0); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
+.os-field__help { color: var(--color-muted); }
+.os-field__error { color: var(--color-danger); }
+
+.os-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+}
+.os-badge--neutral { background: var(--color-canvas); color: var(--color-text); }
+.os-badge--success { background: var(--color-success-bg); color: var(--color-success); }
+.os-badge--warning { background: var(--color-warning-bg); color: var(--color-warning); }
+.os-badge--danger { background: var(--color-danger-bg); color: var(--color-danger); }
+.os-badge--info { background: var(--color-info-bg); color: var(--color-info); }
+
+.os-card {
+  min-inline-size: var(--space-0);
+  padding-block: var(--space-6);
+  padding-inline: var(--space-6);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+.os-card__title { margin-block: var(--space-0) var(--space-4); font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); line-height: var(--line-height-heading); }
+.os-table-scroll { max-inline-size: 100%; overflow-x: auto; scrollbar-color: var(--color-muted) var(--color-canvas); }
+.os-table { inline-size: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; text-align: start; }
+.os-table caption { padding-block: var(--space-0) var(--space-3); text-align: start; font-weight: var(--font-weight-semibold); }
+.os-table th,
+.os-table td { padding-block: var(--space-3); padding-inline: var(--space-4); border-block-end: var(--border-width) solid var(--color-border); overflow-wrap: anywhere; }
+.os-table th { background: var(--color-canvas); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); }
+.os-table__state { padding-block: var(--space-8); color: var(--color-muted); text-align: center; }
+.os-empty-state { padding-block: var(--space-8); padding-inline: var(--space-4); text-align: center; }
+.os-empty-state h3 { margin-block: var(--space-0) var(--space-2); font-size: var(--font-size-lg); line-height: var(--line-height-heading); }
+.os-empty-state p { margin-block: var(--space-0); margin-inline: var(--space-0); color: var(--color-muted); overflow-wrap: anywhere; }
+.os-empty-state__action { margin-block-start: var(--space-5); }
+
+.os-dialog {
+  inline-size: min(var(--layout-dialog), calc(100% - var(--space-8)));
+  max-inline-size: calc(100% - var(--space-8));
+  max-block-size: calc(100% - var(--space-8));
+  margin-block: auto;
+  margin-inline: auto;
+  padding-block: var(--space-6);
+  padding-inline: var(--space-6);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: auto;
+  scrollbar-color: var(--color-muted) var(--color-canvas);
+}
+.os-dialog::backdrop { background: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.os-dialog__header { display: flex; align-items: start; justify-content: space-between; gap: var(--space-4); }
+.os-dialog__header h2 { margin-block: var(--space-0); margin-inline: var(--space-0); font-size: var(--font-size-xl); line-height: var(--line-height-heading); font-weight: var(--font-weight-semibold); overflow-wrap: anywhere; }
+.os-dialog__description { margin-block: var(--space-3) var(--space-0); color: var(--color-muted); overflow-wrap: anywhere; }
+.os-dialog__content { margin-block-start: var(--space-5); }
