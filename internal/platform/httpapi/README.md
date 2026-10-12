@@ -17,7 +17,11 @@ pattern, status and duration, never request bodies, credentials or query values.
 `DecodeJSON` accepts one DTO object with `application/json` (parameters allowed).
 The default wire limit is 1 MiB, overridden by `RouteSpec.MaxBodySize`. Object and
 array nesting is limited to 64, counting the root as 1; decoded keys and string
-values are limited to 65,536 UTF-8 bytes. Size failure is 413, media failure 415,
+values are limited to 65,536 UTF-8 bytes. Decoded member names must be unique
+within each object, including nested objects inside arrays and opaque/custom
+payloads; equivalent escaped keys are duplicates. This check runs before DTO
+decoding, so a duplicate-key failure leaves the destination untouched.
+Size failure is 413, media failure 415,
 all structural/limit failures 400. The caller writes errors with `WriteProblem`.
 Ordinary struct DTOs inherit `DisallowUnknownFields`; `RawMessage` represents
 intentionally opaque content and custom `UnmarshalJSON` must validate its own

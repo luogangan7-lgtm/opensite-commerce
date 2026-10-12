@@ -125,6 +125,103 @@ func TestDecodeJSONRejectsUnknownNestedDTOFields(t *testing.T) {
 	assertJSONOutcome(t, w.Code, problemCode(t, w), 400, "invalid_json")
 }
 
+func TestDecodeJSONDuplicateObjectMembers(t *testing.T) {
+	tests := []struct {
+		name, body string
+		reject     bool
+	}{
+		{"root", `{"name":"updated","name":"again"}`, true},
+		{"escaped root key", `{"name":"updated","\u006eame":"again"}`, true},
+		{"nested opaque object", `{"name":"updated","meta":{"secret":1,"secret":2}}`, true},
+		{"deep nested object", `{"name":"updated","meta":{"outer":{"secret":1,"secret":2}}}`, true},
+		{"object in array", `{"name":"updated","meta":[{"secret":1,"secret":2}]}`, true},
+		{"object in nested arrays", `{"name":"updated","meta":[[0,{"secret":1,"secret":2}]]}`, true},
+		{"escaped nested key", `{"name":"updated","meta":{"secret":1,"\u0073ecret":2}}`, true},
+		{"escaped supplementary key", `{"name":"updated","meta":{"😀":1,"\ud83d\ude00":2}}`, true},
+		{"empty key", `{"name":"updated","meta":{"":1,"":2}}`, true},
+		{"after string", `{"name":"updated","meta":{"secret":"secret","secret":2}}`, true},
+		{"after boolean", `{"name":"updated","meta":{"secret":true,"secret":2}}`, true},
+		{"after null", `{"name":"updated","meta":{"secret":null,"secret":2}}`, true},
+		{"after object", `{"name":"updated","meta":{"secret":{},"secret":2}}`, true},
+		{"after array", `{"name":"updated","meta":{"secret":[],"secret":2}}`, true},
+		{"sibling objects", `{"name":"updated","meta":{"left":{"same":1},"right":{"same":2}}}`, false},
+		{"array sibling objects", `{"name":"updated","meta":[{"same":1},{"same":2}]}`, false},
+		{"parent and child same name", `{"name":"updated","meta":{"same":{"same":1}}}`, false},
+		{"repeated string values", `{"name":"updated","meta":{"left":"same","right":"same","same":"same"}}`, false},
+		{"array strings equal keys", `{"name":"updated","meta":{"same":["same","same"],"next":"same"}}`, false},
+		{"distinct decoded keys", `{"name":"updated","meta":{"same":1,"Same":2,"é":3,"e\u0301":4}}`, false},
+		{"all value types followed by keys", `{"name":"updated","meta":{"s":"s","n":0,"b":false,"nil":null,"o":{},"a":[],"last":1}}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dto := jsonDTO{Name: "initial", Meta: json.RawMessage(`{"initial":true}`)}
+			r := httptest.NewRequest(http.MethodPost, "/decode", strings.NewReader(tt.body))
+			r.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			err := httpapi.DecodeJSON(w, r, &dto)
+			if !tt.reject {
+				if err != nil || dto.Name != "updated" {
+					t.Fatalf("valid object: err=%v; name=%q", err, dto.Name)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("duplicate object member was accepted")
+			}
+			assertDuplicateJSONProblem(t, w, r, err)
+			if dto.Name != "initial" || string(dto.Meta) != `{"initial":true}` {
+				t.Fatalf("destination changed before validation failed: %+v", dto)
+			}
+		})
+	}
+}
+
+func TestDecodeJSONDuplicateBeforeCustomUnmarshal(t *testing.T) {
+	var dto struct {
+		Name string            `json:"name"`
+		Meta jsonCustomPayload `json:"meta"`
+	}
+	dto.Name, dto.Meta.Calls = "initial", 7
+	r := httptest.NewRequest(http.MethodPost, "/decode", strings.NewReader(`{"name":"updated","meta":{"secret":1,"secret":2}}`))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	err := httpapi.DecodeJSON(w, r, &dto)
+	if err == nil {
+		t.Fatal("duplicate object member reached custom unmarshal")
+	}
+	assertDuplicateJSONProblem(t, w, r, err)
+	if dto.Name != "initial" || dto.Meta.Calls != 7 {
+		t.Fatalf("destination/custom unmarshal changed before validation failed: %+v", dto)
+	}
+}
+
+type jsonCustomPayload struct{ Calls int }
+
+func (payload *jsonCustomPayload) UnmarshalJSON([]byte) error {
+	payload.Calls++
+	return nil
+}
+
+func assertDuplicateJSONProblem(t *testing.T, w *httptest.ResponseRecorder, r *http.Request, err error) {
+	t.Helper()
+	httpapi.WriteProblem(w, r, err)
+	assertJSONOutcome(t, w.Code, problemCode(t, w), 400, "invalid_json")
+	if contentType := w.Header().Get("Content-Type"); contentType != "application/problem+json" {
+		t.Fatalf("content type=%q", contentType)
+	}
+	var problem struct {
+		Type, Title, Detail, Instance string
+		Status                        int
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Type != "about:blank" || problem.Title != "Bad Request" || problem.Status != 400 ||
+		problem.Detail != "Body must be one valid JSON object within the JSON limits" || problem.Instance != "/decode" {
+		t.Fatalf("unexpected public problem: %+v", problem)
+	}
+}
+
 func TestDecodeJSONBodyReadFailure(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/decode", nil)
 	r.Header.Set("Content-Type", "application/json")
