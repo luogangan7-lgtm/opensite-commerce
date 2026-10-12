@@ -1,0 +1,28 @@
+== F-03 report DDL: two created payments (provider_payment_id NULL), same tenant+provider
+CREATE TABLE
+INSERT 0 1
+ERROR:  duplicate key value violates unique constraint "pay_report_tenant_id_provider_provider_payment_id_key"
+DETAIL:  Key (tenant_id, provider, provider_payment_id)=(00000000-0000-0000-0000-000000000001, stripe, null) already exists.
+== F-03 fix: partial unique index
+CREATE TABLE
+CREATE INDEX
+INSERT 0 2
+ERROR:  duplicate key value violates unique constraint "pay_fix_tenant_id_provider_provider_payment_id_idx"
+DETAIL:  Key (tenant_id, provider, provider_payment_id)=(00000000-0000-0000-0000-000000000001, stripe, pi_1) already exists.
+== F-04 report policy expr after SET LOCAL on same connection
+BEGIN
+SET
+COMMIT
+ reset_to_empty_string 
+-----------------------
+ t
+(1 row)
+
+ERROR:  invalid input syntax for type uuid: ""
+== F-04 fix
+ fix_yields_null 
+-----------------
+ t
+(1 row)
+
+PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
