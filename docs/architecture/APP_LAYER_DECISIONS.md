@@ -72,11 +72,13 @@ queries/<module>/*.sql
 - **Passwords.** Argon2id via `golang.org/x/crypto/argon2`, stored in versioned PHC format.
   - Floor parameters: m=19 MiB, t=2, p=1; measure on the target host.
   - Bound concurrent hashing to prevent memory DoS.
-  - Unknown user, disabled user and wrong password all give the same response (no account enumeration).
+  - Unknown user, disabled user and wrong password all give the same response **and do the same work**. An unknown or disabled identifier still runs one Argon2id verification against a fixed dummy PHC hash, and goes through the same persistent account+IP failure bookkeeping, so response timing does not reveal account existence.
 - **Sessions.** Uses the existing `001 auth_sessions(id,user_id,token_hash,expires_at,revoked_at,created_at)`; no tenant_id is needed, because a user can belong to many tenants.
   - Token: 256-bit CSPRNG; only its SHA-256 is stored.
-  - New session at login; rotation inserts the new session and revokes the old one in a single transaction; logout sets `revoked_at`; a password reset revokes all sessions.
-  - Every request re-checks session, user status, membership and tenant status. No membership cache. High-risk writes re-check membership inside the transaction.
+  - New session at login; logout sets `revoked_at`; a password reset revokes all sessions.
+  - Rotation is serialized on the old session. In one transaction: `UPDATE auth_sessions SET revoked_at=now() WHERE id=$old AND revoked_at IS NULL AND expires_at>now()`. Zero rows means the rotation lost the race (or the session is already dead): roll back and insert no replacement. Only then insert the new session. Two concurrent rotations of the same session must yield exactly one valid successor (concurrency test required).
+  - Every request re-checks session and user status. Tenant-scoped routes (`/admin/t/{tenant}`, `/api/v1/t/{tenant}`) additionally re-check that tenant's membership and status after the tenant is resolved. No membership cache. High-risk writes re-check membership inside the transaction.
+  - Global session endpoints (whoami/current actor, logout, session list/revoke) validate only the session and user. They never require a membership, so a user whose last membership was suspended can still log out: the server revokes the session and clears the cookie.
 - **Cookie and CSRF.** Cookie `__Host-osc_admin_session`: Secure, HttpOnly, SameSite=Lax, Path=/, no Domain, on a dedicated admin host.
   - CSRF: an HMAC token bound to the session, sent as `X-CSRF-Token`, plus an exact Origin check. Pre-login CSRF uses short-lived anonymous material.
   - SameSite+Origin alone is not enough; unsigned double-submit is rejected.
@@ -99,7 +101,7 @@ queries/<module>/*.sql
   - `app_auth` today can read users/sessions/memberships/keys and create or revoke sessions, but must not be assumed to create users or issue keys.
 - **Bootstrap.** Admin bootstrap is a controlled CLI (`cmd/bootstrap-admin`); there is never an anonymous owner-creation endpoint.
 - **Rejected:** stateless JWT sessions (revocation/rotation); SameSite only; Redis sessions; a single high-privilege pool; sharing sessions with customers.
-- **Gate (real PG18, not mocks):** each of these must be denied:
+- **Gate (real PG18, not mocks):** two concurrent rotations of one session leave exactly one valid successor (the other rolls back); timing and failure bookkeeping for an unknown identifier match a wrong password on a real account; logout succeeds and revokes for a user with no remaining membership. In addition, each of these must be denied:
   - no account enumeration on bad credentials;
   - an old token replayed after rotation;
   - a revoked session, a suspended membership or a disabled user (on the next request);
@@ -232,8 +234,8 @@ packages/{api-client,ui,design-tokens,component-contracts}
 | 03d | `modules/registry.yaml`, import graph, SQL ownership reconcile; move the two misfiled queries | microservices | illegal import, cross-module table write, cycle each fail |
 | 03e | affected-CI, operation coverage matrix, summary gate | all E2E pages | missing test, skipped required job, wrong impact each fail |
 | 02a | forward migration: login attempts, key public-id index, credential-writer role, auth tenant-status read; `cmd/bootstrap-admin`; update `deploy/runtime-roles.md` | public signup | real PG18 role checks; wrong-role write and cross-tenant denied |
-| 02b | Argon2id, identity lookup, session create/logout, errors, login rate limit | customer login | bad password, unknown user, brute force, expired session |
-| 02c | admin cookie, CSRF, Origin, rotation, revocation | OAuth/OIDC | weak cookie flags, missing CSRF, replayed old token all fail |
+| 02b | Argon2id (dummy-hash path for unknown/disabled), identity lookup, session create/logout, errors, login rate limit | customer login | bad password, unknown user (same work/timing class), brute force, expired session, logout without membership |
+| 02c | admin cookie, CSRF, Origin, conditional-revoke rotation, revocation | OAuth/OIDC | weak cookie flags, missing CSRF, replayed old token all fail; concurrent rotation yields one successor |
 | 02d | API key issue/verify/revoke, scope intersection, one-time secret | service accounts, dynamic roles | revoked/expired/issuer-lost/cross-tenant/over-scope all denied |
 | 02e | `/admin/t/{tenant}` + tenant API routes, `AuthorizedActor`, `RunAuthorized`, three PG pools | catalog/order commands | real PG18 cross-tenant, revoked membership, connection reuse |
 | 02f | E2E of login, whoami, tenant switch, logout, API key and security scenarios; deploy runbook | full admin UI | all auth paths, fault probes and role checks pass on one SHA |
