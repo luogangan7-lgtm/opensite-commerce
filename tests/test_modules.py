@@ -9,11 +9,13 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 SPEC = importlib.util.spec_from_file_location("check_modules", ROOT / "scripts/check_modules.py")
 checker = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(checker)
@@ -36,6 +38,7 @@ class GovernanceTests(unittest.TestCase):
             "openapi: 3.1.0\npaths:\n  /things:\n    get:\n      operationId: listThings\n")
         self.registry = {"version": 1, "modules": [module("a", ["b"], ["things"]),
                                                   module("b")], "migrations": []}
+        self.registry["modules"][0]["operations"] = [{"operation_id": "listThings", "status": "planned"}]
         self.source("internal/modules/b/contract/port.go", "package contract\nconst Value = 1\n")
         self.source("internal/modules/b/internal/store/store.go", "package store\nconst Value = 1\n")
         self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/modules/b/contract"\nvar Value = contract.Value\n')
@@ -60,6 +63,54 @@ class GovernanceTests(unittest.TestCase):
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("default/pgx including tests", result.stdout)
+
+    def test_nested_go_module_red(self):
+        self.source("internal/modules/b/internal/store/go.mod", "module x.test/bstore\n\ngo 1.27.2\n")
+        with (self.root / "go.mod").open("a") as output:
+            output.write("\nrequire x.test/bstore v0.0.0\nreplace x.test/bstore => ./internal/modules/b/internal/store\n")
+        self.source("internal/modules/a/module.go", 'package a\nimport "x.test/bstore"\nvar Value = store.Value\n')
+        self.assert_red("MODULE_NESTED_GO_MODULE")
+
+    def test_linkname_private_access_red(self):
+        self.source("internal/modules/a/module.go", 'package a\nimport _ "unsafe"\n//go:linkname hidden example.test/shop/internal/modules/b/internal/store.hidden\nfunc hidden() int\n')
+        self.assert_red("MODULE_LINKNAME_FORBIDDEN")
+
+    def test_raw_pgxpool_import_red(self):
+        # A local fixture supplies the third-party path without a network fetch.
+        self.source("vendor/github.com/jackc/pgx/v5/pgxpool/pool.go", "package pgxpool\ntype Pool struct{}\n")
+        self.source("vendor/modules.txt", "# github.com/jackc/pgx/v5 v5.10.0\n## explicit; go 1.27.2\ngithub.com/jackc/pgx/v5/pgxpool\n")
+        with (self.root / "go.mod").open("a") as output:
+            output.write("\nrequire github.com/jackc/pgx/v5 v5.10.0\n")
+        self.source("internal/modules/a/module.go", 'package a\nimport "github.com/jackc/pgx/v5/pgxpool"\nvar Pool *pgxpool.Pool\n')
+        self.assert_red("MODULE_RAW_POOL_IMPORT")
+
+    def test_explicit_legacy_public_port_green(self):
+        self.registry["modules"][1].update(legacy_go_paths=["internal/b"],
+                                           approved_public_ports=["internal/b"])
+        self.source("internal/b/public.go", "package b\nconst Value = 1\n")
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/b"\nvar Value = b.Value\n')
+        self.assertEqual(self.run_gate().returncode, 0)
+
+    def test_legacy_public_port_still_requires_declared_dependency(self):
+        self.registry["modules"][1].update(legacy_go_paths=["internal/b"],
+                                           approved_public_ports=["internal/b"])
+        self.registry["modules"][0]["dependencies"] = []
+        self.source("internal/b/public.go", "package b\nconst Value = 1\n")
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/b"\nvar Value = b.Value\n')
+        self.assert_red("MODULE_UNDECLARED_DEPENDENCY")
+
+    def test_legacy_private_port_red(self):
+        self.registry["modules"][1].update(legacy_go_paths=["internal/b"],
+                                           approved_public_ports=["internal/b"])
+        self.source("internal/b/internal/store/private.go", "package store\nconst Value = 1\n")
+        self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/b/internal/store"\nvar Value = store.Value\n')
+        self.assert_red("MODULE_PRIVATE_IMPORT")
+
+    def test_legacy_source_import_is_checked(self):
+        self.registry["modules"][0].update(legacy_go_paths=["internal/a"])
+        self.registry["modules"][0]["dependencies"] = []
+        self.source("internal/a/public.go", 'package a\nimport "example.test/shop/internal/modules/b/contract"\nvar Value = contract.Value\n')
+        self.assert_red("MODULE_UNDECLARED_DEPENDENCY")
 
     def test_illegal_private_import_red(self):
         self.source("internal/modules/a/module.go", 'package a\nimport "example.test/shop/internal/modules/b/internal/store"\nvar Value = store.Value\n')
@@ -98,6 +149,23 @@ class GovernanceTests(unittest.TestCase):
     def test_openapi_reference_fails_closed(self):
         (self.root / "api/openapi.yaml").write_text("paths:\n  /things:\n    $ref: './other.yaml'\n")
         self.assert_red("MODULE_OPENAPI_INVALID")
+
+    def test_openapi_unregistered_operation_red(self):
+        with (self.root / "api/openapi.yaml").open("a") as output:
+            output.write("  /other:\n    post:\n      operationId: unregisteredReviewProbe\n")
+        self.assert_red("MODULE_UNREGISTERED_OPERATION")
+
+    def test_renamed_planned_operation_leaves_existing_operation_unowned(self):
+        self.registry["modules"][0]["operations"][0]["operation_id"] = "orphanThings"
+        self.assert_red("MODULE_UNREGISTERED_OPERATION")
+
+    def test_openapi_colon_and_quoted_path_keys_are_green(self):
+        for key in ('/things/{id}:cancel', '"/things/{id}:cancel"', "'/things/{id}:cancel'"):
+            with self.subTest(key=key):
+                (self.root / "api/openapi.yaml").write_text(
+                    f"paths:\n  {key}:\n    post:\n      operationId: listThings\n")
+                result = self.run_gate()
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_openapi_duplicate_path_fails_closed(self):
         with (self.root / "api/openapi.yaml").open("a") as output:
@@ -204,6 +272,7 @@ class GovernanceTests(unittest.TestCase):
         workflows = list((ROOT / ".github/workflows").glob("*.yaml")) + list((ROOT / ".github/workflows").glob("*.yml"))
         self.assertTrue(any("bash scripts/check_all.sh" in workflow.read_text() for workflow in workflows))
         self.assertIn("python3 scripts/check_modules.py", (ROOT / "scripts/check_all.sh").read_text())
+        self.assertIn("python3 tests/test_module_sql.py", (ROOT / "scripts/check_all.sh").read_text())
         self.assertIn("python3 scripts/check_modules.py --tables", (ROOT / "scripts/check_pg.sh").read_text())
 
 

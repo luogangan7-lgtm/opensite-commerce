@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from module_sql import SqlOwnershipError, check_sql_writes
 
 
 class GovernanceError(Exception):
@@ -52,6 +53,18 @@ def load_registry(path, root):
         require(module.get("status") in ("implemented", "planned") and
                 module.get("go_status") in ("implemented", "planned"), "MODULE_REGISTRY_INVALID", f"{name}: invalid status")
         require(module.get("go_path") == f"internal/modules/{name}", "MODULE_REGISTRY_INVALID", f"{name}: invalid Go path")
+        legacy = module.get("legacy_go_paths", [])
+        ports = module.get("approved_public_ports", [])
+        for field, paths in (("legacy_go_paths", legacy), ("approved_public_ports", ports)):
+            require(isinstance(paths, list) and len(paths) == len(set(paths)) and
+                    all(isinstance(value, str) and re.fullmatch(r"internal/[a-z][a-z0-9_/-]*", value) and
+                        ".." not in value.split("/") for value in paths),
+                    "MODULE_REGISTRY_INVALID", f"{name}: invalid {field}")
+        require(all(any(port == path or port.startswith(path + "/") for path in legacy)
+                    and "internal" not in port.split("/")[2:] for port in ports),
+                "MODULE_REGISTRY_INVALID", f"{name}: public port outside its legacy package")
+        require(all((root / path).is_dir() for path in legacy),
+                "MODULE_REGISTRY_INVALID", f"{name}: missing legacy Go package")
         for field in ("owns_tables", "dependencies", "tests", "scopes", "operations"):
             values = module.get(field)
             require(isinstance(values, list), "MODULE_REGISTRY_INVALID", f"{name}: {field} must be a list")
@@ -79,6 +92,10 @@ def load_registry(path, root):
                 require(target.is_file(), "MODULE_REGISTRY_INVALID", f"{name}: missing test {test}")
     for module in modules:
         require(set(module["dependencies"]) <= names, "MODULE_REGISTRY_INVALID", f"{module['name']}: unknown dependency")
+    go_paths = [path for module in modules for path in [module["go_path"], *module.get("legacy_go_paths", [])]]
+    require(len(go_paths) == len(set(go_paths)) and
+            not any(a != b and b.startswith(a + "/") for a in go_paths for b in go_paths),
+            "MODULE_REGISTRY_INVALID", "overlapping module Go paths")
     migration_files = set()
     require(isinstance(registry.get("migrations"), list), "MODULE_REGISTRY_INVALID", "migrations must be a list")
     for migration in registry["migrations"]:
@@ -140,11 +157,16 @@ def openapi_operations(path):
             block_indent = None
         while stack and indent <= stack[-1][0]:
             stack.pop()
-        match = re.match(r"([^:]+):(?:\s+(.*))?$", stripped)
+        # YAML's mapping separator is a colon followed by whitespace or EOL;
+        # a colon inside an unquoted action-style path is part of the key.
+        match = re.match(r'''("(?:\\.|[^"\\])*"|'(?:''|[^'])*'|.+?):(?:\s+(.*))?$''', stripped)
         if not match:
             continue  # sequence values do not change mapping ancestry
         key, value = match.group(1), (match.group(2) or "").strip()
-        key = key.strip("\"'")
+        if key.startswith('"'):
+            key = json.loads(key)
+        elif key.startswith("'"):
+            key = key[1:-1].replace("''", "'")
         parents = [entry[1] for entry in stack]
         if indent == 0 and key == "paths":
             require(not saw_paths, "MODULE_OPENAPI_INVALID", "duplicate paths mapping")
@@ -182,10 +204,13 @@ def openapi_operations(path):
 
 def check_operations(registry, path):
     available = openapi_operations(path)
+    registered = set()
     for module in registry["modules"]:
         for operation in module["operations"]:
+            registered.add(operation["operation_id"])
             if operation["status"] == "implemented":
                 require(operation["operation_id"] in available, "MODULE_MISSING_OPERATION", operation["operation_id"])
+    require(available <= registered, "MODULE_UNREGISTERED_OPERATION", ", ".join(sorted(available - registered)))
 
 
 def json_stream(text):
@@ -200,23 +225,44 @@ def json_stream(text):
 
 
 def check_go(registry, root):
+    # go list ./... silently skips nested modules. Reject them before trusting
+    # its package inventory; caches, vendor and private receipt directories
+    # are not repository source. Also deny linker-level private symbol access.
+    modules = {module["name"]: module for module in registry["modules"]}
+    owned_paths = {path: name for name, module in modules.items()
+                   for path in [module["go_path"], *module.get("legacy_go_paths", [])]}
+    for directory, dirs, files in os.walk(root):
+        directory = Path(directory)
+        if directory == root:
+            dirs[:] = [name for name in dirs if name not in (".git", ".worktrees", "work", "vendor", "node_modules")]
+        require(directory == root or "go.mod" not in files,
+                "MODULE_NESTED_GO_MODULE", str(directory.relative_to(root)))
+    go_tokens = re.compile(r'''//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*' ''', re.S | re.X)
+    for package_path in owned_paths:
+        for source in (root / package_path).rglob("*.go"):
+            for token in go_tokens.finditer(source.read_text()):
+                require(not re.match(r"//go:linkname(?:\s|$)", token.group()),
+                        "MODULE_LINKNAME_FORBIDDEN", str(source.relative_to(root)))
     env = dict(os.environ, GOPROXY="off", GOSUMDB="off", GOWORK="off")
     prefix_result = subprocess.run(["go", "list", "-m"], cwd=root, env=env,
                                    capture_output=True, text=True, timeout=90)
     require(prefix_result.returncode == 0, "MODULE_GO_LIST_ERROR", "cannot identify repository module")
-    prefix = prefix_result.stdout.strip() + "/internal/modules/"
-    modules = {module["name"]: module for module in registry["modules"]}
+    prefix = prefix_result.stdout.strip() + "/"
 
     def module_path(path):
         # Go test variants append ' [package.test]' to ImportPath and Imports.
         path = path.split(" [", 1)[0]
         if not path.startswith(prefix):
             return None
-        parts = path[len(prefix):].split("/")
-        if len(parts) == 1 and parts[0].endswith(".test"):
+        relative = path[len(prefix):]
+        if relative.endswith(".test"):
             return None  # synthetic test executable, not a module package
-        require(parts[0] in modules, "MODULE_UNREGISTERED_PACKAGE", parts[0])
-        return parts
+        for package_path, name in owned_paths.items():
+            if relative == package_path or relative.startswith(package_path + "/"):
+                return [name, *relative[len(package_path):].strip("/").split("/")] if relative != package_path else [name]
+        if relative.startswith("internal/modules/"):
+            raise GovernanceError("MODULE_UNREGISTERED_PACKAGE: " + relative.split("/")[2])
+        return None
 
     for tags in ([], ["-tags", "pgx"]):
         result = subprocess.run(["go", "list", "-e", "-deps", "-json", "-test", *tags, "./..."],
@@ -228,12 +274,17 @@ def check_go(registry, root):
             if source is None:
                 continue
             for imported in package.get("Imports", []):
+                require(imported.split(" [", 1)[0] != "github.com/jackc/pgx/v5/pgxpool",
+                        "MODULE_RAW_POOL_IMPORT", source[0])
                 destination = module_path(imported)
                 if destination is None or destination[0] == source[0]:
                     continue
                 edge = f"{source[0]} -> {destination[0]}"
                 require("internal" not in destination[1:], "MODULE_PRIVATE_IMPORT", edge)
-                require(len(destination) > 1 and destination[1] == "contract", "MODULE_NONCONTRACT_IMPORT", edge)
+                relative = imported.split(" [", 1)[0].removeprefix(prefix)
+                public_port = relative in modules[destination[0]].get("approved_public_ports", [])
+                require((len(destination) > 1 and destination[1] == "contract") or public_port,
+                        "MODULE_NONCONTRACT_IMPORT", edge)
                 require(destination[0] in modules[source[0]]["dependencies"], "MODULE_UNDECLARED_DEPENDENCY", edge)
         require(not errors, "MODULE_GO_LIST_ERROR", "Go package loading failed (default/pgx, including tests)")
 
@@ -287,6 +338,7 @@ def main():
     try:
         registry = load_registry(args.registry or root / "modules/registry.yaml", root)
         check_operations(registry, root / "api/openapi.yaml")
+        check_sql_writes(registry, root)
         if args.tables:
             tables = catalog_tables(root)
             check_tables(registry, tables)
@@ -294,9 +346,9 @@ def main():
         else:
             check_go(registry, root)
             print("PASS: module registry, operations, dependency DAG; Go default/pgx including tests")
-    except (GovernanceError, OSError, ValueError, subprocess.TimeoutExpired) as error:
+    except (GovernanceError, SqlOwnershipError, OSError, ValueError, subprocess.TimeoutExpired) as error:
         # Never print subprocess args, raw database stderr, or a connection URL.
-        print(str(error) if isinstance(error, GovernanceError) else "MODULE_INPUT_ERROR: unavailable or malformed input", file=sys.stderr)
+        print(str(error) if isinstance(error, (GovernanceError, SqlOwnershipError)) else "MODULE_INPUT_ERROR: unavailable or malformed input", file=sys.stderr)
         return 1
     return 0
 
