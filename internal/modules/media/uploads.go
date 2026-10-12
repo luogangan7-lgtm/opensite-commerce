@@ -101,7 +101,8 @@ func verify(u db.AppMediaUpload, b []byte) (string, int, int, error) {
 	return inspect(b, declared(u))
 }
 func usable(u db.AppMediaUpload, expired bool) error {
-	if expired {
+	// Infinity cannot be represented in the receipt (pgx drops it to year 1), so it is rejected.
+	if expired || !u.ExpiresAt.Valid || u.ExpiresAt.InfinityModifier != pgtype.Finite {
 		return conflict("Upload session has expired")
 	}
 	if u.Status != "reserved" && u.Status != "stored" {
