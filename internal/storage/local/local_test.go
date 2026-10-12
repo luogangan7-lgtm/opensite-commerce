@@ -97,3 +97,14 @@ func TestCancelledMidCopy(t *testing.T) {
 		t.Fatalf("kept reading after cancellation: %d reads", r.reads)
 	}
 }
+
+func TestNewCreatesNestedRoot(t *testing.T) {
+	root := t.TempDir() + "/a/b/c" // several new levels; New must create and sync them
+	s, err := New(root, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Put(context.Background(), strings.NewReader("x")); err != nil {
+		t.Fatal(err)
+	}
+}

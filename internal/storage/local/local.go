@@ -33,6 +33,15 @@ func New(root string, maxBytes int64) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Deepest ancestor that already exists: every directory below it is created
+	// here and must have its entry fsynced in its parent.
+	existing := abs
+	for {
+		if _, err := os.Stat(existing); err == nil || filepath.Dir(existing) == existing {
+			break
+		}
+		existing = filepath.Dir(existing)
+	}
 	for _, path := range []string{abs, filepath.Join(abs, "staging"), filepath.Join(abs, "originals")} {
 		if err = os.MkdirAll(path, 0700); err != nil {
 			return nil, err
@@ -40,9 +49,12 @@ func New(root string, maxBytes int64) (*Store, error) {
 	}
 	// Make the staging/ and originals/ entries (and root itself) durable once, so
 	// Put's per-upload fsync chain can stop at originals/.
-	for _, dir := range []string{abs, filepath.Dir(abs)} {
+	for dir := abs; ; dir = filepath.Dir(dir) {
 		if err = syncDir(dir); err != nil {
 			return nil, err
+		}
+		if dir == existing || filepath.Dir(dir) == dir {
+			break
 		}
 	}
 	return &Store{root: abs, maxBytes: maxBytes}, nil
