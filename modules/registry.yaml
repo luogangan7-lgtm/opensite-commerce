@@ -428,6 +428,53 @@
       "legacy_go_paths": [
         "internal/tax"
       ]
+    },
+    {
+      "name": "customer",
+      "status": "implemented",
+      "go_path": "internal/modules/customer",
+      "go_status": "planned",
+      "owns_tables": [
+        "customers",
+        "customer_credentials",
+        "customer_addresses"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant"
+      ],
+      "tests": [
+        "tests/db_customers.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Storefront customer identity is independent of employee users. Dedicated customer-auth credentials; HTTP and module Go path remain planned."
+    },
+    {
+      "name": "b2b",
+      "status": "implemented",
+      "go_path": "internal/modules/b2b",
+      "go_status": "planned",
+      "owns_tables": [
+        "buyer_companies",
+        "buyer_roles",
+        "buyer_company_members"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "customer"
+      ],
+      "tests": [
+        "tests/db_customers.sql",
+        "tests/db_role_matrix.sql",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh"
+      ],
+      "scopes": [],
+      "note": "Purchasing companies and memberships are separate from seller organizations. Fixed tenant roles are automatically provisioned; no HTTP operations."
     }
   ],
   "migrations": [
@@ -632,6 +679,20 @@
         "tax_categories",
         "tax_rates",
         "tax_settings"
+      ]
+    },
+    {
+      "file": "migrations/016_customers_b2b.sql",
+      "owner": "customer",
+      "touches_tables": [
+        "customers",
+        "customer_credentials",
+        "customer_addresses",
+        "buyer_companies",
+        "buyer_roles",
+        "buyer_company_members",
+        "price_lists",
+        "tenants"
       ]
     }
   ]
