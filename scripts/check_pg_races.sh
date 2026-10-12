@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Multi-connection gates for release sealing, reliability and identity; real PG18 only.
-# Depends on: a superuser expendable DB migrated by check_pg.sh, CREATE DATABASE, psql/Compose.
+# Multi-connection gates for release sealing and reliability; real PG18 only.
+# Depends on: an expendable DB already migrated by check_pg.sh; psql or Docker compose.
 # Called by: CI after check_pg.sh. Invariant checked: a sealed release never
 # references media that is non-public or whose blob is not ready, whatever the
 # interleaving of runtime child insert, media downgrade and publish. Reliability
 # claims must be disjoint, expired attempts fenced and same-key occupancy unique.
-# Global identity failures must increment both account and account+IP exactly once.
 # Ordering is explicit, not timed: a participant that must hold its locks parks
 # on an advisory lock owned by a driver "gate" session, and the driver polls
 # pg_stat_activity (superuser) until each participant is parked or blocked on
@@ -52,8 +51,8 @@ cleanup() {  # never leave parked participants or gate sessions behind
 }
 trap cleanup EXIT
 tx() {
-  printf "SET application_name='${RACE_PREFIX}%s'; BEGIN; SELECT set_config('app.tenant_id','%s',true); SET LOCAL ROLE %s; %s COMMIT;\n" \
-    "$1" "$3" "$2" "$4" | sql >"$ERRDIR/$1.out" 2>"$ERRDIR/$1" || true
+  printf "SET application_name='${RACE_PREFIX}%s'; %s BEGIN; SELECT set_config('app.tenant_id','%s',true); SET LOCAL ROLE %s; %s COMMIT;\n" \
+    "$1" "${5:-}" "$3" "$2" "$4" | sql >"$ERRDIR/$1.out" 2>"$ERRDIR/$1" || true
 }
 park() { echo "SELECT pg_advisory_xact_lock_shared($$, $1);"; } # SQL: wait for gate $1
 gate_close() {  # driver session holds advisory lock $1 until gate_open
@@ -75,6 +74,16 @@ await() {
     sleep 0.05
   done
   echo "  sync timeout: ${RACE_PREFIX}$label never reached ${*} (last: $ev)"; fail=1; return 1
+}
+await_job() {
+  local label=$1 pid=$2 deadline=$((SECONDS + 15))
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( SECONDS >= deadline )); then
+      echo "  sync timeout: ${RACE_PREFIX}$label process did not finish"; fail=1; return 1
+    fi
+    sleep 0.05
+  done
+  wait "$pid"
 }
 ROWLOCK=(transactionid tuple)
 
@@ -424,8 +433,124 @@ SQL
  [[ $got == "$expected|$want" ]] || fail=1
 done
 
+
+# Concurrent INSERTs and UPDATEs must serialize on the EXCLUDE constraint.
+# Driver parks the winner after its write, witnesses the contender blocked on
+# its transaction, then releases it; no timed ordering or silent generic error.
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('tax-window-race') RETURNING id;" | tail -1)
+Z=$(sql <<<"INSERT INTO app.tax_zones(tenant_id,name) VALUES('$T','US') RETURNING id;" | tail -1)
+sql <<<"INSERT INTO app.tax_categories(tenant_id,code,name) VALUES('$T','standard','Standard');" >/dev/null
+rate_a="INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from,valid_until) VALUES('$T','$Z','standard',500,'2026-01-01Z','2027-01-01Z');"
+rate_b="INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from,valid_until) VALUES('$T','$Z','standard',600,'2026-06-01Z','2027-06-01Z');"
+gate_close 21
+tx tax_a app_runtime "$T" "$rate_a $(park 21)" &
+await tax_a advisory
+tx tax_b app_runtime "$T" "$rate_b" &
+await tax_b "${ROWLOCK[@]}"
+gate_open 21; wait
+expect tax_a ok; expect tax_b tax_rate_no_overlap
+got=$(sql <<<"SELECT count(*)||'|'||min(rate_bp) FROM app.tax_rates WHERE tenant_id='$T';")
+echo "race tax overlapping inserts: $got (expected 1|500)"
+[[ $got == '1|500' ]] || fail=1
+# Both original windows are valid and disjoint. Concurrent expansions overlap
+# each other although the losing expansion was valid against the old winner.
+sql <<<"UPDATE app.tax_rates SET valid_until='2026-02-01Z' WHERE tenant_id='$T'; INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from,valid_until) VALUES('$T','$Z','standard',600,'2026-03-01Z','2026-04-01Z');" >/dev/null
+gate_close 22
+tx tax_up_a app_runtime "$T" "UPDATE app.tax_rates SET valid_until='2026-02-20Z' WHERE tenant_id='$T' AND rate_bp=500; $(park 22)" &
+await tax_up_a advisory
+tx tax_up_b app_runtime "$T" "UPDATE app.tax_rates SET valid_from='2026-02-10Z' WHERE tenant_id='$T' AND rate_bp=600;" &
+await tax_up_b "${ROWLOCK[@]}"
+gate_open 22; wait
+expect tax_up_a ok; expect tax_up_b tax_rate_no_overlap
+got=$(sql <<<"SELECT count(*)||'|'||bool_and(CASE rate_bp WHEN 500 THEN valid_until='2026-02-20Z'::timestamptz ELSE valid_from='2026-03-01Z'::timestamptz END) FROM app.tax_rates WHERE tenant_id='$T';")
+echo "race tax overlapping updates: $got (expected 2|true)"
+[[ $got == '2|true' ]] || fail=1
+
+# Customer registration uses its own restricted auth role, never app_auth/users.
+# A's INSERT owns the unique-index entry while parked; B must wait on that
+# transaction before A commits. A valid failure includes both SQLSTATE and the
+# intended constraint, so permissions/fixture errors cannot count as a loser.
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('customer-register-race') RETURNING id;" | tail -1)
+gate_close 23
+tx customer_first app_customer_auth "$T" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$T',' Race.Customer@Example.COM ','first'); $(park 23)" &
+await customer_first advisory
+tx customer_second app_customer_auth "$T" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$T','race.customer@example.com','second');" &
+await customer_second "${ROWLOCK[@]}"
+gate_open 23; wait
+expect customer_first ok
+expect customer_second customers_tenant_email_unique
+expect customer_second 23505
+got=$(sql <<<"SELECT count(*)||'|'||min(display_name) FROM app.customers WHERE tenant_id='$T' AND email_normalized='race.customer@example.com';")
+echo "customer normalized registration race: $got (expected 1|first)"
+[[ $got == '1|first' ]] || fail=1
+
+# Equal normalized addresses in two tenants are independent identities. B must
+# commit while A is still parked, proving uniqueness is tenant-scoped.
+read -r TA TB <<<"$(sql <<'SQL'
+INSERT INTO app.tenants(name) VALUES('customer-independent-A') RETURNING id AS a \gset
+INSERT INTO app.tenants(name) VALUES('customer-independent-B') RETURNING id AS b \gset
+SELECT :'a'||' '||:'b';
+SQL
+)"
+gate_close 24
+tx customer_tenant_a app_customer_auth "$TA" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$TA',' Both@Example.COM ','tenant-A'); $(park 24)" &
+await customer_tenant_a advisory
+tx customer_tenant_b app_customer_auth "$TB" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$TB','both@example.com','tenant-B');" &
+customer_tenant_b_pid=$!
+await_job customer_tenant_b "$customer_tenant_b_pid"
+expect customer_tenant_b ok
+got=$(sql <<<"SELECT count(*) FROM app.customers WHERE tenant_id='$TB' AND email_normalized='both@example.com';")
+[[ $got == 1 ]] || { echo "FAIL: other-tenant registration did not commit before gate release: $got"; fail=1; }
+gate_open 24; wait
+expect customer_tenant_a ok
+got=$(sql <<<"SELECT count(*)||'|'||count(DISTINCT tenant_id) FROM app.customers WHERE tenant_id IN('$TA','$TB') AND email_normalized='both@example.com';")
+echo "customer independent-tenant registration race: $got (expected 2|2)"
+[[ $got == '2|2' ]] || fail=1
+# Ledger atomic posting: both participants use the real runtime role on their
+# own connections. Winner parks with its journal uncommitted; the contender
+# must be observed waiting on its transaction before release. Repeat with
+# identical content and changed amount, across all supported isolation levels.
+for isolation in 'READ COMMITTED' 'REPEATABLE READ' 'SERIALIZABLE'; do
+ for scenario in identical changed; do
+  read -r T A B <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name,settlement_currency) VALUES('ledger-race','USD') RETURNING id AS t \gset
+INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
+ VALUES(:'t','cash','asset','USD') RETURNING id AS a \gset
+INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
+ VALUES(:'t','revenue','revenue','USD') RETURNING id AS b \gset
+SELECT :'t'||' '||:'a'||' '||:'b';
+SQL
+)"
+  amount=100; [[ $scenario == changed ]] && amount=101
+  post="SELECT 'journal='||app.post_ledger('$T','USD','race','same-key','capture',ARRAY['$A','$B']::uuid[],ARRAY['debit','credit'],ARRAY[100,100]::bigint[]);"
+  contender="SELECT 'journal='||app.post_ledger('$T','USD','race','same-key','capture',ARRAY['$A','$B']::uuid[],ARRAY['debit','credit'],ARRAY[$amount,$amount]::bigint[]);"
+  gate_close 30
+  tx ledger_first app_runtime "$T" "$post $(park 30)" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
+  await ledger_first advisory
+  tx ledger_second app_runtime "$T" "$contender" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
+  await ledger_second "${ROWLOCK[@]}"
+  gate_open 30; wait
+  expect ledger_first ok
+  if [[ $isolation != 'READ COMMITTED' ]]; then
+   # PostgreSQL may reject a stale snapshot; replay through a new transaction
+   # proves the API result after the concurrent winner is visible.
+   expect ledger_second 40001
+   tx ledger_second app_runtime "$T" "$contender"
+  fi
+  if [[ $scenario == identical ]]; then
+   expect ledger_second ok
+   first_id=$(sed -n 's/^journal=//p' "$ERRDIR/ledger_first.out")
+   [[ -n $first_id ]] || { echo 'FAIL: ledger winner returned no journal id'; fail=1; }
+   result ledger_second "journal=$first_id"
+  else expect ledger_second LEDGER_IDEMPOTENCY_CONTENT; expect ledger_second 23505; fi
+  got=$(sql <<<"SELECT count(*)||'|'||(SELECT count(*) FROM app.ledger_entries WHERE tenant_id='$T')||'|'||bool_and(status='posted' AND posted_at IS NOT NULL) FROM app.ledger_transactions WHERE tenant_id='$T';")
+  echo "ledger race $isolation/$scenario: $got (expected 1|2|true)"
+  [[ $got == '1|2|true' ]] || fail=1
+ done
+done
+
 # C-02a: global auth has no tenant context. The first call owns the normalized
-# identifier lock, then parks at gate18; the second must block on the first's
+# identifier lock, then parks at gate31; the second must block on the first's
 # auth lock before the driver releases the gate. No sleep establishes ordering.
 auth_tx() {
  printf "SET application_name='${RACE_PREFIX}%s'; BEGIN; SET LOCAL ROLE app_auth; %s COMMIT;\n" \
@@ -433,10 +558,10 @@ auth_tx() {
 }
 IDENTIFIER="${RACE_PREFIX}auth@example.test"
 UPPER_IDENTIFIER=$(printf '%s' "$IDENTIFIER" | tr '[:lower:]' '[:upper:]')
-record_first="SELECT 'auth-count='||failure_count FROM app.auth_record_failure('  $UPPER_IDENTIFIER  ','192.0.2.18'::inet,'2030-01-01T00:00:00Z'::timestamptz);"
-record_second="SELECT 'auth-count='||failure_count FROM app.auth_record_failure('$IDENTIFIER','192.0.2.18'::inet,'2030-01-01T00:00:00Z'::timestamptz);"
-gate_close 18
-auth_tx auth_first "$record_first $(park 18)" &
+record_first="SELECT 'auth-count='||failure_count FROM app.auth_record_failure('  $UPPER_IDENTIFIER  ','192.0.2.18'::inet);"
+record_second="SELECT 'auth-count='||failure_count FROM app.auth_record_failure('$IDENTIFIER','192.0.2.18'::inet);"
+gate_close 31
+auth_tx auth_first "$record_first $(park 31)" &
 auth_first_pid=$!
 await auth_first advisory
 auth_tx auth_second "$record_second" &
@@ -444,13 +569,42 @@ auth_second_pid=$!
 await auth_second advisory
 blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}auth_first' AND second.application_name='${RACE_PREFIX}auth_second';")
 [[ $blocked == t ]] || { echo "FAIL: auth second did not block on first identifier lock: $blocked"; fail=1; }
-gate_open 18
+gate_open 31
 wait "$auth_first_pid" "$auth_second_pid"
 expect auth_first ok; expect auth_second ok
 result auth_first 'auth-count=1'; result auth_second 'auth-count=2'
 got=$(sql <<<"SELECT a.failure_count||'|'||i.failure_count FROM app.auth_account_attempts a JOIN app.auth_login_attempts i USING(identifier_normalized) WHERE a.identifier_normalized='$IDENTIFIER' AND i.ip='192.0.2.18'::inet;")
 echo "race auth account+IP failure increments: $got (expected 2|2)"
 [[ $got == '2|2' ]] || fail=1
+
+# Cleanup must skip both stale rows while an ordinary failure waits for their
+# row locks, then preserve the renewed failures once the holder commits.
+PRUNE_IDENTIFIER="${RACE_PREFIX}prune@example.test"
+sql <<SQL >/dev/null
+INSERT INTO app.auth_account_attempts(identifier_normalized,failure_count,window_started_at,cooldown_until,last_failed_at)
+ VALUES('$PRUNE_IDENTIFIER',4,now()-interval '2 days',now()-interval '1 day',now()-interval '2 days');
+INSERT INTO app.auth_login_attempts(identifier_normalized,ip,failure_count,window_started_at,cooldown_until,last_failed_at)
+ VALUES('$PRUNE_IDENTIFIER','192.0.2.19',4,now()-interval '2 days',now()-interval '1 day',now()-interval '2 days');
+SQL
+gate_close 33
+tx prune_hold postgres "$T" "SELECT 1 FROM app.auth_account_attempts WHERE identifier_normalized='$PRUNE_IDENTIFIER' FOR UPDATE; SELECT 1 FROM app.auth_login_attempts WHERE identifier_normalized='$PRUNE_IDENTIFIER' FOR UPDATE; $(park 33)" &
+prune_hold_pid=$!
+await prune_hold advisory
+auth_tx prune_waiter "SELECT 'renewed='||failure_count FROM app.auth_record_failure('$PRUNE_IDENTIFIER','192.0.2.19'::inet);" &
+prune_waiter_pid=$!
+await prune_waiter "${ROWLOCK[@]}"
+blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}prune_hold' AND second.application_name='${RACE_PREFIX}prune_waiter';")
+[[ $blocked == t ]] || { echo "FAIL: auth renewal did not wait on held stale row: $blocked"; fail=1; }
+auth_tx prune_skip "SELECT 'pruned='||accounts_deleted||'|'||ips_deleted FROM app.auth_prune_attempts(1000);"
+expect prune_skip ok; result prune_skip 'pruned=0|0'
+gate_open 33
+wait "$prune_hold_pid" "$prune_waiter_pid"
+expect prune_hold ok; expect prune_waiter ok; result prune_waiter 'renewed=1'
+auth_tx prune_live "SELECT 'pruned='||accounts_deleted||'|'||ips_deleted FROM app.auth_prune_attempts(1000);"
+expect prune_live ok; result prune_live 'pruned=0|0'
+got=$(sql <<<"SELECT a.failure_count||'|'||i.failure_count||'|'||(a.last_failed_at>now()-interval '1 minute' AND i.last_failed_at>now()-interval '1 minute') FROM app.auth_account_attempts a JOIN app.auth_login_attempts i USING(identifier_normalized) WHERE a.identifier_normalized='$PRUNE_IDENTIFIER' AND i.ip='192.0.2.19'::inet;")
+echo "race auth cleanup skips locks and preserves renewed rows: $got (expected 1|1|true)"
+[[ $got == '1|1|true' ]] || fail=1
 
 # First-owner is installation-wide: use an empty independently migrated database,
 # because earlier gates legitimately created owners. Preserve the caller's psql
@@ -473,8 +627,8 @@ bootstrap_tx() {
 }
 # Fixed, non-secret PHC-shaped fixture; never a real credential.
 BOOTSTRAP_PHC='$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-gate_close 19
-bootstrap_tx bootstrap_first "SELECT app.bootstrap_admin('first-owner@example.test','first owner','$BOOTSTRAP_PHC'); $(park 19)" &
+gate_close 32
+bootstrap_tx bootstrap_first "SELECT app.bootstrap_admin('first-owner@example.test','first owner','$BOOTSTRAP_PHC'); $(park 32)" &
 bootstrap_first_pid=$!
 await bootstrap_first advisory
 bootstrap_tx bootstrap_second "SELECT app.bootstrap_admin('second-owner@example.test','second owner','$BOOTSTRAP_PHC');" &
@@ -482,7 +636,7 @@ bootstrap_second_pid=$!
 await bootstrap_second advisory
 blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}bootstrap_first' AND second.application_name='${RACE_PREFIX}bootstrap_second';")
 [[ $blocked == t ]] || { echo "FAIL: bootstrap second did not block on first installation lock: $blocked"; fail=1; }
-gate_open 19
+gate_open 32
 wait "$bootstrap_first_pid" "$bootstrap_second_pid"
 expect bootstrap_first ok; expect bootstrap_second BOOTSTRAP_OWNER_EXISTS; expect bootstrap_second 55000
 got=$(sql <<<"SELECT 'BOOTSTRAP_RACE='||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')||'|'||(SELECT count(*) FROM app.users)||'|'||(SELECT count(*) FROM app.tenants);")
@@ -493,10 +647,14 @@ sql -c "DROP DATABASE $BOOTSTRAP_DB" >/dev/null
 BOOTSTRAP_DB=""
 
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/identity contract" >&2; exit 1; fi
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/identity contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
 echo 'PASS: shipping range INSERT/UPDATE races preserve exact non-overlapping tiers'
+echo 'PASS: tax INSERT/UPDATE exclusion races preserve non-overlapping windows'
+echo 'PASS: customer normalized email registrations commit once per tenant'
+echo 'PASS: ledger identical and conflicting posting races preserve one posted journal/two entries'
 echo 'PASS: auth concurrent normalized-identifier failures preserve account and account+IP counts'
 echo 'PASS: bootstrap concurrent first-owner creation commits one installation owner only'
+echo 'PASS: auth cleanup skips locked stale rows and preserves concurrent renewals'

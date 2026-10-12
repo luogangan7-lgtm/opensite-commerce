@@ -84,9 +84,17 @@ BEGIN
 END $roles$;
 GRANT USAGE ON SCHEMA app TO app_credential_writer,app_admin_bootstrap;
 GRANT INSERT(email,password_hash),SELECT(id),UPDATE(password_hash) ON app.users TO app_credential_writer;
-GRANT INSERT(name),SELECT(id) ON app.tenants TO app_credential_writer;
+GRANT INSERT(id,name),SELECT(id) ON app.tenants TO app_credential_writer;
 GRANT INSERT(tenant_id,user_id,role),SELECT(role) ON app.tenant_memberships TO app_credential_writer;
 GRANT INSERT(tenant_id,id,issued_by,key_prefix,key_hash,scopes,expires_at),SELECT(id) ON app.api_keys TO app_credential_writer;
+GRANT SELECT(identifier_normalized,window_started_at,cooldown_until,last_failed_at) ON app.auth_account_attempts TO app_credential_writer;
+GRANT SELECT(identifier_normalized,ip,window_started_at,cooldown_until,last_failed_at) ON app.auth_login_attempts TO app_credential_writer;
+GRANT DELETE ON app.auth_account_attempts,app.auth_login_attempts TO app_credential_writer;
+CREATE INDEX auth_account_attempts_retention ON app.auth_account_attempts(last_failed_at,identifier_normalized);
+CREATE INDEX auth_login_attempts_retention ON app.auth_login_attempts(last_failed_at,identifier_normalized,ip);
+GRANT INSERT(tenant_id,code) ON app.buyer_roles TO app_credential_writer;
+CREATE POLICY credential_buyer_roles_insert ON app.buyer_roles FOR INSERT TO app_credential_writer
+ WITH CHECK (tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
 -- This global policy is READ ONLY, to observe an owner in any business tenant.
 CREATE POLICY credential_owner_read ON app.tenant_memberships FOR SELECT TO app_credential_writer USING (true);
 CREATE POLICY credential_membership_insert ON app.tenant_memberships FOR INSERT TO app_credential_writer
@@ -95,20 +103,20 @@ CREATE POLICY credential_key_scope ON app.api_keys TO app_credential_writer
  USING (tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid)
  WITH CHECK (tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
 
-CREATE FUNCTION app.auth_record_failure(p_identifier text,p_ip inet,p_now timestamptz DEFAULT NULL)
+CREATE FUNCTION app.auth_record_failure(p_identifier text,p_ip inet)
 RETURNS app.auth_account_attempts LANGUAGE plpgsql SECURITY INVOKER
 SET search_path=pg_catalog,app,pg_temp AS $failure$
 DECLARE k text:=lower(btrim(p_identifier)); t timestamptz; a app.auth_account_attempts; i app.auth_login_attempts;
 BEGIN
  IF k IS NULL OR octet_length(k) NOT BETWEEN 1 AND 320 OR p_ip IS NULL OR
-  masklen(p_ip)<>(CASE family(p_ip) WHEN 4 THEN 32 ELSE 128 END) OR (p_now IS NOT NULL AND NOT isfinite(p_now)) THEN
+  masklen(p_ip)<>(CASE family(p_ip) WHEN 4 THEN 32 ELSE 128 END) THEN
   RAISE EXCEPTION 'AUTH_FAILURE_INVALID_INPUT' USING ERRCODE='22023'; END IF;
  IF current_setting('transaction_isolation')<>'read committed' THEN
   RAISE EXCEPTION 'AUTH_REQUIRES_READ_COMMITTED' USING ERRCODE='25000'; END IF;
- -- Serialize even the first INSERT before sampling the production clock. Hash
- -- collisions only serialize unrelated identifiers. Test clock is trusted-only.
+ -- Serialize even the first INSERT. Hash collisions only serialize unrelated
+ -- identifiers; the transaction clock is selected internally, never by callers.
  PERFORM pg_advisory_xact_lock(hashtextextended('opensite:auth:'||k,0));
- t:=coalesce(p_now,clock_timestamp());
+ t:=now();
  INSERT INTO app.auth_account_attempts AS old(identifier_normalized,failure_count,window_started_at,cooldown_until,last_failed_at)
  VALUES(k,1,t,t+interval '1 second',t)
  ON CONFLICT(identifier_normalized) DO UPDATE SET
@@ -130,6 +138,42 @@ BEGIN
  RETURN a;
 END $failure$;
 
+-- Fixed 24-hour retention, callable by the trusted auth scheduler only. Every
+-- DELETE rechecks expiry after taking the same account lock as failure writes;
+-- a busy login is skipped, never waited on. No public caller chooses a cutoff.
+CREATE FUNCTION app.auth_prune_attempts(p_limit integer DEFAULT 1000)
+RETURNS TABLE(accounts_deleted integer,ips_deleted integer)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $prune$
+DECLARE candidate record; removed integer; t timestamptz:=now();
+BEGIN
+ IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 1000 THEN
+  RAISE EXCEPTION 'AUTH_RETENTION_INVALID_LIMIT' USING ERRCODE='22023'; END IF;
+ IF current_setting('transaction_isolation')<>'read committed' THEN
+  RAISE EXCEPTION 'AUTH_REQUIRES_READ_COMMITTED' USING ERRCODE='25000'; END IF;
+ accounts_deleted:=0; ips_deleted:=0;
+ FOR candidate IN SELECT identifier_normalized,ip FROM app.auth_login_attempts
+  WHERE last_failed_at<t-interval '24 hours' AND window_started_at<=t-interval '15 minutes' AND cooldown_until<=t
+  ORDER BY last_failed_at,identifier_normalized,ip LIMIT p_limit LOOP
+  IF pg_try_advisory_xact_lock(hashtextextended('opensite:auth:'||candidate.identifier_normalized,0)) THEN
+   DELETE FROM app.auth_login_attempts WHERE identifier_normalized=candidate.identifier_normalized AND ip=candidate.ip
+    AND last_failed_at<t-interval '24 hours' AND window_started_at<=t-interval '15 minutes' AND cooldown_until<=t;
+   GET DIAGNOSTICS removed=ROW_COUNT; ips_deleted:=ips_deleted+removed;
+  END IF;
+ END LOOP;
+ FOR candidate IN SELECT identifier_normalized FROM app.auth_account_attempts a
+  WHERE last_failed_at<t-interval '24 hours' AND window_started_at<=t-interval '15 minutes' AND cooldown_until<=t
+   AND NOT EXISTS(SELECT FROM app.auth_login_attempts i WHERE i.identifier_normalized=a.identifier_normalized)
+  ORDER BY last_failed_at,identifier_normalized LIMIT p_limit LOOP
+  IF pg_try_advisory_xact_lock(hashtextextended('opensite:auth:'||candidate.identifier_normalized,0)) THEN
+   DELETE FROM app.auth_account_attempts a WHERE identifier_normalized=candidate.identifier_normalized
+    AND last_failed_at<t-interval '24 hours' AND window_started_at<=t-interval '15 minutes' AND cooldown_until<=t
+    AND NOT EXISTS(SELECT FROM app.auth_login_attempts i WHERE i.identifier_normalized=a.identifier_normalized);
+   GET DIAGNOSTICS removed=ROW_COUNT; accounts_deleted:=accounts_deleted+removed;
+  END IF;
+ END LOOP;
+ RETURN NEXT;
+END $prune$;
+
 CREATE FUNCTION app.guard_known_device() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path=pg_catalog,app,pg_temp AS $guard$
 BEGIN
@@ -140,13 +184,12 @@ BEGIN
  RETURN NEW;
 END $guard$;
 CREATE TRIGGER known_device_guard BEFORE UPDATE ON app.known_devices FOR EACH ROW EXECUTE FUNCTION app.guard_known_device();
-CREATE FUNCTION app.auth_fail_known_device(p_id uuid,p_now timestamptz DEFAULT NULL)
+CREATE FUNCTION app.auth_fail_known_device(p_id uuid)
 RETURNS app.known_devices LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $device$
 DECLARE d app.known_devices; t timestamptz;
 BEGIN
- IF p_now IS NOT NULL AND NOT isfinite(p_now) THEN RAISE EXCEPTION 'DEVICE_INVALID_CLOCK' USING ERRCODE='22023'; END IF;
  SELECT * INTO d FROM app.known_devices WHERE id=p_id FOR UPDATE;
- t:=coalesce(p_now,clock_timestamp());
+ t:=now();
  IF NOT FOUND OR d.revoked_at IS NOT NULL OR d.expires_at<=t THEN RETURN NULL; END IF;
  UPDATE app.known_devices SET failure_count=least(5,failure_count+1),
   revoked_at=CASE WHEN failure_count>=4 THEN t ELSE revoked_at END WHERE id=p_id RETURNING * INTO d;
@@ -154,8 +197,9 @@ BEGIN
 END $device$;
 
 CREATE FUNCTION app.bootstrap_admin(p_email text,p_tenant_name text,p_password_hash text)
-RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $bootstrap$
-DECLARE u uuid; t uuid;
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp
+SET app.tenant_id='' AS $bootstrap$
+DECLARE u uuid; t uuid:=uuidv7();
 BEGIN
  IF current_setting('transaction_isolation')<>'read committed' THEN
   RAISE EXCEPTION 'BOOTSTRAP_REQUIRES_READ_COMMITTED' USING ERRCODE='25000'; END IF;
@@ -169,30 +213,32 @@ BEGIN
  IF EXISTS(SELECT FROM app.tenant_memberships WHERE role='owner') THEN
   RAISE EXCEPTION 'BOOTSTRAP_OWNER_EXISTS' USING ERRCODE='55000'; END IF;
  INSERT INTO app.users(email,password_hash) VALUES(btrim(p_email),p_password_hash) RETURNING id INTO u;
- INSERT INTO app.tenants(name) VALUES(btrim(p_tenant_name)) RETURNING id INTO t;
+ -- The tenant-local buyer-role seed trigger needs scope during tenant INSERT.
  PERFORM set_config('app.tenant_id',t::text,true);
+ INSERT INTO app.tenants(id,name) VALUES(t,btrim(p_tenant_name));
  INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES(t,u,'owner');
  RETURN t;
 END $bootstrap$;
 -- Ownership changes require temporary schema CREATE; revoke before commit.
 GRANT CREATE ON SCHEMA app TO app_credential_writer;
-ALTER FUNCTION app.auth_record_failure(text,inet,timestamptz) OWNER TO app_credential_writer;
+ALTER FUNCTION app.auth_record_failure(text,inet) OWNER TO app_credential_writer;
+ALTER FUNCTION app.auth_prune_attempts(integer) OWNER TO app_credential_writer;
 ALTER FUNCTION app.guard_known_device() OWNER TO app_credential_writer;
-ALTER FUNCTION app.auth_fail_known_device(uuid,timestamptz) OWNER TO app_credential_writer;
+ALTER FUNCTION app.auth_fail_known_device(uuid) OWNER TO app_credential_writer;
 ALTER FUNCTION app.bootstrap_admin(text,text,text) OWNER TO app_credential_writer;
 REVOKE CREATE ON SCHEMA app FROM app_credential_writer;
-REVOKE ALL ON FUNCTION app.auth_record_failure(text,inet,timestamptz),app.guard_known_device(),
- app.auth_fail_known_device(uuid,timestamptz),app.bootstrap_admin(text,text,text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.auth_record_failure(text,inet),app.auth_prune_attempts(integer),app.guard_known_device(),
+ app.auth_fail_known_device(uuid),app.bootstrap_admin(text,text,text) FROM PUBLIC;
 -- Remove custom ALTER DEFAULT PRIVILEGES grants too, not only known app roles.
 DO $function_acl$
 DECLARE f record; r record;
 BEGIN
  FOR f IN SELECT p.oid,p.proowner,p.proacl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-  WHERE n.nspname='app' AND p.proname IN ('auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin') LOOP
+  WHERE n.nspname='app' AND p.proname IN ('auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts') LOOP
   FOR r IN SELECT DISTINCT u.rolname FROM aclexplode(f.proacl) acl JOIN pg_roles u ON u.oid=acl.grantee WHERE acl.grantee<>f.proowner LOOP
    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',f.oid::regprocedure,r.rolname);
   END LOOP;
  END LOOP;
 END $function_acl$;
-GRANT EXECUTE ON FUNCTION app.auth_record_failure(text,inet,timestamptz),app.auth_fail_known_device(uuid,timestamptz) TO app_auth;
+GRANT EXECUTE ON FUNCTION app.auth_record_failure(text,inet),app.auth_fail_known_device(uuid),app.auth_prune_attempts(integer) TO app_auth;
 GRANT EXECUTE ON FUNCTION app.bootstrap_admin(text,text,text) TO app_admin_bootstrap;

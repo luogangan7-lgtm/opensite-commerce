@@ -1,0 +1,6 @@
+/* Responsibility: catalog composition. Dependencies: design tokens and UI CSS; callers: main.tsx. Invariants: logical geometry, token-only visuals, fluid reflow. */
+* { box-sizing: border-box; }
+body { margin: var(--space-0); background: var(--color-canvas); color: var(--color-text); font-family: var(--font-family); font-size: var(--font-size-md); line-height: var(--line-height-body); }
+body::selection { background: var(--color-brand); color: var(--color-on-brand); }
+a { color: var(--color-brand); text-underline-offset: var(--space-1); }
+a:focus-visible { outline: var(--focus-width) solid var(--color-brand); outline-offset: var(--focus-offset); }
