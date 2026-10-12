@@ -5,6 +5,8 @@
 package db
 
 import (
+	"net/netip"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -40,6 +42,23 @@ type AppAuditEvent struct {
 	AfterRevision  pgtype.Int8        `json:"after_revision"`
 	Payload        []byte             `json:"payload"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppAuthAccountAttempt struct {
+	IdentifierNormalized string             `json:"identifier_normalized"`
+	FailureCount         int32              `json:"failure_count"`
+	WindowStartedAt      pgtype.Timestamptz `json:"window_started_at"`
+	CooldownUntil        pgtype.Timestamptz `json:"cooldown_until"`
+	LastFailedAt         pgtype.Timestamptz `json:"last_failed_at"`
+}
+
+type AppAuthLoginAttempt struct {
+	IdentifierNormalized string             `json:"identifier_normalized"`
+	Ip                   netip.Addr         `json:"ip"`
+	FailureCount         int32              `json:"failure_count"`
+	WindowStartedAt      pgtype.Timestamptz `json:"window_started_at"`
+	CooldownUntil        pgtype.Timestamptz `json:"cooldown_until"`
+	LastFailedAt         pgtype.Timestamptz `json:"last_failed_at"`
 }
 
 type AppAuthSession struct {
@@ -184,6 +203,16 @@ type AppInventoryReservation struct {
 	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
+}
+
+type AppKnownDevice struct {
+	ID           pgtype.UUID        `json:"id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	CookieHash   []byte             `json:"cookie_hash"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt    pgtype.Timestamptz `json:"revoked_at"`
+	FailureCount int32              `json:"failure_count"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 type AppMediaAsset struct {

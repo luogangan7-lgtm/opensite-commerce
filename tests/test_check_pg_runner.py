@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Offline CLI flow test: verifies expected PG files are submitted to psql.
 
+Depends on check_pg.sh/migrate.sh and stdlib; called by offline CI.
+Invariant: every SQL gate is submitted in order and SQL errors stop the runner.
 This is NOT a PostgreSQL execution test. Its fake psql never parses SQL.
 """
 from pathlib import Path
@@ -25,7 +27,12 @@ expected = [
     'db_inventory.sql',
     'db_pricing.sql',
     'db_shipping.sql',
+    'db_identity_auth.sql',
 ]
+assert 'tests/db_identity_auth.sql' in (root / 'scripts/check_pg.sh').read_text(), 'identity auth SQL gate missing from runner manifest'
+# Coverage guards only: the real-PG runners execute these bootstrap cases.
+assert 'BOOTSTRAP_RACE=' in (root / 'scripts/check_pg_races.sh').read_text(), 'first-owner concurrency case missing'
+assert 'BOOTSTRAP_UPGRADE=' in (root / 'scripts/check_pg_upgrade.sh').read_text(), 'bootstrap populated-upgrade cases missing'
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:
     assert (root / 'tests' / name).is_file(), name
@@ -70,4 +77,9 @@ fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_shipping.sql' in failed.stdout
+
+    env['FAKE_FAIL_ON'] = 'IDENTITY_GATE'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_identity_auth.sql' in failed.stdout
 print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, propagates failures (mock psql; NO SQL executed)')

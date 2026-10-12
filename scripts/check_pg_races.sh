@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Multi-connection gates for release sealing and reliability; real PG18 only.
-# Depends on: an expendable DB already migrated by check_pg.sh; psql or Docker compose.
+# Multi-connection gates for release sealing, reliability and identity; real PG18 only.
+# Depends on: a superuser expendable DB migrated by check_pg.sh, CREATE DATABASE, psql/Compose.
 # Called by: CI after check_pg.sh. Invariant checked: a sealed release never
 # references media that is non-public or whose blob is not ready, whatever the
 # interleaving of runtime child insert, media downgrade and publish. Reliability
 # claims must be disjoint, expired attempts fenced and same-key occupancy unique.
+# Global identity failures must increment both account and account+IP exactly once.
 # Ordering is explicit, not timed: a participant that must hold its locks parks
 # on an advisory lock owned by a driver "gate" session, and the driver polls
 # pg_stat_activity (superuser) until each participant is parked or blocked on
@@ -17,6 +18,8 @@ if [[ -n "${DATABASE_URL:-}" ]]; then
 else
   PSQL=(docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -At -U postgres -d opensite -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
 fi
+ORIGINAL_PSQL=("${PSQL[@]}")
+BOOTSTRAP_DB=""
 sql() { "${PSQL[@]}" "$@"; }
 
 fixture() {
@@ -43,6 +46,8 @@ RACE_PREFIX="race_$$_"
 ERRDIR=$(mktemp -d)
 cleanup() {  # never leave parked participants or gate sessions behind
   sql <<<"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE left(application_name,length('$RACE_PREFIX'))='$RACE_PREFIX';" >/dev/null 2>&1 || true
+  PSQL=("${ORIGINAL_PSQL[@]}")
+  [[ -z $BOOTSTRAP_DB ]] || sql -c "DROP DATABASE IF EXISTS $BOOTSTRAP_DB WITH (FORCE)" >/dev/null 2>&1 || true
   rm -rf "$ERRDIR"
 }
 trap cleanup EXIT
@@ -419,9 +424,79 @@ SQL
  [[ $got == "$expected|$want" ]] || fail=1
 done
 
+# C-02a: global auth has no tenant context. The first call owns the normalized
+# identifier lock, then parks at gate18; the second must block on the first's
+# auth lock before the driver releases the gate. No sleep establishes ordering.
+auth_tx() {
+ printf "SET application_name='${RACE_PREFIX}%s'; BEGIN; SET LOCAL ROLE app_auth; %s COMMIT;\n" \
+  "$1" "$2" | sql >"$ERRDIR/$1.out" 2>"$ERRDIR/$1" || true
+}
+IDENTIFIER="${RACE_PREFIX}auth@example.test"
+UPPER_IDENTIFIER=$(printf '%s' "$IDENTIFIER" | tr '[:lower:]' '[:upper:]')
+record_first="SELECT 'auth-count='||failure_count FROM app.auth_record_failure('  $UPPER_IDENTIFIER  ','192.0.2.18'::inet,'2030-01-01T00:00:00Z'::timestamptz);"
+record_second="SELECT 'auth-count='||failure_count FROM app.auth_record_failure('$IDENTIFIER','192.0.2.18'::inet,'2030-01-01T00:00:00Z'::timestamptz);"
+gate_close 18
+auth_tx auth_first "$record_first $(park 18)" &
+auth_first_pid=$!
+await auth_first advisory
+auth_tx auth_second "$record_second" &
+auth_second_pid=$!
+await auth_second advisory
+blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}auth_first' AND second.application_name='${RACE_PREFIX}auth_second';")
+[[ $blocked == t ]] || { echo "FAIL: auth second did not block on first identifier lock: $blocked"; fail=1; }
+gate_open 18
+wait "$auth_first_pid" "$auth_second_pid"
+expect auth_first ok; expect auth_second ok
+result auth_first 'auth-count=1'; result auth_second 'auth-count=2'
+got=$(sql <<<"SELECT a.failure_count||'|'||i.failure_count FROM app.auth_account_attempts a JOIN app.auth_login_attempts i USING(identifier_normalized) WHERE a.identifier_normalized='$IDENTIFIER' AND i.ip='192.0.2.18'::inet;")
+echo "race auth account+IP failure increments: $got (expected 2|2)"
+[[ $got == '2|2' ]] || fail=1
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping contract" >&2; exit 1; fi
+# First-owner is installation-wide: use an empty independently migrated database,
+# because earlier gates legitimately created owners. Preserve the caller's psql
+# target and clean our database even on a synchronization or migration failure.
+BOOTSTRAP_DB=bootstrap_race_$$_$RANDOM
+sql -c "CREATE DATABASE $BOOTSTRAP_DB" >/dev/null
+if [[ -n "${DATABASE_URL:-}" ]]; then
+ bootstrap_base="${DATABASE_URL%%\?*}"; bootstrap_query=""
+ [[ $DATABASE_URL != *\?* ]] || bootstrap_query="?${DATABASE_URL#*\?}"
+ PSQL=(psql "${bootstrap_base%/*}/$BOOTSTRAP_DB$bootstrap_query" -X -q -At -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
+else
+ PSQL=(docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -At -U postgres -d "$BOOTSTRAP_DB" -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
+fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | sql >/dev/null
+done
+bootstrap_tx() {
+ printf "SET application_name='${RACE_PREFIX}%s'; BEGIN ISOLATION LEVEL READ COMMITTED; SET LOCAL ROLE app_admin_bootstrap; %s COMMIT;\n" \
+  "$1" "$2" | sql >"$ERRDIR/$1.out" 2>"$ERRDIR/$1" || true
+}
+# Fixed, non-secret PHC-shaped fixture; never a real credential.
+BOOTSTRAP_PHC='$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+gate_close 19
+bootstrap_tx bootstrap_first "SELECT app.bootstrap_admin('first-owner@example.test','first owner','$BOOTSTRAP_PHC'); $(park 19)" &
+bootstrap_first_pid=$!
+await bootstrap_first advisory
+bootstrap_tx bootstrap_second "SELECT app.bootstrap_admin('second-owner@example.test','second owner','$BOOTSTRAP_PHC');" &
+bootstrap_second_pid=$!
+await bootstrap_second advisory
+blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}bootstrap_first' AND second.application_name='${RACE_PREFIX}bootstrap_second';")
+[[ $blocked == t ]] || { echo "FAIL: bootstrap second did not block on first installation lock: $blocked"; fail=1; }
+gate_open 19
+wait "$bootstrap_first_pid" "$bootstrap_second_pid"
+expect bootstrap_first ok; expect bootstrap_second BOOTSTRAP_OWNER_EXISTS; expect bootstrap_second 55000
+got=$(sql <<<"SELECT 'BOOTSTRAP_RACE='||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')||'|'||(SELECT count(*) FROM app.users)||'|'||(SELECT count(*) FROM app.tenants);")
+echo "race first-owner bootstrap: $got (expected BOOTSTRAP_RACE=1|1|1)"
+[[ $got == 'BOOTSTRAP_RACE=1|1|1' ]] || fail=1
+PSQL=("${ORIGINAL_PSQL[@]}")
+sql -c "DROP DATABASE $BOOTSTRAP_DB" >/dev/null
+BOOTSTRAP_DB=""
+
+
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/identity contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
 echo 'PASS: shipping range INSERT/UPDATE races preserve exact non-overlapping tiers'
+echo 'PASS: auth concurrent normalized-identifier failures preserve account and account+IP counts'
+echo 'PASS: bootstrap concurrent first-owner creation commits one installation owner only'

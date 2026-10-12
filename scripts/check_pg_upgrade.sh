@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Upgrade gates for security hardening, forward reliability and additive inventory; real PG18 only.
+# Upgrade gates for security hardening, forward reliability, additive inventory and identity; real PG18 only.
 # Depends on: a superuser DATABASE_URL (or Docker compose) able to CREATE DATABASE.
 # Called by: CI after check_pg.sh. Each case runs in its own throwaway database.
 # Invariants: 010 refuses to seal a live release with unsafe media; every pre-010
 # release ends up sealed (history is immutable); releases created after 010 are not.
 # Reliability preserves compatible pending data and refuses ambiguous old results.
+# Identity preserves populated global credentials and tenant-bound membership/key state.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -123,7 +124,8 @@ fresh_before_reliability() {
 apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
 RELIABILITY_DB=""
 SHIPPING_DB=""
-trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1; [[ -z $SHIPPING_DB ]] || admin -c "DROP DATABASE IF EXISTS $SHIPPING_DB" >/dev/null 2>&1' EXIT
+IDENTITY_DB=""
+trap '[[ -z $RELIABILITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $RELIABILITY_DB" >/dev/null 2>&1; [[ -z $SHIPPING_DB ]] || admin -c "DROP DATABASE IF EXISTS $SHIPPING_DB" >/dev/null 2>&1; [[ -z $IDENTITY_DB ]] || admin -c "DROP DATABASE IF EXISTS $IDENTITY_DB" >/dev/null 2>&1' EXIT
 RELIABILITY_DB=reliability_upgrade_$$
 fresh_before_reliability "$RELIABILITY_DB"
 db "$RELIABILITY_DB" <<'SQL' >/dev/null
@@ -272,5 +274,111 @@ db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 SHIPPING_DB=""
 
+# C-02a: discover the identity upgrade by suffix. Seed only after ALL filename-
+# ordered predecessors; retain a full-row snapshot so ids, hashes and state are
+# independently compared, then apply every later module before the exact matrix.
+identity_files=(migrations/[0-9][0-9][0-9]_identity_auth.sql)
+[[ ${#identity_files[@]} -eq 1 && -f ${identity_files[0]} ]] || { echo 'FAIL: exactly one identity auth migration required'; exit 1; }
+IDENTITY_DB=upgrade_identity_$$
+DB=$IDENTITY_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${identity_files[0]} ]] || break
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name,status) VALUES('identity-upgrade','suspended') RETURNING id AS t \gset
+INSERT INTO app.users(email,password_hash,status)
+ VALUES('identity-upgrade@example.test','legacy-preserved-password-hash','disabled') RETURNING id AS u \gset
+INSERT INTO app.tenant_memberships(tenant_id,user_id,role,status)
+ VALUES(:'t',:'u','viewer','suspended');
+INSERT INTO app.api_keys(tenant_id,issued_by,key_prefix,key_hash,scopes,expires_at,revoked_at)
+ VALUES(:'t',:'u','legacy-upgrade',sha256('identity-upgrade-key'::bytea),ARRAY['catalog:read'],
+        '2031-01-01T00:00:00Z','2030-01-01T00:00:00Z');
+CREATE TABLE public.identity_upgrade_expected(entity text PRIMARY KEY,payload jsonb NOT NULL);
+INSERT INTO public.identity_upgrade_expected
+ SELECT 'tenant',to_jsonb(t) FROM app.tenants t WHERE t.id=:'t'
+ UNION ALL SELECT 'user',to_jsonb(u) FROM app.users u WHERE u.id=:'u'
+ UNION ALL SELECT 'membership',to_jsonb(m) FROM app.tenant_memberships m WHERE m.tenant_id=:'t' AND m.user_id=:'u'
+ UNION ALL SELECT 'api_key',to_jsonb(k) FROM app.api_keys k WHERE k.tenant_id=:'t' AND k.issued_by=:'u';
+SQL
+{ echo 'BEGIN;'; cat "${identity_files[0]}"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+result=$(db "$DB" <<'SQL'
+WITH actual(entity,payload) AS (
+ SELECT 'tenant',to_jsonb(t) FROM app.tenants t WHERE t.name='identity-upgrade'
+ UNION ALL SELECT 'user',to_jsonb(u) FROM app.users u WHERE u.email_normalized='identity-upgrade@example.test'
+ UNION ALL SELECT 'membership',to_jsonb(m) FROM app.tenant_memberships m JOIN app.users u ON u.id=m.user_id WHERE u.email_normalized='identity-upgrade@example.test'
+ UNION ALL SELECT 'api_key',to_jsonb(k) FROM app.api_keys k WHERE k.key_prefix='legacy-upgrade'
+)
+SELECT 'IDENTITY_UPGRADE='||(SELECT count(*) FROM public.identity_upgrade_expected)||'|'||
+ (SELECT count(*) FROM actual)||'|'||
+ (SELECT count(*) FROM actual a JOIN public.identity_upgrade_expected e USING(entity,payload));
+SQL
+)
+if [[ $result == 'IDENTITY_UPGRADE=4|4|4' ]]; then pass 'identity upgrade preserves all legacy user/tenant/viewer/API-key ids, hashes and state'
+else bad "identity upgrade witness: $result"; fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${identity_files[0]} ]] || continue
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+done
+
+# Execute-only bootstrap after a populated identity upgrade, with no prior owner.
+# Every call uses a real SET ROLE transaction, including the isolation rejection.
+# The deliberately duplicate email must leave no new tenant/user/owner behind.
+if out=$(db "$DB" -v VERBOSITY=verbose 2>&1 <<'SQL'
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('identity-upgrade@example.test','duplicate rollback',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SQL
+); then bad 'bootstrap accepted duplicate legacy email'
+elif [[ $out != *23505* ]]; then bad "bootstrap duplicate email failed for another reason: $out"
+elif [[ $(db "$DB" -c "SELECT (SELECT count(*) FROM app.users)||'|'||(SELECT count(*) FROM app.tenants)||'|'||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')") != '1|1|0' ]]; then bad 'bootstrap duplicate-email rollback left user/tenant/owner'
+else pass 'bootstrap duplicate-email rollback preserves legacy user and creates no tenant/owner'; fi
+result=$(db "$DB" <<'SQL'
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('upgraded-owner@example.test','upgraded first owner',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SELECT 'BOOTSTRAP_UPGRADE='||(SELECT count(*) FROM app.users)||'|'||
+ (SELECT count(*) FROM app.tenants)||'|'||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')||'|'||
+ EXISTS(SELECT FROM app.tenant_memberships m JOIN app.users u ON u.id=m.user_id JOIN app.tenants t ON t.id=m.tenant_id
+  WHERE m.role='owner' AND m.status='active' AND u.email_normalized='upgraded-owner@example.test'
+   AND u.status='active' AND t.name='upgraded first owner' AND t.status='active'
+   AND u.password_hash='$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+SQL
+)
+if [[ $result == *'BOOTSTRAP_UPGRADE=2|2|1|true'* ]]; then pass 'bootstrap creates first upgraded installation tenant/user/owner through app_admin_bootstrap'
+else bad "bootstrap upgraded first-owner witness: $result"; fi
+if out=$(db "$DB" -v VERBOSITY=verbose 2>&1 <<'SQL'
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('other-owner@example.test','another tenant',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SQL
+); then bad 'bootstrap created a second installation owner in another tenant'
+elif [[ $out != *55000* || $out != *BOOTSTRAP_OWNER_EXISTS* ]]; then bad "bootstrap repeated call failed for another reason: $out"
+else pass 'bootstrap rejects second owner globally across tenants'; fi
+if out=$(db "$DB" -v VERBOSITY=verbose 2>&1 <<'SQL'
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('rr-owner@example.test','repeatable-read tenant',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SQL
+); then bad 'bootstrap accepted REPEATABLE READ'
+elif [[ $out != *25000* || $out != *BOOTSTRAP_REQUIRES_READ_COMMITTED* ]]; then bad "bootstrap isolation rejection failed for another reason: $out"
+else pass 'bootstrap requires READ COMMITTED in a real app_admin_bootstrap transaction'; fi
+if [[ $(db "$DB" -c "SELECT (SELECT count(*) FROM app.users)||'|'||(SELECT count(*) FROM app.tenants)||'|'||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')") != '2|2|1' ]]; then
+ bad 'bootstrap rejected repeat/isolation calls left partial user/tenant/owner rows'
+fi
+db "$DB" -f tests/db_identity_auth.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"
+IDENTITY_DB=""
+
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing and shipping upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping and identity upgrade gates'

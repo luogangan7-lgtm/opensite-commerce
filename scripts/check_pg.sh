@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Runs against an expendable PostgreSQL 18 database; requires psql.
+# Responsibility: execute the complete SQL acceptance manifest against expendable PG18.
+# Depends on migrate.sh, psql/Compose and tests/db_*.sql; called by CI and developers.
+# Invariants: apply/check migrations twice; stop at the first failing SQL gate.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -12,7 +14,7 @@ else
 fi
 ./scripts/migrate.sh
 ./scripts/migrate.sh  # checksum/second-run idempotency
-for test_file in tests/db_security_audit.sql tests/db_smoke.sql tests/db_isolation.sql tests/db_role_boundaries.sql tests/db_release_integrity.sql tests/db_security_hardening.sql tests/db_role_matrix.sql tests/db_connection_reuse.sql tests/db_security_services.sql tests/db_publish_isolation.sql tests/db_sealed_media.sql tests/db_reliability.sql tests/db_inventory.sql tests/db_pricing.sql tests/db_shipping.sql; do
+for test_file in tests/db_security_audit.sql tests/db_smoke.sql tests/db_isolation.sql tests/db_role_boundaries.sql tests/db_release_integrity.sql tests/db_security_hardening.sql tests/db_role_matrix.sql tests/db_connection_reuse.sql tests/db_security_services.sql tests/db_publish_isolation.sql tests/db_sealed_media.sql tests/db_reliability.sql tests/db_inventory.sql tests/db_pricing.sql tests/db_shipping.sql tests/db_identity_auth.sql; do
   echo "RUN $test_file"
   "${PSQL[@]}" < "$test_file"
 done
