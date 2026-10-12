@@ -67,6 +67,7 @@ expected = [
     'db_tax.sql',
     'db_customers.sql',
     'db_ledger.sql',
+    'db_catalog_api.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:
