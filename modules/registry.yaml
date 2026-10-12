@@ -586,7 +586,7 @@
         "pricing"
       ],
       "tests": [
-        "internal/platform/httpapi/cart_test.go",
+        "internal/platform/httpapi/carthttp/cart_test.go",
         "internal/modules/cart/internal/service/service_test.go",
         "internal/bootstrap/contract_test.go",
         "internal/db/cart_integration_test.go"

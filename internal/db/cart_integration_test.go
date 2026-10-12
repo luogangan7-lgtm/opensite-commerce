@@ -497,3 +497,35 @@ func TestCartPostgresConcurrentIfMatch(t *testing.T) {
 		t.Fatalf("race persisted version%d quantity%d", version, q)
 	}
 }
+
+// A full cart rejects a new SKU before commit and stays readable/repairable;
+// the bounded representation fits the platform's buffered response.
+func TestCartPostgresLineLimit(t *testing.T) {
+	f := newCartFixture(t)
+	c, _ := f.create(f.registered)
+	f.exec(`WITH v AS (INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+ SELECT $1,$2,'CART-FULL-'||g,'full-'||g FROM generate_series(1,$4::int) g RETURNING id)
+INSERT INTO app.cart_lines(tenant_id,cart_id,sku_id,quantity) SELECT $1,$3,id,1 FROM v`, f.tenant, f.product, c.Cart.ID, contract.MaxLines-1)
+	f.exec("INSERT INTO app.cart_lines(tenant_id,cart_id,sku_id,quantity) VALUES($1,$2,$3,1)", f.tenant, c.Cart.ID, f.sku)
+	f.exec(`INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount)
+ SELECT $1,$2,id,1,9223372036 FROM app.product_variants WHERE tenant_id=$1 AND sku LIKE 'CART-FULL-%'`, f.tenant, f.priceList)
+	path := f.path(c.Cart.ID)
+	w := cartRequest(f.registered, "GET", path, "", "", "")
+	wantStatus(t, w, 200)
+	if n := len(cartView(t, w).Lines); n != contract.MaxLines || w.Body.Len() > 1<<20 {
+		t.Fatalf("full cart: %d lines, %d bytes", n, w.Body.Len())
+	}
+	tag := w.Header().Get("ETag")
+	w = cartRequest(f.registered, "PUT", path+"/lines/"+f.otherSKU, `{"quantity":1}`, "", tag)
+	wantStatus(t, w, 422)
+	if !strings.Contains(w.Body.String(), "cart_line_limit") {
+		t.Fatalf("limit code: %s", w.Body.String())
+	}
+	if version, q := f.state(c.Cart.ID); version != 1 || q != int64(contract.MaxLines) {
+		t.Fatalf("rejected line persisted: version%d quantity%d", version, q)
+	}
+	w = cartRequest(f.registered, "DELETE", path+"/lines/"+f.sku, "", "", tag)
+	wantStatus(t, w, 200)
+	w = cartRequest(f.registered, "PUT", path+"/lines/"+f.otherSKU, `{"quantity":1}`, "", w.Header().Get("ETag"))
+	wantStatus(t, w, 200)
+}

@@ -1,8 +1,9 @@
 // Cart HTTP adaptation belongs to the platform boundary, which alone imports
 // generated production server types. It depends on cart's public Service port
-// and is mounted by bootstrap. Only four cart operations mount; actor custody
+// and is mounted by bootstrap. It is a separate package so modules importing
+// httpapi (catalog, media) do not transitively depend on cart. Only four cart operations mount; actor custody
 // stays in module auth and strict admission precedes generated decoding.
-package httpapi
+package carthttp
 
 import (
 	"bytes"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
 )
 
@@ -24,22 +26,22 @@ type CartHandler struct {
 
 func NewCartHandler(service contract.Service) *CartHandler { return &CartHandler{service: service} }
 
-func (h *CartHandler) Routes() []Route {
+func (h *CartHandler) Routes() []httpapi.Route {
 	strict := generated.NewStrictHandlerWithOptions(h, nil, generated.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
-			WriteProblem(w, r, apperrors.New(400, "invalid_json", "Invalid cart request"))
+			httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_json", "Invalid cart request"))
 		},
-		ResponseErrorHandlerFunc: WriteProblem,
+		ResponseErrorHandlerFunc: httpapi.WriteProblem,
 	})
 	wrapper := generated.ServerInterfaceWrapper{Handler: strict, ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
-		WriteProblem(w, r, apperrors.New(400, "invalid_request", "Invalid cart request"))
+		httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_request", "Invalid cart request"))
 	}}
 	const base = "/api/v1/t/{tenant_id}/carts"
-	return []Route{
-		{Spec: RouteSpec{OperationID: "createCart", Method: "POST", Pattern: base, Access: Storefront, MaxBodySize: 4096}, Handler: h.admit("createCart", wrapper.CreateCart)},
-		{Spec: RouteSpec{OperationID: "getCart", Method: "GET", Pattern: base + "/{cart_id}", Access: Storefront}, Handler: h.admit("getCart", wrapper.GetCart)},
-		{Spec: RouteSpec{OperationID: "setCartLine", Method: "PUT", Pattern: base + "/{cart_id}/lines/{sku_id}", Access: Storefront, MaxBodySize: 4096}, Handler: h.admit("setCartLine", wrapper.SetCartLine)},
-		{Spec: RouteSpec{OperationID: "deleteCartLine", Method: "DELETE", Pattern: base + "/{cart_id}/lines/{sku_id}", Access: Storefront}, Handler: h.admit("deleteCartLine", wrapper.DeleteCartLine)},
+	return []httpapi.Route{
+		{Spec: httpapi.RouteSpec{OperationID: "createCart", Method: "POST", Pattern: base, Access: httpapi.Storefront, MaxBodySize: 4096}, Handler: h.admit("createCart", wrapper.CreateCart)},
+		{Spec: httpapi.RouteSpec{OperationID: "getCart", Method: "GET", Pattern: base + "/{cart_id}", Access: httpapi.Storefront}, Handler: h.admit("getCart", wrapper.GetCart)},
+		{Spec: httpapi.RouteSpec{OperationID: "setCartLine", Method: "PUT", Pattern: base + "/{cart_id}/lines/{sku_id}", Access: httpapi.Storefront, MaxBodySize: 4096}, Handler: h.admit("setCartLine", wrapper.SetCartLine)},
+		{Spec: httpapi.RouteSpec{OperationID: "deleteCartLine", Method: "DELETE", Pattern: base + "/{cart_id}/lines/{sku_id}", Access: httpapi.Storefront}, Handler: h.admit("deleteCartLine", wrapper.DeleteCartLine)},
 	}
 }
 
@@ -49,11 +51,11 @@ func (h *CartHandler) admit(operation string, next http.HandlerFunc) http.Handle
 		if operation == "setCartLine" || operation == "deleteCartLine" {
 			values := r.Header.Values("If-Match")
 			if len(values) == 0 || len(values) == 1 && values[0] == "" {
-				WriteProblem(w, r, apperrors.New(428, "precondition_required", "If-Match is required"))
+				httpapi.WriteProblem(w, r, apperrors.New(428, "precondition_required", "If-Match is required"))
 				return
 			}
 			if len(values) != 1 {
-				WriteProblem(w, r, apperrors.New(412, "precondition_failed", "Exact strong If-Match required"))
+				httpapi.WriteProblem(w, r, apperrors.New(412, "precondition_failed", "Exact strong If-Match required"))
 				return
 			}
 		}
@@ -61,8 +63,8 @@ func (h *CartHandler) admit(operation string, next http.HandlerFunc) http.Handle
 			// Struct decoding matches keys case-insensitively. Admit the one
 			// exact schema key before typed/generated decoding can fold names.
 			var fields map[string]json.RawMessage
-			if err := DecodeJSON(w, r, &fields); err != nil {
-				WriteProblem(w, r, err)
+			if err := httpapi.DecodeJSON(w, r, &fields); err != nil {
+				httpapi.WriteProblem(w, r, err)
 				return
 			}
 			key := "currency"
@@ -70,12 +72,12 @@ func (h *CartHandler) admit(operation string, next http.HandlerFunc) http.Handle
 				key = "quantity"
 			}
 			if len(fields) != 1 || fields[key] == nil {
-				WriteProblem(w, r, apperrors.New(400, "invalid_json", "Body must contain exactly the canonical cart field"))
+				httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_json", "Body must contain exactly the canonical cart field"))
 				return
 			}
 			body, err := json.Marshal(fields)
 			if err != nil {
-				WriteProblem(w, r, err)
+				httpapi.WriteProblem(w, r, err)
 				return
 			}
 			var dto any
@@ -87,7 +89,7 @@ func (h *CartHandler) admit(operation string, next http.HandlerFunc) http.Handle
 				}{}
 			}
 			if err := json.Unmarshal(body, dto); err != nil {
-				WriteProblem(w, r, apperrors.New(400, "invalid_json", "Invalid cart field type"))
+				httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_json", "Invalid cart field type"))
 				return
 			}
 			if operation == "setCartLine" {
@@ -95,7 +97,7 @@ func (h *CartHandler) admit(operation string, next http.HandlerFunc) http.Handle
 					Quantity *int64 `json:"quantity"`
 				}).Quantity
 				if quantity == nil || *quantity < 0 || *quantity > contract.MaxQuantity {
-					WriteProblem(w, r, apperrors.New(400, "invalid_quantity", "Quantity must be an integer between zero and the cart limit"))
+					httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_quantity", "Quantity must be an integer between zero and the cart limit"))
 					return
 				}
 			}

@@ -8,6 +8,7 @@ session operations; no database, handler or production dependencies.
 import copy
 from pathlib import Path
 import sys
+import json
 import unittest
 
 import yaml
@@ -75,6 +76,19 @@ class APIContractTests(unittest.TestCase):
         cart.pop("pricing_error")
         cart["subtotal"] = 0
         validator.validate(cart)
+        # Priced and failed shapes are mutually exclusive alternatives.
+        impossible = [
+            lambda c: c.pop("subtotal"),
+            lambda c: c.update(pricing_error="price_unavailable"),
+            lambda c: c["lines"][0].pop("unit_amount"),
+            lambda c: c["lines"][0].update(pricing_error="price_unavailable"),
+            lambda c: c.update(lines=[c["lines"][0]] * 1001),
+        ]
+        for index, mutate in enumerate(impossible):
+            broken = json.loads(json.dumps(cart))
+            mutate(broken)
+            with self.subTest(impossible=index), self.assertRaises(contract.ValidationError):
+                validator.validate(broken)
         self.assertEqual(set(schemas["CartLine"]["required"]), {"sku_id", "quantity", "available_quantity", "sellable"})
         self.assertEqual(set(schemas["Cart"]["required"]), {"id", "currency", "version", "lines"})
 

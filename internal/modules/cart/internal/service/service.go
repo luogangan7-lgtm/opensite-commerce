@@ -100,6 +100,10 @@ func (s *Service) PutLine(ctx context.Context, actor contract.AuthorizedActor, i
 	// Pricing and subtotal overflow are checked before commit. A rejected future
 	// quantity cannot persist merely because it overflowed while making the reply.
 	validate := func(snapshot contract.Snapshot) error {
+		// Bounded before commit: an over-limit cart could never be returned.
+		if len(snapshot.Lines) > contract.MaxLines {
+			return apperrors.New(422, "cart_line_limit", "A cart holds at most 1000 distinct SKUs")
+		}
 		view, err := Project(snapshot)
 		if err == nil && quantity > 0 && view.PricingError != "" {
 			return apperrors.New(422, view.PricingError, "A complete current price is unavailable")

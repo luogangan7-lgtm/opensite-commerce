@@ -8,9 +8,14 @@ available quantities, and customer owns trusted customer identity/status.
 
 The public Go contract is `internal/modules/cart/contract`; its `Service` port,
 typed actor and cart view are consumed by the platform HTTP adapter. Generated
-server adaptation lives in `internal/platform/httpapi/cart.go`; cart business
+server adaptation lives in `internal/platform/httpapi/carthttp/cart.go`; cart business
 packages do not import generated HTTP types. Persistence stays under cart's
-internal store through a consumer-defined Repository transaction contract.
+internal store, which runs inside the platform tenant runner
+(`pgxadapter.QueryRunner.RunAuthorized`, reads via the read-only
+`RunAuthorizedSnapshot`) wired by `bootstrap.FromEnvironment` from
+`OPENSITE_DATABASE_URL`; cart never holds a pool or begins its own transaction.
+A cart holds at most 1000 distinct SKUs (`contract.MaxLines`), enforced before
+commit, so every representation fits the 1 MiB response buffer.
 Other modules cannot import cart internals or mutate its tables. Checkout must
 recompute prices, validate stock and reserve inventory in its own future flow.
 
