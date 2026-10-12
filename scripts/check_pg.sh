@@ -12,7 +12,7 @@ else
 fi
 ./scripts/migrate.sh
 ./scripts/migrate.sh  # checksum/second-run idempotency
-for test_file in tests/db_security_audit.sql tests/db_smoke.sql tests/db_isolation.sql tests/db_role_boundaries.sql tests/db_release_integrity.sql; do
+for test_file in tests/db_security_audit.sql tests/db_smoke.sql tests/db_isolation.sql tests/db_role_boundaries.sql tests/db_release_integrity.sql tests/db_security_hardening.sql tests/db_role_matrix.sql tests/db_connection_reuse.sql tests/db_security_services.sql tests/db_publish_isolation.sql tests/db_sealed_media.sql; do
   echo "RUN $test_file"
   "${PSQL[@]}" < "$test_file"
 done

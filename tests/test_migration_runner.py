@@ -5,7 +5,8 @@ import os, subprocess, tempfile, shutil
 
 source_root = Path(__file__).resolve().parents[1]
 migrations = sorted((source_root/'migrations').glob('[0-9][0-9][0-9]_*.sql'))
-assert len(migrations) == 9, f'expected 9 migration files, got {len(migrations)}'
+numbers = [int(m.name[:3]) for m in migrations]
+assert numbers == list(range(1, len(numbers)+1)) and len(numbers) >= 9, f'migrations must be contiguous 001..N with frozen 001-009, got {numbers}'
 with tempfile.TemporaryDirectory() as temp:
     bindir = Path(temp)
     root = bindir/'repository with spaces'

@@ -37,6 +37,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client
           ./scripts/check_pg.sh
+          ./scripts/check_pg_races.sh
+          ./scripts/check_pg_upgrade.sh
       - name: sqlc v1.31.1 (verified release artifact)
         run: |
           curl -fsSL --retry 3 \
