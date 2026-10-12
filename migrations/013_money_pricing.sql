@@ -36,6 +36,8 @@ CREATE TABLE app.price_entries (
  CONSTRAINT price_entries_list_fk FOREIGN KEY(tenant_id,price_list_id) REFERENCES app.price_lists(tenant_id,id),
  CONSTRAINT price_entries_sku_fk FOREIGN KEY(tenant_id,sku_id) REFERENCES app.product_variants(tenant_id,id)
 );
+-- Quote hot path is per SKU: start from the SKU's tiers, not every list of the tenant.
+CREATE INDEX price_entries_sku ON app.price_entries(tenant_id,sku_id,min_quantity,price_list_id);
 ALTER TABLE app.price_lists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app.price_lists FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_scope ON app.price_lists TO app_runtime

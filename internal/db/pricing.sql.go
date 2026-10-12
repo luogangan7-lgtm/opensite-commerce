@@ -12,30 +12,32 @@ import (
 )
 
 const listApplicablePriceEntries = `-- name: ListApplicablePriceEntries :many
+WITH e AS MATERIALIZED (
+  -- Start from this SKU's tiers (price_entries_sku), not from every list of the tenant.
+  SELECT pe.tenant_id,pe.price_list_id,pe.sku_id,pe.min_quantity,pe.unit_amount FROM app.price_entries pe
+  WHERE pe.tenant_id=$5 AND pe.sku_id=$6 AND pe.min_quantity<=$7::bigint)
 SELECT l.tenant_id,l.id AS price_list_id,l.currency,l.status,l.priority,
        l.starts_at,l.ends_at,l.audience,l.customer_group_id,l.buyer_company_id,
        e.sku_id,e.min_quantity,e.unit_amount
-FROM app.price_lists l
-JOIN app.price_entries e ON (e.tenant_id,e.price_list_id)=(l.tenant_id,l.id)
-WHERE l.tenant_id=$1 AND e.sku_id=$2
-  AND l.status='active' AND l.currency::text=$3::text
-  AND l.starts_at<=$4::timestamptz
-  AND (l.ends_at IS NULL OR $4::timestamptz<l.ends_at)
-  AND e.min_quantity<=$5::bigint
+FROM e
+JOIN app.price_lists l ON (l.tenant_id,l.id)=(e.tenant_id,e.price_list_id)
+WHERE l.status='active' AND l.currency::text=$1::text
+  AND l.starts_at<=$2::timestamptz
+  AND (l.ends_at IS NULL OR $2::timestamptz<l.ends_at)
   AND (l.audience='all'
-    OR (l.audience='customer_group' AND l.customer_group_id=$6::uuid)
-    OR (l.audience='buyer_company' AND l.buyer_company_id=$7::uuid))
+    OR (l.audience='customer_group' AND l.customer_group_id=$3::uuid)
+    OR (l.audience='buyer_company' AND l.buyer_company_id=$4::uuid))
 ORDER BY l.priority DESC,l.id ASC,e.min_quantity DESC
 `
 
 type ListApplicablePriceEntriesParams struct {
-	TenantID        pgtype.UUID        `json:"tenant_id"`
-	SkuID           pgtype.UUID        `json:"sku_id"`
 	Currency        string             `json:"currency"`
 	AtTime          pgtype.Timestamptz `json:"at_time"`
-	Quantity        int64              `json:"quantity"`
 	CustomerGroupID pgtype.UUID        `json:"customer_group_id"`
 	BuyerCompanyID  pgtype.UUID        `json:"buyer_company_id"`
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	SkuID           pgtype.UUID        `json:"sku_id"`
+	Quantity        int64              `json:"quantity"`
 }
 
 type ListApplicablePriceEntriesRow struct {
@@ -57,13 +59,13 @@ type ListApplicablePriceEntriesRow struct {
 // Pricing reads only: caller supplies authenticated tenant/audience and transaction.
 func (q *Queries) ListApplicablePriceEntries(ctx context.Context, arg ListApplicablePriceEntriesParams) ([]ListApplicablePriceEntriesRow, error) {
 	rows, err := q.db.Query(ctx, listApplicablePriceEntries,
-		arg.TenantID,
-		arg.SkuID,
 		arg.Currency,
 		arg.AtTime,
-		arg.Quantity,
 		arg.CustomerGroupID,
 		arg.BuyerCompanyID,
+		arg.TenantID,
+		arg.SkuID,
+		arg.Quantity,
 	)
 	if err != nil {
 		return nil, err
