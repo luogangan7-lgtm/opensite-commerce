@@ -568,6 +568,50 @@
       "note": "Internal single-currency posting and account balances. Atomic posting is the only runtime write capability for transactions and entries; tenant settlement currency is explicit, with no automatic default."
     },
     {
+      "name": "cart",
+      "status": "implemented",
+      "go_path": "internal/modules/cart",
+      "go_status": "implemented",
+      "owns_tables": [
+        "carts",
+        "cart_lines"
+      ],
+      "operations": [
+        {
+          "operation_id": "createCart",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getCart",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "setCartLine",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "deleteCartLine",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "customer",
+        "catalog",
+        "inventory",
+        "money",
+        "pricing"
+      ],
+      "tests": [
+        "internal/platform/httpapi/carthttp/cart_test.go",
+        "internal/modules/cart/internal/service/service_test.go",
+        "internal/bootstrap/contract_test.go",
+        "internal/db/cart_integration_test.go"
+      ],
+      "scopes": [],
+      "note": "Cart intent has immutable tenant/owner/currency, absolute SKU quantities and optimistic version. Prices/stock are live hints; no reservations, checkout or HTTP guest merge. Storefront authority uses guest capability hash or trusted customer resolver; staff auth is separate."
+    },
+    {
       "name": "orders",
       "status": "implemented",
       "go_path": "internal/modules/orders",
@@ -891,6 +935,14 @@
       "touches_tables": [
         "outbox_events",
         "idempotency_records"
+      ]
+    },
+    {
+      "file": "migrations/023_cart.sql",
+      "owner": "cart",
+      "touches_tables": [
+        "carts",
+        "cart_lines"
       ]
     }
   ]
