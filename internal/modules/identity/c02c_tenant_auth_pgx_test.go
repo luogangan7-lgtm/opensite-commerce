@@ -10,10 +10,16 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
+	"net/url"
+	"os"
+	"slices"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	authcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	identityadapter "github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -206,4 +212,131 @@ func TestC02cWriteAuthorizationPostgres(t *testing.T) {
 		}
 		check(t, tenant, "session", session, "catalog:write", false)
 	})
+}
+
+// A business transaction must retain membership/session/key locks after a
+// successful recheck; independent revocation and downgrade writers wait for it.
+func TestC02cWriteAuthorityLocksPostgres(t *testing.T) {
+	for _, kind := range []string{"session", "api_key"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx, admin, dsn, _ := setupLoginPG(t)
+			fixtureURL, err := url.Parse(dsn)
+			if err != nil {
+				t.Fatal("C02c lock fixture URL invalid")
+			}
+			adminURL, err := url.Parse(os.Getenv("DATABASE_URL"))
+			if err != nil {
+				t.Fatal("C02c admin fixture URL invalid")
+			}
+			fixtureURL.User = adminURL.User
+			holder := c02cAuthDB(t, ctx, fixtureURL.String())
+			writer := c02cAuthDB(t, ctx, dsn)
+			user := seedLoginPG(t, ctx, admin, "c02c-lock@example.test")
+			var tenant, credential string
+			if err := admin.QueryRow(ctx, `INSERT INTO app.tenants(name) VALUES('C02c lock tenant') RETURNING id::text`).Scan(&tenant); err != nil {
+				t.Fatal("C02c lock tenant fixture failed")
+			}
+			if _, err := admin.Exec(ctx, `INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'admin')`, tenant, user); err != nil {
+				t.Fatal("C02c lock membership fixture failed")
+			}
+			if kind == "session" {
+				if err := admin.QueryRow(ctx, `INSERT INTO app.auth_sessions(user_id,token_hash,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour') RETURNING id::text`, user, c02cKeyHash(t)).Scan(&credential); err != nil {
+					t.Fatal("C02c lock session fixture failed")
+				}
+			} else {
+				credential = uuid.NewString()
+				if _, err := admin.Exec(ctx, `INSERT INTO app.api_keys(tenant_id,id,issued_by,key_prefix,key_hash,scopes) VALUES($1,$2,$3,'lock',$4,ARRAY['catalog:write'])`, tenant, credential, user, c02cKeyHash(t)); err != nil {
+					t.Fatal("C02c lock key fixture failed")
+				}
+			}
+			entered, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+			go func() {
+				done <- holder.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+					// Use the real runtime capability in the same transaction that
+					// stands for the subsequent business write.
+					if _, err := tx.Exec(ctx, `SET LOCAL ROLE app_runtime`); err != nil {
+						return err
+					}
+					if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id',$1,true)`, tenant); err != nil {
+						return err
+					}
+					var admitted bool
+					if err := tx.QueryRow(ctx, `SELECT app.auth_revalidate_tenant($1,$2,$3,$4,'catalog:write')`, tenant, user, kind, credential).Scan(&admitted); err != nil {
+						return err
+					}
+					if !admitted {
+						return errors.New("C02c valid authority refused")
+					}
+					close(entered)
+					select {
+					case <-release:
+						return nil
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				})
+			}()
+			select {
+			case <-entered:
+			case err := <-done:
+				t.Fatal("C02c runtime transaction setup failed", safeCode(err))
+			case <-ctx.Done():
+				t.Fatal("C02c runtime transaction setup cancelled")
+			}
+			var once sync.Once
+			finish := func() {
+				once.Do(func() {
+					close(release)
+					if err := <-done; err != nil {
+						t.Error("C02c authority transaction failed", safeCode(err))
+					}
+				})
+			}
+			t.Cleanup(finish)
+			revoked := make(chan error, 1)
+			go func() {
+				if kind == "session" {
+					_, err := writer.Exec(ctx, `UPDATE app.auth_sessions SET revoked_at=clock_timestamp() WHERE id=$1`, credential)
+					revoked <- err
+				} else {
+					_, err := writer.Exec(ctx, `SELECT app.auth_revoke_api_key($1,$2,$3)`, tenant, user, credential)
+					revoked <- err
+				}
+			}()
+			query := "%UPDATE app.auth_sessions SET revoked_at%"
+			if kind == "api_key" {
+				query = "%SELECT app.auth_revoke_api_key%"
+			}
+			waitLoginLocks(t, ctx, admin, query, 1)
+			select {
+			case err := <-revoked:
+				t.Fatal("C02c revocation escaped authority lock", safeCode(err))
+			default:
+			}
+			finish()
+			if err := <-revoked; err != nil {
+				t.Fatal("C02c revocation after commit failed", safeCode(err))
+			}
+			var valid bool
+			if err := admin.QueryRow(ctx, `SELECT revoked_at IS NOT NULL FROM app.`+map[string]string{"session": "auth_sessions", "api_key": "api_keys"}[kind]+` WHERE id=$1`, credential).Scan(&valid); err != nil || !valid {
+				t.Fatal("C02c post-commit revocation missing")
+			}
+		})
+	}
+}
+
+// Go admission and transactional SQL must use the same exact role allowlists.
+func TestC02cRoleScopesMirrorPostgres(t *testing.T) {
+	ctx, admin, _, _ := setupLoginPG(t)
+	for _, role := range []string{"owner", "admin", "catalog_editor", "content_editor", "viewer", "unknown", "OWNER"} {
+		t.Run(role, func(t *testing.T) {
+			var actual []string
+			if err := admin.QueryRow(ctx, `SELECT app.auth_role_scopes($1)`, role).Scan(&actual); err != nil {
+				t.Fatal("C02c SQL role scopes unavailable", safeCode(err))
+			}
+			if !slices.Equal(actual, authcontract.RoleScopes(role)) {
+				t.Fatal("C02c Go and SQL role scopes disagree", role)
+			}
+		})
+	}
 }
