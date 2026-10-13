@@ -582,7 +582,7 @@ got=$(sql <<<"SELECT version||'|'||product_code FROM app.products WHERE tenant_i
 echo "race catalog stale CAS: $got (expected 2|CAS-FIRST)"
 [[ $got == '2|CAS-FIRST' ]] || fail=1
 
-# Cart CAS: loser waits on the actual cart row while winner is parked on50.
+# Cart CAS: loser waits on the actual cart row while winner is parked on31.
 # The stale contender may not modify lines; the same transaction owns lock/CAS.
 read -r T C S <<<"$(sql <<'SQL' | tail -1
 INSERT INTO app.tenants(name) VALUES('cart-cas-race') RETURNING id AS t \gset
@@ -595,14 +595,14 @@ SQL
 )"
 ctx="SELECT set_config('app.cart_customer_id','',true),set_config('app.cart_token_hash',encode(sha256('race-cart-guest'::bytea),'hex'),true);"
 cas="UPDATE app.carts SET version=version+1 WHERE tenant_id='$T' AND id='$C' AND version=1 RETURNING id"
-gate_close 50
-tx cart_first app_runtime "$T" "$ctx SELECT version FROM app.carts WHERE tenant_id='$T' AND id='$C' FOR UPDATE; WITH bump AS ($cas), changed AS (UPDATE app.cart_lines SET quantity=4 WHERE tenant_id='$T' AND cart_id='$C' AND sku_id='$S' AND EXISTS(SELECT FROM bump) RETURNING sku_id) SELECT 'CART_CAS='||count(*) FROM changed; $(park 50)" &
+gate_close 31
+tx cart_first app_runtime "$T" "$ctx SELECT version FROM app.carts WHERE tenant_id='$T' AND id='$C' FOR UPDATE; WITH bump AS ($cas), changed AS (UPDATE app.cart_lines SET quantity=4 WHERE tenant_id='$T' AND cart_id='$C' AND sku_id='$S' AND EXISTS(SELECT FROM bump) RETURNING sku_id) SELECT 'CART_CAS='||count(*) FROM changed; $(park 31)" &
 cart_first_pid=$!
 await cart_first advisory
 tx cart_second app_runtime "$T" "$ctx SELECT version FROM app.carts WHERE tenant_id='$T' AND id='$C' FOR UPDATE; WITH bump AS ($cas), changed AS (UPDATE app.cart_lines SET quantity=5 WHERE tenant_id='$T' AND cart_id='$C' AND sku_id='$S' AND EXISTS(SELECT FROM bump) RETURNING sku_id) SELECT 'CART_CAS='||count(*) FROM changed;" &
 cart_second_pid=$!
 await cart_second "${ROWLOCK[@]}"
-gate_open 50
+gate_open 31
 await cart_first gone; await cart_second gone
 wait "$cart_first_pid"; wait "$cart_second_pid"
 expect cart_first ok; expect cart_second ok
@@ -719,8 +719,96 @@ got=$(sql <<<"SELECT o.state||'|'||s.on_hand||'|'||s.reserved||'|'||
 echo "orders prelock expiry/cancel conservation: $got (expected cancelled|2|0|5|2)"
 [[ $got == 'cancelled|2|0|5|2' ]] || fail=1
 
+# Notifications source dedup and same-key manual redrive use actual command
+# functions on separate connections. Advisory gates 60+ reserve this module.
+read -r NT NO <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('notifications-race') RETURNING id AS t \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_orders_executor;
+INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+VALUES(:'t',uuidv7(),1,'race',sha256('race'::bytea),'{"email":"race@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
+RESET ROLE;
+SELECT :'t'||' '||:'oid';
+SQL
+)"
+source="INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES('$NT','order.paid',jsonb_build_object('order_id','$NO'::uuid),'orders.events','notification-race-source') ON CONFLICT(tenant_id,delivery_target,dedup_key) DO NOTHING;"
+gate_close 60
+tx notification_source_first app_orders_executor "$NT" "$source $(park 60)" &
+await notification_source_first advisory
+tx notification_source_second app_orders_executor "$NT" "$source" &
+await notification_source_second "${ROWLOCK[@]}"
+gate_open 60; wait
+expect notification_source_first ok;expect notification_source_second ok
+got=$(sql <<<"SELECT count(*)||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id='$NT' AND delivery_target='notifications.email') FROM app.notification_deliveries WHERE tenant_id='$NT';")
+echo "notification concurrent source dedup: $got (expected 1|1)"
+[[ $got == '1|1' ]] || fail=1
+# A known failure witness is final-attempt failed, then real redrive races.
+read -r ND NE <<<"$(sql <<SQL | tail -1
+SELECT id AS d,dispatch_event_id AS e FROM app.notification_deliveries WHERE tenant_id='$NT' \gset
+UPDATE app.notification_deliveries SET status='dead_letter',last_error='DELIVERY_REJECTED',attempt_count=10 WHERE tenant_id='$NT' AND id=:'d';
+UPDATE app.outbox_events SET status='dead_letter',attempts=10 WHERE tenant_id='$NT' AND id=:'e';
+SELECT :'d'||' '||:'e';
+SQL
+)"
+redrive="SELECT 'redrive='||r.request_token||':'||r.generation FROM app.notification_redrive('$NT','$ND','race-redrive') r;"
+gate_close 61
+tx notification_redrive_first app_runtime "$NT" "$redrive $(park 61)" &
+await notification_redrive_first advisory
+tx notification_redrive_second app_runtime "$NT" "$redrive" &
+await notification_redrive_second "${ROWLOCK[@]}"
+gate_open 61;wait
+expect notification_redrive_first ok;expect notification_redrive_second ok
+receipt=$(sed -n 's/^redrive=//p' "$ERRDIR/notification_redrive_first.out")
+[[ -n $receipt ]] || { echo 'FAIL: notification missing redrive receipt';fail=1; }
+result notification_redrive_second "redrive=$receipt"
+got=$(sql <<<"SELECT generation||'|'||status||'|'||(SELECT count(*) FROM app.notification_redrive_requests WHERE tenant_id='$NT')||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id='$NT' AND delivery_target='notifications.email') FROM app.notification_deliveries WHERE tenant_id='$NT' AND id='$ND';")
+echo "notification concurrent redrive: $got (expected 2|pending|1|2)"
+[[ $got == '2|pending|1|2' ]] || fail=1
+
+# Quotes: freeze a pending quote and use the same expected version for both
+# writers. Run both deterministic winners; a rowlock wait precedes gate release.
+for winner in approve withdraw; do
+ read -r T U A Q <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('quote-race') RETURNING id AS t \gset
+INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','R') RETURNING id AS o \gset
+INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','R') RETURNING id AS s \gset
+INSERT INTO app.users(email,password_hash) VALUES(uuidv7()::text||'@race.invalid','fixture') RETURNING id AS u \gset
+INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES(:'t',:'u','admin');
+INSERT INTO app.customers(tenant_id,email) VALUES(:'t',uuidv7()::text||'@race.invalid') RETURNING id AS b \gset
+INSERT INTO app.customers(tenant_id,email) VALUES(:'t',uuidv7()::text||'@race.invalid') RETURNING id AS a \gset
+INSERT INTO app.buyer_companies(tenant_id,name) VALUES(:'t','R') RETURNING id AS c \gset
+INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code)
+VALUES(:'t',:'c',:'b','purchaser'),(:'t',:'c',:'a','approver');
+INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message) VALUES(:'t',:'s','race@example.invalid','race') RETURNING id AS i \gset
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_runtime;
+SELECT app.create_quote(:'t',:'s',:'i',:'c',:'u','USD',100,0,0,100,'{}',clock_timestamp()+interval '1 hour',
+ '[{"line_no":1,"description":"race","quantity":1,"unit_price":100,"line_total":100,"snapshot":{}}]') AS q \gset
+SELECT app.transition_quote(:'t',:'q',1,'send','staff',:'u');
+SELECT app.transition_quote(:'t',:'q',2,'accept','customer',:'b');
+COMMIT;
+SELECT :'t'||' '||:'u'||' '||:'a'||' '||:'q';
+SQL
+)"
+ approve="SELECT app.transition_quote('$T','$Q',3,'approve','customer','$A');"
+ withdraw="SELECT app.transition_quote('$T','$Q',3,'withdraw','staff','$U');"
+ first=$approve; second=$withdraw; expected=approved; approvals=1
+ if [[ $winner == withdraw ]]; then first=$withdraw; second=$approve; expected=withdrawn; approvals=0; fi
+ gate_close 50
+ tx quote_first app_runtime "$T" "$first $(park 50)" &
+ await quote_first advisory
+ tx quote_second app_runtime "$T" "$second" &
+ await quote_second "${ROWLOCK[@]}"
+ gate_open 50; wait
+ expect quote_first ok; expect quote_second QUOTES_VERSION; expect quote_second P0003
+ got=$(sql <<<"SELECT status||'|'||version||'|'||(SELECT count(*) FROM app.quote_approvals WHERE tenant_id='$T' AND quote_id='$Q')||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T' AND payload->>'quote_id'='$Q') FROM app.quotes WHERE tenant_id='$T' AND id='$Q';")
+ echo "quote $winner/contender race: $got (expected $expected|4|$approvals|4)"
+ [[ $got == "$expected|4|$approvals|4" ]] || fail=1
+done
+
 # Checkout durable claim competes before provider IO. Both winner directions
-# are synchronized by gates 60/61, with a witnessed contender row-lock wait.
+# are synchronized by gates 70/71, with a witnessed contender row-lock wait.
 # Then only the committed claimant applies Orders/Ledger side effects. The Go
 # pgx E2E repeats this protocol through the actual Fake provider/service.
 for first_phase in confirming cancelling; do
@@ -742,8 +830,8 @@ INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,r
  VALUES('$T','$CID','guest',repeat('a',64),'checkout-race',sha256('start'::bytea),uuidv7(),1,'$OID','USD',130,100,10,20,1,'{}');
 UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake-race',start_result='{}' WHERE tenant_id='$T' AND id='$CID';
 SQL
- if [[ $first_phase == confirming ]]; then second_phase=cancelling; first_kind=payment; second_kind=cancel; final=paid; stock=0; journals=1; race_gate=60
- else second_phase=confirming; first_kind=cancel; second_kind=payment; final=cancelled; stock=1; journals=0; race_gate=61; fi
+ if [[ $first_phase == confirming ]]; then second_phase=cancelling; first_kind=payment; second_kind=cancel; final=paid; stock=0; journals=1; race_gate=70
+ else second_phase=confirming; first_kind=cancel; second_kind=payment; final=cancelled; stock=1; journals=0; race_gate=71; fi
  claim_first="WITH changed AS (UPDATE app.checkout_sessions SET phase='$first_phase',claim_kind='$first_kind',claim_key='race-first' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_FIRST='||count(*) FROM changed;"
  claim_second="WITH changed AS (UPDATE app.checkout_sessions SET phase='$second_phase',claim_kind='$second_kind',claim_key='race-second' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_SECOND='||count(*) FROM changed;"
  gate_close "$race_gate"
@@ -766,7 +854,7 @@ SQL
  [[ $got == "$final|$final|$stock|0|$journals|2|3" ]] || fail=1
 done
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/checkout contract" >&2; exit 1; fi
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/checkout contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
@@ -777,6 +865,7 @@ echo 'PASS: ledger identical and conflicting posting races preserve one posted j
 echo 'PASS: catalog stale CAS waits for row lock, rechecks version and leaves winner unchanged'
 echo 'PASS: cart row-lock/CAS contender cannot overwrite winner line or version'
 echo 'PASS: orders pay/cancel and prelock/expiry races conserve inventory and events'
+echo 'PASS: quote approve/withdraw row-lock CAS races have exactly one winner and atomic outbox/approval'
 echo 'PASS: checkout confirm/cancel claims choose one durable winner with atomic order, stock, ledger and outbox witnesses'
 # Focused native River/claim/fence gates cannot silently skip for missing PG.
 reliability_packages=(./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)

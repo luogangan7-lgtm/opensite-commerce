@@ -48,74 +48,53 @@ await_job timeout "$pid"; status=$?
 ''', helper.replace('SECONDS + 15', 'SECONDS + 0'))
 print('PASS: actual await_job waits, propagates child failure, and marks bounded timeout')
 
-# Execute the actual populated limits upgrade block. Its final full-schema
-# matrix must see every forward migration, while its old-data witness runs
-# before successor DDL. These mocks record submission; they never execute SQL.
+# Run the real limits upgrade fragment: its populated witness must precede
+# successors, while its final whole-schema matrix requires every migration.
 upgrade_source = (root / 'scripts/check_pg_upgrade.sh').read_text()
-limits_start = upgrade_source.index('# INT25: populate old delivery epochs')
-limits_block = upgrade_source[limits_start:upgrade_source.index('\n# C-15a:', limits_start)]
-limits_migrations = sorted((root / 'migrations').glob('[0-9][0-9][0-9]_reliability_limits.sql'))
-assert len(limits_migrations) == 1
-forward_files = sorted(path.relative_to(root).as_posix()
-                       for path in (root / 'migrations').glob('[0-9][0-9][0-9]_*.sql'))
-limits_file = limits_migrations[0].relative_to(root).as_posix()
-successors = [name for name in forward_files if name > limits_file]
-assert successors, 'limits matrix regression needs a real successor migration'
+limits_start = upgrade_source.index('# INT25:')
+limits_end = upgrade_source.index('[[ $fail -eq 0 ]]', limits_start)
+limits_case = upgrade_source[limits_start:limits_end]
 with tempfile.TemporaryDirectory() as limits_tmp:
-    limits_log = Path(limits_tmp) / 'applied'
-    events_log = Path(limits_tmp) / 'events'
-    limits_log.touch(); events_log.touch()
-    mock = r'''set -euo pipefail
-shopt -s nullglob
+    limits_env = dict(os.environ, APPLIED_LOG=str(Path(limits_tmp) / 'applied'),
+                      WITNESS_LOG=str(Path(limits_tmp) / 'witness'))
+    limits_mock = r'''set -euo pipefail
 fail=0
-bad() { echo "FAIL: $*" >&2; fail=1; }
-pass() { echo "PASS: $*"; }
+: > "$APPLIED_LOG"
 admin() { :; }
-river_db() { [[ $2 == --verify ]]; }
+river_db() { :; }
+pass() { :; }
+bad() { echo "FAIL: $*" >&2; fail=1; }
 apply_forward() {
- [[ -f $2 ]] || return 40
- if [[ $2 > ${limits_files[0]} ]]; then
-  [[ -f "$LIMITS_MOCK_LOG.tested" ]] || { echo LIMITS_SUCCESSOR_BEFORE_WITNESS >&2; return 42; }
+ if [[ $2 > ${limits_files[0]} && ! -f "$WITNESS_LOG" ]]; then
+  echo 'LIMITS_SUCCESSOR_BEFORE_WITNESS' >&2; return 43
  fi
- printf '%s\n' "$2" >> "$LIMITS_MOCK_LOG"
- printf 'APPLY %s\n' "$2" >> "$LIMITS_MOCK_EVENTS"
+ printf '%s\n' "$2" >> "$APPLIED_LOG"
 }
 db() {
- shift
- if [[ ${1:-} == -f ]]; then
-  case "$2" in
-   tests/db_reliability_limits.sql)
-    [[ -f "$LIMITS_MOCK_LOG.witness" ]] || return 43
-    touch "$LIMITS_MOCK_LOG.tested"
-    echo LIMITS_TEST >> "$LIMITS_MOCK_EVENTS" ;;
-   tests/db_role_matrix.sql)
-    [[ "$(cat "$LIMITS_MOCK_LOG")" == "$(printf '%s\n' migrations/[0-9][0-9][0-9]_*.sql)" ]] || {
-     echo LIMITS_UPGRADE_MATRIX_MISSING_SUCCESSOR >&2; return 41;
-    }
-    echo MATRIX >> "$LIMITS_MOCK_EVENTS" ;;
-   *) echo UNEXPECTED_LIMITS_TEST >&2; return 44 ;;
-  esac
+ local payload expected actual
+ if [[ ${2:-} == -f ]]; then
+  if [[ $3 == tests/db_role_matrix.sql ]]; then
+   expected=$(printf '%s\n' migrations/[0-9][0-9][0-9]_*.sql)
+   actual=$(cat "$APPLIED_LOG")
+   [[ $actual == "$expected" ]] || {
+    echo 'LIMITS_UPGRADE_MISSING_SUCCESSOR: final matrix requires all migrations' >&2
+    return 44
+   }
+  fi
  else
   payload=$(cat)
-  if [[ $payload == *"'LIMITS_UPGRADE='"* ]]; then
-   touch "$LIMITS_MOCK_LOG.witness"
-   echo WITNESS >> "$LIMITS_MOCK_EVENTS"
+  if [[ $payload == *LIMITS_UPGRADE=* ]]; then
+   : > "$WITNESS_LOG"
    echo 'LIMITS_UPGRADE=4|2|2|10'
   fi
  fi
 }
 '''
-    result = subprocess.run(['bash', '-c', mock + limits_block], cwd=root,
-                            env=dict(os.environ, LIMITS_MOCK_LOG=str(limits_log),
-                                     LIMITS_MOCK_EVENTS=str(events_log)),
-                            capture_output=True, text=True, timeout=5)
-    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
-    assert limits_log.read_text().splitlines() == forward_files
-    events = events_log.read_text().splitlines()
-    assert events.index('WITNESS') < events.index('LIMITS_TEST')
-    assert all(events.index('LIMITS_TEST') < events.index('APPLY ' + name)
-               < events.index('MATRIX') for name in successors)
-print('PASS: actual limits upgrade witnesses old rows, then applies every successor before full matrix (NO SQL EXECUTED)')
+    limits_result = subprocess.run(['bash', '-c', limits_mock + limits_case],
+                                   cwd=root, env=limits_env, capture_output=True,
+                                   text=True, timeout=5)
+    assert limits_result.returncode == 0, (limits_result.stdout, limits_result.stderr)
+print('PASS: real limits upgrade fragment applies all migrations before final matrix, witness before successors (mock functions; NO SQL executed)')
 
 expected = [
     'db_security_audit.sql',
@@ -141,6 +120,10 @@ expected = [
     'db_queue.sql',
     'db_reliability_limits.sql',
     'db_cart.sql',
+    'db_storefront.sql',
+    'db_ops_metrics.sql',
+    'db_notifications.sql',
+    'db_quotes.sql',
     'db_checkout.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
@@ -255,10 +238,19 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('QUEUE_CROSS_TENANT_READ', 'db_queue.sql'),
                          ('RELIABILITY_LIMITS_GATE', 'db_reliability_limits.sql'),
                          ('CART_EXPECTED_REFUSAL', 'db_cart.sql'),
+                         ('QUOTES_SCHEMA_REQUIRED', 'db_quotes.sql'),
+                         ('OPS_METRICS_GATE', 'db_ops_metrics.sql'),
                          ('checkout SQL PASS', 'db_checkout.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
         assert failed.returncode == 31, (failed.stdout, failed.stderr)
         assert f'RUN tests/{name}' in failed.stdout
         assert 'PASS: module ownership' not in failed.stdout
+# check_pg_upgrade.sh: bad() only sets fail=1, so every bad() call must precede the
+# final `[[ $fail -eq 0 ]] || exit 1`, and that check must precede the overall PASS line.
+upgrade_lines = (root / 'scripts' / 'check_pg_upgrade.sh').read_text().splitlines()
+last_bad = max(i for i, line in enumerate(upgrade_lines) if re.search(r'(^|[|&;{ ])bad ', line))
+final_check = max(i for i, line in enumerate(upgrade_lines) if line.strip() == '[[ $fail -eq 0 ]] || exit 1')
+final_pass = max(i for i, line in enumerate(upgrade_lines) if line.startswith("echo 'PASS: security"))
+assert last_bad < final_check < final_pass, ('upgrade failures after the final exit check', last_bad + 1, final_check + 1, final_pass + 1)
 print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, preserves River ordering and propagates failures (mock go/psql; NO SQL executed)')

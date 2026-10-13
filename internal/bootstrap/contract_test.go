@@ -15,6 +15,8 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
@@ -67,7 +69,7 @@ func TestImplementedRouteContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := bootstrap.New(bootstrap.Config{Checkout: &checkout.Config{FakeEnabled: true, Environment: "test", Verifier: verifier}})
+	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{publish.StorefrontRoute(nil)}, Quotes: quotes.NewApplication(nil), Checkout: &checkout.Config{FakeEnabled: true, Environment: "test", Verifier: verifier}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +88,7 @@ func TestImplementedRouteContract(t *testing.T) {
 }
 
 func TestCheckoutOmissionFailsFullImplementedContract(t *testing.T) {
-	server, err := bootstrap.New(bootstrap.Config{})
+	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{publish.StorefrontRoute(nil)}, Quotes: quotes.NewApplication(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}

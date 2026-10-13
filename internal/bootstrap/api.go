@@ -1,4 +1,4 @@
-// Package bootstrap statically wires catalog/media/cart and optional checkout HTTP.
+// Package bootstrap statically wires the API (incl. optional checkout HTTP) using platform/httpapi and observability.
 // cmd/api calls it; it owns no business handlers, database pool or migrations.
 // Generated business HTTP adapters stay in platform/httpapi and consume public ports.
 // Registration errors stop construction, so invalid routes cannot be served.
@@ -15,20 +15,28 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
+	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
+	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
 
 type Config struct {
-	Address       string
-	Logger        *slog.Logger
-	Authenticator httpapi.Authenticator
-	Routes        []httpapi.Route
-	Catalog       catalog.Config
-	Media         media.Config
-	Cart          *cart.Module
-	Checkout      *checkout.Config
+	Address                  string
+	Logger                   *slog.Logger
+	Authenticator            httpapi.Authenticator
+	Routes                   []httpapi.Route
+	Catalog                  catalog.Config
+	Media                    media.Config
+	Cart                     *cart.Module
+	Quotes                   quoteshttp.QuotesService
+	QuotesBuyerAuthenticator httpapi.Authenticator
+	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
+	Notifications            notificationcontract.Service
+	Checkout                 *checkout.Config
 }
 
 func New(config Config) (server *http.Server, err error) {
@@ -59,12 +67,18 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, media.New(config.Media).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
 	routes = append(routes, checkoutRoutes...)
+	if config.Quotes != nil {
+		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
+	}
+	routes = append(routes, notificationhttp.New(config.Notifications).Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {
 		if err := router.Register(route.Spec, route.Handler); err != nil {
 			return nil, err
 		}
 	}
+	metrics := &observability.Metrics{}
+	router.WrapTransport(metrics.Wrap)
 	return &http.Server{Addr: config.Address, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}, nil
 }
 

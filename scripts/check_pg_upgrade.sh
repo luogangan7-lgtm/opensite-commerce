@@ -146,17 +146,21 @@ TAX_DB=""
 CUSTOMERS_DB=""
 LEDGER_DB=""
 ORDERS_DB=""
+STOREFRONT_DB=""
+NOTIFICATIONS_DB=""
+QUOTES_DB=""
 CATALOG_DB=""
 CART_DB=""
 QUEUE_DB=""
 LIMITS_DB=""
+OPS_METRICS_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
 CHECKOUT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$CHECKOUT_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$CHECKOUT_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -743,13 +747,14 @@ SELECT 'LIMITS_UPGRADE='||count(*)||'|'||count(*) FILTER(WHERE status='dead_lett
 SQL
 )
 [[ $result == *'LIMITS_UPGRADE=4|2|2|10'* ]] || bad "limits populated upgrade: $result"
-river_db "$DB" --verify
-db "$DB" -f tests/db_reliability_limits.sql >/dev/null
-# The latest role matrix covers the full schema, including later modules.
+# Complete the current app schema before the exact whole-schema role matrix.
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${limits_files[0]} ]] || continue
  apply_forward "$DB" "$f"
 done
+river_db "$DB" --verify
+db "$DB" -f tests/db_reliability_limits.sql >/dev/null
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; LIMITS_DB=""
 pass 'reliability limits upgrade preserves delivery identity, retires exhausted work, accepts live final ACK'
@@ -853,7 +858,153 @@ if ! db "$CART_DB" < tests/db_cart.sql >/dev/null || ! db "$CART_DB" < tests/db_
 else pass 'cart upgrade preserves prior customers/catalog; owner/CAS and exact privilege gate pass'; fi
 admin -c "DROP DATABASE $CART_DB" >/dev/null; CART_DB=""
 
+# Public content capability is added only after all logical predecessors; the
+# same committed release/secret witnesses survive the forward role migration.
+storefront=(migrations/[0-9][0-9][0-9]_storefront_read.sql)
+[[ ${#storefront[@]} == 1 ]] || { echo 'FAIL: exactly one storefront read migration required' >&2; exit 1; }
+STOREFRONT_DB=storefront_upgrade_$$
+admin -c "CREATE DATABASE $STOREFRONT_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${storefront[0]} ]] || break
+ apply_forward "$STOREFRONT_DB" "$f"
+done
+db "$STOREFRONT_DB" < tests/fixtures/storefront_seed.sql >/dev/null
+before=$(db "$STOREFRONT_DB" -c "SELECT has_column_privilege('app_domain_resolver','app.page_revisions','document','SELECT')")
+[[ $before == f ]] || bad 'storefront predecessors unexpectedly grant page content'
+if red=$(db "$STOREFRONT_DB" < tests/db_storefront.sql 2>&1); then
+ bad 'storefront new SQL invariants unexpectedly pass before capability migration'
+elif [[ $red == *'permission denied for table site_releases'* ]]; then
+ pass 'storefront pre-migration negative: published content capability is absent (42501)'
+else bad "storefront pre-migration failed for an unexpected reason: $red"; fi
+apply_forward "$STOREFRONT_DB" "${storefront[0]}"
+result=$(db "$STOREFRONT_DB" <<'SQL'
+BEGIN READ ONLY;
+SET LOCAL ROLE app_domain_resolver;
+SELECT set_config('app.public_hostname','localhost',true);
+SELECT 'STOREFRONT_UPGRADE='||(SELECT count(*) FROM app.site_releases)||'|'||
+ (SELECT count(*) FROM app.page_revisions)||'|'||
+ (SELECT count(*) FROM app.page_revisions WHERE document::text LIKE '%DRAFT%');
+COMMIT;
+SQL
+)
+[[ $result == *'STOREFRONT_UPGRADE=1|2|0'* ]] || bad "storefront populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${storefront[0]} ]] || continue
+ apply_forward "$STOREFRONT_DB" "$f"
+done
+river_db "$STOREFRONT_DB" --verify
+if ! db "$STOREFRONT_DB" < tests/db_storefront.sql >/dev/null || ! db "$STOREFRONT_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'storefront RLS/role matrix after populated upgrade'
+else pass 'storefront upgrade exposes current sealed pinned pages; draft witnesses stay hidden'; fi
+admin -c "DROP DATABASE $STOREFRONT_DB" >/dev/null; STOREFRONT_DB=""
+
+# C23a: add only the metrics capability over populated pending and DLQ-only
+# tenants; preserve event identity/content and every prior forward migration.
+ops_metrics=(migrations/[0-9][0-9][0-9]_ops_metrics.sql)
+[[ ${#ops_metrics[@]} == 1 ]] || { bad 'exactly one ops-metrics migration required'; exit 1; }
+OPS_METRICS_DB=upgrade_ops_metrics_$$; DB=$OPS_METRICS_DB
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${ops_metrics[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('ops-existing-pending') RETURNING id AS ta \gset
+INSERT INTO app.tenants(name) VALUES('ops-existing-DLQ-only') RETURNING id AS tb \gset
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key,status,created_at)
+ VALUES(:'ta','ops.legacy','{"witness":"pending"}','test','legacy-pending','pending',clock_timestamp()-interval '1 minute'),
+       (:'tb','ops.legacy','{"witness":"dead"}','test','legacy-dead','dead_letter',clock_timestamp()-interval '1 hour');
+SQL
+apply_forward "$DB" "${ops_metrics[0]}"
+result=$(db "$DB" <<'SQL'
+SELECT 'OPS_PRESERVED='||count(*)||'|'||count(*) FILTER(WHERE status='pending' AND payload->>'witness'='pending')||'|'||
+ count(*) FILTER(WHERE status='dead_letter' AND payload->>'witness'='dead') FROM app.outbox_events;
+SET ROLE app_outbox_worker;
+SELECT 'OPS_METRICS='||pending||'|'||dead_letters||'|'||(oldest_pending_age_seconds>=60) FROM app.outbox_metrics();
+RESET ROLE;
+SQL
+)
+[[ $result == *'OPS_PRESERVED=2|1|1'* && $result == *'OPS_METRICS=1|1|true'* ]] || bad "ops-metrics populated upgrade: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${ops_metrics[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+river_db "$DB" --verify
+admin -c "DROP DATABASE $DB"; OPS_METRICS_DB=""
+pass 'ops metrics preserves pending/DLQ-only tenants and exposes only aggregate worker gauges'
+# Notifications additive upgrade: every actual predecessor, populated original
+# order event retained verbatim; historical source events are not silently sent.
+notifications=(migrations/[0-9][0-9][0-9]_notifications.sql)
+[[ ${#notifications[@]} == 1 ]] || { echo 'FAIL: one notifications migration required' >&2; exit 1; }
+NOTIFICATIONS_DB=notifications_upgrade_$$
+admin -c "CREATE DATABASE $NOTIFICATIONS_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${notifications[0]} ]] || break
+ apply_forward "$NOTIFICATIONS_DB" "$f"
+done
+db "$NOTIFICATIONS_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('notification-upgrade') RETURNING id AS t \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_orders_executor;
+INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+VALUES(:'t',uuidv7(),1,'upgrade',sha256('upgrade'::bytea),'{"email":"upgrade@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
+RESET ROLE;
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+VALUES(:'t','order.paid',jsonb_build_object('order_id',:'oid'),'orders.events','upgrade-source');
+SQL
+apply_forward "$NOTIFICATIONS_DB" "${notifications[0]}"
+result=$(db "$NOTIFICATIONS_DB" <<'SQL'
+SELECT t.id AS t,o.id AS oid FROM app.tenants t JOIN app.orders o ON o.tenant_id=t.id WHERE t.name='notification-upgrade' \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SELECT 'NOTIFICATIONS_UPGRADE='||(SELECT count(*) FROM app.outbox_events WHERE tenant_id=:'t' AND delivery_target='orders.events' AND status='pending' AND attempts=0 AND dedup_key='upgrade-source' AND payload=jsonb_build_object('order_id',:'oid'))||'|'||(SELECT count(*) FROM app.notification_deliveries WHERE tenant_id=:'t');
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(:'t','order.fulfilled',jsonb_build_object('order_id',:'oid'),'orders.events','upgrade-new');
+SELECT 'NOTIFICATIONS_NEW='||(SELECT count(*) FROM app.notification_deliveries WHERE tenant_id=:'t' AND recipient='upgrade@example.test' AND template_key='order.shipped')||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id=:'t' AND delivery_target='notifications.email');
+SQL
+)
+[[ $result == *'NOTIFICATIONS_UPGRADE=1|0'* && $result == *'NOTIFICATIONS_NEW=1|1'* ]] || bad "notification populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${notifications[0]} ]] || continue
+ apply_forward "$NOTIFICATIONS_DB" "$f"
+done
+db "$NOTIFICATIONS_DB" -f tests/db_notifications.sql >/dev/null
+db "$NOTIFICATIONS_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $NOTIFICATIONS_DB" >/dev/null; NOTIFICATIONS_DB=""
+pass 'notifications upgrade preserves original order outbox and fans out only newly inserted events'
+
+
+# Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
+# Quotes takes over the existing005 inquiry table without rebuilding contacts.
+# Filename order applies every predecessor, including any integrator renumbering.
+quotes=(migrations/[0-9][0-9][0-9]_quotes.sql)
+[[ ${#quotes[@]} == 1 ]] || { echo 'FAIL: exactly one quotes migration required' >&2; exit 1; }
+QUOTES_DB=quotes_upgrade_$$
+admin -c "CREATE DATABASE $QUOTES_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${quotes[0]} ]] || break
+ apply_forward "$QUOTES_DB" "$f"
+done
+db "$QUOTES_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('quote-existing') RETURNING id AS t \gset
+INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','legacy') RETURNING id AS o \gset
+INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','legacy') RETURNING id AS s \gset
+INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,buyer_name,message,status)
+VALUES(:'t',:'s','legacy@example.invalid','Legacy contact','preserve this inquiry','contacted');
+SQL
+apply_forward "$QUOTES_DB" "${quotes[0]}"
+result=$(db "$QUOTES_DB" -c "SELECT 'QUOTES_UPGRADE='||count(*) FROM app.inquiries WHERE buyer_email='legacy@example.invalid' AND buyer_name='Legacy contact' AND message='preserve this inquiry' AND status='contacted' AND buyer_company_id IS NULL;")
+[[ $result == 'QUOTES_UPGRADE=1' ]] || bad "quotes existing inquiry contact preservation: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${quotes[0]} ]] || continue
+ apply_forward "$QUOTES_DB" "$f"
+done
+river_db "$QUOTES_DB" --verify
+if ! db "$QUOTES_DB" < tests/db_quotes.sql >/dev/null || ! db "$QUOTES_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'quotes lifecycle and exact role matrix after populated inquiry upgrade'
+else pass 'quotes forward ALTER preserves existing contact inquiry and runtime lifecycle/grants'; fi
+admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
 # Checkout installs after EVERY prior forward migration; numeric allocation is
 # deliberately irrelevant. Legacy paid orders and their outbox are not rewritten.
 checkout_files=(migrations/[0-9][0-9][0-9]_checkout.sql)
@@ -891,6 +1042,6 @@ river_db "$CHECKOUT_DB" --verify
 db "$CHECKOUT_DB" -f tests/db_checkout.sql >/dev/null
 db "$CHECKOUT_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $CHECKOUT_DB"; CHECKOUT_DB=""
-[[ $fail == 0 ]] || exit 1
 pass 'checkout upgrade preserves paid legacy orders/inventory/outbox and installs permanent fenced receipts'
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart and checkout upgrade gates'
+[[ $fail -eq 0 ]] || exit 1
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes and checkout upgrade gates'

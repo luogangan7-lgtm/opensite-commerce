@@ -242,6 +242,69 @@ func (e LinkProductMediaRole) Valid() bool {
 	}
 }
 
+// Defines values for NotificationFailureStatus.
+const (
+	NotificationFailureStatusDeadLetter NotificationFailureStatus = "dead_letter"
+	NotificationFailureStatusFailed     NotificationFailureStatus = "failed"
+	NotificationFailureStatusUncertain  NotificationFailureStatus = "uncertain"
+)
+
+// Valid indicates whether the value is a known member of the NotificationFailureStatus enum.
+func (e NotificationFailureStatus) Valid() bool {
+	switch e {
+	case NotificationFailureStatusDeadLetter:
+		return true
+	case NotificationFailureStatusFailed:
+		return true
+	case NotificationFailureStatusUncertain:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationFailureTemplateKey.
+const (
+	OrderPaid     NotificationFailureTemplateKey = "order.paid"
+	OrderRefund   NotificationFailureTemplateKey = "order.refund"
+	OrderShipped  NotificationFailureTemplateKey = "order.shipped"
+	QuoteApproved NotificationFailureTemplateKey = "quote.approved"
+	QuoteSent     NotificationFailureTemplateKey = "quote.sent"
+)
+
+// Valid indicates whether the value is a known member of the NotificationFailureTemplateKey enum.
+func (e NotificationFailureTemplateKey) Valid() bool {
+	switch e {
+	case OrderPaid:
+		return true
+	case OrderRefund:
+		return true
+	case OrderShipped:
+		return true
+	case QuoteApproved:
+		return true
+	case QuoteSent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationRedriveReceiptStatus.
+const (
+	Pending NotificationRedriveReceiptStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the NotificationRedriveReceiptStatus enum.
+func (e NotificationRedriveReceiptStatus) Valid() bool {
+	switch e {
+	case Pending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PageDocumentSchemaVersion.
 const (
 	N1 PageDocumentSchemaVersion = 1
@@ -299,6 +362,57 @@ func (e ProductMediaRole) Valid() bool {
 	case ProductMediaRoleSizeChart:
 		return true
 	case ProductMediaRoleVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PublishedBlockKind.
+const (
+	Heading   PublishedBlockKind = "heading"
+	Paragraph PublishedBlockKind = "paragraph"
+)
+
+// Valid indicates whether the value is a known member of the PublishedBlockKind enum.
+func (e PublishedBlockKind) Valid() bool {
+	switch e {
+	case Heading:
+		return true
+	case Paragraph:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for QuoteStatus.
+const (
+	QuoteStatusAcceptedPendingApproval QuoteStatus = "accepted_pending_approval"
+	QuoteStatusApproved                QuoteStatus = "approved"
+	QuoteStatusDraft                   QuoteStatus = "draft"
+	QuoteStatusExpired                 QuoteStatus = "expired"
+	QuoteStatusRejected                QuoteStatus = "rejected"
+	QuoteStatusSent                    QuoteStatus = "sent"
+	QuoteStatusWithdrawn               QuoteStatus = "withdrawn"
+)
+
+// Valid indicates whether the value is a known member of the QuoteStatus enum.
+func (e QuoteStatus) Valid() bool {
+	switch e {
+	case QuoteStatusAcceptedPendingApproval:
+		return true
+	case QuoteStatusApproved:
+		return true
+	case QuoteStatusDraft:
+		return true
+	case QuoteStatusExpired:
+		return true
+	case QuoteStatusRejected:
+		return true
+	case QuoteStatusSent:
+		return true
+	case QuoteStatusWithdrawn:
 		return true
 	default:
 		return false
@@ -599,7 +713,7 @@ type CreateInquiry struct {
 	BuyerName  *string             `json:"buyer_name,omitempty"`
 	Message    string              `json:"message"`
 	ProductId  *openapi_types.UUID `json:"product_id,omitempty"`
-	Quantity   *float32            `json:"quantity,omitempty"`
+	Quantity   *float64            `json:"quantity,omitempty"`
 }
 
 // CreateOrganization defines model for CreateOrganization.
@@ -611,6 +725,19 @@ type CreateOrganization struct {
 // CreateProduct defines model for CreateProduct.
 type CreateProduct struct {
 	ProductCode string `json:"product_code"`
+}
+
+// CreateQuote defines model for CreateQuote.
+type CreateQuote struct {
+	CompanyId         openapi_types.UUID `json:"company_id"`
+	Currency          string             `json:"currency"`
+	Destination       QuoteDestination   `json:"destination"`
+	ExpiresAt         time.Time          `json:"expires_at"`
+	InquiryId         openapi_types.UUID `json:"inquiry_id"`
+	Lines             []QuoteLineInput   `json:"lines"`
+	ShippingProfileId openapi_types.UUID `json:"shipping_profile_id"`
+	SiteId            openapi_types.UUID `json:"site_id"`
+	WeightG           int64              `json:"weight_g"`
 }
 
 // CreateSite defines model for CreateSite.
@@ -698,6 +825,41 @@ type LinkProductMedia struct {
 // LinkProductMediaRole defines model for LinkProductMedia.Role.
 type LinkProductMediaRole string
 
+// NotificationFailure defines model for NotificationFailure.
+type NotificationFailure struct {
+	Attempts    int32                          `json:"attempts"`
+	CreatedAt   time.Time                      `json:"created_at"`
+	EventId     openapi_types.UUID             `json:"event_id"`
+	Generation  int32                          `json:"generation"`
+	Id          openapi_types.UUID             `json:"id"`
+	SafeError   *string                        `json:"safe_error,omitempty"`
+	Status      NotificationFailureStatus      `json:"status"`
+	TemplateKey NotificationFailureTemplateKey `json:"template_key"`
+	UpdatedAt   time.Time                      `json:"updated_at"`
+}
+
+// NotificationFailureStatus defines model for NotificationFailure.Status.
+type NotificationFailureStatus string
+
+// NotificationFailureTemplateKey defines model for NotificationFailure.TemplateKey.
+type NotificationFailureTemplateKey string
+
+// NotificationFailures defines model for NotificationFailures.
+type NotificationFailures struct {
+	Items []NotificationFailure `json:"items"`
+}
+
+// NotificationRedriveReceipt defines model for NotificationRedriveReceipt.
+type NotificationRedriveReceipt struct {
+	Generation     int32                            `json:"generation"`
+	NotificationId openapi_types.UUID               `json:"notification_id"`
+	Status         NotificationRedriveReceiptStatus `json:"status"`
+	Token          openapi_types.UUID               `json:"token"`
+}
+
+// NotificationRedriveReceiptStatus defines model for NotificationRedriveReceipt.Status.
+type NotificationRedriveReceiptStatus string
+
 // OperationBatch defines model for OperationBatch.
 type OperationBatch struct {
 	Operations []PageOperation `json:"operations"`
@@ -764,12 +926,133 @@ type ProductPage struct {
 	NextCursor *string   `json:"next_cursor,omitempty"`
 }
 
+// PublishedBlock defines model for PublishedBlock.
+type PublishedBlock struct {
+	Kind PublishedBlockKind `json:"kind"`
+	Text string             `json:"text"`
+}
+
+// PublishedBlockKind defines model for PublishedBlock.Kind.
+type PublishedBlockKind string
+
+// PublishedNavigation defines model for PublishedNavigation.
+type PublishedNavigation struct {
+	Href  string `json:"href"`
+	Label string `json:"label"`
+}
+
+// PublishedPage defines model for PublishedPage.
+type PublishedPage struct {
+	Blocks      []PublishedBlock `json:"blocks"`
+	Description string           `json:"description"`
+
+	// Path Root-relative CMS path, including nested pages; product and error routes are reserved.
+	Path  string `json:"path"`
+	Title string `json:"title"`
+}
+
+// PublishedProduct defines model for PublishedProduct.
+type PublishedProduct struct {
+	Currency    string `json:"currency"`
+	Description string `json:"description"`
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	UnitAmount  string `json:"unit_amount"`
+}
+
 // PublishedRelease defines model for PublishedRelease.
 type PublishedRelease struct {
 	Id        openapi_types.UUID `json:"id"`
 	ReleaseNo int                `json:"release_no"`
 	SiteId    openapi_types.UUID `json:"site_id"`
 }
+
+// PublishedSite defines model for PublishedSite.
+type PublishedSite struct {
+	Description string                `json:"description"`
+	Hostname    string                `json:"hostname"`
+	Locale      string                `json:"locale"`
+	Navigation  []PublishedNavigation `json:"navigation"`
+	Pages       []PublishedPage       `json:"pages"`
+	Products    []PublishedProduct    `json:"products"`
+	ReleaseId   string                `json:"release_id"`
+	SiteId      string                `json:"site_id"`
+	Title       string                `json:"title"`
+}
+
+// Quote defines model for Quote.
+type Quote struct {
+	AcceptedBy *openapi_types.UUID `json:"accepted_by,omitempty"`
+	CompanyId  openapi_types.UUID  `json:"company_id"`
+	CreatedBy  openapi_types.UUID  `json:"created_by"`
+	Currency   string              `json:"currency"`
+	ExpiresAt  time.Time           `json:"expires_at"`
+	Id         openapi_types.UUID  `json:"id"`
+	InquiryId  openapi_types.UUID  `json:"inquiry_id"`
+	SiteId     openapi_types.UUID  `json:"site_id"`
+	Snapshot   QuoteSnapshot       `json:"snapshot"`
+	Status     QuoteStatus         `json:"status"`
+	TenantId   openapi_types.UUID  `json:"tenant_id"`
+	Version    int64               `json:"version"`
+}
+
+// QuoteStatus defines model for Quote.Status.
+type QuoteStatus string
+
+// QuoteDestination defines model for QuoteDestination.
+type QuoteDestination struct {
+	Country     string `json:"country"`
+	Subdivision string `json:"subdivision"`
+}
+
+// QuoteLine defines model for QuoteLine.
+type QuoteLine struct {
+	Description string              `json:"description"`
+	LineNo      int32               `json:"line_no"`
+	LineTotal   int64               `json:"line_total"`
+	ProductId   *openapi_types.UUID `json:"product_id,omitempty"`
+	Quantity    int64               `json:"quantity"`
+
+	// Snapshot Immutable line tax decision snapshot
+	Snapshot  map[string]interface{} `json:"snapshot"`
+	UnitPrice int64                  `json:"unit_price"`
+	VariantId *openapi_types.UUID    `json:"variant_id,omitempty"`
+}
+
+// QuoteLineInput defines model for QuoteLineInput.
+type QuoteLineInput struct {
+	Description string              `json:"description"`
+	ProductId   *openapi_types.UUID `json:"product_id,omitempty"`
+	Quantity    int64               `json:"quantity"`
+	TaxCategory string              `json:"tax_category"`
+	UnitPrice   int64               `json:"unit_price"`
+	VariantId   *openapi_types.UUID `json:"variant_id,omitempty"`
+}
+
+// QuoteSnapshot defines model for QuoteSnapshot.
+type QuoteSnapshot struct {
+	CalculatedAt time.Time        `json:"calculated_at"`
+	Calculator   string           `json:"calculator"`
+	Currency     string           `json:"currency"`
+	Destination  QuoteDestination `json:"destination"`
+	Lines        []QuoteLine      `json:"lines"`
+
+	// Shipping Immutable calculator shipping result snapshot
+	Shipping          map[string]interface{} `json:"shipping"`
+	ShippingAmount    int64                  `json:"shipping_amount"`
+	ShippingProfileId openapi_types.UUID     `json:"shipping_profile_id"`
+	Subtotal          int64                  `json:"subtotal"`
+
+	// Tax Immutable calculator tax result snapshot
+	Tax       map[string]interface{} `json:"tax"`
+	TaxAmount int64                  `json:"tax_amount"`
+	Total     int64                  `json:"total"`
+	WeightG   int64                  `json:"weight_g"`
+}
+
+// QuoteTransition defines model for QuoteTransition.
+type QuoteTransition = map[string]interface{}
 
 // SetCartLine defines model for SetCartLine.
 type SetCartLine struct {
@@ -881,6 +1164,12 @@ type IfMatch = string
 // MediaId defines model for MediaId.
 type MediaId = openapi_types.UUID
 
+// NotificationId defines model for NotificationId.
+type NotificationId = openapi_types.UUID
+
+// NotificationIdempotencyKey defines model for NotificationIdempotencyKey.
+type NotificationIdempotencyKey = string
+
 // Origin defines model for Origin.
 type Origin = string
 
@@ -892,6 +1181,9 @@ type PageSize = int
 
 // ProductId defines model for ProductId.
 type ProductId = openapi_types.UUID
+
+// QuoteId defines model for QuoteId.
+type QuoteId = openapi_types.UUID
 
 // SessionId defines model for SessionId.
 type SessionId = openapi_types.UUID
@@ -919,6 +1211,9 @@ type Conflict = Problem
 
 // Forbidden defines model for Forbidden.
 type Forbidden = Problem
+
+// InternalError defines model for InternalError.
+type InternalError = Problem
 
 // InternalServerError defines model for InternalServerError.
 type InternalServerError = Problem
@@ -950,6 +1245,30 @@ type UnprocessableEntity = Problem
 // UnsupportedMediaType defines model for UnsupportedMediaType.
 type UnsupportedMediaType = Problem
 
+// AcceptQuoteParams defines parameters for AcceptQuote.
+type AcceptQuoteParams struct {
+	IfMatch IfMatch `json:"If-Match"`
+
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// ApproveQuoteParams defines parameters for ApproveQuote.
+type ApproveQuoteParams struct {
+	IfMatch IfMatch `json:"If-Match"`
+
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// RejectQuoteParams defines parameters for RejectQuote.
+type RejectQuoteParams struct {
+	IfMatch IfMatch `json:"If-Match"`
+
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // CreateAdminSessionParams defines parameters for CreateAdminSession.
 type CreateAdminSessionParams struct {
 	// Origin Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token.
@@ -975,6 +1294,11 @@ type RevokeAdminSessionParams struct {
 
 	// XCSRFToken Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted.
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// GetPublishedSiteParams defines parameters for GetPublishedSite.
+type GetPublishedSiteParams struct {
+	Host string `form:"host" json:"host"`
 }
 
 // CreateCartParams defines parameters for CreateCart.
@@ -1051,6 +1375,23 @@ type PutMediaUploadContentParams struct {
 type DeleteMediaParams struct {
 	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin *OriginIfCookie `json:"Origin,omitempty"`
+
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+}
+
+// ListNotificationFailuresParams defines parameters for ListNotificationFailures.
+type ListNotificationFailuresParams struct {
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// RedriveNotificationParams defines parameters for RedriveNotification.
+type RedriveNotificationParams struct {
+	// IdempotencyKey Tenant-scoped notification redrive key; the same notification and key replay the stored receipt.
+	IdempotencyKey NotificationIdempotencyKey `json:"Idempotency-Key"`
 
 	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
 	Origin *OriginIfCookie `json:"Origin,omitempty"`
@@ -1175,6 +1516,58 @@ type UpdateVariantParams struct {
 	IfMatch    IfMatch            `json:"If-Match"`
 }
 
+// CreateQuoteParams defines parameters for CreateQuote.
+type CreateQuoteParams struct {
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin  *OriginIfCookie `json:"Origin,omitempty"`
+	IfMatch IfMatch         `json:"If-Match"`
+
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// ExpireQuoteParams defines parameters for ExpireQuote.
+type ExpireQuoteParams struct {
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin  *OriginIfCookie `json:"Origin,omitempty"`
+	IfMatch IfMatch         `json:"If-Match"`
+
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// SendQuoteParams defines parameters for SendQuote.
+type SendQuoteParams struct {
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin  *OriginIfCookie `json:"Origin,omitempty"`
+	IfMatch IfMatch         `json:"If-Match"`
+
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// WithdrawQuoteParams defines parameters for WithdrawQuote.
+type WithdrawQuoteParams struct {
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin  *OriginIfCookie `json:"Origin,omitempty"`
+	IfMatch IfMatch         `json:"If-Match"`
+
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // CreateSiteParams defines parameters for CreateSite.
 type CreateSiteParams struct {
 	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
@@ -1242,6 +1635,15 @@ type ReceiveFakePaymentEventParams struct {
 // SubmitInquiryJSONRequestBody defines body for SubmitInquiry for application/json ContentType.
 type SubmitInquiryJSONRequestBody = CreateInquiry
 
+// AcceptQuoteJSONRequestBody defines body for AcceptQuote for application/json ContentType.
+type AcceptQuoteJSONRequestBody = QuoteTransition
+
+// ApproveQuoteJSONRequestBody defines body for ApproveQuote for application/json ContentType.
+type ApproveQuoteJSONRequestBody = QuoteTransition
+
+// RejectQuoteJSONRequestBody defines body for RejectQuote for application/json ContentType.
+type RejectQuoteJSONRequestBody = QuoteTransition
+
 // CreateAdminSessionJSONRequestBody defines body for CreateAdminSession for application/json ContentType.
 type CreateAdminSessionJSONRequestBody = CreateAdminSession
 
@@ -1274,6 +1676,18 @@ type CreateVariantJSONRequestBody = CreateVariant
 
 // UpdateVariantJSONRequestBody defines body for UpdateVariant for application/json ContentType.
 type UpdateVariantJSONRequestBody = UpdateVariant
+
+// CreateQuoteJSONRequestBody defines body for CreateQuote for application/json ContentType.
+type CreateQuoteJSONRequestBody = CreateQuote
+
+// ExpireQuoteJSONRequestBody defines body for ExpireQuote for application/json ContentType.
+type ExpireQuoteJSONRequestBody = QuoteTransition
+
+// SendQuoteJSONRequestBody defines body for SendQuote for application/json ContentType.
+type SendQuoteJSONRequestBody = QuoteTransition
+
+// WithdrawQuoteJSONRequestBody defines body for WithdrawQuote for application/json ContentType.
+type WithdrawQuoteJSONRequestBody = QuoteTransition
 
 // CreateSiteJSONRequestBody defines body for CreateSite for application/json ContentType.
 type CreateSiteJSONRequestBody = CreateSite
@@ -1550,6 +1964,18 @@ type ServerInterface interface {
 	// (POST /api/public/v1/inquiries)
 	SubmitInquiry(w http.ResponseWriter, r *http.Request)
 
+	// (GET /api/public/v1/quotes/{quote_id})
+	GetBuyerQuote(w http.ResponseWriter, r *http.Request, quoteId QuoteId)
+
+	// (POST /api/public/v1/quotes/{quote_id}/accept)
+	AcceptQuote(w http.ResponseWriter, r *http.Request, quoteId QuoteId, params AcceptQuoteParams)
+
+	// (POST /api/public/v1/quotes/{quote_id}/approve)
+	ApproveQuote(w http.ResponseWriter, r *http.Request, quoteId QuoteId, params ApproveQuoteParams)
+
+	// (POST /api/public/v1/quotes/{quote_id}/reject)
+	RejectQuote(w http.ResponseWriter, r *http.Request, quoteId QuoteId, params RejectQuoteParams)
+
 	// (GET /api/v1/auth/admin-sessions)
 	ListAdminSessions(w http.ResponseWriter, r *http.Request)
 
@@ -1564,6 +1990,9 @@ type ServerInterface interface {
 
 	// (GET /api/v1/auth/current-actor)
 	GetCurrentActor(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/v1/public/sites/current)
+	GetPublishedSite(w http.ResponseWriter, r *http.Request, params GetPublishedSiteParams)
 
 	// (POST /api/v1/t/{tenant_id}/carts)
 	CreateCart(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateCartParams)
@@ -1591,6 +2020,12 @@ type ServerInterface interface {
 
 	// (DELETE /api/v1/t/{tenant_id}/media/{media_id})
 	DeleteMedia(w http.ResponseWriter, r *http.Request, tenantId TenantId, mediaId MediaId, params DeleteMediaParams)
+
+	// (GET /api/v1/t/{tenant_id}/notifications/failures)
+	ListNotificationFailures(w http.ResponseWriter, r *http.Request, tenantId TenantId, params ListNotificationFailuresParams)
+
+	// (POST /api/v1/t/{tenant_id}/notifications/{notification_id}/redrive)
+	RedriveNotification(w http.ResponseWriter, r *http.Request, tenantId TenantId, notificationId NotificationId, params RedriveNotificationParams)
 
 	// (POST /api/v1/t/{tenant_id}/organizations)
 	CreateOrganization(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateOrganizationParams)
@@ -1628,6 +2063,21 @@ type ServerInterface interface {
 	// (PATCH /api/v1/t/{tenant_id}/products/{product_id}/variants/{variant_id})
 	UpdateVariant(w http.ResponseWriter, r *http.Request, tenantId TenantId, productId ProductId, variantId VariantId, params UpdateVariantParams)
 
+	// (POST /api/v1/t/{tenant_id}/quotes)
+	CreateQuote(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateQuoteParams)
+
+	// (GET /api/v1/t/{tenant_id}/quotes/{quote_id})
+	GetQuote(w http.ResponseWriter, r *http.Request, tenantId TenantId, quoteId QuoteId)
+
+	// (POST /api/v1/t/{tenant_id}/quotes/{quote_id}/expire)
+	ExpireQuote(w http.ResponseWriter, r *http.Request, tenantId TenantId, quoteId QuoteId, params ExpireQuoteParams)
+
+	// (POST /api/v1/t/{tenant_id}/quotes/{quote_id}/send)
+	SendQuote(w http.ResponseWriter, r *http.Request, tenantId TenantId, quoteId QuoteId, params SendQuoteParams)
+
+	// (POST /api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw)
+	WithdrawQuote(w http.ResponseWriter, r *http.Request, tenantId TenantId, quoteId QuoteId, params WithdrawQuoteParams)
+
 	// (POST /api/v1/t/{tenant_id}/sites)
 	CreateSite(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateSiteParams)
 
@@ -1664,6 +2114,263 @@ func (siw *ServerInterfaceWrapper) SubmitInquiry(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SubmitInquiry(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBuyerQuote operation middleware
+func (siw *ServerInterfaceWrapper) GetBuyerQuote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "quote_id" -------------
+	var quoteId QuoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "quote_id", r.PathValue("quote_id"), &quoteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "quote_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBuyerQuote(w, r, quoteId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptQuote operation middleware
+func (siw *ServerInterfaceWrapper) AcceptQuote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "quote_id" -------------
+	var quoteId QuoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "quote_id", r.PathValue("quote_id"), &quoteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "quote_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AcceptQuoteParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptQuote(w, r, quoteId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApproveQuote operation middleware
+func (siw *ServerInterfaceWrapper) ApproveQuote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "quote_id" -------------
+	var quoteId QuoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "quote_id", r.PathValue("quote_id"), &quoteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "quote_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ApproveQuoteParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApproveQuote(w, r, quoteId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RejectQuote operation middleware
+func (siw *ServerInterfaceWrapper) RejectQuote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "quote_id" -------------
+	var quoteId QuoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "quote_id", r.PathValue("quote_id"), &quoteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "quote_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RejectQuoteParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejectQuote(w, r, quoteId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1905,6 +2612,39 @@ func (siw *ServerInterfaceWrapper) GetCurrentActor(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCurrentActor(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPublishedSite operation middleware
+func (siw *ServerInterfaceWrapper) GetPublishedSite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPublishedSiteParams
+
+	// ------------- Required query parameter "host" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "host", r.URL.Query(), &params.Host, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "host"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "host", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPublishedSite(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2691,6 +3431,149 @@ func (siw *ServerInterfaceWrapper) DeleteMedia(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteMedia(w, r, tenantId, mediaId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNotificationFailures operation middleware
+func (siw *ServerInterfaceWrapper) ListNotificationFailures(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListNotificationFailuresParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNotificationFailures(w, r, tenantId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RedriveNotification operation middleware
+func (siw *ServerInterfaceWrapper) RedriveNotification(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "notification_id" -------------
+	var notificationId NotificationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notification_id", r.PathValue("notification_id"), &notificationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notification_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RedriveNotificationParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey NotificationIdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RedriveNotification(w, r, tenantId, notificationId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3798,6 +4681,528 @@ func (siw *ServerInterfaceWrapper) UpdateVariant(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// CreateQuote operation middleware
+func (siw *ServerInterfaceWrapper) CreateQuote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateQuoteParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateQuote(w, r, tenantId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetQuote operation middleware
+func (siw *ServerInterfaceWrapper) GetQuote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "quote_id" -------------
+	var quoteId QuoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "quote_id", r.PathValue("quote_id"), &quoteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "quote_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetQuote(w, r, tenantId, quoteId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExpireQuote operation middleware
+func (siw *ServerInterfaceWrapper) ExpireQuote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "quote_id" -------------
+	var quoteId QuoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "quote_id", r.PathValue("quote_id"), &quoteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "quote_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExpireQuoteParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExpireQuote(w, r, tenantId, quoteId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendQuote operation middleware
+func (siw *ServerInterfaceWrapper) SendQuote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "quote_id" -------------
+	var quoteId QuoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "quote_id", r.PathValue("quote_id"), &quoteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "quote_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SendQuoteParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendQuote(w, r, tenantId, quoteId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// WithdrawQuote operation middleware
+func (siw *ServerInterfaceWrapper) WithdrawQuote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "quote_id" -------------
+	var quoteId QuoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "quote_id", r.PathValue("quote_id"), &quoteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "quote_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WithdrawQuoteParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.WithdrawQuote(w, r, tenantId, quoteId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateSite operation middleware
 func (siw *ServerInterfaceWrapper) CreateSite(w http.ResponseWriter, r *http.Request) {
 
@@ -4525,6 +5930,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/checkout", wrapper.CreateCheckout)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/testing/payments/fake/webhook", wrapper.ReceiveFakePaymentEvent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/public/sites/current", wrapper.GetPublishedSite)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.Health)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/admin-sessions", wrapper.ListAdminSessions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/admin-sessions", wrapper.CreateAdminSession)
@@ -4557,6 +5963,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/carts/{cart_id}", wrapper.GetCart)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}", wrapper.DeleteCartLine)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}", wrapper.SetCartLine)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/quotes", wrapper.CreateQuote)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/quotes/{quote_id}", wrapper.GetQuote)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/quotes/{quote_id}/send", wrapper.SendQuote)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw", wrapper.WithdrawQuote)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/quotes/{quote_id}/expire", wrapper.ExpireQuote)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/public/v1/quotes/{quote_id}", wrapper.GetBuyerQuote)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/public/v1/quotes/{quote_id}/accept", wrapper.AcceptQuote)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/public/v1/quotes/{quote_id}/approve", wrapper.ApproveQuote)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/public/v1/quotes/{quote_id}/reject", wrapper.RejectQuote)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/notifications/failures", wrapper.ListNotificationFailures)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/notifications/{notification_id}/redrive", wrapper.RedriveNotification)
 
 	return m
 }
@@ -4566,6 +5983,8 @@ type BadRequestApplicationProblemPlusJSONResponse Problem
 type ConflictApplicationProblemPlusJSONResponse Problem
 
 type ForbiddenApplicationProblemPlusJSONResponse Problem
+
+type InternalErrorApplicationProblemPlusJSONResponse Problem
 
 type InternalServerErrorApplicationProblemPlusJSONResponse Problem
 
@@ -4611,6 +6030,22 @@ func (response SubmitInquiry202JSONResponse) VisitSubmitInquiryResponse(w http.R
 	return err
 }
 
+type SubmitInquiry400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response SubmitInquiry400ApplicationProblemPlusJSONResponse) VisitSubmitInquiryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SubmitInquiry401ApplicationProblemPlusJSONResponse struct {
 	UnauthorizedApplicationProblemPlusJSONResponse
 }
@@ -4639,6 +6074,22 @@ func (response SubmitInquiry403ApplicationProblemPlusJSONResponse) VisitSubmitIn
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitInquiry404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response SubmitInquiry404ApplicationProblemPlusJSONResponse) VisitSubmitInquiryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4751,6 +6202,924 @@ func (response SubmitInquiry429ApplicationProblemPlusJSONResponse) VisitSubmitIn
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitInquiry500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response SubmitInquiry500ApplicationProblemPlusJSONResponse) VisitSubmitInquiryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuoteRequestObject struct {
+	QuoteId QuoteId `json:"quote_id"`
+}
+
+type GetBuyerQuoteResponseObject interface {
+	VisitGetBuyerQuoteResponse(w http.ResponseWriter) error
+}
+
+type GetBuyerQuote200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetBuyerQuote200JSONResponse struct {
+	Body    Quote
+	Headers GetBuyerQuote200ResponseHeaders
+}
+
+func (response GetBuyerQuote200JSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote400ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote401ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote403ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote404ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote409ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote412ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote413ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote415ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote422ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote428ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote429ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBuyerQuote500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response GetBuyerQuote500ApplicationProblemPlusJSONResponse) VisitGetBuyerQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuoteRequestObject struct {
+	QuoteId QuoteId `json:"quote_id"`
+	Params  AcceptQuoteParams
+	Body    *AcceptQuoteJSONRequestBody
+}
+
+type AcceptQuoteResponseObject interface {
+	VisitAcceptQuoteResponse(w http.ResponseWriter) error
+}
+
+type AcceptQuote200ResponseHeaders struct {
+	ETag *string
+}
+
+type AcceptQuote200JSONResponse struct {
+	Body    Quote
+	Headers AcceptQuote200ResponseHeaders
+}
+
+func (response AcceptQuote200JSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote400ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote401ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote403ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote404ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote409ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote412ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote413ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote415ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote422ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote428ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote429ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptQuote500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptQuote500ApplicationProblemPlusJSONResponse) VisitAcceptQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuoteRequestObject struct {
+	QuoteId QuoteId `json:"quote_id"`
+	Params  ApproveQuoteParams
+	Body    *ApproveQuoteJSONRequestBody
+}
+
+type ApproveQuoteResponseObject interface {
+	VisitApproveQuoteResponse(w http.ResponseWriter) error
+}
+
+type ApproveQuote200ResponseHeaders struct {
+	ETag *string
+}
+
+type ApproveQuote200JSONResponse struct {
+	Body    Quote
+	Headers ApproveQuote200ResponseHeaders
+}
+
+func (response ApproveQuote200JSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote400ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote401ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote403ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote404ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote409ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote412ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote413ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote415ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote422ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote428ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote429ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveQuote500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveQuote500ApplicationProblemPlusJSONResponse) VisitApproveQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuoteRequestObject struct {
+	QuoteId QuoteId `json:"quote_id"`
+	Params  RejectQuoteParams
+	Body    *RejectQuoteJSONRequestBody
+}
+
+type RejectQuoteResponseObject interface {
+	VisitRejectQuoteResponse(w http.ResponseWriter) error
+}
+
+type RejectQuote200ResponseHeaders struct {
+	ETag *string
+}
+
+type RejectQuote200JSONResponse struct {
+	Body    Quote
+	Headers RejectQuote200ResponseHeaders
+}
+
+func (response RejectQuote200JSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote400ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote401ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote403ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote404ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote409ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote412ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote413ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote415ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote422ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote428ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote429ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectQuote500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response RejectQuote500ApplicationProblemPlusJSONResponse) VisitRejectQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -5603,6 +7972,216 @@ func (response GetCurrentActor429ApplicationProblemPlusJSONResponse) VisitGetCur
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSiteRequestObject struct {
+	Params GetPublishedSiteParams
+}
+
+type GetPublishedSiteResponseObject interface {
+	VisitGetPublishedSiteResponse(w http.ResponseWriter) error
+}
+
+type GetPublishedSite200JSONResponse PublishedSite
+
+func (response GetPublishedSite200JSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedSite400ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedSite401ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedSite403ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetPublishedSite404ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedSite409ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedSite412ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedSite413ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedSite415ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedSite422ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedSite428ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedSite429ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedSite503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetPublishedSite503ApplicationProblemPlusJSONResponse) VisitGetPublishedSiteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -7572,6 +10151,489 @@ func (response DeleteMedia429ApplicationProblemPlusJSONResponse) VisitDeleteMedi
 type DeleteMedia503ApplicationProblemPlusJSONResponse Problem
 
 func (response DeleteMedia503ApplicationProblemPlusJSONResponse) VisitDeleteMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailuresRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	Params   ListNotificationFailuresParams
+}
+
+type ListNotificationFailuresResponseObject interface {
+	VisitListNotificationFailuresResponse(w http.ResponseWriter) error
+}
+
+type ListNotificationFailures200ResponseHeaders struct {
+	CacheControl *string
+}
+
+type ListNotificationFailures200JSONResponse struct {
+	Body    NotificationFailures
+	Headers ListNotificationFailures200ResponseHeaders
+}
+
+func (response ListNotificationFailures200JSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures400ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures401ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures403ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures404ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures409ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures412ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures413ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures415ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures422ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures428ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures429ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures500ApplicationProblemPlusJSONResponse struct {
+	InternalServerErrorApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures500ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationFailures503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response ListNotificationFailures503ApplicationProblemPlusJSONResponse) VisitListNotificationFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotificationRequestObject struct {
+	TenantId       TenantId       `json:"tenant_id"`
+	NotificationId NotificationId `json:"notification_id"`
+	Params         RedriveNotificationParams
+}
+
+type RedriveNotificationResponseObject interface {
+	VisitRedriveNotificationResponse(w http.ResponseWriter) error
+}
+
+type RedriveNotification200ResponseHeaders struct {
+	CacheControl *string
+}
+
+type RedriveNotification200JSONResponse struct {
+	Body    NotificationRedriveReceipt
+	Headers RedriveNotification200ResponseHeaders
+}
+
+func (response RedriveNotification200JSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification400ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification401ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification403ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification404ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification409ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification412ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification413ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification415ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification422ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification428ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification429ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification500ApplicationProblemPlusJSONResponse struct {
+	InternalServerErrorApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification500ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedriveNotification503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response RedriveNotification503ApplicationProblemPlusJSONResponse) VisitRedriveNotificationResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -10075,6 +13137,1138 @@ func (response UpdateVariant503ApplicationProblemPlusJSONResponse) VisitUpdateVa
 	return err
 }
 
+type CreateQuoteRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	Params   CreateQuoteParams
+	Body     *CreateQuoteJSONRequestBody
+}
+
+type CreateQuoteResponseObject interface {
+	VisitCreateQuoteResponse(w http.ResponseWriter) error
+}
+
+type CreateQuote201ResponseHeaders struct {
+	ETag *string
+}
+
+type CreateQuote201JSONResponse struct {
+	Body    Quote
+	Headers CreateQuote201ResponseHeaders
+}
+
+func (response CreateQuote201JSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote400ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote401ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote403ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote404ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote409ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote412ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote413ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote415ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote422ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote428ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote429ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateQuote500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response CreateQuote500ApplicationProblemPlusJSONResponse) VisitCreateQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuoteRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	QuoteId  QuoteId  `json:"quote_id"`
+}
+
+type GetQuoteResponseObject interface {
+	VisitGetQuoteResponse(w http.ResponseWriter) error
+}
+
+type GetQuote200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetQuote200JSONResponse struct {
+	Body    Quote
+	Headers GetQuote200ResponseHeaders
+}
+
+func (response GetQuote200JSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote400ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote401ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote403ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote404ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote409ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote412ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote413ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote415ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote422ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote428ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote429ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQuote500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response GetQuote500ApplicationProblemPlusJSONResponse) VisitGetQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuoteRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	QuoteId  QuoteId  `json:"quote_id"`
+	Params   ExpireQuoteParams
+	Body     *ExpireQuoteJSONRequestBody
+}
+
+type ExpireQuoteResponseObject interface {
+	VisitExpireQuoteResponse(w http.ResponseWriter) error
+}
+
+type ExpireQuote200ResponseHeaders struct {
+	ETag *string
+}
+
+type ExpireQuote200JSONResponse struct {
+	Body    Quote
+	Headers ExpireQuote200ResponseHeaders
+}
+
+func (response ExpireQuote200JSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote400ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote401ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote403ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote404ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote409ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote412ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote413ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote415ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote422ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote428ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote429ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExpireQuote500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response ExpireQuote500ApplicationProblemPlusJSONResponse) VisitExpireQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuoteRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	QuoteId  QuoteId  `json:"quote_id"`
+	Params   SendQuoteParams
+	Body     *SendQuoteJSONRequestBody
+}
+
+type SendQuoteResponseObject interface {
+	VisitSendQuoteResponse(w http.ResponseWriter) error
+}
+
+type SendQuote200ResponseHeaders struct {
+	ETag *string
+}
+
+type SendQuote200JSONResponse struct {
+	Body    Quote
+	Headers SendQuote200ResponseHeaders
+}
+
+func (response SendQuote200JSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote400ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote401ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote403ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote404ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote409ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote412ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote413ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote415ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote422ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote428ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote429ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendQuote500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response SendQuote500ApplicationProblemPlusJSONResponse) VisitSendQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuoteRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	QuoteId  QuoteId  `json:"quote_id"`
+	Params   WithdrawQuoteParams
+	Body     *WithdrawQuoteJSONRequestBody
+}
+
+type WithdrawQuoteResponseObject interface {
+	VisitWithdrawQuoteResponse(w http.ResponseWriter) error
+}
+
+type WithdrawQuote200ResponseHeaders struct {
+	ETag *string
+}
+
+type WithdrawQuote200JSONResponse struct {
+	Body    Quote
+	Headers WithdrawQuote200ResponseHeaders
+}
+
+func (response WithdrawQuote200JSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote400ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote401ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote403ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote404ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote409ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote412ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote413ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote415ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote422ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote428ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote429ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQuote500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response WithdrawQuote500ApplicationProblemPlusJSONResponse) VisitWithdrawQuoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateSiteRequestObject struct {
 	TenantId TenantId `json:"tenant_id"`
 	Params   CreateSiteParams
@@ -11182,6 +15376,18 @@ type StrictServerInterface interface {
 	// (POST /api/public/v1/inquiries)
 	SubmitInquiry(ctx context.Context, request SubmitInquiryRequestObject) (SubmitInquiryResponseObject, error)
 
+	// (GET /api/public/v1/quotes/{quote_id})
+	GetBuyerQuote(ctx context.Context, request GetBuyerQuoteRequestObject) (GetBuyerQuoteResponseObject, error)
+
+	// (POST /api/public/v1/quotes/{quote_id}/accept)
+	AcceptQuote(ctx context.Context, request AcceptQuoteRequestObject) (AcceptQuoteResponseObject, error)
+
+	// (POST /api/public/v1/quotes/{quote_id}/approve)
+	ApproveQuote(ctx context.Context, request ApproveQuoteRequestObject) (ApproveQuoteResponseObject, error)
+
+	// (POST /api/public/v1/quotes/{quote_id}/reject)
+	RejectQuote(ctx context.Context, request RejectQuoteRequestObject) (RejectQuoteResponseObject, error)
+
 	// (GET /api/v1/auth/admin-sessions)
 	ListAdminSessions(ctx context.Context, request ListAdminSessionsRequestObject) (ListAdminSessionsResponseObject, error)
 
@@ -11196,6 +15402,9 @@ type StrictServerInterface interface {
 
 	// (GET /api/v1/auth/current-actor)
 	GetCurrentActor(ctx context.Context, request GetCurrentActorRequestObject) (GetCurrentActorResponseObject, error)
+
+	// (GET /api/v1/public/sites/current)
+	GetPublishedSite(ctx context.Context, request GetPublishedSiteRequestObject) (GetPublishedSiteResponseObject, error)
 
 	// (POST /api/v1/t/{tenant_id}/carts)
 	CreateCart(ctx context.Context, request CreateCartRequestObject) (CreateCartResponseObject, error)
@@ -11223,6 +15432,12 @@ type StrictServerInterface interface {
 
 	// (DELETE /api/v1/t/{tenant_id}/media/{media_id})
 	DeleteMedia(ctx context.Context, request DeleteMediaRequestObject) (DeleteMediaResponseObject, error)
+
+	// (GET /api/v1/t/{tenant_id}/notifications/failures)
+	ListNotificationFailures(ctx context.Context, request ListNotificationFailuresRequestObject) (ListNotificationFailuresResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/notifications/{notification_id}/redrive)
+	RedriveNotification(ctx context.Context, request RedriveNotificationRequestObject) (RedriveNotificationResponseObject, error)
 
 	// (POST /api/v1/t/{tenant_id}/organizations)
 	CreateOrganization(ctx context.Context, request CreateOrganizationRequestObject) (CreateOrganizationResponseObject, error)
@@ -11259,6 +15474,21 @@ type StrictServerInterface interface {
 
 	// (PATCH /api/v1/t/{tenant_id}/products/{product_id}/variants/{variant_id})
 	UpdateVariant(ctx context.Context, request UpdateVariantRequestObject) (UpdateVariantResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/quotes)
+	CreateQuote(ctx context.Context, request CreateQuoteRequestObject) (CreateQuoteResponseObject, error)
+
+	// (GET /api/v1/t/{tenant_id}/quotes/{quote_id})
+	GetQuote(ctx context.Context, request GetQuoteRequestObject) (GetQuoteResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/quotes/{quote_id}/expire)
+	ExpireQuote(ctx context.Context, request ExpireQuoteRequestObject) (ExpireQuoteResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/quotes/{quote_id}/send)
+	SendQuote(ctx context.Context, request SendQuoteRequestObject) (SendQuoteResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw)
+	WithdrawQuote(ctx context.Context, request WithdrawQuoteRequestObject) (WithdrawQuoteResponseObject, error)
 
 	// (POST /api/v1/t/{tenant_id}/sites)
 	CreateSite(ctx context.Context, request CreateSiteRequestObject) (CreateSiteResponseObject, error)
@@ -11345,6 +15575,134 @@ func (sh *strictHandler) SubmitInquiry(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SubmitInquiryResponseObject); ok {
 		if err := validResponse.VisitSubmitInquiryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBuyerQuote operation middleware
+func (sh *strictHandler) GetBuyerQuote(w http.ResponseWriter, r *http.Request, quoteId QuoteId) {
+	var request GetBuyerQuoteRequestObject
+
+	request.QuoteId = quoteId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBuyerQuote(ctx, request.(GetBuyerQuoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBuyerQuote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBuyerQuoteResponseObject); ok {
+		if err := validResponse.VisitGetBuyerQuoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcceptQuote operation middleware
+func (sh *strictHandler) AcceptQuote(w http.ResponseWriter, r *http.Request, quoteId QuoteId, params AcceptQuoteParams) {
+	var request AcceptQuoteRequestObject
+
+	request.QuoteId = quoteId
+	request.Params = params
+
+	var body AcceptQuoteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptQuote(ctx, request.(AcceptQuoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptQuote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptQuoteResponseObject); ok {
+		if err := validResponse.VisitAcceptQuoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApproveQuote operation middleware
+func (sh *strictHandler) ApproveQuote(w http.ResponseWriter, r *http.Request, quoteId QuoteId, params ApproveQuoteParams) {
+	var request ApproveQuoteRequestObject
+
+	request.QuoteId = quoteId
+	request.Params = params
+
+	var body ApproveQuoteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApproveQuote(ctx, request.(ApproveQuoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApproveQuote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApproveQuoteResponseObject); ok {
+		if err := validResponse.VisitApproveQuoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RejectQuote operation middleware
+func (sh *strictHandler) RejectQuote(w http.ResponseWriter, r *http.Request, quoteId QuoteId, params RejectQuoteParams) {
+	var request RejectQuoteRequestObject
+
+	request.QuoteId = quoteId
+	request.Params = params
+
+	var body RejectQuoteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RejectQuote(ctx, request.(RejectQuoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RejectQuote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RejectQuoteResponseObject); ok {
+		if err := validResponse.VisitRejectQuoteResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -11479,6 +15837,32 @@ func (sh *strictHandler) GetCurrentActor(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCurrentActorResponseObject); ok {
 		if err := validResponse.VisitGetCurrentActorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPublishedSite operation middleware
+func (sh *strictHandler) GetPublishedSite(w http.ResponseWriter, r *http.Request, params GetPublishedSiteParams) {
+	var request GetPublishedSiteRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPublishedSite(ctx, request.(GetPublishedSiteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPublishedSite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPublishedSiteResponseObject); ok {
+		if err := validResponse.VisitGetPublishedSiteResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -11760,6 +16144,61 @@ func (sh *strictHandler) DeleteMedia(w http.ResponseWriter, r *http.Request, ten
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteMediaResponseObject); ok {
 		if err := validResponse.VisitDeleteMediaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListNotificationFailures operation middleware
+func (sh *strictHandler) ListNotificationFailures(w http.ResponseWriter, r *http.Request, tenantId TenantId, params ListNotificationFailuresParams) {
+	var request ListNotificationFailuresRequestObject
+
+	request.TenantId = tenantId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListNotificationFailures(ctx, request.(ListNotificationFailuresRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListNotificationFailures")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListNotificationFailuresResponseObject); ok {
+		if err := validResponse.VisitListNotificationFailuresResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RedriveNotification operation middleware
+func (sh *strictHandler) RedriveNotification(w http.ResponseWriter, r *http.Request, tenantId TenantId, notificationId NotificationId, params RedriveNotificationParams) {
+	var request RedriveNotificationRequestObject
+
+	request.TenantId = tenantId
+	request.NotificationId = notificationId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RedriveNotification(ctx, request.(RedriveNotificationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RedriveNotification")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RedriveNotificationResponseObject); ok {
+		if err := validResponse.VisitRedriveNotificationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12143,6 +16582,172 @@ func (sh *strictHandler) UpdateVariant(w http.ResponseWriter, r *http.Request, t
 	}
 }
 
+// CreateQuote operation middleware
+func (sh *strictHandler) CreateQuote(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateQuoteParams) {
+	var request CreateQuoteRequestObject
+
+	request.TenantId = tenantId
+	request.Params = params
+
+	var body CreateQuoteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateQuote(ctx, request.(CreateQuoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateQuote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateQuoteResponseObject); ok {
+		if err := validResponse.VisitCreateQuoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetQuote operation middleware
+func (sh *strictHandler) GetQuote(w http.ResponseWriter, r *http.Request, tenantId TenantId, quoteId QuoteId) {
+	var request GetQuoteRequestObject
+
+	request.TenantId = tenantId
+	request.QuoteId = quoteId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetQuote(ctx, request.(GetQuoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetQuote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetQuoteResponseObject); ok {
+		if err := validResponse.VisitGetQuoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExpireQuote operation middleware
+func (sh *strictHandler) ExpireQuote(w http.ResponseWriter, r *http.Request, tenantId TenantId, quoteId QuoteId, params ExpireQuoteParams) {
+	var request ExpireQuoteRequestObject
+
+	request.TenantId = tenantId
+	request.QuoteId = quoteId
+	request.Params = params
+
+	var body ExpireQuoteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExpireQuote(ctx, request.(ExpireQuoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExpireQuote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExpireQuoteResponseObject); ok {
+		if err := validResponse.VisitExpireQuoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendQuote operation middleware
+func (sh *strictHandler) SendQuote(w http.ResponseWriter, r *http.Request, tenantId TenantId, quoteId QuoteId, params SendQuoteParams) {
+	var request SendQuoteRequestObject
+
+	request.TenantId = tenantId
+	request.QuoteId = quoteId
+	request.Params = params
+
+	var body SendQuoteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendQuote(ctx, request.(SendQuoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendQuote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendQuoteResponseObject); ok {
+		if err := validResponse.VisitSendQuoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// WithdrawQuote operation middleware
+func (sh *strictHandler) WithdrawQuote(w http.ResponseWriter, r *http.Request, tenantId TenantId, quoteId QuoteId, params WithdrawQuoteParams) {
+	var request WithdrawQuoteRequestObject
+
+	request.TenantId = tenantId
+	request.QuoteId = quoteId
+	request.Params = params
+
+	var body WithdrawQuoteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.WithdrawQuote(ctx, request.(WithdrawQuoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "WithdrawQuote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(WithdrawQuoteResponseObject); ok {
+		if err := validResponse.VisitWithdrawQuoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CreateSite operation middleware
 func (sh *strictHandler) CreateSite(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateSiteParams) {
 	var request CreateSiteRequestObject
@@ -12368,140 +16973,181 @@ func (sh *strictHandler) Health(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

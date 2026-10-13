@@ -92,6 +92,11 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(set(schemas["CartLine"]["required"]), {"sku_id", "quantity", "available_quantity", "sellable"})
         self.assertEqual(set(schemas["Cart"]["required"]), {"id", "currency", "version", "lines"})
 
+    def test_published_product_slug_fits_safe_path(self):
+        # Review thread rsvIP: Project rejects "/products/"+slug paths over 512 bytes.
+        slug = self.api["components"]["schemas"]["PublishedProduct"]["properties"]["slug"]
+        self.assertEqual(slug.get("maxLength"), 512 - len("/products/"))
+
     def test_cookie_and_bearer_are_alternatives(self):
         self.assertEqual(self.api["security"], [{"adminSession": []}, {"ApiKeyBearer": []}])
         cookie = self.api["components"]["securitySchemes"]["adminSession"]
@@ -105,16 +110,20 @@ class APIContractTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(name, ops)
                 self.assertEqual(ops[name][2]["x-opensite-status"], "planned")
+        self.assertEqual(ops["getPublishedSite"][:2], ("/api/v1/public/sites/current", "get"))
+        self.assertEqual(ops["getPublishedSite"][2]["x-opensite-access"], "Public")
+        self.assertEqual(ops["getPublishedSite"][2]["security"], [])
         self.assertEqual(ops["health"][:2], ("/healthz", "get"))
         self.assertEqual(set(ops["health"][2]["responses"]), {"204"})
         self.assertNotIn("content", ops["health"][2]["responses"]["204"])
-        expected = {"createCheckout", "receiveFakePaymentEvent", "health", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
+        expected = {"createCheckout", "receiveFakePaymentEvent", "health", "getPublishedSite", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
+        quote_operations = {"submitInquiry", "createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote", "getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart)
-        for name in expected - {"health", "createCheckout", "receiveFakePaymentEvent"}:
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | {"listNotificationFailures", "redriveNotification"})
+        for name in expected - {"health", "getPublishedSite", "createCheckout", "receiveFakePaymentEvent"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
             self.assertIn(operation["x-required-scope"], {"catalog:read", "catalog:write", "media:write"})
@@ -122,6 +131,7 @@ class APIContractTests(unittest.TestCase):
                 self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, operation["parameters"])
             if name in {"updateProduct", "archiveProduct", "updateVariant", "archiveVariant"}:
                 self.assertIn({"$ref": "#/components/parameters/IfMatch"}, operation["parameters"])
+
 
     def test_all_business_paths_include_tenant_and_allow_cookie_or_key(self):
         ops = operations(self.api)
@@ -132,6 +142,45 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(ops["createOrganization"][2]["x-opensite-access"], "AdminOrAPIKey")
         self.assertEqual(ops["createOrganization"][2]["x-required-scope"], "organization.create")
         self.assertEqual(ops["submitInquiry"][2]["security"], [])
+
+    def test_quotes_have_cas_scope_and_trusted_buyer_contract(self):
+        ops = operations(self.api)
+        for name in ("createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote"):
+            path, method, op = ops[name]
+            self.assertTrue(path.startswith("/api/v1/t/{tenant_id}/quotes"))
+            self.assertEqual(op["x-opensite-access"], "AdminOrAPIKey")
+            self.assertEqual(op["x-required-scope"], "quotes:read" if method == "get" else "quotes:write")
+        for name in ("getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote"):
+            path, method, op = ops[name]
+            self.assertTrue(path.startswith("/api/public/v1/quotes/{quote_id}"))
+            self.assertEqual(op["x-opensite-trusted-buyer"], "required")
+            self.assertEqual(op["security"], [])
+            self.assertNotIn("x-required-scope", op)
+        for name in ("createQuote", "sendQuote", "withdrawQuote", "expireQuote", "acceptQuote", "approveQuote", "rejectQuote"):
+            params = ops[name][2]["parameters"]
+            self.assertIn({"$ref": "#/components/parameters/IfMatch"}, params)
+            self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, params)
+            self.assertIn("428", ops[name][2]["responses"])
+            self.assertIn("412", ops[name][2]["responses"])
+        inquiry = self.api["components"]["schemas"]["CreateInquiry"]
+        self.assertEqual(set(inquiry["properties"]), {"product_id", "buyer_email", "buyer_name", "quantity", "message"})
+        self.assertFalse(inquiry["additionalProperties"])
+
+    def test_quote_operation_status_and_presence_mutations_are_rejected(self):
+        names = ("submitInquiry", "createQuote", "getQuote", "sendQuote", "withdrawQuote",
+                 "expireQuote", "getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote")
+        for name in names:
+            with self.subTest(name=name, mutation="planned"):
+                api = copy.deepcopy(self.api)
+                operations(api)[name][2]["x-opensite-status"] = "planned"
+                with self.assertRaisesRegex(ValueError, "quote operation status drift"):
+                    contract.validate_contract(api)
+            with self.subTest(name=name, mutation="missing"):
+                api = copy.deepcopy(self.api)
+                path, method, _ = operations(api)[name]
+                del api["paths"][path][method]
+                with self.assertRaisesRegex(ValueError, "quote operation missing"):
+                    contract.validate_contract(api)
 
     def test_self_identity_has_no_scope_or_tenant(self):
         ops = operations(self.api)
@@ -194,6 +243,11 @@ class APIContractTests(unittest.TestCase):
             return operations(api)[name][2]
 
         mutations = {
+            "buyer missing trusted marker": lambda a: op(a, "acceptQuote").pop("x-opensite-trusted-buyer"),
+            "trusted marker outside buyer": lambda a: op(a, "submitInquiry").update({"x-opensite-trusted-buyer": "required"}),
+            "seller quote wrong scope": lambda a: op(a, "sendQuote").update({"x-required-scope": "quotes:read"}),
+            "quote missing IfMatch": lambda a: op(a, "acceptQuote").update(parameters=[p for p in op(a, "acceptQuote")["parameters"] if p.get("$ref") != "#/components/parameters/IfMatch"]),
+            "quote missing IdempotencyKey": lambda a: op(a, "createQuote").update(parameters=[p for p in op(a, "createQuote")["parameters"] if p.get("$ref") != "#/components/parameters/IdempotencyKey"]),
             "cart pricing subtotal required": lambda a: a["components"]["schemas"]["Cart"]["required"].append("subtotal"),
             "cart pricing unit amount required": lambda a: a["components"]["schemas"]["CartLine"]["required"].append("unit_amount"),
             "cart pricing error enum drift": lambda a: a["components"]["schemas"]["CartLine"]["properties"]["pricing_error"].update(enum=["unknown"]),
