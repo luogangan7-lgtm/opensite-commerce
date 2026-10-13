@@ -38,7 +38,7 @@
         "city": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
         "subdivision": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
         "postal_code": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "country_code": {"classification": "operational", "note": "ISO alpha-2 reference code, not free-form address text; retained geography alone has no direct identifying contact."}
+        "country_code": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"}
       }
     },
     "customer_auth_tokens": {
