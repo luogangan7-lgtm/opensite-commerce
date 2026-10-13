@@ -262,3 +262,63 @@ BEGIN
 END $allocation$;
 ROLLBACK;
 SELECT 'PASS: fulfillment allocation, cancellation restore, RMA, bounded refund and exact ledger receipts' AS result;
+
+-- Refund coordinator may complete only a pre-existing, current C04 refundReturn claim.
+BEGIN;
+INSERT INTO app.tenants(name) VALUES('refund-C04-A') RETURNING id AS ta \gset
+INSERT INTO app.tenants(name) VALUES('refund-C04-B') RETURNING id AS tb \gset
+SELECT uuidv7() AS actor,uuidv7() AS claim \gset
+SELECT set_config('test.refund_c04_t',:'ta',true),set_config('test.refund_c04_other',:'tb',true),
+ set_config('test.refund_c04_actor',:'actor',true),set_config('test.refund_c04_claim',:'claim',true),
+ set_config('app.tenant_id',:'ta',true);
+SET LOCAL ROLE app_runtime;
+SELECT app.idempotency_claim(:'ta','api_key',:'actor','refundReturn','refund-service',sha256('refund-service'::bytea),interval '1 hour',:'claim');
+SELECT app.idempotency_claim(:'ta','api_key',:'actor','createShipment','other-operation',sha256('other-op'::bytea),interval '1 hour',uuidv7());
+SELECT set_config('app.tenant_id',:'tb',true);
+SELECT app.idempotency_claim(:'tb','api_key',:'actor','refundReturn','other-tenant',sha256('other-tenant'::bytea),interval '1 hour',uuidv7());
+SELECT set_config('app.tenant_id',:'ta',true);
+SET LOCAL ROLE app_returns_service;
+DO $refund_c04$
+DECLARE t uuid:=current_setting('test.refund_c04_t')::uuid; other_t uuid:=current_setting('test.refund_c04_other')::uuid;
+ actor uuid:=current_setting('test.refund_c04_actor')::uuid; token uuid:=current_setting('test.refund_c04_claim')::uuid; n bigint;
+BEGIN
+ BEGIN
+  SELECT count(tenant_id) INTO n FROM app.idempotency_records;
+  IF n<>1 THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE coordinator sees foreign operation/tenant'; END IF;
+ EXCEPTION WHEN insufficient_privilege THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE refund completion unavailable'; END;
+ UPDATE app.idempotency_records SET state='in_progress' WHERE tenant_id=t AND operation='createShipment';
+ GET DIAGNOSTICS n=ROW_COUNT;
+ IF n<>0 THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE coordinator updated foreign operation'; END IF;
+ UPDATE app.idempotency_records SET state='in_progress' WHERE tenant_id=other_t;
+ GET DIAGNOSTICS n=ROW_COUNT;
+ IF n<>0 THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE coordinator updated foreign tenant'; END IF;
+ BEGIN
+  INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at)
+  VALUES(t,'api_key',actor,'refundReturn','forged',sha256('forged'::bytea),clock_timestamp()+interval '1 hour');
+  RAISE EXCEPTION 'FULFILLMENT_C04_GATE coordinator claimed new intent';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ BEGIN
+  UPDATE app.idempotency_records SET claim_token=uuidv7() WHERE tenant_id=t;
+  RAISE EXCEPTION 'FULFILLMENT_C04_GATE coordinator changed claim token';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ PERFORM set_config('app.idempotency_claim',uuidv7()::text,true);
+ BEGIN
+  UPDATE app.idempotency_records SET state='completed',response_status=200,
+   response_body_reference='fixture:refund',completed_at=clock_timestamp()
+  WHERE tenant_id=t AND actor_kind='api_key' AND actor_id=actor AND operation='refundReturn'
+   AND idempotency_key='refund-service' AND request_hash=sha256('refund-service'::bytea)
+   AND claim_token=token AND state='in_progress';
+  RAISE EXCEPTION 'FULFILLMENT_C04_GATE stale claim completed';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ PERFORM set_config('app.idempotency_claim',token::text,true);
+ UPDATE app.idempotency_records SET state='completed',response_status=200,
+  response_body_reference='fixture:refund',completed_at=clock_timestamp()
+ WHERE tenant_id=t AND actor_kind='api_key' AND actor_id=actor AND operation='refundReturn'
+  AND idempotency_key='refund-service' AND request_hash=sha256('refund-service'::bytea)
+  AND claim_token=token AND state='in_progress';
+ GET DIAGNOSTICS n=ROW_COUNT;
+ IF n<>1 THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE refund completion unavailable'; END IF;
+END $refund_c04$;
+RESET ROLE;
+ROLLBACK;
+SELECT 'PASS: refund coordinator completes only existing tenant refundReturn current claims' AS result;

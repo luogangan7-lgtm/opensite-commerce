@@ -110,6 +110,17 @@ GRANT UPDATE(creation_response,receive_response,sealed,order_version,status,rest
  income_minor,tax_minor,shipping_minor,refund_minor) ON app.returns TO app_fulfillment_executor;
 GRANT SELECT ON app.tenants,app.orders,app.order_lines,app.ledger_accounts,app.ledger_transactions,app.ledger_entries TO app_fulfillment_executor;
 GRANT SELECT(tenant_id,id,total_minor,currency) ON app.orders TO app_returns_service;
+-- The trusted refund transaction completes an already claimed C04 response
+-- atomically with its journal and refund. It cannot claim/create another intent.
+GRANT SELECT(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,claim_token,state)
+ ON app.idempotency_records TO app_returns_service;
+GRANT UPDATE(state,response_status,response_body_reference,completed_at)
+ ON app.idempotency_records TO app_returns_service;
+CREATE POLICY returns_service_idempotency_read ON app.idempotency_records FOR SELECT TO app_returns_service
+ USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid AND operation='refundReturn');
+CREATE POLICY returns_service_idempotency_complete ON app.idempotency_records FOR UPDATE TO app_returns_service
+ USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid AND operation='refundReturn')
+ WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid AND operation='refundReturn');
 GRANT SELECT ON app.order_lines TO app_inventory_executor;
 DO $foreign_read$ DECLARE name text; BEGIN
  FOREACH name IN ARRAY ARRAY['orders','order_lines','ledger_accounts','ledger_transactions','ledger_entries'] LOOP

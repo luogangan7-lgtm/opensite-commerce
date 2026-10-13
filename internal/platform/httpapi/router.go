@@ -20,6 +20,7 @@ type Access string
 
 const (
 	Public             Access = "Public"
+	Storefront         Access = "Storefront"
 	AuthenticatedSelf  Access = "AuthenticatedSelf"
 	AdminSession       Access = "AdminSession"
 	APIKey             Access = "APIKey"
@@ -100,6 +101,9 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
 		ctx = context.WithValue(ctx, authorizedActorKey{}, Actor{})
+		if spec.Access == Storefront {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		if spec.Access != Public {
 			var err error
 			ctx, err = s.auth.Authenticate(ctx, r, spec)
@@ -172,7 +176,7 @@ func validateRoute(s RouteSpec) error {
 		return fail("negative body size")
 	}
 	switch s.Access {
-	case Public, AuthenticatedSelf, AdminSession, APIKey, AdminOrAPIKey, InternalService:
+	case Public, Storefront, AuthenticatedSelf, AdminSession, APIKey, AdminOrAPIKey, InternalService:
 	default:
 		return fail("unknown access class")
 	}
@@ -204,7 +208,10 @@ func validateRoute(s RouteSpec) error {
 	if s.Access == Public && s.Scope != "" {
 		return fail("public route cannot declare a scope")
 	}
-	if s.Access != Public && tenant && strings.TrimSpace(s.Scope) == "" {
+	if s.Access == Storefront && (!tenant || s.Scope != "" || !strings.HasPrefix(s.Pattern, "/api/v1/t/{tenant_id}/")) {
+		return fail("Storefront requires canonical tenant path and no staff scope")
+	}
+	if s.Access != Public && s.Access != Storefront && tenant && strings.TrimSpace(s.Scope) == "" {
 		return fail("private tenant route requires scope")
 	}
 	return nil

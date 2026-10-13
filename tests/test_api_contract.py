@@ -8,6 +8,7 @@ session operations; no database, handler or production dependencies.
 import copy
 from pathlib import Path
 import sys
+import json
 import unittest
 
 import yaml
@@ -27,6 +28,69 @@ def operations(api):
 class APIContractTests(unittest.TestCase):
     def setUp(self):
         self.api = yaml.safe_load((ROOT / "api/openapi.yaml").read_text())
+
+    def test_cart_is_strict_storefront_contract(self):
+        ops = operations(self.api)
+        for name in ("createCart", "getCart", "setCartLine", "deleteCartLine"):
+            _, method, op = ops[name]
+            self.assertEqual(op["x-opensite-access"], "Storefront")
+            self.assertEqual(op["x-opensite-status"], "implemented")
+            self.assertNotIn("x-required-scope", op)
+            params = [contract.resolve(self.api, p["$ref"]) if "$ref" in p else p
+                      for p in op.get("parameters", [])]
+            headers = {p["name"]: p for p in params if p["in"] == "header"}
+            self.assertEqual("If-Match" in headers, method in {"put", "delete"})
+            if "If-Match" in headers:
+                self.assertTrue(headers["If-Match"]["required"])
+            for code in ("400", "404", "503"):
+                self.assertIn(code, op["responses"])
+        for name in ("CreateCart", "SetCartLine", "Cart", "CartLine"):
+            self.assertFalse(self.api["components"]["schemas"][name]["additionalProperties"])
+
+    def test_cart_absolute_quantity_schema(self):
+        validator = contract.Draft202012Validator(self.api["components"]["schemas"]["SetCartLine"])
+        for value in (0, 1, 1000000):
+            validator.validate({"quantity": value})
+        for body in ({}, {"quantity": None}, {"quantity": -1}, {"quantity": 1000001}, {"quantity": 1.5}):
+            with self.subTest(body=body), self.assertRaises(contract.ValidationError):
+                validator.validate(body)
+
+    def test_cart_unavailable_quote_is_recoverable_view(self):
+        schemas = self.api["components"]["schemas"]
+        line = {"sku_id": "33333333-3333-4333-8333-333333333333", "quantity": 1,
+                "available_quantity": 2, "sellable": True, "pricing_error": "price_unavailable"}
+        cart = {"id": "22222222-2222-4222-8222-222222222222", "currency": "USD",
+                "version": 1, "lines": [line], "pricing_error": "price_unavailable"}
+        validator = contract.Draft202012Validator(
+            {"$ref": "#/components/schemas/Cart", "components": {"schemas": schemas}},
+            format_checker=contract.FormatChecker())
+        validator.validate(cart)
+        cart["pricing_error"] = line["pricing_error"] = "amount_overflow"
+        validator.validate(cart)
+        line["pricing_error"] = "unknown_error"
+        with self.assertRaises(contract.ValidationError):
+            validator.validate(cart)
+        line.pop("pricing_error")
+        line.update(unit_amount=0, line_amount=0, price_list_id="44444444-4444-4444-8444-444444444444",
+                    priority=0, min_quantity=1)
+        cart.pop("pricing_error")
+        cart["subtotal"] = 0
+        validator.validate(cart)
+        # Priced and failed shapes are mutually exclusive alternatives.
+        impossible = [
+            lambda c: c.pop("subtotal"),
+            lambda c: c.update(pricing_error="price_unavailable"),
+            lambda c: c["lines"][0].pop("unit_amount"),
+            lambda c: c["lines"][0].update(pricing_error="price_unavailable"),
+            lambda c: c.update(lines=[c["lines"][0]] * 1001),
+        ]
+        for index, mutate in enumerate(impossible):
+            broken = json.loads(json.dumps(cart))
+            mutate(broken)
+            with self.subTest(impossible=index), self.assertRaises(contract.ValidationError):
+                validator.validate(broken)
+        self.assertEqual(set(schemas["CartLine"]["required"]), {"sku_id", "quantity", "available_quantity", "sellable"})
+        self.assertEqual(set(schemas["Cart"]["required"]), {"id", "currency", "version", "lines"})
 
     def test_cookie_and_bearer_are_alternatives(self):
         self.assertEqual(self.api["security"], [{"adminSession": []}, {"ApiKeyBearer": []}])
@@ -48,8 +112,9 @@ class APIContractTests(unittest.TestCase):
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia",
                     "createShipment", "createReturn", "receiveReturn", "refundReturn"}
+        cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected)
+                          if op["x-opensite-status"] == "implemented"}, expected | cart)
         for name in expected - {"health"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
@@ -86,6 +151,17 @@ class APIContractTests(unittest.TestCase):
             return operations(api)[name][2]
 
         mutations = {
+            "cart pricing subtotal required": lambda a: a["components"]["schemas"]["Cart"]["required"].append("subtotal"),
+            "cart pricing unit amount required": lambda a: a["components"]["schemas"]["CartLine"]["required"].append("unit_amount"),
+            "cart pricing error enum drift": lambda a: a["components"]["schemas"]["CartLine"]["properties"]["pricing_error"].update(enum=["unknown"]),
+            "cart quantity upper bound missing": lambda a: a["components"]["schemas"]["SetCartLine"]["properties"]["quantity"].pop("maximum"),
+            "cart integer bound missing": lambda a: a["components"]["schemas"]["Cart"]["properties"]["subtotal"].pop("minimum"),
+            "cart staff access": lambda a: op(a, "getCart").update({"x-opensite-access": "AdminOrAPIKey"}),
+            "cart staff scope": lambda a: op(a, "getCart").update({"x-required-scope": "catalog.read"}),
+            "cart missing IfMatch": lambda a: op(a, "setCartLine").update(parameters=[p for p in op(a,"setCartLine")["parameters"] if p.get("$ref") != "#/components/parameters/IfMatch"]),
+            "cart unbounded schema": lambda a: a["components"]["schemas"]["SetCartLine"].update(additionalProperties=True),
+            "cart token cookie": lambda a: a["components"]["securitySchemes"]["CartToken"].update(**{"in":"cookie"}),
+            "cart missing 503": lambda a: op(a,"createCart")["responses"].pop("503"),
             "cookie AND bearer": lambda a: a.update(security=[{"adminSession": [], "ApiKeyBearer": []}]),
             "cookie name drift": lambda a: a["components"]["securitySchemes"]["adminSession"].update(name="session"),
             "tenant scope missing": lambda a: op(a, "createProduct").pop("x-required-scope"),

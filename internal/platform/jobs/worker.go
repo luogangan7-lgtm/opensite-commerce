@@ -23,7 +23,7 @@ const rollbackTimeout = 5 * time.Second
 type Expirer interface {
 	Expire(context.Context, string, int) error
 }
-type ControlledInventory struct{ Pool *pgxadapter.QueuePool }
+type ControlledInventory struct{ Pool pgxadapter.QueueDB }
 
 func (s ControlledInventory) Expire(ctx context.Context, tenant string, batch int) error {
 	return pgxadapter.InQueueTenant(ctx, s.Pool, tenant, func(ctx context.Context, tx pgx.Tx) error {
@@ -75,19 +75,19 @@ func (admissionErrors) HandlePanic(context.Context, *rivertype.JobRow, any, stri
 }
 
 func NewWorker(pool *pgxadapter.QueuePool, signer *Signer, cfg WorkerConfig) (*river.Client[pgx.Tx], error) {
-	return NewWorkerWithService(pool, signer, ControlledInventory{Pool: pool}, cfg, river.Config{})
+	return NewWorkerWithService(pool.RiverDriver(), signer, ControlledInventory{Pool: pool}, cfg, river.Config{})
 }
 
 // NewWorkerWithService is a trusted infrastructure composition port for an
 // Expirer implementation and River scheduling settings. Admission, schema,
 // queues, workers and periodic tenant scope remain fixed by this package;
 // tuning must never come from request or job payload data.
-func NewWorkerWithService(pool *pgxadapter.QueuePool, signer *Signer, service Expirer, cfg WorkerConfig, tuning river.Config) (*river.Client[pgx.Tx], error) {
-	return buildWorker(pool, signer, service, cfg, tuning)
+func NewWorkerWithService(driver *riverpgxv5.Driver, signer *Signer, service Expirer, cfg WorkerConfig, tuning river.Config) (*river.Client[pgx.Tx], error) {
+	return buildWorker(driver, signer, service, cfg, tuning)
 }
 
-func buildWorker(pool *pgxadapter.QueuePool, signer *Signer, service Expirer, cfg WorkerConfig, tuning river.Config) (*river.Client[pgx.Tx], error) {
-	if pool == nil || signer == nil || len(signer.key) < 32 || service == nil {
+func buildWorker(driver *riverpgxv5.Driver, signer *Signer, service Expirer, cfg WorkerConfig, tuning river.Config) (*river.Client[pgx.Tx], error) {
+	if driver == nil || signer == nil || len(signer.key) < 32 || service == nil {
 		return nil, errors.New("invalid worker configuration")
 	}
 	if cfg.Batch == 0 {
@@ -121,5 +121,5 @@ func buildWorker(pool *pgxadapter.QueuePool, signer *Signer, service Expirer, cf
 		seen[args.TenantID] = true
 		tuning.PeriodicJobs = append(tuning.PeriodicJobs, river.NewPeriodicJob(river.PeriodicInterval(cfg.Interval), func() (river.JobArgs, *river.InsertOpts) { return args, nil }, &river.PeriodicJobOpts{RunOnStart: true}))
 	}
-	return river.NewClient(riverpgxv5.New(pool), &tuning)
+	return river.NewClient(driver, &tuning)
 }
