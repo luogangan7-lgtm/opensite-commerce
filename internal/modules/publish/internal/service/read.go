@@ -131,9 +131,17 @@ func Project(siteID, releaseID, host, locale string, rawManifest, rawPages []byt
 	return withinBudget(site)
 }
 
+// tenantPlaceholder is a canonical UUID's length: tenant_id is filled only on the live
+// read, so publish-time projections measure the payload as if it were already set.
+const tenantPlaceholder = "00000000-0000-0000-0000-000000000000"
+
 // withinBudget enforces the HTTP buffer limit on the complete JSON response, including Encoder's newline.
 func withinBudget(site contract.Site) (contract.Site, error) {
-	response, err := json.Marshal(site)
+	measured := site
+	if measured.TenantID == "" {
+		measured.TenantID = tenantPlaceholder
+	}
+	response, err := json.Marshal(measured)
 	if err != nil || len(response)+1 > 1<<20 {
 		return contract.Site{}, contract.ErrUnavailable
 	}

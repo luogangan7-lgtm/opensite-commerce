@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -89,5 +90,30 @@ func TestAttachSKUsBoundedWork(t *testing.T) {
 	}
 	if err != nil || len(got.Products[0].SKUs) != 10 || got.Products[0].SKUs[0].PriceMinor != "31" {
 		t.Fatalf("max-size pricing: %v %+v", err, got.Products[0].SKUs)
+	}
+}
+
+// Publish-time projections have no tenant_id yet; the budget must still count its 36 bytes,
+// or a release within 36 bytes of 1 MiB would publish and then only serve 503.
+func TestBudgetCountsTenantID(t *testing.T) {
+	site := func(n int) contract.Site {
+		return contract.Site{Navigation: []contract.Navigation{}, Products: []contract.Product{},
+			Pages: []contract.Page{{Path: "/a", Title: "A", Blocks: []contract.Block{{Kind: "paragraph", Text: strings.Repeat("x", n)}}}}}
+	}
+	base, _ := json.Marshal(site(0))
+	n := 1<<20 - 1 - len(base) - 10 // fits by 10 bytes without a tenant id
+	if raw, _ := json.Marshal(site(n)); len(raw)+1 != 1<<20-10 {
+		t.Fatalf("fixture size %d", len(raw)+1)
+	}
+	if _, err := withinBudget(site(n)); !errors.Is(err, contract.ErrUnavailable) {
+		t.Fatalf("payload that only fits without tenant_id accepted: %v", err)
+	}
+	if _, err := withinBudget(site(n - 26)); err != nil {
+		t.Fatalf("payload that fits with tenant_id rejected: %v", err)
+	}
+	live := site(n - 26)
+	live.TenantID = "11111111-1111-4111-8111-111111111111"
+	if _, err := withinBudget(live); err != nil {
+		t.Fatalf("live payload at the boundary rejected: %v", err)
 	}
 }
