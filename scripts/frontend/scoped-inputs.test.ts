@@ -163,3 +163,23 @@ test('follows Astro frontmatter, inline scripts and HTML script and stylesheet l
     'src/card.tsx', 'src/client.mjs', 'src/index.html', 'src/leaf.js', 'src/page.astro', 'src/page.css',
   ]);
 });
+
+test('C-08d: files imported by Vite/Astro configs are renderer inputs', async () => {
+  const { graphInputFiles } = await loadInputs();
+  const root = fixture({
+    'package.json': JSON.stringify({ dependencies: { react: '1.0.0' } }),
+    'src/entry.ts': "import 'react';",
+    'astro.config.mjs': "import { hosts } from './src/hosts';\nexport default { vite: { define: { hosts } } };",
+    'src/hosts.ts': "export { normalize as hosts } from './normalize';",
+    'src/normalize.ts': 'export const normalize = 1;',
+  });
+  expect(graphInputFiles(['src/entry.ts'], root)).toEqual(expect.arrayContaining(['astro.config.mjs', 'src/hosts.ts', 'src/normalize.ts']));
+});
+test('C-08d: storefront scopes include the River migrator their fixture runs', async () => {
+  const { scopeInputs } = await loadInputs();
+  for (const scope of ['storefront-published', 'storefront-commerce'] as const) {
+    const inputs = scopeInputs(scope);
+    expect(inputs).toContain('web/storefront/src/lib/host-policy.ts');
+    expect(inputs.some(path => path.startsWith('cmd/river-migrate/') && path.endsWith('.go'))).toBe(true);
+  }
+});
