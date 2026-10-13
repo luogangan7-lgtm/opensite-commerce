@@ -138,7 +138,9 @@ BEGIN
   cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,
   shipping_minor,payable_version)
  VALUES(t,checkout,'customer',customer::text,'privacy-checkout',sha256('privacy-checkout'::bytea),
-  cart,1,registered_order,jsonb_build_object('recipient',{{canary:checkout_sessions.address_snapshot}}),
+  -- Mutation retains a declared/rendered marker only in this SQL comment:
+  -- {{canary:checkout_sessions.address_snapshot}} must NOT count as persisted coverage.
+  cart,1,registered_order,jsonb_build_object('recipient','fixture-without-canary'),
   registered.currency,registered.total_minor,registered.items_net_minor,registered.tax_minor,
   registered.shipping_minor,registered.version);
  -- Checkout's immutable start/final receipts are set once during legal phases.
