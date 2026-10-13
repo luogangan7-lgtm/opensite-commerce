@@ -134,11 +134,12 @@ func runContext(parent context.Context, getenv func(string) string, sender outbo
 	cancel()
 	stop, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer stopCancel()
-	var monitorErr error
+	var monitorErr, stopErr error
 	if monitor != nil {
-		monitorErr = monitor.Stop(stop)
+		monitorErr, stopErr = stopConcurrently(stop, monitor, worker)
+	} else {
+		stopErr = worker.Stop(stop)
 	}
-	stopErr := worker.Stop(stop)
 	if runner != nil && !joined {
 		select {
 		case runErr = <-runnerDone:
@@ -262,4 +263,13 @@ func (p permanentExports) BuildExport(ctx context.Context, tenant, request strin
 		return river.JobCancel(err)
 	}
 	return err
+}
+
+// stopConcurrently starts both stops at once so a slow monitor drain cannot
+// consume River's soft-stop grace before it begins (shared 30s budget).
+func stopConcurrently(ctx context.Context, monitor, worker interface{ Stop(context.Context) error }) (monitorErr, workerErr error) {
+	done := make(chan error, 1)
+	go func() { done <- monitor.Stop(ctx) }()
+	workerErr = worker.Stop(ctx)
+	return <-done, workerErr
 }

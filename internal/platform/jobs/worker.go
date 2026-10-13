@@ -20,6 +20,10 @@ import (
 
 const rollbackTimeout = 5 * time.Second
 
+// Leave the command's outer 30-second Stop deadline time to persist River's
+// cancellation/retry state. A zero River timeout otherwise waits indefinitely.
+const maxSoftStopTimeout = 25 * time.Second
+
 type Expirer interface {
 	Expire(context.Context, string, int) error
 }
@@ -76,6 +80,9 @@ func (admissionErrors) HandlePanic(context.Context, *rivertype.JobRow, any, stri
 }
 
 func NewWorker(pool *pgxadapter.QueuePool, signer *Signer, cfg WorkerConfig) (*river.Client[pgx.Tx], error) {
+	if pool == nil {
+		return nil, errors.New("worker pool required")
+	}
 	return NewWorkerWithService(pool.RiverDriver(), signer, ControlledInventory{Pool: pool}, cfg, river.Config{})
 }
 
@@ -83,6 +90,8 @@ func NewWorker(pool *pgxadapter.QueuePool, signer *Signer, cfg WorkerConfig) (*r
 // Expirer implementation and River scheduling settings. Admission, schema,
 // queues, workers and periodic tenant scope remain fixed by this package;
 // tuning must never come from request or job payload data.
+// Positive shutdown grace may be shortened, but cannot disable cancellation or
+// exceed the command's outer shutdown deadline.
 func NewWorkerWithService(driver *riverpgxv5.Driver, signer *Signer, service Expirer, cfg WorkerConfig, tuning river.Config) (*river.Client[pgx.Tx], error) {
 	return buildWorker(driver, signer, service, cfg, tuning)
 }
@@ -115,6 +124,9 @@ func buildWorker(driver *riverpgxv5.Driver, signer *Signer, service Expirer, cfg
 		tuning.Queues[CustomerDataExportQueue] = river.QueueConfig{MaxWorkers: 1}
 	}
 	tuning.ReindexerIndexNames = []string{} // worker has no DDL/REINDEX rights.
+	if tuning.SoftStopTimeout <= 0 || tuning.SoftStopTimeout > maxSoftStopTimeout {
+		tuning.SoftStopTimeout = maxSoftStopTimeout
+	}
 	tuning.PeriodicJobs = nil
 	seen := map[string]bool{}
 	for _, tenant := range cfg.Tenants {
