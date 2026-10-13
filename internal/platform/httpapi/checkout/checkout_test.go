@@ -138,12 +138,14 @@ func checkProblem(t *testing.T, w *httptest.ResponseRecorder, status int) {
 		t.Fatalf("invalid problem %s", w.Body.String())
 	}
 }
+
 // authenticatedStaff is an explicit admission fixture. It accepts only its
 // staff cookie and projects a stable actor after authentication; it never puts
 // private Router authorization keys into the request context.
 type authenticatedStaff struct {
 	authentications int
 	projections     int
+	projectionErr   error
 }
 
 func (s *authenticatedStaff) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
@@ -157,6 +159,9 @@ func (s *authenticatedStaff) Authenticate(ctx context.Context, r *http.Request, 
 
 func (s *authenticatedStaff) ResolveActor(_ context.Context, _ *http.Request, _ httpapi.RouteSpec) (httpapi.Actor, error) {
 	s.projections++
+	if s.projectionErr != nil {
+		return httpapi.Actor{}, s.projectionErr
+	}
 	return httpapi.Actor{Kind: "user", ID: cart}, nil
 }
 
@@ -206,6 +211,40 @@ func TestCheckoutAuthenticatorPreservesAuthenticatedStaffActor(t *testing.T) {
 		if w.Code != http.StatusNoContent || staff.projections != 1 {
 			t.Fatalf("wrapped=%v authenticated staff actor lost: status=%d projections=%d body=%s", wrapped, w.Code, staff.projections, w.Body.String())
 		}
+	}
+}
+
+func TestCheckoutAuthenticatorActorProjectionBoundary(t *testing.T) {
+	h, err := checkout.New(checkout.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectionErr := errors.New("staff projection rejected")
+	for _, tc := range []struct {
+		name      string
+		spec      httpapi.RouteSpec
+		wantErr   error
+		wantCalls int
+	}{
+		{"exact checkout", httpapi.RouteSpec{OperationID: checkout.StartOperation, Method: http.MethodPost, Pattern: checkout.StartPattern, Access: httpapi.Storefront}, nil, 0},
+		{"other storefront", httpapi.RouteSpec{OperationID: "storefrontActorProbe", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/actor-probe", Access: httpapi.Storefront}, nil, 0},
+		{"fake public", httpapi.RouteSpec{OperationID: checkout.FakeOperation, Method: http.MethodPost, Pattern: checkout.FakePattern, Access: httpapi.Public}, nil, 0},
+		{"staff error", httpapi.RouteSpec{OperationID: "staffActorProbe", Method: http.MethodPost, Pattern: "/api/v1/t/{tenant_id}/staff-actor-probe", Access: httpapi.AdminSession, Scope: "fulfillment:write"}, projectionErr, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			staff := &authenticatedStaff{projectionErr: projectionErr}
+			projection, ok := h.Authenticator(staff).(httpapi.ActorResolver)
+			if !ok {
+				t.Fatal("checkout wrapper lost actor projection contract")
+			}
+			// Probe the projection seam directly: Router bypasses it for Public,
+			// and storefront admission uses its separate typed capability.
+			q := httptest.NewRequest(tc.spec.Method, "/", nil)
+			got, err := projection.ResolveActor(q.Context(), q, tc.spec)
+			if got != (httpapi.Actor{}) || err != tc.wantErr || staff.projections != tc.wantCalls {
+				t.Fatalf("actor=%+v error=%v calls=%d; want absent actor, error=%v calls=%d", got, err, staff.projections, tc.wantErr, tc.wantCalls)
+			}
+		})
 	}
 }
 
