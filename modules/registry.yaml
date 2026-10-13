@@ -264,24 +264,69 @@
         "site_release_media",
         "site_drafts",
         "draft_pages",
-        "draft_operations"
+        "draft_operations",
+        "draft_page_media"
       ],
       "operations": [
         {
           "operation_id": "createSiteDraft",
-          "status": "planned"
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getSiteDraft",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "listDraftPages",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createDraftPage",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getDraftPage",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "updateDraftPage",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "deleteDraftPage",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "updateDraftNavigation",
+          "status": "implemented"
         },
         {
           "operation_id": "applyPageOperations",
-          "status": "planned"
+          "status": "implemented"
         },
         {
           "operation_id": "validateSiteDraft",
-          "status": "planned"
+          "status": "implemented"
         },
         {
           "operation_id": "publishSiteDraft",
-          "status": "planned"
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createSitePreviewToken",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getSiteReleaseHistory",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "restoreSiteRelease",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getSitePreview",
+          "status": "implemented"
         },
         {
           "operation_id": "getPublishedSite",
@@ -292,7 +337,9 @@
         "tenant",
         "site",
         "cms",
-        "media"
+        "media",
+        "catalog",
+        "pricing"
       ],
       "tests": [
         "internal/pagegraph/graph_test.go",
@@ -301,11 +348,15 @@
         "internal/modules/publish/contract/read_test.go",
         "internal/modules/publish/internal/service/read_test.go",
         "internal/modules/publish/handler_test.go",
-        "tests/db_storefront.sql"
+        "tests/db_storefront.sql",
+        "internal/modules/publish/write_handler_test.go",
+        "internal/modules/publish/write_test.go",
+        "internal/modules/publish/internal/service/write_test.go",
+        "tests/db_cms_publish.sql"
       ],
       "scopes": [
-        "site.draft.write",
-        "site.publish"
+        "cms:write",
+        "cms:publish"
       ]
     },
     {
@@ -962,6 +1013,30 @@
         "site_releases",
         "site_release_routes",
         "page_revisions"
+      ]
+    },
+    {
+      "file": "migrations/025_cms_publish.sql",
+      "owner": "publish",
+      "touches_tables": [
+        "sites",
+        "site_drafts",
+        "draft_pages",
+        "draft_operations",
+        "draft_page_media",
+        "pages",
+        "page_revisions",
+        "site_releases",
+        "site_release_routes",
+        "site_release_media",
+        "products",
+        "product_variants",
+        "product_listings",
+        "product_content_revisions",
+        "price_lists",
+        "price_entries",
+        "audit_events",
+        "media_assets"
       ]
     }
   ]

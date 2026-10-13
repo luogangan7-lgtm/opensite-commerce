@@ -25,6 +25,7 @@ sql:
       - "migrations/022_reliability_limits.sql"
       - "migrations/023_cart.sql"
       - "migrations/024_storefront_read.sql"
+      - "migrations/025_cms_publish.sql"
     queries: "queries"
     gen:
       go:

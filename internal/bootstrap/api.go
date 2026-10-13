@@ -15,6 +15,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 )
@@ -27,6 +28,7 @@ type Config struct {
 	Catalog       catalog.Config
 	Media         media.Config
 	Cart          *cart.Module
+	CMS           publish.CMSHTTPConfig
 }
 
 func New(config Config) (server *http.Server, err error) {
@@ -46,6 +48,7 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
+	routes = append(routes, publish.NewCMSHandler(config.CMS).Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {
 		if err := router.Register(route.Spec, route.Handler); err != nil {
@@ -96,4 +99,16 @@ func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, s
 		return (httpapi.DenyAuthenticator{}).Authenticate(ctx, r, spec)
 	}
 	return a.staff.Authenticate(ctx, r, spec)
+}
+
+// ResolveActor preserves the identity projection of the selected staff
+// authenticator. It never manufactures an actor from an HTTP field.
+func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
+	if spec.Access == httpapi.Storefront {
+		return httpapi.Actor{}, nil
+	}
+	if resolver, ok := a.staff.(httpapi.ActorResolver); ok {
+		return resolver.ResolveActor(ctx, r, spec)
+	}
+	return httpapi.Actor{}, nil
 }

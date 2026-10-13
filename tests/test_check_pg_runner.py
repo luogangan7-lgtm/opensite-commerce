@@ -73,6 +73,7 @@ expected = [
     'db_reliability_limits.sql',
     'db_cart.sql',
     'db_storefront.sql',
+    'db_cms_publish.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:
@@ -185,7 +186,8 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('ORDERS_GATE', 'db_orders.sql'),
                          ('QUEUE_CROSS_TENANT_READ', 'db_queue.sql'),
                          ('RELIABILITY_LIMITS_GATE', 'db_reliability_limits.sql'),
-                         ('CART_EXPECTED_REFUSAL', 'db_cart.sql')]:
+                         ('CART_EXPECTED_REFUSAL', 'db_cart.sql'),
+                         ('CMS_EXPECTED_REFUSAL', 'db_cms_publish.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
         assert failed.returncode == 31, (failed.stdout, failed.stderr)

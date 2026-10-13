@@ -27,7 +27,7 @@ DECLARE
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
-  'orders','order_lines','order_adjustments'];
+  'orders','order_lines','order_adjustments','draft_page_media'];
  role_name text;
  r record;
  t record;
@@ -77,11 +77,12 @@ BEGIN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='INSERT' THEN
-      IF t.relname=ANY(mutable_tables || append_tables) AND t.relname<>'idempotency_records' THEN
+      IF t.relname=ANY(mutable_tables || append_tables) AND t.relname NOT IN ('idempotency_records','site_drafts') THEN
        allowed_columns := all_columns;
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
         WHEN 'carts' THEN ARRAY['tenant_id','id','customer_id','guest_token_hash','currency']
         WHEN 'cart_lines' THEN ARRAY['tenant_id','cart_id','sku_id','quantity']
         WHEN 'ledger_accounts' THEN ARRAY['tenant_id','id','code','currency','account_type']
@@ -94,7 +95,7 @@ BEGIN
         WHEN 'outbox_events' THEN ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key','created_at']
         WHEN 'webhook_inbox' THEN ARRAY['tenant_id','id','provider','provider_account_id','environment','provider_event_id','payload_hash','payload_reference','created_at']
         WHEN 'site_domains' THEN ARRAY['tenant_id','site_id','id','hostname','created_at']
-        WHEN 'sites' THEN array_remove(all_columns,'published_release_id')
+        WHEN 'sites' THEN array_remove(array_remove(all_columns,'published_release_id'),'publication_revision')
         WHEN 'media_uploads' THEN ARRAY['tenant_id','id','actor_id','original_filename',
          'declared_mime','expected_size','expected_sha256','expires_at','created_at']
         WHEN 'media_assets' THEN array_remove(all_columns,'visibility')
@@ -105,11 +106,12 @@ BEGIN
      ELSIF privilege='DELETE' AND t.relname='cart_lines' THEN
       expected_table := true;
      ELSIF privilege='UPDATE' THEN
-      IF t.relname=ANY(mutable_tables) THEN
+      IF t.relname=ANY(mutable_tables) AND t.relname<>'site_drafts' THEN
        allowed_columns := all_columns;
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
         WHEN 'carts' THEN ARRAY['version']
         WHEN 'cart_lines' THEN ARRAY['quantity']
         WHEN 'tax_zones' THEN ARRAY['name']
@@ -222,15 +224,21 @@ BEGIN
     OR role_name='app_media_service' AND t.relname='products' AND privilege='SELECT'
     OR role_name='app_media_service' AND t.relname='product_media' AND privilege=ANY(ARRAY['SELECT','INSERT','DELETE'])
     OR role_name='app_media_service' AND t.relname='media_assets' AND privilege='DELETE'
-    OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['sites','site_releases','site_release_routes','site_release_templates','site_release_media','media_assets','media_blobs']) AND privilege='SELECT'
+    OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['sites','site_releases','site_release_routes','site_release_templates','site_release_media','media_assets','media_blobs','site_drafts','draft_pages','draft_operations','pages','page_revisions','products','product_variants','product_listings','product_content_revisions','price_lists','price_entries','draft_page_media']) AND privilege='SELECT'
+    OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['draft_pages','draft_page_media','pages','page_revisions','site_release_routes','site_release_media','draft_operations','audit_events']) AND privilege='INSERT'
+    OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['draft_pages','draft_page_media']) AND privilege='DELETE'
     OR role_name='app_reliability_executor' AND t.relname='outbox_events' AND privilege='SELECT' THEN
      expected_table := true;
      SELECT array_agg(attname::text) INTO allowed FROM pg_attribute
       WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
     ELSIF role_name='app_media_service' AND t.relname='product_media' AND privilege='UPDATE' THEN
      allowed := ARRAY['sort_order'];
+    ELSIF role_name='app_publish_executor' AND privilege='INSERT' THEN
+     allowed:=CASE t.relname WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','is_cms','locale','title','description','navigation'] WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','release_no','renderer_build_id','manifest','manifest_hash'] ELSE allowed END;
     ELSIF role_name='app_publish_executor' AND privilege='UPDATE' THEN
-     allowed := CASE t.relname WHEN 'sites' THEN ARRAY['published_release_id']
+     allowed := CASE t.relname WHEN 'sites' THEN ARRAY['published_release_id','publication_revision']
+                              WHEN 'site_drafts' THEN ARRAY['revision','status','locale','title','description','navigation']
+                              WHEN 'draft_pages' THEN ARRAY['path','document']
                               WHEN 'site_releases' THEN ARRAY['sealed']
                               WHEN 'media_assets' THEN ARRAY['visibility']
                               WHEN 'media_blobs' THEN ARRAY['status'] ELSE allowed END;
@@ -255,7 +263,7 @@ BEGIN
  END LOOP;
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
-  AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
@@ -278,7 +286,7 @@ BEGIN
   END IF;
  END LOOP;
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
-  AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
@@ -720,3 +728,25 @@ BEGIN
  IF NOT EXISTS(SELECT FROM pg_policy p WHERE p.polrelid='app.outbox_events'::regclass AND p.polname='outbox_tenant_discovery' AND p.polcmd='r' AND p.polroles=ARRAY[r.oid] AND pg_get_expr(p.polqual,p.polrelid)='true' AND p.polwithcheck IS NULL) THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_POLICY'; END IF;
 END $discovery_matrix$;
 SELECT 'PASS: outbox broker IDs-only exact table-column-routine/RLS matrix' AS result;
+-- CMS controlled functions and capability flag must have exact effective ACLs.
+DO $cms_matrix$
+DECLARE f record; role_name text; expected boolean;
+ names text[]:=ARRAY['cms_context','cms_revision_immutable','cms_draft_guard','cms_validate_document','cms_products','cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history'];
+ public_names text[]:=ARRAY['cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history'];
+BEGIN
+ IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname LIKE 'cms_%')<>cardinality(names) THEN RAISE EXCEPTION 'CMS_MATRIX_ROUTINE_SET'; END IF;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname LIKE 'cms_%' LOOP
+  IF NOT f.proname=ANY(names) OR f.proowner<>'app_publish_executor'::regrole
+   OR f.prosecdef IS DISTINCT FROM (f.proname=ANY(public_names)) OR cardinality(f.proconfig)<>1
+   OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN RAISE EXCEPTION 'CMS_MATRIX_ROUTINE_DEFINITION'; END IF;
+  FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service','app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_ledger_executor','app_orders_executor','app_customer_auth','app_queue_worker','app_outbox_tenant_broker'] LOOP
+   expected:=role_name='app_publish_executor' OR role_name='app_runtime' AND f.proname=ANY(public_names);
+   IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected OR (role_name<>'app_publish_executor' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION')) THEN RAISE EXCEPTION 'CMS_MATRIX_EXECUTE: % %',role_name,f.proname; END IF;
+  END LOOP;
+ END LOOP;
+ IF has_column_privilege('app_runtime','app.site_drafts','is_cms','INSERT') OR has_column_privilege('app_runtime','app.site_drafts','is_cms','UPDATE')
+  OR has_column_privilege('app_runtime','app.sites','publication_revision','INSERT') OR has_column_privilege('app_runtime','app.sites','publication_revision','UPDATE') THEN RAISE EXCEPTION 'CMS_MATRIX_FLAG_AUTHORITY'; END IF;
+ IF NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='app.draft_page_media'::regclass) THEN RAISE EXCEPTION 'CMS_MATRIX_FORCE_RLS'; END IF;
+END $cms_matrix$;
+SELECT 'PASS: CMS exact routine/capability flag/FORCE RLS matrix' AS result;

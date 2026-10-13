@@ -29,6 +29,20 @@ class APIContractTests(unittest.TestCase):
     def setUp(self):
         self.api = yaml.safe_load((ROOT / "api/openapi.yaml").read_text())
 
+    def test_signed_cms_preview_contract(self):
+        self.assertTrue(contract.validate_contract(self.api))
+        for fault in ("no bearer", "optional bearer", "cache", "index", "scope", "other public"):
+            with self.subTest(fault=fault):
+                broken = copy.deepcopy(self.api)
+                _, _, op = operations(broken)["getSitePreview"]
+                if fault == "no bearer": op["parameters"] = []
+                elif fault == "optional bearer": op["parameters"][0]["required"] = False
+                elif fault == "cache": op["responses"]["200"]["headers"]["Cache-Control"]["schema"]["const"] = "public"
+                elif fault == "index": del op["responses"]["200"]["headers"]["X-Robots-Tag"]
+                elif fault == "scope": op["x-required-scope"] = "cms:write"
+                elif fault == "other public": op["operationId"] = "arbitraryPublicTenantRead"
+                with self.assertRaises(ValueError): contract.validate_contract(broken)
+
     def test_cart_is_strict_storefront_contract(self):
         ops = operations(self.api)
         for name in ("createCart", "getCart", "setCartLine", "deleteCartLine"):
