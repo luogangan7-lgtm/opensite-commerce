@@ -85,9 +85,8 @@ LANGUAGE plpgsql SET search_path=pg_catalog,app,pg_temp AS $$
 DECLARE t uuid := nullif(current_setting('app.tenant_id',true),'')::uuid; r app.webhook_inbox; new_id uuid := uuidv7();
 BEGIN
  INSERT INTO app.webhook_inbox(tenant_id,id,provider,provider_account_id,environment,provider_event_id,payload_hash,payload_reference)
- VALUES(t,new_id,'fake',p_account,'test',p_event,p_hash,'payment-event:'||new_id::text)
- ON CONFLICT(tenant_id,provider,provider_account_id,environment,provider_event_id) DO NOTHING;
- SELECT * INTO STRICT r FROM app.webhook_inbox WHERE tenant_id=t AND provider='fake' AND provider_account_id=p_account AND environment='test' AND provider_event_id=p_event FOR UPDATE;
+ VALUES(t,new_id,'fake',p_account,'test',p_event||':'||new_id::text,p_hash,'payment-event:'||new_id::text);
+ SELECT * INTO STRICT r FROM app.webhook_inbox WHERE tenant_id=t AND id=new_id FOR UPDATE;
  IF r.payload_hash IS DISTINCT FROM p_hash THEN RAISE EXCEPTION 'payment event content conflict' USING ERRCODE='23505'; END IF;
  RETURN r.id;
 END $$;
