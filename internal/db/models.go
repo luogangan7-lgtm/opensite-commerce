@@ -168,6 +168,27 @@ type AppCustomerCredential struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+type AppDataRightsErasure struct {
+	TenantID   pgtype.UUID        `json:"tenant_id"`
+	CustomerID pgtype.UUID        `json:"customer_id"`
+	ActorKind  string             `json:"actor_kind"`
+	ActorID    pgtype.UUID        `json:"actor_id"`
+	ErasedAt   pgtype.Timestamptz `json:"erased_at"`
+	Scope      string             `json:"scope"`
+}
+
+type AppDataRightsExport struct {
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	ID                pgtype.UUID        `json:"id"`
+	CustomerID        pgtype.UUID        `json:"customer_id"`
+	Status            string             `json:"status"`
+	TokenHash         []byte             `json:"token_hash"`
+	ContentHash       []byte             `json:"content_hash"`
+	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
+	DownloadExpiresAt pgtype.Timestamptz `json:"download_expires_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
 type AppDraftOperation struct {
 	TenantID       pgtype.UUID        `json:"tenant_id"`
 	SiteID         pgtype.UUID        `json:"site_id"`

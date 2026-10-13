@@ -17,9 +17,14 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/catalogcsvhttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/datarightshttp"
 )
 
 type Config struct {
+	Subject       httpapi.SubjectResolver
+	Privacy       datarightshttp.Config
+	CatalogCSV    catalogcsvhttp.Config
 	Address       string
 	Logger        *slog.Logger
 	Authenticator httpapi.Authenticator
@@ -46,6 +51,9 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
+	config.Privacy.Subject, config.CatalogCSV.Subject = config.Subject, config.Subject
+	routes = append(routes, datarightshttp.New(config.Privacy).Routes()...)
+	routes = append(routes, catalogcsvhttp.New(config.CatalogCSV).Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {
 		if err := router.Register(route.Spec, route.Handler); err != nil {

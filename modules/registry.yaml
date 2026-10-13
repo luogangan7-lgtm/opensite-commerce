@@ -152,6 +152,18 @@
         {
           "operation_id": "archiveVariant",
           "status": "implemented"
+        },
+        {
+          "operation_id": "preflightCatalogCSV",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "importCatalogCSV",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "exportCatalogCSV",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -162,11 +174,15 @@
         "tests/db_smoke.sql",
         "tests/test_sqlc_contract_static.py",
         "tests/db_catalog_api.sql",
-        "internal/modules/catalog/integration_test.go"
+        "internal/modules/catalog/integration_test.go",
+        "internal/modules/catalog/csv_test.go",
+        "internal/modules/catalog/csv_store_test.go"
       ],
       "scopes": [
         "catalog:read",
-        "catalog:write"
+        "catalog:write",
+        "catalog:import",
+        "catalog:export"
       ],
       "note": "C-07a typed handlers through platform authorized-tenant runner. Authentication and C-04b idempotency middleware are separate integration seams; default authentication denies."
     },
@@ -666,6 +682,49 @@
         "internal/contracts/payment/v1"
       ],
       "note": "C-15a freezes the neutral Payment Port v1 and test-only Fake. Real payment storage, service and Stripe are deferred to C-19; no production payment capability exists."
+    },
+    {
+      "name": "datarights",
+      "status": "implemented",
+      "go_path": "internal/modules/datarights",
+      "go_status": "implemented",
+      "owns_tables": [
+        "data_rights_exports",
+        "data_rights_erasures"
+      ],
+      "operations": [
+        {
+          "operation_id": "requestCustomerDataExport",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getCustomerDataExport",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "downloadCustomerDataExport",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "eraseCustomerData",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "customer",
+        "orders",
+        "cart",
+        "reliability"
+      ],
+      "tests": [
+        "tests/db_data_rights.sql",
+        "internal/modules/datarights/internal/service/files_test.go",
+        "internal/platform/jobs/privacy_test.go"
+      ],
+      "scopes": [
+        "customers:privacy"
+      ],
+      "note": "C-22a controlled customer export/erasure; original data belongs to customer/orders/cart. No customer-owned media or customer session model exists; future sealed media overlay is documented."
     }
   ],
   "migrations": [
@@ -944,6 +1003,24 @@
         "carts",
         "cart_lines"
       ]
+    },
+    {
+      "file": "migrations/024_data_rights.sql",
+      "owner": "datarights",
+      "touches_tables": [
+        "data_rights_exports",
+        "data_rights_erasures",
+        "customers",
+        "customer_addresses",
+        "customer_credentials",
+        "buyer_company_members",
+        "orders",
+        "order_lines",
+        "carts",
+        "cart_lines",
+        "audit_events"
+      ],
+      "note": "Controlled privacy functions preserve other modules money and snapshot invariants."
     }
   ]
 }
