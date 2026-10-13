@@ -1323,7 +1323,7 @@ SELECT uuidv7() AS oid \gset
 SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','payment-upgrade-stock',900)).id AS rid \gset
 SELECT app.orders_create(:'oid','payment-upgrade-order',sha256('payment-upgrade'::bytea),NULL,'{"email":"payment-upgrade@example.invalid"}','USD',0,'{}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','payment-upgrade','quantity',1,'unit_price_minor',100,
- 'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{}'::jsonb)),'[]');
+ 'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
 INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
 VALUES(:'t',uuidv7(),'guest',repeat('a',64),'upgrade',sha256('upgrade'::bytea),uuidv7(),1,:'oid','{}','USD',100,100,0,0,1);
 UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake_upgrade',start_result='{}';
