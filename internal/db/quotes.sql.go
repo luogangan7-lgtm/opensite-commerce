@@ -230,9 +230,10 @@ func (q *Queries) GetQuoteApprovals(ctx context.Context, arg GetQuoteApprovalsPa
 }
 
 const getQuoteConversion = `-- name: GetQuoteConversion :one
-SELECT c.tenant_id, c.quote_id, c.buyer_company_id, c.customer_id, c.order_id, c.quote_version, c.idempotency_key, c.request_hash, c.order_number, c.currency, c.total_minor, c.created_at,o.state FROM app.quote_conversion_get($1::uuid,$2::uuid,
+SELECT c.tenant_id, c.quote_id, c.buyer_company_id, c.customer_id, c.order_id, c.quote_version, c.idempotency_key, c.request_hash, c.order_number, c.currency, c.total_minor, c.created_at,o.state,COALESCE(s.provider_ref,'')::text AS provider_ref FROM app.quote_conversion_get($1::uuid,$2::uuid,
  $3::uuid,$4::text,$5::uuid) c
  JOIN app.orders o ON(o.tenant_id,o.id)=(c.tenant_id,c.order_id)
+ LEFT JOIN app.checkout_sessions s ON(s.tenant_id,s.order_id)=(c.tenant_id,c.order_id)
 `
 
 type GetQuoteConversionParams struct {
@@ -257,8 +258,10 @@ type GetQuoteConversionRow struct {
 	TotalMinor     int64              `json:"total_minor"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	State          string             `json:"state"`
+	ProviderRef    string             `json:"provider_ref"`
 }
 
+// Checkout owns this immutable intent reference; the authorized quote projection only reads it.
 func (q *Queries) GetQuoteConversion(ctx context.Context, arg GetQuoteConversionParams) (GetQuoteConversionRow, error) {
 	row := q.db.QueryRow(ctx, getQuoteConversion,
 		arg.TenantID,
@@ -282,6 +285,7 @@ func (q *Queries) GetQuoteConversion(ctx context.Context, arg GetQuoteConversion
 		&i.TotalMinor,
 		&i.CreatedAt,
 		&i.State,
+		&i.ProviderRef,
 	)
 	return i, err
 }
