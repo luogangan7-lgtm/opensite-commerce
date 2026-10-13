@@ -31,3 +31,11 @@ for (const modifier of ['if: false', 'env: {OPENSITE_BASELINE_UPDATE: "0"}', 'wo
     expect(() => assertProducerWorkflow(path, fault)).toThrow(/writer/);
   });
 }
+for (const level of ['workflow', 'job']) for (const modifier of ['shell: other', 'working-directory: other']) {
+  test(`rejects inherited ${level} writer defaults with ${modifier}`, () => {
+    const fault = level === 'workflow'
+      ? source.replace('\njobs:', `\ndefaults:\n  run:\n    ${modifier}\njobs:`)
+      : source.replace('  frontend-baselines:', `  frontend-baselines:\n    defaults:\n      run:\n        ${modifier}`);
+    expect(() => assertProducerWorkflow(path, fault)).toThrow(/writer/);
+  });
+}
