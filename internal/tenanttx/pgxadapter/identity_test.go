@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -58,7 +59,10 @@ func TestIdentityRunnerExposesOnlyCheckedTransactions(t *testing.T) {
 func TestIdentityMaintenanceTransaction(t *testing.T) {
 	dsn := os.Getenv("IDENTITY_ADAPTER_TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: expendable PostgreSQL IDENTITY_ADAPTER_TEST_DATABASE_URL required")
+		dsn = os.Getenv("DATABASE_URL") // CI's expendable PG; TEMP privilege suffices
+	}
+	if dsn == "" {
+		pgxtest.Skip(t, "NOT_RUN: expendable PostgreSQL IDENTITY_ADAPTER_TEST_DATABASE_URL or DATABASE_URL required")
 	}
 	// Challenge both guarantees with hostile session defaults on the LOGIN.
 	const options = "-c default_transaction_isolation=serializable -c app.tenant_id=11111111-1111-1111-1111-111111111111"

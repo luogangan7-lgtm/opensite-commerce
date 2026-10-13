@@ -8,6 +8,7 @@ package db_test
 import (
 	"context"
 	"errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"os"
 	"strings"
 	"testing"
@@ -55,7 +56,7 @@ func TestPGOutboxRunnerDiscoversDynamicTenantsWithScopedTransactions(t *testing.
 		if os.Getenv("OUTBOX_REQUIRE_PG") == "1" {
 			t.Fatal("OUTBOX_PG_REQUIRED")
 		}
-		t.Skip("NOT_RUN: disposable migrated PG18 required")
+		pgxtest.Skip(t, "NOT_RUN: disposable migrated PG18 required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()

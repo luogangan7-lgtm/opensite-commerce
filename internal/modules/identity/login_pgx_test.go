@@ -33,6 +33,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	identityadapter "github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -127,7 +128,7 @@ func setupLoginPG(t *testing.T) (context.Context, *testLoginDB, string, LoginCon
 	t.Helper()
 	source := os.Getenv("DATABASE_URL")
 	if source == "" {
-		t.Skip("NOT_RUN: actual expendable PostgreSQL DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: actual expendable PostgreSQL DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
