@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "module": "cms",
+  "note": "Profile and page/blog JSON may copy public company/person contact data. These are conservatively personal; no registered-customer relation is inferred from published text.",
+  "structures": {"BlogBodyBlocks": "Public blog blocks array may include person/contact copy.", "CompanyProfile": "Published organization profile including people and public contact data.", "PageDocument": "CMS page document may duplicate organization contact/person content."},
+  "tables": {
+    "company_contacts": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "organization_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "contact_type": {"classification": "operational"},
+        "contact_value": {"classification": "contact", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
+        "is_public": {"classification": "operational"},
+        "sort_order": {"classification": "operational"}
+      }
+    },
+    "company_profile_revisions": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "organization_id": {"classification": "operational"},
+        "locale": {"classification": "operational"},
+        "revision": {"classification": "operational"},
+        "profile": {"classification": "personal", "structure": "CompanyProfile", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "pages": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "page_key": {"classification": "operational"}
+      }
+    },
+    "page_revisions": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "page_id": {"classification": "operational"},
+        "locale": {"classification": "operational"},
+        "revision": {"classification": "operational"},
+        "document": {"classification": "personal", "structure": "PageDocument", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
+        "created_at": {"classification": "operational"},
+        "media_ids": {"classification": "operational"}
+      }
+    },
+    "blog_posts": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "blog_post_revisions": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "post_id": {"classification": "operational"},
+        "locale": {"classification": "operational"},
+        "revision": {"classification": "operational"},
+        "title": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
+        "excerpt": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
+        "body_blocks": {"classification": "personal", "structure": "BlogBodyBlocks", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "blog_post_publications": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "post_id": {"classification": "operational"},
+        "locale": {"classification": "operational"},
+        "slug": {"classification": "operational"},
+        "published_revision": {"classification": "operational"},
+        "status": {"classification": "operational"}
+      }
+    }
+  }
+}

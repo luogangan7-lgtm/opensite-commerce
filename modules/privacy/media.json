@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "module": "media",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {"Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data."},
+  "tables": {
+    "media_uploads": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Uploader actor_id is staff authority, not customer-media ownership; filenames may contain personal text."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "actor_id": {"classification": "operational"},
+        "original_filename": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "redact"},
+        "declared_mime": {"classification": "operational"},
+        "expected_size": {"classification": "operational"},
+        "expected_sha256": {"classification": "operational", "structure": "Sha256Digest"},
+        "temporary_key": {"classification": "operational"},
+        "received_bytes": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "expires_at": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "media_id": {"classification": "operational"}
+      }
+    },
+    "media_blobs": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "backend": {"classification": "operational"},
+        "storage_key": {"classification": "operational"},
+        "sha256": {"classification": "operational", "structure": "Sha256Digest"},
+        "size_bytes": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "media_assets": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Media assets have no customer ownership FK; filename is a potential personal-data copy, not authority to associate a customer."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "blob_id": {"classification": "operational"},
+        "filename": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "redact"},
+        "mime_type": {"classification": "operational"},
+        "visibility": {"classification": "operational"},
+        "width": {"classification": "operational"},
+        "height": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "product_media": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "media_id": {"classification": "operational"},
+        "role": {"classification": "operational"},
+        "sort_order": {"classification": "operational"}
+      }
+    }
+  }
+}
