@@ -34,7 +34,7 @@ CREATE TABLE app.notification_deliveries(
  PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,source_event_id,recipient,template_key), UNIQUE(tenant_id,dispatch_event_id),
  FOREIGN KEY(tenant_id,source_event_id) REFERENCES app.outbox_events(tenant_id,id),
  FOREIGN KEY(tenant_id,dispatch_event_id) REFERENCES app.outbox_events(tenant_id,id) DEFERRABLE INITIALLY DEFERRED,
- CHECK((recipient='' AND status='dead_letter' AND last_error IS NOT DISTINCT FROM 'NOTIFICATION_RECIPIENT_UNAVAILABLE' AND dispatch_event_id IS NULL) OR (length(recipient) BETWEEN 3 AND 254 AND recipient=lower(btrim(recipient)) AND recipient COLLATE "C" ~ '^[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+([.][A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+)*@[A-Za-z0-9.-]+[.][A-Za-z0-9-]+$' AND dispatch_event_id IS NOT NULL)),
+ CHECK((recipient='' AND status='dead_letter' AND last_error IS NOT DISTINCT FROM 'NOTIFICATION_RECIPIENT_UNAVAILABLE' AND dispatch_event_id IS NULL) OR (length(recipient) BETWEEN 3 AND 254 AND recipient=lower(btrim(recipient)) AND recipient COLLATE "C" ~ '^[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+([.][A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+)*@[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$' AND dispatch_event_id IS NOT NULL)),
  CHECK((status='sending')=(send_token IS NOT NULL)),
  CHECK((status='sent')=(sent_at IS NOT NULL)),
  CHECK((lease_attempt IS NULL AND lease_worker IS NULL) OR (lease_attempt BETWEEN 1 AND 10 AND lease_worker IS NOT NULL))
@@ -106,7 +106,7 @@ DECLARE email text; ref uuid; template text; quote_valid boolean; nid uuid:=uuid
  END IF;
  email:=lower(btrim(email));
  -- Invalid contacts are visible terminal failures without dispatch or business rollback.
- IF email IS NULL OR length(email)>254 OR email COLLATE "C" !~ '^[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+([.][A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+)*@[A-Za-z0-9.-]+[.][A-Za-z0-9-]+$' THEN
+ IF email IS NULL OR length(email)>254 OR email COLLATE "C" !~ '^[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+([.][A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+)*@[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$' THEN
   INSERT INTO app.notification_deliveries(tenant_id,id,source_event_id,recipient,locale,template_key,reference_id,status,last_error)
   VALUES(NEW.tenant_id,nid,NEW.id,'','en',template,ref,'dead_letter','NOTIFICATION_RECIPIENT_UNAVAILABLE') ON CONFLICT(tenant_id,source_event_id,recipient,template_key) DO NOTHING;
   RETURN NEW;

@@ -39,7 +39,7 @@ DO $recipient_admission$
 DECLARE t uuid:=current_setting('test.notification_t')::uuid; contact text; oid uuid; source uuid; d app.notification_deliveries; n integer:=2; valid boolean;
  domain text:=repeat('b',63)||'.'||repeat('c',63)||'.'||repeat('d',56)||'.test';
 BEGIN
- FOREACH contact IN ARRAY ARRAY[repeat('a',64)||'@'||domain,repeat('a',64)||'@x'||domain,'.buyer@example.test','buyer..name@example.test','buyer.@example.test','buyer.name@example.test'] LOOP
+ FOREACH contact IN ARRAY ARRAY[repeat('a',64)||'@'||domain,repeat('a',64)||'@x'||domain,'.buyer@example.test','buyer..name@example.test','buyer.@example.test','buyer.name@example.test','buyer@.example.test','buyer@example..test','buyer@example.test.'] LOOP
   n:=n+1;valid:=n IN(3,8);
   EXECUTE 'SET LOCAL ROLE app_orders_executor';
   INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
