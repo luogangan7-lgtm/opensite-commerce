@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -154,9 +155,15 @@ func TestC02cAPIKeyListBoundPostgres(t *testing.T) {
 	if _, err := admin.Exec(ctx, `INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'owner')`, tenant, user); err != nil {
 		t.Fatal("C02c bounded-list membership fixture failed")
 	}
-	if _, err := admin.Exec(ctx, `INSERT INTO app.api_keys(tenant_id,id,issued_by,key_prefix,key_hash,created_at)
- SELECT $1,gen_random_uuid(),$2,n::text,$3,clock_timestamp()-n*interval '1 second' FROM generate_series(1,105) n`, tenant, user, c02cKeyHash(t)); err != nil {
-		t.Fatal("C02c bounded-list key fixture failed", safeCode(err))
+	var atDB time.Time
+	if err := admin.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&atDB); err != nil {
+		t.Fatal("C02c bounded-list DB clock unavailable")
+	}
+	for n := 1; n <= 105; n++ {
+		if _, err := admin.Exec(ctx, `INSERT INTO app.api_keys(tenant_id,id,issued_by,key_prefix,key_hash,created_at)
+ VALUES($1,$2,$3,$4,$5,$6)`, tenant, uuid.NewString(), user, strconv.Itoa(n), c02cKeyHash(t), atDB.Add(-time.Duration(n)*time.Second)); err != nil {
+			t.Fatal("C02c bounded-list key fixture failed", safeCode(err))
+		}
 	}
 	var userID, tenantID pgtype.UUID
 	if userID.Scan(user) != nil || tenantID.Scan(tenant) != nil {
