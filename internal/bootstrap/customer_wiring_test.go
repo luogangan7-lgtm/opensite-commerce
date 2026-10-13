@@ -20,6 +20,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	cc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
 )
 
@@ -137,5 +138,48 @@ func TestCustomerDefaultProductionRoutesFailClosed(t *testing.T) {
 	server.Handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/v1/t/11111111-1111-4111-8111-111111111111/customer/session", nil))
 	if response.Code != 503 || response.Header().Get("Content-Type") != "application/problem+json" {
 		t.Fatal("default customer authentication fabricated")
+	}
+}
+
+func TestC02cCustomerSessionCannotAuthorizeStaffRoutes(t *testing.T) {
+	const tenant = "11111111-1111-4111-8111-111111111111"
+	const customer = "22222222-2222-4222-8222-222222222222"
+	const origin = "https://shop.example.test"
+	raw, secret := make([]byte, 32), make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rand.Read(secret); err != nil {
+		t.Fatal(err)
+	}
+	token := base64.RawURLEncoding.EncodeToString(raw)
+	port := wiringCustomer{token: token, session: c.Session{ID: customer, TenantID: tenant, CustomerID: customer, Email: "buyer@example.test", ExpiresAt: time.Now().Add(time.Hour), IdleExpiresAt: time.Now().Add(time.Hour)}}
+	for _, access := range []httpapi.Access{httpapi.AdminSession, httpapi.AdminOrAPIKey} {
+		t.Run(string(access), func(t *testing.T) {
+			called := false
+			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "customerStaffBoundaryProbe", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/customer-staff-probe", Access: access, Scope: "catalog:read"}, Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				called = true
+				w.WriteHeader(http.StatusNoContent)
+			})}
+			server, err := bootstrap.New(bootstrap.Config{Customer: port, CustomerOrigin: origin, CustomerSecret: secret, Authenticator: httpapi.DenyAuthenticator{}, Routes: []httpapi.Route{route}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Positive control: this is an actual admitted customer credential.
+			request := httptest.NewRequest(http.MethodGet, origin+"/api/v1/t/"+tenant+"/customer/session", nil)
+			request.AddCookie(&http.Cookie{Name: customerhttp.SessionCookie, Value: token})
+			positive := httptest.NewRecorder()
+			server.Handler.ServeHTTP(positive, request)
+			if positive.Code != http.StatusOK {
+				t.Fatalf("customer fixture not admitted: %d", positive.Code)
+			}
+			request = httptest.NewRequest(http.MethodGet, origin+"/api/v1/t/"+tenant+"/customer-staff-probe", nil)
+			request.AddCookie(&http.Cookie{Name: customerhttp.SessionCookie, Value: token})
+			response := httptest.NewRecorder()
+			server.Handler.ServeHTTP(response, request)
+			if response.Code != http.StatusUnauthorized || called {
+				t.Fatalf("customer credential crossed staff boundary: status=%d handler=%v", response.Code, called)
+			}
+		})
 	}
 }

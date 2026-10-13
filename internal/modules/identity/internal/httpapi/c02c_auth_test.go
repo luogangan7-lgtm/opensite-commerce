@@ -134,6 +134,32 @@ func c02cAuthFixture(t *testing.T) *c02cFixture {
 func c02cSpec(access platform.Access, method, scope string) platform.RouteSpec {
 	return platform.RouteSpec{OperationID: "c02cAuthWitness", Method: method, Pattern: "/api/v1/t/{tenant_id}/products", Access: access, Scope: scope}
 }
+
+// Call the authenticator directly: the Router's own route validation must not
+// hide a regression in the staff credential access-class allowlist.
+func TestC02cStaffAuthenticatorRejectsOtherAccessClasses(t *testing.T) {
+	for _, access := range []platform.Access{platform.Public, platform.Storefront, platform.InternalService, platform.AuthenticatedSelf, "unknown", ""} {
+		for _, bearer := range []bool{false, true} {
+			t.Run(string(access)+"/"+map[bool]string{false: "session", true: "api_key"}[bearer], func(t *testing.T) {
+				f := c02cAuthFixture(t)
+				r := f.request(http.MethodGet, c02cTenant, !bearer, bearer)
+				r.SetPathValue("tenant_id", c02cTenant)
+				ctx, err := f.handler.Authenticate(r.Context(), r, c02cSpec(access, http.MethodGet, "catalog:read"))
+				w := httptest.NewRecorder()
+				platform.WriteProblem(w, r, err)
+				if err == nil || w.Code != http.StatusUnauthorized {
+					t.Fatalf("non-staff access accepted valid staff credential: status=%d err=%v", w.Code, err)
+				}
+				if _, ok := AuthorizationFromContext(ctx); ok {
+					t.Fatal("rejected access class received staff authority")
+				}
+				if f.sessions.lookups != 0 || f.authority.membershipCalls != 0 || f.authority.keyCalls != 0 || f.authority.touches != 0 {
+					t.Fatal("rejected access class reached credential storage")
+				}
+			})
+		}
+	}
+}
 func (f *c02cFixture) request(method, tenant string, cookie, bearer bool) *http.Request {
 	q := httptest.NewRequest(method, "/api/v1/t/"+tenant+"/products", nil)
 	q.RemoteAddr = "192.0.2.8:12345"
