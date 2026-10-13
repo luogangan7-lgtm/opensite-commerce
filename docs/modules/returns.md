@@ -41,6 +41,14 @@ The completion function verifies the journal's source, accounts and amounts, the
 advances the return and cumulative order refund together. Completed replay does
 not contact the provider or post another journal.
 
+HTTP commands use the same actor-scoped C-04 protocol described in the Fulfillment
+module. Refund completion invokes C-04 inside the final ledger/domain transaction;
+response-storage or claim-fencing failure rolls back that transaction. Provider
+success remains recoverable through the frozen intent and permanent PSP key.
+The response store must persist across restarts and be shared by API instances.
+Real actor admission is supplied by C-02b after integration; this module contains
+no authentication implementation.
+
 `app_runtime` may request and receive returns but cannot prepare or complete a
 refund. The isolated `app_returns_service` capability is reserved for the trusted
 coordinator. Database records do not cryptographically prove provider success;

@@ -2,7 +2,10 @@ openapi: 3.1.2
 info:
   title: OpenSite Commerce Core API
   version: 0.7.0-draft
-  description: Contract-first first-vertical-slice API. Declared operations are not all implemented in this increment. Tenant business targets come from the URL path; credentials authorize them. Health, catalog, media and cart operations are implemented; other operations are planned contracts.
+  description: >-
+    Contract-first first-vertical-slice API. Declared operations are not all implemented in this increment. Tenant
+    business targets come from the URL path; credentials authorize them. Health, catalog, media and cart operations are implemented; other
+    operations are planned contracts.
 servers:
   - url: /
 security:
@@ -21,15 +24,13 @@ tags:
 paths:
   /healthz:
     get:
-      tags:
-        - Health
+      tags: [Health]
       operationId: health
       x-opensite-status: implemented
       x-opensite-access: Public
       security: []
       responses:
-        '204':
-          description: Process is healthy
+        '204': {description: Process is healthy}
   /api/v1/auth/admin-sessions:
     post:
       tags:
@@ -38,7 +39,8 @@ paths:
       x-opensite-status: planned
       x-opensite-access: Public
       security: []
-      description: Login uses exact Origin plus short-lived anonymous pre-login CSRF material. Bad credentials, disabled and unknown users have the same 401 response and work. Implemented by PR-02.
+      description: Login uses exact Origin plus short-lived anonymous pre-login CSRF material. Bad credentials,
+        disabled and unknown users have the same 401 response and work. Implemented by PR-02.
       parameters:
         - $ref: '#/components/parameters/Origin'
         - $ref: '#/components/parameters/CSRFToken'
@@ -53,7 +55,8 @@ paths:
           description: New server-side session; never returns the session bearer token in JSON.
           headers:
             Set-Cookie:
-              description: __Host-osc_admin_session; Secure; HttpOnly; SameSite=Lax; Path=/; no Domain. Issued only on the dedicated admin host.
+              description: __Host-osc_admin_session; Secure; HttpOnly; SameSite=Lax; Path=/; no Domain. Issued only
+                on the dedicated admin host.
               schema:
                 type: string
           content:
@@ -86,7 +89,8 @@ paths:
       x-opensite-access: AuthenticatedSelf
       security:
         - adminSession: []
-      description: List only the active caller own sessions. Requires a valid session and active user, even when no tenant membership remains.
+      description: List only the active caller own sessions. Requires a valid session and active user, even when
+        no tenant membership remains.
       responses:
         '200':
           description: Caller sessions; no tokens or hashes.
@@ -121,7 +125,8 @@ paths:
       x-opensite-access: AuthenticatedSelf
       security:
         - adminSession: []
-      description: Revoke the current session and clear its cookie. No membership or scope required. Exact Origin and session-bound HMAC CSRF token required.
+      description: Revoke the current session and clear its cookie. No membership or scope required. Exact Origin
+        and session-bound HMAC CSRF token required.
       parameters:
         - $ref: '#/components/parameters/Origin'
         - $ref: '#/components/parameters/CSRFToken'
@@ -130,7 +135,8 @@ paths:
           description: Current session revoked.
           headers:
             Set-Cookie:
-              description: Clears __Host-osc_admin_session with Max-Age=0, Secure, HttpOnly, SameSite=Lax, Path=/ and no Domain.
+              description: Clears __Host-osc_admin_session with Max-Age=0, Secure, HttpOnly, SameSite=Lax, Path=/
+                and no Domain.
               schema:
                 type: string
         '401':
@@ -162,7 +168,8 @@ paths:
       x-opensite-access: AuthenticatedSelf
       security:
         - adminSession: []
-      description: Revoke only a session owned by the caller. Exact Origin and session-bound HMAC CSRF token required. No tenant membership or scope required.
+      description: Revoke only a session owned by the caller. Exact Origin and session-bound HMAC CSRF token required.
+        No tenant membership or scope required.
       parameters:
         - $ref: '#/components/parameters/Origin'
         - $ref: '#/components/parameters/CSRFToken'
@@ -228,13 +235,14 @@ paths:
     parameters:
       - $ref: '#/components/parameters/TenantId'
     post:
-      tags:
-        - Organization
+      tags: [Organization]
       operationId: createOrganization
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
       x-required-scope: organization.create
-      description: Create a seller organization within the target tenant, with membership and organization.create scope. This does not create a tenant or owner.
+      description: >-
+        Create a seller organization within the target tenant, with membership and organization.create scope. This
+        does not create a tenant or owner.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/OriginIfCookie'
@@ -243,39 +251,27 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/CreateOrganization'
+            schema: {$ref: '#/components/schemas/CreateOrganization'}
       responses:
         '201':
           description: Created
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Organization'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '412':
-          $ref: '#/components/responses/PreconditionFailed'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '428':
-          $ref: '#/components/responses/PreconditionRequired'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
+              schema: {$ref: '#/components/schemas/Organization'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
   /api/v1/t/{tenant_id}/sites:
     parameters:
       - $ref: '#/components/parameters/TenantId'
     post:
-      tags:
-        - Organization
+      tags: [Organization]
       operationId: createSite
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
@@ -288,33 +284,22 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/CreateSite'
+            schema: {$ref: '#/components/schemas/CreateSite'}
       responses:
         '201':
           description: Site created, initially unpublished
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Site'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '412':
-          $ref: '#/components/responses/PreconditionFailed'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '428':
-          $ref: '#/components/responses/PreconditionRequired'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
+              schema: {$ref: '#/components/schemas/Site'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
   /api/v1/t/{tenant_id}/products:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -618,7 +603,8 @@ paths:
         - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
         '202':
-          description: Content verified and private media persisted synchronously; no asynchronous transform in this card.
+          description: Content verified and private media persisted synchronously; no asynchronous transform in this
+            card.
           content:
             application/json:
               schema:
@@ -652,8 +638,7 @@ paths:
       - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/SiteId'
     post:
-      tags:
-        - Builder
+      tags: [Builder]
       operationId: createSiteDraft
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
@@ -666,41 +651,29 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/CreateDraft'
+            schema: {$ref: '#/components/schemas/CreateDraft'}
       responses:
         '201':
           description: Draft created
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Draft'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '412':
-          $ref: '#/components/responses/PreconditionFailed'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '428':
-          $ref: '#/components/responses/PreconditionRequired'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
+              schema: {$ref: '#/components/schemas/Draft'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations:
     parameters:
       - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/SiteId'
       - $ref: '#/components/parameters/DraftId'
     post:
-      tags:
-        - Builder
+      tags: [Builder]
       operationId: applyPageOperations
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
@@ -714,45 +687,31 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/OperationBatch'
+            schema: {$ref: '#/components/schemas/OperationBatch'}
       responses:
         '200':
           description: Draft revision incremented
           headers:
-            ETag:
-              schema:
-                type: string
+            ETag: {schema: {type: string}}
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Draft'
-        '412':
-          $ref: '#/components/responses/PreconditionFailed'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '428':
-          $ref: '#/components/responses/PreconditionRequired'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
+              schema: {$ref: '#/components/schemas/Draft'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/validate:
     parameters:
       - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/SiteId'
       - $ref: '#/components/parameters/DraftId'
     post:
-      tags:
-        - Builder
+      tags: [Builder]
       operationId: validateSiteDraft
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
@@ -765,34 +724,23 @@ paths:
           description: Validation report
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationResult'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '412':
-          $ref: '#/components/responses/PreconditionFailed'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '428':
-          $ref: '#/components/responses/PreconditionRequired'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
+              schema: {$ref: '#/components/schemas/ValidationResult'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/publish:
     parameters:
       - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/SiteId'
       - $ref: '#/components/parameters/DraftId'
     post:
-      tags:
-        - Builder
+      tags: [Builder]
       operationId: publishSiteDraft
       x-opensite-status: planned
       x-opensite-access: AdminOrAPIKey
@@ -807,30 +755,19 @@ paths:
           description: New immutable release; commit is atomic in PostgreSQL
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/PublishedRelease'
-        '412':
-          $ref: '#/components/responses/PreconditionFailed'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '428':
-          $ref: '#/components/responses/PreconditionRequired'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
+              schema: {$ref: '#/components/schemas/PublishedRelease'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
   /api/public/v1/inquiries:
     post:
-      tags:
-        - Inquiry
+      tags: [Inquiry]
       operationId: submitInquiry
       x-opensite-status: planned
       x-opensite-access: Public
@@ -840,33 +777,22 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/CreateInquiry'
+            schema: {$ref: '#/components/schemas/CreateInquiry'}
       responses:
         '202':
           description: Inquiry persisted; notifications asynchronous
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/InquiryReceipt'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '412':
-          $ref: '#/components/responses/PreconditionFailed'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '428':
-          $ref: '#/components/responses/PreconditionRequired'
+              schema: {$ref: '#/components/schemas/InquiryReceipt'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
   /api/v1/t/{tenant_id}/products/{product_id}:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -1228,7 +1154,9 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: Storefront
       security: []
-      description: Create a cart in an active tenant. Anonymous creation mints a 256-bit guest capability returned once as cart_token; only its hash is persisted. Creation has no existing representation and is exempt from If-Match.
+      description: Create a cart in an active tenant. Anonymous creation mints a 256-bit
+        guest capability returned once as cart_token; only its hash is persisted. Creation
+        has no existing representation and is exempt from If-Match.
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/CartToken'
@@ -1287,7 +1215,10 @@ paths:
       x-opensite-access: Storefront
       security:
         - CartToken: []
-      description: Guest X-Cart-Token capability or trusted customer actor resolver must match tenant and cart owner. No staff cookies or bearer keys. Ownership failures are 404. Strong ETag includes version and current price/inventory hints. Writes require exact If-Match; reads do not reserve stock.
+      description: Guest X-Cart-Token capability or trusted customer actor resolver
+        must match tenant and cart owner. No staff cookies or bearer keys. Ownership
+        failures are 404. Strong ETag includes version and current price/inventory hints.
+        Writes require exact If-Match; reads do not reserve stock.
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/CartId'
@@ -1341,7 +1272,10 @@ paths:
       x-opensite-access: Storefront
       security:
         - CartToken: []
-      description: Guest X-Cart-Token capability or trusted customer actor resolver must match tenant and cart owner. No staff cookies or bearer keys. Ownership failures are 404. Strong ETag includes version and current price/inventory hints. Writes require exact If-Match; reads do not reserve stock.
+      description: Guest X-Cart-Token capability or trusted customer actor resolver
+        must match tenant and cart owner. No staff cookies or bearer keys. Ownership
+        failures are 404. Strong ETag includes version and current price/inventory hints.
+        Writes require exact If-Match; reads do not reserve stock.
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/CartId'
@@ -1402,7 +1336,10 @@ paths:
       x-opensite-access: Storefront
       security:
         - CartToken: []
-      description: Guest X-Cart-Token capability or trusted customer actor resolver must match tenant and cart owner. No staff cookies or bearer keys. Ownership failures are 404. Strong ETag includes version and current price/inventory hints. Writes require exact If-Match; reads do not reserve stock.
+      description: Guest X-Cart-Token capability or trusted customer actor resolver
+        must match tenant and cart owner. No staff cookies or bearer keys. Ownership
+        failures are 404. Strong ETag includes version and current price/inventory hints.
+        Writes require exact If-Match; reads do not reserve stock.
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/CartId'
@@ -1451,6 +1388,7 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+
   /api/v1/t/{tenant_id}/orders/{order_id}/shipments:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -1697,16 +1635,16 @@ components:
       type: apiKey
       in: cookie
       name: __Host-osc_admin_session
-      description: Secure, HttpOnly, SameSite=Lax, Path=/ and no Domain on a dedicated admin host. Unsafe cookie-authenticated requests require exact Origin and a session-bound HMAC X-CSRF-Token; API-key bearer requests do not require CSRF.
+      description: >-
+        Secure, HttpOnly, SameSite=Lax, Path=/ and no Domain on a dedicated admin host. Unsafe cookie-authenticated
+        requests require exact Origin and a session-bound HMAC X-CSRF-Token; API-key bearer requests do not require
+        CSRF.
     CartToken:
       type: apiKey
       in: header
       name: X-Cart-Token
       description: 256-bit base64url guest cart capability. Trusted customer resolution is an optional server-only seam.
-    ApiKeyBearer:
-      type: http
-      scheme: bearer
-      bearerFormat: API-Key
+    ApiKeyBearer: {type: http, scheme: bearer, bearerFormat: API-Key}
   parameters:
     CartId:
       name: cart_id
@@ -1735,7 +1673,8 @@ components:
       name: tenant_id
       in: path
       required: true
-      description: Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant.
+      description: Target tenant UUID from the URL; credentials still require matching membership and scope. An
+        API key must belong to this exact tenant.
       schema:
         type: string
         format: uuid
@@ -1751,7 +1690,8 @@ components:
       name: Origin
       in: header
       required: true
-      description: Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token.
+      description: Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF
+        token.
       schema:
         type: string
         format: uri
@@ -1759,7 +1699,8 @@ components:
       name: X-CSRF-Token
       in: header
       required: true
-      description: Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted.
+      description: Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned
+        double-submit is not accepted.
       schema:
         type: string
         minLength: 1
@@ -1767,7 +1708,8 @@ components:
       name: Origin
       in: header
       required: false
-      description: Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+      description: Required and checked for exact admin origin when authenticating with adminSession. API-key bearer
+        requests are exempt from the cookie CSRF/Origin checks.
       schema:
         type: string
         format: uri
@@ -1775,7 +1717,8 @@ components:
       name: X-CSRF-Token
       in: header
       required: false
-      description: Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+      description: Required session-bound HMAC CSRF token when authenticating with adminSession; not required for
+        API-key bearer calls.
       schema:
         type: string
         minLength: 1
@@ -1783,45 +1726,40 @@ components:
       name: site_id
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
+      schema: {type: string, format: uuid}
     ProductId:
       name: product_id
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
+      schema: {type: string, format: uuid}
     DraftId:
       name: draft_id
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
+      schema: {type: string, format: uuid}
     UploadId:
       name: upload_id
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
+      schema: {type: string, format: uuid}
     IfMatch:
       name: If-Match
       in: header
       required: true
-      schema:
-        type: string
+      schema: {type: string}
     IdempotencyKey:
       name: Idempotency-Key
       in: header
       required: true
-      description: 'Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.'
-      schema:
-        type: string
-        minLength: 1
-        maxLength: 128
+      description: >-
+        Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical
+        request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query
+        and the body (empty body hashes as empty), so one key reused across different resources is a different request.
+        Same key + same request after completion replays the original response; same key while the original request
+        is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request
+        (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header
+        declares 409 and 422.
+      schema: {type: string, minLength: 1, maxLength: 128}
     VariantId:
       name: variant_id
       in: path
@@ -1944,14 +1882,13 @@ components:
       description: RFC 9457 error
       content:
         application/problem+json:
-          schema:
-            $ref: '#/components/schemas/Problem'
+          schema: {$ref: '#/components/schemas/Problem'}
   schemas:
     CreateCart:
       type: object
       additionalProperties: false
       required:
-        - currency
+      - currency
       properties:
         currency:
           type: string
@@ -1962,7 +1899,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        - quantity
+      - quantity
       properties:
         quantity:
           description: Absolute quantity; zero deletes the line.
@@ -1973,36 +1910,24 @@ components:
     CartLine:
       type: object
       additionalProperties: false
-      if:
-        required:
-          - pricing_error
+      # A line carries either a complete quote or pricing_error, never both or neither.
+      if: {required: [pricing_error]}
       then:
         not:
           anyOf:
-            - required:
-                - unit_amount
-            - required:
-                - line_amount
-            - required:
-                - price_list_id
-            - required:
-                - priority
-            - required:
-                - min_quantity
-      else:
-        required:
-          - unit_amount
-          - line_amount
-          - price_list_id
-          - priority
-          - min_quantity
+          - required: [unit_amount]
+          - required: [line_amount]
+          - required: [price_list_id]
+          - required: [priority]
+          - required: [min_quantity]
+      else: {required: [unit_amount, line_amount, price_list_id, priority, min_quantity]}
       required:
-        - sku_id
-        - quantity
-        - available_quantity
-        - sellable
+      - sku_id
+      - quantity
+      - available_quantity
+      - sellable
       properties:
-        sku_id:
+        sku_id: &id001
           type: string
           format: uuid
         quantity:
@@ -2020,9 +1945,7 @@ components:
           format: int64
           minimum: 0
           maximum: 9223372036854775807
-        price_list_id:
-          type: string
-          format: uuid
+        price_list_id: *id001
         priority:
           type: integer
           format: int32
@@ -2042,32 +1965,22 @@ components:
           type: boolean
         pricing_error:
           type: string
-          enum:
-            - price_unavailable
-            - amount_overflow
+          enum: [price_unavailable, amount_overflow]
           description: Quote is unavailable; monetary and selected price fields are omitted.
     Cart:
       type: object
       additionalProperties: false
-      if:
-        required:
-          - pricing_error
-      then:
-        not:
-          required:
-            - subtotal
-      else:
-        required:
-          - subtotal
+      # A cart is either fully priced (subtotal) or not (pricing_error), never both or neither.
+      if: {required: [pricing_error]}
+      then: {not: {required: [subtotal]}}
+      else: {required: [subtotal]}
       required:
-        - id
-        - currency
-        - version
-        - lines
+      - id
+      - currency
+      - version
+      - lines
       properties:
-        id:
-          type: string
-          format: uuid
+        id: *id001
         currency:
           type: string
           pattern: ^[A-Z]{3}$
@@ -2089,15 +2002,13 @@ components:
           maximum: 9223372036854775807
         pricing_error:
           type: string
-          enum:
-            - price_unavailable
-            - amount_overflow
+          enum: [price_unavailable, amount_overflow]
           description: Cart is not fully priced; subtotal is omitted.
     CreatedCart:
       type: object
       additionalProperties: false
       required:
-        - cart
+      - cart
       properties:
         cart:
           $ref: '#/components/schemas/Cart'
@@ -2184,120 +2095,62 @@ components:
       additionalProperties: false
     Problem:
       type: object
-      required:
-        - type
-        - title
-        - status
-        - code
+      required: [type, title, status, code]
       properties:
-        type:
-          type: string
-          format: uri
-        title:
-          type: string
-        status:
-          type: integer
-          minimum: 400
-          maximum: 599
-        code:
-          type: string
-        detail:
-          type: string
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer, minimum: 400, maximum: 599}
+        code: {type: string}
+        detail: {type: string}
       additionalProperties: true
     CreateOrganization:
       type: object
-      required:
-        - display_name
+      required: [display_name]
       properties:
-        display_name:
-          type: string
-          minLength: 1
-          maxLength: 200
-        legal_name:
-          type: string
-          maxLength: 200
+        display_name: {type: string, minLength: 1, maxLength: 200}
+        legal_name: {type: string, maxLength: 200}
       additionalProperties: false
     Organization:
       type: object
-      required:
-        - id
-        - display_name
+      required: [id, display_name]
       properties:
-        id:
-          type: string
-          format: uuid
-        display_name:
-          type: string
-        legal_name:
-          type: string
+        id: {type: string, format: uuid}
+        display_name: {type: string}
+        legal_name: {type: string}
       additionalProperties: false
     CreateSite:
       type: object
-      required:
-        - organization_id
-        - name
-        - default_locale
+      required: [organization_id, name, default_locale]
       properties:
-        organization_id:
-          type: string
-          format: uuid
-        name:
-          type: string
-          minLength: 1
-          maxLength: 200
-        default_locale:
-          type: string
-          minLength: 2
-          maxLength: 20
+        organization_id: {type: string, format: uuid}
+        name: {type: string, minLength: 1, maxLength: 200}
+        default_locale: {type: string, minLength: 2, maxLength: 20}
       additionalProperties: false
     Site:
       type: object
-      required:
-        - id
-        - organization_id
-        - name
-        - default_locale
-        - status
+      required: [id, organization_id, name, default_locale, status]
       properties:
-        id:
-          type: string
-          format: uuid
-        organization_id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        default_locale:
-          type: string
-        status:
-          type: string
-          enum:
-            - draft
-            - published
-        published_release_id:
-          type:
-            - string
-            - 'null'
-          format: uuid
+        id: {type: string, format: uuid}
+        organization_id: {type: string, format: uuid}
+        name: {type: string}
+        default_locale: {type: string}
+        status: {type: string, enum: [draft, published]}
+        published_release_id: {type: [string, 'null'], format: uuid}
       additionalProperties: false
     CreateProduct:
       type: object
-      required:
-        - product_code
+      required: [product_code]
       properties:
-        product_code:
-          type: string
-          minLength: 1
-          maxLength: 128
+        product_code: {type: string, minLength: 1, maxLength: 128}
       additionalProperties: false
     Product:
       type: object
       required:
-        - id
-        - product_code
-        - lifecycle_status
-        - version
-        - created_at
+      - id
+      - product_code
+      - lifecycle_status
+      - version
+      - created_at
       properties:
         id:
           type: string
@@ -2307,9 +2160,9 @@ components:
         lifecycle_status:
           type: string
           enum:
-            - draft
-            - ready
-            - archived
+          - draft
+          - ready
+          - archived
         version:
           type: integer
           format: int64
@@ -2320,31 +2173,24 @@ components:
       additionalProperties: false
     CreateVariant:
       type: object
-      required:
-        - sku
-        - option_value_ids
+      required: [sku, option_value_ids]
       properties:
-        sku:
-          type: string
-          minLength: 1
-          maxLength: 128
+        sku: {type: string, minLength: 1, maxLength: 128}
         option_value_ids:
           type: array
           uniqueItems: true
-          items:
-            type: string
-            format: uuid
+          items: {type: string, format: uuid}
       additionalProperties: false
     Variant:
       type: object
       required:
-        - id
-        - product_id
-        - sku
-        - lifecycle_status
-        - version
-        - created_at
-        - option_value_ids
+      - id
+      - product_id
+      - sku
+      - lifecycle_status
+      - version
+      - created_at
+      - option_value_ids
       properties:
         id:
           type: string
@@ -2357,9 +2203,9 @@ components:
         lifecycle_status:
           type: string
           enum:
-            - draft
-            - ready
-            - archived
+          - draft
+          - ready
+          - archived
         version:
           type: integer
           format: int64
@@ -2377,9 +2223,9 @@ components:
     CreateUpload:
       type: object
       required:
-        - filename
-        - size_bytes
-        - sha256
+      - filename
+      - size_bytes
+      - sha256
       properties:
         filename:
           type: string
@@ -2398,9 +2244,9 @@ components:
     UploadSession:
       type: object
       required:
-        - id
-        - status
-        - expires_at
+      - id
+      - status
+      - expires_at
       properties:
         id:
           type: string
@@ -2408,17 +2254,17 @@ components:
         status:
           type: string
           enum:
-            - reserved
-            - uploading
-            - verifying
-            - stored
-            - processing
-            - ready
-            - failed
+          - reserved
+          - uploading
+          - verifying
+          - stored
+          - processing
+          - ready
+          - failed
         media_id:
           type:
-            - string
-            - 'null'
+          - string
+          - 'null'
           format: uuid
         expires_at:
           type: string
@@ -2427,104 +2273,59 @@ components:
     CreateDraft:
       type: object
       properties:
-        base_release_id:
-          type:
-            - string
-            - 'null'
-          format: uuid
+        base_release_id: {type: [string, 'null'], format: uuid}
       additionalProperties: false
     Draft:
       type: object
-      required:
-        - id
-        - revision
-        - status
+      required: [id, revision, status]
       properties:
-        id:
-          type: string
-          format: uuid
-        revision:
-          type: integer
-          minimum: 1
-        status:
-          type: string
-          enum:
-            - open
-            - published
-            - abandoned
+        id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        status: {type: string, enum: [open, published, abandoned]}
       additionalProperties: false
     PageDocument:
       type: object
-      required:
-        - schema_version
-        - root_id
-        - nodes
+      required: [schema_version, root_id, nodes]
       properties:
-        schema_version:
-          type: integer
-          const: 1
-        root_id:
-          type: string
-          minLength: 1
+        schema_version: {type: integer, const: 1}
+        root_id: {type: string, minLength: 1}
         nodes:
           type: object
           maxProperties: 200
           minProperties: 1
-          additionalProperties:
-            $ref: '#/components/schemas/ComponentNode'
+          additionalProperties: {$ref: '#/components/schemas/ComponentNode'}
       additionalProperties: false
     ComponentNode:
       type: object
-      required:
-        - component
-        - props
-        - slots
+      required: [component, props, slots]
       properties:
         component:
           type: string
-          enum:
-            - core.page-layout@1
-            - core.section@1
-            - core.hero@1
-            - catalog.product-grid@1
-            - company.profile@1
-        props:
-          type: object
-        binding:
-          $ref: '#/components/schemas/DataBinding'
+          enum: [core.page-layout@1, core.section@1, core.hero@1, catalog.product-grid@1, company.profile@1]
+        props: {type: object}
+        binding: {$ref: '#/components/schemas/DataBinding'}
         slots:
           type: object
           additionalProperties:
             type: array
-            items:
-              type: string
+            items: {type: string}
       additionalProperties: false
     DataBinding:
       type: object
-      required:
-        - resolver
-        - params
+      required: [resolver, params]
       properties:
-        resolver:
-          type: string
-          enum:
-            - catalog.featured-products@1
-            - catalog.collection-products@1
-            - company.profile@1
-        params:
-          type: object
+        resolver: {type: string, enum: [catalog.featured-products@1, catalog.collection-products@1, company.profile@1]}
+        params: {type: object}
       additionalProperties: false
     OperationBatch:
       type: object
-      required:
-        - operations
+      required: [operations]
       properties:
         operations:
           type: array
           minItems: 1
           maxItems: 100
-          items:
-            $ref: '#/components/schemas/PageOperation'
+          items: {$ref: '#/components/schemas/PageOperation'}
       additionalProperties: false
     PageOperation:
       oneOf:
@@ -2539,202 +2340,106 @@ components:
           component.set_props: '#/components/schemas/ComponentSetProps'
     ComponentAdd:
       type: object
-      required:
-        - operation_id
-        - type
-        - target
-        - arguments
+      required: [operation_id, type, target, arguments]
       properties:
-        operation_id:
-          type: string
-          format: uuid
-        type:
-          type: string
-          const: component.add
+        operation_id: {type: string, format: uuid}
+        type: {type: string, const: component.add}
         target:
           type: object
-          required:
-            - page_key
+          required: [page_key]
           properties:
-            page_key:
-              type: string
-              minLength: 1
+            page_key: {type: string, minLength: 1}
           additionalProperties: false
         arguments:
           type: object
-          required:
-            - component
-            - node_id
-            - parent_node_id
-            - slot
-            - props
+          required: [component, node_id, parent_node_id, slot, props]
           properties:
-            component:
-              type: string
-              minLength: 1
-            node_id:
-              type: string
-              minLength: 1
-            parent_node_id:
-              type: string
-              minLength: 1
-            slot:
-              type: string
-              minLength: 1
-            props:
-              type: object
-            binding:
-              $ref: '#/components/schemas/DataBinding'
+            component: {type: string, minLength: 1}
+            node_id: {type: string, minLength: 1}
+            parent_node_id: {type: string, minLength: 1}
+            slot: {type: string, minLength: 1}
+            props: {type: object}
+            binding: {$ref: '#/components/schemas/DataBinding'}
           additionalProperties: false
       additionalProperties: false
     ComponentMove:
       type: object
-      required:
-        - operation_id
-        - type
-        - target
-        - arguments
+      required: [operation_id, type, target, arguments]
       properties:
-        operation_id:
-          type: string
-          format: uuid
-        type:
-          type: string
-          const: component.move
+        operation_id: {type: string, format: uuid}
+        type: {type: string, const: component.move}
         target:
           type: object
-          required:
-            - page_key
-            - node_id
+          required: [page_key, node_id]
           properties:
-            page_key:
-              type: string
-              minLength: 1
-            node_id:
-              type: string
-              minLength: 1
+            page_key: {type: string, minLength: 1}
+            node_id: {type: string, minLength: 1}
           additionalProperties: false
         arguments:
           type: object
-          required:
-            - parent_node_id
-            - slot
+          required: [parent_node_id, slot]
           properties:
-            parent_node_id:
-              type: string
-              minLength: 1
-            slot:
-              type: string
-              minLength: 1
+            parent_node_id: {type: string, minLength: 1}
+            slot: {type: string, minLength: 1}
           additionalProperties: false
       additionalProperties: false
     ComponentSetProps:
       type: object
-      required:
-        - operation_id
-        - type
-        - target
-        - arguments
+      required: [operation_id, type, target, arguments]
       properties:
-        operation_id:
-          type: string
-          format: uuid
-        type:
-          type: string
-          const: component.set_props
+        operation_id: {type: string, format: uuid}
+        type: {type: string, const: component.set_props}
         target:
           type: object
-          required:
-            - page_key
-            - node_id
+          required: [page_key, node_id]
           properties:
-            page_key:
-              type: string
-              minLength: 1
-            node_id:
-              type: string
-              minLength: 1
+            page_key: {type: string, minLength: 1}
+            node_id: {type: string, minLength: 1}
           additionalProperties: false
         arguments:
           type: object
-          required:
-            - props
+          required: [props]
           properties:
-            props:
-              type: object
+            props: {type: object}
           additionalProperties: false
       additionalProperties: false
     ValidationResult:
       type: object
-      required:
-        - valid
-        - issues
+      required: [valid, issues]
       properties:
-        valid:
-          type: boolean
+        valid: {type: boolean}
         issues:
           type: array
           items:
             type: object
-            required:
-              - code
-              - message
+            required: [code, message]
             properties:
-              code:
-                type: string
-              message:
-                type: string
+              code: {type: string}
+              message: {type: string}
     PublishedRelease:
       type: object
-      required:
-        - id
-        - site_id
-        - release_no
+      required: [id, site_id, release_no]
       properties:
-        id:
-          type: string
-          format: uuid
-        site_id:
-          type: string
-          format: uuid
-        release_no:
-          type: integer
-          minimum: 1
+        id: {type: string, format: uuid}
+        site_id: {type: string, format: uuid}
+        release_no: {type: integer, minimum: 1}
     CreateInquiry:
       type: object
-      required:
-        - buyer_email
-        - message
+      required: [buyer_email, message]
       properties:
-        product_id:
-          type: string
-          format: uuid
-        buyer_email:
-          type: string
-          format: email
-        buyer_name:
-          type: string
-          maxLength: 200
-        quantity:
-          type: number
-          exclusiveMinimum: 0
-        message:
-          type: string
-          minLength: 1
-          maxLength: 10000
+        product_id: {type: string, format: uuid}
+        buyer_email: {type: string, format: email}
+        buyer_name: {type: string, maxLength: 200}
+        quantity: {type: number, exclusiveMinimum: 0}
+        message: {type: string, minLength: 1, maxLength: 10000}
       additionalProperties: false
     InquiryReceipt:
       type: object
-      required:
-        - id
-        - status
+      required: [id, status]
       properties:
-        id:
-          type: string
-          format: uuid
-        status:
-          type: string
-          const: received
+        id: {type: string, format: uuid}
+        status: {type: string, const: received}
+
     UpdateProduct:
       type: object
       minProperties: 1
@@ -2746,9 +2451,10 @@ components:
         lifecycle_status:
           type: string
           enum:
-            - draft
-            - ready
+          - draft
+          - ready
       additionalProperties: false
+
     UpdateVariant:
       type: object
       minProperties: 1
@@ -2760,13 +2466,14 @@ components:
         lifecycle_status:
           type: string
           enum:
-            - draft
-            - ready
+          - draft
+          - ready
       additionalProperties: false
+
     ProductPage:
       type: object
       required:
-        - items
+      - items
       properties:
         items:
           type: array
@@ -2775,10 +2482,11 @@ components:
         next_cursor:
           type: string
       additionalProperties: false
+
     VariantList:
       type: object
       required:
-        - items
+      - items
       properties:
         items:
           type: array
@@ -2787,11 +2495,12 @@ components:
         next_cursor:
           type: string
       additionalProperties: false
+
     LinkProductMedia:
       type: object
       required:
-        - media_id
-        - role
+      - media_id
+      - role
       properties:
         media_id:
           type: string
@@ -2799,23 +2508,24 @@ components:
         role:
           type: string
           enum:
-            - main
-            - gallery
-            - detail
-            - video
-            - size_chart
+          - main
+          - gallery
+          - detail
+          - video
+          - size_chart
         sort_order:
           type: integer
           format: int32
           minimum: 0
       additionalProperties: false
+
     ProductMedia:
       type: object
       required:
-        - product_id
-        - media_id
-        - role
-        - sort_order
+      - product_id
+      - media_id
+      - role
+      - sort_order
       properties:
         product_id:
           type: string
@@ -2826,11 +2536,11 @@ components:
         role:
           type: string
           enum:
-            - main
-            - gallery
-            - detail
-            - video
-            - size_chart
+          - main
+          - gallery
+          - detail
+          - video
+          - size_chart
         sort_order:
           type: integer
           format: int32

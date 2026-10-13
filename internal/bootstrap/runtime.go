@@ -5,7 +5,9 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"os"
 )
@@ -42,6 +44,19 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	}
 	if config.Media.Root == "" {
 		config.Media.Root = os.Getenv("OPENSITE_MEDIA_ROOT")
+	}
+	if root := os.Getenv("OPENSITE_IDEMPOTENCY_ROOT"); root != "" && (config.Fulfillment.Idempotency.Store == nil || config.Returns.Idempotency.Store == nil) {
+		store, err := idempotency.NewLocalResponseStore(root, 1<<20)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, errors.New("command response persistence could not be configured")
+		}
+		if config.Fulfillment.Idempotency.Store == nil {
+			config.Fulfillment.Idempotency.Store = store
+		}
+		if config.Returns.Idempotency.Store == nil {
+			config.Returns.Idempotency.Store = store
+		}
 	}
 	return config, closeRuntime, nil
 }

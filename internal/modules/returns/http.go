@@ -20,8 +20,9 @@ import (
 )
 
 type HTTPConfig struct {
-	Run     func(context.Context, string, func(context.Context, pgx.Tx) error) error
-	Service contract.Service
+	Run         func(context.Context, string, func(context.Context, pgx.Tx) error) error
+	Service     contract.Service
+	Idempotency httpapi.CommandConfig
 }
 type HTTP struct {
 	httpapi.StrictServerInterface
@@ -29,6 +30,9 @@ type HTTP struct {
 }
 
 func NewHTTP(config HTTPConfig) *HTTP {
+	if config.Idempotency.Run == nil {
+		config.Idempotency.Run = config.Run
+	}
 	if config.Service == nil {
 		config.Service = New(Config{})
 	}
@@ -47,7 +51,7 @@ func (s *HTTP) Routes() []httpapi.Route {
 	}
 	routes := httpapi.StrictRoutes(s, specs)
 	for i := range routes {
-		next := routes[i].Handler
+		next := httpapi.CaptureCommand(routes[i].Spec, routes[i].Handler)
 		routes[i].Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.RawQuery != "" {
 				httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_request", "This command does not accept query parameters"))
@@ -65,6 +69,9 @@ func (s *HTTP) Routes() []httpapi.Route {
 func authorized(ctx context.Context, requested uuid.UUID) (string, error) {
 	tenant, err := httpapi.AuthorizedTenant(ctx)
 	if err != nil {
+		return "", err
+	}
+	if _, err := httpapi.AuthorizedActor(ctx); err != nil {
 		return "", err
 	}
 	if tenant != requested.String() {
@@ -121,8 +128,15 @@ func (s *HTTP) transaction(ctx context.Context, tenant string, fn func(context.C
 	if s.config.Run == nil {
 		return contract.ErrUnavailable
 	}
+	actor, err := httpapi.AuthorizedActor(ctx)
+	if err != nil {
+		return err
+	}
 	return s.config.Run(ctx, tenant, func(txctx context.Context, tx pgx.Tx) error {
 		if current, e := httpapi.AuthorizedTenant(txctx); e != nil || current != tenant {
+			return contract.ErrNotFound
+		}
+		if current, e := httpapi.AuthorizedActor(txctx); e != nil || current != actor {
 			return contract.ErrNotFound
 		}
 		return fn(txctx, tx)
@@ -163,16 +177,30 @@ func (s *HTTP) CreateReturn(ctx context.Context, r httpapi.CreateReturnRequestOb
 	if err = in.Validate(); err != nil {
 		return nil, mapHTTPError(err)
 	}
-	var result contract.Return
+	session, replay, err := httpapi.BeginCommand(ctx, s.config.Idempotency, "createReturn")
+	if err != nil {
+		return nil, err
+	}
+	if replay != nil {
+		return commandResponse{*replay}, nil
+	}
+	in.IdempotencyKey = session.Key()
+	var completionErr error
 	err = s.transaction(ctx, tenant, func(txctx context.Context, tx pgx.Tx) error {
-		var e error
-		result, e = s.config.Service.Request(txctx, tx, tenant, in)
-		return e
+		result, e := s.config.Service.Request(txctx, tx, tenant, in)
+		if e != nil {
+			return e
+		}
+		completionErr = session.Complete(txctx, tx, http.StatusCreated, returnDTO(result))
+		return completionErr
 	})
+	if completionErr != nil {
+		return nil, completionErr
+	}
 	if err != nil {
 		return nil, mapHTTPError(err)
 	}
-	return httpapi.CreateReturn201JSONResponse(returnDTO(result)), nil
+	return commandResponse{session.Response()}, nil
 }
 func (s *HTTP) ReceiveReturn(ctx context.Context, r httpapi.ReceiveReturnRequestObject) (httpapi.ReceiveReturnResponseObject, error) {
 	tenant, err := authorized(ctx, r.TenantId)
@@ -190,16 +218,30 @@ func (s *HTTP) ReceiveReturn(ctx context.Context, r httpapi.ReceiveReturnRequest
 	if err = in.Validate(); err != nil {
 		return nil, mapHTTPError(err)
 	}
-	var result contract.Return
+	session, replay, err := httpapi.BeginCommand(ctx, s.config.Idempotency, "receiveReturn")
+	if err != nil {
+		return nil, err
+	}
+	if replay != nil {
+		return commandResponse{*replay}, nil
+	}
+	in.IdempotencyKey = session.Key()
+	var completionErr error
 	err = s.transaction(ctx, tenant, func(txctx context.Context, tx pgx.Tx) error {
-		var e error
-		result, e = s.config.Service.Receive(txctx, tx, tenant, in)
-		return e
+		result, e := s.config.Service.Receive(txctx, tx, tenant, in)
+		if e != nil {
+			return e
+		}
+		completionErr = session.Complete(txctx, tx, http.StatusOK, returnDTO(result))
+		return completionErr
 	})
+	if completionErr != nil {
+		return nil, completionErr
+	}
 	if err != nil {
 		return nil, mapHTTPError(err)
 	}
-	return httpapi.ReceiveReturn200JSONResponse(returnDTO(result)), nil
+	return commandResponse{session.Response()}, nil
 }
 func (s *HTTP) RefundReturn(ctx context.Context, r httpapi.RefundReturnRequestObject) (httpapi.RefundReturnResponseObject, error) {
 	tenant, err := authorized(ctx, r.TenantId)
@@ -217,9 +259,43 @@ func (s *HTTP) RefundReturn(ctx context.Context, r httpapi.RefundReturnRequestOb
 	if err = in.Validate(); err != nil {
 		return nil, mapHTTPError(err)
 	}
-	result, err := s.config.Service.Refund(ctx, tenant, in)
+	session, replay, err := httpapi.BeginCommand(ctx, s.config.Idempotency, "refundReturn")
+	if err != nil {
+		return nil, err
+	}
+	if replay != nil {
+		return commandResponse{*replay}, nil
+	}
+	completer, ok := s.config.Service.(contract.RefundCompleter)
+	if !ok {
+		return nil, mapHTTPError(contract.ErrUnavailable)
+	}
+	in.IdempotencyKey = session.Key()
+	var completionErr error
+	_, err = completer.RefundWithCompletion(ctx, tenant, in, func(txctx context.Context, tx pgx.Tx, result contract.Return) error {
+		completionErr = session.Complete(txctx, tx, http.StatusOK, returnDTO(result))
+		return completionErr
+	})
+	if completionErr != nil {
+		return nil, completionErr
+	}
 	if err != nil {
 		return nil, mapHTTPError(err)
 	}
-	return httpapi.RefundReturn200JSONResponse(returnDTO(result)), nil
+	if session.Response().Status != http.StatusOK {
+		return nil, mapHTTPError(contract.ErrUnavailable)
+	}
+	return commandResponse{session.Response()}, nil
+}
+
+type commandResponse struct{ response idempotency.Response }
+
+func (r commandResponse) VisitCreateReturnResponse(w http.ResponseWriter) error {
+	return httpapi.WriteCommandResponse(w, r.response)
+}
+func (r commandResponse) VisitReceiveReturnResponse(w http.ResponseWriter) error {
+	return httpapi.WriteCommandResponse(w, r.response)
+}
+func (r commandResponse) VisitRefundReturnResponse(w http.ResponseWriter) error {
+	return httpapi.WriteCommandResponse(w, r.response)
 }

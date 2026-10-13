@@ -6,6 +6,27 @@ The strict HTTP operation `createShipment` requires `fulfillment:write`,
 `Idempotency-Key` and a quoted `If-Match` containing the current **order** version.
 Responses expose that version and shipment-line IDs for subsequent returns.
 
+## Authentication and durable HTTP replay
+
+The router admits a trusted actor through the existing authenticator's optional
+`ActorResolver` projection. This card implements no session or API-key
+authentication. Without an authenticator and admitted actor, writes return 401;
+C-02b will supply the real actor source. A client cannot set actor identity.
+
+C-04 claims are isolated by tenant, actor kind/identity and operation. The
+fingerprint covers the method, path template/parameters, normalized query, body
+and `If-Match`. Completed retries return the original status, content type and
+response bytes, including after the order advances. Changed requests return 422
+`idempotency_key_reused`; a committed in-progress claim returns 409. Domain
+receipt keys derive from this complete scope, so different actors cannot collide
+through the underlying tenant-scoped SQL command keys.
+
+The claim is committed before work; response completion shares the domain commit.
+`OPENSITE_IDEMPOTENCY_ROOT` must point to persistent response storage accessible to
+all API instances. The default claim lease is two minutes: an interrupted or
+failed command remains in progress until takeover can resume its durable domain
+receipt. This is a recovery boundary, not a promise of immediate retry success.
+
 ## Stock and quantity boundary
 
 Migration 020 remains authoritative: payment commits the entire order's inventory
@@ -28,5 +49,5 @@ missing resources. The database controls lifecycle advancement and retains the
 refund state when fulfillment progresses after a partial refund.
 
 `tests/db_fulfillment_returns.sql`, race cases starting at 70, strict-handler tests
-and `internal/db/fulfillment_returns_integration_test.go` exercise these boundaries.
+and the fulfillment integration tests in `internal/db` exercise these boundaries.
 No carrier API, shipment label, exchange or multi-warehouse routing is included.

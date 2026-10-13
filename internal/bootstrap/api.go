@@ -103,3 +103,16 @@ func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, s
 	}
 	return a.staff.Authenticate(ctx, r, spec)
 }
+
+// ResolveActor forwards only the selected, successfully authenticated staff
+// principal. Storefront capabilities and legacy authenticators have no staff
+// actor projection; actor-requiring commands reject their absent projection.
+func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
+	if spec.Access == httpapi.Storefront {
+		return httpapi.Actor{}, nil
+	}
+	if resolver, ok := a.staff.(httpapi.ActorResolver); ok {
+		return resolver.ResolveActor(ctx, r, spec)
+	}
+	return httpapi.Actor{}, nil
+}

@@ -19,8 +19,9 @@ import (
 )
 
 type HTTPConfig struct {
-	Run     func(context.Context, string, func(context.Context, pgx.Tx) error) error
-	Service contract.Service
+	Run         func(context.Context, string, func(context.Context, pgx.Tx) error) error
+	Service     contract.Service
+	Idempotency httpapi.CommandConfig
 }
 type HTTP struct {
 	httpapi.StrictServerInterface
@@ -28,6 +29,9 @@ type HTTP struct {
 }
 
 func NewHTTP(config HTTPConfig) *HTTP {
+	if config.Idempotency.Run == nil {
+		config.Idempotency.Run = config.Run
+	}
 	if config.Service == nil {
 		config.Service = New()
 	}
@@ -37,7 +41,7 @@ func (s *HTTP) Routes() []httpapi.Route {
 	specs := []httpapi.RouteSpec{{OperationID: "createShipment", Method: http.MethodPost, Pattern: "/api/v1/t/{tenant_id}/orders/{order_id}/shipments", Access: httpapi.AdminOrAPIKey, Scope: "fulfillment:write", MaxBodySize: httpapi.DefaultMaxBodySize}}
 	routes := httpapi.StrictRoutes(s, specs)
 	for i := range routes {
-		next := routes[i].Handler
+		next := httpapi.CaptureCommand(routes[i].Spec, routes[i].Handler)
 		routes[i].Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.RawQuery != "" {
 				httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_request", "This command does not accept query parameters"))
@@ -55,6 +59,9 @@ func (s *HTTP) Routes() []httpapi.Route {
 func authorized(ctx context.Context, requested uuid.UUID) (string, error) {
 	tenant, err := httpapi.AuthorizedTenant(ctx)
 	if err != nil {
+		return "", err
+	}
+	if _, err := httpapi.AuthorizedActor(ctx); err != nil {
 		return "", err
 	}
 	if tenant != requested.String() {
@@ -117,24 +124,51 @@ func (s *HTTP) CreateShipment(ctx context.Context, r httpapi.CreateShipmentReque
 	if err = in.Validate(); err != nil {
 		return nil, mapHTTPError(err)
 	}
+	session, replay, err := httpapi.BeginCommand(ctx, s.config.Idempotency, "createShipment")
+	if err != nil {
+		return nil, err
+	}
+	if replay != nil {
+		return commandResponse{*replay}, nil
+	}
 	if s.config.Run == nil {
 		return nil, mapHTTPError(contract.ErrUnavailable)
 	}
-	var shipment contract.Shipment
+	in.IdempotencyKey = session.Key()
+	var completionErr error
+	actor, _ := httpapi.AuthorizedActor(ctx)
 	err = s.config.Run(ctx, tenant, func(txctx context.Context, tx pgx.Tx) error {
 		if current, e := httpapi.AuthorizedTenant(txctx); e != nil || current != tenant {
 			return contract.ErrNotFound
 		}
-		var e error
-		shipment, e = s.config.Service.CreateShipment(txctx, tx, tenant, in)
-		return e
+		if current, e := httpapi.AuthorizedActor(txctx); e != nil || current != actor {
+			return contract.ErrNotFound
+		}
+		shipment, e := s.config.Service.CreateShipment(txctx, tx, tenant, in)
+		if e != nil {
+			return e
+		}
+		completionErr = session.Complete(txctx, tx, http.StatusCreated, shipmentDTO(shipment))
+		return completionErr
 	})
+	if completionErr != nil {
+		return nil, completionErr
+	}
 	if err != nil {
 		return nil, mapHTTPError(err)
 	}
+	return commandResponse{session.Response()}, nil
+}
+func shipmentDTO(shipment contract.Shipment) httpapi.ShipmentRecord {
 	result := httpapi.ShipmentRecord{Id: uuid.MustParse(shipment.ID), OrderId: uuid.MustParse(shipment.OrderID), OrderVersion: shipment.OrderVersion, Status: shipment.Status, Lines: []httpapi.ShipmentRecordLine{}}
 	for _, line := range shipment.Lines {
 		result.Lines = append(result.Lines, httpapi.ShipmentRecordLine{Id: uuid.MustParse(line.ID), OrderLineId: uuid.MustParse(line.OrderLineID), Quantity: line.Quantity})
 	}
-	return httpapi.CreateShipment201JSONResponse(result), nil
+	return result
+}
+
+type commandResponse struct{ response idempotency.Response }
+
+func (r commandResponse) VisitCreateShipmentResponse(w http.ResponseWriter) error {
+	return httpapi.WriteCommandResponse(w, r.response)
 }
