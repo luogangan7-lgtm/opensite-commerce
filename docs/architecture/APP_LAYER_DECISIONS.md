@@ -205,7 +205,7 @@ packages/{api-client,ui,design-tokens,component-contracts}
 
 ## A7 — River
 
-**Decision.** River lands in PR-F, not in PR-02/03. River Community + `riverpgxv5`, candidate **v0.49.0**, adopted after a PG18.6 + pgx 5.10.0 compatibility test.
+**Decision.** River lands in PR-F, not in PR-02/03. River Community + `riverpgxv5`, adopted **v0.47.0**, pinned in `go.mod` and `go.sum` after PG18.6 + pgx 5.10.0 compatibility tests. The earlier v0.49.0 candidate (and v0.48.0) requires pgx 5.11.0; adoption preserves the existing pgx 5.10.0/sqlc contract. Version alignment is checked by `tests/test_reliability_contract_static.py`.
 
 - **Errors.** On a River error the app must roll back explicitly; don't rely on implicit savepoints.
 - **Separate schema `queue`** via `Config.Schema`; the migrator and the client use the same schema. River's own migration history is separate from the app's `scripts/migrate.sh` numbering: never fold River migrations into 0xx, never touch 001–010.

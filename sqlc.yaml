@@ -21,6 +21,8 @@ sql:
       - "migrations/018_catalog_api.sql"
       - "migrations/019_product_media_asset_index.sql"
       - "migrations/020_orders.sql"
+      - "migrations/021_queue_authorization.sql"
+      - "migrations/022_reliability_limits.sql"
     queries: "queries"
     gen:
       go:
