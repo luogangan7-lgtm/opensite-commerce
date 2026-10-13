@@ -15,7 +15,7 @@ fi
 ./scripts/migrate.sh
 ./scripts/migrate.sh  # checksum/second-run idempotency
 ./scripts/migrate_river.sh --verify
-for test_file in tests/db_security_audit.sql tests/db_smoke.sql tests/db_isolation.sql tests/db_role_boundaries.sql tests/db_release_integrity.sql tests/db_security_hardening.sql tests/db_role_matrix.sql tests/db_connection_reuse.sql tests/db_security_services.sql tests/db_publish_isolation.sql tests/db_sealed_media.sql tests/db_reliability.sql tests/db_inventory.sql tests/db_pricing.sql tests/db_shipping.sql tests/db_tax.sql tests/db_customers.sql tests/db_ledger.sql tests/db_catalog_api.sql tests/db_orders.sql tests/db_queue.sql tests/db_reliability_limits.sql tests/db_cart.sql tests/db_storefront.sql tests/db_ops_metrics.sql tests/db_notifications.sql tests/db_quotes.sql; do
+for test_file in tests/db_security_audit.sql tests/db_smoke.sql tests/db_isolation.sql tests/db_role_boundaries.sql tests/db_release_integrity.sql tests/db_security_hardening.sql tests/db_role_matrix.sql tests/db_connection_reuse.sql tests/db_security_services.sql tests/db_publish_isolation.sql tests/db_sealed_media.sql tests/db_reliability.sql tests/db_inventory.sql tests/db_pricing.sql tests/db_shipping.sql tests/db_tax.sql tests/db_customers.sql tests/db_ledger.sql tests/db_catalog_api.sql tests/db_orders.sql tests/db_queue.sql tests/db_reliability_limits.sql tests/db_cart.sql tests/db_storefront.sql tests/db_ops_metrics.sql tests/db_notifications.sql tests/db_quotes.sql tests/db_customer_auth.sql; do
   echo "RUN $test_file"
   "${PSQL[@]}" < "$test_file"
 done
