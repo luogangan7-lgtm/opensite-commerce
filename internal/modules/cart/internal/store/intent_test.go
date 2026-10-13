@@ -47,7 +47,7 @@ type intentRows struct {
 
 func (r *intentRows) Next() bool { r.pos++; return r.pos == 1 }
 func (r *intentRows) Scan(dest ...any) error {
-	return (intentRow{values: []any{uuid(intentTenant), uuid(intentID), uuid(intentSKU), int64(2), uuid(intentSKU), "ignored-sku-code", "ready"}}).Scan(dest...)
+	return (intentRow{values: []any{uuid(intentTenant), uuid(intentID), uuid(intentSKU), int64(2), uuid(intentSKU), "ignored-sku-code", true}}).Scan(dest...)
 }
 func (*intentRows) Err() error { return nil }
 func (*intentRows) Close()     {}
