@@ -1,19 +1,35 @@
-/** Verifies each PNG/record against its originating CI artifact; CI uses read-only Actions access; mixed runs are cached once. */
+/**
+ * Verifies goldens whose PNG or record bytes changed against the trusted base (HEAD^1: the PR base for
+ * pull_request merge commits, the previous main for pushes) against their originating CI artifact, the
+ * producer workflow and the writer inputs at the producer SHA; CI uses read-only Actions access.
+ * Invariant (C-08d): unchanged goldens inherit the provenance verified when they entered main, so neither
+ * the 90-day artifact retention nor unrelated input changes can fail a PR; committed hashes are the anchor.
+ */
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BASELINES, REPOSITORY, assertRunAuthority, checkedRecords, recordPath, runId, sha256 } from './baseline-provenance';
-import { assertProducerWorkflow } from './workflow-provenance';
+import { BASELINES, REPOSITORY, assertRunAuthority, changedSnapshots, checkedRecords, recordPath, runId, sha256 } from './baseline-provenance';
+import { WRITER_INPUTS, assertProducerWorkflow, assertWriterInputs, blobSha } from './workflow-provenance';
 
+const all = checkedRecords();
+if (all.length === 0) throw new Error('No baseline provenance records');
+const diff = Bun.spawnSync(['git', 'diff', '--name-only', '--no-renames', 'HEAD^1', 'HEAD', '--', BASELINES]);
+if (diff.exitCode !== 0) throw new Error('Cannot diff goldens against the trusted base commit (checkout needs fetch-depth: 2)');
+const changed = changedSnapshots(new TextDecoder().decode(diff.stdout).split('\n').filter(Boolean));
+const records = all.filter(record => changed.has(record.snapshot));
+if (records.length === 0) {
+  console.log(`PASS: no golden PNG/record changed against HEAD^1; ${all.length} committed hashes keep their verified base provenance`);
+  process.exit(0);
+}
 if (!process.env.GITHUB_TOKEN) throw new Error('Artifact verification requires read-only GITHUB_TOKEN');
-const records = checkedRecords();
-if (records.length === 0) throw new Error('No baseline provenance records');
-async function api(path: string, raw = false) {
+const candidateWriter = Object.fromEntries(WRITER_INPUTS.map(file => [file, blobSha(existsSync(file) ? readFileSync(file) : null)]));
+async function api(path: string, raw = false, missing = false) {
   const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/${path}`, {
     headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
     signal: AbortSignal.timeout(60_000)
   });
+  if (missing && response.status === 404) return null;
   if (!response.ok) throw new Error(`GitHub artifact verification failed with HTTP ${response.status}`);
   return raw ? new Uint8Array(await response.arrayBuffer()) : response.json();
 }
@@ -31,6 +47,9 @@ try {
     const workflow = await api(`contents/.github/workflows/checks.yml?ref=${run.head_sha}`);
     if (workflow.encoding !== 'base64') throw new Error('Golden producer workflow source unavailable');
     assertProducerWorkflow(run.path, Buffer.from(workflow.content, 'base64').toString('utf8'));
+    const atSource: Record<string, string | null> = {};
+    for (const file of WRITER_INPUTS) atSource[file] = (await api(`contents/${file}?ref=${run.head_sha}`, false, true))?.sha ?? null;
+    assertWriterInputs(atSource, candidateWriter);
     const jobs = await api(`actions/runs/${id}/jobs?per_page=100`);
     if (!jobs.jobs.some((job: { name: string; conclusion: string }) => job.name === 'frontend-baselines' && job.conclusion === 'success')) throw new Error('Golden CI producer did not succeed');
     const artifacts = await api(`actions/runs/${id}/artifacts?per_page=100`);
