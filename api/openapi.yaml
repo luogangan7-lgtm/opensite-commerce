@@ -75,7 +75,7 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: AdminSession
       x-required-scope: apikeys:write
-      description: Lists metadata for keys owned by this tenant, including revoked keys; plaintext and hashes are never returned.
+      description: Lists the newest 100 keys owned by this tenant, including revoked keys, ordered by creation time then ID; plaintext and hashes are never returned. Older keys can still be revoked by ID.
       security: [{adminSession: []}]
       parameters:
         - $ref: '#/components/parameters/TenantId'
@@ -118,6 +118,7 @@ paths:
         - $ref: '#/components/parameters/CSRFToken'
       responses:
         '204': {description: Key revoked; no response body.}
+        '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -4122,6 +4123,7 @@ components:
       properties:
         items:
           type: array
+          maxItems: 100
           items: {$ref: '#/components/schemas/APIKeyView'}
     AdminLogin:
       type: object

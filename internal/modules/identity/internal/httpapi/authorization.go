@@ -27,6 +27,8 @@ type principal struct {
 	owner    *Handler
 	spec     platform.RouteSpec
 	snapshot AuthorizationSnapshot
+	token    string
+	session  login.Session
 }
 
 // AuthorizationSnapshot is a read-only projection of admitted authority. UserID
@@ -128,6 +130,7 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 	}
 	snapshot := AuthorizationSnapshot{TenantID: tenant, Kind: contract.KindSession}
 	var key contract.APIKey
+	var session login.Session
 	if keyCredential {
 		var err error
 		key, err = h.authorization.Key(ctx, keyID)
@@ -146,7 +149,7 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 		if h.service == nil {
 			return nil, authUnavailable()
 		}
-		actor, _, err := h.service.Authenticate(ctx, token)
+		actor, liveSession, err := h.service.Authenticate(ctx, token)
 		if err != nil {
 			return nil, mapError(err)
 		}
@@ -155,6 +158,7 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 		}
 		snapshot.UserID, snapshot.CredentialID = actor.UserID(), actor.SessionID()
 		ctx = login.WithActor(ctx, actor)
+		session = liveSession
 	}
 	if !self {
 		membership, err := h.authorization.Membership(ctx, snapshot.UserID, tenant)
@@ -181,7 +185,19 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 			}
 		}
 	}
-	return context.WithValue(ctx, principalKey{}, principal{owner: h, spec: spec, snapshot: snapshot}), nil
+	return context.WithValue(ctx, principalKey{}, principal{owner: h, spec: spec, snapshot: snapshot, token: token, session: session}), nil
+}
+
+// AuthenticationResponse slides only admitted tenant session cookies. Expires
+// follows the actual DB activity stamp (which a busy touch may leave unchanged).
+// A fresh fixed Max-Age would incorrectly extend a skipped touch's lifetime.
+func (h *Handler) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec platform.RouteSpec) {
+	p, err := h.admitted(ctx, r, spec)
+	if err != nil || p.snapshot.TenantID == "" || p.snapshot.Kind != contract.KindSession || p.token == "" || p.session.ID != p.snapshot.CredentialID {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	setCookie(w, SessionCookie, p.token, h.cookieExpiry(p.session), 0)
 }
 
 func parseKey(header string) (string, [32]byte, bool) {

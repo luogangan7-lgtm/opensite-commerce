@@ -165,6 +165,14 @@ type routeAuthenticator struct {
 	customer *customerhttp.Handler
 }
 
+func (a routeAuthenticator) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec httpapi.RouteSpec) {
+	if spec.Access != httpapi.Storefront {
+		if responder, ok := a.staff.(httpapi.AuthenticationResponder); ok {
+			responder.AuthenticationResponse(ctx, w, r, spec)
+		}
+	}
+}
+
 func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
 	if spec.Access == httpapi.Storefront {
 		actor, err := a.customer.Resolve(ctx, r)

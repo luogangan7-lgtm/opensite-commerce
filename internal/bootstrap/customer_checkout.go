@@ -24,6 +24,16 @@ type checkoutAdmission struct {
 	cart     *cart.Module
 }
 
+// Non-storefront admission selects the same staff authority as actor projection.
+// Checkout never emits or renews an employee credential for customer routes.
+func (a checkoutAdmission) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec httpapi.RouteSpec) {
+	if spec.Access != httpapi.Storefront {
+		if responder, ok := a.actors.(httpapi.AuthenticationResponder); ok {
+			responder.AuthenticationResponse(ctx, w, r, spec)
+		}
+	}
+}
+
 func (a checkoutAdmission) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
 	if a.customer != nil && spec.OperationID == checkouthttp.StartOperation && spec.Access == httpapi.Storefront && spec.Scope == "" && spec.Method == http.MethodPost && spec.Pattern == checkouthttp.StartPattern {
 		// The resolver port returns only an actor, so establish the live customer

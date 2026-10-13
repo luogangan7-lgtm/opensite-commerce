@@ -50,6 +50,13 @@ type Authenticator interface {
 	Authenticate(context.Context, *http.Request, RouteSpec) (context.Context, error)
 }
 
+// AuthenticationResponder optionally emits credential response headers after
+// complete route admission and projection, before the business handler runs.
+// It must not write a response body or change the admitted authority.
+type AuthenticationResponder interface {
+	AuthenticationResponse(context.Context, http.ResponseWriter, *http.Request, RouteSpec)
+}
+
 type DenyAuthenticator struct{}
 
 func (DenyAuthenticator) Authenticate(context.Context, *http.Request, RouteSpec) (context.Context, error) {
@@ -155,6 +162,11 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 			}
 		}
 		ctx = context.WithValue(ctx, requestIDKey{}, RequestID(r.Context()))
+		if spec.Access != Public {
+			if responder, ok := s.auth.(AuthenticationResponder); ok {
+				responder.AuthenticationResponse(ctx, w, r, spec)
+			}
+		}
 		ctx = context.WithValue(ctx, bodyLimitKey{}, spec.MaxBodySize)
 		handler.ServeHTTP(w, r.WithContext(ctx))
 	}))
