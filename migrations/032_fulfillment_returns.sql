@@ -522,7 +522,7 @@ BEGIN
   RETURN r.receive_response;
  END IF;
  IF o.version<>p_expected_version THEN RAISE EXCEPTION 'FULFILLMENT_VERSION_CONFLICT' USING ERRCODE='22023'; END IF;
- IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded','refunded') THEN
+ IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded') THEN
   RAISE EXCEPTION 'FULFILLMENT_ORDER_STATE' USING ERRCODE='55000'; END IF;
  IF r.kind<>'shipment_return' OR r.status<>'requested' OR NOT r.sealed THEN
   RAISE EXCEPTION 'FULFILLMENT_RETURN_STATE' USING ERRCODE='55000'; END IF;
