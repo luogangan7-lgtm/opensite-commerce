@@ -58,6 +58,7 @@ GRANT UPDATE(release_id,publication_revision,serving_generation,body,fallback_bo
 GRANT SELECT (publication_revision) ON app.sites TO app_domain_resolver;
 GRANT SELECT (tenant_id,site_id,publication_revision,body,fallback_body,body_sha256,fallback_sha256,valid_until)
  ON app.storefront_serving TO app_domain_resolver;
+GRANT SELECT (sku) ON app.product_variants TO app_domain_resolver; -- REVIEW PROBE 96-2
 CREATE POLICY public_current_serving ON app.storefront_serving FOR SELECT TO app_domain_resolver
  USING (EXISTS (SELECT FROM app.sites s WHERE (s.tenant_id,s.id,s.publication_revision)
   =(storefront_serving.tenant_id,storefront_serving.site_id,storefront_serving.publication_revision)));
