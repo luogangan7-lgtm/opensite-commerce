@@ -76,7 +76,10 @@ jobs:
           ./scripts/check_pg_races.sh
           ./scripts/check_pg_upgrade.sh
       - name: Privacy column registry and persisted canary coverage
-        run: python3 scripts/privacy_registry.py --database --fixture
+        run: |
+          # review probe 99-1: new undeclared address copy column in real migrated PG
+          psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -c 'ALTER TABLE app.checkout_sessions ADD COLUMN probe_address_copy jsonb'
+          python3 scripts/privacy_registry.py --database --fixture
       - name: Catalog/media real HTTP gates with isolated role logins
         env:
           OPENSITE_DISPOSABLE_PG: '1'
