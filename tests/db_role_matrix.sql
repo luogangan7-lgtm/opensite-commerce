@@ -29,7 +29,7 @@ DECLARE
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals',
-  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts'];
+  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events'];
  role_name text;
  r record;
  t record;
@@ -75,7 +75,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='INSERT' THEN
@@ -85,6 +85,7 @@ BEGIN
       ELSE
        IF t.relname=ANY(ARRAY['checkout_sessions','checkout_attempts']) THEN expected_table := true; END IF;
        allowed_columns := CASE t.relname
+        WHEN 'payment_events' THEN ARRAY['tenant_id','id','provider_account_id','provider_ref','event_key','claimed_order_id','order_version','status','amount_minor','currency']
         WHEN 'checkout_sessions' THEN all_columns
         WHEN 'checkout_attempts' THEN all_columns
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
@@ -116,7 +117,8 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
-        WHEN 'checkout_sessions' THEN ARRAY['phase','provider_ref','start_result','final_result','claim_kind','claim_key','updated_at']
+        WHEN 'checkout_sessions' THEN ARRAY['phase','provider_ref','start_result','final_result','claim_kind','claim_key','updated_at','refunded_net_minor','refunded_tax_minor','refunded_shipping_minor']
+        WHEN 'payment_events' THEN ARRAY['applied','error_code']
         WHEN 'checkout_attempts' THEN ARRAY['result']
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
         WHEN 'carts' THEN ARRAY['version']
@@ -372,7 +374,9 @@ BEGIN
    'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
-   'customer_session','customer_revoke_session','customer_admit','customer_failed') LOOP
+   'customer_session','customer_revoke_session','customer_admit','customer_failed',
+   'resolve_fake_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox',
+   'guard_payment_fact','guard_checkout_refund') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -400,7 +404,9 @@ BEGIN
    'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
-   'customer_session','customer_revoke_session','customer_admit','customer_failed'))<>10 THEN
+   'customer_session','customer_revoke_session','customer_admit','customer_failed',
+   'resolve_fake_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox',
+   'guard_payment_fact','guard_checkout_refund'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -1058,3 +1064,59 @@ BEGIN
  END LOOP;
 END $customer_executor$;
 SELECT 'PASS: exact customer function signatures, executor isolation and column privileges';
+
+-- Payment resolver is a NOLOGIN account-directory capability only. Check every
+-- table/column and every function, including inherited/PUBLIC privileges.
+DO $payments_matrix$
+DECLARE r record; t record; c record; f record; privilege text; expected boolean; role_name text;
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_payment_resolver';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+ OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+ OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_UNSAFE_ROLE'; END IF;
+ FOR t IN SELECT oid,relname FROM pg_class WHERE relnamespace='app'::regnamespace AND relkind IN('r','p') LOOP
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=t.relname='payment_provider_accounts' AND privilege='SELECT';
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_TABLE % %',t.relname,privilege; END IF;
+  END LOOP;
+  FOR c IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
+    expected:=t.relname='payment_provider_accounts' AND (privilege='SELECT' OR privilege='UPDATE' AND c.attname='enabled');
+    IF has_column_privilege(r.oid,t.oid,c.attnum,privilege) IS DISTINCT FROM expected THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_COLUMN % % %',t.relname,c.attname,privilege; END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM (f.proname='resolve_fake_payment_account') THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_FUNCTION %',f.proname; END IF;
+  IF f.proname='resolve_fake_payment_account' THEN
+   IF NOT f.prosecdef OR f.proowner<>r.oid OR NOT f.proconfig @> ARRAY['search_path=pg_catalog, app, pg_temp'] THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_RESOLVER'; END IF;
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+    expected:=role_name IN('app_runtime','app_payment_resolver');
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_RESOLVE_GRANT %',role_name; END IF;
+   END LOOP;
+  END IF;
+ END LOOP;
+ -- The generic legacy capability inventory above excludes exactly this list;
+ -- retain exact signatures, invoker/definer, owner, search_path and ACL assertions.
+ FOR f IN SELECT p.*, n.expected_signature FROM (VALUES
+  ('resolve_fake_payment_account(text)'),('lock_payment_stream(text,text)'),
+  ('admit_payment_inbox(text,text,bytea)'),('finish_payment_inbox(uuid,boolean)'),
+  ('guard_payment_fact()'),('guard_checkout_refund()')) AS n(expected_signature)
+ LEFT JOIN pg_proc p ON p.oid=to_regprocedure('app.'||n.expected_signature) LOOP
+  IF f.oid IS NULL OR f.prosecdef IS DISTINCT FROM (f.proname='resolve_fake_payment_account')
+   OR f.proowner IS DISTINCT FROM (CASE WHEN f.proname='resolve_fake_payment_account' THEN r.oid
+      ELSE (SELECT relowner FROM pg_class WHERE oid='app.payment_events'::regclass) END)
+   OR cardinality(f.proconfig) IS DISTINCT FROM 1
+   OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE')
+  THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_ROUTINE %',f.expected_signature; END IF;
+  FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+   expected:=(role_name='app_runtime' AND f.proname IN
+    ('resolve_fake_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox'))
+    OR (role_name='app_payment_resolver' AND f.proname='resolve_fake_payment_account');
+   IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
+    OR (role_name<>'app_payment_resolver' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION'))
+   THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_ROUTINE_ACL % %',role_name,f.proname; END IF;
+  END LOOP;
+ END LOOP;
+END $payments_matrix$;
