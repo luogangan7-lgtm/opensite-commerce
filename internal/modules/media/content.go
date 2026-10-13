@@ -212,17 +212,17 @@ func avifDimensions(b []byte) (int, int) {
 	if !ok {
 		return 0, 0
 	}
-	w, h := 0, 0
 	primary := uint32(0)
-	var iloc []byte
-	av1 := false
+	var iloc, iinf, iprp []byte
 	pict := false
-	var iinf []byte
 	for _, x := range children {
 		switch x.kind {
 		case "hdlr":
 			pict = len(x.data) >= 12 && string(x.data[8:12]) == "pict"
 		case "pitm":
+			if primary != 0 {
+				return 0, 0
+			}
 			if len(x.data) == 6 && x.data[0] == 0 {
 				primary = uint32(binary.BigEndian.Uint16(x.data[4:6]))
 			} else if len(x.data) == 8 && x.data[0] == 1 {
@@ -231,44 +231,133 @@ func avifDimensions(b []byte) (int, int) {
 				return 0, 0
 			}
 		case "iloc":
-			iloc = x.data
-		case "iinf":
-			iinf = x.data
-		case "iprp":
-			ps, valid := boxes(x.data, x.start)
-			if !valid {
+			if iloc != nil {
 				return 0, 0
 			}
-			for _, p := range ps {
-				if p.kind != "ipco" {
-					continue
-				}
-				props, valid := boxes(p.data, p.start)
-				if !valid {
+			iloc = x.data
+		case "iinf":
+			if iinf != nil {
+				return 0, 0
+			}
+			iinf = x.data
+		case "iprp":
+			if iprp != nil {
+				return 0, 0
+			}
+			iprp = x.data
+		}
+	}
+	if !pict || primary == 0 || !avifPrimaryInfo(iinf, primary) || !avifExtent(iloc, primary, mdats) {
+		return 0, 0
+	}
+	return avifPrimaryProperties(iprp, primary)
+}
+
+// Properties are one-based in ipco. ipma is the only authority for which
+// properties apply to the primary image; thumbnails may have their own ispe.
+func avifPrimaryProperties(b []byte, primary uint32) (int, int) {
+	xs, ok := boxes(b, 0)
+	if !ok {
+		return 0, 0
+	}
+	var props []box
+	var ipma []byte
+	for _, x := range xs {
+		switch x.kind {
+		case "ipco":
+			if props != nil {
+				return 0, 0
+			}
+			props, ok = boxes(x.data, 0)
+			if !ok {
+				return 0, 0
+			}
+		case "ipma":
+			if ipma != nil {
+				return 0, 0
+			}
+			ipma = x.data
+		}
+	}
+	if len(props) == 0 || len(ipma) < 8 || ipma[0] > 1 || ipma[1] != 0 || ipma[2] != 0 || ipma[3] > 1 {
+		return 0, 0
+	}
+	count := binary.BigEndian.Uint32(ipma[4:8])
+	if count == 0 || count > 512 {
+		return 0, 0
+	}
+	pos := 8
+	seenItems := map[uint32]bool{}
+	w, h, av1 := 0, 0, false
+	for range count {
+		itemWidth := 2
+		if ipma[0] == 1 {
+			itemWidth = 4
+		}
+		if pos+itemWidth+1 > len(ipma) {
+			return 0, 0
+		}
+		id := uint32(binary.BigEndian.Uint16(ipma[pos : pos+2]))
+		if itemWidth == 4 {
+			id = binary.BigEndian.Uint32(ipma[pos : pos+4])
+		}
+		pos += itemWidth
+		if id == 0 || seenItems[id] {
+			return 0, 0
+		}
+		seenItems[id] = true
+		n := int(ipma[pos])
+		pos++
+		seenProps := map[int]bool{}
+		for range n {
+			width := 1
+			if ipma[3] == 1 {
+				width = 2
+			}
+			if pos+width > len(ipma) {
+				return 0, 0
+			}
+			index := int(ipma[pos] & 0x7f)
+			if width == 2 {
+				index = int(binary.BigEndian.Uint16(ipma[pos:pos+2]) & 0x7fff)
+			}
+			pos += width
+			// Zero means no association; even a non-primary item must not
+			// reference a property outside the container's bounded table.
+			if index == 0 {
+				continue
+			}
+			if index > len(props) || seenProps[index] {
+				return 0, 0
+			}
+			seenProps[index] = true
+			if id != primary {
+				continue
+			}
+			p := props[index-1]
+			switch p.kind {
+			case "ispe":
+				if w != 0 || len(p.data) != 12 || binary.BigEndian.Uint32(p.data[:4]) != 0 {
 					return 0, 0
 				}
-				for _, prop := range props {
-					switch prop.kind {
-					case "ispe":
-						if len(prop.data) != 12 || binary.BigEndian.Uint32(prop.data[:4]) != 0 {
-							return 0, 0
-						}
-						if w != 0 {
-							return 0, 0
-						}
-						w, h = int(binary.BigEndian.Uint32(prop.data[4:8])), int(binary.BigEndian.Uint32(prop.data[8:12]))
-					case "av1C":
-						av1 = len(prop.data) >= 4 && prop.data[0] == 0x81 && prop.data[3]&0xe0 == 0
-					}
+				w, h = int(binary.BigEndian.Uint32(p.data[4:8])), int(binary.BigEndian.Uint32(p.data[8:12]))
+				if w == 0 || h == 0 {
+					return 0, 0
 				}
+			case "av1C":
+				if av1 || len(p.data) < 4 || p.data[0] != 0x81 || p.data[3]&0xe0 != 0 {
+					return 0, 0
+				}
+				av1 = true
 			}
 		}
 	}
-	if !pict || !av1 || primary == 0 || !avifPrimaryInfo(iinf, primary) || !avifExtent(iloc, primary, mdats) {
+	if pos != len(ipma) || !seenItems[primary] || !av1 {
 		return 0, 0
 	}
 	return w, h
 }
+
 func avifPrimaryInfo(b []byte, primary uint32) bool {
 	if len(b) < 6 {
 		return false
