@@ -1320,10 +1320,10 @@
     {
       "file": "migrations/034_orders_guards.sql",
       "owner": "orders",
-        "order_adjustments",
-        "outbox_events",
       "touches_tables": [
         "orders",
+        "order_adjustments",
+        "outbox_events",
         "order_lines",
         "inventory_reservations"
       ]
