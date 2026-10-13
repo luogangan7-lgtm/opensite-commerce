@@ -4,41 +4,6 @@
  */
 
 export interface paths {
-    "/api/v1/t/{tenant_id}/api-keys": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Lists the newest 100 keys owned by this tenant, including revoked keys, ordered by creation time then ID; plaintext and hashes are never returned. Older keys can still be revoked by ID. */
-        get: operations["listAPIKeys"];
-        put?: never;
-        /** @description An active owner or admin creates a key for this tenant with scopes no wider than their current role. The 256-bit secret is returned once. No Idempotency-Key replay is provided because plaintext secrets must never be retained to reproduce a response. A lost response requires revocation and a new key. Unknown scopes are rejected; tenant, issuer and hash are server-derived. */
-        post: operations["createAPIKey"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/t/{tenant_id}/api-keys/{key_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** @description Revokes a key owned by this tenant. Repeating revocation of an existing key succeeds; a missing or cross-tenant key returns 404. Revocation is effective on the next authorization check. */
-        delete: operations["revokeAPIKey"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/t/{tenant_id}/customer/registrations": {
         parameters: {
             query?: never;
@@ -1083,11 +1048,13 @@ export interface components {
         CustomerRegistrationInput: {
             /** Format: email */
             email: string;
+            /** @description Length is 12 to 1024 UTF-8 bytes after JSON decoding, not a Unicode character count. No Unicode normalization is applied. NUL, CR and LF are rejected. */
             password: string;
         };
         CustomerCredentialsInput: {
             /** Format: email */
             email: string;
+            /** @description Length is 1 to 1024 UTF-8 bytes after JSON decoding, not a Unicode character count. No Unicode normalization is applied. NUL, CR and LF are rejected. */
             password: string;
         };
         CustomerTokenInput: {
@@ -1099,6 +1066,7 @@ export interface components {
         };
         CustomerResetConfirm: {
             token: string;
+            /** @description Length is 12 to 1024 UTF-8 bytes after JSON decoding, not a Unicode character count. No Unicode normalization is applied. NUL, CR and LF are rejected. */
             password: string;
         };
         CustomerRegistrationReceipt: {
@@ -1307,38 +1275,6 @@ export interface components {
         };
         LoginChallenge: {
             csrf_token: string;
-        };
-        CreateAPIKey: {
-            scopes: ("apikeys:write" | "catalog:read" | "catalog:write" | "cms:publish" | "cms:write" | "media:write" | "notifications:write" | "orders:read" | "quotes:read" | "quotes:write" | "organization.create" | "site.create")[];
-            /**
-             * Format: date-time
-             * @description Optional future expiry; validated against the database clock.
-             */
-            expires_at?: string;
-        };
-        APIKeyView: {
-            /** Format: uuid */
-            id: string;
-            key_prefix: string;
-            scopes: string[];
-            /** Format: uuid */
-            issued_by: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            expires_at?: string;
-            /** Format: date-time */
-            revoked_at?: string;
-            /** Format: date-time */
-            last_used_at?: string;
-        };
-        APIKeyCreated: {
-            /** @description Public UUID plus one-time 256-bit secret; never log, persist plaintext or replay this value. */
-            key: string;
-            api_key: components["schemas"]["APIKeyView"];
-        };
-        APIKeyList: {
-            items: components["schemas"]["APIKeyView"][];
         };
         AdminLogin: {
             email: string;
@@ -2118,127 +2054,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    listAPIKeys: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Key metadata only. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["APIKeyList"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalServerError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    createAPIKey: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
-                Origin: components["parameters"]["Origin"];
-                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateAPIKey"];
-            };
-        };
-        responses: {
-            /** @description New key with its one-time plaintext credential; never cache this response. */
-            201: {
-                headers: {
-                    "Cache-Control"?: "no-store";
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["APIKeyCreated"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalServerError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    revokeAPIKey: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
-                Origin: components["parameters"]["Origin"];
-                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                key_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Key revoked; no response body. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalServerError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
     registerCustomer: {
         parameters: {
             query?: never;

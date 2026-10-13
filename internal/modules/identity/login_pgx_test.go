@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
@@ -46,8 +45,8 @@ type testLoginDB struct {
 type testLoginRow struct{ scan func(...any) error }
 
 func (r testLoginRow) Scan(dest ...any) error { return r.scan(dest...) }
-func (d *testLoginDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-	var tag pgconn.CommandTag
+func (d *testLoginDB) Exec(ctx context.Context, sql string, args ...any) (identityadapter.CommandTag, error) {
+	var tag identityadapter.CommandTag
 	err := d.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		tag, err = tx.Exec(ctx, sql, args...)

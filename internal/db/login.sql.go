@@ -147,41 +147,20 @@ func (q *Queries) LoginInsertSession(ctx context.Context, arg LoginInsertSession
 }
 
 const loginLookupSession = `-- name: LoginLookupSession :one
-WITH input AS MATERIALIZED (
- SELECT clock_timestamp() AS at_db,$2::timestamptz AS caller_at
-), valid AS MATERIALIZED (
- SELECT s.id,s.user_id,s.created_at,s.last_seen_at,s.expires_at,i.at_db
- FROM app.auth_sessions s JOIN app.users u ON u.id=s.user_id CROSS JOIN input i
- WHERE s.token_hash=$3::bytea AND u.status='active'
- AND s.revoked_at IS NULL AND s.expires_at>i.at_db
- AND isfinite(s.expires_at) AND isfinite(s.created_at) AND isfinite(s.last_seen_at)
- AND s.last_seen_at>=s.created_at AND s.expires_at>s.created_at
- AND s.created_at<=i.at_db AND s.last_seen_at<=i.at_db
- AND s.last_seen_at>i.at_db-$1::bigint*interval '1 second'
-), touchable AS MATERIALIZED (
- SELECT s.id FROM app.auth_sessions s JOIN valid v ON v.id=s.id
- WHERE s.last_seen_at<=v.at_db-greatest(1,least(60,$1::bigint/4))*interval '1 second'
- FOR UPDATE OF s SKIP LOCKED
-), touched AS (
- UPDATE app.auth_sessions s SET last_seen_at=clock_timestamp()
- FROM touchable c WHERE c.id=s.id
+UPDATE app.auth_sessions s SET last_seen_at=greatest(s.last_seen_at,least($1::timestamptz,clock_timestamp()))
+ FROM app.users u WHERE s.token_hash=$2::bytea AND u.id=s.user_id AND u.status='active'
  AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
  AND isfinite(s.expires_at) AND isfinite(s.created_at) AND isfinite(s.last_seen_at)
  AND s.last_seen_at>=s.created_at AND s.expires_at>s.created_at
  AND s.created_at<=clock_timestamp() AND s.last_seen_at<=clock_timestamp()
- AND s.last_seen_at>clock_timestamp()-$1::bigint*interval '1 second'
- RETURNING s.id,s.last_seen_at
-)
-SELECT v.id,v.user_id,v.created_at,coalesce(t.last_seen_at,v.last_seen_at)::timestamptz AS last_seen_at,v.expires_at
- FROM valid v LEFT JOIN touched t ON t.id=v.id
- WHERE v.expires_at>clock_timestamp()
- AND coalesce(t.last_seen_at,v.last_seen_at)>clock_timestamp()-$1::bigint*interval '1 second'
+ AND s.last_seen_at>clock_timestamp()-$3::bigint*interval '1 second'
+ RETURNING s.id,s.user_id,s.created_at,s.last_seen_at,s.expires_at
 `
 
 type LoginLookupSessionParams struct {
-	IdleSeconds int64              `json:"idle_seconds"`
 	At          pgtype.Timestamptz `json:"at"`
 	TokenHash   []byte             `json:"token_hash"`
+	IdleSeconds int64              `json:"idle_seconds"`
 }
 
 type LoginLookupSessionRow struct {
@@ -192,10 +171,8 @@ type LoginLookupSessionRow struct {
 	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
 }
 
-// Admission reads valid authority independently of optional activity updates.
-// Keep the caller timestamp argument for the existing port; only DB time renews.
 func (q *Queries) LoginLookupSession(ctx context.Context, arg LoginLookupSessionParams) (LoginLookupSessionRow, error) {
-	row := q.db.QueryRow(ctx, loginLookupSession, arg.IdleSeconds, arg.At, arg.TokenHash)
+	row := q.db.QueryRow(ctx, loginLookupSession, arg.At, arg.TokenHash, arg.IdleSeconds)
 	var i LoginLookupSessionRow
 	err := row.Scan(
 		&i.ID,

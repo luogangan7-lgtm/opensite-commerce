@@ -19,12 +19,18 @@ ENABLE/FORCE RLS with the nullif tenant policy.
 
 - `app.inventory_reserve(sku uuid, quantity bigint, owner_type text, owner_id uuid,
   idempotency_key text, ttl_seconds integer DEFAULT 900)`;
-- `app.inventory_release_non_order(reservation_id uuid)`;
-- `app.inventory_commit_non_order(reservation_id uuid)` (C-15a: these refuse
-  `owner_type='order'` with 42501 `INVENTORY_ORDER_OWNED_RESERVATION`; order
+- `app.inventory_release_non_order(reservation_id uuid, owner_type text, owner_id uuid)`;
+- `app.inventory_commit_non_order(reservation_id uuid, owner_type text, owner_id uuid)` (C-15a: these refuse
+  case variants of `owner_type='order'` with 42501 `INVENTORY_ORDER_OWNED_RESERVATION`; order
   holds finish only via `orders_transition`. Raw `inventory_release/commit`
   are executable only by `app_orders_executor`);
 - `app.inventory_expire_due(batch integer DEFAULT 100)` (1–1000).
+
+Non-order terminal commands require the exact stored owner type (case-sensitive)
+and owner UUID as well as the tenant; a different checkout owner cannot release
+or commit another checkout hold. The old single-argument commands are removed.
+Callers must pass their authorized checkout identity, never trust a client-supplied
+reservation owner.
 
 Reserve/release/commit return the reservation row. Expiry returns the number
 transitioned by this call. TTL is positive integer seconds, not calendar months.

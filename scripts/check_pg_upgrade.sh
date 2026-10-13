@@ -798,7 +798,7 @@ SELECT app.orders_create(:'oid','legacy-create',sha256('legacy'::bytea),NULL,
  '{"email":"legacy@example.invalid"}','USD',20,'{"currency":"USD","amount_minor":20,"service":"fixture"}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','orders-legacy','quantity',1,
  'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
- 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
+ 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('category','standard','net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
 SELECT app.orders_transition(:'oid','paid','legacy-pay',0);
 SELECT 'ORDERS_UPGRADE='||o.order_number||'|'||o.state||'|'||o.total_minor||'|'||s.on_hand||'|'||s.reserved||'|'||
  (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=:'t')||'|'||
@@ -816,6 +816,7 @@ for f in migrations/[0-9][0-9][0-9]_*.sql; do
 done
 river_db "$DB" --verify
 db "$DB" -f tests/db_orders.sql >/dev/null
+db "$DB" -f tests/db_orders_guards.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; ORDERS_DB=""
 # Cart additive upgrade: all predecessors, populated customers/catalog, then
@@ -1212,7 +1213,7 @@ SELECT uuidv7() AS oid \gset
 SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','checkout-legacy-stock',900)).id AS rid \gset
 SELECT app.orders_create(:'oid','checkout-legacy-order',sha256('legacy'::bytea),NULL,'{"email":"legacy@example.invalid"}','USD',0,'{}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','checkout-legacy','quantity',1,'unit_price_minor',100,
- 'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{}'::jsonb)),'[]');
+ 'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
 SELECT app.orders_transition(:'oid','paid','legacy-paid',0);
 SQL
 apply_forward "$CHECKOUT_DB" "${checkout_files[0]}"

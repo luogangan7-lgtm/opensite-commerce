@@ -64,6 +64,11 @@ func (r Runner) inTenant(ctx context.Context, tenantID string, options pgx.TxOpt
 // asserting database-level rejections) only; request paths must use InTenant.
 // fn's error rolls back; nil commits. Same tx rules as InTenant.
 func (r Runner) InMaintenance(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
+	return r.inMaintenance(ctx, fn)
+}
+
+// inMaintenance is private adapter initialization machinery, never a request port.
+func (r Runner) inMaintenance(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
 	if r.pool == nil {
 		return errors.New("pgx pool is nil")
 	}

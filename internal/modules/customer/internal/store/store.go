@@ -87,9 +87,12 @@ func (s *Store) Credential(ctx context.Context, tenant, email string) (credentia
 	return credential, nil
 }
 
-func (s *Store) PrepareRegistration(ctx context.Context, tenant, email, hash string, token [32]byte, expires time.Time) error {
+func (s *Store) PrepareRegistration(ctx context.Context, tenant, email, hash string, token [32]byte, ttl time.Duration) error {
+	if ttl < time.Minute || ttl > time.Hour {
+		return c.ErrUnavailable
+	}
 	return s.in(ctx, tenant, func(q *db.Queries) error {
-		_, err := q.PrepareCustomerRegistration(ctx, db.PrepareCustomerRegistrationParams{Email: email, PendingHash: hash, TokenHash: token[:], ExpiresAt: instant(expires)})
+		_, err := q.PrepareCustomerRegistration(ctx, db.PrepareCustomerRegistrationParams{Email: email, PendingHash: hash, TokenHash: token[:], ChallengeUs: int64(ttl / time.Microsecond)})
 		return err
 	})
 }
@@ -104,9 +107,12 @@ func (s *Store) ConsumeVerification(ctx context.Context, tenant string, token [3
 	})
 }
 
-func (s *Store) PrepareReset(ctx context.Context, tenant, email string, token [32]byte, expires time.Time) error {
+func (s *Store) PrepareReset(ctx context.Context, tenant, email string, token [32]byte, ttl time.Duration) error {
+	if ttl < time.Minute || ttl > time.Hour {
+		return c.ErrUnavailable
+	}
 	return s.in(ctx, tenant, func(q *db.Queries) error {
-		_, err := q.PrepareCustomerReset(ctx, db.PrepareCustomerResetParams{Email: email, TokenHash: token[:], ExpiresAt: instant(expires)})
+		_, err := q.PrepareCustomerReset(ctx, db.PrepareCustomerResetParams{Email: email, TokenHash: token[:], ChallengeUs: int64(ttl / time.Microsecond)})
 		return err
 	})
 }
@@ -140,13 +146,16 @@ func sessionDocument(document, tenant string) (c.Session, error) {
 	return session, nil
 }
 
-func (s *Store) SaveSession(ctx context.Context, tenant, customer, expectedHash string, old *[32]byte, next [32]byte, absolute, idle time.Time) (session c.Session, err error) {
+func (s *Store) SaveSession(ctx context.Context, tenant, customer, expectedHash string, old *[32]byte, next [32]byte, absolute, idle time.Duration) (session c.Session, err error) {
+	if idle < time.Minute || idle > 24*time.Hour || absolute < idle || absolute > 7*24*time.Hour {
+		return c.Session{}, c.ErrUnavailable
+	}
 	var oldHash []byte
 	if old != nil {
 		oldHash = old[:]
 	}
 	err = s.in(ctx, tenant, func(q *db.Queries) error {
-		document, e := q.SaveCustomerSession(ctx, db.SaveCustomerSessionParams{CustomerID: uuid(customer), ExpectedHash: expectedHash, OldHash: oldHash, TokenHash: next[:], AbsoluteExpiresAt: instant(absolute), IdleExpiresAt: instant(idle)})
+		document, e := q.SaveCustomerSession(ctx, db.SaveCustomerSessionParams{CustomerID: uuid(customer), ExpectedHash: expectedHash, OldHash: oldHash, TokenHash: next[:], AbsoluteUs: int64(absolute / time.Microsecond), IdleUs: int64(idle / time.Microsecond)})
 		if e != nil {
 			return e
 		}

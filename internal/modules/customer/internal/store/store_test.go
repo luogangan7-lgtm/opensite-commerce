@@ -12,18 +12,18 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/internal/store"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 const storeTenant = "11111111-1111-4111-8111-111111111111"
 
 type documentDB struct{ document string }
 
-func (d documentDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
-	return pgconn.CommandTag{}, errors.New("unexpected execution")
+func (d documentDB) Exec(context.Context, string, ...any) (pgxadapter.CommandTag, error) {
+	return pgxadapter.CommandTag{}, errors.New("unexpected execution")
 }
 func (d documentDB) Query(context.Context, string, ...any) (pgx.Rows, error) {
 	return nil, errors.New("unexpected query")

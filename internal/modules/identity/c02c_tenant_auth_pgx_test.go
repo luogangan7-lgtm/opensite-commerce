@@ -22,7 +22,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	authcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
@@ -510,7 +509,7 @@ func TestC02cTenantMatrixRejectsNullConfigurationPostgres(t *testing.T) {
 		}
 		return err
 	})
-	var pgErr *pgconn.PgError
+	var pgErr *identityadapter.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "P0001" || pgErr.Message != "TENANT_AUTH_UNSAFE_ROUTINE auth_revalidate_tenant" {
 		t.Fatal("C02c matrix did not reject the injected NULL configuration", err)
 	}

@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type loginFakeRow struct {
@@ -50,20 +50,20 @@ type loginFakeTx struct {
 	commitCalls              int
 }
 
-func (tx *loginFakeTx) Exec(_ context.Context, sql string, _ ...any) (pgconn.CommandTag, error) {
+func (tx *loginFakeTx) Exec(_ context.Context, sql string, _ ...any) (pgxadapter.CommandTag, error) {
 	if strings.Contains(sql, "LoginRotateOldSession") {
 		tx.writes = append(tx.writes, "rotate")
 		if tx.rotated {
-			return pgconn.NewCommandTag("UPDATE 0"), nil
+			return pgxadapter.NewCommandTag("UPDATE 0"), nil
 		}
 		tx.rotated = true
-		return pgconn.NewCommandTag("UPDATE 1"), nil
+		return pgxadapter.NewCommandTag("UPDATE 1"), nil
 	}
 	tx.writes = append(tx.writes, "device")
 	if tx.rejectDevice {
-		return pgconn.CommandTag{}, errors.New("secret DSN backend details")
+		return pgxadapter.CommandTag{}, errors.New("secret DSN backend details")
 	}
-	return pgconn.NewCommandTag("INSERT 0 1"), nil
+	return pgxadapter.NewCommandTag("INSERT 0 1"), nil
 }
 func (tx *loginFakeTx) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
 	tx.writes = append(tx.writes, "session")
@@ -200,10 +200,10 @@ type counterTx struct {
 	sizes []int
 }
 
-func (c *counterTx) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+func (c *counterTx) Exec(_ context.Context, sql string, args ...any) (pgxadapter.CommandTag, error) {
 	c.calls = append(c.calls, sql)
 	c.sizes = append(c.sizes, len(args))
-	return pgconn.NewCommandTag("SELECT 1"), nil
+	return pgxadapter.NewCommandTag("SELECT 1"), nil
 }
 func TestCounterWritesHaveNoCallerClock(t *testing.T) {
 	c := &counterTx{}

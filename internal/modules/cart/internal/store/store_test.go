@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func status(err error) int {
@@ -53,10 +53,10 @@ func TestStoreRunnerFailuresAreUnavailable(t *testing.T) {
 }
 
 func TestRLSDenialOnWriteIsHiddenMiss(t *testing.T) {
-	if got := status(hidden(fmt.Errorf("insert: %w", &pgconn.PgError{Code: "42501"}))); got != 404 {
+	if got := status(hidden(fmt.Errorf("insert: %w", &pgxadapter.PgError{Code: "42501"}))); got != 404 {
 		t.Fatalf("42501 mapped to %d", got)
 	}
-	other := &pgconn.PgError{Code: "23514"}
+	other := &pgxadapter.PgError{Code: "23514"}
 	if hidden(other) != error(other) {
 		t.Fatal("unrelated database error was rewritten")
 	}
