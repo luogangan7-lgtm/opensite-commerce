@@ -204,6 +204,7 @@ type AppCustomer struct {
 	DisplayName     string             `json:"display_name"`
 	Status          string             `json:"status"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	VerifiedAt      pgtype.Timestamptz `json:"verified_at"`
 }
 
 type AppCustomerAddress struct {
@@ -219,11 +220,64 @@ type AppCustomerAddress struct {
 	CountryCode  string      `json:"country_code"`
 }
 
+type AppCustomerAuthGlobalLimit struct {
+	Kind          string             `json:"kind"`
+	KeyHash       []byte             `json:"key_hash"`
+	WindowStart   pgtype.Timestamptz `json:"window_start"`
+	Attempts      int32              `json:"attempts"`
+	Failures      int32              `json:"failures"`
+	CooldownUntil pgtype.Timestamptz `json:"cooldown_until"`
+}
+
+type AppCustomerAuthLimit struct {
+	TenantID      pgtype.UUID        `json:"tenant_id"`
+	Kind          string             `json:"kind"`
+	KeyHash       []byte             `json:"key_hash"`
+	WindowStart   pgtype.Timestamptz `json:"window_start"`
+	Attempts      int32              `json:"attempts"`
+	Failures      int32              `json:"failures"`
+	CooldownUntil pgtype.Timestamptz `json:"cooldown_until"`
+}
+
+type AppCustomerAuthToken struct {
+	TenantID            pgtype.UUID        `json:"tenant_id"`
+	ID                  pgtype.UUID        `json:"id"`
+	CustomerID          pgtype.UUID        `json:"customer_id"`
+	TokenHash           []byte             `json:"token_hash"`
+	Purpose             string             `json:"purpose"`
+	EmailNormalized     string             `json:"email_normalized"`
+	PendingPasswordHash pgtype.Text        `json:"pending_password_hash"`
+	CredentialVersion   pgtype.Timestamptz `json:"credential_version"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
+	ConsumedAt          pgtype.Timestamptz `json:"consumed_at"`
+}
+
 type AppCustomerCredential struct {
 	TenantID     pgtype.UUID        `json:"tenant_id"`
 	CustomerID   pgtype.UUID        `json:"customer_id"`
 	PasswordHash string             `json:"password_hash"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AppCustomerGuestOrderLink struct {
+	TenantID   pgtype.UUID        `json:"tenant_id"`
+	CustomerID pgtype.UUID        `json:"customer_id"`
+	OrderID    pgtype.UUID        `json:"order_id"`
+	LinkedAt   pgtype.Timestamptz `json:"linked_at"`
+}
+
+type AppCustomerSession struct {
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	ID                pgtype.UUID        `json:"id"`
+	CustomerID        pgtype.UUID        `json:"customer_id"`
+	TokenHash         []byte             `json:"token_hash"`
+	CredentialVersion pgtype.Timestamptz `json:"credential_version"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
+	IdleExpiresAt     pgtype.Timestamptz `json:"idle_expires_at"`
+	LastSeenAt        pgtype.Timestamptz `json:"last_seen_at"`
+	RevokedAt         pgtype.Timestamptz `json:"revoked_at"`
 }
 
 type AppDraftOperation struct {

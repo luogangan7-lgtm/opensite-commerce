@@ -10,6 +10,7 @@ credentials outside migrations.
 |---|---|---|
 | `app_runtime` | Tenant-scoped domain queries | FORCE RLS, no credential hashes, no DDL/DELETE/TRUNCATE |
 | `app_auth` | Credential/session lookup | Not exposed to public/Agent query APIs |
+| `app_customer_auth` | Tenant customer proof/session functions | Dedicated login; never combined with runtime or employee auth |
 | `app_domain_resolver` | Verified hostname lookup | No credential or media access |
 | `app_media_service` | Controlled media lifecycle queries | Separate trusted service pool; no general runtime credential access |
 | `app_domain_verifier` | Verify/retire domain mappings | Dedicated private verifier LOGIN; tenant RLS |
@@ -117,6 +118,17 @@ only that additional UPDATE column, preserving the existing revocation update
 and dedicated LOGIN boundary. Existing session activity is backfilled from
 `created_at`; no runtime credential access or tenant/RLS authority is added.
 
+### Customer authentication
+
+Provision an independent `opensite_customer_auth_login` with the same restricted
+LOGIN flags shown above, and grant only `app_customer_auth` with SET allowed and
+ADMIN denied. Do not grant `app_customer_executor` to any login. Supply
+`OPENSITE_CUSTOMER_AUTH_DATABASE_URL` or environment-backed CUSTOMER_AUTH database
+components, a pinned HTTPS `OPENSITE_STOREFRONT_ORIGIN`, and a CSPRNG-generated
+32–128 byte base64url `OPENSITE_CUSTOMER_CSRF_SECRET`. Secrets are never committed
+or logged. SMTP remains disabled unless explicitly configured for loopback and
+non-production use; customer challenges are restricted to test recipients.
+
 
 ### Tenant business authorization (C-02c)
 
@@ -143,3 +155,4 @@ session idle-time policy remains in the login service; the deferred H-4 card own
 DB-clock idle/absolute policy and flooding hardening. The default 30-minute idle
 window exceeds the production request deadline; custom shorter idle policies
 still need H-4 transaction-level policy alignment.
+

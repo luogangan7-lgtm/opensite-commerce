@@ -4,25 +4,7 @@
  */
 
 export interface paths {
-    "/api/v1/t/{tenant_id}/api-keys": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Lists metadata for keys owned by this tenant, including revoked keys; plaintext and hashes are never returned. */
-        get: operations["listAPIKeys"];
-        put?: never;
-        /** @description An active owner or admin creates a key for this tenant with scopes no wider than their current role. The 256-bit secret is returned once. No Idempotency-Key replay is provided because plaintext secrets must never be retained to reproduce a response. A lost response requires revocation and a new key. Unknown scopes are rejected; tenant, issuer and hash are server-derived. */
-        post: operations["createAPIKey"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/t/{tenant_id}/api-keys/{key_id}": {
+    "/api/v1/t/{tenant_id}/customer/registrations": {
         parameters: {
             query?: never;
             header?: never;
@@ -31,9 +13,79 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
-        /** @description Revokes a key owned by this tenant. Repeating revocation of an existing key succeeds; a missing or cross-tenant key returns 404. Revocation is effective on the next authorization check. */
-        delete: operations["revokeAPIKey"];
+        /** @description Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled. */
+        post: operations["registerCustomer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/customer/verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled. */
+        post: operations["verifyCustomerEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/customer/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled. */
+        get: operations["getCustomerSession"];
+        put?: never;
+        /** @description Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled. */
+        post: operations["createCustomerSession"];
+        /** @description Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled. */
+        delete: operations["deleteCustomerSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/customer/password-resets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled. */
+        post: operations["requestCustomerPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/customer/password-resets/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled. */
+        post: operations["confirmCustomerPasswordReset"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -993,6 +1045,53 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CustomerRegistrationInput: {
+            /** Format: email */
+            email: string;
+            password: string;
+        };
+        CustomerCredentialsInput: {
+            /** Format: email */
+            email: string;
+            password: string;
+        };
+        CustomerTokenInput: {
+            token: string;
+        };
+        CustomerResetRequest: {
+            /** Format: email */
+            email: string;
+        };
+        CustomerResetConfirm: {
+            token: string;
+            password: string;
+        };
+        CustomerRegistrationReceipt: {
+            /** @enum {string} */
+            status: "verification_pending";
+        };
+        CustomerResetReceipt: {
+            /** @enum {string} */
+            status: "accepted";
+        };
+        CustomerSessionView: {
+            /** Format: uuid */
+            session_id: string;
+            /** Format: uuid */
+            tenant_id: string;
+            /** Format: uuid */
+            customer_id: string;
+            /** Format: email */
+            email: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            idle_expires_at: string;
+        };
+        CustomerSessionEnvelope: {
+            customer: components["schemas"]["CustomerSessionView"] | null;
+            csrf_token: string;
+        };
         CheckoutStart: {
             /** Format: uuid */
             cart_id: string;
@@ -1173,38 +1272,6 @@ export interface components {
         };
         LoginChallenge: {
             csrf_token: string;
-        };
-        CreateAPIKey: {
-            scopes: ("apikeys:write" | "catalog:read" | "catalog:write" | "cms:publish" | "cms:write" | "media:write" | "notifications:write" | "orders:read" | "quotes:read" | "quotes:write" | "organization.create" | "site.create")[];
-            /**
-             * Format: date-time
-             * @description Optional future expiry; validated against the database clock.
-             */
-            expires_at?: string;
-        };
-        APIKeyView: {
-            /** Format: uuid */
-            id: string;
-            key_prefix: string;
-            scopes: string[];
-            /** Format: uuid */
-            issued_by: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            expires_at?: string;
-            /** Format: date-time */
-            revoked_at?: string;
-            /** Format: date-time */
-            last_used_at?: string;
-        };
-        APIKeyCreated: {
-            /** @description Public UUID plus one-time 256-bit secret; never log, persist plaintext or replay this value. */
-            key: string;
-            api_key: components["schemas"]["APIKeyView"];
-        };
-        APIKeyList: {
-            items: components["schemas"]["APIKeyView"][];
         };
         AdminLogin: {
             email: string;
@@ -1984,49 +2051,12 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    listAPIKeys: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Key metadata only. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["APIKeyList"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalServerError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    createAPIKey: {
+    registerCustomer: {
         parameters: {
             query?: never;
             header: {
-                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
-                Origin: components["parameters"]["Origin"];
-                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+                Origin: string;
+                "X-CSRF-Token": string;
             };
             path: {
                 /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
@@ -2036,18 +2066,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateAPIKey"];
+                "application/json": components["schemas"]["CustomerRegistrationInput"];
             };
         };
         responses: {
-            /** @description New key with its one-time plaintext credential; never cache this response. */
-            201: {
+            /** @description Customer authentication result */
+            202: {
                 headers: {
-                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["APIKeyCreated"];
+                    "application/json": components["schemas"]["CustomerRegistrationReceipt"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -2061,35 +2090,36 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalServerError"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };
-    revokeAPIKey: {
+    verifyCustomerEmail: {
         parameters: {
             query?: never;
             header: {
-                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
-                Origin: components["parameters"]["Origin"];
-                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+                Origin: string;
+                "X-CSRF-Token": string;
             };
             path: {
                 /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
                 tenant_id: components["parameters"]["TenantId"];
-                key_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerTokenInput"];
+            };
+        };
         responses: {
-            /** @description Key revoked; no response body. */
+            /** @description Customer authentication result */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -2100,7 +2130,201 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCustomerSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Customer authentication result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerSessionEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createCustomerSession: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerCredentialsInput"];
+            };
+        };
+        responses: {
+            /** @description Customer authentication result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerSessionEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteCustomerSession: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Customer authentication result */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    requestCustomerPasswordReset: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Customer authentication result */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerResetReceipt"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    confirmCustomerPasswordReset: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerResetConfirm"];
+            };
+        };
+        responses: {
+            /** @description Customer authentication result */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };
