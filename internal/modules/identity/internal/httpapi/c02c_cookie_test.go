@@ -26,7 +26,9 @@ func TestC02cTenantSessionRenewsCookie(t *testing.T) {
 			if c.Value != f.sessionToken || c.Path != "/" || c.Domain != "" || !c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode {
 				t.Fatal("renewal changed host-cookie security policy or credential")
 			}
-			if c.MaxAge != 1800 || !c.Expires.Equal(f.sessions.session.LastSeenAt.Add(30*time.Minute)) {
+			// Expires uses the actual DB stamp. Repeating a fixed Max-Age would
+			// extend a skipped/throttled touch beyond that authoritative expiry.
+			if c.MaxAge != 0 || !c.Expires.Equal(f.sessions.session.LastSeenAt.Add(30*time.Minute)) {
 				t.Fatal("cookie lifetime did not follow returned session activity stamp")
 			}
 			if w.Header().Get("Cache-Control") != "no-store" {
@@ -41,7 +43,7 @@ func TestC02cRenewalIsBoundedAndOnlyAdmittedSession(t *testing.T) {
 	f.sessions.session.ExpiresAt = f.sessions.session.LastSeenAt.Add(5 * time.Minute)
 	w := f.serve(t, c02cSpec(platform.AdminSession, http.MethodGet, "catalog:read"), f.request(http.MethodGet, c02cTenant, true, false))
 	cookies := w.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].MaxAge != 300 || !cookies[0].Expires.Equal(f.sessions.session.ExpiresAt) {
+	if len(cookies) != 1 || cookies[0].MaxAge != 0 || !cookies[0].Expires.Equal(f.sessions.session.ExpiresAt) {
 		t.Fatal("TENANT_COOKIE_ABSOLUTE_RED: cookie renewal ignored absolute lifetime")
 	}
 	for _, tc := range []struct {
