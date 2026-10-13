@@ -907,6 +907,11 @@ class GovernanceTests(unittest.TestCase):
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_adapter_exported_sql_transaction_red(self):
+        self.source("internal/tenanttx/pgxadapter/tx.go",
+                    'package pgxadapter\nimport "database/sql"\nfunc BeginRaw() *sql.Tx { return nil }\n')
+        self.assert_red("MODULE_RAW_POOL_EXPORT")
+
     def test_adapter_exported_sql_statement_red(self):
         self.source("internal/tenanttx/pgxadapter/stmt.go",
                     'package pgxadapter\nimport "database/sql"\nfunc Prepared() *sql.Stmt { return nil }\n')

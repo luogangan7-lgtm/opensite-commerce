@@ -20,7 +20,7 @@ var rawTypes = map[string]map[string]bool{
 	"github.com/jackc/pgx/v5/pgxpool": {"Pool": true, "Conn": true},
 	"github.com/jackc/pgx/v5":         {"Conn": true},
 	"github.com/jackc/pgx/v5/pgconn":  {"PgConn": true},
-	"database/sql":                    {"DB": true, "Conn": true, "Stmt": true},
+	"database/sql":                    {"DB": true, "Conn": true, "Stmt": true, "Tx": true},
 }
 
 // exposure reports the first raw type reachable from t by a caller outside pkg.
@@ -185,6 +185,7 @@ func TestExportSurfaceDetectorRedAndGreen(t *testing.T) {
 		"composite literal field":   {"a.go": header + "var Open = struct{ pool *pgxpool.Pool }{}.pool\n"},
 		"anonymous interface field": {"a.go": header + "type Provider struct { Open interface { Get() *pgxpool.Pool } }\n"},
 		"sql statement":             {"a.go": header + "func Prepared() *sql.Stmt { return nil }\n"},
+		"sql transaction":           {"a.go": header + "func BeginRaw() *sql.Tx { return nil }\n"},
 		"exported method":           {"a.go": header + "type Runner struct{ pool *pgxpool.Pool }\nfunc (r Runner) Raw() *pgxpool.Pool { return r.pool }\n"},
 		"unexported carrier":        {"a.go": header + "type runner struct{ pool *pgxpool.Pool }\nfunc (r runner) Pool() *pgxpool.Pool { return r.pool }\nfunc New() runner { return runner{} }\n"},
 		"pgx connection value":      {"a.go": header + "var Open = pgx.Connect\n"},

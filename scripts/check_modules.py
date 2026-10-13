@@ -331,7 +331,7 @@ def check_raw_connection(text, location, allow_raw=False):
 POOL_TYPES = {"github.com/jackc/pgx/v5/pgxpool": ("pgxpool", {"Pool", "Conn"}),
               "github.com/jackc/pgx/v5": ("pgx", {"Conn"}),
               "github.com/jackc/pgx/v5/pgconn": ("pgconn", {"PgConn"}),
-              "database/sql": ("sql", {"DB", "Conn", "Stmt"})}
+              "database/sql": ("sql", {"DB", "Conn", "Stmt", "Tx"})}
 
 
 def pool_declarations(text):
