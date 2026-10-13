@@ -34,4 +34,4 @@ jobs:
           sudo apt-get install -y -qq postgresql-client
           bash scripts/check_pg.sh
       - name: Scoped actual PostgreSQL activity and availability witnesses
-        run: go test -race -tags pgx -count=1 -v -run TestC02c ./internal/modules/identity/... ./internal/tenanttx/pgxadapter ./internal/modules/tenant/...
+        run: go test -race -tags pgx -count=1 -v -run 'TestC02c|TestStaffSessionIdleConfiguration' ./internal/modules/identity/... ./internal/tenanttx/pgxadapter ./internal/modules/tenant/... ./internal/bootstrap
