@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -69,5 +70,25 @@ func TestActorCapabilityAdmission(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAnonymousCreationDefaultIPLimit(t *testing.T) {
+	m := cart.NewPostgres(cart.Config{}, nil) // configured store: quota applies
+	for i := 0; i < 31; i++ {
+		r := httptest.NewRequest("POST", "/", nil)
+		r.SetPathValue("tenant_id", "10000000-0000-4000-8000-000000000001")
+		r.RemoteAddr = "192.0.2.1:1234"
+		r.Header.Set("X-Forwarded-For", "198.51.100."+fmt.Sprint(i))
+		_, err := m.Authenticate(r.Context(), r, platform.RouteSpec{Access: platform.Storefront, OperationID: "createCart"})
+		if i < 30 && err != nil {
+			t.Fatal(err)
+		}
+		if i == 30 {
+			var failure *apperrors.Error
+			if !errors.As(err, &failure) || failure.Status != 429 {
+				t.Fatalf("31st anonymous create = %v; want 429", err)
+			}
+		}
 	}
 }

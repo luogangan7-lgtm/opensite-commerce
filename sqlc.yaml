@@ -34,7 +34,8 @@ sql:
       - "migrations/031_cms_publish.sql"
       - "migrations/032_checkout.sql"
       - "migrations/033_customer_auth.sql"
-      - "migrations/034_storefront_serving.sql"
+      - "migrations/034_orders_guards.sql"
+      - "migrations/035_storefront_serving.sql"
     queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:

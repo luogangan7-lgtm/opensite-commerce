@@ -39,7 +39,7 @@ BEGIN
  r:=app.inventory_reserve(sku,2,'order',order_id_v,'orders-reserve',900);
  lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',2,
   'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',10,'line_total_minor',210,
-  'reservation_id',r.id,'tax_snapshot',jsonb_build_object('net_minor',200,'tax_minor',10,'gross_minor',210,'currency','USD')));
+  'reservation_id',r.id,'tax_snapshot',jsonb_build_object('category','standard','net_minor',200,'tax_minor',10,'gross_minor',210,'currency','USD')));
  o:=app.orders_create(order_id_v,'orders-create',sha256('fixture'::bytea),NULL,guest,'USD',20,shipping,lines,'[]');
  IF o.state<>'pending_payment' OR NOT o.sealed OR o.total_minor<>230 OR o.order_number<>1 THEN
   RAISE EXCEPTION 'ORDERS_GATE creation snapshot or initial state';
@@ -82,7 +82,7 @@ BEGIN
  foreign_reservation:=r.id;
  BEGIN
   PERFORM app.orders_create(other_id,'orders-forged-create',sha256('forged'::bytea),NULL,guest,'USD',20,shipping,
-   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','forged','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{}'::jsonb)),'[]');
+   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','forged','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
   RAISE EXCEPTION 'ORDERS_GATE forged reservation owner accepted';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  IF EXISTS(SELECT FROM app.orders WHERE app.orders.id=other_id)
@@ -206,7 +206,7 @@ BEGIN
   r:=app.inventory_reserve(sku,1,'order',order_id_v,'orders-pending-reserve-'||n,900);
   lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','pending-sku','quantity',1,
    'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
-   'reservation_id',r.id,'tax_snapshot','{}'::jsonb));
+   'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb));
   o:=app.orders_create(order_id_v,'orders-pending-create-'||n,sha256(convert_to(n::text,'UTF8')),NULL,
    '{"email":"pending@example.invalid"}','USD',0,'{}',lines,'[]');
   IF o.order_number<>n+1 THEN RAISE EXCEPTION 'ORDERS_GATE nonmonotonic order number'; END IF;
@@ -280,7 +280,7 @@ BEGIN
  r:=app.inventory_reserve(sku,1,'order',order_id_v,'orders-customer-reserve',900);
  lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','customer-sku','quantity',1,
   'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
-  'reservation_id',r.id,'tax_snapshot','{}'::jsonb));
+  'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb));
  o:=app.orders_create(order_id_v,'orders-customer-create',sha256('customer'::bytea),
   current_setting('test.orders_customer')::uuid,NULL,'USD',0,'{}',lines,'[]');
  replay:=app.orders_create(order_id_v,'orders-customer-create',sha256('customer'::bytea),
@@ -294,7 +294,7 @@ BEGIN
  r:=app.inventory_reserve(sku,1,'order',foreign_order_id,'orders-foreign-customer-reserve',900);
  lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','foreign-customer-sku','quantity',1,
   'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
-  'reservation_id',r.id,'tax_snapshot','{}'::jsonb));
+  'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb));
  BEGIN
   PERFORM app.orders_create(foreign_order_id,'orders-foreign-customer-create',sha256('foreign-customer'::bytea),
    current_setting('test.orders_foreign_customer')::uuid,NULL,'USD',0,'{}',lines,'[]');
