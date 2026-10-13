@@ -234,6 +234,20 @@ func TestExportSurfaceDetectorRedAndGreen(t *testing.T) {
 		"exported method":           {"a.go": header + "type Runner struct{ pool *pgxpool.Pool }\nfunc (r Runner) Raw() *pgxpool.Pool { return r.pool }\n"},
 		"unexported carrier":        {"a.go": header + "type runner struct{ pool *pgxpool.Pool }\nfunc (r runner) Pool() *pgxpool.Pool { return r.pool }\nfunc New() runner { return runner{} }\n"},
 		"pgx connection value":      {"a.go": header + "var Open = pgx.Connect\n"},
+		"opaque function result":   {"a.go": header + "func Raw() any { return (*pgxpool.Pool)(nil) }\n"},
+		"opaque method result":     {"a.go": header + "type Runner struct{ pool *pgxpool.Pool }\nfunc (r Runner) Raw() any { return r.pool }\n"},
+		"empty interface result":   {"a.go": header + "func Raw() interface{} { return nil }\n"},
+		"empty interface alias":    {"a.go": header + "type empty = interface{}\ntype boxed = empty\nfunc Raw() boxed { return nil }\n"},
+		"named empty interface":    {"a.go": header + "type Box interface{}\nfunc Raw() Box { return nil }\n"},
+		"opaque field":             {"a.go": header + "type Runner struct { Raw any }\n"},
+		"opaque container result":  {"a.go": header + "func Raw() map[string][]any { return nil }\n"},
+		"opaque channel result":    {"a.go": header + "func Raw() <-chan any { return nil }\n"},
+		"opaque callback result":   {"a.go": header + "func Raw() func() any { return nil }\n"},
+		"opaque result after input": {"a.go": header + "func Raw(input any) any { return input }\n"},
+		"unsafe pointer result":    {"a.go": "package fixture\nimport \"unsafe\"\nfunc Raw() unsafe.Pointer { return nil }\n"},
+		"unsafe pointer alias":     {"a.go": "package fixture\nimport \"unsafe\"\ntype pointer = unsafe.Pointer\nfunc Raw() pointer { return nil }\n"},
+		"reflect value result":     {"a.go": "package fixture\nimport \"reflect\"\nfunc Raw() reflect.Value { return reflect.Value{} }\n"},
+		"reflect value field":      {"a.go": "package fixture\nimport \"reflect\"\ntype Runner struct { Raw reflect.Value }\n"},
 	}
 	t.Run("red pgx.Tx.Conn without the transaction-port allowance", func(t *testing.T) {
 		saved := transactionPort
@@ -259,6 +273,9 @@ func TestExportSurfaceDetectorRedAndGreen(t *testing.T) {
 		"shadowed alias name":      "type hidden = pgxpool.Pool\nfunc Safe(hidden int) {}\n",
 		"tracer interface":         "var _ pgx.ConnectTracer = nil\n",
 		"inert mapping types":      "var S sql.NullString\n",
+		"opaque input only":        "func Scan(dest ...any) error { return nil }\n",
+		"private opaque field":     "type Runner struct{ hidden any }\n",
+		"context input and result": "func Echo(ctx interface{ Done() <-chan struct{} }) interface{ Done() <-chan struct{} } { return ctx }\n",
 	}
 	for name, body := range green {
 		t.Run("green "+name, func(t *testing.T) {
