@@ -70,8 +70,8 @@ func TestC02cAuthorityAvailabilityPostgres(t *testing.T) {
 	var sessionID string
 	var sessionHash [32]byte
 	copy(sessionHash[:], c02cKeyHash(t))
-	if err := admin.QueryRow(ctx, `INSERT INTO app.auth_sessions(user_id,token_hash,last_seen_at,expires_at) VALUES($1,$2,clock_timestamp()-interval '2 minutes',clock_timestamp()+interval '1 hour') RETURNING id::text`, issuer, sessionHash[:]).Scan(&sessionID); err != nil {
-		t.Fatal("session fixture failed")
+	if err := admin.QueryRow(ctx, `INSERT INTO app.auth_sessions(user_id,token_hash,created_at,last_seen_at,expires_at) VALUES($1,$2,clock_timestamp()-interval '3 minutes',clock_timestamp()-interval '2 minutes',clock_timestamp()+interval '1 hour') RETURNING id::text`, issuer, sessionHash[:]).Scan(&sessionID); err != nil {
+		t.Fatal("session fixture failed", safeCode(err))
 	}
 
 	t.Run("busy_key_activity_does_not_wait", func(t *testing.T) {
