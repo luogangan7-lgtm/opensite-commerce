@@ -201,7 +201,7 @@ func (h *Handler) AuthenticationResponse(ctx context.Context, w http.ResponseWri
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	setCookie(w, SessionCookie, p.token, h.cookieExpiry(p.session), 0)
+	setCookie(w, SessionCookie, p.token, 0, h.cookieExpiry(p.session))
 }
 
 func parseKey(header string) (string, [32]byte, bool) {
