@@ -87,7 +87,9 @@ def assert_contract(registry, source):
         assert '#/components/parameters/IdempotencyKey' not in refs, 'secret replay is forbidden'
         if key[1] in {'post', 'delete'}:
             assert {'#/components/parameters/CSRFToken', '#/components/parameters/Origin'} <= refs, key
-    assert '204' in blocks[(KEY_PATH + '/{key_id}', 'delete')]['responses']
+    revoke = blocks[(KEY_PATH + '/{key_id}', 'delete')]['responses']
+    assert '204' in revoke
+    assert revoke.get('400') == {'$ref': '#/components/responses/BadRequest'}, 'malformed key ID must be modeled'
     schemas = components['schemas']
     create = schemas['CreateAPIKey']
     assert create['additionalProperties'] is False
@@ -109,7 +111,7 @@ def assert_contract(registry, source):
     listed = schemas['APIKeyList']
     assert listed['additionalProperties'] is False and listed['required'] == ['items']
     assert set(listed['properties']) == {'items'}
-    assert listed['properties']['items'] == {'type': 'array', 'items': {'$ref': '#/components/schemas/APIKeyView'}}
+    assert listed['properties']['items'] == {'type': 'array', 'maxItems': 100, 'items': {'$ref': '#/components/schemas/APIKeyView'}}
     post = blocks[(KEY_PATH, 'post')]
     assert post['requestBody']['content']['application/json']['schema'] == {'$ref': '#/components/schemas/CreateAPIKey'}
     assert post['responses']['201']['content']['application/json']['schema'] == {'$ref': '#/components/schemas/APIKeyCreated'}
