@@ -108,3 +108,40 @@ func TestAnonymousCreateIPCannotRotateCapabilityOrIPv6Address(t *testing.T) {
 		t.Fatal("independent /64 denied")
 	}
 }
+
+func TestAnonymousCreateReviewHardening(t *testing.T) {
+	t.Run("MaxKeys one falls back so token and IP buckets fit", func(t *testing.T) {
+		l := newCreateLimiter(AnonymousCreateLimit{MaxKeys: 1})
+		if !l.allow("192.0.2.1:1", []byte("token")) {
+			t.Fatal("request with capability could not be admitted")
+		}
+	})
+	t.Run("full-map misses sweep at most once per interval", func(t *testing.T) {
+		l := newCreateLimiter(AnonymousCreateLimit{IPBurst: 1, RefillInterval: time.Hour, MaxKeys: 3})
+		l.now = func() time.Time { return time.Unix(1700000000, 0) }
+		for i := 1; i <= 3; i++ {
+			if !l.allow(fmt.Sprintf("192.0.2.%d:1", i), nil) {
+				t.Fatal("setup admission failed")
+			}
+		}
+		for i := 4; i < 200; i++ {
+			if l.allow(fmt.Sprintf("192.0.2.%d:1", i), nil) {
+				t.Fatal("unseen address admitted into a full map")
+			}
+		}
+		if l.sweeps != 1 {
+			t.Fatalf("sweeps=%d, want 1", l.sweeps)
+		}
+	})
+	t.Run("unconfigured store keeps answering unavailable", func(t *testing.T) {
+		m := newModule(nil, nil, AnonymousCreateLimit{IPBurst: 1})
+		for i := 0; i < 5; i++ {
+			r := httptest.NewRequest("POST", "/", nil)
+			r.SetPathValue("tenant_id", "10000000-0000-4000-8000-000000000001")
+			r.RemoteAddr = "192.0.2.1:1"
+			if _, err := m.Authenticate(r.Context(), r, platform.RouteSpec{Access: platform.Storefront, OperationID: "createCart"}); err != nil {
+				t.Fatalf("request %d consumed quota before Service.Create: %v", i, err)
+			}
+		}
+	})
+}

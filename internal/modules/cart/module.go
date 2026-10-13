@@ -26,13 +26,16 @@ type Module struct {
 	*service.Service
 	resolver ActorResolver
 	limiter  *createLimiter
+	// unconfigured: bootstrap fallback without storage must answer
+	// cart_unavailable, never spend or exhaust the anonymous quota.
+	unconfigured bool
 }
 
 func New(repo contract.Repository, resolver ActorResolver) *Module {
 	return newModule(repo, resolver, AnonymousCreateLimit{})
 }
 func newModule(repo contract.Repository, resolver ActorResolver, limits AnonymousCreateLimit) *Module {
-	return &Module{Service: service.New(repo), resolver: resolver, limiter: newCreateLimiter(limits)}
+	return &Module{Service: service.New(repo), resolver: resolver, limiter: newCreateLimiter(limits), unconfigured: repo == nil}
 }
 
 // Config receives the platform's authorized tenant runners (bootstrap wires
@@ -75,6 +78,9 @@ func (m *Module) Authenticate(ctx context.Context, r *http.Request, spec platfor
 	}
 	actor.TenantID = tenant
 	if spec.OperationID == "createCart" && len(tokens) == 0 {
+		if m.unconfigured {
+			return contract.WithActor(ctx, actor), nil
+		}
 		if !m.limiter.allow(r.RemoteAddr, nil) {
 			return ctx, createLimited()
 		}
@@ -89,7 +95,7 @@ func (m *Module) Authenticate(ctx context.Context, r *http.Request, spec platfor
 	}
 	hash := sha256.Sum256([]byte(tokens[0]))
 	actor.GuestTokenHash = hash[:]
-	if spec.OperationID == "createCart" && !m.limiter.allow(r.RemoteAddr, actor.GuestTokenHash) {
+	if spec.OperationID == "createCart" && !m.unconfigured && !m.limiter.allow(r.RemoteAddr, actor.GuestTokenHash) {
 		return ctx, createLimited()
 	}
 	return contract.WithActor(ctx, actor), nil

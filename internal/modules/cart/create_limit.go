@@ -31,7 +31,13 @@ type createLimiter struct {
 	config  AnonymousCreateLimit
 	buckets map[[32]byte]createBucket
 	now     func() time.Time
+	// Sweeps scan every bucket; at most one per sweepEvery bounds the work an
+	// attacker rotating addresses can force while holding the mutex.
+	lastSweep time.Time
+	sweeps    int
 }
+
+const sweepEvery = time.Second
 
 func newCreateLimiter(c AnonymousCreateLimit) *createLimiter {
 	if c.IPBurst <= 0 || c.IPBurst > 1000000 {
@@ -43,7 +49,8 @@ func newCreateLimiter(c AnonymousCreateLimit) *createLimiter {
 	if c.RefillInterval <= 0 {
 		c.RefillInterval = time.Minute
 	}
-	if c.MaxKeys <= 0 || c.MaxKeys > 1000000 {
+	// One request may need an IP and a capability bucket at once.
+	if c.MaxKeys < 2 || c.MaxKeys > 1000000 {
 		c.MaxKeys = 10000
 	}
 	return &createLimiter{config: c, buckets: make(map[[32]byte]createBucket), now: time.Now}
@@ -87,6 +94,10 @@ func (l *createLimiter) allow(remote string, tokenHash []byte) bool {
 		}
 	}
 	if len(l.buckets)+missing > l.config.MaxKeys {
+		if !l.lastSweep.IsZero() && at.Sub(l.lastSweep) < sweepEvery {
+			return false
+		}
+		l.lastSweep, l.sweeps = at, l.sweeps+1
 		// ponytail: bounded map and one mutex; use a shared limiter when replicas
 		// need a global quota. Only fully refilled buckets can be safely forgotten.
 		for key, b := range l.buckets {
