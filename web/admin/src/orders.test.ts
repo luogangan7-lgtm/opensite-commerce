@@ -11,11 +11,11 @@ test('CONTRACT FIXTURE (orders read API pending PR): exact signed and currency e
   expect(formatMoney('123', 'JPY')).toBe('JPY 123');
   expect(formatMoney('123', 'KWD')).toBe('KWD 0.123');
   for (const bad of ['1.2', '1e2', '+2', '01', '-0', '']) expect(() => formatMoney(bad, 'USD')).toThrow();
-  expect(() => formatMoney('1', 'ZZZ')).toThrow();
+  expect(() => formatMoney('1', 'zzZ')).toThrow();
 });
 test('CONTRACT FIXTURE (orders read API pending PR): reject unsafe or malformed summaries', () => {
   expect(parseOrderPage({ items: [summary], next_cursor: 'a+/=' }).items[0].total_minor).toBe(summary.total_minor);
-  for (const patch of [{total_minor: 9007199254740992}, {state: 'unknown'}, {id: '../bad'}, {currency: 'ZZZ'}, {customer_kind: 'anonymous'}, {created_at: 'today'}, {created_at: '2026-02-30T00:00:00Z'}]) expect(() => parseOrderPage({ items: [{...summary, ...patch}] })).toThrow();
+  for (const patch of [{total_minor: 9007199254740992}, {state: 'unknown'}, {id: '../bad'}, {currency: 'zzZ'}, {customer_kind: 'anonymous'}, {created_at: 'today'}, {created_at: '2026-02-30T00:00:00Z'}]) expect(() => parseOrderPage({ items: [{...summary, ...patch}] })).toThrow();
   expect(() => parseOrderPage({items: [], next_cursor: 1})).toThrow();
 });
 test('CONTRACT FIXTURE (orders read API pending PR): detail nested fields validated', () => {
@@ -40,4 +40,10 @@ test('CONTRACT FIXTURE (orders read API pending PR): scoped URLs, pagination and
   await expect(api.list('../auth')).rejects.toThrow();
   await expect(api.get(id,'../private')).rejects.toThrow();
   expect(calls).toHaveLength(4);
+});
+
+test('domain currencies preserve original minor units without guessing an exponent', () => {
+  expect(parseOrderPage({items:[{...summary,currency:'ZZZ'}]}).items[0].currency).toBe('ZZZ');
+  expect(formatMoney('900719925474099301','ZZZ')).toBe('ZZZ 900719925474099301 minor units');
+  expect(formatMoney('-123','ABC')).toBe('ABC -123 minor units');
 });

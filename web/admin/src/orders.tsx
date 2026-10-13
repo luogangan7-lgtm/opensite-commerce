@@ -23,7 +23,7 @@ function uuid(value: unknown): string { const v = text(value); if (!uuidPattern.
 function minor(value: unknown): string { const v = text(value); if (!/^(0|[1-9]\d*|-[1-9]\d*)$/.test(v)) return invalid(); return v; }
 function positive(value: unknown): number { if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) return invalid(); return value; }
 function date(value: unknown): string { const v = text(value); if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(v) || !Number.isFinite(Date.parse(v))) return invalid(); const month = Number(v.slice(5, 7)), day = Number(v.slice(8, 10)); if (month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(Number(v.slice(0, 4)), month, 0)).getUTCDate()) return invalid(); return v; }
-function currency(value: unknown): string { const v = text(value); if (!Intl.supportedValuesOf('currency').includes(v)) return invalid(); return v; }
+function currency(value: unknown): string { const v = text(value); if (!/^[A-Z]{3}$/.test(v)) return invalid(); return v; }
 function state(value: unknown): OrderState { if (!ORDER_STATES.includes(value as OrderState)) return invalid(); return value as OrderState; }
 function array<T>(value: unknown, parse: (v: unknown) => T): T[] { if (!Array.isArray(value)) return invalid(); return value.map(parse); }
 function base(value: unknown) { const v = object(value); return {id: uuid(v.id), order_number: text(v.order_number), state: state(v.state), currency: currency(v.currency), total_minor: minor(v.total_minor), created_at: date(v.created_at)}; }
@@ -42,6 +42,9 @@ export function parseOrderDetail(value: unknown): OrderDetail {
 /** Intl supplies the currency exponent; only BigInt touches monetary digits. */
 export function formatMoney(amount: string, code: string): string {
   const n = BigInt(minor(amount)); currency(code);
+  // Domain Money allows any three uppercase ASCII letters. Never guess an
+  // exponent for a code Intl does not recognize; preserve explicit minor units.
+  if (!Intl.supportedValuesOf('currency').includes(code)) return `${code} ${n} minor units`;
   const digits = new Intl.NumberFormat('en', {style: 'currency', currency: code}).resolvedOptions().maximumFractionDigits ?? 2;
   const scale = 10n ** BigInt(digits), absolute = n < 0n ? -n : n;
   const whole = new Intl.NumberFormat('en', {maximumFractionDigits: 0}).format(absolute / scale);
