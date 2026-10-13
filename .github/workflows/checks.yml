@@ -144,6 +144,10 @@ jobs:
       DATABASE_URL: postgres://postgres:ci_test_only@postgres:5432/opensite?sslmode=disable
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          # pull_request: HEAD^1 of the merge ref is the base. push: full history so github.event.before is checked
+          # as an ancestor and every pushed commit's goldens are verified (else all goldens are).
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
       - name: Trust the checked-out CI workspace for Go VCS metadata
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -158,13 +162,29 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Types, token generation, style policy and contrast
         run: bash scripts/check_frontend.sh
-      - name: CI baseline provenance and visual/a11y comparisons
+      - name: Golden provenance (records, pins, hashes; changed goldens against their CI producer)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENSITE_GOLDEN_BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
         run: |
           bun scripts/frontend/check-baselines.ts
           bun scripts/frontend/verify-baseline-artifact.ts
-          bun run visual:test
+      - name: Candidate visual/a11y comparison against committed goldens
+        id: visual
+        run: bun run visual:test
+      - name: Comparison receipt (CI artifact and summary only)
+        if: always()
+        env:
+          VISUAL_OUTCOME: ${{ steps.visual.outcome }}
+          CANDIDATE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bun scripts/frontend/comparison-receipt.ts
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: frontend-comparison-${{ github.run_id }}
+          path: comparison-receipt.json
+          if-no-files-found: warn
+          retention-days: 30
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: failure()
         with:
@@ -174,12 +194,13 @@ jobs:
             test-results
           retention-days: 7
 
-  # Explicit CI-only golden update. Download this artifact and commit its PNGs;
-  # the ordinary frontend check still compares against the committed golds.
+  # Explicit CI-only golden update: re-renders only scopes whose comparison fails.
+  # Download this artifact and commit its PNGs; the ordinary frontend check still
+  # compares against the committed golds.
   frontend-baselines:
     if: github.event_name == 'push' && contains(github.event.head_commit.message, '[visual-baseline-update]')
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     permissions:
       contents: read
     container:
@@ -213,8 +234,8 @@ jobs:
         with:
           bun-version: '1.3.12'
       - run: go mod download
-      - run: bun install --frozen-lockfile
-      - run: bash scripts/check_frontend.sh
+      # No repository code may run before the writer (workflow-provenance.ts); it builds what it renders.
+      - run: bun install --frozen-lockfile --ignore-scripts
       - name: Generate golden images in pinned CI container
         run: bun run visual:update
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
