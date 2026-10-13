@@ -1,0 +1,14 @@
+---
+/** Responsibility: private/no-store customer fixture document; dependencies: SSR purchase context + customer island. */
+import Shell from '../layouts/Shell.astro';
+import CustomerPage from '../components/CustomerPage';
+import { readPurchaseContext } from '../lib/commerce-server';
+import { commerceCopy } from '../lib/commerce-copy';
+import { requestCanonical } from '../lib/host-policy';
+const context = await readPurchaseContext(Astro.request, Astro.cookies);
+const ui = commerceCopy();
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+<Shell title={ui.account} description={ui.accountDescription} canonical={requestCanonical(Astro)} noindex navigation={[{ label: ui.browseProducts, href: '/products' }]}>
+  <h1>{ui.account}</h1><CustomerPage context={context} client:load />
+</Shell>
