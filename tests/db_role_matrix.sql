@@ -1104,8 +1104,8 @@ BEGIN
   ('guard_payment_fact()'),('guard_checkout_refund()')) AS n(expected_signature)
  LEFT JOIN pg_proc p ON p.oid=to_regprocedure('app.'||n.expected_signature) LOOP
   IF f.oid IS NULL OR f.prosecdef IS DISTINCT FROM (f.proname='resolve_fake_payment_account')
-   OR f.proowner IS DISTINCT FROM CASE WHEN f.proname='resolve_fake_payment_account' THEN r.oid
-      ELSE (SELECT relowner FROM pg_class WHERE oid='app.payment_events'::regclass) END
+   OR f.proowner IS DISTINCT FROM (CASE WHEN f.proname='resolve_fake_payment_account' THEN r.oid
+      ELSE (SELECT relowner FROM pg_class WHERE oid='app.payment_events'::regclass) END)
    OR cardinality(f.proconfig) IS DISTINCT FROM 1
    OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE')
