@@ -98,9 +98,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, operation string
 		}
 		current, e := h.cfg.Service.Current(r.Context(), tenant, token)
 		if e != nil {
-			if errors.Is(e, c.ErrUnauthorized) {
-				clearCookie(w, SessionCookie)
-			}
+			clearCookie(w, SessionCookie)
 			fail(e)
 			return
 		}
