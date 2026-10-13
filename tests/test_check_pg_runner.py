@@ -130,6 +130,7 @@ expected = [
     'db_cms_publish.sql',
     'db_checkout.sql',
     'db_customer_auth.sql',
+    'db_quote_conversion.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
 races = (root / 'scripts/check_pg_races.sh').read_text()
@@ -317,6 +318,7 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('CART_EXPECTED_REFUSAL', 'db_cart.sql'),
                          ('QUOTES_SCHEMA_REQUIRED', 'db_quotes.sql'),
                          ('OPS_METRICS_GATE', 'db_ops_metrics.sql'),
+                         ('QUOTE_CONVERSION_', 'db_quote_conversion.sql'),
                          ('IDENTITY_GATE', 'db_identity_auth.sql'),
                          ('LOGIN_GATE', 'db_identity_login.sql'),
                          ('CMS_EXPECTED_REFUSAL', 'db_cms_publish.sql'),

@@ -57,6 +57,9 @@ services:
       OSC_AUTH_SIGNING_KEY_HEX: ${OPENSITE_AUTH_SIGNING_KEY:?set independent 64-hex auth signing key}
       OPENSITE_STOREFRONT_ORIGIN: ${OPENSITE_STOREFRONT_ORIGIN:?set exact HTTPS storefront origin}
       OPENSITE_CUSTOMER_CSRF_SECRET: ${OPENSITE_CUSTOMER_CSRF_SECRET:?set independent base64url customer CSRF secret}
+      OPENSITE_ENVIRONMENT: ${OPENSITE_ENVIRONMENT:-development}
+      OPENSITE_CHECKOUT_FAKE_ENABLED: ${OPENSITE_CHECKOUT_FAKE_ENABLED:-false}
+      OPENSITE_CHECKOUT_FAKE_SIGNING_KEY: ${OPENSITE_CHECKOUT_FAKE_SIGNING_KEY:-}
       # Development capture only: the mailpit sidecar shares this loopback.
       APP_ENV: development
       NOTIFICATIONS_SMTP_ENABLED: "true"

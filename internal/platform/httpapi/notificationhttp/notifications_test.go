@@ -23,12 +23,13 @@ const event = "33333333-3333-4333-8333-333333333333"
 const base = "/api/v1/t/" + tenant + "/notifications"
 
 type service struct {
-	calls   int
-	limit   int32
-	key     string
-	failure error
-	unsafe  bool
-	empty   bool
+	calls    int
+	limit    int32
+	key      string
+	failure  error
+	unsafe   bool
+	empty    bool
+	template string
 }
 
 func (s *service) ListFailures(ctx context.Context, t string, l int32) ([]contract.Failure, error) {
@@ -45,7 +46,19 @@ func (s *service) ListFailures(ctx context.Context, t string, l int32) ([]contra
 	if s.unsafe {
 		code = "customer@example.com"
 	}
-	return []contract.Failure{{ID: id, EventID: event, TemplateKey: "order.paid", Status: "uncertain", Attempts: 2, Generation: 1, CreatedAt: time.Unix(100, 0).UTC(), UpdatedAt: time.Unix(101, 0).UTC(), SafeError: code}}, s.failure
+	key := s.template
+	if key == "" {
+		key = "order.paid"
+	}
+	return []contract.Failure{{ID: id, EventID: event, TemplateKey: key, Status: "uncertain", Attempts: 2, Generation: 1, CreatedAt: time.Unix(100, 0).UTC(), UpdatedAt: time.Unix(101, 0).UTC(), SafeError: code}}, s.failure
+}
+
+func TestQuoteConvertedFailureRemainsInspectable(t *testing.T) {
+	s := &service{template: "quote.converted"}
+	w := request(t, s, authorized(t), "GET", base+"/failures", "", "Bearer notifications:write", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"template_key":"quote.converted"`) || strings.Contains(w.Body.String(), "@") {
+		t.Fatalf("QUOTE_CONVERSION_NOTIFICATION_FAILURE_CONTRACT: %d %s", w.Code, w.Body)
+	}
 }
 func (s *service) Redrive(ctx context.Context, t, n, k string) (contract.RedriveReceipt, error) {
 	s.calls++

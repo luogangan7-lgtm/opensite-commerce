@@ -30,3 +30,12 @@ func TestRenderRejectsUnsafeEnvelope(t *testing.T) {
 		t.Fatal("NOTIFICATION_UNKNOWN_TEMPLATE")
 	}
 }
+
+func TestRenderQuoteConverted(t *testing.T) {
+	for _, locale := range []string{"en", "zh-TW"} {
+		m, err := Render("11111111-1111-1111-1111-111111111111", "buyer@safe.test", locale, "quote.converted", "22222222-2222-2222-2222-222222222222")
+		if err != nil || m.Subject == "" || m.Recipient != "buyer@safe.test" || m.Key == "" {
+			t.Fatalf("QUOTE_CONVERTED_NOTIFICATION_TEMPLATE: locale=%s message=%+v error=%v", locale, m, err)
+		}
+	}
+}

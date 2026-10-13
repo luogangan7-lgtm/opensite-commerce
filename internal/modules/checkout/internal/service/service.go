@@ -13,6 +13,7 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
@@ -35,6 +36,7 @@ type Service struct{ config contract.Config }
 const captureReservationMarginSeconds = 120
 
 var _ contract.Service = (*Service)(nil)
+var _ contract.ExistingOrderService = (*Service)(nil)
 
 func New(c contract.Config) *Service { return &Service{config: c} }
 func (s *Service) available() bool {
@@ -164,15 +166,7 @@ func (s *Service) Start(ctx context.Context, actor contract.AuthorizedActor, in 
 		if e != nil {
 			return e
 		}
-		accountRows, e := q.GetCheckoutLedgerAccounts(ctx, store.UUID(actor.TenantID()))
-		if e != nil {
-			return store.MapError(e)
-		}
-		configured := map[string]db.GetCheckoutLedgerAccountsRow{}
-		for _, a := range accountRows {
-			configured[a.Code] = a
-		}
-		if _, e = journal(db.AppCheckoutSession{TenantID: store.UUID(actor.TenantID()), OrderID: store.UUID(oid), Currency: total.Currency, AmountMinor: total.Amount, ItemsNetMinor: quoted.Net, TaxMinor: quoted.Tax, ShippingMinor: quoted.Shipping.Charge.Amount}, "preflight", configured); e != nil {
+		if e = preflight(ctx, q, db.AppCheckoutSession{TenantID: store.UUID(actor.TenantID()), OrderID: store.UUID(oid), Currency: total.Currency, AmountMinor: total.Amount, ItemsNetMinor: quoted.Net, TaxMinor: quoted.Tax, ShippingMinor: quoted.Shipping.Charge.Amount}); e != nil {
 			return e
 		}
 		buyer := orders.Buyer{Guest: in.BuyerContact}
@@ -191,12 +185,75 @@ func (s *Service) Start(ctx context.Context, actor contract.AuthorizedActor, in 
 			return contract.ErrConflict
 		}
 		addressSnapshot, _ := json.Marshal(in.ShippingAddress)
-		row, e = q.InsertCheckout(ctx, db.InsertCheckoutParams{AddressSnapshot: addressSnapshot, TenantID: store.UUID(actor.TenantID()), ID: store.UUID(id), ActorKind: actor.Kind(), ActorID: actor.ID(), RequestKey: in.IdempotencyKey, RequestHash: requestHash, CartID: store.UUID(cart.ID), CartVersion: cart.Version, OrderID: store.UUID(oid), Currency: total.Currency, AmountMinor: total.Amount, ItemsNetMinor: quoted.Net, TaxMinor: quoted.Tax, ShippingMinor: quoted.Shipping.Charge.Amount, PayableVersion: payable.Version})
+		row, e = q.InsertCheckout(ctx, db.InsertCheckoutParams{SourceKind: "cart", AddressSnapshot: addressSnapshot, TenantID: store.UUID(actor.TenantID()), ID: store.UUID(id), ActorKind: actor.Kind(), ActorID: actor.ID(), RequestKey: in.IdempotencyKey, RequestHash: requestHash, CartID: store.UUID(cart.ID), CartVersion: pgtype.Int8{Int64: cart.Version, Valid: true}, OrderID: store.UUID(oid), Currency: total.Currency, AmountMinor: total.Amount, ItemsNetMinor: quoted.Net, TaxMinor: quoted.Tax, ShippingMinor: quoted.Shipping.Charge.Amount, PayableVersion: payable.Version})
 		return store.MapError(e)
 	})
 	if e != nil {
 		return result, e
 	}
+	return s.createIntent(ctx, row)
+}
+
+// AdoptOrder admits only the Orders-owned sealed payable for this authorized
+// customer. The actor/key receipt is checked first so replay after payment keeps
+// the original intent. It never reads Cart/Rules or recreates the order.
+func (s *Service) AdoptOrder(ctx context.Context, actor contract.AuthorizedActor, orderID, requestKey string) (contract.Result, error) {
+	var row db.AppCheckoutSession
+	if !actor.Valid() || actor.Kind() != "customer" {
+		return contract.Result{}, contract.ErrForbidden
+	}
+	if !tenanttx.ValidTenantID(orderID) || !key(requestKey) {
+		return contract.Result{}, contract.ErrInvalid
+	}
+	if !s.available() {
+		return contract.Result{}, contract.ErrUnavailable
+	}
+	requestHash := digest(struct{ Source, OrderID, Key string }{"existing_order", orderID, requestKey})
+	e := s.run(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx, q *db.Queries) error {
+		if e := q.LockCheckoutStart(ctx, actor.TenantID()+":"+actor.Kind()+":"+actor.ID()+":"+requestKey); e != nil {
+			return store.MapError(e)
+		}
+		existing, e := q.GetCheckoutByKey(ctx, db.GetCheckoutByKeyParams{TenantID: store.UUID(actor.TenantID()), ActorKind: actor.Kind(), ActorID: actor.ID(), RequestKey: requestKey})
+		if e == nil {
+			if existing.SourceKind != "existing_order" || !bytes.Equal(existing.RequestHash, requestHash) {
+				return contract.ErrKeyReused
+			}
+			row = existing
+			return nil
+		}
+		if !errors.Is(e, pgx.ErrNoRows) {
+			return store.MapError(e)
+		}
+		payable, e := s.config.Orders.GetPayable(ctx, tx, actor.TenantID(), orderID)
+		if e != nil {
+			// Neither a missing/foreign order nor its non-payable state is disclosed.
+			if errors.Is(e, orders.ErrNotFound) || errors.Is(e, orders.ErrConflict) {
+				return contract.ErrNotFound
+			}
+			return e
+		}
+		if payable.OrderID != orderID || payable.CustomerID != actor.ID() {
+			return contract.ErrNotFound
+		}
+		if payable.Amount.Amount <= 0 || payable.Amount.Validate() != nil || payable.Version <= 0 || payable.ItemsNetMinor < 0 || payable.TaxMinor < 0 || payable.ShippingMinor < 0 {
+			return contract.ErrConflict
+		}
+		if e = preflight(ctx, q, db.AppCheckoutSession{TenantID: store.UUID(actor.TenantID()), OrderID: store.UUID(orderID), Currency: payable.Amount.Currency, AmountMinor: payable.Amount.Amount, ItemsNetMinor: payable.ItemsNetMinor, TaxMinor: payable.TaxMinor, ShippingMinor: payable.ShippingMinor}); e != nil {
+			return e
+		}
+		row, e = q.InsertCheckout(ctx, db.InsertCheckoutParams{SourceKind: "existing_order", AddressSnapshot: []byte("{}"), TenantID: store.UUID(actor.TenantID()), ID: store.UUID(uuid.NewString()), ActorKind: actor.Kind(), ActorID: actor.ID(), RequestKey: requestKey, RequestHash: requestHash, OrderID: store.UUID(orderID), Currency: payable.Amount.Currency, AmountMinor: payable.Amount.Amount, ItemsNetMinor: payable.ItemsNetMinor, TaxMinor: payable.TaxMinor, ShippingMinor: payable.ShippingMinor, PayableVersion: payable.Version})
+		return store.MapError(e)
+	})
+	if e != nil {
+		return contract.Result{}, e
+	}
+	return s.createIntent(ctx, row)
+}
+
+// createIntent is the one durable pending -> ready protocol for both sources.
+// Admission has committed before provider IO; retries use the same session key.
+func (s *Service) createIntent(ctx context.Context, row db.AppCheckoutSession) (contract.Result, error) {
+	var result contract.Result
 	if row.StartResult != nil {
 		return decodeResult(row.StartResult)
 	}
@@ -218,7 +275,7 @@ func (s *Service) Start(ctx context.Context, actor contract.AuthorizedActor, in 
 	if !validIntent(intent) || intent.Status != payment.StatusAuthorized && intent.Status != payment.StatusPending && intent.Status != payment.StatusRequiresAction {
 		return result, contract.ErrUnavailable
 	}
-	e = s.run(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx, q *db.Queries) error {
+	e = s.run(ctx, row.TenantID.String(), func(ctx context.Context, tx pgx.Tx, q *db.Queries) error {
 		current, e := q.GetCheckoutByID(ctx, db.GetCheckoutByIDParams{TenantID: row.TenantID, ID: row.ID})
 		if e != nil {
 			return store.MapError(e)
@@ -243,6 +300,21 @@ func (s *Service) Start(ctx context.Context, actor contract.AuthorizedActor, in 
 }
 func validIntent(i payment.PaymentIntentResult) bool {
 	return strings.TrimSpace(i.ProviderRef) != "" && len(i.ProviderRef) <= 512 && !strings.ContainsAny(i.ProviderRef, "\r\n\x00") && len(i.NextAction.Kind) <= 64 && len(i.NextAction.URL) <= 2048
+}
+
+// preflight uses the same journal validation before either source authorizes
+// provider IO; missing or mistyped ledger accounts fail before an intent exists.
+func preflight(ctx context.Context, q *db.Queries, row db.AppCheckoutSession) error {
+	accountRows, e := q.GetCheckoutLedgerAccounts(ctx, row.TenantID)
+	if e != nil {
+		return store.MapError(e)
+	}
+	configured := map[string]db.GetCheckoutLedgerAccountsRow{}
+	for _, a := range accountRows {
+		configured[a.Code] = a
+	}
+	_, e = journal(row, "preflight", configured)
+	return e
 }
 
 // journal records accrual and settlement in one balanced journal. Zero-valued
@@ -374,6 +446,16 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 		}
 		if (row.Phase != claimPhase && !(claimPhase == "confirming" && row.Phase == "failing")) || row.ClaimKind.String != kind || row.ClaimKey.String != eventKey {
 			return contract.ErrConflict
+		}
+		if claimPhase == "confirming" && row.Phase == "confirming" {
+			// Capture may already have succeeded before a lost response/finalize
+			// rollback. Revalidate before replaying IO, but never cancel uncertain
+			// money merely because a hold expired while recovery was pending.
+			e = s.config.Orders.LockLiveReservations(ctx, tx, tenantID, row.OrderID.String(), captureReservationMarginSeconds)
+			if errors.Is(e, orders.ErrReservationInactive) {
+				return contract.ErrRetry
+			}
+			return e
 		}
 		return nil
 	})

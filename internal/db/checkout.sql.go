@@ -58,7 +58,7 @@ func (q *Queries) GetCheckoutAttempt(ctx context.Context, arg GetCheckoutAttempt
 }
 
 const getCheckoutByID = `-- name: GetCheckoutByID :one
-SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at FROM app.checkout_sessions WHERE tenant_id=$1 AND id=$2 FOR UPDATE
+SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, source_kind FROM app.checkout_sessions WHERE tenant_id=$1 AND id=$2 FOR UPDATE
 `
 
 type GetCheckoutByIDParams struct {
@@ -94,12 +94,13 @@ func (q *Queries) GetCheckoutByID(ctx context.Context, arg GetCheckoutByIDParams
 		&i.ClaimKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceKind,
 	)
 	return i, err
 }
 
 const getCheckoutByKey = `-- name: GetCheckoutByKey :one
-SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at FROM app.checkout_sessions WHERE tenant_id=$1 AND actor_kind=$2 AND actor_id=$3 AND request_key=$4 FOR UPDATE
+SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, source_kind FROM app.checkout_sessions WHERE tenant_id=$1 AND actor_kind=$2 AND actor_id=$3 AND request_key=$4 FOR UPDATE
 `
 
 type GetCheckoutByKeyParams struct {
@@ -142,12 +143,13 @@ func (q *Queries) GetCheckoutByKey(ctx context.Context, arg GetCheckoutByKeyPara
 		&i.ClaimKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceKind,
 	)
 	return i, err
 }
 
 const getCheckoutByOrder = `-- name: GetCheckoutByOrder :one
-SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at FROM app.checkout_sessions WHERE tenant_id=$1 AND order_id=$2 FOR UPDATE
+SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, source_kind FROM app.checkout_sessions WHERE tenant_id=$1 AND order_id=$2 FOR UPDATE
 `
 
 type GetCheckoutByOrderParams struct {
@@ -183,6 +185,7 @@ func (q *Queries) GetCheckoutByOrder(ctx context.Context, arg GetCheckoutByOrder
 		&i.ClaimKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceKind,
 	)
 	return i, err
 }
@@ -266,8 +269,8 @@ func (q *Queries) GetCheckoutSettings(ctx context.Context, tenantID pgtype.UUID)
 }
 
 const insertCheckout = `-- name: InsertCheckout :one
-INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version,address_snapshot)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at
+INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version,address_snapshot,source_kind)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, source_kind
 `
 
 type InsertCheckoutParams struct {
@@ -278,7 +281,7 @@ type InsertCheckoutParams struct {
 	RequestKey      string      `json:"request_key"`
 	RequestHash     []byte      `json:"request_hash"`
 	CartID          pgtype.UUID `json:"cart_id"`
-	CartVersion     int64       `json:"cart_version"`
+	CartVersion     pgtype.Int8 `json:"cart_version"`
 	OrderID         pgtype.UUID `json:"order_id"`
 	Currency        string      `json:"currency"`
 	AmountMinor     int64       `json:"amount_minor"`
@@ -287,6 +290,7 @@ type InsertCheckoutParams struct {
 	ShippingMinor   int64       `json:"shipping_minor"`
 	PayableVersion  int64       `json:"payable_version"`
 	AddressSnapshot []byte      `json:"address_snapshot"`
+	SourceKind      string      `json:"source_kind"`
 }
 
 func (q *Queries) InsertCheckout(ctx context.Context, arg InsertCheckoutParams) (AppCheckoutSession, error) {
@@ -307,6 +311,7 @@ func (q *Queries) InsertCheckout(ctx context.Context, arg InsertCheckoutParams) 
 		arg.ShippingMinor,
 		arg.PayableVersion,
 		arg.AddressSnapshot,
+		arg.SourceKind,
 	)
 	var i AppCheckoutSession
 	err := row.Scan(
@@ -334,6 +339,7 @@ func (q *Queries) InsertCheckout(ctx context.Context, arg InsertCheckoutParams) 
 		&i.ClaimKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceKind,
 	)
 	return i, err
 }
@@ -560,7 +566,7 @@ func (q *Queries) LockCheckoutStart(ctx context.Context, lockKey string) error {
 }
 
 const updateCheckout = `-- name: UpdateCheckout :one
-UPDATE app.checkout_sessions SET phase=$3,provider_ref=$4,start_result=$5,final_result=$6,claim_kind=$7,claim_key=$8,updated_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2 RETURNING tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at
+UPDATE app.checkout_sessions SET phase=$3,provider_ref=$4,start_result=$5,final_result=$6,claim_kind=$7,claim_key=$8,updated_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2 RETURNING tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, source_kind
 `
 
 type UpdateCheckoutParams struct {
@@ -611,6 +617,7 @@ func (q *Queries) UpdateCheckout(ctx context.Context, arg UpdateCheckoutParams) 
 		&i.ClaimKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceKind,
 	)
 	return i, err
 }

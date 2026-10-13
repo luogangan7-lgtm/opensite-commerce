@@ -13,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 )
 
 func main() {
@@ -30,7 +29,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer closePublic()
-	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger, Routes: routes, Quotes: quotes.NewApplication(nil)})
+	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger, Routes: routes})
 	if err != nil {
 		logger.Error("API configuration failed", "error", err)
 		os.Exit(1)
