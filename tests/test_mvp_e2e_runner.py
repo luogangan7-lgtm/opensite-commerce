@@ -1,0 +1,74 @@
+"""CI-only harness safety: refuse external work before validating Actions context.
+
+Runs in the foundation CI via test_ops_drill; no containers are needed for these
+negative cases. A fake Docker executable witnesses any attempted side effect.
+"""
+import os
+import importlib.util
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+
+class CIOnlyRunnerTests(unittest.TestCase):
+    def assert_refused(self, context):
+        runner = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            marker = directory / 'docker-called'
+            docker = directory / 'docker'
+            docker.write_text('#!/bin/sh\nprintf called > "$E2E_SIDE_EFFECT_MARKER"\nexit 99\n')
+            docker.chmod(0o700)
+            environment = {
+                'PATH': str(directory) + os.pathsep + os.defpath,
+                'E2E_SIDE_EFFECT_MARKER': str(marker),
+                **context,
+            }
+            result = subprocess.run(
+                [sys.executable, str(runner), '--receipt-dir', str(directory / 'receipt')],
+                env=environment, text=True, capture_output=True, timeout=10,
+            )
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn('GitHub Actions', result.stderr)
+            self.assertFalse(marker.exists(), 'Docker ran before CI authorization')
+            self.assertFalse((directory / 'receipt').exists(), 'receipt created before CI authorization')
+
+    def test_missing_actions_context_cannot_start_stack(self):
+        self.assert_refused({})
+
+    def test_generic_ci_flag_cannot_start_stack(self):
+        self.assert_refused({'CI': 'true', 'GITHUB_ACTIONS': 'false',
+                             'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1'})
+
+    def test_invalid_run_identity_cannot_start_stack(self):
+        self.assert_refused({'CI': 'true', 'GITHUB_ACTIONS': 'true',
+                             'GITHUB_RUN_ID': 'not-number', 'GITHUB_RUN_ATTEMPT': '1'})
+
+
+class BrowserReceiptTests(unittest.TestCase):
+    def verify(self, report):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('mvp_e2e_runner', source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.verify_browser_report(report)
+
+    def test_forged_pass_totals_without_executed_assertions_are_rejected(self):
+        with self.assertRaises(RuntimeError):
+            self.verify({'stats': {'expected': 20, 'skipped': 4, 'unexpected': 0, 'flaky': 0},
+                         'suites': []})
+
+    def test_arbitrary_skipped_assertion_cannot_become_a_declared_gap(self):
+        report = {'stats': {'expected': 20, 'skipped': 4, 'unexpected': 0, 'flaky': 0},
+                  'suites': [{'specs': [{'title': 'real API denies anonymous catalog reads and creation before data access',
+                                         'file': 'admin.spec.ts', 'tests': [{'projectName': 'desktop',
+                                         'expectedStatus': 'skipped', 'annotations': [{'type': 'fixme'}],
+                                         'results': [{'status': 'skipped'}]}]}]}]}
+        with self.assertRaises(RuntimeError):
+            self.verify(report)
+
+
+if __name__ == '__main__':
+    unittest.main()
