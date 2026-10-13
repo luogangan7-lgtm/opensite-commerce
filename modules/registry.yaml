@@ -368,7 +368,8 @@
         "tests/db_security_hardening.sql",
         "tests/db_security_services.sql",
         "tests/db_security_audit.sql",
-        "tests/db_role_matrix.sql"
+        "tests/db_role_matrix.sql",
+        "tests/db_ops_metrics.sql"
       ],
       "scopes": [],
       "note": "Owns cross-cutting role and policy migrations, not application tables. Security hardening never transfers table ownership."
@@ -969,7 +970,14 @@
       ]
     },
     {
-      "file": "migrations/025_identity_auth.sql",
+      "file": "migrations/025_ops_metrics.sql",
+      "owner": "platform-security",
+      "touches_tables": [
+        "outbox_events"
+      ]
+    },
+    {
+      "file": "migrations/026_identity_auth.sql",
       "owner": "identity",
       "touches_tables": [
         "users",

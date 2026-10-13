@@ -73,6 +73,7 @@ expected = [
     'db_reliability_limits.sql',
     'db_cart.sql',
     'db_storefront.sql',
+    'db_ops_metrics.sql',
     'db_identity_auth.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
@@ -231,6 +232,7 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('QUEUE_CROSS_TENANT_READ', 'db_queue.sql'),
                          ('RELIABILITY_LIMITS_GATE', 'db_reliability_limits.sql'),
                          ('CART_EXPECTED_REFUSAL', 'db_cart.sql'),
+                         ('OPS_METRICS_GATE', 'db_ops_metrics.sql'),
                          ('IDENTITY_GATE', 'db_identity_auth.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)

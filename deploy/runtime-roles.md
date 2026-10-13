@@ -1,16 +1,18 @@
 # Provision separate PostgreSQL login identities (required before production API)
 
-Migrations through `*_identity_auth.sql` create these restricted **NOLOGIN** roles.
-All are NOSUPERUSER/NOBYPASSRLS/NOCREATEDB/NOCREATEROLE/NOREPLICATION/NOINHERIT,
-with no outward memberships. Provision LOGIN credentials outside migrations.
+The migrations create restricted **NOLOGIN** group roles, including:
+
+Group capabilities are NOSUPERUSER/NOBYPASSRLS/NOCREATEDB/NOCREATEROLE/
+NOREPLICATION/NOINHERIT with no outward memberships. Provision LOGIN
+credentials outside migrations.
 
 | Group role | Purpose | Safety boundary |
 |---|---|---|
 | `app_runtime` | Tenant-scoped domain queries | FORCE RLS, no credential hashes, no DDL/DELETE/TRUNCATE |
 | `app_auth` | Credential/session lookup | Not exposed to public/Agent query APIs |
 | `app_domain_resolver` | Verified hostname lookup | No credential or media access |
+| `app_media_service` | Controlled media lifecycle queries | Separate trusted service pool; no general runtime credential access |
 | `app_domain_verifier` | Verify/retire domain mappings | Dedicated private verifier LOGIN; tenant RLS |
-| `app_media_service` | Upload/blob readiness and media visibility | Dedicated private media LOGIN; tenant RLS |
 | `app_publisher` | Execute seal/publish commands | Private publisher LOGIN; no direct pointer DML |
 | `app_publish_executor` | Own seal/publish functions | No LOGIN or members; never provision credentials |
 | `app_outbox_worker` | Claim/complete/fail delivery commands | Private worker LOGIN; fenced function capability |
@@ -37,7 +39,9 @@ credential writer has only the stated cleanup columns and counter DELETE. `app_a
 only tenant `id,status` for suspension checks. API keys remain tenant-bound.
 
 **No credentials or application LOGIN role is created by migrations.** A
-production operator must provision separate login identities out-of-band.
+production operator must provision separate login identities out-of-band. The
+local Compose migrator provisions environment-backed logins for these four API
+capabilities and separate queue/outbox capabilities; see [README.md](README.md) for the rehearsal and password policy.
 Use `psql` interactively with a privileged administrator and commands such as:
 
 ```sql
@@ -88,7 +92,7 @@ unnecessary.
 V1 supports exactly one OpenSite application database per PostgreSQL cluster.
 All capability roles (`app_runtime`, `app_auth`, `app_customer_auth`, ...) are
 cluster-wide, so a second OpenSite database on the same cluster would share
-their memberships and grants. Deployment preflight will refuse a cluster that
+their memberships and grants. The local deployment preflight refuses a cluster that
 already hosts another OpenSite database, and operators must `REVOKE CONNECT ON
 DATABASE ... FROM PUBLIC` so capability logins reach only their own database.
 
@@ -97,8 +101,9 @@ DATABASE ... FROM PUBLIC` so capability logins reach only their own database.
 The River worker login may SET ROLE only to `app_queue_worker`; optional Outbox
 composition uses a separate login allowed only `app_outbox_worker`. Neither is
 permitted to SET ROLE to either DDL owner or `app_outbox_tenant_broker`.
-The broker is NOLOGIN/NOBYPASSRLS and has no memberships; its sole controlled
-function enumerates active Outbox tenant IDs using only tenant_id/status SELECT.
+The broker is NOLOGIN/NOBYPASSRLS and has no memberships; one controlled function enumerates active Outbox tenant IDs; a separate
+aggregate-only metrics function exposes backlog/DLQ counts and age using
+only tenant_id/status/created_at SELECT.
 It has no payload or table-wide privilege. Queue ownership remains isolated in
 `app_river_migrator`; the application and upstream migration histories are separate.
 `OUTBOX_ENABLED` defaults off and a missing Sender fails before any claim.

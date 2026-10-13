@@ -151,13 +151,14 @@ CATALOG_DB=""
 CART_DB=""
 QUEUE_DB=""
 LIMITS_DB=""
+OPS_METRICS_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
 IDENTITY_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$IDENTITY_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$IDENTITY_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -750,6 +751,7 @@ for f in migrations/[0-9][0-9][0-9]_*.sql; do
 done
 river_db "$DB" --verify
 db "$DB" -f tests/db_reliability_limits.sql >/dev/null
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; LIMITS_DB=""
 pass 'reliability limits upgrade preserves delivery identity, retires exhausted work, accepts live final ACK'
@@ -893,6 +895,44 @@ if ! db "$STOREFRONT_DB" < tests/db_storefront.sql >/dev/null || ! db "$STOREFRO
 else pass 'storefront upgrade exposes current sealed pinned pages; draft witnesses stay hidden'; fi
 admin -c "DROP DATABASE $STOREFRONT_DB" >/dev/null; STOREFRONT_DB=""
 
+# Every module step above reports through bad(); aggregate them before the overall PASS.
+[[ $fail -eq 0 ]] || exit 1
+# C23a: add only the metrics capability over populated pending and DLQ-only
+# tenants; preserve event identity/content and every prior forward migration.
+ops_metrics=(migrations/[0-9][0-9][0-9]_ops_metrics.sql)
+[[ ${#ops_metrics[@]} == 1 ]] || { bad 'exactly one ops-metrics migration required'; exit 1; }
+OPS_METRICS_DB=upgrade_ops_metrics_$$; DB=$OPS_METRICS_DB
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${ops_metrics[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('ops-existing-pending') RETURNING id AS ta \gset
+INSERT INTO app.tenants(name) VALUES('ops-existing-DLQ-only') RETURNING id AS tb \gset
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key,status,created_at)
+ VALUES(:'ta','ops.legacy','{"witness":"pending"}','test','legacy-pending','pending',clock_timestamp()-interval '1 minute'),
+       (:'tb','ops.legacy','{"witness":"dead"}','test','legacy-dead','dead_letter',clock_timestamp()-interval '1 hour');
+SQL
+apply_forward "$DB" "${ops_metrics[0]}"
+result=$(db "$DB" <<'SQL'
+SELECT 'OPS_PRESERVED='||count(*)||'|'||count(*) FILTER(WHERE status='pending' AND payload->>'witness'='pending')||'|'||
+ count(*) FILTER(WHERE status='dead_letter' AND payload->>'witness'='dead') FROM app.outbox_events;
+SET ROLE app_outbox_worker;
+SELECT 'OPS_METRICS='||pending||'|'||dead_letters||'|'||(oldest_pending_age_seconds>=60) FROM app.outbox_metrics();
+RESET ROLE;
+SQL
+)
+[[ $result == *'OPS_PRESERVED=2|1|1'* && $result == *'OPS_METRICS=1|1|true'* ]] || bad "ops-metrics populated upgrade: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${ops_metrics[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+river_db "$DB" --verify
+admin -c "DROP DATABASE $DB"; OPS_METRICS_DB=""
+pass 'ops metrics preserves pending/DLQ-only tenants and exposes only aggregate worker gauges'
 # C-02a: discover the identity upgrade by suffix. Seed only after ALL filename-
 # ordered predecessors; retain a full-row snapshot so ids, hashes and state are
 # independently compared, then apply every later module before the exact matrix.
@@ -999,6 +1039,5 @@ db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 IDENTITY_DB=""
 
-# Every module step above reports through bad(); aggregate them before the overall PASS.
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart and storefront upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront and ops metrics upgrade gates'
