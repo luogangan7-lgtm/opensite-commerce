@@ -35,12 +35,7 @@ func Open(ctx context.Context, dsn string) (*Repository, error) {
 }
 func (r *Repository) Close(ctx context.Context) error { return r.runner.Close(ctx) }
 func (r *Repository) run(ctx context.Context, fn func(context.Context, *db.Queries) error) error {
-	err := r.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		q := db.New(tx)
-		valid, e := q.ValidateAuthConnection(ctx)
-		if e != nil || !valid.Valid || !valid.Bool {
-			return auth.ErrUnavailable
-		}
+	err := r.runner.RunAuthentication(ctx, func(ctx context.Context, q *db.Queries) error {
 		// Only Router's private stamp can select the tenant. Pre-admission
 		// lookups/startup remain global and never consume request path values.
 		if tenant, e := platform.AuthorizedTenant(ctx); e == nil {

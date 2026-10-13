@@ -13,10 +13,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 )
 
-// IdentityRunner keeps the dedicated LOGIN private; callers validate its exact
-// capabilities through sqlc inside the transaction before performing work.
+// IdentityRunner keeps the dedicated LOGIN private. Authentication work uses
+// its role-admitted query port; maintenance callers validate their capabilities.
 type IdentityRunner struct {
 	pool             *pgxpool.Pool
 	operationTimeout time.Duration
@@ -74,6 +75,28 @@ func openIdentity(ctx context.Context, dsn string, maxConns int32, operationTime
 // InMaintenance runs global identity work under the connecting LOGIN, without
 // tenant scope. A callback error rolls back; nil commits. Never retain tx.
 func (r *IdentityRunner) InMaintenance(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
+	return r.inMaintenance(ctx, fn)
+}
+
+// RunAuthentication exposes only generated queries after checking the exact
+// dedicated app_auth LOGIN inside this transaction. Pre-admission identity
+// lookups have no tenant; admitted callers still set and revalidate their
+// private tenant stamp before any tenant work. Never retain the queries.
+func (r *IdentityRunner) RunAuthentication(ctx context.Context, fn func(context.Context, *db.Queries) error) error {
+	if fn == nil {
+		return errors.New("authentication callback is nil")
+	}
+	return r.inMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		q := db.New(tx)
+		valid, err := q.ValidateAuthConnection(ctx)
+		if err != nil || !valid.Valid || !valid.Bool {
+			return errors.New("authentication database is unavailable")
+		}
+		return fn(ctx, q)
+	})
+}
+
+func (r *IdentityRunner) inMaintenance(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
 	if r == nil || r.pool == nil {
 		return errors.New("identity database is unavailable")
 	}
