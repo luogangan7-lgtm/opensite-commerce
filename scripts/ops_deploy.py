@@ -130,6 +130,8 @@ def install_migrations(env):
                     ['bash', str(ROOT / 'scripts/migrate.sh')],
                     ['/usr/local/bin/river-migrate', '--verify']):
         result = subprocess.run(command, env=env, cwd=ROOT, capture_output=True, text=True, timeout=300)
+        if result.returncode == 7 and command[-1].endswith('migrate.sh'):
+            raise DeployError('MIGRATION_REFUSED_PENDING: migrations/pending/ is not empty; land them with scripts/land_migration.sh before deploying')
         if result.returncode:
             raise DeployError('MIGRATION_FAILED: inspect source/checksum history with the migration gate')
 

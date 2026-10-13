@@ -9,7 +9,9 @@ integrator). Depends on the stdlib only.
 Invariants: numbered files are never renamed/edited; numbered history must be
 contiguous 001..N; order = sorted stable-id, overridden only by explicit
 `-- depends-on: <stable-id>` header lines; unknown deps, cycles, duplicate ids
-or names fail closed (exit 2) before anything is written.
+or names fail closed (exit 2) before anything is written. Every pending file
+starts with `-- stable-id: <id>`; land is a byte-identical move, so the header
+lets depends-on lines resolve after their target landed and keeps checksums.
 """
 import re
 import shutil
@@ -20,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NUMBERED = re.compile(r"([0-9]{3})_([a-z][a-z0-9_]*)\.sql")
 PENDING = re.compile(r"([a-z0-9][a-z0-9-]*)_([a-z][a-z0-9_]*)\.sql")
 DEPENDS = re.compile(r"--\s*depends-on:\s*(\S+)\s*$")
+STABLE_ID = re.compile(r"-- stable-id: ([a-z0-9][a-z0-9-]*)\n")
 REFERENCE_FILES = ("modules/registry.yaml", "sqlc.yaml")
 
 
@@ -38,27 +41,45 @@ def numbered(root):
     return files
 
 
+def landed_ids(files):
+    """Stable-ids carried (from pending/) on the first line of landed files."""
+    ids = set()
+    for path in files:
+        with path.open() as handle:
+            match = STABLE_ID.fullmatch(handle.readline())
+        if match:
+            ids.add(match[1])
+    return ids
+
+
 def ordered_pending(root):
     """Pending files in apply order: Kahn's algorithm, ties broken by stable-id."""
     directory = root / "migrations" / "pending"
     entries = sorted(directory.iterdir()) if directory.is_dir() else []
-    landed_names = {NUMBERED.fullmatch(p.name)[2] for p in numbered(root)}
+    landed_files = numbered(root)
+    landed_names = {NUMBERED.fullmatch(p.name)[2] for p in landed_files}
+    landed = landed_ids(landed_files)
     by_id, deps, names = {}, {}, set()
     for path in entries:
         match = PENDING.fullmatch(path.name)
         if not match or not path.is_file():
             raise PendingError(f"Invalid pending migration: {path.name} (want <stable-id>_<name>.sql)")
         stable_id, name = match[1], match[2]
-        if stable_id in by_id:
+        with path.open() as handle:
+            header = STABLE_ID.fullmatch(handle.readline())
+        if not header or header[1] != stable_id:
+            raise PendingError(f"{path.name}: first line must be '-- stable-id: {stable_id}'")
+        if stable_id in by_id or stable_id in landed:
             raise PendingError(f"Duplicate pending stable-id: {stable_id}")
         if name in names or name in landed_names:
             raise PendingError(f"Duplicate migration name: {name}")
         by_id[stable_id], names = path, names | {name}
         deps[stable_id] = {m[1] for line in path.read_text().splitlines() if (m := DEPENDS.match(line.strip()))}
     for stable_id, required in deps.items():
-        unknown = sorted(required - by_id.keys())
+        unknown = sorted(required - by_id.keys() - landed)
         if unknown:
-            raise PendingError(f"{stable_id}: unknown depends-on {', '.join(unknown)} (landed migrations need no depends-on)")
+            raise PendingError(f"{stable_id}: unknown depends-on {', '.join(unknown)}")
+        deps[stable_id] = required - landed  # already landed = satisfied
     order, done = [], set()
     while len(order) < len(by_id):
         ready = sorted(i for i in by_id if i not in done and deps[i] <= done)
