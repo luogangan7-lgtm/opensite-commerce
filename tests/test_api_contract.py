@@ -121,10 +121,16 @@ class APIContractTests(unittest.TestCase):
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
         quote_operations = {"submitInquiry", "createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote", "getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote"}
+        orders = {"listOrders", "getOrder"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations |
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders |
                          {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
                           "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession"})
+        for name in orders:
+            path, method, operation = ops[name]
+            self.assertTrue(path.startswith("/api/v1/t/{tenant_id}/orders"))
+            self.assertEqual((method, operation["x-opensite-access"], operation["x-required-scope"]),
+                             ("get", "AdminOrAPIKey", "orders:read"))
         for name in expected - {"health", "getPublishedSite"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
