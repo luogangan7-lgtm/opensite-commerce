@@ -18,7 +18,7 @@ import (
 )
 
 type Config struct {
-	httpapi.CommandConfig
+	httpapi.SubjectCommandConfig
 	Service contract.CSVPort
 }
 type Handler struct {
@@ -107,7 +107,7 @@ func (h *Handler) ImportCatalogCSV(ctx context.Context, r httpapi.ImportCatalogC
 	if len(raw) > contract.CSVMaxBytes {
 		return nil, csvError(contract.ErrCSVLimit)
 	}
-	response, err := httpapi.Command(ctx, h.config.CommandConfig, tenant, "importCatalogCSV", base+"/import", map[string]string{"tenant_id": tenant}, func(ctx context.Context, tx pgx.Tx, _ httpapi.Subject) (idempotency.Response, error) {
+	response, err := httpapi.Command(ctx, h.config.SubjectCommandConfig, tenant, "importCatalogCSV", base+"/import", map[string]string{"tenant_id": tenant}, func(ctx context.Context, tx pgx.Tx, _ httpapi.Subject) (idempotency.Response, error) {
 		return importResponse(h.config.Service.Import(ctx, tx, bytes.NewReader(raw)))
 	})
 	return commandResponse{response}, err

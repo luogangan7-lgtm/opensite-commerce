@@ -29,6 +29,20 @@ class APIContractTests(unittest.TestCase):
     def setUp(self):
         self.api = yaml.safe_load((ROOT / "api/openapi.yaml").read_text())
 
+    def test_signed_cms_preview_contract(self):
+        self.assertTrue(contract.validate_contract(self.api))
+        for fault in ("no bearer", "optional bearer", "cache", "index", "scope", "other public"):
+            with self.subTest(fault=fault):
+                broken = copy.deepcopy(self.api)
+                _, _, op = operations(broken)["getSitePreview"]
+                if fault == "no bearer": op["parameters"] = []
+                elif fault == "optional bearer": op["parameters"][0]["required"] = False
+                elif fault == "cache": op["responses"]["200"]["headers"]["Cache-Control"]["schema"]["const"] = "public"
+                elif fault == "index": del op["responses"]["200"]["headers"]["X-Robots-Tag"]
+                elif fault == "scope": op["x-required-scope"] = "cms:write"
+                elif fault == "other public": op["operationId"] = "arbitraryPublicTenantRead"
+                with self.assertRaises(ValueError): contract.validate_contract(broken)
+
     def test_cart_is_strict_storefront_contract(self):
         ops = operations(self.api)
         for name in ("createCart", "getCart", "setCartLine", "deleteCartLine"):
@@ -121,12 +135,16 @@ class APIContractTests(unittest.TestCase):
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
         quote_operations = {"submitInquiry", "createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote", "getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote"}
+        cms = {"createSiteDraft", "getSiteDraft", "listDraftPages", "createDraftPage", "getDraftPage",
+               "updateDraftPage", "deleteDraftPage", "updateDraftNavigation", "applyPageOperations",
+               "validateSiteDraft", "publishSiteDraft", "createSitePreviewToken", "getSiteReleaseHistory",
+               "restoreSiteRelease", "getSitePreview"}
         orders = {"listOrders", "getOrder"}
         data_rights = {"requestCustomerDataExport", "getCustomerDataExport",
                        "downloadCustomerDataExport", "eraseCustomerData"}
         csv = {"preflightCatalogCSV", "importCatalogCSV", "exportCatalogCSV"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | data_rights | csv |
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | cms | data_rights | csv |
                          {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
                           "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession"})
         for name in data_rights | csv:
@@ -143,6 +161,15 @@ class APIContractTests(unittest.TestCase):
             self.assertTrue(path.startswith("/api/v1/t/{tenant_id}/orders"))
             self.assertEqual((method, operation["x-opensite-access"], operation["x-required-scope"]),
                              ("get", "AdminOrAPIKey", "orders:read"))
+        for name in cms - {"getSitePreview"}:
+            _, method, operation = ops[name]
+            self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
+            self.assertEqual(operation["x-required-scope"],
+                             "cms:publish" if name in {"publishSiteDraft", "restoreSiteRelease"} else "cms:write")
+            if method != "get":
+                self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, operation["parameters"])
+                if name != "createSiteDraft":
+                    self.assertIn({"$ref": "#/components/parameters/IfMatch"}, operation["parameters"])
         for name in expected - {"health", "getPublishedSite"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")

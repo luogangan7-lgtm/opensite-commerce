@@ -19,7 +19,7 @@ import (
 )
 
 type Config struct {
-	httpapi.CommandConfig
+	httpapi.SubjectCommandConfig
 	Service contract.Service
 	Enqueue func(context.Context, pgx.Tx, string) error
 }
@@ -91,7 +91,7 @@ func (h *Handler) RequestCustomerDataExport(ctx context.Context, r httpapi.Reque
 	if h.config.Service == nil || h.config.Enqueue == nil {
 		return nil, httpapi.Unavailable()
 	}
-	response, err := httpapi.Command(ctx, h.config.CommandConfig, tenant, "requestCustomerDataExport", base+"/data-exports", map[string]string{"tenant_id": tenant, "customer_id": customer}, func(ctx context.Context, tx pgx.Tx, subject httpapi.Subject) (idempotency.Response, error) {
+	response, err := httpapi.Command(ctx, h.config.SubjectCommandConfig, tenant, "requestCustomerDataExport", base+"/data-exports", map[string]string{"tenant_id": tenant, "customer_id": customer}, func(ctx context.Context, tx pgx.Tx, subject httpapi.Subject) (idempotency.Response, error) {
 		request, err := h.config.Service.RequestExport(ctx, tx, tenant, contract.RequestInput{ID: uuid.NewString(), CustomerID: customer, ActorKind: subject.Kind, ActorID: subject.ID})
 		if err != nil {
 			return idempotency.Response{}, privacyError(err)
@@ -161,7 +161,7 @@ func (h *Handler) EraseCustomerData(ctx context.Context, r httpapi.EraseCustomer
 	if h.config.Service == nil {
 		return nil, httpapi.Unavailable()
 	}
-	response, err := httpapi.Command(ctx, h.config.CommandConfig, tenant, "eraseCustomerData", base+"/data-erasure", map[string]string{"tenant_id": tenant, "customer_id": customer}, func(ctx context.Context, tx pgx.Tx, subject httpapi.Subject) (idempotency.Response, error) {
+	response, err := httpapi.Command(ctx, h.config.SubjectCommandConfig, tenant, "eraseCustomerData", base+"/data-erasure", map[string]string{"tenant_id": tenant, "customer_id": customer}, func(ctx context.Context, tx pgx.Tx, subject httpapi.Subject) (idempotency.Response, error) {
 		result, err := h.config.Service.EraseTx(ctx, tx, tenant, contract.EraseInput{CustomerID: customer, ActorKind: subject.Kind, ActorID: subject.ID})
 		if err != nil {
 			return idempotency.Response{}, privacyError(err)

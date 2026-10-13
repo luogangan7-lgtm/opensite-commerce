@@ -169,7 +169,7 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 	}
 	failEnqueue := false
 	cleanupService := &cleanupFailure{Service: svc}
-	cfg := datarightshttp.Config{Service: cleanupService, CommandConfig: httpapi.CommandConfig{Run: run, Subject: subject, Responses: responses}, Enqueue: func(ctx context.Context, tx pgx.Tx, id string) error {
+	cfg := datarightshttp.Config{Service: cleanupService, SubjectCommandConfig: httpapi.SubjectCommandConfig{Run: run, Subject: subject, Responses: responses}, Enqueue: func(ctx context.Context, tx pgx.Tx, id string) error {
 		if failEnqueue {
 			return producer.CustomerExportTx(ctx, tx, "invalid")
 		}

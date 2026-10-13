@@ -57,7 +57,7 @@ func (s *service) Download(context.Context, string, string, string, string) ([]b
 func makeRouter(t *testing.T, a httpapi.Authenticator, svc *service, resolver httpapi.SubjectResolver, logs io.Writer) *httpapi.Router {
 	t.Helper()
 	r := httpapi.New(a, slog.New(slog.NewTextHandler(logs, nil)))
-	cfg := datarightshttp.Config{Service: svc, CommandConfig: httpapi.CommandConfig{Subject: resolver, Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }}}
+	cfg := datarightshttp.Config{Service: svc, SubjectCommandConfig: httpapi.SubjectCommandConfig{Subject: resolver, Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }}}
 	for _, route := range datarightshttp.New(cfg).Routes() {
 		if err := r.Register(route.Spec, route.Handler); err != nil {
 			t.Fatal(err)

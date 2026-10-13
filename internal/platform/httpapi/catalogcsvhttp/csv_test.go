@@ -51,7 +51,7 @@ func TestCSVAdmission(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := &spy{}
-			cfg := catalogcsvhttp.Config{Service: svc, CommandConfig: httpapi.CommandConfig{Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }}}
+			cfg := catalogcsvhttp.Config{Service: svc, SubjectCommandConfig: httpapi.SubjectCommandConfig{Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }}}
 			if tc.subject {
 				cfg.Subject = func(context.Context) (httpapi.Subject, error) {
 					return httpapi.Subject{Kind: "api_key", ID: tenant}, nil
