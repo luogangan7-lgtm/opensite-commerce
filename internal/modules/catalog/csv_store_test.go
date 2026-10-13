@@ -6,11 +6,11 @@ package catalog
 import (
 	"context"
 	"errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog/contract"
 )
 
@@ -31,17 +31,17 @@ func (tx *csvTestTx) QueryRow(_ context.Context, q string, args ...any) pgx.Row 
 	tx.order = append(tx.order, "query")
 	return tx.row(q, args)
 }
-func (tx *csvTestTx) Exec(_ context.Context, q string, args ...any) (pgconn.CommandTag, error) {
+func (tx *csvTestTx) Exec(_ context.Context, q string, args ...any) (pgxadapter.CommandTag, error) {
 	if strings.Contains(q, "pg_advisory_xact_lock") {
 		tx.order = append(tx.order, "lock")
 		tx.locked = append(tx.locked, args[1].([]string)...)
-		return pgconn.NewCommandTag("SELECT 1"), nil
+		return pgxadapter.NewCommandTag("SELECT 1"), nil
 	}
 	tx.writes++
 	if tx.fail != nil {
-		return pgconn.CommandTag{}, tx.fail
+		return pgxadapter.CommandTag{}, tx.fail
 	}
-	return pgconn.NewCommandTag("INSERT 0 1"), nil
+	return pgxadapter.NewCommandTag("INSERT 0 1"), nil
 }
 func csvNewRows(q string, args []any) pgx.Row {
 	return csvTestRow(func(dest ...any) error {

@@ -14,7 +14,6 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights"
 	rights "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
@@ -350,7 +349,7 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 		_, err := tx.Exec(ctx, "SELECT app.data_rights_build_export($1::uuid)", created.RequestID)
 		return err
 	})
-	var pgerr *pgconn.PgError
+	var pgerr *pgxadapter.PgError
 	if !errors.As(err, &pgerr) || pgerr.Code != "42501" {
 		t.Fatal("queue role unexpectedly has privacy capability")
 	}

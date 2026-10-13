@@ -18,7 +18,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -137,7 +136,7 @@ func TestPGCSVAtomicRoundTripAndIsolation(t *testing.T) {
 		_, err := tx.Exec(ctx, `INSERT INTO app.products(tenant_id,product_code) VALUES($1::uuid,'RLS-FORBIDDEN')`, b)
 		return err
 	})
-	var pgErr *pgconn.PgError
+	var pgErr *pgxadapter.PgError
 	if !errors.As(rlsErr, &pgErr) || pgErr.Code != "42501" {
 		t.Fatalf("RLS wrong-tenant INSERT should fail 42501, got %v", rlsErr)
 	}
