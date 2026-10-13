@@ -25,6 +25,12 @@ func TestRunAuthorizedRejectsUnstampedContext(t *testing.T) {
 			t.Fatal("unstamped request reached database callback")
 		}
 	}
+	for _, run := range []func(context.Context, string, func(context.Context, pgx.Tx) error) error{runner.RunAuthorizedTx, runner.RunAuthorizedTxSnapshot} {
+		err := run(context.Background(), "11111111-1111-1111-1111-111111111111", func(context.Context, pgx.Tx) error { called = true; return nil })
+		if err == nil || called {
+			t.Fatal("unstamped command reached database callback")
+		}
+	}
 }
 
 func TestRunAuthorizedTxRejectsUnstampedContext(t *testing.T) {

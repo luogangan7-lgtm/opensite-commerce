@@ -1,4 +1,4 @@
-// Package bootstrap wires catalog, media, cart, orders, fulfillment/returns, injected routes and operational telemetry.
+// Package bootstrap wires catalog, media, cart, orders, CMS, fulfillment/returns and operational telemetry.
 // Dependencies: module constructors, platform/httpapi and observability; caller: cmd/api.
 // It owns no business tables or pools. Registration errors refuse startup; request
 // contexts are bounded, route snapshots immutable and metric labels nonsensitive.
@@ -18,6 +18,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
@@ -40,6 +41,7 @@ type Config struct {
 	Quotes                   quoteshttp.QuotesService
 	QuotesBuyerAuthenticator httpapi.Authenticator
 	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
+	CMS                      publish.CMSHTTPConfig
 	Notifications            notificationcontract.Service
 }
 
@@ -63,6 +65,7 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, fulfillment.NewHTTP(config.Fulfillment).Routes()...)
 	routes = append(routes, returns.NewHTTP(config.Returns).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
+	routes = append(routes, publish.NewCMSHandler(config.CMS).Routes()...)
 	if config.Quotes != nil {
 		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
 	}
@@ -133,9 +136,8 @@ func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, s
 	return a.staff.Authenticate(ctx, r, spec)
 }
 
-// ResolveActor forwards the selected, authenticated staff principal. Storefront
-// and legacy authenticators have no staff projection; actor-requiring commands
-// still reject an absent actor rather than deriving one from client input.
+// ResolveActor preserves the identity projection of the selected staff
+// authenticator. It never manufactures an actor from an HTTP field.
 func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
 	if spec.Access == httpapi.Storefront {
 		return httpapi.Actor{}, nil

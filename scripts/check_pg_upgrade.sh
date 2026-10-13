@@ -149,6 +149,7 @@ ORDERS_DB=""
 STOREFRONT_DB=""
 NOTIFICATIONS_DB=""
 QUOTES_DB=""
+CMS_DB=""
 CATALOG_DB=""
 CART_DB=""
 QUEUE_DB=""
@@ -162,7 +163,7 @@ FULFILLMENT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$FULFILLMENT_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$FULFILLMENT_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1156,6 +1157,34 @@ if ! db "$QUOTES_DB" < tests/db_quotes.sql >/dev/null || ! db "$QUOTES_DB" < tes
 else pass 'quotes forward ALTER preserves existing contact inquiry and runtime lifecycle/grants'; fi
 admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
 
+
+# Controlled CMS upgrade preserves populated legacy drafts/releases and adds
+# capability-fenced managed drafts without rewriting predecessor migrations.
+cms=(migrations/[0-9][0-9][0-9]_cms_publish.sql)
+[[ ${#cms[@]} == 1 ]] || { echo 'FAIL: exactly one CMS publish migration required' >&2; exit 1; }
+CMS_DB=cms_upgrade_$$
+admin -c "CREATE DATABASE $CMS_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${cms[0]} ]] || break
+ apply_forward "$CMS_DB" "$f"
+done
+db "$CMS_DB" < tests/fixtures/storefront_seed.sql >/dev/null
+before=$(db "$CMS_DB" -c "SELECT count(*)||'|'||encode(sha256(convert_to(jsonb_agg(jsonb_build_array(tenant_id,site_id,id,base_release_id,revision,status) ORDER BY id)::text,'UTF8')),'hex') FROM app.site_drafts;")
+if red=$(db "$CMS_DB" < tests/db_cms_publish.sql 2>&1); then bad 'CMS gates passed before controlled capability migration'
+elif [[ $red == *'function app.cms_create_draft'* && $red == *'does not exist'* ]]; then pass 'CMS pre-migration red: controlled function capability absent'
+else bad "CMS unexpected pre-migration red: $red"; fi
+apply_forward "$CMS_DB" "${cms[0]}"
+after=$(db "$CMS_DB" -c "SELECT count(*)||'|'||encode(sha256(convert_to(jsonb_agg(jsonb_build_array(tenant_id,site_id,id,base_release_id,revision,status) ORDER BY id)::text,'UTF8')),'hex') FROM app.site_drafts;")
+[[ $before == "$after" ]] || bad 'CMS upgrade changed legacy draft identities/revisions/status/base'
+result=$(db "$CMS_DB" -c "SELECT count(*) FROM app.site_drafts WHERE is_cms;")
+[[ $result == 0 ]] || bad 'CMS upgrade silently adopted unmanaged drafts'
+for f in migrations/[0-9][0-9][0-9]_*.sql; do [[ $f > ${cms[0]} ]] || continue; apply_forward "$CMS_DB" "$f"; done
+if ! db "$CMS_DB" < tests/db_cms_publish.sql >/dev/null || ! db "$CMS_DB" < tests/db_storefront.sql >/dev/null || ! db "$CMS_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'CMS populated upgrade controlled/CAS/freeze/role/public-read gate failed'
+else pass 'CMS upgrade preserves legacy state; controlled writes/immutable history and public role gates pass'; fi
+admin -c "DROP DATABASE $CMS_DB" >/dev/null; CMS_DB=""
+
+
 # C-20a: preserve a pre-module paid/committed order, then allocate shipment
 # and compensate its unshipped remainder. Module identity follows filename suffix.
 fulfillment_files=(migrations/[0-9][0-9][0-9]_fulfillment_returns.sql)
@@ -1212,4 +1241,4 @@ pass 'fulfillment upgrade preserves paid inventory and compensates only unshippe
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login and fulfillment/returns upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login, CMS and fulfillment/returns upgrade gates'

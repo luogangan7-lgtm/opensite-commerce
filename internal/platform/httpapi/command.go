@@ -1,6 +1,6 @@
 // Responsibilities: carry authorized command fingerprints and durable replies.
 // Dependencies: C-04 protocol and caller-owned tenant transactions; callers:
-// fulfillment/returns transports. Invariants: claim admission commits before
+// CMS and other command transports. Invariants: claim admission commits before
 // work; completion shares the business commit, and no client supplies an actor.
 package httpapi
 
@@ -162,6 +162,16 @@ func (s *CommandSession) Key() string {
 // A stale lease or unavailable durable store aborts those writes. The returned
 // exact saved response can be emitted only after the caller's commit succeeds.
 func (s *CommandSession) Complete(ctx context.Context, tx pgx.Tx, status int, value any) error {
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(value); err != nil {
+		return err
+	}
+	return s.CompleteResponse(ctx, tx, idempotency.Response{Status: status, Header: http.Header{"Content-Type": {"application/json"}}, Body: body.Bytes()})
+}
+
+// CompleteResponse saves the exact response, including revision and cache
+// headers, atomically with the domain changes. The durable store validates it.
+func (s *CommandSession) CompleteResponse(ctx context.Context, tx pgx.Tx, response idempotency.Response) error {
 	if s == nil || s.complete == nil {
 		return apperrors.New(503, "idempotency_unavailable", "Command persistence is unavailable")
 	}
@@ -173,11 +183,6 @@ func (s *CommandSession) Complete(ctx context.Context, tx pgx.Tx, status int, va
 	if err != nil || actor.Kind != s.request.scope.ActorKind || actor.ID != s.request.scope.ActorID {
 		return apperrors.New(401, "unauthenticated", "Authorized actor context is required")
 	}
-	var body bytes.Buffer
-	if err := json.NewEncoder(&body).Encode(value); err != nil {
-		return err
-	}
-	response := idempotency.Response{Status: status, Header: http.Header{"Content-Type": {"application/json"}}, Body: body.Bytes()}
 	if err := s.complete(ctx, tx, response); err != nil {
 		return commandError(err)
 	}

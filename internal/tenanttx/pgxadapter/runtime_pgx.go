@@ -41,6 +41,35 @@ func (r *QueryRunner) RunAuthorizedSnapshot(ctx context.Context, tenant string, 
 	return r.run(ctx, tenant, true, fn)
 }
 
+// RunAuthorizedTx preserves the private admission context for a command's
+// domain changes and its C-04 response completion in the same transaction.
+func (r *QueryRunner) RunAuthorizedTx(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+	if err := authorizedTenant(ctx, tenant); err != nil {
+		return err
+	}
+	if r == nil || fn == nil {
+		return errors.New("runtime database is unavailable")
+	}
+	return r.runner.InTenant(ctx, tenant, fn)
+}
+
+func (r *QueryRunner) RunAuthorizedTxSnapshot(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+	if err := authorizedTenant(ctx, tenant); err != nil {
+		return err
+	}
+	return r.RunCapabilitySnapshot(ctx, tenant, fn)
+}
+
+// RunCapabilitySnapshot is only composed behind the CMS module's verified
+// signed-preview capability. It always uses a read-only snapshot and tenant
+// RLS; route parameters alone must never authorize calling this port.
+func (r *QueryRunner) RunCapabilitySnapshot(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+	if r == nil || fn == nil {
+		return errors.New("runtime database is unavailable")
+	}
+	return r.runner.InTenantSnapshot(ctx, tenant, fn)
+}
+
 func (r *QueryRunner) run(ctx context.Context, tenant string, snapshot bool, fn func(*db.Queries) error) error {
 	if err := authorizedTenant(ctx, tenant); err != nil {
 		return err
@@ -56,19 +85,4 @@ func (r *QueryRunner) run(ctx context.Context, tenant string, snapshot bool, fn 
 		in = r.runner.InTenantSnapshot
 	}
 	return in(ctx, tenant, func(_ context.Context, tx pgx.Tx) error { return fn(db.New(tx)) })
-}
-
-// RunAuthorizedTx hands a transaction only to a previously authenticated
-// command. Multi-module commands share it without acquiring a pool directly.
-func (r *QueryRunner) RunAuthorizedTx(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
-	if err := authorizedTenant(ctx, tenant); err != nil {
-		return err
-	}
-	if r == nil {
-		return errors.New("runtime database is unavailable")
-	}
-	if fn == nil {
-		return errors.New("transaction callback is nil")
-	}
-	return r.runner.InTenant(ctx, tenant, fn)
 }

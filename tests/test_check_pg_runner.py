@@ -126,6 +126,7 @@ expected = [
     'db_quotes.sql',
     'db_identity_auth.sql',
     'db_identity_login.sql',
+    'db_cms_publish.sql',
     'db_fulfillment_returns.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
@@ -318,6 +319,7 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('OPS_METRICS_GATE', 'db_ops_metrics.sql'),
                          ('IDENTITY_GATE', 'db_identity_auth.sql'),
                          ('LOGIN_GATE', 'db_identity_login.sql'),
+                         ('CMS_EXPECTED_REFUSAL', 'db_cms_publish.sql'),
                          ('FULFILLMENT_GATE', 'db_fulfillment_returns.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
