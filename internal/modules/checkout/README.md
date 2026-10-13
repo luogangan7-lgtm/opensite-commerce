@@ -47,7 +47,10 @@ cash debit against receivable credit. Zero components are omitted, configured
 account type/currency/status are checked, and Ledger enforces balance. Failed or
 cancelled checkout releases inventory through Orders and posts no journal.
 
-Fake `ErrorNonRetryable` means the provider operation had no effect: a permanent
+Fake `ErrorNonRetryable` means the provider operation had no effect and is an
+immutable result for that idempotency key, including concurrent retries. A new
+business attempt requires a new key; an ambiguous external result must never be
+classified this way. A permanent
 create failure cancels the pending order; a permanent capture failure persists a
 `failing` claim, cancels the provider intent, then cancels the order. Retryable or
 ambiguous errors preserve the claim. If capture succeeds and the final database
