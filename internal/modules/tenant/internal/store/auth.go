@@ -22,19 +22,19 @@ import (
 type Repository struct{ runner *pgxadapter.IdentityRunner }
 
 func Open(ctx context.Context, dsn string) (*Repository, error) {
-	runner, err := pgxadapter.OpenIdentity(ctx, dsn)
+	runner, err := pgxadapter.OpenAuthorization(ctx, dsn)
 	if err != nil {
 		return nil, auth.ErrUnavailable
 	}
 	r := &Repository{runner: runner}
-	if err := r.run(ctx, func(*db.Queries) error { return nil }); err != nil {
+	if err := r.run(ctx, func(context.Context, *db.Queries) error { return nil }); err != nil {
 		_ = runner.Close(context.Background())
 		return nil, auth.ErrUnavailable
 	}
 	return r, nil
 }
 func (r *Repository) Close(ctx context.Context) error { return r.runner.Close(ctx) }
-func (r *Repository) run(ctx context.Context, fn func(*db.Queries) error) error {
+func (r *Repository) run(ctx context.Context, fn func(context.Context, *db.Queries) error) error {
 	err := r.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		q := db.New(tx)
 		valid, e := q.ValidateAuthConnection(ctx)
@@ -51,7 +51,7 @@ func (r *Repository) run(ctx context.Context, fn func(*db.Queries) error) error 
 				return e
 			}
 		}
-		return fn(q)
+		return fn(ctx, q)
 	})
 	if err == nil {
 		return nil
@@ -92,7 +92,7 @@ func view(id, keyPrefix string, scopes []string, issuedBy string, created, expir
 }
 func (r *Repository) Membership(ctx context.Context, userID, tenantID string) (auth.Membership, error) {
 	var result auth.Membership
-	err := r.run(ctx, func(q *db.Queries) error {
+	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
 		v, e := q.TenantMembership(ctx, db.TenantMembershipParams{UserID: id(userID), TenantID: id(tenantID)})
 		if e != nil {
 			return e
@@ -104,7 +104,7 @@ func (r *Repository) Membership(ctx context.Context, userID, tenantID string) (a
 }
 func (r *Repository) Key(ctx context.Context, keyID string) (auth.APIKey, error) {
 	var result auth.APIKey
-	err := r.run(ctx, func(q *db.Queries) error {
+	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
 		v, e := q.TenantAPIKey(ctx, id(keyID))
 		if e != nil {
 			return e
@@ -119,7 +119,7 @@ func (r *Repository) Key(ctx context.Context, keyID string) (auth.APIKey, error)
 	return result, err
 }
 func (r *Repository) TouchKey(ctx context.Context, keyID string) error {
-	return r.run(ctx, func(q *db.Queries) error {
+	return r.run(ctx, func(ctx context.Context, q *db.Queries) error {
 		v, e := q.TenantTouchAPIKey(ctx, id(keyID))
 		if e != nil {
 			return e
@@ -145,7 +145,7 @@ func (r *Repository) Revalidate(ctx context.Context, q *db.Queries, tenant strin
 }
 func (r *Repository) List(ctx context.Context, tenant, user string) ([]contract.APIKeyView, error) {
 	items := []contract.APIKeyView{}
-	err := r.run(ctx, func(q *db.Queries) error {
+	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
 		m, e := q.TenantMembership(ctx, db.TenantMembershipParams{UserID: id(user), TenantID: id(tenant)})
 		if e != nil {
 			return e
@@ -166,7 +166,7 @@ func (r *Repository) List(ctx context.Context, tenant, user string) ([]contract.
 }
 func (r *Repository) Create(ctx context.Context, tenant, user string, k contract.KeyMaterial) (contract.APIKeyView, error) {
 	var result contract.APIKeyView
-	err := r.run(ctx, func(q *db.Queries) error {
+	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
 		created, e := q.TenantCreateAPIKey(ctx, db.TenantCreateAPIKeyParams{TenantID: id(tenant), UserID: id(user), ID: id(k.ID), KeyPrefix: k.Prefix, KeyHash: k.Hash[:], Scopes: k.Scopes, ExpiresAt: nullableTime(k.ExpiresAt)})
 		if e != nil {
 			return e
@@ -181,7 +181,7 @@ func (r *Repository) Create(ctx context.Context, tenant, user string, k contract
 	return result, err
 }
 func (r *Repository) Revoke(ctx context.Context, tenant, user, keyID string) error {
-	return r.run(ctx, func(q *db.Queries) error {
+	return r.run(ctx, func(ctx context.Context, q *db.Queries) error {
 		valid, e := q.TenantRevokeAPIKey(ctx, db.TenantRevokeAPIKeyParams{TenantID: id(tenant), UserID: id(user), ID: id(keyID)})
 		if e != nil {
 			return e
