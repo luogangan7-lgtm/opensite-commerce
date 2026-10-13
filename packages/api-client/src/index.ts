@@ -14,3 +14,5 @@ export async function readPublishedSite(origin:string,hostname:string):Promise<P
   if(!response.ok||!data) throw new Error('Published site read failed');
   return data;
 }
+/** C-08d probe: API type only, no visual effect. */
+export type PublishedSiteBody=PublishedSite;
