@@ -802,6 +802,11 @@ class GovernanceTests(unittest.TestCase):
         self.source("internal/bridge/bridge.go", 'package bridge\nimport ("database/sql"; "github.com/jackc/pgx/v5")\nvar _ = sql.Open\nvar _ pgx.Tx\n')
         self.assert_red("MODULE_RAW_CONNECTION_IMPORT")
 
+    def test_h2_legacy_db_tests_new_connect_family_red(self):
+        self.vendor_pgx()
+        self.source("internal/db/probe_test.go", 'package db\nimport driver "github.com/jackc/pgx/v5"\nvar Open = driver.ConnectWithOptions\n')
+        self.assert_red("MODULE_RAW_CONNECTION")
+
     def test_h2_connect_family_and_function_alias_red(self):
         for body in ('var open = driver.ConnectWithOptions', 'var open = driver.ConnectConfig; var again = open'):
             with self.subTest(body=body):

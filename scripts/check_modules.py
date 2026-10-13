@@ -306,9 +306,7 @@ def check_raw_connection(text, location, allow_raw=False):
         require(imported != "github.com/jackc/pgx/v5/stdlib" and
                 (imported != "github.com/jackc/pgx/v5/pgconn" or generated_tag),
                 "MODULE_RAW_CONNECTION_IMPORT", location)
-        if allow_raw:
-            continue
-        require(imported != "github.com/jackc/pgx/v5/pgxpool",
+        require(allow_raw or imported != "github.com/jackc/pgx/v5/pgxpool",
                 "MODULE_RAW_POOL_IMPORT", location)
         if imported == "github.com/jackc/pgx/v5":
             # Dot imports hide the origin of Conn and connector functions.
@@ -317,7 +315,8 @@ def check_raw_connection(text, location, allow_raw=False):
                 aliases.add(alias or "pgx")
     for index in range(len(tokens) - 2):
         require(not (tokens[index] in aliases and tokens[index + 1] == "." and
-                     (tokens[index + 2] == "Conn" or tokens[index + 2].startswith("Connect"))),
+                     (tokens[index + 2] == "Conn" or tokens[index + 2].startswith("Connect")) and
+                     not (allow_raw and tokens[index + 2] in ("Conn", "Connect", "ConnectConfig"))),
                 "MODULE_RAW_CONNECTION", location)
 
 
