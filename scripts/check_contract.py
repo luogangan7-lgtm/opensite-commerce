@@ -226,20 +226,54 @@ def validate_contract(api):
                     success_headers.get("X-Robots-Tag", {}).get("schema", {}).get("const") == "noindex, nofollow",
                     "signed preview cache/index policy drift")
         elif access == "Public":
-            require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite", "getAdminLoginChallenge", "createStaffLoginSession"} | BUYER_QUOTES.keys() and security == [] and
-                    "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
+            if ident == "receiveFakePaymentEvent":
+                require((path, method) == ("/api/v1/testing/payments/fake/webhook", "post") and
+                        op.get("x-test-only") is True and security == [{"FakeWebhookSignature": []}] and
+                        "x-required-scope" not in op and not tenant,
+                        "Fake webhook must be signed, test-only and outside tenant business paths")
+                require(schemes.get("FakeWebhookSignature") == {
+                    "type": "apiKey", "in": "header", "name": "X-Fake-Signature",
+                    "description": "HMAC SHA256 of exact request bytes with isolated test key; test/development only."},
+                    "Fake signature scheme drift")
+                signature = next((p for p in parameters if p.get("name") == "X-Fake-Signature"), {})
+                require(signature.get("in") == "header" and signature.get("required") is True and
+                        signature.get("schema") == {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                        "Fake signature parameter missing/incorrect")
+            else:
+                require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite", "getAdminLoginChallenge", "createStaffLoginSession"} | BUYER_QUOTES.keys() and security == [] and
+                        "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
         elif access == "Storefront":
-            require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and
-                    "x-required-scope" not in op, f"storefront cart tenant/scope policy drift: {ident}")
-            require(security == ([] if ident == "createCart" else [{"CartToken": []}]),
-                    f"storefront credential declaration drift: {ident}")
-            headers = {p["name"]: p for p in parameters if p["in"] == "header"}
-            require(("If-Match" in headers) == (method in {"put", "delete"}), f"cart write precondition drift: {ident}")
-            require(method not in {"put", "delete"} or headers["If-Match"].get("required") is True,
-                    f"required cart precondition drift: {ident}")
-            for code, name in {"400": "BadRequest", "404": "NotFound", "503": "ServiceUnavailable"}.items():
-                require(op["responses"].get(code) == {"$ref": "#/components/responses/" + name},
-                        f"cart error declaration drift: {ident}")
+            if ident == "createCheckout":
+                require((path, method) == ("/api/v1/t/{tenant_id}/checkout", "post") and tenant and
+                        "x-required-scope" not in op and op["x-opensite-status"] == "implemented" and
+                        security == [{"StorefrontSession": []}, {"GuestCapability": []}],
+                        "checkout requires the exact scope-free storefront resolver contract")
+                for name, cookie_name in (("StorefrontSession", "__Host-osc_customer_session"),
+                                          ("GuestCapability", "__Host-osc_guest_capability")):
+                    scheme = schemes.get(name, {})
+                    require((scheme.get("type"), scheme.get("in"), scheme.get("name")) ==
+                            ("apiKey", "cookie", cookie_name), "storefront credential scheme drift")
+                headers = {p["name"]: p for p in parameters if p["in"] == "header"}
+                for header, schema in {
+                        "Origin": {"type": "string", "format": "uri"},
+                        "X-CSRF-Token": {"type": "string", "minLength": 1, "maxLength": 512}}.items():
+                    require(header in headers and headers[header].get("required") is True and
+                            headers[header].get("schema") == schema,
+                            f"checkout {header} admission contract missing/incorrect")
+                require("Idempotency-Key" in headers and headers["Idempotency-Key"].get("required") is True,
+                        "checkout idempotency header required")
+            else:
+                require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and
+                        "x-required-scope" not in op, f"storefront cart tenant/scope policy drift: {ident}")
+                require(security == ([] if ident == "createCart" else [{"CartToken": []}]),
+                        f"storefront credential declaration drift: {ident}")
+                headers = {p["name"]: p for p in parameters if p["in"] == "header"}
+                require(("If-Match" in headers) == (method in {"put", "delete"}), f"cart write precondition drift: {ident}")
+                require(method not in {"put", "delete"} or headers["If-Match"].get("required") is True,
+                        f"required cart precondition drift: {ident}")
+                for code, name in {"400": "BadRequest", "404": "NotFound", "503": "ServiceUnavailable"}.items():
+                    require(op["responses"].get(code) == {"$ref": "#/components/responses/" + name},
+                            f"cart error declaration drift: {ident}")
         elif access == "AuthenticatedSelf":
             require(ident in SELF_OPERATIONS and not tenant and "tenant_id" not in names and "x-required-scope" not in op,
                     f"AuthenticatedSelf cannot carry scope/tenant: {ident}")
@@ -251,6 +285,8 @@ def validate_contract(api):
             require(security in (COOKIE_OR_KEY, list(reversed(COOKIE_OR_KEY))), f"cookie OR API key required: {ident}")
         else:
             raise ValueError(f"access policy missing or unsupported: {ident}")
+        if ident == "createCheckout":
+            require(access == "Storefront", "checkout cannot use employee or service authentication")
         if ident in QUOTE_OPERATIONS:
             require(op["x-opensite-status"] == "implemented", f"quote operation status drift: {ident}")
         if ident == "submitInquiry":
