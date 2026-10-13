@@ -13,6 +13,8 @@ func TestPrivacyRootMismatchFailsBeforeDatabase(t *testing.T) {
 	for _, name := range []string{"OPENSITE_DATABASE_URL", "OPENSITE_MEDIA_DATABASE_URL", "OPENSITE_RESPONSE_ROOT"} {
 		t.Setenv(name, "")
 	}
+	// Root validation precedes every capability, even a malformed runtime DSN.
+	t.Setenv("OPENSITE_DATABASE_URL", "invalid-runtime-synthetic-dsn")
 	t.Setenv("OPENSITE_MEDIA_ROOT", t.TempDir())
 	t.Setenv("OPENSITE_PRIVACY_ROOT", t.TempDir())
 	t.Setenv("OPENSITE_PRIVACY_DATABASE_URL", "invalid-synthetic-dsn")

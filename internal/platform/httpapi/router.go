@@ -207,6 +207,11 @@ func validateRoute(s RouteSpec) error {
 	return nil
 }
 
+// WrapTransport installs an operational wrapper during static startup only.
+// It preserves the Router and its business route registry; callers must invoke
+// it before serving requests, outside the built-in recovery transport.
+func (s *Router) WrapTransport(wrap func(http.Handler) http.Handler) { s.handler = wrap(s.handler) }
+
 func (s *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.handler.ServeHTTP(w, r) }
 
 type bodyLimitKey struct{}

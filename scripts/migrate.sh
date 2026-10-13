@@ -15,7 +15,11 @@ else
   PSQL=(docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -U postgres -d opensite -v ON_ERROR_STOP=1)
   INCLUDE_ROOT="/migrations"
 fi
-version_num="$(printf "SHOW server_version_num;\n" | "${PSQL[@]}" -At | tr -d '[:space:]')"
+{ read -r version_num; read -r current_db; } <<<"$(printf "SHOW server_version_num;\nSELECT current_database();\n" | "${PSQL[@]}" -At)" || true
+version_num="$(tr -d '[:space:]' <<<"${version_num:-}")"
+case "${current_db:-}" in
+  postgres|template0|template1) echo "Refusing to migrate system database ${current_db}" >&2; exit 6 ;;
+esac
 if ! [[ "$version_num" =~ ^[0-9]+$ ]] || (( version_num < 180000 || version_num >= 190000 )); then
   echo "PostgreSQL 18 required (found server_version_num=${version_num})" >&2
   exit 5

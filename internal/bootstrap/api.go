@@ -1,4 +1,4 @@
-// Package bootstrap statically wires the API using platform/httpapi only.
+// Package bootstrap statically wires the API using platform/httpapi and observability.
 // cmd/api calls it; it owns no business handlers, database pool or migrations.
 // Generated business HTTP adapters stay in platform/httpapi and consume public ports.
 // Registration errors stop construction, so invalid routes cannot be served.
@@ -19,6 +19,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/catalogcsvhttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/datarightshttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
 
 type Config struct {
@@ -60,6 +61,8 @@ func New(config Config) (server *http.Server, err error) {
 			return nil, err
 		}
 	}
+	metrics := &observability.Metrics{}
+	router.WrapTransport(metrics.Wrap)
 	return &http.Server{Addr: config.Address, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}, nil
 }
 

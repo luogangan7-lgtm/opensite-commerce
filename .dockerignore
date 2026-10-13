@@ -1,0 +1,12 @@
+.git
+.worktrees
+.orchestrator
+.env
+*.secret
+work
+.work
+node_modules
+dist
+media
+playwright-report
+test-results
