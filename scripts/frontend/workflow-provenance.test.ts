@@ -21,3 +21,7 @@ test('rejects a missing explicit producer job', () => {
 test('rejects missing CI generation command', () => {
   expect(() => assertProducerWorkflow(path, source.replace('run: bun run visual:update', 'run: echo no-generation'))).toThrow();
 });
+test('rejects a producer that rewrites images after the authorized writer', () => {
+  const fault = source.replace('run: bun run visual:update', 'run: bun run visual:update\n      - run: echo forged > tests/frontend/baselines/desktop/gallery.png');
+  expect(() => assertProducerWorkflow(path, fault)).toThrow(/after|final|upload/);
+});
