@@ -205,6 +205,7 @@ BEGIN
   OR (p_phase<>'legacy' AND (p_target IS NOT NULL OR p_event_key IS NOT NULL OR p_refund_minor IS DISTINCT FROM 0))
   OR (p_phase IN('reserve','lock','complete') AND p_return IS NULL) THEN
   RAISE EXCEPTION 'ORDER_INVALID_REFUND' USING ERRCODE='22023'; END IF;
+ PERFORM rr.id FROM app.returns rr WHERE rr.tenant_id=t AND rr.order_id=p_order ORDER BY rr.id FOR UPDATE;
  SELECT * INTO o FROM app.orders WHERE tenant_id=t AND id=p_order FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'ORDER_NOT_FOUND' USING ERRCODE='P0002'; END IF;
  IF p_expected IS NOT NULL AND o.version<>p_expected THEN
@@ -212,7 +213,6 @@ BEGIN
  -- REFUND_BUDGET_PARENT_FENCE: real MVCC write, even on exact event replay.
  -- Preserve the full replay snapshot; financial changes below use the DB clock.
  UPDATE app.orders SET updated_at=updated_at WHERE tenant_id=t AND id=p_order RETURNING * INTO o;
- PERFORM rr.id FROM app.returns rr WHERE rr.tenant_id=t AND rr.order_id=p_order ORDER BY rr.id FOR UPDATE;
  IF NOT o.sealed OR EXISTS(SELECT FROM app.returns rr WHERE rr.tenant_id=t AND rr.order_id=p_order
   AND (NOT rr.sealed OR rr.currency IS DISTINCT FROM o.currency OR rr.refund_minor<0
    OR rr.refund_minor::numeric IS DISTINCT FROM (SELECT coalesce(sum(rl.income_minor::numeric+rl.tax_minor+rl.shipping_minor),0)
