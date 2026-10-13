@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/jobs"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"github.com/riverqueue/river"
 )
@@ -37,7 +38,7 @@ func TestWorkerStopCancelsAfterDefaultGrace(t *testing.T) {
 		if os.Getenv("JOBS_REQUIRE_PG") == "1" {
 			t.Fatal("DATABASE_URL required")
 		}
-		t.Skip("NOT_RUN: disposable PostgreSQL absent")
+		pgxtest.Skip(t, "NOT_RUN: disposable PostgreSQL absent")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
