@@ -74,7 +74,7 @@ func TestActorCapabilityAdmission(t *testing.T) {
 }
 
 func TestAnonymousCreationDefaultIPLimit(t *testing.T) {
-	m := cart.New(nil, nil)
+	m := cart.NewPostgres(cart.Config{}, nil) // configured store: quota applies
 	for i := 0; i < 31; i++ {
 		r := httptest.NewRequest("POST", "/", nil)
 		r.SetPathValue("tenant_id", "10000000-0000-4000-8000-000000000001")
