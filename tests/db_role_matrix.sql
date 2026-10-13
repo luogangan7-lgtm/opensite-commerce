@@ -778,7 +778,7 @@ DECLARE
  selected text[]:=ARRAY['tenants','customers','customer_addresses','buyer_company_members','orders','order_lines','carts','cart_lines','data_rights_exports','data_rights_erasures','notification_deliveries'];
  commands text[]:=ARRAY['data_rights_request_export','data_rights_status','data_rights_build_export','data_rights_complete_export','data_rights_download_info','data_rights_consume_export','data_rights_erase_customer','data_rights_download_deadline','data_rights_worker_info'];
  f record; role_name text;
- private_functions text[]:=ARRAY['data_rights_context','data_rights_tax_scrub','data_rights_lock_export','data_rights_line_guard','data_rights_erasure_guard','data_rights_credential_guard','data_rights_order_customer_guard','data_rights_customer_guard','data_rights_notification_insert_guard','data_rights_notification_guard','data_rights_notification_dispatch_insert_guard','data_rights_notification_dispatch_guard'];
+ private_functions text[]:=ARRAY['data_rights_context','data_rights_tax_scrub','data_rights_lock_export','data_rights_line_guard','data_rights_erasure_guard','data_rights_credential_guard','data_rights_order_customer_guard','data_rights_customer_guard','data_rights_notification_insert_guard','data_rights_notification_guard','data_rights_notification_dispatch_insert_guard','data_rights_notification_dispatch_guard','data_rights_notification_owner'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_data_rights_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -797,6 +797,7 @@ BEGIN
     cols:=ARRAY[]::text[];
     IF NOT expected THEN
      IF privilege='SELECT' AND t.relname='customer_credentials' THEN cols:=ARRAY['tenant_id','customer_id'];
+     ELSIF privilege='SELECT' AND t.relname='quotes' THEN cols:=ARRAY['tenant_id','id','accepted_by'];
      ELSIF privilege='SELECT' AND t.relname='outbox_events' THEN cols:=ARRAY['tenant_id','id','event_type','delivery_target','payload','status','lease_owner','lease_until','last_error'];
      ELSIF privilege='UPDATE' THEN cols:=CASE t.relname WHEN 'customers' THEN ARRAY['email','display_name','status'] WHEN 'buyer_company_members' THEN ARRAY['status'] WHEN 'orders' THEN ARRAY['shipping_snapshot'] WHEN 'order_lines' THEN ARRAY['tax_snapshot'] WHEN 'notification_deliveries' THEN ARRAY['recipient','status','last_error','send_token','lease_attempt','lease_worker','sent_at','updated_at'] WHEN 'outbox_events' THEN ARRAY['status','lease_owner','lease_until','last_error'] ELSE ARRAY[]::text[] END; END IF;
     END IF;

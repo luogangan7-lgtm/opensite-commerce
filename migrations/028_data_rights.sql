@@ -1,5 +1,5 @@
 -- Data rights owns export requests and append-only erasure receipts.
--- Depends on customers/orders/cart. Trusted services call capability functions.
+-- Depends on customers/orders/cart/notifications/quotes. Trusted services call capability functions.
 -- Invariants: tenant/customer locks before request locks; no credentials exported;
 -- snapshot privacy exception changes no financial/identity/state/version columns.
 DO $role$
@@ -70,6 +70,9 @@ GRANT SELECT(tenant_id,id,event_type,delivery_target,payload,status,lease_owner,
 GRANT UPDATE(recipient,status,last_error,send_token,lease_attempt,lease_worker,sent_at,updated_at) ON app.notification_deliveries TO app_data_rights_executor;
 GRANT UPDATE(status,lease_owner,lease_until,last_error) ON app.outbox_events TO app_data_rights_executor;
 CREATE POLICY data_rights_scope ON app.notification_deliveries TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid) WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
+-- Quote approval mail goes to quotes.accepted_by; that ID, never an email, is ownership.
+GRANT SELECT(tenant_id,id,accepted_by) ON app.quotes TO app_data_rights_executor;
+CREATE POLICY data_rights_scope ON app.quotes TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
 CREATE POLICY data_rights_scope ON app.outbox_events TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid) WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid AND delivery_target='notifications.email');
 
 CREATE FUNCTION app.data_rights_context() RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
@@ -82,6 +85,14 @@ BEGIN
 END $fn$;
 CREATE FUNCTION app.data_rights_tax_scrub(p jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
  SELECT '{"erased":true}'::jsonb;
+$fn$;
+-- Customer owning a notification by business reference: order.customer_id or
+-- quote.accepted_by. Recipient text never establishes ownership.
+-- ponytail: per-row lookup over the tenant's deliveries during erasure; add an
+-- owner column on notification_deliveries if tenant notification volume makes erasure slow.
+CREATE FUNCTION app.data_rights_notification_owner(p_tenant uuid,p_template text,p_reference uuid) RETURNS uuid LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+ SELECT CASE WHEN p_template IN('order.paid','order.shipped','order.refund') THEN (SELECT customer_id FROM app.orders WHERE tenant_id=p_tenant AND id=p_reference)
+  WHEN p_template='quote.approved' THEN (SELECT accepted_by FROM app.quotes WHERE tenant_id=p_tenant AND id=p_reference) END;
 $fn$;
 CREATE OR REPLACE FUNCTION app.orders_guard() RETURNS trigger LANGUAGE plpgsql
 SET search_path=pg_catalog,app,pg_temp AS $fn$
@@ -241,27 +252,23 @@ BEGIN
  -- begin/finish. Payload binds a delivery ID; emails never establish ownership.
  PERFORM e.id FROM app.outbox_events e JOIN app.notification_deliveries d
   ON d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id)
-  JOIN app.orders o ON(o.tenant_id,o.id)=(d.tenant_id,d.reference_id)
-  WHERE o.tenant_id=t AND o.customer_id=p_customer AND d.template_key IN('order.paid','order.shipped','order.refund') AND e.delivery_target='notifications.email'
+  WHERE d.tenant_id=t AND app.data_rights_notification_owner(d.tenant_id,d.template_key,d.reference_id)=p_customer AND e.delivery_target='notifications.email'
   ORDER BY e.id FOR UPDATE OF e;
- PERFORM d.id FROM app.notification_deliveries d JOIN app.orders o ON(o.tenant_id,o.id)=(d.tenant_id,d.reference_id)
-  WHERE o.tenant_id=t AND o.customer_id=p_customer AND d.template_key IN('order.paid','order.shipped','order.refund') ORDER BY d.id FOR UPDATE OF d NOWAIT;
+ PERFORM d.id FROM app.notification_deliveries d
+  WHERE d.tenant_id=t AND app.data_rights_notification_owner(d.tenant_id,d.template_key,d.reference_id)=p_customer ORDER BY d.id FOR UPDATE OF d NOWAIT;
  -- A concurrent redrive can introduce a generation during the first pass.
  -- NOWAIT on delivery and this second dispatch pass prevents the inverse
  -- delivery -> newly admitted worker's outbox lock from becoming a deadlock.
  -- Contention aborts the entire erasure; callers may retry without partial PII.
  PERFORM e.id FROM app.outbox_events e JOIN app.notification_deliveries d
   ON d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id)
-  JOIN app.orders o ON(o.tenant_id,o.id)=(d.tenant_id,d.reference_id)
-  WHERE o.tenant_id=t AND o.customer_id=p_customer AND d.template_key IN('order.paid','order.shipped','order.refund') AND e.delivery_target='notifications.email'
+  WHERE d.tenant_id=t AND app.data_rights_notification_owner(d.tenant_id,d.template_key,d.reference_id)=p_customer AND e.delivery_target='notifications.email'
   ORDER BY e.id FOR UPDATE OF e NOWAIT;
  UPDATE app.outbox_events e SET status=CASE WHEN e.status='delivered' THEN 'delivered' ELSE 'dead_letter' END,lease_owner=NULL,lease_until=NULL,last_error='PRIVACY_ERASED'
-  FROM app.notification_deliveries d,app.orders o WHERE d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id)
-  AND(o.tenant_id,o.id)=(d.tenant_id,d.reference_id) AND o.tenant_id=t AND o.customer_id=p_customer
-  AND d.template_key IN('order.paid','order.shipped','order.refund') AND e.delivery_target='notifications.email';
+  FROM app.notification_deliveries d WHERE d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id)
+  AND d.tenant_id=t AND app.data_rights_notification_owner(d.tenant_id,d.template_key,d.reference_id)=p_customer AND e.delivery_target='notifications.email';
  UPDATE app.notification_deliveries d SET recipient='erased-'||d.id::text||'@invalid.test',status='dead_letter',last_error='PRIVACY_ERASED',send_token=NULL,lease_attempt=NULL,lease_worker=NULL,sent_at=NULL,updated_at=clock_timestamp()
-  FROM app.orders o WHERE(o.tenant_id,o.id)=(d.tenant_id,d.reference_id) AND o.tenant_id=t AND o.customer_id=p_customer
-  AND d.template_key IN('order.paid','order.shipped','order.refund') AND d.recipient<>'';GET DIAGNOSTICS nnotification=ROW_COUNT;
+  WHERE d.tenant_id=t AND app.data_rights_notification_owner(d.tenant_id,d.template_key,d.reference_id)=p_customer AND d.recipient<>'';GET DIAGNOSTICS nnotification=ROW_COUNT;
 
  DELETE FROM app.customer_addresses WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS naddr=ROW_COUNT;
  DELETE FROM app.customer_credentials WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS ncred=ROW_COUNT;
@@ -323,9 +330,9 @@ CREATE TRIGGER data_rights_customer_guard BEFORE UPDATE ON app.customers FOR EAC
 CREATE FUNCTION app.data_rights_notification_insert_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp SET app.tenant_id='' AS $fn$
 DECLARE customer uuid;c app.customers;
 BEGIN
- IF NEW.template_key NOT IN('order.paid','order.shipped','order.refund') THEN RETURN NEW; END IF;
+ IF NEW.template_key NOT IN('order.paid','order.shipped','order.refund','quote.approved') THEN RETURN NEW; END IF;
  PERFORM set_config('app.tenant_id',NEW.tenant_id::text,true);
- SELECT customer_id INTO customer FROM app.orders WHERE tenant_id=NEW.tenant_id AND id=NEW.reference_id;
+ customer:=app.data_rights_notification_owner(NEW.tenant_id,NEW.template_key,NEW.reference_id);
  IF customer IS NULL THEN RETURN NEW; END IF;
  SELECT * INTO c FROM app.customers WHERE tenant_id=NEW.tenant_id AND id=customer FOR SHARE;
  IF FOUND AND (c.status<>'active' OR EXISTS(SELECT FROM app.data_rights_erasures WHERE tenant_id=NEW.tenant_id AND customer_id=customer)) AND NEW.recipient<>'' THEN
