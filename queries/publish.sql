@@ -1,4 +1,4 @@
--- Responsibility: parameterized controlled CMS calls; dependencies: migration025.
+-- Responsibility: parameterized controlled CMS calls; dependencies: controlled CMS forward migration.
 -- Caller: publish pgx adapter in authorized tenant TX; actor from trusted context.
 -- Invariants: no SQL outside adapter; C04 completion uses this same TX.
 -- name: SetCMSActor :one
