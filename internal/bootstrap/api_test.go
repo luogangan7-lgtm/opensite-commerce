@@ -1,19 +1,45 @@
 // Bootstrap contract tests use httptest only. They guard startup refusal and
-// operational telemetry without creating pools or external listeners.
+// operational telemetry and request deadlines without pools or external listeners.
 package bootstrap_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
+
+type deadlineAuth struct{ t *testing.T }
+
+func (a deadlineAuth) Authenticate(ctx context.Context, _ *http.Request, _ httpapi.RouteSpec) (context.Context, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok || time.Until(deadline) > 75*time.Second {
+		a.t.Fatal("authentication has no bounded request context")
+	}
+	return ctx, nil
+}
+
+func TestRequestDeadlineIncludesAuthenticationAndHandler(t *testing.T) {
+	s, err := bootstrap.New(bootstrap.Config{Authenticator: deadlineAuth{t}, Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "deadlineProbe", Method: "GET", Pattern: "/deadline", Access: httpapi.AdminSession}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deadline, ok := r.Context().Deadline()
+		if !ok || time.Until(deadline) > 75*time.Second {
+			t.Fatal("handler has no bounded request context")
+		}
+		w.WriteHeader(204)
+	})}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/deadline", nil))
+}
 
 func TestStartupRejectsInvalidRoute(t *testing.T) {
 	s, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "private", Method: "GET", Pattern: "/t/{tenant_id}/items", Access: httpapi.APIKey}, Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("invalid handler reached") })}}})
@@ -64,9 +90,9 @@ func TestOperationalMetricsObserveRecoveredStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router, ok := s.Handler.(*httpapi.Router)
+	router, ok := s.Handler.(interface{ RouteSpecs() []httpapi.RouteSpec })
 	if !ok {
-		t.Fatalf("handler must remain Router, got %T", s.Handler)
+		t.Fatalf("handler must expose registered RouteSpecs, got %T", s.Handler)
 	}
 	for _, spec := range router.RouteSpecs() {
 		if spec.Pattern == "/metrics" {
