@@ -45,6 +45,8 @@ with tempfile.TemporaryDirectory() as temp:
     generated = repo / 'internal/db/models.go'
     generated.write_text('package db\n\ntype A struct{}\n\ntype B struct{}\n')
     (repo / 'README.md').write_text('hello\n')
+    handwritten = repo / 'internal/db/cart_integration_test.go'  # hand-written gate inside internal/db
+    handwritten.write_text('package db\n\nfunc check() bool { return true }\n')
     git(repo, 'init', '-q')
     git(repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '.')
     git(repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'base')
@@ -66,6 +68,30 @@ with tempfile.TemporaryDirectory() as temp:
                              env=dict(env, FAKE_PATCH=str(bad)), capture_output=True, text=True)
     assert refused.returncode == 3 and 'non-generated path README.md' in refused.stderr, refused
     assert (repo / 'README.md').read_text() == 'hello\n'
+
+    # Allowlist bypasses: every one must be refused before the work tree changes.
+    handwritten.write_text('package db\n\nfunc check() bool { return false }\n')
+    weaken = git(repo, 'diff', '--binary')
+    git(repo, 'checkout', '-q', '--', '.')
+    evil = {
+        'rename-out-of-allowlist': 'diff --git a/README.md b/internal/db/stolen.sql.go\nsimilarity index 100%\n'
+                                   'rename from README.md\nrename to internal/db/stolen.sql.go\n',
+        'copy-into-allowlist': 'diff --git a/README.md b/internal/db/copied.sql.go\nsimilarity index 100%\n'
+                               'copy from README.md\ncopy to internal/db/copied.sql.go\n',
+        'symlink': 'diff --git a/internal/db/link.sql.go b/internal/db/link.sql.go\nnew file mode 120000\n'
+                   '--- /dev/null\n+++ b/internal/db/link.sql.go\n@@ -0,0 +1 @@\n+../../README.md\n\\ No newline at end of file\n',
+        'mode-change': 'diff --git a/internal/db/models.go b/internal/db/models.go\nold mode 100644\nnew mode 100755\n',
+        'hand-written-under-internal-db': weaken,
+    }
+    for case, text in evil.items():
+        patch_file = Path(temp) / f'{case}.patch'
+        patch_file.write_text(text)
+        checked = subprocess.run(['git', 'apply', '--check', str(patch_file)], cwd=repo, capture_output=True, text=True)
+        assert checked.returncode == 0, (case, 'fixture must be a patch git would really apply', checked.stderr)
+        result = subprocess.run(['bash', 'scripts/apply_generated_patch.sh', '4242'], cwd=repo,
+                                env=dict(env, FAKE_PATCH=str(patch_file)), capture_output=True, text=True)
+        assert result.returncode == 3, (case, result)
+        assert git(repo, 'status', '--porcelain') == '', (case, 'work tree changed before refusal')
 
     usage = subprocess.run(['bash', 'scripts/apply_generated_patch.sh', '42; rm -rf /'], cwd=repo, env=env,
                            capture_output=True, text=True)
