@@ -1463,7 +1463,7 @@
       ]
     },
     {
-      "file": "migrations/035_fulfillment_returns.sql",
+      "file": "migrations/pending/c20a-fulfillment_fulfillment_returns.sql",
       "owner": "fulfillment",
       "touches_tables": [
         "shipments",

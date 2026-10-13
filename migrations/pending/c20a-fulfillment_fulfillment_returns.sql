@@ -1,3 +1,4 @@
+-- stable-id: c20a-fulfillment
 -- Responsibility: bounded shipment allocation and durable RMA/refund receipts.
 -- Dependencies: Orders owns state, Inventory owns restoration, Ledger owns posting.
 -- Called by tenant-authorized fulfillment/returns coordinators via generated SQL.

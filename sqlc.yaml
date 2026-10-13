@@ -35,7 +35,7 @@ sql:
       - "migrations/032_checkout.sql"
       - "migrations/033_customer_auth.sql"
       - "migrations/034_orders_guards.sql"
-      - "migrations/035_fulfillment_returns.sql"
+      - "migrations/pending/c20a-fulfillment_fulfillment_returns.sql"
     queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:
