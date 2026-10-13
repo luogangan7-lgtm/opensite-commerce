@@ -407,3 +407,70 @@ func TestStorefrontLegacyHostMovePG(t *testing.T) {
 		t.Fatalf("served backfill: %+v %v", third, err)
 	}
 }
+
+// REVIEW PROBE 96-5: two checkouts reserving overlapping member SKUs must not deadlock on
+// the shared storefront_serving row that the stock_levels invalidation trigger updates.
+func TestReviewProbeServingCheckoutDeadlockPG(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	ids := servingIDs{product: newUUID(t), ready: newUUID(t), archived: newUUID(t), unpriced: newUUID(t)}
+	a := newCMSPG(t, ctx, servingSeed(ids, "DL", 500, 10)...)
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if err := a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, sql, args...); return err }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec(`UPDATE app.product_variants SET lifecycle_status='ready' WHERE tenant_id=$1 AND id=$2`, a.tenant, ids.archived)
+	exec(`SELECT app.inventory_adjust($2::uuid,10,'probe',uuidv7(),'inbound') WHERE $1::uuid IS NOT NULL`, a.tenant, ids.archived)
+	withCMSContextFor(t, true, a.tenant, func(authctx context.Context) {
+		if _, err := publishHome(t, authctx, a, 0, ""); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if n := a.count(t, ctx, `SELECT count(*)::int FROM app.site_release_skus WHERE tenant_id=$1 AND site_id=$2`); n != 2 {
+		t.Fatalf("probe fixture: %d members", n)
+	}
+	reserve := func(ctx context.Context, tx pgx.Tx, sku, key string) error {
+		_, err := tx.Exec(ctx, `SELECT app.inventory_reserve($1::uuid,1,'serving_test',gen_random_uuid(),$2)`, sku, key)
+		return err
+	}
+	firstHeld, firstGo := make(chan struct{}), make(chan struct{})
+	first, second := make(chan error, 1), make(chan error, 1)
+	go func() { // checkout 1: cart {ready, archived}
+		first <- a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			if err := reserve(ctx, tx, ids.ready, "probe-a1"); err != nil {
+				return err
+			}
+			close(firstHeld)
+			<-firstGo
+			return reserve(ctx, tx, ids.archived, "probe-a2")
+		})
+	}()
+	<-firstHeld
+	go func() { // checkout 2: cart {archived}
+		second <- a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			return reserve(ctx, tx, ids.archived, "probe-b1")
+		})
+	}()
+	var secondErr error
+	secondDone := false
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		select {
+		case secondErr = <-second:
+			secondDone = true
+		default:
+		}
+		if secondDone || a.count(t, ctx, `SELECT count(*)::int FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%inventory_reserve%' AND $1::text<>'' AND $2::text<>''`) > 0 {
+			break
+		}
+	}
+	close(firstGo)
+	firstErr := <-first
+	if !secondDone {
+		secondErr = <-second
+	}
+	if firstErr != nil || secondErr != nil {
+		t.Fatalf("PROBE 96-5 CHECKOUT DEADLOCK/serialization: checkout1=%v checkout2=%v", firstErr, secondErr)
+	}
+}
