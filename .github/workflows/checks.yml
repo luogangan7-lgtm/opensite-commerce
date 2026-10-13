@@ -2,7 +2,7 @@ name: foundation-contracts
 on: [push, pull_request]
 
 # PR commits are validated by the pull_request run only; push runs of non-main
-# branches exist solely for the [visual-baseline-update] producer job.
+# branches exist only for explicitly requested artifact producer jobs.
 concurrency:
   # main runs get unique groups so no queued main run is ever replaced.
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.event.pull_request.number || github.ref }}

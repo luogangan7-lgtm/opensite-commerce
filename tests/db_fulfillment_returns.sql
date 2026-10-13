@@ -297,6 +297,78 @@ BEGIN
  END LOOP;
  RAISE NOTICE 'PASS: legacy 10 + RMA 190 and legacy 10 + RMA 95 + RMA 95';
 END $legacy_conservation$;
+-- Cross-line frozen capacity cannot be reintroduced by a later legacy event.
+-- Hamilton([5,3,1],5)=[3,2,0], but Hamilton([5,3,1],4)=[2,1,1]:
+-- recomputing original caps would erase/reintroduce the fully returned last line.
+-- Freeze its 1 first, then legacy credits 4 and 1 consume only [5,3,0], yielding
+-- stable remaining caps [0,3,0] in UUID order. All three lines use one stock SKU.
+DO $cross_line_legacy$
+DECLARE
+ t uuid:=current_setting('test.fulfillment_t')::uuid;sku uuid:=current_setting('test.fulfillment_sku')::uuid;
+ oid uuid:=uuidv7();lids uuid[]:=ARRAY['00000000-0000-4000-8000-000000000101',
+  '00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-000000000103']::uuid[];
+ caps bigint[]:=ARRAY[5,3,1]::bigint[];res app.inventory_reservations;ord app.orders;lines jsonb:='[]';
+ income uuid:=uuidv7();tax uuid:=uuidv7();shipping uuid:=uuidv7();cash uuid:=uuidv7();journal uuid;
+ r jsonb;first_rid uuid;rid uuid;i int;line_i int;expected bigint;initial_stock bigint;
+BEGIN
+ INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
+  (t,income,'cross-line-income','USD','revenue'),(t,tax,'cross-line-tax','USD','liability'),
+  (t,shipping,'cross-line-shipping','USD','revenue'),(t,cash,'cross-line-cash','USD','asset');
+ SELECT on_hand INTO initial_stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
+ FOR i IN 1..3 LOOP
+  res:=app.inventory_reserve(sku,1,'order',oid,'cross-line-reserve-'||i,900);
+  lines:=lines||jsonb_build_array(jsonb_build_object('id',lids[i],'sku_id',sku,'sku','fulfillment-sku',
+   'quantity',1,'unit_price_minor',caps[i],'line_net_minor',caps[i],'line_tax_minor',0,
+   'line_total_minor',caps[i],'reservation_id',res.id,'tax_snapshot','{}'::jsonb));
+ END LOOP;
+ ord:=app.orders_create(oid,'cross-line-order',sha256('cross-line'::bytea),NULL,
+  '{"email":"cross-line@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',lines,'[]');
+ ord:=app.orders_transition(oid,'paid','cross-line-paid',0);
+ -- Return the last UUID first; its immutable financial receipt consumes its cap.
+ FOR i IN 1..3 LOOP
+  line_i:=CASE i WHEN 1 THEN 3 WHEN 2 THEN 1 ELSE 2 END;
+  expected:=CASE i WHEN 1 THEN 1 WHEN 2 THEN 0 ELSE 3 END;
+  r:=app.returns_create(oid,ord.version,'cross-line-rma-'||i,'unshipped_cancel','cross-line remaining capacity',
+   jsonb_build_array(jsonb_build_object('order_line_id',lids[line_i],'quantity',1)));
+  rid:=(r->>'id')::uuid;
+  IF i=1 THEN first_rid:=rid;END IF;
+  IF (r->>'refund_minor')::bigint<>expected OR (r->>'restocked')::boolean IS DISTINCT FROM true THEN
+   RAISE EXCEPTION 'FULFILLMENT_GATE cross-line frozen cap: line % got % expected %',line_i,r->>'refund_minor',expected;END IF;
+  SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+  IF expected>0 THEN
+   EXECUTE 'SET LOCAL ROLE app_returns_service';
+   PERFORM app.returns_prepare_refund(rid,ord.version,'cross-line-refund-'||i,'cross-line-capture',1,income,tax,shipping,cash);
+   journal:=app.post_ledger(t,'USD','return',rid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[expected,expected]);
+   PERFORM app.returns_complete_refund(rid,'cross-line-refund-'||i,'cross-line-capture',journal);
+   EXECUTE 'SET LOCAL ROLE app_runtime';
+  ELSIF r->>'status'<>'completed' OR EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND id=rid
+    AND (refund_key IS NOT NULL OR ledger_transaction_id IS NOT NULL)) THEN
+   RAISE EXCEPTION 'FULFILLMENT_GATE cross-line zero cancellation is not terminal without journal';
+  END IF;
+  SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+  IF i=1 THEN
+   ord:=app.orders_transition(oid,'partially_refunded','cross-line-legacy-four',4);
+   ord:=app.orders_transition(oid,'partially_refunded','cross-line-legacy-one',1);
+   IF ord.refunded_minor<>6 THEN RAISE EXCEPTION 'FULFILLMENT_GATE cross-line legacy sequence failed';END IF;
+  END IF;
+ END LOOP;
+ IF ord.refunded_minor<>9 OR ord.total_minor<>9 OR ord.state<>'refunded'
+  OR (SELECT refund_minor FROM app.returns WHERE tenant_id=t AND id=first_rid)<>1
+  OR (SELECT status FROM app.returns WHERE tenant_id=t AND id=first_rid)<>'refunded'
+  OR (SELECT sum(refund_minor) FROM app.returns WHERE tenant_id=t AND order_id=oid)<>4
+  OR (SELECT on_hand FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku)<>initial_stock
+  OR (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=t AND owner_type='return'
+   AND owner_id IN(SELECT id FROM app.returns WHERE tenant_id=t AND order_id=oid))<>3
+  OR (SELECT coalesce(sum(e.amount),0) FROM app.ledger_entries e JOIN app.returns rr
+   ON rr.tenant_id=e.tenant_id AND rr.ledger_transaction_id=e.transaction_id
+   WHERE rr.tenant_id=t AND rr.order_id=oid AND e.side='credit')<>4
+  OR EXISTS(SELECT e.transaction_id FROM app.ledger_entries e JOIN app.returns rr
+   ON rr.tenant_id=e.tenant_id AND rr.ledger_transaction_id=e.transaction_id
+   WHERE rr.tenant_id=t AND rr.order_id=oid GROUP BY e.transaction_id
+   HAVING sum(CASE e.side WHEN 'debit' THEN e.amount ELSE -e.amount END)<>0) THEN
+  RAISE EXCEPTION 'FULFILLMENT_GATE cross-line legacy frozen credit conservation/restoration failed';END IF;
+ RAISE NOTICE 'PASS: cross-line caps [5,3,1] freeze 1, legacy 4+1, remaining [0,3,0] conserve 9';
+END $cross_line_legacy$;
 -- A discounted two-unit order has entitlements [0,1]. Receive/refund the
 -- positive unit first, then receive the zero unit after the order is refunded.
 DO $zero_after_refund$
