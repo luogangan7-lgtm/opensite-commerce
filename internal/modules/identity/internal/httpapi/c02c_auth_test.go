@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
@@ -48,7 +50,54 @@ type c02cAuthority struct {
 	keys                               map[string]c02cKey
 	unavailable                        error
 	membershipCalls, keyCalls, touches int
+	revalidationErr                    error
+	revalidations                      int
+	revalidatedTenant                  string
+	revalidatedGrant                   contract.TransactionAuthorization
 }
+
+func (a *c02cAuthority) Membership(_ context.Context, user, tenant string) (contract.Membership, error) {
+	a.membershipCalls++
+	if a.unavailable != nil {
+		return contract.Membership{}, a.unavailable
+	}
+	m, ok := a.memberships[tenant]
+	if !ok || m.UserID != user {
+		return contract.Membership{}, contract.ErrNotFound
+	}
+	return contract.Membership{UserID: m.UserID, TenantID: m.TenantID, Role: m.Role}, nil
+}
+func (a *c02cAuthority) Key(_ context.Context, id string) (contract.APIKey, error) {
+	a.keyCalls++
+	if a.unavailable != nil {
+		return contract.APIKey{}, a.unavailable
+	}
+	k, ok := a.keys[id]
+	if !ok || k.Revoked || k.Expired {
+		return contract.APIKey{}, contract.ErrNotFound
+	}
+	return contract.APIKey{ID: k.ID, TenantID: k.TenantID, UserID: k.UserID, Hash: k.Hash, Scopes: append([]string(nil), k.Scopes...)}, nil
+}
+func (a *c02cAuthority) TouchKey(_ context.Context, id string) error {
+	if a.unavailable != nil {
+		return a.unavailable
+	}
+	k, ok := a.keys[id]
+	if !ok || k.Revoked || k.Expired {
+		return contract.ErrNotFound
+	}
+	a.touches++
+	return nil
+}
+func (a *c02cAuthority) Revalidate(_ context.Context, _ *db.Queries, tenant string, grant contract.TransactionAuthorization) error {
+	a.revalidations++
+	a.revalidatedTenant, a.revalidatedGrant = tenant, grant
+	if a.unavailable != nil {
+		return a.unavailable
+	}
+	return a.revalidationErr
+}
+
 type c02cFixture struct {
 	handler              *Handler
 	sessions             *fakeRepo
@@ -80,7 +129,7 @@ func c02cAuthFixture(t *testing.T) *c02cFixture {
 		memberships: map[string]c02cMembership{c02cTenant: {UserID: c02cUser, TenantID: c02cTenant, Role: "owner"}},
 		keys:        map[string]c02cKey{c02cKeyID: {ID: c02cKeyID, TenantID: c02cTenant, UserID: c02cUser, Hash: sha256.Sum256(secret), Scopes: []string{"catalog:read", "catalog:write"}}},
 	}
-	return &c02cFixture{handler: New(service, c02cOrigin, 30*time.Minute), sessions: repo, service: service, authority: authority, sessionToken: base64.RawURLEncoding.EncodeToString(token), bearer: c02cKeyID + "." + base64.RawURLEncoding.EncodeToString(secret)}
+	return &c02cFixture{handler: New(service, c02cOrigin, 30*time.Minute).WithAuthorization(authority), sessions: repo, service: service, authority: authority, sessionToken: base64.RawURLEncoding.EncodeToString(token), bearer: c02cKeyID + "." + base64.RawURLEncoding.EncodeToString(secret)}
 }
 func c02cSpec(access platform.Access, method, scope string) platform.RouteSpec {
 	return platform.RouteSpec{OperationID: "c02cAuthWitness", Method: method, Pattern: "/api/v1/t/{tenant_id}/products", Access: access, Scope: scope}
