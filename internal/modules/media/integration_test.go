@@ -48,6 +48,9 @@ type uploadReceipt struct {
 func TestMediaPostgresHTTP(t *testing.T) {
 	dsn := os.Getenv("C07_MEDIA_DATABASE_URL")
 	if dsn == "" {
+		if os.Getenv("OPENSITE_REQUIRE_PGX_FIXTURES") == "1" {
+			t.Fatal("NOT_RUN: C07_MEDIA_DATABASE_URL not configured (OPENSITE_REQUIRE_PGX_FIXTURES=1 forbids skipping)")
+		}
 		t.Skip("NOT_RUN: C07_MEDIA_DATABASE_URL not configured")
 	}
 	parsed, err := url.Parse(dsn)

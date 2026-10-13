@@ -2,7 +2,10 @@
 # Responsibility: run actual catalog/media HTTP tests with least-privilege logins.
 # Dependencies: migrated disposable PG18, Go, psql and committed fixture SQL.
 # Caller: foundation CI / developer gate. No production database is authorized.
+# OPENSITE_REQUIRE_PGX_FIXTURES=1 (set by CI): catalog/media pgx tests FAIL instead of
+# SKIP when their C07_* fixture environment is missing, so a silent skip cannot hide.
 set -euo pipefail
+export OPENSITE_REQUIRE_PGX_FIXTURES=1
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 [[ "${OPENSITE_DISPOSABLE_PG:-}" == 1 ]] || { echo 'BLOCKED: OPENSITE_DISPOSABLE_PG=1 required for owned test database' >&2; exit 4; }

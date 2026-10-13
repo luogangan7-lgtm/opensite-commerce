@@ -31,6 +31,9 @@ func pgRouter(t *testing.T) (*httpapi.Router, *httpapi.Router) {
 	t.Helper()
 	dsn := os.Getenv("C07_DATABASE_URL")
 	if dsn == "" {
+		if os.Getenv("OPENSITE_REQUIRE_PGX_FIXTURES") == "1" {
+			t.Fatal("NOT_RUN: C07_DATABASE_URL requires disposable migrated PG18 and catalog seed.sql (OPENSITE_REQUIRE_PGX_FIXTURES=1 forbids skipping)")
+		}
 		t.Skip("NOT_RUN: C07_DATABASE_URL requires disposable migrated PG18 and catalog seed.sql")
 	}
 	parsed, err := url.Parse(dsn)
