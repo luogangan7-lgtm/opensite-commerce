@@ -120,8 +120,20 @@ class APIContractTests(unittest.TestCase):
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
+        data_rights = {"requestCustomerDataExport", "getCustomerDataExport",
+                       "downloadCustomerDataExport", "eraseCustomerData"}
+        csv = {"preflightCatalogCSV", "importCatalogCSV", "exportCatalogCSV"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart)
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | data_rights | csv)
+        for name in data_rights | csv:
+            path, method, operation = ops[name]
+            self.assertIn("{tenant_id}", path)
+            self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
+            scope = ("customers:privacy" if name in data_rights else
+                     "catalog:export" if name == "exportCatalogCSV" else "catalog:import")
+            self.assertEqual(operation["x-required-scope"], scope)
+            if method != "get" and name != "preflightCatalogCSV":
+                self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, operation["parameters"])
         for name in expected - {"health", "getPublishedSite"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
