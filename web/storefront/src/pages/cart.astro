@@ -1,0 +1,14 @@
+---
+/** Responsibility: private/no-store cart document; dependencies: SSR purchase context + cart island. */
+import Shell from '../layouts/Shell.astro';
+import CartPage from '../components/CartPage';
+import { readPurchaseContext } from '../lib/commerce-server';
+import { commerceCopy } from '../lib/commerce-copy';
+import { requestCanonical } from '../lib/host-policy';
+const context = await readPurchaseContext(Astro.request, Astro.cookies);
+const ui = commerceCopy();
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+<Shell title={ui.cart} description={ui.purchaseDescription} canonical={requestCanonical(Astro)} noindex navigation={[{ label: ui.browseProducts, href: '/products' }]}>
+  <h1>{ui.cart}</h1><CartPage context={context} client:load />
+</Shell>
