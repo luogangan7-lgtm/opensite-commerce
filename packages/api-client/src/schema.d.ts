@@ -391,9 +391,8 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                site_id: components["parameters"]["SiteId"];
+                tenant_id: string;
+                site_id: string;
             };
             cookie?: never;
         };
@@ -406,15 +405,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSiteDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listDraftPages"];
+        put?: never;
+        post: operations["createDraftPage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getDraftPage"];
+        put: operations["updateDraftPage"];
+        post?: never;
+        delete: operations["deleteDraftPage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/navigation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateDraftNavigation"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                site_id: components["parameters"]["SiteId"];
-                draft_id: components["parameters"]["DraftId"];
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };
@@ -432,10 +511,9 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                site_id: components["parameters"]["SiteId"];
-                draft_id: components["parameters"]["DraftId"];
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };
@@ -453,16 +531,95 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                site_id: components["parameters"]["SiteId"];
-                draft_id: components["parameters"]["DraftId"];
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };
         get?: never;
         put?: never;
         post: operations["publishSiteDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createSitePreviewToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/sites/{site_id}/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSiteReleaseHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/sites/{site_id}/releases/{release_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restoreSiteRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Signed draft projection. Bearer token is mandatory; tampered or expired tokens are denied before database access. Never accepts tokens in query parameters. */
+        get: operations["getSitePreview"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1152,6 +1309,149 @@ export interface components {
             media_id?: string | null;
             /** Format: date-time */
             expires_at: string;
+        };
+        CreateCMSDraft: {
+            locale: string;
+            title: string;
+            description: string;
+        };
+        CMSDocument: {
+            title: string;
+            description: string;
+            blocks: components["schemas"]["PublishedBlock"][];
+        };
+        SaveCMSPage: {
+            page_key: string;
+            locale: string;
+            path: string;
+            document: components["schemas"]["CMSDocument"];
+            media_ids: string[];
+        };
+        CMSDraftPage: {
+            /** Format: uuid */
+            id: string;
+            page_key: string;
+            locale: string;
+            path: string;
+            document: components["schemas"]["CMSDocument"];
+            media_ids: string[];
+        };
+        CMSDraftPageList: components["schemas"]["CMSDraftPage"][];
+        CMSNavigationInput: {
+            navigation: components["schemas"]["PublishedNavigation"][];
+        };
+        CMSDraft: {
+            /** Format: uuid */
+            draft_id: string;
+            /** Format: uuid */
+            site_id: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: uuid */
+            base_release_id: string | null;
+            /** Format: int64 */
+            publication_revision: number;
+            /** @enum {string} */
+            status: "open" | "published" | "abandoned";
+            locale: string;
+            title: string;
+            description: string;
+            navigation: components["schemas"]["PublishedNavigation"][];
+            pages: components["schemas"]["CMSDraftPageList"];
+            products: components["schemas"]["PublishedProduct"][];
+        };
+        CMSPublishInput: {
+            /** Format: uuid */
+            expected_release_id: string | null;
+            /** Format: int64 */
+            expected_publication_revision: number;
+            renderer_build_id: string;
+        };
+        CMSRelease: {
+            /** Format: uuid */
+            release_id: string;
+            /** Format: int64 */
+            release_no: number;
+            /** Format: int64 */
+            publication_revision: number;
+            /** Format: uuid */
+            restored_from: string | null;
+            manifest_hash: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        CMSReleaseList: components["schemas"]["CMSRelease"][];
+        CMSPreviewInput: {
+            ttl_seconds: number;
+        };
+        CMSPreviewGrant: {
+            token: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: int64 */
+            revision: number;
+        };
+        CMSValidation: {
+            valid: boolean;
+            /** Format: int64 */
+            revision: number;
+        };
+        CMSRestoreInput: {
+            /** Format: uuid */
+            expected_release_id: string | null;
+        };
+        CMSDeletePageInput: {
+            locale: string;
+        };
+        CMSBatchPage: {
+            /** Format: uuid */
+            id?: string;
+            page_key: string;
+            locale: string;
+            path: string;
+            document: components["schemas"]["CMSDocument"];
+            media_ids: string[];
+        };
+        CMSBatchDeletePage: {
+            /** Format: uuid */
+            id: string;
+            locale: string;
+        };
+        CMSOperationSavePage: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "save_page";
+            payload: components["schemas"]["CMSBatchPage"];
+        };
+        CMSOperationDeletePage: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "delete_page";
+            payload: components["schemas"]["CMSBatchDeletePage"];
+        };
+        CMSOperationSetNavigation: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "set_navigation";
+            payload: components["schemas"]["CMSNavigationInput"];
+        };
+        CMSOperationSetMetadata: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "set_metadata";
+            payload: components["schemas"]["CreateCMSDraft"];
+        };
+        CMSOperation: components["schemas"]["CMSOperationSavePage"] | components["schemas"]["CMSOperationDeletePage"] | components["schemas"]["CMSOperationSetNavigation"] | components["schemas"]["CMSOperationSetMetadata"];
+        CMSOperationBatch: {
+            operations: components["schemas"]["CMSOperation"][];
         };
         CreateDraft: {
             /** Format: uuid */
@@ -2704,29 +3004,31 @@ export interface operations {
                 "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
             };
             path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                site_id: components["parameters"]["SiteId"];
+                tenant_id: string;
+                site_id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateDraft"];
+                "application/json": components["schemas"]["CreateCMSDraft"];
             };
         };
         responses: {
-            /** @description Draft created */
+            /** @description CMS operation result */
             201: {
                 headers: {
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Draft"];
+                    "application/json": components["schemas"]["CMSDraft"];
                 };
             };
+            400: components["responses"]["Problem"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
             413: components["responses"]["PayloadTooLarge"];
@@ -2734,6 +3036,317 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getSiteDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CMS operation result */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CMSDraft"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listDraftPages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CMS operation result */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CMSDraftPageList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    createDraftPage: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                "If-Match": components["parameters"]["IfMatch"];
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCMSPage"];
+            };
+        };
+        responses: {
+            /** @description CMS operation result */
+            201: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CMSDraftPage"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getDraftPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CMS operation result */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CMSDraftPage"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    updateDraftPage: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                "If-Match": components["parameters"]["IfMatch"];
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCMSPage"];
+            };
+        };
+        responses: {
+            /** @description CMS operation result */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CMSDraftPage"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    deleteDraftPage: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                "If-Match": components["parameters"]["IfMatch"];
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CMSDeletePageInput"];
+            };
+        };
+        responses: {
+            /** @description CMS operation result */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CMSDraft"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    updateDraftNavigation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                "If-Match": components["parameters"]["IfMatch"];
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CMSNavigationInput"];
+            };
+        };
+        responses: {
+            /** @description CMS operation result */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CMSDraft"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
         };
     };
     applyPageOperations: {
@@ -2749,31 +3362,32 @@ export interface operations {
                 "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
             };
             path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                site_id: components["parameters"]["SiteId"];
-                draft_id: components["parameters"]["DraftId"];
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OperationBatch"];
+                "application/json": components["schemas"]["CMSOperationBatch"];
             };
         };
         responses: {
-            /** @description Draft revision incremented */
+            /** @description CMS operation result */
             200: {
                 headers: {
                     ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Draft"];
+                    "application/json": components["schemas"]["CMSDraft"];
                 };
             };
+            400: components["responses"]["Problem"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
             413: components["responses"]["PayloadTooLarge"];
@@ -2781,38 +3395,44 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
         };
     };
     validateSiteDraft: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                "If-Match": components["parameters"]["IfMatch"];
                 /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
                 Origin?: components["parameters"]["OriginIfCookie"];
                 /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
                 "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
             };
             path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                site_id: components["parameters"]["SiteId"];
-                draft_id: components["parameters"]["DraftId"];
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Validation report */
+            /** @description CMS operation result */
             200: {
                 headers: {
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValidationResult"];
+                    "application/json": components["schemas"]["CMSValidation"];
                 };
             };
+            400: components["responses"]["Problem"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
             413: components["responses"]["PayloadTooLarge"];
@@ -2820,6 +3440,7 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
         };
     };
     publishSiteDraft: {
@@ -2835,26 +3456,32 @@ export interface operations {
                 "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
             };
             path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                site_id: components["parameters"]["SiteId"];
-                draft_id: components["parameters"]["DraftId"];
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CMSPublishInput"];
+            };
+        };
         responses: {
-            /** @description New immutable release; commit is atomic in PostgreSQL */
+            /** @description CMS operation result */
             201: {
                 headers: {
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublishedRelease"];
+                    "application/json": components["schemas"]["CMSRelease"];
                 };
             };
+            400: components["responses"]["Problem"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
             413: components["responses"]["PayloadTooLarge"];
@@ -2862,6 +3489,182 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    createSitePreviewToken: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                "If-Match": components["parameters"]["IfMatch"];
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CMSPreviewInput"];
+            };
+        };
+        responses: {
+            /** @description CMS operation result */
+            201: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CMSPreviewGrant"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getSiteReleaseHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CMS operation result */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CMSReleaseList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    restoreSiteRelease: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                "If-Match": components["parameters"]["IfMatch"];
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                tenant_id: string;
+                site_id: string;
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CMSRestoreInput"];
+            };
+        };
+        responses: {
+            /** @description CMS operation result */
+            201: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CMSRelease"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getSitePreview: {
+        parameters: {
+            query?: never;
+            header: {
+                Authorization: string;
+            };
+            path: {
+                tenant_id: string;
+                site_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CMS operation result */
+            200: {
+                headers: {
+                    ETag?: string;
+                    "Cache-Control"?: "no-store";
+                    "X-Robots-Tag"?: "noindex, nofollow";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishedSite"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
         };
     };
     submitInquiry: {

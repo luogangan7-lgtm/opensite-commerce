@@ -1,7 +1,8 @@
 // Responsibilities: bounded pre-database admission and opaque persistent rate keys.
 // Dependencies: HMAC/SHA256, caller IP and repository atomic counters; auth
-// commands call begin. Invariants: IPv6 /64 grouping, distinct tenant/domain keys,
-// immediate429 without sleep, and no secret identifier is persisted in counters.
+// commands call begin. Invariants: tenant-scoped account keys, global canonical
+// IP keys (IPv6 /64), domain separation, immediate429 without sleep, and only
+// opaque hashes are persisted in counters.
 package auth
 
 import (
@@ -34,7 +35,7 @@ func (s *Service) rateHashes(tenant, email string, ip netip.Addr) ([32]byte, [32
 	if ip.Is6() {
 		ip = netip.PrefixFrom(ip, 64).Masked().Addr()
 	}
-	return s.keyedHash(tenant, "account", email), s.keyedHash(tenant, "ip", ip.String())
+	return s.keyedHash(tenant, "account", email), s.keyedHash("", "ip", ip.String())
 }
 func (s *Service) begin(parent context.Context, tenant, account string, ip netip.Addr) (context.Context, func(), error) {
 	if parent.Err() != nil {
