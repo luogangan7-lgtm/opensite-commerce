@@ -66,7 +66,10 @@ The manifest maps `table.column` / `queue.table.column` to exact unique canaries
 #44 must erase only its verified subject, then search the full catalog for the
 subject's canaries, while checking explicit retain/other-subject witnesses. The
 row graph includes registered and guest orders, checkout, quote approval, and
-notification recipient copies. Retained public/staff canaries are intentionally
+notification recipient copies. Registered-customer proof is established by the
+real mailbox-proof command, with a distinct marker in its persisted token-email
+copy and random unknown PHC material; no mail or login is performed. Retained
+public/staff canaries are intentionally
 separate from customer-owned canaries. A caller may reuse `fixture_values_sql` and
 `validate_fixture` before erasure to assert actual coverage; classification alone
 is not a claim that the data-rights executor already fulfills the policy.

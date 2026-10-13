@@ -409,6 +409,24 @@ class PrivacyRegistryTests(unittest.TestCase):
                 self.assertNotIn(raw_cell, captured)
                 self.assertNotIn("raw database error", captured)
 
+    def test_database_failure_keeps_only_safe_state_and_fixture_line(self):
+        dsn = "postgresql://fixture@127.0.0.1/test?application_name=redaction_canary"
+        error = subprocess.CompletedProcess(["psql", dsn], 1, "", (
+            "ERROR: 23514: sensitive constraint detail\n"
+            "CONTEXT: PL/pgSQL function inline_code_block line 73 at SQL statement\n" + dsn
+        ))
+        with tempfile.TemporaryDirectory(prefix="privacy-cli-test-") as tmp:
+            root = self.cli_root(tmp)
+            stderr = io.StringIO()
+            with patch.object(sys, "argv", ["privacy_registry.py", "--root", str(root), "--database"]), \
+                    patch.dict(os.environ, {"GITHUB_ACTIONS": "true", "DATABASE_URL": dsn}), \
+                    patch.object(self.gate.subprocess, "run", return_value=error), \
+                    redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+                self.assertEqual(self.gate.main(), 1)
+            self.assertIn("SQLSTATE=23514 fixture_line=73", stderr.getvalue())
+            self.assertNotIn(dsn, stderr.getvalue())
+            self.assertNotIn("sensitive constraint detail", stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
