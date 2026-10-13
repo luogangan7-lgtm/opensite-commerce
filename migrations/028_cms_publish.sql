@@ -207,18 +207,8 @@ DECLARE s app.sites; d uuid:=uuidv7(); route record; cloned_page uuid; BEGIN
  END LOOP;
  -- Each cloned page gets only its own sealed revision's pins (never the
  -- page x release cross product, which grows N*M and breaks the 1 MiB read).
- INSERT INTO app.draft_page_media SELECT DISTINCT p_tenant,p_site,d,dp.page_id,dp.locale,pin.media_id FROM app.draft_pages dp
- JOIN app.site_release_routes rr ON (rr.tenant_id,rr.site_id,rr.release_id,lower(rr.locale),rr.path)=(p_tenant,p_site,s.published_release_id,lower(dp.locale),dp.path)
- JOIN app.page_revisions pr ON (pr.tenant_id,pr.site_id,pr.page_id,pr.locale,pr.revision)=(rr.tenant_id,rr.site_id,rr.page_id,rr.locale,rr.page_revision)
- CROSS JOIN LATERAL unnest(pr.media_ids) pin(media_id) WHERE dp.tenant_id=p_tenant AND dp.site_id=p_site AND dp.draft_id=d;
- -- Pre-CMS releases have release-level pins only: keep each exactly once, on
- -- the home (else first) page, so an edit cannot silently unpin it.
- IF NOT EXISTS(SELECT FROM app.site_release_routes rr JOIN app.page_revisions pr ON (pr.tenant_id,pr.site_id,pr.page_id,pr.locale,pr.revision)=(rr.tenant_id,rr.site_id,rr.page_id,rr.locale,rr.page_revision)
-  WHERE rr.tenant_id=p_tenant AND rr.site_id=p_site AND rr.release_id=s.published_release_id AND pr.media_ids IS NOT NULL) THEN
-  INSERT INTO app.draft_page_media SELECT p_tenant,p_site,d,home.page_id,home.locale,rm.media_id
-  FROM (SELECT page_id,locale FROM app.draft_pages WHERE tenant_id=p_tenant AND site_id=p_site AND draft_id=d ORDER BY path<>'/',path LIMIT 1) home
-  JOIN app.site_release_media rm ON rm.tenant_id=p_tenant AND rm.site_id=p_site AND rm.release_id=s.published_release_id;
- END IF;
+ INSERT INTO app.draft_page_media SELECT p_tenant,p_site,d,dp.page_id,dp.locale,rm.media_id FROM app.draft_pages dp
+ JOIN app.site_release_media rm ON rm.tenant_id=p_tenant AND rm.site_id=p_site AND rm.release_id=s.published_release_id WHERE dp.tenant_id=p_tenant AND dp.site_id=p_site AND dp.draft_id=d;
  INSERT INTO app.audit_events(tenant_id,actor_kind,actor_id,operation,resource_type,resource_id,payload)
  VALUES(p_tenant,p_kind,p_actor,'cms.create_draft','site_draft',d,jsonb_build_object('site_id',p_site,'base_release_id',s.published_release_id));
  RETURN app.cms_read_draft(p_tenant,p_site,d,NULL);
