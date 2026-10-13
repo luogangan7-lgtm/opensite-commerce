@@ -14,11 +14,13 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	authcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	identityadapter "github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -338,5 +340,45 @@ func TestC02cRoleScopesMirrorPostgres(t *testing.T) {
 				t.Fatal("C02c Go and SQL role scopes disagree", role)
 			}
 		})
+	}
+}
+
+// A missing definer search path produces NULL proconfig; the actual matrix must
+// reject it, roll the injected fault back, and accept the restored definition.
+func TestC02cTenantMatrixRejectsNullConfigurationPostgres(t *testing.T) {
+	ctx, admin, _, _ := setupLoginPG(t)
+	source, err := os.ReadFile("../../../tests/db_role_matrix.sql")
+	if err != nil {
+		t.Fatal("C02c role matrix source unavailable")
+	}
+	text := string(source)
+	start := strings.Index(text, "DO $tenant_auth$")
+	if start < 0 {
+		t.Fatal("C02c tenant role matrix block missing")
+	}
+	end := strings.Index(text[start:], "END $tenant_auth$;")
+	if end < 0 {
+		t.Fatal("C02c tenant role matrix block incomplete")
+	}
+	matrix := text[start : start+end+len("END $tenant_auth$;")]
+	if _, err := admin.Exec(ctx, matrix); err != nil {
+		t.Fatal("C02c tenant matrix rejected valid baseline", err)
+	}
+	err = admin.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `ALTER FUNCTION app.auth_revalidate_tenant(uuid,uuid,text,uuid,text) RESET ALL`); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, matrix)
+		if err == nil {
+			return errors.New("C02c matrix admitted NULL function configuration")
+		}
+		return err
+	})
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "P0001" || pgErr.Message != "TENANT_AUTH_UNSAFE_ROUTINE auth_revalidate_tenant" {
+		t.Fatal("C02c matrix did not reject the injected NULL configuration", err)
+	}
+	if _, err := admin.Exec(ctx, matrix); err != nil {
+		t.Fatal("C02c tenant matrix definition was not restored", err)
 	}
 }
