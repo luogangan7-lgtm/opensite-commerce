@@ -6,6 +6,8 @@ import { readPurchaseContext } from '../lib/commerce-server';
 import { commerceCopy } from '../lib/commerce-copy';
 import { requestCanonical } from '../lib/host-policy';
 const context = await readPurchaseContext(Astro.request, Astro.cookies);
+// This increment has only the explicitly isolated Fake provider.
+context.enabled = context.enabled && (context.fixture || context.fakePayment === true);
 const ui = commerceCopy();
 Astro.response.headers.set('Cache-Control', 'no-store');
 ---

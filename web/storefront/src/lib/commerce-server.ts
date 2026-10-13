@@ -36,7 +36,7 @@ export function fixtureConfiguration(request: Request): { origin: string; site: 
   if (process.env.OSC_COMMERCE_FIXTURE_MODE !== 'contract-test' || origin !== 'http://127.0.0.1:4176' || site !== 'http://127.0.0.1:4323' || new URL(request.url).origin !== site) return null;
   return { origin, site };
 }
-function configuration(request: Request): Configuration | null {
+function purchaseConfiguration(request: Request): Configuration | null {
   if (process.env.OSC_COMMERCE_MODE !== 'backend') {
     const fixture = fixtureConfiguration(request); return fixture ? {...fixture,fixture:true} : null;
   }
@@ -86,7 +86,7 @@ function configuredKey(name: string) {
 function fakePaymentEnabled() {
   return process.env.OPENSITE_FAKE_PSP==='1' && ['test','development'].includes(process.env.OPENSITE_ENVIRONMENT ?? '');
 }
-function checkoutHeaders(configuration: Configuration, session: Session) {
+function checkoutHeaders(configuration: Configuration, session: Session): Record<string,string> {
   if (configuration.fixture) return {Origin:configuration.site,'X-CSRF-Token':csrf(session)};
   const origin=readAPIOrigin(process.env.OPENSITE_STOREFRONT_ORIGIN ?? '');
   if (!origin.startsWith('https://') || !session.t || !session.c || !session.tenant) throw new HTTPError(503);
@@ -149,7 +149,7 @@ async function context(configuration: Configuration, session: Session) {
 }
 const disabled: PurchaseContext = { enabled: false, fixture: false, csrf: '', actor: 'guest', products: [] };
 export async function readPurchaseContext(request: Request, cookies: Jar): Promise<PurchaseContext> {
-  const config=configuration(request);
+  const config=purchaseConfiguration(request);
   if (!config) return disabled;
   try {
     const session=readSession(cookies) ?? {s:randomBytes(32).toString('base64url'),x:Date.now()+3_600_000};
@@ -195,12 +195,12 @@ async function body(request: Request, allowed: readonly string[]) {
 function quantity(value: unknown) { if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 1_000_000) throw new HTTPError(400); return value; }
 function json(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } }); }
 export async function handlePurchaseRequest(request: Request, cookies: Jar, operation: string): Promise<Response> {
-  const config = configuration(request);
+  const config = purchaseConfiguration(request);
   if (!config) return request.method === 'GET' && operation === 'context' ? json(disabled) : json({ code: 'purchase_unavailable' }, 503);
   const configuration = config;
   try {
     if (request.method === 'GET' && operation === 'context') return json(await readPurchaseContext(request, cookies));
-    const session = readSession(cookies); if (!session) throw new HTTPError(403);
+    const session = readSession(cookies); if (!session) throw new HTTPError(configuration.fixture ? 403 : 401);
     if (!['GET','HEAD'].includes(request.method)) verifyPurchaseWrite(request, configuration.site, csrf(session));
     const current = await context(configuration, session), base = `/api/v1/t/${current.tenant}`;
     if (operation === 'cart' && request.method === 'GET') {

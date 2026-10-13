@@ -249,7 +249,7 @@ def validate_contract(api):
                             "getCheckout": ("/api/v1/t/{tenant_id}/checkout/{checkout_id}", "get")}
                 require((path, method) == expected[ident] and tenant and
                         "x-required-scope" not in op and op["x-opensite-status"] == "implemented" and
-                        security == ([{"StorefrontSession": []}, {"GuestCapability": []}] if ident == "createCheckout" else [{"GuestCapability": []}]),
+                        security == [{"GuestCapability": []}],
                         "checkout requires the exact scope-free storefront resolver contract")
                 for name, location, credential_name in (("StorefrontSession", "cookie", "__Host-osc_customer_session"),
                                                          ("GuestCapability", "header", "X-Cart-Token")):

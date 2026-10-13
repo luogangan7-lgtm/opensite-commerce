@@ -6,7 +6,7 @@ info:
     Contract-first first-vertical-slice API. Declared operations are not all implemented in this increment. Tenant
     business targets come from the URL path; credentials authorize them. Health, catalog, media, cart, notifications,
     published-site read and staff login operations are implemented; other operations are planned contracts. Checkout composition is opt-in;
-    its trusted storefront resolver is deferred and Fake callback transport is restricted to explicit test/development mode.
+    its guest capability resolver is configured independently of staff authentication, and Fake callback transport is restricted to explicit test/development mode.
 servers:
   - url: /
 security:
@@ -32,13 +32,12 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: Storefront
       description: >-
-        C-18a trusted storefront resolver seam. Guest capability or customer session must be verified
-        independently of URL and Host, with exact Origin and session-bound CSRF. This increment has no
-        production resolver; missing resolver rejects. Storefront access carries no employee scope and
+        C-09d guest capability checkout. The capability must be verified independently of URL and Host,
+        with exact configured Origin, server proof and tenant/cart ownership. Customer sessions are reserved
+        for a later integration; missing resolver rejects. Storefront access carries no employee scope and
         never falls back to staff authentication. Prices, buyer identity and tenant authorization are not input.
         quote_id is rejected in this increment; B2B conversion is deferred.
       security:
-        - StorefrontSession: []
         - GuestCapability: []
       parameters:
         - $ref: '#/components/parameters/TenantId'

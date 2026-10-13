@@ -73,7 +73,7 @@ test('signed cookie tampering and forwarded host cannot reach the cart capabilit
   await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
   const name='__Host-osc_storefront_cart', value=jar.values.get(name)!;
   jar.values.set(name,value+'x');const count=calls.length;
-  expect((await handlePurchaseRequest(request('cart'),jar.jar,'cart')).status).toBe(403);
+  expect((await handlePurchaseRequest(request('cart'),jar.jar,'cart')).status).toBe(401);
   expect(calls.length).toBe(count);
   const forwarded=request('context');forwarded.headers.set('X-Forwarded-Host','shop.example.test');
   expect((await readPurchaseContext(forwarded,jar.jar)).enabled).toBe(false);expect(calls.length).toBe(count);

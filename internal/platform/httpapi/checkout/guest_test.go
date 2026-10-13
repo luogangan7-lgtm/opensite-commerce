@@ -11,6 +11,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	contract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
@@ -20,7 +21,7 @@ import (
 
 func TestGuestResolverBindsTenantCartAndProof(t *testing.T) {
 	key := []byte("0123456789abcdef0123456789abcdef")
-	token := base64.RawURLEncoding.EncodeToString([]byte("abcdef0123456789abcdef012345678901"))
+	token := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("g", 32)))
 	calls := 0
 	resolver, err := checkout.NewGuestResolver(checkout.GuestConfig{TenantID: tenant, Origin: origin, Key: key, VerifyCart: func(_ context.Context, actor contract.AuthorizedActor, cartID string) error {
 		calls++

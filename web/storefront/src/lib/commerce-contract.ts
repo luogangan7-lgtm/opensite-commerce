@@ -1,7 +1,7 @@
-/** Responsibility: browser-safe purchasing view contracts for the approved C-09c fixtures.
+/** Responsibility: browser-safe purchasing view contracts for the real BFF and explicit fixtures.
  * Dependencies: none; callers: SSR adapter, React purchasing UI and contract fixtures.
  * Invariants: capabilities never appear here; money is an exact minor-unit string, computed by the API.
- * Backend handoff: SKU/preview/customer contracts are owner-approved proposals, not implemented API claims.
+ * Customer authentication remains an explicit contract fixture until its separate module is wired.
  */
 export type PurchaseSKU = { sku_id: string; sku_code: string; option_values: { name: string; value: string }[]; price_minor: string; currency: string; available: boolean };
 export type PurchaseProduct = { product_id: string; name: string; slug: string; skus: PurchaseSKU[] };
