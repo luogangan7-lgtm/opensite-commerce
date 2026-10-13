@@ -1,6 +1,6 @@
 // Responsibility: expose the platform typed API contract port to business services.
-// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish/orders strict services.
-// Invariant: generated server mounting stays in StrictRoutes behind Router admission.
+// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish/orders strict services and platform quote transport.
+// Invariant: generated server mounting stays in StrictRoutes or platform transports behind Router admission.
 // Type aliases preserve compiler-checked oneOf/nullable/responses without copies.
 package httpapi
 
@@ -70,6 +70,61 @@ type GetPublishedSite404ApplicationProblemPlusJSONResponse = generated.GetPublis
 type GetPublishedSite503ApplicationProblemPlusJSONResponse = generated.GetPublishedSite503ApplicationProblemPlusJSONResponse
 type Problem = generated.Problem
 type PublishedSite = generated.PublishedSite
+
+type AcceptQuote200JSONResponse = generated.AcceptQuote200JSONResponse
+type AcceptQuote200ResponseHeaders = generated.AcceptQuote200ResponseHeaders
+type AcceptQuoteRequestObject = generated.AcceptQuoteRequestObject
+type AcceptQuoteResponseObject = generated.AcceptQuoteResponseObject
+type ApproveQuote200JSONResponse = generated.ApproveQuote200JSONResponse
+type ApproveQuote200ResponseHeaders = generated.ApproveQuote200ResponseHeaders
+type ApproveQuoteRequestObject = generated.ApproveQuoteRequestObject
+type ApproveQuoteResponseObject = generated.ApproveQuoteResponseObject
+type CreateInquiry = generated.CreateInquiry
+type CreateQuote = generated.CreateQuote
+type CreateQuote201JSONResponse = generated.CreateQuote201JSONResponse
+type CreateQuote201ResponseHeaders = generated.CreateQuote201ResponseHeaders
+type CreateQuoteRequestObject = generated.CreateQuoteRequestObject
+type CreateQuoteResponseObject = generated.CreateQuoteResponseObject
+type ExpireQuote200JSONResponse = generated.ExpireQuote200JSONResponse
+type ExpireQuote200ResponseHeaders = generated.ExpireQuote200ResponseHeaders
+type ExpireQuoteRequestObject = generated.ExpireQuoteRequestObject
+type ExpireQuoteResponseObject = generated.ExpireQuoteResponseObject
+type GetBuyerQuote200JSONResponse = generated.GetBuyerQuote200JSONResponse
+type GetBuyerQuote200ResponseHeaders = generated.GetBuyerQuote200ResponseHeaders
+type GetBuyerQuoteRequestObject = generated.GetBuyerQuoteRequestObject
+type GetBuyerQuoteResponseObject = generated.GetBuyerQuoteResponseObject
+type GetQuote200JSONResponse = generated.GetQuote200JSONResponse
+type GetQuote200ResponseHeaders = generated.GetQuote200ResponseHeaders
+type GetQuoteRequestObject = generated.GetQuoteRequestObject
+type GetQuoteResponseObject = generated.GetQuoteResponseObject
+type InquiryReceipt = generated.InquiryReceipt
+type Quote = generated.Quote
+type QuoteTransition = generated.QuoteTransition
+type RejectQuote200JSONResponse = generated.RejectQuote200JSONResponse
+type RejectQuote200ResponseHeaders = generated.RejectQuote200ResponseHeaders
+type RejectQuoteRequestObject = generated.RejectQuoteRequestObject
+type RejectQuoteResponseObject = generated.RejectQuoteResponseObject
+type SendQuote200JSONResponse = generated.SendQuote200JSONResponse
+type SendQuote200ResponseHeaders = generated.SendQuote200ResponseHeaders
+type SendQuoteRequestObject = generated.SendQuoteRequestObject
+type SendQuoteResponseObject = generated.SendQuoteResponseObject
+type ServerInterfaceWrapper = generated.ServerInterfaceWrapper
+type StrictHTTPServerOptions = generated.StrictHTTPServerOptions
+type SubmitInquiry202JSONResponse = generated.SubmitInquiry202JSONResponse
+type SubmitInquiryRequestObject = generated.SubmitInquiryRequestObject
+type SubmitInquiryResponseObject = generated.SubmitInquiryResponseObject
+type WithdrawQuote200JSONResponse = generated.WithdrawQuote200JSONResponse
+type WithdrawQuote200ResponseHeaders = generated.WithdrawQuote200ResponseHeaders
+type WithdrawQuoteRequestObject = generated.WithdrawQuoteRequestObject
+type WithdrawQuoteResponseObject = generated.WithdrawQuoteResponseObject
+
+// NewStrictHandlerWithOptions and GetSwagger expose the pinned protocol adapter
+// to platform transports with resource-specific CAS admission. The shared
+// StrictRoutes version admission expects decimal ETags and cannot admit create *.
+// Neither helper supplies authority or registers routes.
+var NewStrictHandlerWithOptions = generated.NewStrictHandlerWithOptions
+var GetSwagger = generated.GetSwagger
+
 type GetOrder200JSONResponse = generated.GetOrder200JSONResponse
 type GetOrder200ResponseHeaders = generated.GetOrder200ResponseHeaders
 type GetOrderRequestObject = generated.GetOrderRequestObject
