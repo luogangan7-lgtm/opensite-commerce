@@ -50,6 +50,9 @@ services:
       OPENSITE_DOMAIN_DB_PASSWORD: ${OPENSITE_DOMAIN_DB_PASSWORD:?set domain password}
       OPENSITE_MEDIA_DB_PASSWORD: ${OPENSITE_MEDIA_DB_PASSWORD:?set media password}
       OPENSITE_MEDIA_ROOT: /var/lib/opensite/media
+      # Staff login reuses the auth DSN above; startup fails if either is missing.
+      OSC_ADMIN_ORIGIN: ${OPENSITE_ADMIN_ORIGIN:?set exact HTTPS admin origin}
+      OSC_AUTH_SIGNING_KEY_HEX: ${OPENSITE_AUTH_SIGNING_KEY:?set independent 64-hex auth signing key}
     volumes:
       - media_data:/var/lib/opensite/media
     ports:
