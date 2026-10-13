@@ -303,8 +303,7 @@ def check_raw_connection(text, location, allow_raw=False):
                          and alias not in ("_", ".") and all(
                              tokens[i + 2] == "CommandTag" for i in range(len(tokens) - 2)
                              if tokens[i] == (alias or "pgconn") and tokens[i + 1] == "."))
-        require(imported != "github.com/jackc/pgx/v5/stdlib" and
-                (imported != "github.com/jackc/pgx/v5/pgconn" or generated_tag),
+        require(( != "github.com/jackc/pgx/v5/pgconn" or generated_tag),
                 "MODULE_RAW_CONNECTION_IMPORT", location)
         require(allow_raw or imported != "github.com/jackc/pgx/v5/pgxpool",
                 "MODULE_RAW_POOL_IMPORT", location)
