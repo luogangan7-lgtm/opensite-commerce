@@ -526,6 +526,7 @@ BEGIN
  FROM app.returns rr WHERE rr.tenant_id=t AND rr.order_id=p_order AND rr.status='refunded';
  IF legacy<0 THEN RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
  has_legacy:=legacy>0;
+ legacy:=0; has_legacy:=false; -- PROBE-39-3: ignore legacy credit (pre-190 fix)
  FOR ol IN SELECT * FROM app.order_lines WHERE tenant_id=t AND order_id=p_order ORDER BY id LOOP
   index_v:=array_position(ids,ol.id);
   SELECT coalesce(sum(rl.income_minor),0) AS income,coalesce(sum(rl.tax_minor),0) AS tax,
