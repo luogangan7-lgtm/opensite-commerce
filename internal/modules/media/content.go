@@ -262,12 +262,15 @@ func avifPrimaryProperties(b []byte, primary uint32) (int, int) {
 	}
 	var props []box
 	var ipma []byte
+	// Presence is tracked apart from the slice: an empty first ipco parses to nil.
+	seenIpco := false
 	for _, x := range xs {
 		switch x.kind {
 		case "ipco":
-			if props != nil {
+			if seenIpco {
 				return 0, 0
 			}
+			seenIpco = true
 			props, ok = boxes(x.data, 0)
 			if !ok {
 				return 0, 0
@@ -282,12 +285,17 @@ func avifPrimaryProperties(b []byte, primary uint32) (int, int) {
 	if len(props) == 0 || len(ipma) < 8 || ipma[0] > 1 || ipma[1] != 0 || ipma[2] != 0 || ipma[3] > 1 {
 		return 0, 0
 	}
+	// ISO-BMFF: 15-bit property indices (flags=1) only for more than 127 properties.
+	if ipma[3] == 1 && len(props) <= 127 {
+		return 0, 0
+	}
 	count := binary.BigEndian.Uint32(ipma[4:8])
 	if count == 0 || count > 512 {
 		return 0, 0
 	}
 	pos := 8
 	seenItems := map[uint32]bool{}
+	var previous uint32
 	w, h, av1 := 0, 0, false
 	for range count {
 		itemWidth := 2
@@ -302,9 +310,11 @@ func avifPrimaryProperties(b []byte, primary uint32) (int, int) {
 			id = binary.BigEndian.Uint32(ipma[pos : pos+4])
 		}
 		pos += itemWidth
-		if id == 0 || seenItems[id] {
+		// Entries are strictly ordered by increasing item_ID (also rejects duplicates).
+		if id == 0 || id <= previous {
 			return 0, 0
 		}
+		previous = id
 		seenItems[id] = true
 		n := int(ipma[pos])
 		pos++

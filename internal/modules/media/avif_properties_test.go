@@ -47,6 +47,14 @@ func TestAVIFPrimaryPropertiesMustBeAssociated(t *testing.T) {
 // Rebuild iprp while moving the committed primary extent with its mdat.
 func avifWithProperties(t *testing.T, properties, association []byte) []byte {
 	t.Helper()
+	return avifWithIPRP(t, func(makeBox func(string, []byte) []byte) []byte {
+		return append(makeBox("ipco", properties), makeBox("ipma", association)...)
+	})
+}
+
+// avifWithIPRP lets a test choose the exact iprp children (container order/count).
+func avifWithIPRP(t *testing.T, children func(func(string, []byte) []byte) []byte) []byte {
+	t.Helper()
 	b, err := os.ReadFile("testdata/tiny.avif")
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +68,7 @@ func avifWithProperties(t *testing.T, properties, association []byte) []byte {
 	}
 	pos := bytes.Index(b, []byte("iprp")) - 4
 	oldSize := int(binary.BigEndian.Uint32(b[pos:]))
-	next := makeBox("iprp", append(makeBox("ipco", properties), makeBox("ipma", association)...))
+	next := makeBox("iprp", children(makeBox))
 	delta := len(next) - oldSize
 	out := append(bytes.Clone(b[:pos]), next...)
 	out = append(out, b[pos+oldSize:]...)
@@ -82,16 +90,26 @@ func TestAVIFPrimaryAssociationVersions(t *testing.T) {
 	props := bytes.Clone(b[start : start+size])
 	// An unassociated second ispe is legal and must not replace primary dimensions.
 	props = append(props, props[:20]...)
+	// ISO-BMFF permits 15-bit indices only when ipco has more than 127 properties.
+	wideProps := bytes.Clone(props)
+	for range 128 {
+		wideProps = append(wideProps, 0, 0, 0, 8, 'f', 'r', 'e', 'e')
+	}
 	for _, tc := range []struct {
 		name         string
 		associations []byte
+		wide         bool
 	}{
-		{"narrow version0", []byte{0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 4, 1, 2, 0x83, 4}},
-		{"wide version0", []byte{0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 4, 0, 1, 0, 2, 0x80, 3, 0, 4}},
-		{"wide version1", []byte{1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 1, 0, 2, 0x80, 3, 0, 4}},
+		{"narrow version0", []byte{0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 4, 1, 2, 0x83, 4}, false},
+		{"wide version0", []byte{0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 4, 0, 1, 0, 2, 0x80, 3, 0, 4}, true},
+		{"wide version1", []byte{1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 1, 0, 2, 0x80, 3, 0, 4}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, w, h, err := inspect(avifWithProperties(t, props, tc.associations), "image/avif")
+			table := props
+			if tc.wide {
+				table = wideProps
+			}
+			_, w, h, err := inspect(avifWithProperties(t, table, tc.associations), "image/avif")
 			if err != nil || w != 2 || h != 3 {
 				t.Fatalf("primary dimensions=%dx%d err=%v", w, h, err)
 			}
@@ -107,6 +125,9 @@ func TestAVIFZeroAssociationEssentialBit(t *testing.T) {
 	start := bytes.Index(b, []byte("ipco")) + 4
 	size := int(binary.BigEndian.Uint32(b[start-8:])) - 8
 	props := bytes.Clone(b[start : start+size])
+	for range 128 { // wide indices require more than 127 properties
+		props = append(props, 0, 0, 0, 8, 'f', 'r', 'e', 'e')
+	}
 	for _, tc := range []struct {
 		name         string
 		associations []byte
@@ -128,4 +149,42 @@ func TestAVIFZeroAssociationEssentialBit(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Review hardening: ordering, wide-index preconditions and container uniqueness.
+func TestAVIFIpmaOrderingWidthAndContainerUniqueness(t *testing.T) {
+	b, err := os.ReadFile("testdata/tiny.avif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := bytes.Index(b, []byte("ipco")) + 4
+	size := int(binary.BigEndian.Uint32(b[start-8:])) - 8
+	props := bytes.Clone(b[start : start+size])
+	primary := []byte{1, 4, 1, 2, 0x83, 4}
+	for _, tc := range []struct {
+		name         string
+		associations []byte
+		invalid      bool
+	}{
+		{"ascending", append([]byte{0, 0, 0, 0, 0, 0, 0, 2, 0, 1}, append(primary[1:], 0, 2, 1, 1)...), false},
+		{"descending", append([]byte{0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 1, 1, 0, 1}, primary[1:]...), true},
+		{"wide flags for small table", []byte{0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 4, 0, 1, 0, 2, 0x80, 3, 0, 4}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, w, h, err := inspect(avifWithProperties(t, props, tc.associations), "image/avif")
+			if tc.invalid != (err != nil) || (!tc.invalid && (w != 2 || h != 3)) {
+				t.Fatalf("invalid=%v dimensions=%dx%d err=%v", tc.invalid, w, h, err)
+			}
+		})
+	}
+	t.Run("empty first ipco then second ipco", func(t *testing.T) {
+		input := avifWithIPRP(t, func(makeBox func(string, []byte) []byte) []byte {
+			out := makeBox("ipco", nil)
+			out = append(out, makeBox("ipco", props)...)
+			return append(out, makeBox("ipma", []byte{0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 4, 1, 2, 0x83, 4})...)
+		})
+		if _, _, _, err := inspect(input, "image/avif"); err == nil {
+			t.Fatal("second property container accepted after an empty first one")
+		}
+	})
 }
