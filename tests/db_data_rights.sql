@@ -1,5 +1,5 @@
 -- Real PostgreSQL privacy gate; synthetic tenant/customer fixtures roll back.
--- Depends on 024 controlled functions. Called by check_pg; no production data.
+-- Depends on 025 controlled functions. Called by check_pg; no production data.
 -- Asserts scope, credentials exclusion, single use, erasure and runtime fences.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -115,4 +115,57 @@ BEGIN
  -- Current schema has no customer sessions or customer-owned media binding:
  -- erasure never maps customer UUIDs to staff users or media_uploads.actor_id.
 END $authority$;
+-- Missing/foreign parents retain the original named composite FK (23503).
+-- Only matched disabled/erased parents trigger the privacy lifecycle error (55000).
+DO $parent_guards$
+DECLARE t uuid:=current_setting('app.tenant_id')::uuid; parent uuid; guard text;
+ phc text:='$argon2id$v=19$m=1,t=1,p=1$c2FsdA$aGFzaA';
+ sku uuid:=current_setting('test.privacy_sku')::uuid; oid uuid; disabled uuid; r app.inventory_reservations; lines jsonb;
+BEGIN
+ FOREACH parent IN ARRAY ARRAY[current_setting('test.privacy_foreign')::uuid,uuidv7()] LOOP
+  BEGIN
+   INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash) VALUES(t,parent,phc);
+   RAISE EXCEPTION 'PRIVACY_GATE missing credential parent accepted';
+  EXCEPTION WHEN foreign_key_violation THEN
+   GET STACKED DIAGNOSTICS guard=CONSTRAINT_NAME;
+   IF guard<>'customer_credentials_customer_fk' THEN RAISE EXCEPTION 'PRIVACY_GATE credential parent wrong FK %',guard; END IF;
+  END;
+  BEGIN
+   INSERT INTO app.customer_addresses(tenant_id,customer_id,recipient,address_line1,city,country_code) VALUES(t,parent,'Fixture','Street','City','US');
+   RAISE EXCEPTION 'PRIVACY_GATE missing address parent accepted';
+  EXCEPTION WHEN foreign_key_violation THEN
+   GET STACKED DIAGNOSTICS guard=CONSTRAINT_NAME;
+   IF guard<>'customer_addresses_customer_fk' THEN RAISE EXCEPTION 'PRIVACY_GATE address parent wrong FK %',guard; END IF;
+  END;
+  BEGIN
+   oid:=uuidv7(); r:=app.inventory_reserve(sku,1,'order',oid,'privacy-missing-parent-'||oid::text,900);
+   lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{}'::jsonb));
+   PERFORM app.orders_create(oid,'privacy-missing-parent-'||oid::text,sha256('fixture'::bytea),parent,NULL,'USD',0,'{"amount_minor":0,"currency":"USD"}',lines,'[]');
+   RAISE EXCEPTION 'PRIVACY_GATE missing order parent accepted';
+  EXCEPTION WHEN foreign_key_violation THEN
+   GET STACKED DIAGNOSTICS guard=CONSTRAINT_NAME;
+   IF guard<>'orders_customer_fk' THEN RAISE EXCEPTION 'PRIVACY_GATE order parent wrong FK %',guard; END IF;
+  END;
+ END LOOP;
+ INSERT INTO app.customers(tenant_id,email,status) VALUES(t,'disabled-no-journal@example.invalid','disabled') RETURNING id INTO disabled;
+ FOREACH parent IN ARRAY ARRAY[current_setting('test.privacy_customer')::uuid,disabled] LOOP
+ BEGIN
+  INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash) VALUES(t,parent,phc);
+  RAISE EXCEPTION 'PRIVACY_GATE disabled credential parent accepted';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'PRIVACY_CUSTOMER_DISABLED' THEN RAISE; END IF; END;
+ BEGIN
+  INSERT INTO app.customer_addresses(tenant_id,customer_id,recipient,address_line1,city,country_code) VALUES(t,parent,'Fixture','Street','City','US');
+  RAISE EXCEPTION 'PRIVACY_GATE erased address parent accepted';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'PRIVACY_CUSTOMER_DISABLED' THEN RAISE; END IF; END;
+ BEGIN
+  oid:=uuidv7(); r:=app.inventory_reserve(sku,1,'order',oid,'privacy-erased-parent-'||oid::text,900);
+  lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{}'::jsonb));
+  PERFORM app.orders_create(oid,'privacy-erased-parent-'||oid::text,sha256('fixture'::bytea),parent,NULL,'USD',0,'{"amount_minor":0,"currency":"USD"}',lines,'[]');
+  RAISE EXCEPTION 'PRIVACY_GATE erased order parent accepted';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'PRIVACY_CUSTOMER_DISABLED' THEN RAISE; END IF; END;
+ END LOOP;
+END $parent_guards$;
 ROLLBACK;

@@ -1,0 +1,35 @@
+---
+/** Responsibility: render a prepared published-release view.
+ * Dependencies: typed view, Shell, shared React UI; callers: home/CMS/product routes.
+ * Invariants: no API reads or response writes after the route starts rendering.
+ */
+import { EmptyState } from '@opensite/ui';
+import Shell from '../layouts/Shell.astro';
+import ErrorPage from './ErrorPage.astro';
+import ProductSummary from './ProductSummary';
+import { formatAmount } from '../lib/presentation';
+import type { PublishedPageView } from '../lib/published-page';
+interface Props { view: PublishedPageView }
+const { site, status, ui, isList, product, page, title, description, canonical, homeHref } = Astro.props.view;
+---
+{status ? <ErrorPage status={status} canonical={canonical} /> : site && <Shell
+  title={`${title} | ${site.title}`} description={description} canonical={canonical}
+  siteTitle={site.title} locale={site.locale} navigation={site.navigation} homeHref={homeHref}>
+  <div data-storefront-ready="true" data-release-id={site.release_id}>
+    <h1>{title}</h1>
+    {isList ? <>
+      <p class="page-description">{site.description}</p>
+      {site.products.length ? <ul class="product-list">
+        {site.products.map(item => <li>
+          <div><h2><a href={`/products/${encodeURIComponent(item.slug)}`}>{item.name}</a></h2><p>{item.description}</p></div>
+          <p class="product-price">{formatAmount(item.unit_amount, item.currency, site.locale)}</p>
+        </li>)}
+      </ul> : <EmptyState title={ui.emptyProducts} description={ui.emptyDescription} />}
+    </> : product ? <>
+      <ProductSummary description={product.description} amount={product.unit_amount} currency={product.currency} locale={site.locale} />
+      <a class="back-link" href="/products">{ui.backProducts}</a>
+    </> : page && <article class="published-copy">
+      {page.blocks.map(block => block.kind === 'heading' ? <h2>{block.text}</h2> : <p>{block.text}</p>)}
+    </article>}
+  </div>
+</Shell>}

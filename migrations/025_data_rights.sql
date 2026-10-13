@@ -244,7 +244,10 @@ DECLARE c app.customers;
 BEGIN
  PERFORM set_config('app.tenant_id',NEW.tenant_id::text,true);
  SELECT * INTO c FROM app.customers WHERE tenant_id=NEW.tenant_id AND id=NEW.customer_id FOR UPDATE;
- IF NOT FOUND OR c.status<>'active' OR EXISTS(SELECT FROM app.data_rights_erasures WHERE tenant_id=NEW.tenant_id AND customer_id=NEW.customer_id) THEN
+ -- Missing/foreign parents remain subject to the named composite FK; only
+ -- an existing parent can carry a privacy lifecycle prohibition.
+ IF NOT FOUND THEN RETURN NEW; END IF;
+ IF c.status<>'active' OR EXISTS(SELECT FROM app.data_rights_erasures WHERE tenant_id=NEW.tenant_id AND customer_id=NEW.customer_id) THEN
   RAISE EXCEPTION 'PRIVACY_CUSTOMER_DISABLED' USING ERRCODE='55000'; END IF;
  RETURN NEW;
 END $fn$;
@@ -256,7 +259,10 @@ BEGIN
  IF NEW.customer_id IS NULL THEN RETURN NEW; END IF;
  PERFORM set_config('app.tenant_id',NEW.tenant_id::text,true);
  SELECT * INTO c FROM app.customers WHERE tenant_id=NEW.tenant_id AND id=NEW.customer_id FOR SHARE;
- IF NOT FOUND OR c.status<>'active' OR EXISTS(SELECT FROM app.data_rights_erasures WHERE tenant_id=NEW.tenant_id AND customer_id=NEW.customer_id) THEN
+ -- Missing/foreign parents remain subject to the named composite FK; only
+ -- an existing parent can carry a privacy lifecycle prohibition.
+ IF NOT FOUND THEN RETURN NEW; END IF;
+ IF c.status<>'active' OR EXISTS(SELECT FROM app.data_rights_erasures WHERE tenant_id=NEW.tenant_id AND customer_id=NEW.customer_id) THEN
   RAISE EXCEPTION 'PRIVACY_CUSTOMER_DISABLED' USING ERRCODE='55000'; END IF;
  RETURN NEW;
 END $fn$;
