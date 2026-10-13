@@ -44,3 +44,12 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
       - name: Real role capabilities and write authority regressions
         run: go test -v -race -tags pgx -count=1 -timeout=10m -run 'TestC02c' ./internal/modules/identity
+  security-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Hash-locked Python dependencies
+        run: python3 -m pip install --quiet --require-hashes -r requirements-ci.txt
+      - name: API key contract regression and mutation probes
+        run: python3 tests/test_identity_login_contract.py
