@@ -883,6 +883,51 @@ result login_rotate_first 'LOGIN_ROTATED=1'
 got=$(sql <<<"SELECT 'LOGIN_ROTATION_RACE='||count(*) FILTER(WHERE revoked_at IS NOT NULL)||'|'||count(*) FILTER(WHERE revoked_at IS NULL AND expires_at>clock_timestamp() AND last_seen_at>clock_timestamp()-interval '30 minutes')||'|'||count(*) FILTER(WHERE token_hash=decode('$LOGIN_NEW_A','hex'))||'|'||count(*) FILTER(WHERE token_hash=decode('$LOGIN_NEW_B','hex')) FROM app.auth_sessions WHERE user_id='$LOGIN_USER';")
 echo "race conditional session rotation: $got (expected LOGIN_ROTATION_RACE=1|1|1|0)"
 [[ $got == 'LOGIN_ROTATION_RACE=1|1|1|0' ]] || fail=1
+# Notifications source dedup and same-key manual redrive use actual command
+# functions on separate connections. Advisory gates 60+ reserve this module.
+read -r NT NO <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('notifications-race') RETURNING id AS t \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_orders_executor;
+INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+VALUES(:'t',uuidv7(),1,'race',sha256('race'::bytea),'{"email":"race@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
+RESET ROLE;
+SELECT :'t'||' '||:'oid';
+SQL
+)"
+source="INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES('$NT','order.paid',jsonb_build_object('order_id','$NO'::uuid),'orders.events','notification-race-source') ON CONFLICT(tenant_id,delivery_target,dedup_key) DO NOTHING;"
+gate_close 60
+tx notification_source_first app_orders_executor "$NT" "$source $(park 60)" &
+await notification_source_first advisory
+tx notification_source_second app_orders_executor "$NT" "$source" &
+await notification_source_second "${ROWLOCK[@]}"
+gate_open 60; wait
+expect notification_source_first ok;expect notification_source_second ok
+got=$(sql <<<"SELECT count(*)||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id='$NT' AND delivery_target='notifications.email') FROM app.notification_deliveries WHERE tenant_id='$NT';")
+echo "notification concurrent source dedup: $got (expected 1|1)"
+[[ $got == '1|1' ]] || fail=1
+# A known failure witness is final-attempt failed, then real redrive races.
+read -r ND NE <<<"$(sql <<SQL | tail -1
+SELECT id AS d,dispatch_event_id AS e FROM app.notification_deliveries WHERE tenant_id='$NT' \gset
+UPDATE app.notification_deliveries SET status='dead_letter',last_error='DELIVERY_REJECTED',attempt_count=10 WHERE tenant_id='$NT' AND id=:'d';
+UPDATE app.outbox_events SET status='dead_letter',attempts=10 WHERE tenant_id='$NT' AND id=:'e';
+SELECT :'d'||' '||:'e';
+SQL
+)"
+redrive="SELECT 'redrive='||r.request_token||':'||r.generation FROM app.notification_redrive('$NT','$ND','race-redrive') r;"
+gate_close 61
+tx notification_redrive_first app_runtime "$NT" "$redrive $(park 61)" &
+await notification_redrive_first advisory
+tx notification_redrive_second app_runtime "$NT" "$redrive" &
+await notification_redrive_second "${ROWLOCK[@]}"
+gate_open 61;wait
+expect notification_redrive_first ok;expect notification_redrive_second ok
+receipt=$(sed -n 's/^redrive=//p' "$ERRDIR/notification_redrive_first.out")
+[[ -n $receipt ]] || { echo 'FAIL: notification missing redrive receipt';fail=1; }
+result notification_redrive_second "redrive=$receipt"
+got=$(sql <<<"SELECT generation||'|'||status||'|'||(SELECT count(*) FROM app.notification_redrive_requests WHERE tenant_id='$NT')||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id='$NT' AND delivery_target='notifications.email') FROM app.notification_deliveries WHERE tenant_id='$NT' AND id='$ND';")
+echo "notification concurrent redrive: $got (expected 2|pending|1|2)"
+[[ $got == '2|pending|1|2' ]] || fail=1
 
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'

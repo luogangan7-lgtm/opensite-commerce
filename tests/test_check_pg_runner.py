@@ -74,6 +74,7 @@ expected = [
     'db_cart.sql',
     'db_storefront.sql',
     'db_ops_metrics.sql',
+    'db_notifications.sql',
     'db_identity_auth.sql',
     'db_identity_login.sql',
 ]
