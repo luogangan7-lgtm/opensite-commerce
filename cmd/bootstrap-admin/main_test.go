@@ -138,7 +138,7 @@ func TestCLIRedactsFlagsAndConsumerErrors(t *testing.T) {
 }
 
 func TestCLIInputReadAndContextFailure(t *testing.T) {
-	for _, input := range []string{"", strings.Repeat("x", 1025), "long-passphrase\r", "long-pass\nphrase", "long-pass\x00phrase"} {
+	for _, input := range []string{"", strings.Repeat("x", 1025), "long-passphrase\r", "long-pass\nphrase", "long-pass\x00phrase", strings.Repeat("\xff", 12)} {
 		var out bytes.Buffer
 		if run(context.Background(), []string{"--email", "a@example.com", "--tenant-name", "Store"}, strings.NewReader(input), &out, &out, func(k string) (string, bool) {
 			if k == "DATABASE_URL" {

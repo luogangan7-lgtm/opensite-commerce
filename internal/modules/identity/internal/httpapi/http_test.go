@@ -30,6 +30,8 @@ type fakeRepo struct {
 	session                               login.Session
 	hash                                  [32]byte
 	dead                                  bool
+	lookups                               int
+	revokeErr                             error
 }
 
 func (f *fakeRepo) Credential(context.Context, string) (login.Credential, error) {
@@ -59,6 +61,7 @@ func (f *fakeRepo) SaveLogin(_ context.Context, in login.SessionInput) (login.Se
 	return f.session, nil
 }
 func (f *fakeRepo) LookupSession(_ context.Context, h [32]byte, _ time.Time, _ time.Duration) (login.Session, error) {
+	f.lookups++
 	if f.dead || h != f.hash {
 		return login.Session{}, login.ErrSession
 	}
@@ -66,6 +69,9 @@ func (f *fakeRepo) LookupSession(_ context.Context, h [32]byte, _ time.Time, _ t
 }
 func (f *fakeRepo) RevokeSession(context.Context, string, time.Time) error {
 	f.revoked++
+	if f.revokeErr != nil {
+		return f.revokeErr
+	}
 	f.dead = true
 	return nil
 }
@@ -263,7 +269,7 @@ func TestAuthErrorMapping(t *testing.T) {
 	for _, tc := range []struct {
 		err    error
 		status int
-	}{{login.ErrCredentials, 401}, {login.ErrSession, 401}, {login.ErrRateLimited, 429}, {login.ErrDatabase, 500}, {errors.New("secret DSN"), 500}} {
+	}{{login.ErrCredentials, 401}, {login.ErrSession, 401}, {login.ErrRateLimited, 429}, {login.ErrDatabase, 503}, {errors.New("secret DSN"), 503}} {
 		w := httptest.NewRecorder()
 		q := httptest.NewRequest("POST", "/", nil)
 		writeError(w, q, tc.err)
@@ -303,5 +309,29 @@ func TestUnsupportedPrivateAccessDenied(t *testing.T) {
 		if ctx, e := h.Authenticate(q.Context(), q, spec); e == nil || ctx != nil {
 			t.Fatal("unimplemented authentication capability admitted")
 		}
+	}
+}
+
+// Codex http.go:56: a rejected unsafe request must not refresh session activity.
+func TestLogoutCSRFPrecedesSessionActivity(t *testing.T) {
+	_, r, f, _, raw := transportFixture(t)
+	w := request(r, "POST", "/api/v1/auth/logout", "", &http.Cookie{Name: "__Host-osc_admin_session", Value: raw})
+	if w.Code != 403 || f.lookups != 0 || f.revoked != 0 {
+		t.Fatal("CSRF-rejected logout touched session", w.Code, f.lookups, f.revoked)
+	}
+}
+
+// Codex service.go:280: the losing concurrent logout is an auth outcome, not 5xx.
+func TestConcurrentLogoutLoserIsUnauthenticated(t *testing.T) {
+	_, r, f, s, raw := transportFixture(t)
+	f.revokeErr = login.ErrSession
+	q := httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
+	q.AddCookie(&http.Cookie{Name: "__Host-osc_admin_session", Value: raw})
+	q.Header.Set("Origin", "https://admin.example.test")
+	q.Header.Set("X-CSRF-Token", s.SessionCSRF(raw))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, q)
+	if w.Code != 401 {
+		t.Fatal("already-revoked logout not mapped to auth outcome", w.Code)
 	}
 }

@@ -47,6 +47,7 @@ const (
 var failedLoginIPs = [...]string{"192.0.2.10", "192.0.2.11"}
 var expiryLoginIPs = [...]string{repairInitialIP, repairOtherIP, repairStaleIP}
 var deviceFailureIPs = [...]string{"192.0.2.51", "192.0.2.52", "192.0.2.53", "192.0.2.54", "192.0.2.55"}
+var reconnectIPs = [...]string{"198.51.100.20", "198.51.100.21"}
 var ipv6LoginIPs = [...]string{"2001:db8:55:66::1", "2001:db8:55:66::abcd"}
 
 var seededLoginCredential = func() string {

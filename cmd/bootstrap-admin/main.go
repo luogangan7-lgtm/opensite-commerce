@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
 )
@@ -61,7 +62,7 @@ func run(ctx context.Context, args []string, input io.Reader, stdout, stderr io.
 			return 1
 		}
 	}
-	if len(password) < 12 || len(password) > 1024 || strings.ContainsAny(password, "\r\n\x00") || strings.TrimSpace(dsn) == "" || ctx.Err() != nil {
+	if len(password) < 12 || len(password) > 1024 || !utf8.ValidString(password) || strings.ContainsAny(password, "\r\n\x00") || strings.TrimSpace(dsn) == "" || ctx.Err() != nil {
 		fmt.Fprintln(stderr, "bootstrap input failed")
 		return 1
 	}

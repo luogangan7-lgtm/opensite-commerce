@@ -71,7 +71,7 @@ func TestBootstrapRejectsInvalidInputsBeforePersist(t *testing.T) {
 		x.TenantName = tenant
 		cases = append(cases, x)
 	}
-	for _, password := range []string{"", "short", strings.Repeat("x", 1025), "long-pass\nword", "long-pass\x00word"} {
+	for _, password := range []string{"", "short", strings.Repeat("x", 1025), "long-pass\nword", "long-pass\x00word", strings.Repeat("\xff", 12)} {
 		x := good
 		x.Password = password
 		cases = append(cases, x)

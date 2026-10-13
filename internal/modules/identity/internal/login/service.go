@@ -2,7 +2,8 @@
 // Dependencies: Repository port and crypto helpers; called by identity HTTP transport.
 // Invariants: no DB error escapes; rejected attempts never increment durable failures;
 // only server-validated sessions create Actor; old-token replacement is atomic in SaveLogin.
-// Ordinary arrivals cannot consume reserved candidate DB or IP-map capacity.
+// Ordinary arrivals cannot consume reserved candidate DB or IP-map capacity, and
+// only DB-validated known devices debit the reserved global budget.
 package login
 
 import (
@@ -71,7 +72,7 @@ func New(repo Repository, cfg Config) (*Service, error) {
 		cfg.Now = time.Now
 	}
 	for _, prefix := range cfg.TrustedProxies {
-		if !prefix.IsValid() {
+		if !prefix.IsValid() || prefix.Bits() == 0 {
 			return nil, ErrDatabase
 		}
 	}
@@ -108,7 +109,10 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 			candidateHash, candidate = hash, true
 		}
 	}
-	if !s.admitIPClass(in.IP, arrival, candidate) || !s.admitGlobal(candidate, arrival) {
+	// Ordinary arrivals pay the global budget before any DB work. A candidate
+	// pays nothing global until DB validation: only a valid, unexpired,
+	// unrevoked device bound to this account may draw the reserved budget.
+	if !s.admitIPClass(in.IP, arrival, candidate) || (!candidate && !s.admitGlobal(false, arrival)) {
 		return LoginResult{}, ErrRateLimited
 	}
 	admission := s.admissionSlots
@@ -156,12 +160,12 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		}
 		known = err == nil && device.ID != "" && device.UserID == credential.UserID && !device.Revoked && device.ExpiresAt.After(arrival)
 	}
+	if candidate && !s.admitGlobal(known, arrival) {
+		return LoginResult{}, ErrRateLimited
+	}
 	if candidate && !known {
-		// A stale/wrong-user device must pay the ordinary global and in-flight
-		// quota before cooldowns/password work; it cannot keep reserved capacity.
-		if !s.admitGlobal(false, arrival) {
-			return LoginResult{}, ErrRateLimited
-		}
+		// A stale/wrong-user device pays the ordinary global (above) and
+		// in-flight quota before cooldowns/password work, like any unknown device.
 		select {
 		case s.admissionSlots <- struct{}{}:
 		default:
@@ -277,6 +281,9 @@ func (s *Service) Logout(ctx context.Context, a Actor) error {
 		return ErrSession
 	}
 	if e := s.repo.RevokeSession(ctx, a.sessionID, s.cfg.Now()); e != nil {
+		if errors.Is(e, ErrSession) {
+			return ErrSession
+		}
 		return ErrDatabase
 	}
 	return nil

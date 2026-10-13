@@ -480,6 +480,13 @@ func TestConfigOriginAndKeyCopy(t *testing.T) {
 	if !s.VerifySessionCSRF(raw, csrf) {
 		t.Fatal("caller mutated signing key")
 	}
+	for _, catchAll := range []string{"0.0.0.0/0", "::/0"} {
+		cfg = testConfig(&now)
+		cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix(catchAll)}
+		if _, e := New(&fakeRepo{}, cfg); e == nil {
+			t.Fatalf("accepted catch-all trusted proxy %s", catchAll)
+		}
+	}
 	cfg = testConfig(&now)
 	cfg.HashSlots = 16
 	if _, e := New(&fakeRepo{}, cfg); e == nil {
@@ -690,5 +697,47 @@ func TestDatabaseAdmissionHonorsLoginDeadline(t *testing.T) {
 	}
 	if _, e := s.Login(context.Background(), input()); !errors.Is(e, ErrRateLimited) || len(s.admissionSlots) != 0 || r.cooldownCalls != 0 || r.failures != 0 || r.saves != 0 {
 		t.Fatalf("DB deadline leaked or progressed: %v", e)
+	}
+}
+
+// P1-2 (review of #43): MAC-valid but revoked, expired or wrong-user device
+// cookies must not drain the reserved known-device budget.
+func TestInvalidDeviceCookiesCannotDrainKnownReserve(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		device func(time.Time) Device
+	}{
+		{"revoked", func(now time.Time) Device {
+			return Device{ID: "dev", UserID: "user", ExpiresAt: now.Add(time.Hour), Revoked: true}
+		}},
+		{"expired", func(now time.Time) Device { return Device{ID: "dev", UserID: "user", ExpiresAt: now.Add(-time.Second)} }},
+		{"wrong-user", func(now time.Time) Device { return Device{ID: "dev", UserID: "other", ExpiresAt: now.Add(time.Hour)} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Unix(10000, 0)
+			r := &fakeRepo{credential: activeCredential(), device: tc.device(now)}
+			s, _ := New(r, testConfig(&now))
+			raw, _ := newToken()
+			cookie := s.sign("device", raw)
+			for i := 0; i < 40; i++ {
+				in := input()
+				in.Password = strings.ToUpper(in.Password) // derived mismatch
+				in.DeviceToken = cookie
+				in.IP = netip.AddrFrom4([4]byte{198, 51, 100, byte(i)})
+				if _, e := s.Login(context.Background(), in); !errors.Is(e, ErrCredentials) {
+					t.Fatalf("attempt %d: %v", i, e)
+				}
+			}
+			if s.knownGlobal.used != 0 {
+				t.Fatalf("invalid device cookies consumed %d reserved admissions", s.knownGlobal.used)
+			}
+			r.device = Device{ID: "dev", UserID: "user", ExpiresAt: now.Add(time.Hour)}
+			s.global = ipWindow{start: now, used: s.cfg.GlobalBurst} // ordinary bucket drained too
+			in := input()
+			in.DeviceToken = cookie
+			if _, e := s.Login(context.Background(), in); e != nil {
+				t.Fatalf("legitimate known device locked out: %v", e)
+			}
+		})
 	}
 }

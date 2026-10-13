@@ -8,6 +8,7 @@ package identity
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 )
 
@@ -89,5 +90,34 @@ func TestLoginIPv6CountersPostgres(t *testing.T) {
 	var host string
 	if err := db.QueryRow(ctx, "SELECT count(*),sum(failure_count)::integer,min(host(ip)) FROM app.auth_login_attempts WHERE identifier_normalized=$1", email).Scan(&rows, &failures, &host); err != nil || rows != 1 || failures != 2 || host != "2001:db8:55:66::" {
 		t.Fatal("IPv6 suffixes did not share durable account-IP key", rows, failures, host, safeCode(err))
+	}
+}
+
+// P1-1: a terminated auth backend (restart, failover, NAT reaping) must not
+// leave login permanently unavailable; the next request uses a fresh session.
+func TestLoginReconnectsAfterBackendTerminationPostgres(t *testing.T) {
+	ctx, db, dsn, cfg := setupLoginPG(t)
+	_, router := fixtureRouter(t, ctx, dsn, cfg)
+	const email = "reconnect@example.test"
+	seedLoginPG(t, ctx, db, email)
+	if w := loginAsSeeded(t, router, email, reconnectIPs[0]); w.Code != 201 {
+		t.Fatal("initial login refused", w.Code)
+	}
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal("fixture DSN invalid")
+	}
+	role := parsed.User.Username()
+	var killed int
+	if err = db.QueryRow(ctx, "SELECT count(pg_terminate_backend(pid))::integer FROM pg_stat_activity WHERE usename=$1", role).Scan(&killed); err != nil || killed != 1 {
+		t.Fatal("auth backend termination fixture failed", killed, safeCode(err))
+	}
+	for alive := 1; alive != 0; {
+		if err = db.QueryRow(ctx, "SELECT count(*)::integer FROM pg_stat_activity WHERE usename=$1", role).Scan(&alive); err != nil {
+			t.Fatal("backend observation failed", safeCode(err))
+		}
+	}
+	if w := loginAsSeeded(t, router, email, reconnectIPs[1]); w.Code != 201 {
+		t.Fatal("login did not recover after backend termination", w.Code)
 	}
 }

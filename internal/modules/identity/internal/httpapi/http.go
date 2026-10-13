@@ -53,14 +53,16 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 	if !ok || token == "" {
 		return nil, apperrors.New(401, "unauthenticated", "Authentication is required")
 	}
-	actor, _, err := h.service.Authenticate(ctx, token)
-	if err != nil {
-		return nil, mapError(err)
-	}
+	// Stateless Origin/CSRF first: a rejected unsafe request must not refresh
+	// last_seen_at (LoginLookupSession) and keep a victim session alive.
 	if r.Method != "GET" && r.Method != "HEAD" {
 		if !h.sameOrigin(r) || !h.service.VerifySessionCSRF(token, oneHeader(r, "X-CSRF-Token")) {
 			return nil, apperrors.New(403, "csrf_invalid", "Request authenticity could not be verified")
 		}
+	}
+	actor, _, err := h.service.Authenticate(ctx, token)
+	if err != nil {
+		return nil, mapError(err)
 	}
 	return login.WithActor(ctx, actor), nil
 }
@@ -224,6 +226,6 @@ func mapError(err error) error {
 	case errors.Is(err, login.ErrRateLimited):
 		return apperrors.New(429, "auth_rate_limited", "Authentication is rate limited")
 	default:
-		return apperrors.New(500, "auth_unavailable", "Authentication is unavailable")
+		return apperrors.New(503, "auth_unavailable", "Authentication is unavailable")
 	}
 }

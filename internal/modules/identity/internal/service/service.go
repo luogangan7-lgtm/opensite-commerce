@@ -26,7 +26,7 @@ func Bootstrap(ctx context.Context, input Request, persist func(context.Context,
 	input.TenantName = strings.TrimSpace(input.TenantName)
 	address, err := mail.ParseAddress(input.Email)
 	at := strings.LastIndexByte(input.Email, '@')
-	if err != nil || address.Address != input.Email || len(input.Email) > 254 || at < 1 || !strings.Contains(input.Email[at+1:], ".") || strings.ContainsAny(input.Email, "\r\n\x00") || strings.TrimSpace(input.DatabaseURL) == "" || input.TenantName == "" || !utf8.ValidString(input.TenantName) || utf8.RuneCountInString(input.TenantName) > 200 || strings.IndexFunc(input.TenantName, unicode.IsControl) >= 0 || len(input.Password) < 12 || len(input.Password) > 1024 || strings.ContainsAny(input.Password, "\r\n\x00") || ctx.Err() != nil {
+	if err != nil || address.Address != input.Email || len(input.Email) > 254 || at < 1 || !strings.Contains(input.Email[at+1:], ".") || strings.ContainsAny(input.Email, "\r\n\x00") || strings.TrimSpace(input.DatabaseURL) == "" || input.TenantName == "" || !utf8.ValidString(input.TenantName) || utf8.RuneCountInString(input.TenantName) > 200 || strings.IndexFunc(input.TenantName, unicode.IsControl) >= 0 || len(input.Password) < 12 || !utf8.ValidString(input.Password) || len(input.Password) > 1024 || strings.ContainsAny(input.Password, "\r\n\x00") || ctx.Err() != nil {
 		return "", errBootstrap
 	}
 	salt := make([]byte, 16)
