@@ -209,7 +209,6 @@ DECLARE t uuid:=app.customer_auth_context(); cid uuid; c app.customers%ROWTYPE; 
   AND email_normalized=c.email_normalized AND credential_version=stamp;
  IF NOT FOUND THEN RETURN false; END IF;
  UPDATE app.customer_credentials SET password_hash=p_hash WHERE tenant_id=t AND customer_id=cid;
- UPDATE app.customer_sessions SET revoked_at=clock_timestamp() WHERE tenant_id=t AND customer_id=cid AND revoked_at IS NULL;
  RETURN true;
 END $fn$;
 CREATE FUNCTION app.customer_save_session(p_customer uuid,p_expected_hash text,p_old bytea,p_token bytea,p_absolute timestamptz,p_idle timestamptz) RETURNS jsonb
