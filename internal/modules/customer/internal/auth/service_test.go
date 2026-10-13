@@ -11,7 +11,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"golang.org/x/crypto/argon2"
 	"net/netip"
 	"strings"
@@ -313,79 +312,53 @@ func TestCustomerAuthRateLimitImmediateAndIPv6Subnet(t *testing.T) {
 	}
 }
 
-// All tenants using one Service share the process admission budget. Distinct
-// IPs and accounts isolate this gate from durable per-tenant/IP/account limits.
-func TestCustomerAuthCrossTenantGlobalAdmissionBeforeWork(t *testing.T) {
+// The public command passes opaque account keys to durable admission. Equal
+// mailbox names in separate tenants must not share the account budget.
+func TestCustomerAuthAccountRateKeysRemainTenantScoped(t *testing.T) {
 	s, r, m, calls := fixture(t)
-	for i := 0; i < 300; i++ {
-		tenant := tenantA
-		if i%2 != 0 {
-			tenant = tenantB
-		}
-		ip := netip.AddrFrom4([4]byte{192, 0, byte(2 + i/256), byte(i % 256)})
-		email := fmt.Sprintf("buyer-%d@example.test", i)
-		if err := s.RequestReset(context.Background(), tenant, email, ip); err != nil {
-			t.Fatalf("global budget denied admitted request %d: %v", i+1, err)
+	for _, tenant := range []string{tenantA, tenantB} {
+		if err := s.RequestReset(context.Background(), tenant, buyerEmail, testIP); err != nil {
+			t.Fatalf("reset admission failed: %v", err)
 		}
 	}
-	if r.admissions != 300 || len(m.messages) != 300 || *calls != 0 {
-		t.Fatal("global budget fixture did not exercise the public reset path")
+	if r.admissions != 2 || len(r.accounts) != 2 || len(m.messages) != 2 || *calls != 0 {
+		t.Fatal("account key fixture did not exercise the public reset path")
 	}
-	ip := netip.AddrFrom4([4]byte{192, 0, 3, 44})
-	err := s.RequestReset(context.Background(), tenantB, "overflow@example.test", ip)
-	var limited *c.RateLimitError
-	if !errors.Is(err, c.ErrRateLimited) || !errors.As(err, &limited) || limited.RetryAfter != time.Minute {
-		t.Fatal("CUSTOMER_AUTH_CROSS_TENANT_GLOBAL_RED: request 301 escaped the shared minute budget")
-	}
-	if r.admissions != 300 || len(m.messages) != 300 || *calls != 0 {
-		t.Fatal("global rejection reached database, mailbox, or KDF")
-	}
-	r.now = r.now.Add(61 * time.Second)
-	if err := s.RequestReset(context.Background(), tenantB, "renewed@example.test", ip); err != nil {
-		t.Fatal("shared global budget did not recover after its minute window")
-	}
-	if r.admissions != 301 || len(m.messages) != 301 || *calls != 0 {
-		t.Fatal("recovered global request did not reach the public reset path")
+	if r.accounts[0] == r.accounts[1] {
+		t.Fatal("CUSTOMER_AUTH_ACCOUNT_SCOPE_RED: account key crossed tenant boundary")
 	}
 }
 
-// Different IPv6 hosts and tenant IDs cannot replenish the same canonical /64
-// budget. Another subnet remains usable, and only the injected clock advances.
-func TestCustomerAuthCrossTenantIPv6SubnetAdmissionBeforeWork(t *testing.T) {
-	s, r, m, calls := fixture(t)
-	for i := 0; i < 30; i++ {
-		tenant := tenantA
-		if i%2 != 0 {
-			tenant = tenantB
-		}
-		ip := netip.MustParseAddr(fmt.Sprintf("2001:db8:abcd:1234::%x", i+1))
-		email := fmt.Sprintf("buyer-%d@example.test", i)
-		if err := s.RequestReset(context.Background(), tenant, email, ip); err != nil {
-			t.Fatalf("subnet budget denied admitted request %d: %v", i+1, err)
-		}
-	}
-	if r.admissions != 30 || len(m.messages) != 30 || *calls != 0 {
-		t.Fatal("subnet budget fixture did not exercise the public reset path")
-	}
-	ip := netip.MustParseAddr("2001:db8:abcd:1234::ffff")
-	err := s.RequestReset(context.Background(), tenantB, "overflow@example.test", ip)
-	var limited *c.RateLimitError
-	if !errors.Is(err, c.ErrRateLimited) || !errors.As(err, &limited) || limited.RetryAfter != time.Minute {
-		t.Fatal("CUSTOMER_AUTH_CROSS_TENANT_IP64_RED: request 31 escaped the shared subnet budget")
-	}
-	if r.admissions != 30 || len(m.messages) != 30 || *calls != 0 {
-		t.Fatal("subnet rejection reached database, mailbox, or KDF")
-	}
-	other := netip.MustParseAddr("2001:db8:abcd:1235::1")
-	if err := s.RequestReset(context.Background(), tenantA, "other-subnet@example.test", other); err != nil {
-		t.Fatal("subnet rejection exhausted a different IPv6 subnet")
-	}
-	r.now = r.now.Add(61 * time.Second)
-	if err := s.RequestReset(context.Background(), tenantB, "renewed@example.test", ip); err != nil {
-		t.Fatal("shared subnet budget did not recover after its minute window")
-	}
-	if r.admissions != 32 || len(m.messages) != 32 || *calls != 0 {
-		t.Fatal("other or recovered subnet did not reach the public reset path")
+// IP budgets are global in the database. Canonical aliases must pass the same
+// opaque IP key across tenants; distinct canonical prefixes must stay separate.
+func TestCustomerAuthIPRateKeysAreCanonicalAndGlobal(t *testing.T) {
+	for _, tc := range []struct {
+		name, first, second string
+		same                bool
+	}{
+		{"IPv4 mapped alias", "192.0.2.7", "::ffff:192.0.2.7", true},
+		{"IPv6 shared subnet", "2001:db8:abcd:1234::1", "2001:db8:abcd:1234::ffff", true},
+		{"IPv4 distinct address", "192.0.2.7", "192.0.2.8", false},
+		{"IPv6 distinct subnet", "2001:db8:abcd:1234::1", "2001:db8:abcd:1235::1", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, r, m, calls := fixture(t)
+			for i, input := range []string{tc.first, tc.second} {
+				tenant := tenantA
+				if i == 1 {
+					tenant = tenantB
+				}
+				if err := s.RequestReset(context.Background(), tenant, buyerEmail, netip.MustParseAddr(input)); err != nil {
+					t.Fatalf("reset admission failed: %v", err)
+				}
+			}
+			if r.admissions != 2 || len(r.ips) != 2 || len(m.messages) != 2 || *calls != 0 {
+				t.Fatal("IP key fixture did not exercise the public reset path")
+			}
+			if (r.ips[0] == r.ips[1]) != tc.same {
+				t.Fatal("CUSTOMER_AUTH_GLOBAL_IP_HASH_RED: IP key tenant scope or normalization is wrong")
+			}
+		})
 	}
 }
 
