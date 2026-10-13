@@ -295,12 +295,13 @@ BEGIN
   IF OLD.creation_response IS NOT NULL AND NEW.creation_response IS DISTINCT FROM OLD.creation_response
    OR OLD.receive_response IS NOT NULL AND NEW.receive_response IS DISTINCT FROM OLD.receive_response THEN
    RAISE EXCEPTION 'FULFILLMENT_RECEIPT_IMMUTABLE' USING ERRCODE='55000'; END IF;
+  -- Compile return-only fields only for return records; shipments use this guard too.
+  IF OLD.status IS DISTINCT FROM NEW.status AND NOT(
+   OLD.status='requested' AND NEW.status='received' OR OLD.status='received' AND NEW.status='refund_pending'
+   OR OLD.status='refund_pending' AND NEW.status='refunded'
+   OR OLD.status='received' AND NEW.status='completed' AND NEW.refund_minor=0) THEN
+   RAISE EXCEPTION 'FULFILLMENT_RETURN_STATE' USING ERRCODE='55000'; END IF;
  END IF;
- IF TG_TABLE_NAME='returns' AND OLD.status IS DISTINCT FROM NEW.status AND NOT(
-  OLD.status='requested' AND NEW.status='received' OR OLD.status='received' AND NEW.status='refund_pending'
-  OR OLD.status='refund_pending' AND NEW.status='refunded'
-  OR OLD.status='received' AND NEW.status='completed' AND NEW.refund_minor=0) THEN
-  RAISE EXCEPTION 'FULFILLMENT_RETURN_STATE' USING ERRCODE='55000'; END IF;
  RETURN NEW;
 END $$;
 CREATE TRIGGER shipment_header_immutable BEFORE INSERT OR UPDATE OR DELETE ON app.shipments
@@ -438,7 +439,7 @@ BEGIN
  SELECT o.refunded_minor-coalesce(sum(rr.refund_minor),0) INTO legacy
  FROM app.returns rr WHERE rr.tenant_id=t AND rr.order_id=p_order AND rr.status='refunded';
  IF legacy<0 THEN RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
- legacy:=0; -- INT39 mutation: deliberately ignore direct-refund credit
+ legacy:=0; -- INT39 fault probe: ignore legacy credit.
  has_legacy:=legacy>0;
  FOR ol IN SELECT * FROM app.order_lines WHERE tenant_id=t AND order_id=p_order ORDER BY id LOOP
   index_v:=array_position(ids,ol.id);
