@@ -292,7 +292,7 @@ func (q *Queries) ListAdminOrderLines(ctx context.Context, arg ListAdminOrderLin
 const listAdminOrders = `-- name: ListAdminOrders :many
 SELECT id,order_number,state,currency,total_minor,(customer_id IS NOT NULL)::boolean AS is_customer,created_at
 FROM app.orders
-WHERE tenant_id=$1 AND sealed
+WHERE tenant_id=$1
  AND ($2::text IS NULL OR state=$2::text)
  AND (NOT $3::boolean OR (created_at,id)<($4::timestamptz,$5::uuid))
 ORDER BY created_at DESC,id DESC

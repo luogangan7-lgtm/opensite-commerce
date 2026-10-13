@@ -32,7 +32,7 @@ SELECT * FROM app.orders_transition(sqlc.arg(id)::uuid,sqlc.arg(target)::text,
 -- name: ListAdminOrders :many
 SELECT id,order_number,state,currency,total_minor,(customer_id IS NOT NULL)::boolean AS is_customer,created_at
 FROM app.orders
-WHERE tenant_id=sqlc.arg(tenant_id) AND sealed
+WHERE tenant_id=sqlc.arg(tenant_id)
  AND (sqlc.narg(state)::text IS NULL OR state=sqlc.narg(state)::text)
  AND (NOT sqlc.arg(has_cursor)::boolean OR (created_at,id)<(sqlc.arg(cursor_created_at)::timestamptz,sqlc.arg(cursor_id)::uuid))
 ORDER BY created_at DESC,id DESC
