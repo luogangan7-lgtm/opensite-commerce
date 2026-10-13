@@ -317,6 +317,7 @@ func avifPrimaryProperties(b []byte, primary uint32) (int, int) {
 			if pos+width > len(ipma) {
 				return 0, 0
 			}
+			essential := ipma[pos]&0x80 != 0
 			index := int(ipma[pos] & 0x7f)
 			if width == 2 {
 				index = int(binary.BigEndian.Uint16(ipma[pos:pos+2]) & 0x7fff)
@@ -325,6 +326,10 @@ func avifPrimaryProperties(b []byte, primary uint32) (int, int) {
 			// Zero means no association; even a non-primary item must not
 			// reference a property outside the container's bounded table.
 			if index == 0 {
+				// ISO-BMFF requires a zero association to be non-essential.
+				if essential {
+					return 0, 0
+				}
 				continue
 			}
 			if index > len(props) || seenProps[index] {

@@ -32,6 +32,7 @@ func TestAVIFPrimaryPropertiesMustBeAssociated(t *testing.T) {
 		{"unsupported version", 0, 2},
 		{"no item association", 7, 0},
 		{"duplicate dimension association", 13, 129},
+		{"essential zero association", 12, 0x80},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input := bytes.Clone(fixture)
@@ -93,6 +94,37 @@ func TestAVIFPrimaryAssociationVersions(t *testing.T) {
 			_, w, h, err := inspect(avifWithProperties(t, props, tc.associations), "image/avif")
 			if err != nil || w != 2 || h != 3 {
 				t.Fatalf("primary dimensions=%dx%d err=%v", w, h, err)
+			}
+		})
+	}
+}
+
+func TestAVIFZeroAssociationEssentialBit(t *testing.T) {
+	b, err := os.ReadFile("testdata/tiny.avif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := bytes.Index(b, []byte("ipco")) + 4
+	size := int(binary.BigEndian.Uint32(b[start-8:])) - 8
+	props := bytes.Clone(b[start : start+size])
+	for _, tc := range []struct {
+		name         string
+		associations []byte
+		invalid      bool
+	}{
+		{"narrow zero", []byte{0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 3, 1, 0, 0x83}, false},
+		{"narrow essential zero", []byte{0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 3, 1, 0x80, 0x83}, true},
+		{"wide zero", []byte{0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 3, 0, 1, 0, 0, 0x80, 3}, false},
+		{"wide essential zero", []byte{0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 3, 0, 1, 0x80, 0, 0x80, 3}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, w, h, err := inspect(avifWithProperties(t, props, tc.associations), "image/avif")
+			if tc.invalid {
+				if err == nil {
+					t.Fatal("essential association cannot have property index zero")
+				}
+			} else if err != nil || w != 2 || h != 3 {
+				t.Fatalf("valid zero association rejected: dimensions=%dx%d err=%v", w, h, err)
 			}
 		})
 	}
