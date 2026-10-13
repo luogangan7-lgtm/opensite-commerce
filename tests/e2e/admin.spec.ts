@@ -100,3 +100,45 @@ test('real API denies anonymous catalog reads and creation before data access', 
     assertPublicOnly(text);
   }
 });
+
+
+test('real owner session reads and creates tenant catalog through production authorization', async ({ page }, info) => {
+  await page.goto(`${fixture.admin}/login`);
+  await page.getByLabel('Email', { exact: true }).fill(fixture.ownerEmail);
+  await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+  const login = page.waitForResponse(response =>
+    response.url() === `${fixture.admin}/api/v1/auth/login` && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  expect((await login).status()).toBe(201);
+  await expect(page.getByRole('heading', { name: 'Open a store', exact: true })).toBeVisible();
+
+  const catalogURL = `${fixture.admin}/api/v1/t/${fixture.ownerTenantId}/products`;
+  const catalog = page.waitForResponse(response =>
+    response.url().startsWith(catalogURL) && response.request().method() === 'GET');
+  await page.getByLabel('Store ID', { exact: true }).fill(fixture.ownerTenantId);
+  await page.getByRole('button', { name: 'Open store', exact: true }).click();
+  expect((await catalog).status()).toBe(200);
+  await expect(page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible();
+  await audit(page, info);
+
+  // The same real cookie cannot read another tenant, or write without session CSRF.
+  expect((await page.request.get(`${fixture.admin}/api/v1/t/${fixture.tenantId}/products`)).status()).toBe(404);
+  expect((await page.request.post(catalogURL, { data: { product_code: 'CSRF-REJECTED' } })).status()).toBe(403);
+  await page.getByRole('link', { name: 'Create product', exact: true }).click();
+  const productCode = `C02C-${crypto.randomUUID()}`.toUpperCase();
+  await page.getByLabel('Product code', { exact: true }).fill(productCode);
+  const created = page.waitForResponse(response =>
+    response.url() === catalogURL && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Create product', exact: true }).click();
+  const response = await created;
+  expect(response.status()).toBe(201);
+  const product = await response.json();
+  expect(product).toMatchObject({ product_code: productCode });
+  await expect(page).toHaveURL(`${fixture.admin}/t/${fixture.ownerTenantId}/products/${product.id}`);
+  await expect(page.getByLabel('Product code', { exact: true })).toHaveValue(productCode);
+  const persisted = await page.request.get(`${catalogURL}/${product.id}`);
+  expect(persisted.status()).toBe(200);
+  expect(await persisted.json()).toMatchObject({ id: product.id, product_code: productCode });
+  assertPublicOnly(await page.content());
+  await audit(page, info);
+});
