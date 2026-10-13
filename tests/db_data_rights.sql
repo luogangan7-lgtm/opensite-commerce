@@ -1,5 +1,5 @@
 -- Real PostgreSQL privacy gate; synthetic tenant/customer fixtures roll back.
--- Depends on 026 notifications, 027 quotes and 032 controlled functions. Called by check_pg; no production data.
+-- Depends on 026 notifications, 027 quotes and 033 controlled functions. Called by check_pg; no production data.
 -- Asserts scope, credentials exclusion, single use, erasure and runtime fences.
 \set ON_ERROR_STOP on
 BEGIN;

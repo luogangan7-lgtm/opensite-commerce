@@ -28,7 +28,7 @@ DECLARE
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals',
-  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','data_rights_exports','data_rights_erasures'];
+  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','data_rights_exports','data_rights_erasures'];
  role_name text;
  r record;
  t record;
@@ -82,7 +82,10 @@ BEGIN
        allowed_columns := all_columns;
        expected_table := true;
       ELSE
+       IF t.relname=ANY(ARRAY['checkout_sessions','checkout_attempts']) THEN expected_table := true; END IF;
        allowed_columns := CASE t.relname
+        WHEN 'checkout_sessions' THEN all_columns
+        WHEN 'checkout_attempts' THEN all_columns
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
         WHEN 'carts' THEN ARRAY['tenant_id','id','customer_id','guest_token_hash','currency']
         WHEN 'cart_lines' THEN ARRAY['tenant_id','cart_id','sku_id','quantity']
@@ -112,6 +115,8 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'checkout_sessions' THEN ARRAY['phase','provider_ref','start_result','final_result','claim_kind','claim_key','updated_at']
+        WHEN 'checkout_attempts' THEN ARRAY['result']
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
         WHEN 'carts' THEN ARRAY['version']
         WHEN 'cart_lines' THEN ARRAY['quantity']
@@ -365,7 +370,7 @@ BEGIN
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
-   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote') LOOP
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -391,7 +396,7 @@ BEGIN
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
-   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote'))<>10 THEN
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -1006,3 +1011,26 @@ BEGIN
  IF NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='app.draft_page_media'::regclass) THEN RAISE EXCEPTION 'CMS_MATRIX_FORCE_RLS'; END IF;
 END $cms_matrix$;
 SELECT 'PASS: CMS exact routine/capability flag/FORCE RLS matrix' AS result;
+-- Checkout uses an invoker trigger, not a new capability role: nobody in the
+-- application/service role graph may execute it directly or grant EXECUTE.
+DO $checkout_capability$
+DECLARE f record; role_name text;
+BEGIN
+ SELECT p.oid,p.prosecdef,p.proconfig,p.proacl,p.proowner INTO STRICT f
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='app' AND p.proname='checkout_guard' AND p.pronargs=0;
+ IF f.prosecdef OR cardinality(f.proconfig) IS DISTINCT FROM 1
+ OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+ OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+  RAISE EXCEPTION 'CHECKOUT_GATE unsafe trigger capability';
+ END IF;
+ FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_customer_auth',
+ 'app_domain_verifier','app_media_service','app_publisher','app_publish_executor','app_outbox_worker',
+ 'app_reliability_executor','app_inventory_manager','app_inventory_executor','app_ledger_executor','app_orders_executor',
+ 'app_queue_worker','app_river_migrator','app_outbox_tenant_broker','app_notifications_executor','app_quotes_executor','app_credential_writer','app_admin_bootstrap'] LOOP
+  IF has_function_privilege(role_name,f.oid,'EXECUTE') OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'CHECKOUT_GATE unexpected trigger executor %',role_name;
+  END IF;
+ END LOOP;
+END $checkout_capability$;
+SELECT 'PASS: checkout exact table/column grants and private invoker trigger' AS result;

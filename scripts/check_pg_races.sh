@@ -1203,7 +1203,57 @@ got=$(sql <<<"SELECT s.publication_revision||'|'||d.revision||'|'||d.status||'|'
 echo "CMS gate82 apply/publish lock order: $got (expected 2|2|open|1)"
 [[ $got == '2|2|open|1' ]] || fail=1
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms contract" >&2; exit 1; fi
+
+# Checkout durable claim competes before provider IO. Both winner directions
+# are synchronized by gates 90/91, with a witnessed contender row-lock wait.
+# Then only the committed claimant applies Orders/Ledger side effects. Outbox:
+# order.created + terminal event, plus the notifications fan-out email for paid. The Go
+# pgx E2E repeats this protocol through the actual Fake provider/service.
+for first_phase in confirming cancelling; do
+ read -r T SKU OID <<<"$(inventory_fixture)"
+ CID=$(sql <<<"SELECT uuidv7();")
+ sql <<SQL >/dev/null
+UPDATE app.tenants SET settlement_currency='USD' WHERE id='$T';
+INSERT INTO app.ledger_accounts(tenant_id,code,currency,account_type) VALUES
+ ('$T','cash','USD','asset'),('$T','accounts_receivable','USD','asset'),
+ ('$T','revenue','USD','revenue'),('$T','tax_payable','USD','liability'),('$T','shipping_revenue','USD','revenue');
+SELECT set_config('app.tenant_id','$T',false);
+SET ROLE app_runtime;
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','checkout-race-stock',900)).id AS rid \gset
+SELECT app.orders_create('$OID','checkout-race-order',sha256('race'::bytea),NULL,'{"email":"race@example.invalid"}','USD',20,'{}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','checkout-race','quantity',1,'unit_price_minor',100,
+ 'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',:'rid','tax_snapshot','{}'::jsonb)),'[]');
+INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,currency,
+ amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version,address_snapshot)
+ VALUES('$T','$CID','guest',repeat('a',64),'checkout-race',sha256('start'::bytea),uuidv7(),1,'$OID','USD',130,100,10,20,1,'{}');
+UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake-race',start_result='{}' WHERE tenant_id='$T' AND id='$CID';
+SQL
+ if [[ $first_phase == confirming ]]; then second_phase=cancelling; first_kind=payment; second_kind=cancel; final=paid; stock=0; journals=1; outbox=3; race_gate=90
+ else second_phase=confirming; first_kind=cancel; second_kind=payment; final=cancelled; stock=1; journals=0; outbox=2; race_gate=91; fi
+ claim_first="WITH changed AS (UPDATE app.checkout_sessions SET phase='$first_phase',claim_kind='$first_kind',claim_key='race-first' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_FIRST='||count(*) FROM changed;"
+ claim_second="WITH changed AS (UPDATE app.checkout_sessions SET phase='$second_phase',claim_kind='$second_kind',claim_key='race-second' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_SECOND='||count(*) FROM changed;"
+ gate_close "$race_gate"
+ tx checkout_first app_runtime "$T" "$claim_first $(park "$race_gate")" &
+ await checkout_first advisory
+ tx checkout_second app_runtime "$T" "$claim_second" &
+ await checkout_second "${ROWLOCK[@]}"
+ gate_open "$race_gate"; wait
+ expect checkout_first ok; expect checkout_second ok
+ result checkout_first 'C18_CLAIM_FIRST=1'; result checkout_second 'C18_CLAIM_SECOND=0'
+ finish="SELECT app.orders_transition('$OID','$final','checkout-race-terminal',0);"
+ if [[ $final == paid ]]; then
+ finish+=" SELECT app.post_ledger('$T','USD','order','$OID','checkout:race',
+ ARRAY[(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='accounts_receivable'),(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='revenue'),(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='tax_payable'),(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='shipping_revenue'),(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='cash'),(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='accounts_receivable')], ARRAY['debit','credit','credit','credit','debit','credit'],ARRAY[130,100,10,20,130,130]::bigint[]);"
+ fi
+ tx checkout_finish app_runtime "$T" "$finish UPDATE app.checkout_sessions SET phase='$final',final_result='{}' WHERE tenant_id='$T' AND id='$CID';"
+ expect checkout_finish ok
+ got=$(sql <<<"SELECT c.phase||'|'||o.state||'|'||s.on_hand||'|'||s.reserved||'|'||(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id='$T')||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T')||'|'||(SELECT count(*) FROM app.inventory_movements WHERE tenant_id='$T') FROM app.checkout_sessions c JOIN app.orders o ON(o.tenant_id,o.id)=(c.tenant_id,c.order_id) JOIN app.stock_levels s ON s.tenant_id=c.tenant_id WHERE c.tenant_id='$T' AND c.id='$CID';")
+ echo "checkout claim $first_phase wins: $got (expected $final|$final|$stock|0|$journals|$outbox|3)"
+ [[ $got == "$final|$final|$stock|0|$journals|$outbox|3" ]] || fail=1
+done
+
+
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
@@ -1216,6 +1266,7 @@ echo 'PASS: cart row-lock/CAS contender cannot overwrite winner line or version'
 echo 'PASS: orders pay/cancel and prelock/expiry races conserve inventory and events'
 echo 'PASS: quote approve/withdraw row-lock CAS races have exactly one winner and atomic outbox/approval'
 echo 'PASS: CMS gate80 one publisher, gate81 restore ABA epoch fence, gate82 apply/publish lock order'
+echo 'PASS: checkout confirm/cancel claims choose one durable winner with atomic order, stock, ledger and outbox witnesses'
 # Focused native River/claim/fence gates cannot silently skip for missing PG.
 reliability_packages=(./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)
 if [[ -n "${DATABASE_URL:-}" ]]; then

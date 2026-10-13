@@ -26,6 +26,9 @@ var (
 	ErrReservationOwner = errors.New("orders: reservation owner mismatch")
 	ErrStockUnavailable = errors.New("orders: stock unavailable")
 	ErrUnavailable      = errors.New("orders: unavailable")
+	// ErrReservationInactive: a hold is released, expired or within the
+	// requested remaining lifetime; the order can no longer be paid safely.
+	ErrReservationInactive = errors.New("orders: reservation inactive")
 )
 
 type State string
@@ -103,4 +106,8 @@ type Service interface {
 	PayableReader
 	Create(context.Context, pgx.Tx, string, CreateInput) (Order, error)
 	Transition(context.Context, pgx.Tx, string, TransitionInput) (Order, error)
+	// LockLiveReservations row-locks every hold of a pending order for the caller
+	// transaction and fails with ErrReservationInactive unless each is active
+	// with at least minRemainingSeconds left. Payment capture calls it first.
+	LockLiveReservations(ctx context.Context, tx pgx.Tx, tenantID, orderID string, minRemainingSeconds int32) error
 }

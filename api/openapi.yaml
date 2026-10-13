@@ -5,13 +5,15 @@ info:
   description: >-
     Contract-first first-vertical-slice API. Declared operations are not all implemented in this increment. Tenant
     business targets come from the URL path; credentials authorize them. Health, catalog, media, cart, notifications,
-    published-site read and staff login operations are implemented; other operations are planned contracts.
+    published-site read and staff login operations are implemented; other operations are planned contracts. Checkout composition is opt-in;
+    its trusted storefront resolver is deferred and Fake callback transport is restricted to explicit test/development mode.
 servers:
   - url: /
 security:
   - adminSession: []
   - ApiKeyBearer: []
 tags:
+  - name: Checkout
   - name: Organization
   - name: Catalog
   - name: Media
@@ -23,6 +25,92 @@ tags:
   - name: Notifications
   - name: Orders
 paths:
+  /api/v1/t/{tenant_id}/checkout:
+    post:
+      tags: [Checkout]
+      operationId: createCheckout
+      x-opensite-status: implemented
+      x-opensite-access: Storefront
+      description: >-
+        C-18a trusted storefront resolver seam. Guest capability or customer session must be verified
+        independently of URL and Host, with exact Origin and session-bound CSRF. This increment has no
+        production resolver; missing resolver rejects. Storefront access carries no employee scope and
+        never falls back to staff authentication. Prices, buyer identity and tenant authorization are not input.
+        quote_id is rejected in this increment; B2B conversion is deferred.
+      security:
+        - StorefrontSession: []
+        - GuestCapability: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutOrigin'
+        - $ref: '#/components/parameters/CheckoutCSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CheckoutStart'}
+      responses:
+        '201':
+          description: Stable checkout and provider-neutral payment intent; replay returns the same IDs.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CheckoutResult'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/testing/payments/fake/webhook:
+    post:
+      tags: [Checkout]
+      operationId: receiveFakePaymentEvent
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      x-test-only: true
+      description: >-
+        Explicit test/development configuration only; never mounted in production. The verifier authenticates
+        exact raw bytes before a trusted event reaches checkout. Checkout rechecks persisted tenant/order,
+        amount, currency, version and provider binding and deduplicates delivery inside a transaction.
+      security:
+        - FakeWebhookSignature: []
+      parameters:
+        - name: X-Fake-Signature
+          in: header
+          required: true
+          schema: {type: string, pattern: '^[0-9a-f]{64}$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/FakePaymentEvent'}
+      responses:
+        '200':
+          description: Stable result after payment event admission or replay.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CheckoutResult'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
   /api/v1/public/sites/current:
     get:
       tags: [Builder]
@@ -3077,6 +3165,21 @@ paths:
 
 components:
   securitySchemes:
+    StorefrontSession:
+      type: apiKey
+      in: cookie
+      name: __Host-osc_customer_session
+      description: Reserved for trusted customer middleware; C-18a does not implement it.
+    GuestCapability:
+      type: apiKey
+      in: cookie
+      name: __Host-osc_guest_capability
+      description: Reserved for a verified opaque guest capability; never an admin cookie.
+    FakeWebhookSignature:
+      type: apiKey
+      in: header
+      name: X-Fake-Signature
+      description: HMAC SHA256 of exact request bytes with isolated test key; test/development only.
     adminSession:
       type: apiKey
       in: cookie
@@ -3135,6 +3238,18 @@ components:
         minLength: 1
       description: Signed anonymous login challenge with five-minute expiry; Secure
         HttpOnly SameSite=Lax Path=/ and no Domain.
+    CheckoutOrigin:
+      name: Origin
+      in: header
+      required: true
+      description: Exact configured storefront origin; never the admin origin.
+      schema: {type: string, format: uri}
+    CheckoutCSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: Verified by the trusted resolver against the customer session or guest capability.
+      schema: {type: string, minLength: 1, maxLength: 512}
     TenantId:
       name: tenant_id
       in: path
@@ -3354,6 +3469,68 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    CheckoutStart:
+      type: object
+      additionalProperties: false
+      required: [cart_id, shipping_address]
+      properties:
+        cart_id: {type: string, format: uuid}
+        quote_id: {type: string, format: uuid, description: Unsupported in C-18a; returns 422.}
+        buyer_contact:
+          description: Guest snapshot only; required for a guest actor and forbidden for a customer actor.
+          type: object
+          additionalProperties: false
+          required: [email]
+          properties:
+            email: {type: string, maxLength: 320, minLength: 3}
+            name: {type: string, maxLength: 200}
+            phone: {type: string, maxLength: 64}
+        shipping_address:
+          $ref: '#/components/schemas/CheckoutShippingAddress'
+    CheckoutShippingAddress:
+      type: object
+      additionalProperties: false
+      required: [country, address1, city, postal_code]
+      properties:
+        country: {type: string, pattern: '^[A-Z]{2}$'}
+        subdivision: {type: string, maxLength: 100}
+        address1: {type: string, minLength: 1, maxLength: 500}
+        address2: {type: string, maxLength: 500}
+        city: {type: string, minLength: 1, maxLength: 200}
+        postal_code: {type: string, minLength: 1, maxLength: 32}
+    CheckoutResult:
+      type: object
+      additionalProperties: false
+      required: [checkout_id, order_id, state, amount_minor, currency, order_version, payment]
+      properties:
+        checkout_id: {type: string, format: uuid}
+        order_id: {type: string, format: uuid}
+        state: {type: string}
+        amount_minor: {type: integer, format: int64, minimum: 1}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        order_version: {type: integer, format: int64, minimum: 1}
+        payment:
+          type: object
+          additionalProperties: false
+          required: [provider_ref, status]
+          properties:
+            provider_ref: {type: string}
+            status: {type: string}
+            next_action_kind: {type: string}
+            next_action_url: {type: string}
+    FakePaymentEvent:
+      type: object
+      additionalProperties: false
+      required: [event_id, tenant_id, order_id, order_version, provider_ref, status, amount_minor, currency]
+      properties:
+        event_id: {type: string, minLength: 1, maxLength: 128}
+        tenant_id: {type: string, format: uuid}
+        order_id: {type: string, format: uuid}
+        order_version: {type: integer, format: int64, minimum: 1}
+        provider_ref: {type: string, minLength: 1, maxLength: 200}
+        status: {type: string, enum: [authorized, captured, failed, canceled]}
+        amount_minor: {type: integer, format: int64, minimum: 1}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
     NotificationFailure:
       type: object
       additionalProperties: false
