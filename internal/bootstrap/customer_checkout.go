@@ -1,12 +1,13 @@
 // Responsibility: compose customer checkout admission without changing checkout business logic.
 // Dependencies: customer/cart/checkout public ports and HTTP admission; caller: bootstrap.New.
-// Invariants: one live session lookup, exact checkout route, signed CSRF, and staff context forwarding.
+// Invariants: one live session lookup, exact checkout route, signed CSRF, and staff identity/write authority forwarding.
 package bootstrap
 
 import (
 	"context"
 	"net/http"
 
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	customercontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
@@ -49,6 +50,15 @@ func (a checkoutAdmission) Authenticate(ctx context.Context, r *http.Request, sp
 // staff identity. Storefront and absent staff projections remain empty actors.
 func (a checkoutAdmission) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
 	return a.actors.ResolveActor(ctx, r, spec)
+}
+
+// Preserve the selected authenticator's sealed write recheck through the outer
+// customer wrapper. The downstream authenticator keeps storefront scope separate.
+func (a checkoutAdmission) ResolveTransactionAuthorization(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
+	if resolver, ok := a.next.(httpapi.TransactionAuthorizationResolver); ok {
+		return resolver.ResolveTransactionAuthorization(ctx, r, spec)
+	}
+	return nil, nil
 }
 
 type customerCheckoutResolver struct{}
