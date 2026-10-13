@@ -428,3 +428,51 @@ func TestPaymentsPGSignedHTTPAdmissionToLedger(t *testing.T) {
 		t.Fatalf("signed endpoint→account→inbox→ledger/order %+v", w)
 	}
 }
+
+// The runner's first DB timestamp can become stale while waiting for the intent
+// lock. Supply that old observation deterministically; no sleeps or time races.
+func TestPaymentsPGFreshnessRecheckedAfterStreamLock(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	stamp := p.at.Add(-10 * time.Minute)
+	before := p.witness(t)
+	m, err := payments.New(payments.Config{Key: p.key,
+		Run: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+			return p.run(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, _ time.Time) error {
+				return fn(ctx, tx, tenant, stamp)
+			})
+		},
+		Apply: func(context.Context, pgx.Tx, payment.VerifiedEvent) (bool, error) {
+			t.Fatal("expired queued fact reached business writes")
+			return false, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := p.raw("queued-expired:"+uuid.NewString(), payment.StatusCaptured, p.start.AmountMinor)
+	if _, err = m.Receive(p.f.ctx, raw, p.signature(raw, stamp)); err == nil {
+		t.Fatal("stale initial DB clock bypassed post-lock freshness")
+	}
+	if after := p.witness(t); after != before {
+		t.Fatal("expired queued event left persistent writes")
+	}
+}
+
+func TestPaymentsPGRejectedRefundDoesNotPoisonCapture(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	raw := p.raw("invalid-refund:"+uuid.NewString(), payment.StatusPartiallyRefunded, 1)
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	body["currency"] = "EUR"
+	raw, _ = json.Marshal(body)
+	if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err == nil {
+		t.Fatal("wrong currency refund accepted")
+	}
+	p.receive(t, "capture-after-rejected:"+uuid.NewString(), payment.StatusCaptured, p.start.AmountMinor)
+	w := p.witness(t)
+	if w.inbox != 2 || w.events != 2 || w.applied != 1 || w.refunded != 0 || w.checkout.state != "paid" || w.checkout.journals != 1 || w.checkout.cash != p.start.AmountMinor {
+		t.Fatalf("rejected peer poisoned capture: %+v", w)
+	}
+}
