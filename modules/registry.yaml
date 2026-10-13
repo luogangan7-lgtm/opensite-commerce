@@ -231,15 +231,9 @@
         "page_revisions",
         "blog_posts",
         "blog_post_revisions",
-        "blog_post_publications",
-        "inquiries"
+        "blog_post_publications"
       ],
-      "operations": [
-        {
-          "operation_id": "submitInquiry",
-          "status": "planned"
-        }
-      ],
+      "operations": [],
       "dependencies": [
         "tenant",
         "site",
@@ -677,6 +671,82 @@
       "note": "C-15a freezes the neutral Payment Port v1 and test-only Fake. Real payment storage, service and Stripe are deferred to C-19; no production payment capability exists."
     },
     {
+      "name": "quotes",
+      "status": "implemented",
+      "go_path": "internal/modules/quotes",
+      "go_status": "implemented",
+      "owns_tables": [
+        "inquiries",
+        "quotes",
+        "quote_lines",
+        "quote_approvals"
+      ],
+      "operations": [
+        {
+          "operation_id": "submitInquiry",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "sendQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "withdrawQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "expireQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getBuyerQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "acceptQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "approveQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "rejectQuote",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "b2b",
+        "customer",
+        "catalog",
+        "money",
+        "pricing",
+        "tax",
+        "shipping",
+        "reliability"
+      ],
+      "tests": [
+        "internal/modules/quotes/module_test.go",
+        "internal/modules/quotes/quotes_pgx_test.go",
+        "internal/platform/httpapi/quotes/quotes_test.go",
+        "tests/db_quotes.sql"
+      ],
+      "scopes": [
+        "quotes:read",
+        "quotes:write"
+      ],
+      "note": "C-17a contact collection and immutable quote lifecycle; buyer endpoints require an externally verified sealed customer actor, default denied. No customer authentication implementation or order/payment creation."
+    },
+    {
       "name": "notifications",
       "status": "implemented",
       "go_path": "internal/modules/notifications",
@@ -1016,6 +1086,38 @@
         "notification_deliveries",
         "notification_redrive_requests",
         "outbox_events"
+      ]
+    },
+    {
+      "file": "migrations/027_quotes.sql",
+      "owner": "quotes",
+      "touches_tables": [
+        "inquiries",
+        "quotes",
+        "quote_lines",
+        "quote_approvals",
+        "outbox_events",
+        "idempotency_records",
+        "buyer_companies",
+        "buyer_company_members",
+        "customers",
+        "users",
+        "tenant_memberships",
+        "tenants",
+        "sites",
+        "products",
+        "product_variants",
+        "price_lists",
+        "price_entries",
+        "shipping_zones",
+        "shipping_zone_destinations",
+        "shipping_profiles",
+        "shipping_rates",
+        "tax_zones",
+        "tax_zone_locations",
+        "tax_categories",
+        "tax_rates",
+        "tax_settings"
       ]
     }
   ]
