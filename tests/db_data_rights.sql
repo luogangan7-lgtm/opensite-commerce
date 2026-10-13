@@ -5,7 +5,7 @@
 BEGIN;
 INSERT INTO app.tenants(name,settlement_currency) VALUES('privacy-A','USD') RETURNING id AS t \gset
 INSERT INTO app.tenants(name) VALUES('privacy-B') RETURNING id AS foreign_t \gset
-INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','privacy@example.invalid','Secret Person') RETURNING id AS c \gset
+INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','erasure-subject@example.invalid','Secret Person') RETURNING id AS c \gset
 INSERT INTO app.customers(tenant_id,email) VALUES(:'foreign_t','foreign@example.invalid') RETURNING id AS foreign_c \gset
 INSERT INTO app.customer_addresses(tenant_id,customer_id,recipient,address_line1,city,country_code)
  VALUES(:'t',:'c','Secret Person','Private street','Private city','US');
@@ -15,7 +15,7 @@ SELECT set_config('app.tenant_id',:'t',true),set_config('test.privacy_customer',
 DO $media$
 DECLARE t uuid:=current_setting('test.privacy_seed_t',true)::uuid; o uuid;site uuid;r uuid;b uuid;a uuid;
 BEGIN
- t:=(SELECT tenant_id FROM app.customers WHERE email='privacy@example.invalid');
+ t:=(SELECT tenant_id FROM app.customers WHERE email='erasure-subject@example.invalid');
  INSERT INTO app.organizations(tenant_id,display_name) VALUES(t,'Privacy fixture') RETURNING id INTO o;
  INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(t,o,'Privacy fixture') RETURNING id INTO site;
  INSERT INTO app.site_releases(tenant_id,site_id,release_no,renderer_build_id,manifest,manifest_hash)
@@ -59,7 +59,7 @@ BEGIN
   INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
    VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','privacy-notification-'||i) RETURNING id INTO source;
   SELECT * INTO d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=source;
-  IF d.recipient<>'privacy@example.invalid' THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION fixture recipient'; END IF;
+  IF d.recipient<>'erasure-subject@example.invalid' THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION fixture recipient'; END IF;
   IF i=1 THEN
    UPDATE app.outbox_events SET status='processing',lease_owner=w,lease_until=clock_timestamp()+interval '5 minutes',attempts=1 WHERE tenant_id=t AND id=d.dispatch_event_id;
    UPDATE app.notification_deliveries SET status='sending',send_token=uuidv7(),lease_worker=w,lease_attempt=1 WHERE tenant_id=t AND id=d.id RETURNING * INTO d;
@@ -77,7 +77,7 @@ BEGIN
  -- order's frozen recipient must remain intact.
  EXECUTE 'SET LOCAL ROLE app_orders_executor';
  INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-  VALUES(t,uuidv7(),2,'privacy-unowned-guest',sha256('guest'::bytea),'{"email":"privacy@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id INTO oid;
+  VALUES(t,uuidv7(),2,'privacy-unowned-guest',sha256('guest'::bytea),'{"email":"erasure-subject@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id INTO oid;
  EXECUTE 'RESET ROLE';
  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
   VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','privacy-unowned-guest') RETURNING id INTO source;
@@ -107,7 +107,7 @@ BEGIN
  END LOOP;
  EXECUTE 'RESET ROLE';
  PERFORM set_config('test.privacy_approver',a::text,true);
- IF NOT EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND template_key='quote.approved' AND reference_id=current_setting('test.privacy_quote')::uuid AND recipient='privacy@example.invalid' AND status='pending') THEN
+ IF NOT EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND template_key='quote.approved' AND reference_id=current_setting('test.privacy_quote')::uuid AND recipient='erasure-subject@example.invalid' AND status='pending') THEN
   RAISE EXCEPTION 'PRIVACY_QUOTE fixture approval recipient'; END IF;
 END $quote_seed$;
 -- The erased-placeholder namespace is reserved: no account may pre-register a
@@ -155,7 +155,7 @@ RESET ROLE;
 DO $notification_privacy$
 DECLARE t uuid:=current_setting('app.tenant_id')::uuid; oid uuid:=current_setting('test.privacy_order')::uuid; n uuid:=current_setting('test.privacy_notification')::uuid; source uuid; nd app.notification_deliveries;
 BEGIN
- IF (SELECT recipient FROM app.notification_deliveries WHERE tenant_id=t AND id=current_setting('test.privacy_unowned_notification')::uuid)<>'privacy@example.invalid' THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION unowned email matched'; END IF;
+ IF (SELECT recipient FROM app.notification_deliveries WHERE tenant_id=t AND id=current_setting('test.privacy_unowned_notification')::uuid)<>'erasure-subject@example.invalid' THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION unowned email matched'; END IF;
  IF EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND reference_id=oid AND (recipient<>'erased-'||id::text||'@invalid.test' OR status<>'dead_letter' OR last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR send_token IS NOT NULL OR lease_worker IS NOT NULL OR lease_attempt IS NOT NULL OR sent_at IS NOT NULL)) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION PII or live send residue'; END IF;
  IF EXISTS(SELECT FROM app.outbox_events e JOIN app.notification_deliveries d ON d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id) WHERE d.tenant_id=t AND d.reference_id=oid AND (e.status NOT IN('dead_letter','delivered') OR e.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR e.lease_owner IS NOT NULL OR e.lease_until IS NOT NULL)) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION live dispatch generation'; END IF;
  BEGIN PERFORM app.notification_redrive(t,n,'privacy-revive');RAISE EXCEPTION 'PRIVACY_NOTIFICATION redrive revival'; EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
@@ -197,8 +197,8 @@ DECLARE r record; hits bigint; found text:='';
 BEGIN
  FOR r IN SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE c.relkind IN('r','p') AND n.nspname NOT IN('pg_catalog','information_schema') AND NOT starts_with(n.nspname,'pg_') LOOP
-  EXECUTE format('SELECT count(*) FROM %I.%I x WHERE x::text ILIKE ANY($1) AND coalesce(to_jsonb(x)->>''id'','''')<>ALL($2)',r.nspname,r.relname)
-   INTO hits USING ARRAY['%privacy@example.invalid%','%Secret Person%','%Private street%','%Private city%'],
+  EXECUTE format('SELECT count(*) FROM %I.%I x WHERE x::text LIKE ANY($1) AND coalesce(to_jsonb(x)->>''id'','''')<>ALL($2)',r.nspname,r.relname)
+   INTO hits USING ARRAY['%erasure-subject@example.invalid%','%Secret Person%','%Private street%','%Private city%'],
    ARRAY[current_setting('test.privacy_unowned_order'),current_setting('test.privacy_unowned_notification')];
   IF hits>0 THEN found:=found||format(' %s.%s=%s',r.nspname,r.relname,hits); END IF;
  END LOOP;
