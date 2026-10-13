@@ -1175,7 +1175,7 @@ BEGIN
    ARRAY[owner_role,'app_fulfillment_executor'::regrole::oid]
    ELSE ARRAY[owner_role,'app_returns_service'::regrole::oid] END;
   IF f.prokind<>'f' OR f.proretset OR NOT f.prosecdef OR f.proowner<>owner_role
-   OR f.prorettype<>CASE f.proname WHEN 'orders_refund_budget' THEN 'app.orders'::regtype ELSE 'jsonb'::regtype END
+   OR f.prorettype<>(CASE f.proname WHEN 'orders_refund_budget' THEN 'app.orders'::regtype ELSE 'jsonb'::regtype END)
    OR cardinality(f.proconfig) IS DISTINCT FROM 1
    OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner)))
