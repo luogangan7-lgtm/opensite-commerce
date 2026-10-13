@@ -499,6 +499,9 @@ def check_maintenance(text, relative):
     # Taking a method value is just as powerful as calling it immediately.
     if relative.name.endswith("_test.go") or relative.parts[:1] == ("cmd",) or relative.parts[:2] == ("internal", "ops"):
         return
+    # Global identity login is the one business path with no tenant realm; it uses IdentityRunner.
+    if relative.as_posix() == "internal/modules/identity/internal/store/login.go":
+        return
     tokens, _ = go_imports(text)
     require(not any(tokens[i] == "." and tokens[i + 1] == "InMaintenance"
                     for i in range(len(tokens) - 1)),
