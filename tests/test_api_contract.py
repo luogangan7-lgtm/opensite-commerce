@@ -44,12 +44,12 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(ops["health"][:2], ("/healthz", "get"))
         self.assertEqual(set(ops["health"][2]["responses"]), {"204"})
         self.assertNotIn("content", ops["health"][2]["responses"]["204"])
-        expected = {"health", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
+        expected = {"createCheckout", "receiveFakePaymentEvent", "health", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
                           if op["x-opensite-status"] == "implemented"}, expected)
-        for name in expected - {"health"}:
+        for name in expected - {"health", "createCheckout", "receiveFakePaymentEvent"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
             self.assertIn(operation["x-required-scope"], {"catalog:read", "catalog:write", "media:write"})
@@ -76,6 +76,33 @@ class APIContractTests(unittest.TestCase):
             self.assertNotIn("x-required-scope", op)
             self.assertEqual(op["x-opensite-access"], "AuthenticatedSelf")
             self.assertEqual(op["security"], [{"adminSession": []}])
+
+    def test_checkout_auth_and_test_webhook_policy(self):
+        contract.validate_contract(self.api)
+        ops = operations(self.api)
+        checkout = ops["createCheckout"]
+        self.assertEqual(checkout[:2], ("/api/v1/t/{tenant_id}/checkout", "post"))
+        self.assertEqual(checkout[2]["x-opensite-access"], "InternalService")
+        self.assertEqual(checkout[2]["x-required-scope"], "checkout.submit")
+        webhook = ops["receiveFakePaymentEvent"]
+        self.assertEqual(webhook[:2], ("/api/v1/testing/payments/fake/webhook", "post"))
+        self.assertIs(webhook[2]["x-test-only"], True)
+        for target, changes in (
+            ("createCheckout", {"x-opensite-access": "Public", "security": []}),
+            ("createCheckout", {"x-required-scope": "orders:write"}),
+            ("createCheckout", {"security": [{"adminSession": []}]}),
+            ("receiveFakePaymentEvent", {"x-test-only": False}),
+            ("receiveFakePaymentEvent", {"security": []}),
+        ):
+            with self.subTest(target=target, changes=changes):
+                candidate = copy.deepcopy(self.api)
+                operations(candidate)[target][2].update(changes)
+                with self.assertRaises(ValueError):
+                    contract.validate_contract(candidate)
+        candidate = copy.deepcopy(self.api)
+        candidate["paths"]["/api/v1/payments/webhook"] = candidate["paths"].pop(webhook[0])
+        with self.assertRaises(ValueError):
+            contract.validate_contract(candidate)
 
     def test_checker_accepts_current_contract(self):
         contract.validate_contract(self.api)

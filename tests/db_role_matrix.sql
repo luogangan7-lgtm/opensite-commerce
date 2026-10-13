@@ -26,7 +26,7 @@ DECLARE
   'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
   'ledger_accounts','ledger_transactions','ledger_entries',
-  'orders','order_lines','order_adjustments'];
+  'orders','order_lines','order_adjustments','checkout_sessions','checkout_attempts'];
  role_name text;
  r record;
  t record;
@@ -80,7 +80,10 @@ BEGIN
        allowed_columns := all_columns;
        expected_table := true;
       ELSE
+       IF t.relname=ANY(ARRAY['checkout_sessions','checkout_attempts']) THEN expected_table := true; END IF;
        allowed_columns := CASE t.relname
+        WHEN 'checkout_sessions' THEN all_columns
+        WHEN 'checkout_attempts' THEN all_columns
         WHEN 'ledger_accounts' THEN ARRAY['tenant_id','id','code','currency','account_type']
         WHEN 'tax_zones' THEN ARRAY['tenant_id','id','name']
         WHEN 'tax_zone_locations' THEN ARRAY['tenant_id','zone_id','country_code','subdivision']
@@ -105,6 +108,8 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
+        WHEN 'checkout_sessions' THEN ARRAY['phase','provider_ref','start_result','final_result','claim_kind','claim_key','updated_at']
+        WHEN 'checkout_attempts' THEN ARRAY['result']
         WHEN 'tax_zones' THEN ARRAY['name']
         WHEN 'tax_categories' THEN ARRAY['name','is_exempt']
         WHEN 'tax_rates' THEN ARRAY['rate_bp','valid_from','valid_until']
@@ -250,7 +255,7 @@ BEGIN
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations') LOOP
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','checkout_guard') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -273,7 +278,7 @@ BEGIN
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations'))<>10 THEN
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','checkout_guard'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -532,3 +537,26 @@ BEGIN
  END IF;
 END $orders$;
 SELECT 'PASS: orders exact role/table/column/routine and FORCE RLS matrix' AS result;
+
+-- Checkout uses an invoker trigger, not a new capability role: nobody in the
+-- application/service role graph may execute it directly or grant EXECUTE.
+DO $checkout_capability$
+DECLARE f record; role_name text;
+BEGIN
+ SELECT p.oid,p.prosecdef,p.proconfig,p.proacl,p.proowner INTO STRICT f
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='app' AND p.proname='checkout_guard' AND p.pronargs=0;
+ IF f.prosecdef OR cardinality(f.proconfig) IS DISTINCT FROM 1
+ OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+ OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+  RAISE EXCEPTION 'CHECKOUT_GATE unsafe trigger capability';
+ END IF;
+ FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_customer_auth',
+ 'app_domain_verifier','app_media_service','app_publisher','app_publish_executor','app_outbox_worker',
+ 'app_reliability_executor','app_inventory_manager','app_inventory_executor','app_ledger_executor','app_orders_executor'] LOOP
+  IF has_function_privilege(role_name,f.oid,'EXECUTE') OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'CHECKOUT_GATE unexpected trigger executor %',role_name;
+  END IF;
+ END LOOP;
+END $checkout_capability$;
+SELECT 'PASS: checkout exact table/column grants and private invoker trigger' AS result;

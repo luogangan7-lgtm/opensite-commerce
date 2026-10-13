@@ -5,14 +5,17 @@
 package bootstrap_test
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
 
 func reconcileRoutes(doc *openapi3.T, specs []httpapi.RouteSpec) error {
@@ -53,7 +56,17 @@ func scope(op *openapi3.Operation) string {
 }
 
 func TestImplementedRouteContract(t *testing.T) {
-	server, err := bootstrap.New(bootstrap.Config{})
+	// Real generated handlers are composed explicitly. The isolated verifier key
+	// is generated for this test, and never enables Fake in default composition.
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	verifier, err := checkout.NewFakeHMACVerifier(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := bootstrap.New(bootstrap.Config{Checkout: &checkout.Config{FakeEnabled: true, Environment: "test", Verifier: verifier}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,6 +81,57 @@ func TestImplementedRouteContract(t *testing.T) {
 	}
 	if err := reconcileRoutes(doc, router.RouteSpecs()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCheckoutOmissionFailsFullImplementedContract(t *testing.T) {
+	server, err := bootstrap.New(bootstrap.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := server.Handler.(*httpapi.Router)
+	doc, err := openapi3.NewLoader().LoadFromFile("../../api/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reconcileRoutes(doc, router.RouteSpecs()); err == nil {
+		t.Fatal("unconfigured optional checkout composition accepted full implemented contract")
+	}
+	// Restrict this default-composition witness to the exact two optional real
+	// checkout transports, while preserving strict parity for all other modules.
+	for path, operationID := range map[string]string{
+		checkout.StartPattern: checkout.StartOperation,
+		checkout.FakePattern:  checkout.FakeOperation,
+	} {
+		item := doc.Paths.Value(path)
+		if item == nil || item.Post == nil || item.Post.OperationID != operationID || item.Post.Extensions["x-opensite-status"] != "implemented" {
+			t.Fatalf("missing implemented optional contract %s", operationID)
+		}
+		doc.Paths.Delete(path)
+		requestPath := strings.ReplaceAll(path, "{tenant_id}", "10000000-0000-4000-8000-000000000001")
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, requestPath, nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("unconfigured route %s reachable: %d", path, response.Code)
+		}
+	}
+	if err := reconcileRoutes(doc, router.RouteSpecs()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCheckoutProductionFakeConfigurationStopsStartup(t *testing.T) {
+	if _, err := bootstrap.New(bootstrap.Config{Checkout: &checkout.Config{FakeEnabled: true, Environment: "production"}}); err == nil {
+		t.Fatal("production Fake configuration did not stop startup")
+	}
+	server, err := bootstrap.New(bootstrap.Config{Checkout: &checkout.Config{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/t/10000000-0000-4000-8000-000000000001/checkout", nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unconfigured storefront authentication: %d", response.Code)
 	}
 }
 

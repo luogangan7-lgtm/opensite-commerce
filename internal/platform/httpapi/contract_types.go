@@ -1,5 +1,6 @@
 // Responsibility: expose the platform typed API contract port to business services.
-// Dependency: pinned generated OpenAPI types; callers: catalog/media strict services.
+// Dependency: pinned generated OpenAPI types; callers: catalog/media services
+// and checkout HTTP adapter.
 // Invariant: generated server mounting stays in StrictRoutes behind Router admission.
 // Type aliases preserve compiler-checked oneOf/nullable/responses without copies.
 package httpapi
@@ -63,3 +64,14 @@ type UploadSessionStatus = generated.UploadSessionStatus
 type Variant = generated.Variant
 type VariantLifecycleStatus = generated.VariantLifecycleStatus
 type VariantList = generated.VariantList
+
+type CheckoutResult = generated.CheckoutResult
+type CheckoutStart = generated.CheckoutStart
+type CheckoutShippingAddress = generated.CheckoutShippingAddress
+type FakePaymentEvent = generated.FakePaymentEvent
+type CreateCheckoutRequestObject = generated.CreateCheckoutRequestObject
+type CreateCheckoutResponseObject = generated.CreateCheckoutResponseObject
+type CreateCheckout201JSONResponse = generated.CreateCheckout201JSONResponse
+type ReceiveFakePaymentEventRequestObject = generated.ReceiveFakePaymentEventRequestObject
+type ReceiveFakePaymentEventResponseObject = generated.ReceiveFakePaymentEventResponseObject
+type ReceiveFakePaymentEvent200JSONResponse = generated.ReceiveFakePaymentEvent200JSONResponse

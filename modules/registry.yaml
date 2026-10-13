@@ -611,6 +611,50 @@
         "internal/contracts/payment/v1"
       ],
       "note": "C-15a freezes the neutral Payment Port v1 and test-only Fake. Real payment storage, service and Stripe are deferred to C-19; no production payment capability exists."
+    },
+    {
+      "name": "checkout",
+      "status": "implemented",
+      "go_path": "internal/modules/checkout",
+      "go_status": "implemented",
+      "owns_tables": [
+        "checkout_sessions",
+        "checkout_attempts"
+      ],
+      "operations": [
+        {
+          "operation_id": "createCheckout",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "receiveFakePaymentEvent",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "orders",
+        "ledger",
+        "payments",
+        "pricing",
+        "tax",
+        "shipping",
+        "money",
+        "reliability",
+        "customer"
+      ],
+      "tests": [
+        "tests/db_checkout.sql",
+        "internal/db/checkout_integration_test.go",
+        "internal/platform/httpapi/checkout/checkout_test.go",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh",
+        "internal/modules/checkout/internal/service/calculate_test.go"
+      ],
+      "scopes": [
+        "checkout.submit"
+      ],
+      "note": "C-18a Fake-only checkout orchestration. Optional strict HTTP composition uses a default-deny trusted storefront resolver seam classified InternalService until real customer/guest middleware; URL/Host never authorize. Fake webhook is signed and mounted only in explicit test/development configuration. Cart contract consumption uses an injected test substitute until PR31 integration; no production cart or payment provider wiring."
     }
   ],
   "migrations": [
@@ -867,6 +911,14 @@
         "order_lines",
         "order_adjustments",
         "inventory_reservations"
+      ]
+    },
+    {
+      "file": "migrations/021_checkout.sql",
+      "owner": "checkout",
+      "touches_tables": [
+        "checkout_sessions",
+        "checkout_attempts"
       ]
     }
   ]

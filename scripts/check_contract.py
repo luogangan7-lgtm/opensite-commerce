@@ -139,8 +139,22 @@ def validate_contract(api):
             require(tenant_parameter.get("required") is True and tenant_parameter.get("schema") ==
                     {"type": "string", "format": "uuid"}, f"required tenant UUID parameter missing: {ident}")
         if access == "Public":
-            require(ident in {"health", "createAdminSession", "submitInquiry"} and security == [] and
-                    "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
+            if ident == "receiveFakePaymentEvent":
+                require((path, method) == ("/api/v1/testing/payments/fake/webhook", "post") and
+                        op.get("x-test-only") is True and security == [{"FakeWebhookSignature": []}] and
+                        "x-required-scope" not in op and not tenant,
+                        "Fake webhook must be signed, test-only and outside tenant business paths")
+                require(schemes.get("FakeWebhookSignature") == {
+                    "type": "apiKey", "in": "header", "name": "X-Fake-Signature",
+                    "description": "HMAC SHA256 of exact request bytes with isolated test key; test/development only."},
+                    "Fake signature scheme drift")
+                signature = next((p for p in parameters if p.get("name") == "X-Fake-Signature"), {})
+                require(signature.get("in") == "header" and signature.get("required") is True and
+                        signature.get("schema") == {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                        "Fake signature parameter missing/incorrect")
+            else:
+                require(ident in {"health", "createAdminSession", "submitInquiry"} and security == [] and
+                        "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
         elif access == "AuthenticatedSelf":
             require(ident in SELF_OPERATIONS and not tenant and "tenant_id" not in names and "x-required-scope" not in op,
                     f"AuthenticatedSelf cannot carry scope/tenant: {ident}")
@@ -150,6 +164,17 @@ def validate_contract(api):
         elif access == "AdminOrAPIKey":
             require(tenant and isinstance(scope, str) and bool(scope.strip()), f"business tenant/scope required: {ident}")
             require(security in (COOKIE_OR_KEY, list(reversed(COOKIE_OR_KEY))), f"cookie OR API key required: {ident}")
+        elif access == "InternalService":
+            # C-18a has no production storefront middleware. This exact trusted
+            # resolver seam cannot expand to an arbitrary anonymous tenant API.
+            require((ident, path, method, scope) == ("createCheckout", "/api/v1/t/{tenant_id}/checkout", "post", "checkout.submit") and
+                    security == [{"StorefrontSession": []}, {"GuestCapability": []}],
+                    "checkout requires the exact trusted storefront resolver contract")
+            for name, cookie_name in (("StorefrontSession", "__Host-osc_customer_session"),
+                                      ("GuestCapability", "__Host-osc_guest_capability")):
+                scheme = schemes.get(name, {})
+                require((scheme.get("type"), scheme.get("in"), scheme.get("name")) ==
+                        ("apiKey", "cookie", cookie_name), "storefront credential scheme drift")
         else:
             raise ValueError(f"access policy missing or unsupported: {ident}")
         if ident in SELF_OPERATIONS:

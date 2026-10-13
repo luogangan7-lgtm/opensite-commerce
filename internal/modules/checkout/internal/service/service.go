@@ -1,0 +1,494 @@
+// Package service owns checkout's durable orchestration across DB and Payment Port.
+// Dependencies: private SQLC store, Orders/Ledger contracts and pure calculators.
+// Called by trusted transport/composition. DB phases fence provider IO, which is
+// always outside transactions; provider success is recovered using stable keys.
+package service
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/internal/store"
+	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
+	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
+	"net/mail"
+	"strings"
+	"unicode/utf8"
+)
+
+type Service struct{ config contract.Config }
+
+var _ contract.Service = (*Service)(nil)
+
+func New(c contract.Config) *Service { return &Service{config: c} }
+func (s *Service) available() bool {
+	return s != nil && s.config.Run != nil && s.config.Orders != nil && s.config.Ledger != nil && s.config.Payment != nil
+}
+func key(s string) bool {
+	return len(s) > 0 && len(s) <= 128 && !strings.ContainsFunc(s, func(c rune) bool { return c < '!' || c > '~' })
+}
+func digest(x any) []byte { b, _ := json.Marshal(x); h := sha256.Sum256(b); return h[:] }
+func checkedInput(actor contract.AuthorizedActor, in contract.StartInput) error {
+	if !actor.Valid() {
+		return contract.ErrForbidden
+	}
+	if in.QuoteID != "" || !tenanttx.ValidTenantID(in.CartID) || !key(in.IdempotencyKey) {
+		return contract.ErrInvalid
+	}
+	if actor.Kind() == "guest" {
+		p, e := mail.ParseAddress(in.BuyerContact.Email)
+		if e != nil || p.Address != in.BuyerContact.Email || len(in.BuyerContact.Email) > 254 || len(in.BuyerContact.Name) > 200 || len(in.BuyerContact.Phone) > 64 || !utf8.ValidString(in.BuyerContact.Name) || !utf8.ValidString(in.BuyerContact.Phone) {
+			return contract.ErrInvalid
+		}
+	} else if in.BuyerContact != (orders.Contact{}) {
+		return contract.ErrInvalid
+	}
+	a := in.ShippingAddress
+	for _, v := range []string{a.Country, a.Subdivision, a.Address1, a.Address2, a.City, a.PostalCode} {
+		if len(v) > 256 || !utf8.ValidString(v) || strings.ContainsFunc(v, func(c rune) bool { return c < ' ' }) {
+			return contract.ErrInvalid
+		}
+	}
+	if strings.TrimSpace(a.Address1) == "" || strings.TrimSpace(a.City) == "" || strings.TrimSpace(a.PostalCode) == "" {
+		return contract.ErrInvalid
+	}
+	return nil
+}
+func (s *Service) run(ctx context.Context, tenantID string, fn func(context.Context, pgx.Tx, *db.Queries) error) error {
+	return s.config.Run(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		q, e := store.Queries(ctx, tx, tenantID)
+		if e != nil {
+			return e
+		}
+		return fn(ctx, tx, q)
+	})
+}
+func decodeResult(b []byte) (contract.Result, error) {
+	var r contract.Result
+	if len(b) == 0 || json.Unmarshal(b, &r) != nil {
+		return r, contract.ErrUnavailable
+	}
+	return r, nil
+}
+func snapshot(row db.AppCheckoutSession, status payment.PaymentStatus) contract.Result {
+	return contract.Result{CheckoutID: row.ID.String(), OrderID: row.OrderID.String(), State: row.Phase, AmountMinor: row.AmountMinor, Currency: row.Currency, OrderVersion: row.PayableVersion, Payment: contract.Intent{ProviderRef: row.ProviderRef, Status: status}}
+}
+func operation(row db.AppCheckoutSession, action string) payment.PaymentOperation {
+	return payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: row.TenantID.String(), OrderID: row.OrderID.String(), Amount: money.Money{Amount: row.AmountMinor, Currency: row.Currency}, OrderVersion: row.PayableVersion, IdempotencyKey: "checkout:v1:" + row.ID.String() + ":" + action}, ProviderRef: row.ProviderRef}
+}
+func update(ctx context.Context, q *db.Queries, row db.AppCheckoutSession) (db.AppCheckoutSession, error) {
+	x, e := q.UpdateCheckout(ctx, db.UpdateCheckoutParams{TenantID: row.TenantID, ID: row.ID, Phase: row.Phase, ProviderRef: row.ProviderRef, StartResult: row.StartResult, FinalResult: row.FinalResult, ClaimKind: row.ClaimKind, ClaimKey: row.ClaimKey})
+	return x, store.MapError(e)
+}
+func (s *Service) Start(ctx context.Context, actor contract.AuthorizedActor, in contract.StartInput) (contract.Result, error) {
+	var row db.AppCheckoutSession
+	var result contract.Result
+	if e := checkedInput(actor, in); e != nil {
+		return result, e
+	}
+	if !s.available() || s.config.Cart == nil || s.config.Rules == nil {
+		return result, contract.ErrUnavailable
+	}
+	requestHash := digest(in)
+	e := s.run(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx, q *db.Queries) error {
+		if e := q.LockCheckoutStart(ctx, actor.TenantID()+":"+actor.Kind()+":"+actor.ID()+":"+in.IdempotencyKey); e != nil {
+			return store.MapError(e)
+		}
+		existing, e := q.GetCheckoutByKey(ctx, db.GetCheckoutByKeyParams{TenantID: store.UUID(actor.TenantID()), ActorKind: actor.Kind(), ActorID: actor.ID(), RequestKey: in.IdempotencyKey})
+		if e == nil {
+			if !bytes.Equal(existing.RequestHash, requestHash) {
+				return contract.ErrKeyReused
+			}
+			row = existing
+			return nil
+		}
+		if !errors.Is(e, pgx.ErrNoRows) {
+			return store.MapError(e)
+		}
+		cart, e := s.config.Cart.Read(ctx, tx, actor, in.CartID)
+		if e != nil {
+			return e
+		}
+		if cart.ID != in.CartID {
+			return contract.ErrNotFound
+		}
+		rules, e := s.config.Rules.Load(ctx, tx, actor, cart, in.ShippingAddress)
+		if e != nil {
+			return e
+		}
+		if rules.TenantID != actor.TenantID() {
+			return contract.ErrForbidden
+		}
+		id := uuid.NewString()
+		oid := orderID(id)
+		// Cart line identities belong to shopping intent. Orders require a new immutable
+		// line identity per checkout, while retries reuse the stored order snapshot.
+		lines := append([]contract.CartLine(nil), cart.Lines...)
+		for i := range lines {
+			lines[i].ID = uuid.NewSHA1(uuid.MustParse(oid), []byte(lines[i].ID)).String()
+		}
+		pricingCart := cart
+		pricingCart.Lines = lines
+		quoted, e := calculate(pricingCart, rules, in.ShippingAddress)
+		if e != nil {
+			return e
+		}
+		total, e := (money.Money{Amount: quoted.Net, Currency: rules.Currency}).Add(money.Money{Amount: quoted.Tax, Currency: rules.Currency})
+		if e != nil {
+			return e
+		}
+		total, e = total.Add(quoted.Shipping.Charge)
+		if e != nil {
+			return e
+		}
+		accountRows, e := q.GetCheckoutLedgerAccounts(ctx, store.UUID(actor.TenantID()))
+		if e != nil {
+			return store.MapError(e)
+		}
+		configured := map[string]db.GetCheckoutLedgerAccountsRow{}
+		for _, a := range accountRows {
+			configured[a.Code] = a
+		}
+		if _, e = journal(db.AppCheckoutSession{TenantID: store.UUID(actor.TenantID()), OrderID: store.UUID(oid), Currency: total.Currency, AmountMinor: total.Amount, ItemsNetMinor: quoted.Net, TaxMinor: quoted.Tax, ShippingMinor: quoted.Shipping.Charge.Amount}, "preflight", configured); e != nil {
+			return e
+		}
+		buyer := orders.Buyer{Guest: in.BuyerContact}
+		if actor.Kind() == "customer" {
+			buyer = orders.Buyer{CustomerID: actor.ID()}
+		}
+		created, e := s.config.Orders.Create(ctx, tx, actor.TenantID(), orders.CreateInput{ID: oid, IdempotencyKey: "checkout:" + id, Buyer: buyer, Currency: rules.Currency, Lines: quoted.Lines, Shipping: quoted.Shipping})
+		if e != nil {
+			return e
+		}
+		payable, e := s.config.Orders.GetPayable(ctx, tx, actor.TenantID(), created.ID)
+		if e != nil {
+			return e
+		}
+		if payable.OrderID != oid || payable.Amount != total || payable.Amount.Amount <= 0 || payable.Version <= 0 {
+			return contract.ErrConflict
+		}
+		addressSnapshot, _ := json.Marshal(in.ShippingAddress)
+		row, e = q.InsertCheckout(ctx, db.InsertCheckoutParams{AddressSnapshot: addressSnapshot, TenantID: store.UUID(actor.TenantID()), ID: store.UUID(id), ActorKind: actor.Kind(), ActorID: actor.ID(), RequestKey: in.IdempotencyKey, RequestHash: requestHash, CartID: store.UUID(cart.ID), CartVersion: cart.Version, OrderID: store.UUID(oid), Currency: total.Currency, AmountMinor: total.Amount, ItemsNetMinor: quoted.Net, TaxMinor: quoted.Tax, ShippingMinor: quoted.Shipping.Charge.Amount, PayableVersion: payable.Version})
+		return store.MapError(e)
+	})
+	if e != nil {
+		return result, e
+	}
+	if row.StartResult != nil {
+		return decodeResult(row.StartResult)
+	}
+	if row.Phase == "failed" && row.FinalResult != nil {
+		return decodeResult(row.FinalResult)
+	}
+	if row.Phase != "pending" {
+		return result, contract.ErrConflict
+	}
+	// Original order/payable transaction is committed. No locks survive this call.
+	intent, e := s.config.Payment.CreateIntent(ctx, operation(row, "create").CreatePaymentIntent)
+	if e != nil {
+		var pe *payment.PaymentError
+		if errors.As(e, &pe) && pe.Code == payment.ErrorNonRetryable {
+			return s.failCreation(ctx, row)
+		}
+		return result, e
+	}
+	if !validIntent(intent) || intent.Status != payment.StatusAuthorized && intent.Status != payment.StatusPending && intent.Status != payment.StatusRequiresAction {
+		return result, contract.ErrUnavailable
+	}
+	e = s.run(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx, q *db.Queries) error {
+		current, e := q.GetCheckoutByID(ctx, db.GetCheckoutByIDParams{TenantID: row.TenantID, ID: row.ID})
+		if e != nil {
+			return store.MapError(e)
+		}
+		if current.StartResult != nil {
+			result, e = decodeResult(current.StartResult)
+			return e
+		}
+		if current.Phase != "pending" {
+			return contract.ErrConflict
+		}
+		current.ProviderRef = intent.ProviderRef
+		current.Phase = "ready"
+		result = snapshot(current, intent.Status)
+		result.Payment.NextActionKind = intent.NextAction.Kind
+		result.Payment.NextActionURL = intent.NextAction.URL
+		current.StartResult, _ = json.Marshal(result)
+		_, e = update(ctx, q, current)
+		return e
+	})
+	return result, e
+}
+func validIntent(i payment.PaymentIntentResult) bool {
+	return strings.TrimSpace(i.ProviderRef) != "" && len(i.ProviderRef) <= 512 && !strings.ContainsAny(i.ProviderRef, "\r\n\x00") && len(i.NextAction.Kind) <= 64 && len(i.NextAction.URL) <= 2048
+}
+
+// journal records accrual and settlement in one balanced journal. Zero-valued
+// revenue/tax/shipping components are omitted; missing/type-wrong accounts refuse.
+func journal(row db.AppCheckoutSession, event string, accounts map[string]db.GetCheckoutLedgerAccountsRow) (ledger.Transaction, error) {
+	out := ledger.Transaction{TenantID: row.TenantID.String(), Currency: row.Currency, SourceType: "order", SourceID: row.OrderID.String(), Event: "checkout:" + hex.EncodeToString(digest(event))}
+	add := func(code string, side ledger.Side, amount int64, kind string) error {
+		if amount == 0 {
+			return nil
+		}
+		a, ok := accounts[code]
+		if !ok || a.AccountType != kind {
+			return contract.ErrUnavailable
+		}
+		out.Entries = append(out.Entries, ledger.Entry{AccountID: a.ID.String(), Side: side, Amount: money.Money{Amount: amount, Currency: row.Currency}})
+		return nil
+	}
+	for _, v := range []struct {
+		code   string
+		side   ledger.Side
+		amount int64
+		kind   string
+	}{{"accounts_receivable", ledger.Debit, row.AmountMinor, "asset"}, {"revenue", ledger.Credit, row.ItemsNetMinor, "revenue"}, {"tax_payable", ledger.Credit, row.TaxMinor, "liability"}, {"shipping_revenue", ledger.Credit, row.ShippingMinor, "revenue"}, {"cash", ledger.Debit, row.AmountMinor, "asset"}, {"accounts_receivable", ledger.Credit, row.AmountMinor, "asset"}} {
+		if e := add(v.code, v.side, v.amount, v.kind); e != nil {
+			return out, e
+		}
+	}
+	return out, out.Validate()
+}
+
+// Event digests bind every trusted provider field. Shape validation is only the
+// last defense: HTTP must verify signatures/account-to-tenant BEFORE Confirm.
+func (s *Service) Confirm(ctx context.Context, event payment.VerifiedEvent) (contract.Result, error) {
+	var zero contract.Result
+	if e := event.Validate(); e != nil {
+		return zero, contract.ErrInvalid
+	}
+	if !s.available() {
+		return zero, contract.ErrUnavailable
+	}
+	switch event.Status {
+	case payment.StatusAuthorized, payment.StatusCaptured:
+		return s.finish(ctx, contract.AuthorizedActor{}, event.TenantID, event.OrderID, "", "payment", event.EventID, digest(event), &event, "confirming", "paid")
+	case payment.StatusFailed, payment.StatusCanceled:
+		return s.finish(ctx, contract.AuthorizedActor{}, event.TenantID, event.OrderID, "", "payment", event.EventID, digest(event), &event, "cancelling", "failed")
+	}
+	return zero, contract.ErrInvalid
+}
+func (s *Service) Cancel(ctx context.Context, actor contract.AuthorizedActor, in contract.CancelInput) (contract.Result, error) {
+	if !actor.Valid() {
+		return contract.Result{}, contract.ErrForbidden
+	}
+	if !tenanttx.ValidTenantID(in.CheckoutID) || !key(in.IdempotencyKey) {
+		return contract.Result{}, contract.ErrInvalid
+	}
+	if !s.available() {
+		return contract.Result{}, contract.ErrUnavailable
+	}
+	keyHash := sha256.Sum256([]byte(actor.Kind() + ":" + actor.ID() + ":" + in.IdempotencyKey))
+	requestHash := digest(struct{ CheckoutID, Key string }{in.CheckoutID, in.IdempotencyKey})
+	return s.finish(ctx, actor, actor.TenantID(), "", in.CheckoutID, "cancel", hex.EncodeToString(keyHash[:]), requestHash, nil, "cancelling", "cancelled")
+}
+func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, tenantID, oid, cid, kind, eventKey string, requestHash []byte, event *payment.VerifiedEvent, claimPhase, terminal string) (contract.Result, error) {
+	var row db.AppCheckoutSession
+	var result contract.Result
+	complete := false
+	e := s.run(ctx, tenantID, func(ctx context.Context, tx pgx.Tx, q *db.Queries) error {
+		var e error
+		if oid != "" {
+			row, e = q.GetCheckoutByOrder(ctx, db.GetCheckoutByOrderParams{TenantID: store.UUID(tenantID), OrderID: store.UUID(oid)})
+		} else {
+			row, e = q.GetCheckoutByID(ctx, db.GetCheckoutByIDParams{TenantID: store.UUID(tenantID), ID: store.UUID(cid)})
+		}
+		if e != nil {
+			return store.MapError(e)
+		}
+		if actor.Valid() && (row.ActorKind != actor.Kind() || row.ActorID != actor.ID()) {
+			return contract.ErrNotFound
+		}
+		if event != nil && (row.OrderID.String() != event.OrderID || row.Currency != event.Amount.Currency || row.AmountMinor != event.Amount.Amount || row.PayableVersion != event.OrderVersion || row.ProviderRef != event.ProviderRef) {
+			return contract.ErrConflict
+		}
+		attempt, e := q.GetCheckoutAttempt(ctx, db.GetCheckoutAttemptParams{TenantID: row.TenantID, EventKind: kind, EventKey: eventKey})
+		if e == nil {
+			if attempt.CheckoutID != row.ID || !bytes.Equal(attempt.RequestHash, requestHash) {
+				return contract.ErrKeyReused
+			}
+			if attempt.Result != nil {
+				result, e = decodeResult(attempt.Result)
+				complete = true
+				return e
+			}
+		} else if !errors.Is(e, pgx.ErrNoRows) {
+			return store.MapError(e)
+		} else {
+			_, e = q.InsertCheckoutAttempt(ctx, db.InsertCheckoutAttemptParams{TenantID: row.TenantID, EventKind: kind, EventKey: eventKey, CheckoutID: row.ID, RequestHash: requestHash})
+			if e != nil {
+				return store.MapError(e)
+			}
+		}
+		if row.FinalResult != nil {
+			if row.Phase != terminal {
+				return contract.ErrConflict
+			}
+			result, e = decodeResult(row.FinalResult)
+			if e != nil {
+				return e
+			}
+			complete = true
+			return store.MapError(q.CompleteCheckoutAttempt(ctx, db.CompleteCheckoutAttemptParams{TenantID: row.TenantID, EventKind: kind, EventKey: eventKey, Result: row.FinalResult}))
+		}
+		if row.Phase == "ready" {
+			row.Phase = claimPhase
+			row.ClaimKind = store.Text(kind)
+			row.ClaimKey = store.Text(eventKey)
+			row, e = update(ctx, q, row)
+			return e
+		}
+		if (row.Phase != claimPhase && !(claimPhase == "confirming" && row.Phase == "failing")) || row.ClaimKind.String != kind || row.ClaimKey.String != eventKey {
+			return contract.ErrConflict
+		}
+		return nil
+	})
+	if e != nil || complete {
+		return result, e
+	}
+	// This DB claim is durable before provider IO. Retry retains this exact payable
+	// and operation key even after Capture succeeded but finalize rolled back.
+	var intent payment.PaymentIntentResult
+	if claimPhase == "confirming" && row.Phase != "failing" {
+		intent, e = s.config.Payment.Capture(ctx, operation(row, "capture"))
+		if e != nil {
+			var pe *payment.PaymentError
+			if !errors.As(e, &pe) || pe.Code != payment.ErrorNonRetryable {
+				return result, e
+			}
+			// A permanent Fake rejection occurs before capture. Durably choose failure
+			// recovery before Cancel; an adapter with ambiguous effects must be retryable.
+			e = s.run(ctx, tenantID, func(ctx context.Context, tx pgx.Tx, q *db.Queries) error {
+				current, err := q.GetCheckoutByID(ctx, db.GetCheckoutByIDParams{TenantID: row.TenantID, ID: row.ID})
+				if err != nil {
+					return store.MapError(err)
+				}
+				if current.Phase == "failing" {
+					row = current
+					return nil
+				}
+				if current.Phase != "confirming" || current.ClaimKind.String != kind || current.ClaimKey.String != eventKey {
+					return contract.ErrConflict
+				}
+				current.Phase = "failing"
+				row, err = update(ctx, q, current)
+				return err
+			})
+			if e != nil {
+				return result, e
+			}
+		}
+	}
+	if claimPhase == "cancelling" || row.Phase == "failing" {
+		intent, e = s.config.Payment.Cancel(ctx, operation(row, "cancel"))
+		if e != nil {
+			return result, e
+		}
+	}
+	if row.Phase == "failing" {
+		claimPhase = "failing"
+		terminal = "failed"
+	}
+	expected := payment.StatusCaptured
+	if claimPhase == "cancelling" || claimPhase == "failing" {
+		expected = payment.StatusCanceled
+	}
+	if !validIntent(intent) || intent.ProviderRef != row.ProviderRef || intent.Status != expected {
+		return result, contract.ErrUnavailable
+	}
+	e = s.run(ctx, tenantID, func(ctx context.Context, tx pgx.Tx, q *db.Queries) error {
+		current, e := q.GetCheckoutByID(ctx, db.GetCheckoutByIDParams{TenantID: row.TenantID, ID: row.ID})
+		if e != nil {
+			return store.MapError(e)
+		}
+		if current.FinalResult != nil {
+			result, e = decodeResult(current.FinalResult)
+			return e
+		}
+		if current.Phase != claimPhase || current.ClaimKind.String != kind || current.ClaimKey.String != eventKey {
+			return contract.ErrConflict
+		}
+		target := orders.Cancelled
+		if terminal == "paid" {
+			target = orders.Paid
+		}
+		transitionKey := "checkout:" + current.ID.String() + ":" + terminal
+		changed, e := s.config.Orders.Transition(ctx, tx, tenantID, orders.TransitionInput{OrderID: current.OrderID.String(), Target: target, EventKey: transitionKey})
+		if e != nil {
+			return e
+		}
+		if changed.State != target {
+			return contract.ErrConflict
+		}
+		if terminal == "paid" {
+			rows, e := q.GetCheckoutLedgerAccounts(ctx, current.TenantID)
+			if e != nil {
+				return store.MapError(e)
+			}
+			accounts := map[string]db.GetCheckoutLedgerAccountsRow{}
+			for _, a := range rows {
+				accounts[a.Code] = a
+			}
+			posting, e := journal(current, current.ClaimKey.String, accounts)
+			if e != nil {
+				return e
+			}
+			if _, e = s.config.Ledger.Post(ctx, tx, posting); e != nil {
+				return e
+			}
+		}
+		current.Phase = terminal
+		result = snapshot(current, intent.Status)
+		current.FinalResult, _ = json.Marshal(result)
+		if _, e = update(ctx, q, current); e != nil {
+			return e
+		}
+		return store.MapError(q.CompleteCheckoutAttempt(ctx, db.CompleteCheckoutAttemptParams{TenantID: current.TenantID, EventKind: kind, EventKey: eventKey, Result: current.FinalResult}))
+	})
+	return result, e
+}
+
+// failCreation is used only for a definitive Fake Create rejection. Retryable /
+// timeout outcomes retain pending and retry the same original provider key.
+func (s *Service) failCreation(ctx context.Context, row db.AppCheckoutSession) (contract.Result, error) {
+	var result contract.Result
+	e := s.run(ctx, row.TenantID.String(), func(ctx context.Context, tx pgx.Tx, q *db.Queries) error {
+		current, e := q.GetCheckoutByID(ctx, db.GetCheckoutByIDParams{TenantID: row.TenantID, ID: row.ID})
+		if e != nil {
+			return store.MapError(e)
+		}
+		if current.FinalResult != nil {
+			returnValue, err := decodeResult(current.FinalResult)
+			result = returnValue
+			return err
+		}
+		if current.Phase != "pending" {
+			return contract.ErrConflict
+		}
+		changed, e := s.config.Orders.Transition(ctx, tx, current.TenantID.String(), orders.TransitionInput{OrderID: current.OrderID.String(), Target: orders.Cancelled, EventKey: "checkout:" + current.ID.String() + ":create-failure"})
+		if e != nil {
+			return e
+		}
+		if changed.State != orders.Cancelled {
+			return contract.ErrConflict
+		}
+		current.Phase = "failed"
+		current.ClaimKind = store.Text("create_failure")
+		current.ClaimKey = store.Text(current.RequestKey)
+		result = snapshot(current, payment.StatusFailed)
+		current.FinalResult, _ = json.Marshal(result)
+		_, e = update(ctx, q, current)
+		return e
+	})
+	return result, e
+}
