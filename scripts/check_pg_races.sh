@@ -53,7 +53,18 @@ tx() {
 park() { echo "SELECT pg_advisory_xact_lock_shared($$, $1);"; } # SQL: wait for gate $1
 gate_close() {  # driver session holds advisory lock $1 until gate_open
   echo "SET application_name='${RACE_PREFIX}gate_$1'; SELECT pg_advisory_lock($$, $1); SELECT pg_sleep(600);" | sql >/dev/null 2>&1 &
-  await "gate_$1" ClientRead PgSleep
+  # ClientRead can occur after SET but before pg_advisory_lock. Only the exact
+  # granted two-int exclusive lock proves that a participant will park.
+  local ready deadline=$((SECONDS + 15))
+  while (( SECONDS < deadline )); do
+    ready=$(sql <<<"SELECT count(*)=1 FROM pg_locks l JOIN pg_stat_activity a USING(pid)
+      WHERE a.application_name='${RACE_PREFIX}gate_$1'
+      AND l.locktype='advisory' AND l.mode='ExclusiveLock' AND l.granted
+      AND l.classid=$$::oid AND l.objid=$1::oid AND l.objsubid=2;")
+    [[ $ready == t ]] && return 0
+    sleep 0.05
+  done
+  echo "  sync timeout: ${RACE_PREFIX}gate_$1 never held its exact advisory lock"; fail=1; return 1
 }
 gate_open() { sql <<<"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name='${RACE_PREFIX}gate_$1';" >/dev/null; }
 # await <label> <wait_event...|gone>: poll until race_<label> waits on one of the
@@ -331,29 +342,35 @@ expect inv_expire ok; expect inv_commit INVENTORY_INVALID_TRANSITION; expect inv
 inventory_check 'race inventory expiry beats commit' '1|0|0|3' "$T" "$SKU"
 
 # Commit owns the reservation but waits on stock; expiry must skip, not release
-# its counter. Once the stock wait ends, the expired commit must refuse.
+# its counter. Its transaction starts before expiry; its call and stock wait
+# finish after expiry. No scheduler must meet a short wall-clock deadline.
 read -r T SKU OWNER <<<"$(inventory_fixture)"
 RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SELECT (app.inventory_reserve('$SKU',1,'order','$OWNER','skip-race',900)).id;" | tail -1)
 gate_close 14
 tx inv_stock app_inventory_manager "$T" "SELECT app.inventory_adjust('$SKU',1,'concurrent receipt','$OWNER','inbound'); $(park 14)" &
 await inv_stock advisory
-# Establish a future expiry AFTER the stock-holder is parked. Commit must be
-# observed waiting while still valid; the clock predicate is the expiry barrier.
-sql <<<"UPDATE app.inventory_reservations SET expires_at=clock_timestamp()+interval '3 seconds' WHERE tenant_id='$T' AND id='$RID';" >/dev/null
-tx inv_commit_wait app_inventory_executor "$T" "SELECT app.inventory_commit('$RID');" &
+# Park before acquiring the reservation, so the driver can put its expiry
+# strictly between the worker's observed transaction start and database clock.
+# now() would then admit it incorrectly; clock_timestamp() must reject it.
+gate_close 114
+tx inv_commit_wait app_inventory_executor "$T" "$(park 114) SELECT app.inventory_commit('$RID');" &
+await inv_commit_wait advisory
+EXPIRY_POSITION=$(sql <<<"UPDATE app.inventory_reservations r
+ SET expires_at=a.xact_start+(clock_timestamp()-a.xact_start)/2
+ FROM pg_stat_activity a WHERE a.application_name='${RACE_PREFIX}inv_commit_wait'
+ AND a.xact_start IS NOT NULL AND r.tenant_id='$T' AND r.id='$RID'
+ RETURNING r.expires_at>a.xact_start AND r.expires_at<clock_timestamp();")
+echo "race inventory expiry position: $EXPIRY_POSITION (expected t)"
+[[ $EXPIRY_POSITION == t ]] || { echo 'FAIL: inventory transaction/expiry clock witness missing'; exit 1; }
+gate_open 114
 await inv_commit_wait "${ROWLOCK[@]}"
-VALID_WAIT=$(sql <<<"SELECT clock_timestamp()<r.expires_at AND a.xact_start<r.expires_at
- FROM app.inventory_reservations r JOIN pg_stat_activity a ON a.application_name='${RACE_PREFIX}inv_commit_wait'
- WHERE r.tenant_id='$T' AND r.id='$RID';")
-[[ $VALID_WAIT == t ]] || { echo 'FAIL: commit was not waiting before expiry'; exit 1; }
-EXPIRED=f
-for i in $(seq 1 300); do
-  EXPIRED=$(sql <<<"SELECT clock_timestamp()>=expires_at FROM app.inventory_reservations WHERE tenant_id='$T' AND id='$RID';")
-  [[ $EXPIRED == t ]] && break
-  sleep 0.05  # Poll the observed database clock; never use delay to order actors.
-done
-[[ $EXPIRED == t ]] || { echo 'FAIL: database expiry barrier timed out'; exit 1; }
+STOCK_BLOCKER=$(sql <<<"SELECT count(*)=1 AND bool_and(h.pid=ANY(pg_blocking_pids(c.pid)))
+ FROM pg_stat_activity c CROSS JOIN pg_stat_activity h
+ WHERE c.application_name='${RACE_PREFIX}inv_commit_wait' AND h.application_name='${RACE_PREFIX}inv_stock';")
+echo "race inventory commit blocked by stock holder: $STOCK_BLOCKER (expected t)"
+[[ $STOCK_BLOCKER == t ]] || { echo 'FAIL: commit did not wait on the stock holder'; exit 1; }
 SKIPPED=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT app.inventory_expire_due(1);" | tail -1)
+echo "race inventory expiry skips busy commit: $SKIPPED (expected 0)"
 [[ $SKIPPED == 0 ]] || fail=1
 gate_open 14; wait
 expect inv_stock ok; expect inv_commit_wait INVENTORY_RESERVATION_EXPIRED; expect inv_commit_wait 55000

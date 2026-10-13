@@ -38,7 +38,7 @@ jobs:
           mkdir -p .work/inventory-race-soak
           bash scripts/check_pg.sh > .work/inventory-race-soak/fixture.log 2>&1
       - name: Deterministic real-PG readiness and startup-gap regressions
-        run: python3 tests/test_inventory_race_sync.py
+        run: python3 tests/test_inventory_race_sync.py 2>&1 | tee .work/inventory-race-soak/regressions.log
       - name: Fifty independent trials of the actual inventory race gates
         run: python3 scripts/soak_inventory_races.py --trials 50 --output .work/inventory-race-soak
       - name: Preserve all trials, full failures and immutable source receipt

@@ -3,6 +3,7 @@
 
 Depends on disposable PostgreSQL and scripts/check_pg_races.sh; called by CI.
 An application wait state is not evidence of the exact granted gate lock.
+The actual expiry case must survive a controlled worker-startup gap.
 """
 import argparse
 import os
@@ -160,26 +161,31 @@ await() {
   original_await "$@"
 }
 '''
-    script = prelude + fixtures + adapter + block + '\n[[ $fail -eq 0 ]] || exit 1\necho "PASS: inventory expiry witness survives controlled startup gap"\n'
-    process = subprocess.Popen(["bash", "-c", script], cwd=ROOT, text=True,
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
-    try:
-        output, _ = process.communicate(timeout=120)
-        print(output, end="", flush=True)
-        if process.returncode:
-            raise AssertionError(f"startup-gap inventory gate: exit {process.returncode}")
-    finally:
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-        # A timed-out Bash signal may bypass its EXIT trap; terminate only this test's sessions.
-        subprocess.run(["psql", os.environ["DATABASE_URL"], "-X", "-q", "-v", "ON_ERROR_STOP=1"],
-                       input=f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE left(application_name,length('race_{process.pid}_'))='race_{process.pid}_';",
-                       text=True, capture_output=True, timeout=5, check=True)
+    # The Python owner knows the exact participant directory even if Bash is
+    # killed before its EXIT trap, and only removes this test's own resource.
+    with tempfile.TemporaryDirectory(prefix="inventory-startup-") as directory:
+        assert prelude.count('ERRDIR=$(mktemp -d)') == 1, 'participant directory boundary drift'
+        prelude = prelude.replace('ERRDIR=$(mktemp -d)', 'ERRDIR=' + shlex.quote(directory), 1)
+        script = prelude + fixtures + adapter + block + '\n[[ $fail -eq 0 ]] || exit 1\necho "PASS: inventory expiry witness survives controlled startup gap"\n'
+        process = subprocess.Popen(["bash", "-c", script], cwd=ROOT, text=True,
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            output, _ = process.communicate(timeout=120)
+            print(output, end="", flush=True)
+            if process.returncode:
+                raise AssertionError(f"startup-gap inventory gate: exit {process.returncode}")
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
+            # A timed-out Bash signal may bypass its EXIT trap; terminate only this test's sessions.
+            subprocess.run(["psql", os.environ["DATABASE_URL"], "-X", "-q", "-v", "ON_ERROR_STOP=1"],
+                           input=f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE left(application_name,length('race_{process.pid}_'))='race_{process.pid}_';",
+                           text=True, capture_output=True, timeout=5, check=True)
 
 
 def main():
