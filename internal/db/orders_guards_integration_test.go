@@ -16,13 +16,14 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func TestOrdersCreationKeyPrecedesReservations(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
