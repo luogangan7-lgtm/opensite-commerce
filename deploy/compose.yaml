@@ -107,6 +107,8 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    # Must exceed the worker's 30s shutdown budget (25s River soft-stop grace).
+    stop_grace_period: 35s
 # Astro SSR has not merged; storefront is omitted until C-09a integration.
 volumes:
   pg_data:
