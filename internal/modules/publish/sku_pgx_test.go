@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/internal/store"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -241,7 +242,7 @@ func testManyPriceLists(t *testing.T, ctx context.Context, admin pgxadapter.Runn
 	site, err := module.Current(ctx, host)
 	t.Logf("4,001 SKU read took %v", time.Since(start))
 	if err != nil {
-		explainPublic(t, ctx, publicDSN, host)
+		explainPublic(t, ctx, publicDSN, host, tenant, admin)
 		t.Fatalf("6 lists in 5 currencies x 4,001 SKUs made the storefront unavailable: %v", err)
 	}
 	total := 0
@@ -259,20 +260,27 @@ func testManyPriceLists(t *testing.T, ctx context.Context, admin pgxadapter.Runn
 }
 
 // explainPublic logs the public role's plans/timings for the live reads (failure diagnostics only).
-func explainPublic(t *testing.T, ctx context.Context, publicDSN, host string) {
+func explainPublic(t *testing.T, ctx context.Context, publicDSN, host, tenant string, admin pgxadapter.Runner) {
+	var release string
+	_ = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "SELECT published_release_id::text FROM app.sites WHERE tenant_id=$1", tenant).Scan(&release)
+	})
 	r, closeR, err := pgxadapter.OpenPublic(ctx, publicDSN)
 	if err != nil {
 		t.Logf("diagnostics unavailable: %v", err)
 		return
 	}
 	defer closeR()
-	for _, q := range []string{`SELECT count(*) FROM app.products`, `SELECT count(*) FROM app.product_variants`,
-		`SELECT count(*) FROM app.price_entries`, `SELECT count(*) FROM app.stock_levels`} {
+	for _, c := range []struct {
+		q    string
+		args []any
+	}{{store.LiveSKUSQL, []any{tenant, 5001}}, {store.LivePriceSQL, []any{tenant, time.Now(), 5001, release}}} {
+		q, args := c.q, c.args
 		_ = r.InPublicRead(ctx, host, func(ctx context.Context, tx pgx.Tx) error {
 			if _, err := tx.Exec(ctx, "SELECT set_config('statement_timeout','60000',true)"); err != nil {
 				return err
 			}
-			rows, err := tx.Query(ctx, "EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY ON) "+q)
+			rows, err := tx.Query(ctx, "EXPLAIN (ANALYZE, COSTS OFF, SUMMARY ON) "+q, args...)
 			if err != nil {
 				t.Logf("%s: %v", q, err)
 				return nil
@@ -283,7 +291,7 @@ func explainPublic(t *testing.T, ctx context.Context, publicDSN, host string) {
 				_ = rows.Scan(&line)
 				plan = append(plan, line)
 			}
-			t.Logf("%s:\n%s", q, strings.Join(plan, "\n"))
+			t.Logf("%.40s:\n%s", q, strings.Join(plan, "\n"))
 			return rows.Err()
 		})
 	}

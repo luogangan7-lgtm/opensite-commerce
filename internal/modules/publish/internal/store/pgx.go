@@ -79,6 +79,30 @@ func (s *Store) Current(ctx context.Context, host string) (siteID, releaseID, lo
 	return
 }
 
+// LiveSKUSQL ($1 tenant, $2 row cap) and LivePriceSQL ($1 tenant, $2 at, $3 row cap,
+// $4 release) are exported only so pgx tests can EXPLAIN them as the public role.
+const LiveSKUSQL = `SELECT v.product_id::text,v.id::text,v.sku,
+   coalesce((SELECT jsonb_agg(jsonb_build_object('name',o.code,'value',ov.label) ORDER BY o.code)
+     FROM app.variant_option_values vo
+     JOIN app.product_options o ON (o.tenant_id,o.product_id,o.id)=(vo.tenant_id,vo.product_id,vo.option_id)
+     JOIN app.product_option_values ov ON (ov.tenant_id,ov.product_id,ov.option_id,ov.id)=(vo.tenant_id,vo.product_id,vo.option_id,vo.value_id)
+     WHERE (vo.tenant_id,vo.product_id,vo.variant_id)=(v.tenant_id,v.product_id,v.id)),'[]'::jsonb),
+   coalesce((SELECT bool_or(sl.in_stock) FROM app.stock_levels sl WHERE (sl.tenant_id,sl.sku_id)=(v.tenant_id,v.id)),false)
+   FROM app.product_variants v JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
+   WHERE v.tenant_id=$1::uuid AND v.lifecycle_status='ready' AND p.lifecycle_status='ready'
+   ORDER BY v.product_id,v.sku,v.id LIMIT $2`
+const LivePriceSQL = `WITH released AS MATERIALIZED (
+     SELECT lower(item->>'id') AS product_id,item->>'currency' AS currency
+     FROM app.site_releases r CROSS JOIN LATERAL jsonb_array_elements(r.manifest->'products') item
+     WHERE r.tenant_id=$1::uuid AND r.id=$4::uuid)
+   SELECT DISTINCT ON (e.sku_id) l.id::text,l.currency::text,l.status,l.priority,l.starts_at,l.ends_at,l.audience,e.sku_id::text,e.min_quantity,e.unit_amount
+   FROM app.price_entries e JOIN app.price_lists l ON (l.tenant_id,l.id)=(e.tenant_id,e.price_list_id)
+   JOIN app.product_variants v ON (v.tenant_id,v.id)=(e.tenant_id,e.sku_id)
+   JOIN released x ON x.product_id=v.product_id::text AND x.currency=l.currency::text
+   WHERE e.tenant_id=$1::uuid AND e.min_quantity=1 AND l.status='active' AND l.audience='all'
+    AND l.starts_at<=$2 AND (l.ends_at IS NULL OR $2<l.ends_at)
+   ORDER BY e.sku_id,l.priority DESC,l.id LIMIT $3`
+
 // readLive scopes explicitly by the verified host's current sealed release AND relies on
 // 028 RLS; it never reads stock counts, only the generated in_stock boolean.
 func readLive(ctx context.Context, tx pgx.Tx, host string) (live service.Live, err error) {
@@ -89,16 +113,7 @@ func readLive(ctx context.Context, tx pgx.Tx, host string) (live service.Live, e
 	if err = tx.QueryRow(ctx, `SELECT r.tenant_id::text,r.id::text,now() `+scope, host).Scan(&live.TenantID, &releaseID, &live.At); err != nil {
 		return
 	}
-	rows, err := tx.Query(ctx, `SELECT v.product_id::text,v.id::text,v.sku,
-   coalesce((SELECT jsonb_agg(jsonb_build_object('name',o.code,'value',ov.label) ORDER BY o.code)
-     FROM app.variant_option_values vo
-     JOIN app.product_options o ON (o.tenant_id,o.product_id,o.id)=(vo.tenant_id,vo.product_id,vo.option_id)
-     JOIN app.product_option_values ov ON (ov.tenant_id,ov.product_id,ov.option_id,ov.id)=(vo.tenant_id,vo.product_id,vo.option_id,vo.value_id)
-     WHERE (vo.tenant_id,vo.product_id,vo.variant_id)=(v.tenant_id,v.product_id,v.id)),'[]'::jsonb),
-   coalesce((SELECT bool_or(sl.in_stock) FROM app.stock_levels sl WHERE (sl.tenant_id,sl.sku_id)=(v.tenant_id,v.id)),false)
-   FROM app.product_variants v JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
-   WHERE v.tenant_id=$1::uuid AND v.lifecycle_status='ready' AND p.lifecycle_status='ready'
-   ORDER BY v.product_id,v.sku,v.id LIMIT $2`, live.TenantID, maxSKURows+1)
+	rows, err := tx.Query(ctx, LiveSKUSQL, live.TenantID, maxSKURows+1)
 	if err != nil {
 		return
 	}
@@ -119,17 +134,7 @@ func readLive(ctx context.Context, tx pgx.Tx, host string) (live service.Live, e
 	// Only the winning anonymous default price per SKU, in its release product's currency
 	// (pricing.Quote precedence: priority desc, then list id asc; UUID order equals lowercase
 	// text order), so at most one row per visible SKU. Quote re-checks the row.
-	rows, err = tx.Query(ctx, `WITH released AS MATERIALIZED (
-     SELECT lower(item->>'id') AS product_id,item->>'currency' AS currency
-     FROM app.site_releases r CROSS JOIN LATERAL jsonb_array_elements(r.manifest->'products') item
-     WHERE r.tenant_id=$1::uuid AND r.id=$4::uuid)
-   SELECT DISTINCT ON (e.sku_id) l.id::text,l.currency::text,l.status,l.priority,l.starts_at,l.ends_at,l.audience,e.sku_id::text,e.min_quantity,e.unit_amount
-   FROM app.price_entries e JOIN app.price_lists l ON (l.tenant_id,l.id)=(e.tenant_id,e.price_list_id)
-   JOIN app.product_variants v ON (v.tenant_id,v.id)=(e.tenant_id,e.sku_id)
-   JOIN released x ON x.product_id=v.product_id::text AND x.currency=l.currency::text
-   WHERE e.tenant_id=$1::uuid AND e.min_quantity=1 AND l.status='active' AND l.audience='all'
-    AND l.starts_at<=$2 AND (l.ends_at IS NULL OR $2<l.ends_at)
-   ORDER BY e.sku_id,l.priority DESC,l.id LIMIT $3`, live.TenantID, live.At, maxPriceRows+1, releaseID)
+	rows, err = tx.Query(ctx, LivePriceSQL, live.TenantID, live.At, maxPriceRows+1, releaseID)
 	if err != nil {
 		return
 	}
