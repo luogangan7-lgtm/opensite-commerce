@@ -17,6 +17,8 @@ if [[ -n "${DATABASE_URL:-}" ]]; then
 else
   PSQL=(docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -At -U postgres -d opensite -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
 fi
+ORIGINAL_PSQL=("${PSQL[@]}")
+BOOTSTRAP_DB=""
 sql() { "${PSQL[@]}" "$@"; }
 
 fixture() {
@@ -43,6 +45,8 @@ RACE_PREFIX="race_$$_"
 ERRDIR=$(mktemp -d)
 cleanup() {  # never leave parked participants or gate sessions behind
   sql <<<"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE left(application_name,length('$RACE_PREFIX'))='$RACE_PREFIX';" >/dev/null 2>&1 || true
+  PSQL=("${ORIGINAL_PSQL[@]}")
+  [[ -z $BOOTSTRAP_DB ]] || sql -c "DROP DATABASE IF EXISTS $BOOTSTRAP_DB WITH (FORCE)" >/dev/null 2>&1 || true
   rm -rf "$ERRDIR"
 }
 trap cleanup EXIT
@@ -719,6 +723,166 @@ got=$(sql <<<"SELECT o.state||'|'||s.on_hand||'|'||s.reserved||'|'||
 echo "orders prelock expiry/cancel conservation: $got (expected cancelled|2|0|5|2)"
 [[ $got == 'cancelled|2|0|5|2' ]] || fail=1
 
+# C-02a: global auth has no tenant context. The first call owns the normalized
+# identifier lock, then parks at gate70; the second must block on the first's
+# auth lock before the driver releases the gate. No sleep establishes ordering.
+auth_tx() {
+ printf "SET application_name='${RACE_PREFIX}%s'; BEGIN; SET LOCAL ROLE app_auth; %s COMMIT;\n" \
+  "$1" "$2" | sql >"$ERRDIR/$1.out" 2>"$ERRDIR/$1" || true
+}
+IDENTIFIER="${RACE_PREFIX}auth@example.test"
+UPPER_IDENTIFIER=$(printf '%s' "$IDENTIFIER" | tr '[:lower:]' '[:upper:]')
+record_first="SELECT 'auth-count='||failure_count FROM app.auth_record_failure('  $UPPER_IDENTIFIER  ','192.0.2.18'::inet);"
+record_second="SELECT 'auth-count='||failure_count FROM app.auth_record_failure('$IDENTIFIER','192.0.2.18'::inet);"
+gate_close 70
+auth_tx auth_first "$record_first $(park 70)" &
+auth_first_pid=$!
+await auth_first advisory
+auth_tx auth_second "$record_second" &
+auth_second_pid=$!
+await auth_second advisory
+blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}auth_first' AND second.application_name='${RACE_PREFIX}auth_second';")
+[[ $blocked == t ]] || { echo "FAIL: auth second did not block on first identifier lock: $blocked"; fail=1; }
+gate_open 70
+wait "$auth_first_pid" "$auth_second_pid"
+expect auth_first ok; expect auth_second ok
+result auth_first 'auth-count=1'; result auth_second 'auth-count=2'
+got=$(sql <<<"SELECT a.failure_count||'|'||i.failure_count FROM app.auth_account_attempts a JOIN app.auth_login_attempts i USING(identifier_normalized) WHERE a.identifier_normalized='$IDENTIFIER' AND i.ip='192.0.2.18'::inet;")
+echo "race auth account+IP failure increments: $got (expected 2|2)"
+[[ $got == '2|2' ]] || fail=1
+
+# Cleanup must skip both stale rows while an ordinary failure waits for their
+# row locks, then preserve the renewed failures once the holder commits.
+PRUNE_IDENTIFIER="${RACE_PREFIX}prune@example.test"
+sql <<SQL >/dev/null
+INSERT INTO app.auth_account_attempts(identifier_normalized,failure_count,window_started_at,cooldown_until,last_failed_at)
+ VALUES('$PRUNE_IDENTIFIER',4,now()-interval '2 days',now()-interval '1 day',now()-interval '2 days');
+INSERT INTO app.auth_login_attempts(identifier_normalized,ip,failure_count,window_started_at,cooldown_until,last_failed_at)
+ VALUES('$PRUNE_IDENTIFIER','192.0.2.19',4,now()-interval '2 days',now()-interval '1 day',now()-interval '2 days');
+SQL
+gate_close 72
+tx prune_hold postgres "$T" "SELECT 1 FROM app.auth_account_attempts WHERE identifier_normalized='$PRUNE_IDENTIFIER' FOR UPDATE; SELECT 1 FROM app.auth_login_attempts WHERE identifier_normalized='$PRUNE_IDENTIFIER' FOR UPDATE; $(park 72)" &
+prune_hold_pid=$!
+await prune_hold advisory
+auth_tx prune_waiter "SELECT 'renewed='||failure_count FROM app.auth_record_failure('$PRUNE_IDENTIFIER','192.0.2.19'::inet);" &
+prune_waiter_pid=$!
+await prune_waiter "${ROWLOCK[@]}"
+blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}prune_hold' AND second.application_name='${RACE_PREFIX}prune_waiter';")
+[[ $blocked == t ]] || { echo "FAIL: auth renewal did not wait on held stale row: $blocked"; fail=1; }
+auth_tx prune_skip "SELECT 'pruned='||accounts_deleted||'|'||ips_deleted FROM app.auth_prune_attempts(1000);"
+expect prune_skip ok; result prune_skip 'pruned=0|0'
+gate_open 72
+wait "$prune_hold_pid" "$prune_waiter_pid"
+expect prune_hold ok; expect prune_waiter ok; result prune_waiter 'renewed=1'
+auth_tx prune_live "SELECT 'pruned='||accounts_deleted||'|'||ips_deleted FROM app.auth_prune_attempts(1000);"
+expect prune_live ok; result prune_live 'pruned=0|0'
+got=$(sql <<<"SELECT a.failure_count||'|'||i.failure_count||'|'||(a.last_failed_at>now()-interval '1 minute' AND i.last_failed_at>now()-interval '1 minute') FROM app.auth_account_attempts a JOIN app.auth_login_attempts i USING(identifier_normalized) WHERE a.identifier_normalized='$PRUNE_IDENTIFIER' AND i.ip='192.0.2.19'::inet;")
+echo "race auth cleanup skips locks and preserves renewed rows: $got (expected 1|1|true)"
+[[ $got == '1|1|true' ]] || fail=1
+
+# First-owner is installation-wide: use an empty independently migrated database,
+# because earlier gates legitimately created owners. Preserve the caller's psql
+# target and clean our database even on a synchronization or migration failure.
+BOOTSTRAP_DB=bootstrap_race_$$_$RANDOM
+sql -c "CREATE DATABASE $BOOTSTRAP_DB" >/dev/null
+if [[ -n "${DATABASE_URL:-}" ]]; then
+ bootstrap_base="${DATABASE_URL%%\?*}"; bootstrap_query=""
+ [[ $DATABASE_URL != *\?* ]] || bootstrap_query="?${DATABASE_URL#*\?}"
+ PSQL=(psql "${bootstrap_base%/*}/$BOOTSTRAP_DB$bootstrap_query" -X -q -At -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
+else
+ PSQL=(docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -At -U postgres -d "$BOOTSTRAP_DB" -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
+fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ # Queue authorization depends on River's schema in this fresh database too.
+ if [[ $f == *_queue_authorization.sql ]]; then
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+   DATABASE_URL="${bootstrap_base%/*}/$BOOTSTRAP_DB$bootstrap_query" ./scripts/migrate_river.sh
+  else
+   RIVER_DATABASE_NAME="$BOOTSTRAP_DB" ./scripts/migrate_river.sh
+  fi
+ fi
+ { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | sql >/dev/null
+done
+bootstrap_tx() {
+ printf "SET application_name='${RACE_PREFIX}%s'; BEGIN ISOLATION LEVEL READ COMMITTED; SET LOCAL ROLE app_admin_bootstrap; %s COMMIT;\n" \
+  "$1" "$2" | sql >"$ERRDIR/$1.out" 2>"$ERRDIR/$1" || true
+}
+# Fixed, non-secret PHC-shaped fixture; never a real credential.
+BOOTSTRAP_PHC='$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+gate_close 71
+bootstrap_tx bootstrap_first "SELECT app.bootstrap_admin('first-owner@example.test','first owner','$BOOTSTRAP_PHC'); $(park 71)" &
+bootstrap_first_pid=$!
+await bootstrap_first advisory
+bootstrap_tx bootstrap_second "SELECT app.bootstrap_admin('second-owner@example.test','second owner','$BOOTSTRAP_PHC');" &
+bootstrap_second_pid=$!
+await bootstrap_second advisory
+blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}bootstrap_first' AND second.application_name='${RACE_PREFIX}bootstrap_second';")
+[[ $blocked == t ]] || { echo "FAIL: bootstrap second did not block on first installation lock: $blocked"; fail=1; }
+gate_open 71
+wait "$bootstrap_first_pid" "$bootstrap_second_pid"
+expect bootstrap_first ok; expect bootstrap_second BOOTSTRAP_OWNER_EXISTS; expect bootstrap_second 55000
+got=$(sql <<<"SELECT 'BOOTSTRAP_RACE='||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')||'|'||(SELECT count(*) FROM app.users)||'|'||(SELECT count(*) FROM app.tenants);")
+echo "race first-owner bootstrap: $got (expected BOOTSTRAP_RACE=1|1|1)"
+[[ $got == 'BOOTSTRAP_RACE=1|1|1' ]] || fail=1
+PSQL=("${ORIGINAL_PSQL[@]}")
+sql -c "DROP DATABASE $BOOTSTRAP_DB" >/dev/null
+BOOTSTRAP_DB=""
+
+
+# C-02b: execute the production sqlc rotation/insert statements. The UPDATE's
+# zero-row result aborts the transaction before INSERT, matching SaveLogin.
+# Extract named queries instead of cloning predicates that could silently drift.
+login_rotation_sql() {
+ python3 - "$1" "$2" "$3" <<'PYSQL'
+from pathlib import Path
+import re
+import sys
+user_id, old_hash, new_hash = sys.argv[1:]
+assert re.fullmatch(r'[0-9a-f-]{36}', user_id)
+assert all(re.fullmatch(r'[0-9a-f]{64}', h) for h in (old_hash, new_hash))
+source = Path('queries/identity/login.sql').read_text()
+def query(name, token_hash):
+    match = re.search(r'^-- name: '+name+r' :\w+\n(.*?)(?=^-- name:|\Z)', source, re.M | re.S)
+    assert match, name
+    sql = match[1].strip()
+    values = {'at': "clock_timestamp()", 'user_id': "'"+user_id+"'",
+              'token_hash': "decode('"+token_hash+"','hex')", 'idle_seconds': '1800',
+              'created_at': "clock_timestamp()", 'expires_at': "(clock_timestamp()+interval '1 hour')"}
+    sql = re.sub(r'sqlc.arg\((\w+)\)', lambda m: values[m[1]], sql)
+    assert 'sqlc.' not in sql
+    return sql
+rotate = query('LoginRotateOldSession', old_hash)
+assert rotate.endswith(';')
+print(rotate[:-1] + ' RETURNING s.id AS rotated \\gset')
+print(query('LoginInsertSession', new_hash))
+print("SELECT 'LOGIN_ROTATED=1';")
+PYSQL
+}
+read -r LOGIN_USER LOGIN_OLD_HASH LOGIN_NEW_A LOGIN_NEW_B <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.users(email,password_hash) VALUES('rotation-race-'||uuidv7()||'@example.test','fixture-only') RETURNING id AS u \gset
+INSERT INTO app.auth_sessions(user_id,token_hash,created_at,last_seen_at,expires_at)
+ VALUES(:'u',sha256(uuidv7()::text::bytea),clock_timestamp()-interval '10 minutes',clock_timestamp()-interval '5 minutes',clock_timestamp()+interval '1 hour') RETURNING encode(token_hash,'hex') AS old \gset
+SELECT :'u'||' '||:'old'||' '||encode(sha256(uuidv7()::text::bytea),'hex')||' '||encode(sha256(uuidv7()::text::bytea),'hex');
+SQL
+)"
+LOGIN_FIRST_SQL=$(login_rotation_sql "$LOGIN_USER" "$LOGIN_OLD_HASH" "$LOGIN_NEW_A")
+LOGIN_SECOND_SQL=$(login_rotation_sql "$LOGIN_USER" "$LOGIN_OLD_HASH" "$LOGIN_NEW_B")
+gate_close 74
+auth_tx login_rotate_first "$LOGIN_FIRST_SQL $(park 74)" &
+login_first_pid=$!
+await login_rotate_first advisory
+auth_tx login_rotate_second "$LOGIN_SECOND_SQL" &
+login_second_pid=$!
+await login_rotate_second "${ROWLOCK[@]}"
+blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}login_rotate_first' AND second.application_name='${RACE_PREFIX}login_rotate_second';")
+[[ $blocked == t ]] || { echo 'FAIL: login second did not block on old session'; fail=1; }
+gate_open 74
+wait "$login_first_pid" "$login_second_pid"
+expect login_rotate_first ok; expect login_rotate_second 'no rows returned for'
+result login_rotate_first 'LOGIN_ROTATED=1'
+got=$(sql <<<"SELECT 'LOGIN_ROTATION_RACE='||count(*) FILTER(WHERE revoked_at IS NOT NULL)||'|'||count(*) FILTER(WHERE revoked_at IS NULL AND expires_at>clock_timestamp() AND last_seen_at>clock_timestamp()-interval '30 minutes')||'|'||count(*) FILTER(WHERE token_hash=decode('$LOGIN_NEW_A','hex'))||'|'||count(*) FILTER(WHERE token_hash=decode('$LOGIN_NEW_B','hex')) FROM app.auth_sessions WHERE user_id='$LOGIN_USER';")
+echo "race conditional session rotation: $got (expected LOGIN_ROTATION_RACE=1|1|1|0)"
+[[ $got == 'LOGIN_ROTATION_RACE=1|1|1|0' ]] || fail=1
 # Notifications source dedup and same-key manual redrive use actual command
 # functions on separate connections. Advisory gates 60+ reserve this module.
 read -r NT NO <<<"$(sql <<'SQL' | tail -1
@@ -995,3 +1159,7 @@ else
  )
 fi
 echo 'PASS: native River transaction/admission/restart and Go idempotency/outbox PG gates'
+echo 'PASS: auth concurrent normalized-identifier failures preserve account and account+IP counts'
+echo 'PASS: bootstrap concurrent first-owner creation commits one installation owner only'
+echo 'PASS: auth cleanup skips locked stale rows and preserves concurrent renewals'
+echo 'PASS: conditional login rotation consumes one old session and commits exactly one successor'

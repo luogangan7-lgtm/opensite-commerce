@@ -28,8 +28,10 @@ sql:
       - "migrations/025_ops_metrics.sql"
       - "migrations/026_notifications.sql"
       - "migrations/027_quotes.sql"
-      - "migrations/028_data_rights.sql"
-    queries: "queries"
+      - "migrations/028_identity_auth.sql"
+      - "migrations/029_identity_login.sql"
+      - "migrations/030_data_rights.sql"
+    queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:
         package: "db"

@@ -503,6 +503,12 @@ func (e VariantLifecycleStatus) Valid() bool {
 	}
 }
 
+// AdminLogin defines model for AdminLogin.
+type AdminLogin struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 // AdminSession defines model for AdminSession.
 type AdminSession struct {
 	CreatedAt time.Time                    `json:"created_at"`
@@ -524,6 +530,14 @@ type AdminSessionCreated struct {
 // AdminSessionList defines model for AdminSessionList.
 type AdminSessionList struct {
 	Sessions []AdminSession `json:"sessions"`
+}
+
+// AdminSessionView defines model for AdminSessionView.
+type AdminSessionView struct {
+	CsrfToken string             `json:"csrf_token"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	SessionId openapi_types.UUID `json:"session_id"`
+	UserId    openapi_types.UUID `json:"user_id"`
 }
 
 // Cart defines model for Cart.
@@ -777,6 +791,11 @@ type LinkProductMedia struct {
 
 // LinkProductMediaRole defines model for LinkProductMedia.Role.
 type LinkProductMediaRole string
+
+// LoginChallenge defines model for LoginChallenge.
+type LoginChallenge struct {
+	CsrfToken string `json:"csrf_token"`
+}
 
 // NotificationFailure defines model for NotificationFailure.
 type NotificationFailure struct {
@@ -1108,6 +1127,9 @@ type IdempotencyKey = string
 // IfMatch defines model for IfMatch.
 type IfMatch = string
 
+// LoginChallengeCookie defines model for LoginChallengeCookie.
+type LoginChallengeCookie = string
+
 // MediaId defines model for MediaId.
 type MediaId = openapi_types.UUID
 
@@ -1241,6 +1263,27 @@ type RevokeAdminSessionParams struct {
 
 	// XCSRFToken Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted.
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CreateStaffLoginSessionParams defines parameters for CreateStaffLoginSession.
+type CreateStaffLoginSessionParams struct {
+	// XCSRFToken Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted.
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+
+	// Origin Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token.
+	Origin Origin `json:"Origin"`
+
+	// UnderscoreUnderscoreHostOscLoginCsrf Signed anonymous login challenge with five-minute expiry; Secure HttpOnly SameSite=Lax Path=/ and no Domain.
+	UnderscoreUnderscoreHostOscLoginCsrf LoginChallengeCookie `form:"__Host-osc_login_csrf" json:"__Host-osc_login_csrf"`
+}
+
+// LogoutCurrentStaffSessionParams defines parameters for LogoutCurrentStaffSession.
+type LogoutCurrentStaffSessionParams struct {
+	// XCSRFToken Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted.
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+
+	// Origin Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token.
+	Origin Origin `json:"Origin"`
 }
 
 // GetPublishedSiteParams defines parameters for GetPublishedSite.
@@ -1627,6 +1670,9 @@ type RejectQuoteJSONRequestBody = QuoteTransition
 // CreateAdminSessionJSONRequestBody defines body for CreateAdminSession for application/json ContentType.
 type CreateAdminSessionJSONRequestBody = CreateAdminSession
 
+// CreateStaffLoginSessionJSONRequestBody defines body for CreateStaffLoginSession for application/json ContentType.
+type CreateStaffLoginSessionJSONRequestBody = AdminLogin
+
 // CreateCartJSONRequestBody defines body for CreateCart for application/json ContentType.
 type CreateCartJSONRequestBody = CreateCart
 
@@ -1964,6 +2010,18 @@ type ServerInterface interface {
 
 	// (GET /api/v1/auth/current-actor)
 	GetCurrentActor(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/v1/auth/login)
+	GetAdminLoginChallenge(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/v1/auth/login)
+	CreateStaffLoginSession(w http.ResponseWriter, r *http.Request, params CreateStaffLoginSessionParams)
+
+	// (POST /api/v1/auth/logout)
+	LogoutCurrentStaffSession(w http.ResponseWriter, r *http.Request, params LogoutCurrentStaffSessionParams)
+
+	// (GET /api/v1/auth/session)
+	GetAdminSession(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/v1/public/sites/current)
 	GetPublishedSite(w http.ResponseWriter, r *http.Request, params GetPublishedSiteParams)
@@ -2601,6 +2659,188 @@ func (siw *ServerInterfaceWrapper) GetCurrentActor(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCurrentActor(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminLoginChallenge operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminLoginChallenge(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminLoginChallenge(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateStaffLoginSession operation middleware
+func (siw *ServerInterfaceWrapper) CreateStaffLoginSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateStaffLoginSessionParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin Origin
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = Origin
+
+	} else {
+		err := fmt.Errorf("Header parameter Origin is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
+		return
+	}
+
+	{
+		var cookie *http.Cookie
+
+		if cookie, err = r.Cookie("__Host-osc_login_csrf"); err == nil {
+			var value LoginChallengeCookie
+			err = runtime.BindStyledParameterWithOptions("simple", "__Host-osc_login_csrf", cookie.Value, &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationCookie, Explode: true, Required: true, Type: "string", Format: ""})
+			if err != nil {
+				siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "__Host-osc_login_csrf", Err: err})
+				return
+			}
+			params.UnderscoreUnderscoreHostOscLoginCsrf = value
+
+		} else {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "__Host-osc_login_csrf"})
+			return
+		}
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateStaffLoginSession(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LogoutCurrentStaffSession operation middleware
+func (siw *ServerInterfaceWrapper) LogoutCurrentStaffSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LogoutCurrentStaffSessionParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin Origin
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = Origin
+
+	} else {
+		err := fmt.Errorf("Header parameter Origin is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LogoutCurrentStaffSession(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminSession operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminSession(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminSession(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6266,6 +6506,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/public/sites/current", wrapper.GetPublishedSite)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/login", wrapper.GetAdminLoginChallenge)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/login", wrapper.CreateStaffLoginSession)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout", wrapper.LogoutCurrentStaffSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/session", wrapper.GetAdminSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.Health)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/admin-sessions", wrapper.ListAdminSessions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/admin-sessions", wrapper.CreateAdminSession)
@@ -8314,6 +8558,769 @@ func (response GetCurrentActor429ApplicationProblemPlusJSONResponse) VisitGetCur
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallengeRequestObject struct {
+}
+
+type GetAdminLoginChallengeResponseObject interface {
+	VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error
+}
+
+type GetAdminLoginChallenge200ResponseHeaders struct {
+	SetCookie *string
+}
+
+type GetAdminLoginChallenge200JSONResponse struct {
+	Body    LoginChallenge
+	Headers GetAdminLoginChallenge200ResponseHeaders
+}
+
+func (response GetAdminLoginChallenge200JSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallenge401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminLoginChallenge401ApplicationProblemPlusJSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallenge403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminLoginChallenge403ApplicationProblemPlusJSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallenge409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminLoginChallenge409ApplicationProblemPlusJSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallenge412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminLoginChallenge412ApplicationProblemPlusJSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallenge413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminLoginChallenge413ApplicationProblemPlusJSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallenge415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminLoginChallenge415ApplicationProblemPlusJSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallenge422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminLoginChallenge422ApplicationProblemPlusJSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallenge428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminLoginChallenge428ApplicationProblemPlusJSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallenge429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminLoginChallenge429ApplicationProblemPlusJSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminLoginChallenge503ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminLoginChallenge503ApplicationProblemPlusJSONResponse) VisitGetAdminLoginChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSessionRequestObject struct {
+	Params CreateStaffLoginSessionParams
+	Body   *CreateStaffLoginSessionJSONRequestBody
+}
+
+type CreateStaffLoginSessionResponseObject interface {
+	VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error
+}
+
+type CreateStaffLoginSession201ResponseHeaders struct {
+	SetCookie *string
+}
+
+type CreateStaffLoginSession201JSONResponse struct {
+	Body    AdminSessionView
+	Headers CreateStaffLoginSession201ResponseHeaders
+}
+
+func (response CreateStaffLoginSession201JSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateStaffLoginSession400ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateStaffLoginSession401ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response CreateStaffLoginSession403ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response CreateStaffLoginSession409ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateStaffLoginSession412ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateStaffLoginSession413ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateStaffLoginSession415ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response CreateStaffLoginSession422ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response CreateStaffLoginSession428ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response CreateStaffLoginSession429ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateStaffLoginSession503ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateStaffLoginSession503ApplicationProblemPlusJSONResponse) VisitCreateStaffLoginSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentStaffSessionRequestObject struct {
+	Params LogoutCurrentStaffSessionParams
+}
+
+type LogoutCurrentStaffSessionResponseObject interface {
+	VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error
+}
+
+type LogoutCurrentStaffSession204ResponseHeaders struct {
+	SetCookie *string
+}
+
+type LogoutCurrentStaffSession204Response struct {
+	Headers LogoutCurrentStaffSession204ResponseHeaders
+}
+
+func (response LogoutCurrentStaffSession204Response) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(204)
+	return nil
+}
+
+type LogoutCurrentStaffSession401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response LogoutCurrentStaffSession401ApplicationProblemPlusJSONResponse) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentStaffSession403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response LogoutCurrentStaffSession403ApplicationProblemPlusJSONResponse) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentStaffSession409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response LogoutCurrentStaffSession409ApplicationProblemPlusJSONResponse) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentStaffSession412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response LogoutCurrentStaffSession412ApplicationProblemPlusJSONResponse) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentStaffSession413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response LogoutCurrentStaffSession413ApplicationProblemPlusJSONResponse) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentStaffSession415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response LogoutCurrentStaffSession415ApplicationProblemPlusJSONResponse) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentStaffSession422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response LogoutCurrentStaffSession422ApplicationProblemPlusJSONResponse) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentStaffSession428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response LogoutCurrentStaffSession428ApplicationProblemPlusJSONResponse) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentStaffSession429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response LogoutCurrentStaffSession429ApplicationProblemPlusJSONResponse) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentStaffSession503ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response LogoutCurrentStaffSession503ApplicationProblemPlusJSONResponse) VisitLogoutCurrentStaffSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSessionRequestObject struct {
+}
+
+type GetAdminSessionResponseObject interface {
+	VisitGetAdminSessionResponse(w http.ResponseWriter) error
+}
+
+type GetAdminSession200JSONResponse AdminSessionView
+
+func (response GetAdminSession200JSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSession401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminSession401ApplicationProblemPlusJSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSession403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminSession403ApplicationProblemPlusJSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSession409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminSession409ApplicationProblemPlusJSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSession412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminSession412ApplicationProblemPlusJSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSession413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminSession413ApplicationProblemPlusJSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSession415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminSession415ApplicationProblemPlusJSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSession422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminSession422ApplicationProblemPlusJSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSession428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminSession428ApplicationProblemPlusJSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSession429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminSession429ApplicationProblemPlusJSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminSession503ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetAdminSession503ApplicationProblemPlusJSONResponse) VisitGetAdminSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16924,6 +17931,18 @@ type StrictServerInterface interface {
 	// (GET /api/v1/auth/current-actor)
 	GetCurrentActor(ctx context.Context, request GetCurrentActorRequestObject) (GetCurrentActorResponseObject, error)
 
+	// (GET /api/v1/auth/login)
+	GetAdminLoginChallenge(ctx context.Context, request GetAdminLoginChallengeRequestObject) (GetAdminLoginChallengeResponseObject, error)
+
+	// (POST /api/v1/auth/login)
+	CreateStaffLoginSession(ctx context.Context, request CreateStaffLoginSessionRequestObject) (CreateStaffLoginSessionResponseObject, error)
+
+	// (POST /api/v1/auth/logout)
+	LogoutCurrentStaffSession(ctx context.Context, request LogoutCurrentStaffSessionRequestObject) (LogoutCurrentStaffSessionResponseObject, error)
+
+	// (GET /api/v1/auth/session)
+	GetAdminSession(ctx context.Context, request GetAdminSessionRequestObject) (GetAdminSessionResponseObject, error)
+
 	// (GET /api/v1/public/sites/current)
 	GetPublishedSite(ctx context.Context, request GetPublishedSiteRequestObject) (GetPublishedSiteResponseObject, error)
 
@@ -17373,6 +18392,113 @@ func (sh *strictHandler) GetCurrentActor(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCurrentActorResponseObject); ok {
 		if err := validResponse.VisitGetCurrentActorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminLoginChallenge operation middleware
+func (sh *strictHandler) GetAdminLoginChallenge(w http.ResponseWriter, r *http.Request) {
+	var request GetAdminLoginChallengeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminLoginChallenge(ctx, request.(GetAdminLoginChallengeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminLoginChallenge")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminLoginChallengeResponseObject); ok {
+		if err := validResponse.VisitGetAdminLoginChallengeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateStaffLoginSession operation middleware
+func (sh *strictHandler) CreateStaffLoginSession(w http.ResponseWriter, r *http.Request, params CreateStaffLoginSessionParams) {
+	var request CreateStaffLoginSessionRequestObject
+
+	request.Params = params
+
+	var body CreateStaffLoginSessionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateStaffLoginSession(ctx, request.(CreateStaffLoginSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateStaffLoginSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateStaffLoginSessionResponseObject); ok {
+		if err := validResponse.VisitCreateStaffLoginSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LogoutCurrentStaffSession operation middleware
+func (sh *strictHandler) LogoutCurrentStaffSession(w http.ResponseWriter, r *http.Request, params LogoutCurrentStaffSessionParams) {
+	var request LogoutCurrentStaffSessionRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LogoutCurrentStaffSession(ctx, request.(LogoutCurrentStaffSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LogoutCurrentStaffSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LogoutCurrentStaffSessionResponseObject); ok {
+		if err := validResponse.VisitLogoutCurrentStaffSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminSession operation middleware
+func (sh *strictHandler) GetAdminSession(w http.ResponseWriter, r *http.Request) {
+	var request GetAdminSessionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminSession(ctx, request.(GetAdminSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminSessionResponseObject); ok {
+		if err := validResponse.VisitGetAdminSessionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -18639,170 +19765,184 @@ func (sh *strictHandler) Health(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -125,7 +125,9 @@ class APIContractTests(unittest.TestCase):
                        "downloadCustomerDataExport", "eraseCustomerData"}
         csv = {"preflightCatalogCSV", "importCatalogCSV", "exportCatalogCSV"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | data_rights | csv | {"listNotificationFailures", "redriveNotification"})
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | data_rights | csv |
+                         {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
+                          "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession"})
         for name in data_rights | csv:
             path, method, operation = ops[name]
             self.assertIn("{tenant_id}", path)
@@ -240,6 +242,11 @@ class APIContractTests(unittest.TestCase):
             "wrong Problem media": lambda a: a["components"]["responses"]["Unauthorized"].update(content={"application/json": {"schema": {"type": "object"}}}),
             "unknown status": lambda a: op(a, "getCurrentActor").update({"x-opensite-status": "unknown"}),
             "login skips csrf": lambda a: op(a, "createAdminSession").update(parameters=[]),
+            "staff login skips csrf": lambda a: op(a, "createStaffLoginSession").update(parameters=[]),
+            "staff challenge optional": lambda a: a["components"]["parameters"]["LoginChallengeCookie"].update(required=False),
+            "staff login status planned": lambda a: op(a, "createStaffLoginSession").update({"x-opensite-status": "planned"}),
+            "staff self bearer": lambda a: op(a, "getAdminSession").update(security=[{"ApiKeyBearer": []}]),
+            "staff self scope": lambda a: op(a, "logoutCurrentStaffSession").update({"x-required-scope": "identity.write"}),
             "cookie write headers missing": lambda a: op(a, "createProduct").update(parameters=[]),
             "cookie-only headers unconditional": lambda a: a["components"]["parameters"]["CSRFTokenIfCookie"].update(required=True),
             "responses missing": lambda a: op(a, "createProduct").pop("responses"),
