@@ -3,6 +3,7 @@
 
 Depends on PG18 psql/bash and environment secrets; compose migration job calls it.
 No credentials enter arguments/output; uninspectable databases fail closed.
+Reused logins have no ownership/policy targets or direct grants except target CONNECT.
 """
 import argparse
 import os
@@ -51,7 +52,9 @@ def query(sql, database):
 
 def preflight(target, fetch=query):
     database_name(target)
-    databases = fetch("SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate ORDER BY datname;", 'postgres').splitlines()
+    # A disabled application database still shares roles with this cluster.
+    # Attempt every non-template DB; disabled/uninspectable targets fail closed.
+    databases = fetch("SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname;", 'postgres').splitlines()
     for database in databases:
         database_name(database)  # conservative: unsupported names cannot be silently skipped
         flags = fetch("SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='app'), to_regclass('public.schema_migrations') IS NOT NULL;", database).strip()
@@ -60,13 +63,49 @@ def preflight(target, fetch=query):
         if database != target and flags == 't|t':
             raise DeployError('SECOND_APPLICATION_DATABASE')
 
+def login_role_audit_sql(database):
+    database_name(database)
+    logins = ', '.join(literal(login) for login, _ in LOGIN_ROLES.values())
+    # Shared dependencies cover ownership, ACLs (including columns), and policy
+    # targets in every database. PG18: o=owner, a=ACL, i=initial ACL, r=RLS policy.
+    # Only our prior nongrantable CONNECT may survive a normal provisioning rerun.
+    return f"""WITH logins AS (
+ SELECT oid FROM pg_catalog.pg_roles WHERE rolname IN ({logins})
+)
+SELECT EXISTS (
+ SELECT 1 FROM pg_catalog.pg_shdepend d JOIN logins l ON l.oid=d.refobjid
+ WHERE d.refclassid='pg_catalog.pg_authid'::regclass
+ AND d.deptype IN ('o', 'a', 'i', 'r')
+ AND NOT (d.deptype='a' AND d.classid='pg_catalog.pg_database'::regclass
+          AND d.dbid=0 AND d.objsubid=0
+          AND d.objid IN (SELECT oid FROM pg_catalog.pg_database WHERE datname={literal(database)}))
+) OR EXISTS (
+ SELECT 1 FROM pg_catalog.pg_database d
+ CROSS JOIN LATERAL pg_catalog.aclexplode(d.datacl) a
+ JOIN logins l ON a.grantee=l.oid OR a.grantor=l.oid
+ WHERE d.datname={literal(database)}
+ AND NOT (a.grantee=l.oid AND a.grantor<>l.oid
+          AND a.privilege_type='CONNECT' AND NOT a.is_grantable)
+)"""
+
+def audit_login_roles(database, fetch=query):
+    result = fetch(login_role_audit_sql(database) + ';', 'postgres').strip()
+    if result == 't':
+        raise DeployError('TAINTED_LOGIN_ROLE: direct privileges, object ownership or policy targets require administrator review')
+    if result != 'f':
+        raise DeployError('DATABASE_INSPECTION_FAILED')
+
 def provision_sql(database, passwords):
     database_name(database)
+    verified = {kind: secret(passwords.get(kind, '')) for kind in LOGIN_ROLES}
+    if len(set(verified.values())) != len(verified) or os.environ.get('POSTGRES_PASSWORD', '') in verified.values():
+        raise DeployError('DUPLICATE_LOGIN_PASSWORD')
     lines = ["SET standard_conforming_strings=on;", "SET log_statement='none';",
              "SET log_min_error_statement='panic';", "SET log_parameter_max_length_on_error=0;", 'BEGIN;',
+             f"DO $login_audit$ BEGIN IF ({login_role_audit_sql(database)}) THEN RAISE EXCEPTION 'TAINTED_LOGIN_ROLE: direct privileges, object ownership or policy targets require administrator review'; END IF; END $login_audit$;",
              f'REVOKE CONNECT ON DATABASE "{database}" FROM PUBLIC;']
     for kind, (login, group) in LOGIN_ROLES.items():
-        password = secret(passwords.get(kind, ''))
+        password = verified[kind]
         lines.append(f"DO $role$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname={literal(login)}) THEN CREATE ROLE {login}; END IF; END $role$;")
         lines.append(f"ALTER ROLE {login} LOGIN INHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD {literal(password)};")
         # Rotation/re-run cannot preserve accidental capability memberships.
@@ -103,6 +142,7 @@ def main(argv=None):
             return 0
         passwords = {kind: os.environ.get(f'OPENSITE_{kind}_DB_PASSWORD', '') for kind in LOGIN_ROLES}
         provisioning = provision_sql(database, passwords)  # validate before any migration writes
+        audit_login_roles(database)
         if args.action == 'install':
             install_migrations(env)
             print('PASS: River install → forward migrations/checksums → River history verified')

@@ -93,3 +93,19 @@ func TestWorkerMetricsFailuresAndMethods(t *testing.T) {
 		t.Fatal("nil readiness must fail closed")
 	}
 }
+
+// Queue-only worker health is independent of its absent optional DB capability;
+// a scrape must explicitly fail rather than invent a zero backlog.
+func TestQueueOnlyWorkerHealthWithoutMetricsSource(t *testing.T) {
+	handler := NewWorkerHandler(func() bool { return true }, nil)
+	health := httptest.NewRecorder()
+	handler.ServeHTTP(health, httptest.NewRequest("GET", "/healthz", nil))
+	if health.Code != 204 {
+		t.Fatalf("queue-only health=%d", health.Code)
+	}
+	scrape := httptest.NewRecorder()
+	handler.ServeHTTP(scrape, httptest.NewRequest("GET", "/metrics", nil))
+	if scrape.Code != 503 || !strings.Contains(scrape.Body.String(), "worker metrics unavailable") || strings.Contains(scrape.Body.String(), "opensite_outbox_") {
+		t.Fatalf("absent source exported false gauges: %d %q", scrape.Code, scrape.Body.String())
+	}
+}

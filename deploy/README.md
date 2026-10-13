@@ -47,6 +47,14 @@ returning tenant IDs or payloads. The broker owns that narrow function; workers
 receive EXECUTE, without direct outbox reads or queue DDL.
 API logins are `NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`, with exactly
 one approved group membership each. Database `CONNECT` is revoked from PUBLIC.
+Before migration, provisioning or restoration, existing application LOGINs are
+audited for direct grants, RLS policy targets and owned objects across the cluster. Those remnants
+cause `TAINTED_LOGIN_ROLE` before migration, database or password writes. Only
+the target database's prior nongrantable `CONNECT` is accepted for a rerun.
+An administrator must review and explicitly resolve the residual privileges;
+provisioning never silently strips them or changes unrelated databases.
+Reusing a component password, including the administrator password, is refused
+before provisioning writes; each LOGIN needs an independent secret.
 See [runtime-roles.md](runtime-roles.md). `/healthz` is process liveness (204),
 not a continuous database-readiness probe. Compose also checks PostgreSQL
 readiness. HTTP metrics count requests, errors and latency with bounded
@@ -54,12 +62,21 @@ method/status labels; they contain no path, query, customer or tenant labels.
 
 ## One application database per cluster
 
-Before migration or restoration, preflight inspects every connectable,
-non-template database as administrator. Another database containing both the
+Before migration or restoration, preflight inspects every non-template database
+as administrator. A database with connections disabled cannot be inspected and
+refuses deployment. Another database containing both the
 `app` schema and `public.schema_migrations` causes
 `SECOND_APPLICATION_DATABASE`; failed inspection also refuses deployment.
 Plain databases are permitted. V1 database names must be lowercase ASCII
 identifiers (letters, numbers and underscores, maximum 63 characters).
+On a fresh Compose volume, the initdb hook places exact target-database SCRAM
+rules before the existing administrator rules. The six application LOGINs are
+refused connections to maintenance/plain databases and physical replication,
+over Unix sockets, IPv4 and IPv6. This leaves unrelated database ACLs intact.
+The hook runs only at initialization. For an existing volume, back up the
+original HBA file, review equivalent rules with an administrator, reload
+PostgreSQL configuration and verify password/connection refusals before use.
+Changing `OPENSITE_DB` likewise requires an explicit HBA update and reload.
 
 To inspect without changing the database:
 
@@ -111,6 +128,9 @@ checks application migration checksums and the locked River history, and
 compares content again. Keep a failed target
 isolated for investigation; restoration does not silently delete it. Trusted
 administrators must keep exclusive control of the target throughout recovery.
+Archive input is copied in bounded chunks to an anonymous private spool before
+being streamed to `pg_restore`. Reserve an additional archive's worth of free
+space on the `work/C23a` filesystem; archive size does not drive RAM usage.
 Database backups do not include LocalFS media. For a consistent database/media
 cut, stop every writer, archive the media volume, record its checksum, and
 recover the verified media archive alongside the database before restarting.
@@ -124,7 +144,9 @@ bash scripts/ops_drill.sh --receipt-dir work/C23a/evidence
 
 The drill generates private temporary secrets and an unpredictable project
 name. It starts Compose, verifies real password logins and restricted grants,
-creates/removes its own second-database negative fixture, seeds nonempty
+tests all six LOGINs over TCP4/TCP6/Unix with wrong passwords and other databases,
+and refuses direct credential grants, permissive RLS policies and LOGIN-owned objects before writes.
+It creates/removes its own second-database negative fixture, seeds nonempty
 database, queue and media witnesses, and checks API/worker metrics. After
 quiescing API and worker it backs
 up the database and media, verifies checksums, and prints `ROLLBACK_POINT`
@@ -168,5 +190,9 @@ a test Sender. Aggregate backlog/DLQ monitoring is live independently of
 sending. `JOB_TENANTS` is a trusted comma-separated UUID configuration for
 periodic expiry; empty disables periodic producers while queued signed jobs
 are still processed. Keep `JOB_SIGNING_KEY` stable across worker restarts.
+Outside this Compose stack, an existing queue-only worker configuration remains
+supported with outbox disabled or unset: `/healthz` stays available, while
+`/metrics` returns 503 until an outbox metrics capability is configured. Supplied
+invalid or partial outbox credentials are refused instead of silently ignored.
 Astro SSR is absent from this base, so storefront is omitted (`NOT_RUN`). This
 is a local recovery rehearsal, with no cloud resources, TLS or real alerts.

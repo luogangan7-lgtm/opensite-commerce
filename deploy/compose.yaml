@@ -8,6 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - pg_data:/var/lib/postgresql
+      - ./initdb/010_opensite_connection_policy.sh:/docker-entrypoint-initdb.d/010_opensite_connection_policy.sh:ro
       - ../migrations:/migrations:ro
       - ../:/workspace:ro
       - media_data:/media

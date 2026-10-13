@@ -47,10 +47,12 @@ def cluster_preflight(database):
 
 
 def restore_provisioning_sql(database):
-    from ops_deploy import DeployError, LOGIN_ROLES, provision_sql
+    from ops_deploy import DeployError, LOGIN_ROLES, audit_login_roles, provision_sql
     passwords = {kind: os.environ.get(f"OPENSITE_{kind}_DB_PASSWORD", "") for kind in LOGIN_ROLES}
     try:
-        return provision_sql(database, passwords)
+        sql = provision_sql(database, passwords)
+        audit_login_roles(database, fetch=psql)
+        return sql
     except DeployError as error:
         raise OpsError(str(error)) from None
 
@@ -237,8 +239,9 @@ def restore(archive, manifest_path=None, database=None):
     psql(f"REVOKE CONNECT ON DATABASE {quote_ident(name)} FROM PUBLIC;", name)
     # Preserve owners, grants, RLS and constraints. Roles must already be provisioned
     # by migrations in the new cluster; errors roll back the whole restore.
-    pg_command(["pg_restore", "-h", "127.0.0.1", "-U", "postgres", "-d", name,
-                "--exit-on-error", "--single-transaction"], input=archive.read_bytes())
+    with archive.open("rb") as stream:
+        pg_command(["pg_restore", "-h", "127.0.0.1", "-U", "postgres", "-d", name,
+                    "--exit-on-error", "--single-transaction"], stdin=stream)
     compare_tables(manifest["tables"], table_manifest(name))
     require_matching_application_history(manifest["application_migrations"])
     migrate(name)

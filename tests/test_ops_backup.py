@@ -194,6 +194,20 @@ class BackupTests(unittest.TestCase):
                     backup.restore(archive, manifest)
                 psql.assert_not_called()
 
+    def test_tainted_login_refuses_before_restore_target_ddl(self):
+        from ops_deploy import DeployError, LOGIN_ROLES
+        with tempfile.TemporaryDirectory() as root:
+            archive, manifest = self.fixture(Path(root))
+            env = {f"OPENSITE_{kind}_DB_PASSWORD": f"nonsecret_fixture_{kind}_123456789" for kind in LOGIN_ROLES}
+            with patch.dict(os.environ, env), patch.object(backup, "cluster_preflight"), \
+                    patch("ops_deploy.audit_login_roles", create=True, side_effect=DeployError("TAINTED_LOGIN_ROLE")) as audit, \
+                    patch.object(backup, "psql") as psql, patch.object(backup, "pg_command") as pg:
+                with self.assertRaisesRegex(common.OpsError, "TAINTED_LOGIN_ROLE"):
+                    backup.restore(archive, manifest)
+                audit.assert_called_once_with("opensite", fetch=psql)
+                psql.assert_not_called()
+                pg.assert_not_called()
+
     def test_second_application_database_refuses_target_creation(self):
         from ops_deploy import DeployError
         with tempfile.TemporaryDirectory() as root:
@@ -309,6 +323,100 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(common.psql("SELECT 1;"), "ok\n")
             self.assertNotIn("stdin-secret", str(compose.call_args.args))
             self.assertTrue(compose.call_args.kwargs["input"].startswith(b"stdin-secret\n"))
+
+    def test_restore_archive_uses_file_stdin_without_read_bytes(self):
+        with tempfile.TemporaryDirectory() as root:
+            archive, manifest = self.fixture(Path(root))
+            tables = self.manifest(archive)["tables"]
+            streams = []
+            def recover(args, **kwargs):
+                self.assertNotIn("input", kwargs)
+                stream = kwargs["stdin"]
+                streams.append(stream)
+                self.assertEqual(stream.read(1024), b"PGDMP fake offline archive")
+            with patch.object(backup, "cluster_preflight"), \
+                    patch.object(backup, "restore_provisioning_sql", return_value="PROVISION"), \
+                    patch.object(backup, "psql", side_effect=["t", "t", "", ""]), \
+                    patch.object(backup, "table_manifest", return_value=tables), \
+                    patch.object(backup, "migrate"), patch.object(backup, "verify_river"), \
+                    patch.object(backup, "pg_command", side_effect=recover), \
+                    patch.object(Path, "read_bytes", side_effect=AssertionError("whole-file reads forbidden")):
+                backup.restore(archive, manifest)
+            self.assertEqual(len(streams), 1)
+            self.assertTrue(streams[0].closed)
+
+    def test_file_transport_is_private_bounded_and_password_stdin_only(self):
+        class BoundedSource(io.BytesIO):
+            def read(inner, size=-1):
+                self.assertGreater(size, 0)
+                self.assertLessEqual(size, 1024 * 1024)
+                return super().read(size)
+        archive = b"PGDMP" + b"fixture" * 300000
+        source = BoundedSource(archive)
+        streams = []
+        result = subprocess.CompletedProcess([], 0, b"ok", b"")
+        def run(args, **kwargs):
+            self.assertNotIn("input", kwargs)
+            stream = kwargs["stdin"]
+            streams.append(stream)
+            self.assertEqual(os.fstat(stream.fileno()).st_mode & 0o777, 0o600)
+            self.assertEqual(stream.read(), b"stdin-secret\n" + archive)
+            self.assertNotIn("stdin-secret", str(args))
+            self.assertGreater(kwargs["timeout"], 0)
+            return result
+        with tempfile.TemporaryDirectory() as root, patch.object(common, "ROOT", Path(root)), \
+                patch.dict(os.environ, {"POSTGRES_PASSWORD": "stdin-secret"}), \
+                patch.object(common.subprocess, "run", side_effect=run):
+            self.assertIs(common.pg_command(["pg_restore"], stdin=source), result)
+            self.assertEqual(list((Path(root) / "work/C23a").iterdir()), [])
+        self.assertTrue(streams[0].closed)
+        self.assertFalse(source.closed)
+
+    def test_transport_rejects_both_input_and_file_stdin(self):
+        for command in (common.compose, common.pg_command):
+            with patch.object(common.subprocess, "run") as run:
+                with self.assertRaisesRegex(common.OpsError, "input and stdin"):
+                    command(["ps"], input=b"payload", stdin=io.BytesIO(b"archive"))
+                run.assert_not_called()
+
+    def test_file_copy_failure_is_opaque_and_closes_private_spool(self):
+        class FailingSource(io.BytesIO):
+            def read(inner, size=-1):
+                raise OSError("stdin-secret private archive details")
+        opened = []
+        original = tempfile.TemporaryFile
+        def spool(*args, **kwargs):
+            stream = original(*args, **kwargs)
+            opened.append(stream)
+            return stream
+        with tempfile.TemporaryDirectory() as root, patch.object(common, "ROOT", Path(root)), \
+                patch.dict(os.environ, {"POSTGRES_PASSWORD": "stdin-secret"}), \
+                patch.object(tempfile, "TemporaryFile", side_effect=spool), \
+                patch.object(common.subprocess, "run") as run:
+            with self.assertRaises(common.OpsError) as failure:
+                common.pg_command(["pg_restore"], stdin=FailingSource())
+            self.assertNotIn("stdin-secret", str(failure.exception))
+            self.assertNotIn("private archive", str(failure.exception))
+            run.assert_not_called()
+        self.assertEqual(len(opened), 1)
+        self.assertTrue(opened[0].closed)
+
+    def test_file_transport_failures_close_spool_and_redact_client_details(self):
+        for outcome in ("timeout", "exit"):
+            streams = []
+            def fail(args, **kwargs):
+                streams.append(kwargs["stdin"])
+                if outcome == "timeout":
+                    raise subprocess.TimeoutExpired(args, kwargs["timeout"], stderr=b"stdin-secret private archive")
+                return subprocess.CompletedProcess(args, 1, b"", b"stdin-secret private archive")
+            with tempfile.TemporaryDirectory() as root, patch.object(common, "ROOT", Path(root)), \
+                    patch.dict(os.environ, {"POSTGRES_PASSWORD": "stdin-secret"}), \
+                    patch.object(common.subprocess, "run", side_effect=fail):
+                with self.assertRaises(common.OpsError) as failure:
+                    common.pg_command(["pg_restore"], stdin=io.BytesIO(b"PGDMP"))
+                self.assertNotIn("stdin-secret", str(failure.exception))
+                self.assertNotIn("private archive", str(failure.exception))
+            self.assertTrue(streams[0].closed)
 
     def test_dotenv_default_loads_secrets_and_environment_wins(self):
         with tempfile.TemporaryDirectory() as root:

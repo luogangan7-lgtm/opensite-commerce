@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import hmac
 import json
+import math
 import os
 from pathlib import Path
 import secrets
@@ -70,6 +71,85 @@ def permissions():
         require(login in result.stdout.decode(), 'login probe did not connect')
 
 
+def connection_boundaries():
+    """Exercise the fresh cluster's HBA over TCP4, TCP6 and Unix sockets."""
+    require(psql('SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL;',
+                 'postgres').strip() == '0', 'invalid HBA rules')
+    psql('CREATE DATABASE ops_plain;', 'postgres')
+    try:
+        preflight('opensite', fetch=psql)  # A plain DB is allowed by cluster preflight.
+        for kind, (login, _) in LOGIN_ROLES.items():
+            password = os.environ[f'OPENSITE_{kind}_DB_PASSWORD']
+            for host in ('127.0.0.1', '::1', '/var/run/postgresql'):
+                args = ['exec', '-T', 'postgres', 'sh', '-c',
+                        'IFS= read -r PGPASSWORD; export PGPASSWORD; '
+                        'exec psql -X -qAt -h "$1" -U "$2" -d "$3" -v ON_ERROR_STOP=1',
+                        'ops-hba', host, login]
+                good = compose(args + ['opensite'], input=(password+'\nSELECT current_user;\n').encode())
+                require(good.stdout.decode().strip() == login, 'HBA target login failed')
+                for database, candidate, reason in (
+                    ('opensite', secrets.token_urlsafe(32), b'password authentication failed'),
+                    ('postgres', password, b'pg_hba.conf rejects connection'),
+                    ('ops_plain', password, b'pg_hba.conf rejects connection'),
+                ):
+                    result = subprocess.run(compose_command(args + [database]), cwd=ROOT,
+                                            input=(candidate+'\nSELECT current_user;\n').encode(),
+                                            capture_output=True, timeout=15)
+                    require(result.returncode != 0 and reason in result.stderr,
+                            'HBA did not enforce database/password boundary')
+    finally:
+        psql('DROP DATABASE ops_plain;', 'postgres')
+    print('PASS: six LOGINs authenticate only to app DB; wrong passwords and '
+          'maintenance/plain DBs rejected over TCP4/TCP6/Unix', flush=True)
+
+
+def tainted_login_refusal(archive=None, manifest_path=None, policy=False):
+    """Direct ACL, RLS-target and ownership faults fail before password/restore writes."""
+    login = 'opensite_runtime_login'
+    fingerprint_sql = f"SELECT md5(rolpassword) FROM pg_authid WHERE rolname='{login}';"
+    before = psql(fingerprint_sql, 'postgres').strip()
+    if policy:
+        psql(f'CREATE POLICY ops_stale_login ON app.price_lists TO {login} USING(true);')
+        cleanup = lambda: psql('DROP POLICY ops_stale_login ON app.price_lists;')
+    elif archive is None:
+        psql(f'GRANT SELECT(password_hash) ON app.users TO {login};')
+        cleanup = lambda: psql(f'REVOKE SELECT(password_hash) ON app.users FROM {login};')
+    else:
+        psql(f'CREATE TABLE public.ops_owned_witness(id integer); '
+             f'ALTER TABLE public.ops_owned_witness OWNER TO {login};', 'postgres')
+        cleanup = lambda: psql('DROP TABLE public.ops_owned_witness;', 'postgres')
+    try:
+        # A refused attempt must not rotate the login's password either.
+        with patch.dict(os.environ, OPENSITE_RUNTIME_DB_PASSWORD=secrets.token_urlsafe(32)):
+            if archive is None:
+                result = subprocess.run(compose_command(['run', '--rm', '--no-deps',
+                                                         'migrate', 'provision']), cwd=ROOT,
+                                        capture_output=True, timeout=60)
+                require(result.returncode != 0 and b'TAINTED_LOGIN_ROLE' in result.stderr,
+                        'direct LOGIN capability was not refused before provisioning')
+            else:
+                try:
+                    restore(archive, manifest_path)
+                except OpsError as error:
+                    require('TAINTED_LOGIN_ROLE' in str(error), 'ownership refused for unrelated reason')
+                else:
+                    raise OpsError('owned object was not refused before restore')
+                require(psql("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname='opensite');",
+                             'postgres').strip() == 'f', 'role refusal created restore target')
+        require(psql(fingerprint_sql, 'postgres').strip() == before,
+                'refused operation rotated a login password')
+    finally:
+        cleanup()
+    if archive is None:
+        # The ordinary target-only nongrantable CONNECT is a permitted rerun.
+        compose(['run', '--rm', '--no-deps', 'migrate', 'provision'])
+        permissions()
+        kind = 'direct RLS policy' if policy else 'direct credential ACL'
+        print(f'PASS: {kind} rejected before writes; clean provision rerun accepted', flush=True)
+    else:
+        print('PASS: LOGIN object ownership rejected before restore target/password writes', flush=True)
+
+
 def seed():
     blob = b'OpenSite local restore witness\n'
     content_hash = hashlib.sha256(blob).hexdigest()
@@ -101,8 +181,21 @@ def enqueue_witness(tenant, future=False):
 def worker_metrics():
     url = live_url('worker','8081')
     with urllib.request.urlopen(url+'/metrics',timeout=5) as response: values = response.read().decode()
-    require('opensite_outbox_pending 1' in values and 'opensite_outbox_dead_letters 1' in values
-            and 'opensite_outbox_oldest_pending_age_seconds' in values, 'incorrect worker backlog/DLQ metrics')
+    expected = {'opensite_outbox_pending', 'opensite_outbox_dead_letters',
+                'opensite_outbox_oldest_pending_age_seconds'}
+    samples = {}
+    for line in values.splitlines():
+        fields = line.split()
+        if fields and fields[0] in expected:
+            require(len(fields) == 2 and fields[0] not in samples, 'invalid worker metric sample')
+            samples[fields[0]] = fields[1]
+    require(samples.get('opensite_outbox_pending') == '1'
+            and samples.get('opensite_outbox_dead_letters') == '1', 'incorrect worker backlog/DLQ metrics')
+    try:
+        age = float(samples['opensite_outbox_oldest_pending_age_seconds'])
+    except (KeyError, ValueError):
+        raise OpsError('invalid worker backlog age') from None
+    require(math.isfinite(age) and age >= 0, 'invalid worker backlog age')
 
 
 def processed_witness(tenant):
@@ -200,14 +293,26 @@ def drill(receipt_dir):
             permissions()
             print('PASS: compose PG18.6 → preflight/River/app migrations → restricted LOGINs → API/worker health', flush=True)
             steps.append('compose-and-login-boundaries')
+            connection_boundaries()
+            steps.append('six-logins-hba-tcp4-tcp6-unix-target-only-and-password-rejection')
+            tainted_login_refusal()
+            steps.append('direct-login-credential-acl-prewrite-refusal-and-clean-rerun')
+            tainted_login_refusal(policy=True)
+            steps.append('direct-login-permissive-rls-policy-prewrite-refusal-and-clean-rerun')
             psql('CREATE DATABASE ops_second;', 'postgres')
             psql('CREATE SCHEMA app; CREATE TABLE public.schema_migrations(version text);', 'ops_second')
             result = subprocess.run(compose_command(['run','--rm','--no-deps','migrate','preflight']), cwd=ROOT, capture_output=True, timeout=60)
             require(result.returncode != 0 and b'SECOND_APPLICATION_DATABASE' in result.stderr, 'second app database not refused')
+            psql('ALTER DATABASE ops_second ALLOW_CONNECTIONS false;', 'postgres')
+            result = subprocess.run(compose_command(['run', '--rm', '--no-deps', 'migrate', 'preflight']),
+                                    cwd=ROOT, capture_output=True, timeout=60)
+            require(result.returncode != 0 and b'DATABASE_OPERATION_FAILED' in result.stderr,
+                    'connections-disabled database was silently skipped')
+            psql('ALTER DATABASE ops_second ALLOW_CONNECTIONS true;', 'postgres')
             psql('DROP DATABASE ops_second;', 'postgres')
             preflight('opensite', fetch=psql)
             print('PASS: second application database RED; removed owned fixture → GREEN', flush=True)
-            steps.append('second-app-database-red-green')
+            steps.append('second-app-and-connections-disabled-database-red-green')
             blob, blob_hash, tenant, job_id = seed()
             require(job_id.isdigit(), 'missing persistent River witness')
             worker_metrics()
@@ -228,7 +333,9 @@ def drill(receipt_dir):
             media_hash = digest(media_archive)
             # A corrupted archive must fail before any restore database writes.
             corrupted = archive.with_name('corrupted.dump')
-            corrupted.write_bytes(archive.read_bytes()+b'fault')
+            shutil.copyfile(archive, corrupted)
+            with corrupted.open('ab') as output:
+                output.write(b'fault')
             corrupted_manifest = manifest_path.with_name('corrupted.dump.manifest.json')
             faulty = dict(manifest, archive=corrupted.name)
             corrupted_manifest.write_text(json.dumps(faulty))
@@ -253,9 +360,12 @@ def drill(receipt_dir):
             psql('DROP DATABASE opensite WITH (FORCE);', 'postgres')
             version_refusal = previous_version_refusal(Path(temp))
             steps.append('predecessor-archive-history-guards-red-green-before-target-creation')
+            tainted_login_refusal(archive, manifest_path)
+            steps.append('login-owned-object-prewrite-restore-refusal-with-target-absent')
             restored = restore(archive, manifest_path)
             require(digest(media_archive) == media_hash, 'blob archive digest mismatch')
-            compose(['exec','-T','postgres','tar','-C','/media','-xf','-'], input=media_archive.read_bytes())
+            with media_archive.open('rb') as stream:
+                compose(['exec','-T','postgres','tar','-C','/media','-xf','-'], stdin=stream)
             compose(['exec','-T','postgres','chown','-R','65532:65532','/media'])
             recovered_blob = compose(['exec','-T','postgres','cat','/media/ops-witness.bin']).stdout
             require(recovered_blob == blob and hashlib.sha256(recovered_blob).hexdigest() == blob_hash, 'restored blob mismatch')

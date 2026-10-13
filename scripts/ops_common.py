@@ -9,7 +9,9 @@ import os
 from pathlib import Path
 import re
 import select
+import shutil
 import subprocess
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -90,10 +92,13 @@ def compose_command(args):
     return command + list(args)
 
 
-def compose(args, input=None, capture=True, stdout=None):
+def compose(args, input=None, capture=True, stdout=None, stdin=None):
     """Run configured Compose with a timeout; return byte CompletedProcess."""
+    if input is not None and stdin is not None:
+        raise OpsError("input and stdin cannot both be provided")
+    transport = {"stdin": stdin} if stdin is not None else {"input": input}
     try:
-        result = subprocess.run(compose_command(args), cwd=ROOT, input=input,
+        result = subprocess.run(compose_command(args), cwd=ROOT, **transport,
                                 stdout=stdout if stdout is not None else (subprocess.PIPE if capture else subprocess.DEVNULL),
                                 stderr=subprocess.PIPE, timeout=timeout())
     except subprocess.TimeoutExpired:
@@ -119,9 +124,26 @@ def pg_args(args):
             "ops-pg"] + list(args)
 
 
-def pg_command(args, input=None, capture=True, stdout=None):
+def pg_command(args, input=None, capture=True, stdout=None, stdin=None):
+    if input is not None and stdin is not None:
+        raise OpsError("input and stdin cannot both be provided")
+    password = admin_password()
+    if stdin is not None:
+        # An anonymous private spool keeps the password prefix and archive on one
+        # stdin without threads/pipes. RAM is bounded; disk needs one extra archive.
+        try:
+            directory = ROOT / "work/C23a"
+            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            with tempfile.TemporaryFile(mode="w+b", dir=directory) as payload:
+                os.fchmod(payload.fileno(), 0o600)
+                payload.write(password)
+                shutil.copyfileobj(stdin, payload, length=1024 * 1024)
+                payload.seek(0)
+                return compose(pg_args(args), stdin=payload, capture=capture, stdout=stdout)
+        except (OSError, ValueError, TypeError):
+            raise OpsError("cannot prepare PostgreSQL input stream") from None
     payload = input.encode() if isinstance(input, str) else (input or b"")
-    return compose(pg_args(args), input=admin_password() + payload,
+    return compose(pg_args(args), input=password + payload,
                    capture=capture, stdout=stdout)
 
 

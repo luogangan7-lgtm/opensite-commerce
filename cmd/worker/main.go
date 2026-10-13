@@ -173,7 +173,13 @@ func composeWorkers(ctx context.Context, getenv func(string) string, sender outb
 		return nil, nil, nil, err
 	}
 	if outboxURL == "" {
-		return nil, nil, nil, errors.New("OUTBOX_DATABASE_URL required for worker metrics")
+		if getenv("OUTBOX_ENABLED") == "true" {
+			return nil, nil, nil, errors.New("OUTBOX_DATABASE_URL required")
+		}
+		// Queue-only deployments keep health monitoring; metrics explicitly
+		// report unavailable instead of requiring an optional capability.
+		success = true
+		return &observedWorker{jobWorker: worker}, nil, cleanup, nil
 	}
 	outboxPool, err := pgxadapter.OpenQueuePool(startupCtx, outboxURL, "app_outbox_worker")
 	if err != nil {
