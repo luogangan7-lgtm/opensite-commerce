@@ -19,10 +19,11 @@ INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup
 INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(:'t','order.paid',jsonb_build_object('order_id',:'invalid_oid'),'orders.events','invalid-source');
 INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(:'t','unrelated','{}','other.module','unrelated');
 SELECT set_config('test.notification_source',:'source',true);
+-- Populated upgrades contain other tenants; fixture counts must stay tenant-scoped.
 DO $fanout$ BEGIN
  IF (SELECT count(*) FROM app.notification_deliveries WHERE tenant_id=current_setting('test.notification_t')::uuid AND recipient='buyer@example.test' AND template_key='order.paid')<>1 THEN RAISE EXCEPTION 'NOTIFICATIONS_GATE authoritative recipient/fanout'; END IF;
- IF (SELECT count(*) FROM app.notification_deliveries WHERE last_error='NOTIFICATION_RECIPIENT_UNAVAILABLE' AND recipient='' AND dispatch_event_id IS NULL)<>1 THEN RAISE EXCEPTION 'NOTIFICATIONS_GATE invalid recipient must persist failure'; END IF;
- IF (SELECT count(*) FROM app.outbox_events WHERE delivery_target='notifications.email')<>1 THEN RAISE EXCEPTION 'NOTIFICATIONS_GATE recursive fanout'; END IF;
+ IF (SELECT count(*) FROM app.notification_deliveries WHERE tenant_id=current_setting('test.notification_t')::uuid AND last_error='NOTIFICATION_RECIPIENT_UNAVAILABLE' AND recipient='' AND dispatch_event_id IS NULL)<>1 THEN RAISE EXCEPTION 'NOTIFICATIONS_GATE invalid recipient must persist failure'; END IF;
+ IF (SELECT count(*) FROM app.outbox_events WHERE tenant_id=current_setting('test.notification_t')::uuid AND delivery_target='notifications.email')<>1 THEN RAISE EXCEPTION 'NOTIFICATIONS_GATE recursive fanout'; END IF;
 END $fanout$;
 -- Blank terminal contacts must always carry their explicit failure code (NULL is not valid).
 DO $contact_null$ DECLARE t uuid:=current_setting('test.notification_t')::uuid; source uuid:=current_setting('test.notification_source')::uuid; BEGIN
