@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "module": "customer",
+  "note": "Email normalization preserves a generated copy. Geographic country codes use the ISO vocabulary; free-form address components remain contact fields. UUIDs are relational metadata retained for referential/financial integrity, not an instruction to export identifiers.",
+  "structures": {},
+  "tables": {
+    "customers": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "customers.id"},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "email": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "email_normalized": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "display_name": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "customer_credentials": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "customer_credentials.customer_id -> customers.id"},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "password_hash": {"classification": "secret_hash", "export": "exclude"},
+        "updated_at": {"classification": "operational"}
+      }
+    },
+    "customer_addresses": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "customer_addresses.customer_id -> customers.id"},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "recipient": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "address_line1": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "address_line2": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "city": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "subdivision": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "postal_code": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "country_code": {"classification": "operational", "note": "ISO alpha-2 reference code, not free-form address text; retained geography alone has no direct identifying contact."}
+      }
+    }
+  }
+}

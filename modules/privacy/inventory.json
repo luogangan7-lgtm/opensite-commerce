@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "module": "inventory",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {"Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data."},
+  "tables": {
+    "warehouses": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "name": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "stock_levels": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "warehouse_id": {"classification": "operational"},
+        "sku_id": {"classification": "operational"},
+        "on_hand": {"classification": "operational"},
+        "reserved": {"classification": "operational"}
+      }
+    },
+    "inventory_reservations": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "warehouse_id": {"classification": "operational"},
+        "sku_id": {"classification": "operational"},
+        "quantity": {"classification": "operational"},
+        "owner_type": {"classification": "operational"},
+        "owner_id": {"classification": "operational"},
+        "idempotency_key": {"classification": "operational"},
+        "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "ttl_seconds": {"classification": "operational"},
+        "state": {"classification": "operational"},
+        "expires_at": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "finished_at": {"classification": "operational"}
+      }
+    },
+    "inventory_movements": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Movement reason may contain operator/customer text; owner_type/owner_id is a business polymorphic reference, never infer a person without producer-specific ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "warehouse_id": {"classification": "operational"},
+        "sku_id": {"classification": "operational"},
+        "reservation_id": {"classification": "operational"},
+        "owner_type": {"classification": "operational"},
+        "owner_id": {"classification": "operational"},
+        "kind": {"classification": "operational"},
+        "quantity": {"classification": "operational"},
+        "on_hand_delta": {"classification": "operational"},
+        "reserved_delta": {"classification": "operational"},
+        "on_hand_after": {"classification": "operational"},
+        "reserved_after": {"classification": "operational"},
+        "reason": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
+        "created_at": {"classification": "operational"}
+      }
+    }
+  }
+}
