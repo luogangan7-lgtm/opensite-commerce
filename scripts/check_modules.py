@@ -292,7 +292,7 @@ def check_raw_connection(text, location, allow_raw=False):
     for alias, imported in imports:
         # A dot import hides Conn/Pool/Connect origins even inside the adapter, so it is never exempt.
         require(not (alias == "." and (imported in POOL_TYPES or imported == "github.com/jackc/pgx/v5")),
-                "MODULE_RAW_CONNECTION", location + " (raw-capability dot import)")
+                "MODULE_RAW_CONNECTION_IMPORT", location + " (raw-capability dot import)")
     if allow_raw and Path(location).parent == Path("internal/tenanttx/pgxadapter"):
         return
     imported_paths = {path for _, path in imports}
