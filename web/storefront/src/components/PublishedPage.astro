@@ -7,10 +7,13 @@ import { EmptyState } from '@opensite/ui';
 import Shell from '../layouts/Shell.astro';
 import ErrorPage from './ErrorPage.astro';
 import ProductSummary from './ProductSummary';
+import ProductPurchase from './ProductPurchase';
+import type { PurchaseContext } from '../lib/commerce-contract';
 import { formatAmount } from '../lib/presentation';
 import type { PublishedPageView } from '../lib/published-page';
-interface Props { view: PublishedPageView }
+interface Props { view: PublishedPageView; purchaseContext?: PurchaseContext }
 const { site, status, ui, isList, product, page, title, description, canonical, homeHref } = Astro.props.view;
+const { purchaseContext } = Astro.props;
 ---
 {status ? <ErrorPage status={status} canonical={canonical} /> : site && <Shell
   title={`${title} | ${site.title}`} description={description} canonical={canonical}
@@ -27,6 +30,7 @@ const { site, status, ui, isList, product, page, title, description, canonical, 
       </ul> : <EmptyState title={ui.emptyProducts} description={ui.emptyDescription} />}
     </> : product ? <>
       <ProductSummary description={product.description} amount={product.unit_amount} currency={product.currency} locale={site.locale} />
+      {purchaseContext && <ProductPurchase context={purchaseContext} product_id={product.id} locale={site.locale} client:load />}
       <a class="back-link" href="/products">{ui.backProducts}</a>
     </> : page && <article class="published-copy">
       {page.blocks.map(block => block.kind === 'heading' ? <h2>{block.text}</h2> : <p>{block.text}</p>)}
