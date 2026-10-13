@@ -67,4 +67,41 @@ BEGIN
   RAISE EXCEPTION 'C24_CONFIG_DRIFT';
  END IF;
 END $verify$;
+-- C-19a owns separate tenants: this is webhook acceptance, not a purchase UI seed.
+DO $payment_seed$
+DECLARE n integer; suffix text; t uuid; sku uuid; oid uuid; cid uuid; r app.inventory_reservations; o app.orders; account_code text; account_kind text;
+BEGIN
+ FOR n IN 1..2 LOOP
+  suffix:=lpad(n::text,12,'0');
+  t:=('c1900010-0000-4000-8000-'||suffix)::uuid;
+  sku:=('c1900002-0000-4000-8000-'||suffix)::uuid;
+  oid:=('c1900003-0000-4000-8000-'||suffix)::uuid;
+  cid:=('c1900004-0000-4000-8000-'||suffix)::uuid;
+  INSERT INTO app.tenants(id,name,settlement_currency) VALUES(t,'C19 webhook '||n,'USD') ON CONFLICT DO NOTHING;
+  IF NOT EXISTS(SELECT FROM app.tenants WHERE id=t AND name='C19 webhook '||n AND settlement_currency='USD') THEN RAISE EXCEPTION 'C19_E2E_TENANT_DRIFT'; END IF;
+  PERFORM set_config('app.tenant_id',t::text,true);
+  INSERT INTO app.products(tenant_id,id,product_code,lifecycle_status) VALUES(t,('c1900001-0000-4000-8000-'||suffix)::uuid,'C19-WEBHOOK','ready') ON CONFLICT DO NOTHING;
+  INSERT INTO app.product_variants(tenant_id,id,product_id,sku,option_key,lifecycle_status) VALUES(t,sku,('c1900001-0000-4000-8000-'||suffix)::uuid,'C19-WEBHOOK','default','ready') ON CONFLICT DO NOTHING;
+  IF NOT EXISTS(SELECT FROM app.products p WHERE p.tenant_id=t AND p.id=('c1900001-0000-4000-8000-'||suffix)::uuid AND p.product_code='C19-WEBHOOK' AND p.lifecycle_status='ready')
+   OR NOT EXISTS(SELECT FROM app.product_variants v WHERE v.tenant_id=t AND v.id=sku AND v.product_id=('c1900001-0000-4000-8000-'||suffix)::uuid AND v.sku='C19-WEBHOOK' AND v.option_key='default' AND v.lifecycle_status='ready') THEN RAISE EXCEPTION 'C19_E2E_SKU_DRIFT'; END IF;
+  FOR account_code,account_kind IN SELECT * FROM (VALUES('cash','asset'),('accounts_receivable','asset'),('revenue','revenue'),('tax_payable','liability'),('shipping_revenue','revenue')) AS accounts(code,kind) LOOP
+   INSERT INTO app.ledger_accounts(tenant_id,code,currency,account_type) VALUES(t,account_code,'USD',account_kind) ON CONFLICT DO NOTHING;
+   IF NOT EXISTS(SELECT FROM app.ledger_accounts a WHERE a.tenant_id=t AND a.code=account_code AND a.currency='USD' AND a.account_type=account_kind AND a.status='active') THEN RAISE EXCEPTION 'C19_E2E_LEDGER_DRIFT'; END IF;
+  END LOOP;
+  INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment,enabled)
+   VALUES(t,'fake','c19-e2e-'||CASE n WHEN 1 THEN 'desktop' ELSE 'mobile' END,'test',true) ON CONFLICT DO NOTHING;
+  IF NOT EXISTS(SELECT FROM app.payment_provider_accounts WHERE tenant_id=t AND provider='fake' AND provider_account_id='c19-e2e-'||CASE n WHEN 1 THEN 'desktop' ELSE 'mobile' END AND environment='test' AND enabled) THEN RAISE EXCEPTION 'C19_E2E_ACCOUNT_DRIFT'; END IF;
+  IF NOT EXISTS(SELECT FROM app.checkout_sessions WHERE tenant_id=t AND id=cid) THEN
+   PERFORM app.inventory_adjust(sku,10,'C19 webhook seed',('c1900006-0000-4000-8000-'||suffix)::uuid,'inbound');
+   r:=app.inventory_reserve(sku,2,'order',oid,'c19-e2e-hold',3600);
+   o:=app.orders_create(oid,'c19-e2e-order',sha256('c19-e2e-order'::bytea),NULL,'{"email":"c19-webhook@example.invalid"}','USD',50,'{}',
+    jsonb_build_array(jsonb_build_object('id',('c1900007-0000-4000-8000-'||suffix)::uuid,'sku_id',sku,'sku','C19-WEBHOOK','quantity',2,'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',20,'line_total_minor',220,'reservation_id',r.id,'tax_snapshot','{}'::jsonb)),'[]');
+   INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
+    VALUES(t,cid,'guest',repeat('a',64),'c19-e2e-checkout',sha256('c19-e2e-checkout'::bytea),('c1900005-0000-4000-8000-'||suffix)::uuid,1,oid,'{}','USD',270,200,20,50,1);
+   UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake_c19_e2e_'||n,start_result='{"state":"ready"}' WHERE tenant_id=t AND id=cid;
+  END IF;
+  IF NOT EXISTS(SELECT FROM app.checkout_sessions c JOIN app.orders o ON (o.tenant_id,o.id)=(c.tenant_id,c.order_id) WHERE c.tenant_id=t AND c.id=cid AND c.order_id=oid AND c.phase='ready' AND c.provider_ref='fake_c19_e2e_'||n AND c.amount_minor=270 AND c.currency='USD' AND c.payable_version=1 AND o.state='pending_payment' AND o.version=1 AND o.total_minor=270 AND o.sealed)
+   OR NOT EXISTS(SELECT FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku AND on_hand=10 AND reserved=2) THEN RAISE EXCEPTION 'C19_E2E_CHECKOUT_DRIFT'; END IF;
+ END LOOP;
+END $payment_seed$;
 COMMIT;
