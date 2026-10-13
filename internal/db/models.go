@@ -157,7 +157,7 @@ type AppCheckoutSession struct {
 	RequestKey      string             `json:"request_key"`
 	RequestHash     []byte             `json:"request_hash"`
 	CartID          pgtype.UUID        `json:"cart_id"`
-	CartVersion     int64              `json:"cart_version"`
+	CartVersion     pgtype.Int8        `json:"cart_version"`
 	OrderID         pgtype.UUID        `json:"order_id"`
 	AddressSnapshot []byte             `json:"address_snapshot"`
 	Currency        string             `json:"currency"`
@@ -174,6 +174,7 @@ type AppCheckoutSession struct {
 	ClaimKey        pgtype.Text        `json:"claim_key"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	SourceKind      string             `json:"source_kind"`
 }
 
 type AppCompanyContact struct {
