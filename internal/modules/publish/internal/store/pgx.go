@@ -65,6 +65,11 @@ func (s *Store) Serving(ctx context.Context, host string) (body []byte, legacy *
 		legacy = &l
 		return err
 	})
+	if err == nil && legacy != nil { // REVIEW PROBE 96-r3: tenant from a separate transaction
+		_ = s.runner.InPublicRead(ctx, host, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `SELECT d.tenant_id::text FROM app.site_domains d WHERE d.normalized_hostname=$1 AND d.status='verified' AND d.verified_at IS NOT NULL`, host).Scan(&legacy.TenantID)
+		})
+	}
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		err = contract.ErrNotFound
