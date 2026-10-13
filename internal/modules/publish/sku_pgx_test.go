@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
@@ -49,6 +50,9 @@ BEGIN
  WITH o AS (INSERT INTO app.product_options(tenant_id,product_id,id,code) VALUES(t,p,gen_random_uuid(),'size') RETURNING id),
   v AS (INSERT INTO app.product_option_values(tenant_id,product_id,option_id,id,value_code,label) SELECT t,p,o.id,gen_random_uuid(),'xl','ARCHIVED_ONLY' FROM o RETURNING option_id,id)
  INSERT INTO app.variant_option_values(tenant_id,product_id,variant_id,option_id,value_id) SELECT t,p,'%[5]s',v.option_id,v.id FROM v;
+ WITH o AS (INSERT INTO app.product_options(tenant_id,product_id,id,code) VALUES(t,p,gen_random_uuid(),'finish') RETURNING id),
+  v AS (INSERT INTO app.product_option_values(tenant_id,product_id,option_id,id,value_code,label) SELECT t,p,o.id,gen_random_uuid(),'matte','UNPRICED_ONLY' FROM o RETURNING option_id,id)
+ INSERT INTO app.variant_option_values(tenant_id,product_id,variant_id,option_id,value_id) SELECT t,p,'%[6]s',v.option_id,v.id FROM v;
  -- The winning list has infinite bounds: valid schema values that must not 503.
  INSERT INTO app.price_lists(tenant_id,id,currency,status,starts_at,ends_at,priority,audience) VALUES
   (t,lst,'USD','active','-infinity','infinity',0,'all');
@@ -106,7 +110,7 @@ func testLiveSKUs(t *testing.T, ctx context.Context, admin pgxadapter.Runner, mo
 	if !reflect.DeepEqual(site.Products[0].SKUs, want("OWN-READY", "OWN Red", "9007199254740993", true)) {
 		t.Fatalf("live SKUs (archived/unpriced/unlisted must be hidden): %+v", site.Products[0].SKUs)
 	}
-	for _, leak := range []string{"7331", "ARCHIVED_ONLY", "unassigned", "OTHER_TENANT_SKU", "ARCHIVED", "UNPRICED", "UNLISTED", "on_hand", "reserved", "quantity"} {
+	for _, leak := range []string{"7331", "ARCHIVED_ONLY", "unassigned", "UNPRICED_ONLY", "OTHER_TENANT_SKU", "ARCHIVED", "UNPRICED", "UNLISTED", "on_hand", "reserved", "quantity"} {
 		if strings.Contains(raw, leak) {
 			t.Fatalf("public response leaked %q: %s", leak, raw)
 		}
@@ -130,16 +134,18 @@ func testLiveSKUs(t *testing.T, ctx context.Context, admin pgxadapter.Runner, mo
 	}
 	defer closeR()
 	if err = r.InPublicRead(ctx, hostA, func(ctx context.Context, tx pgx.Tx) error {
-		var variants, foreign, stock, prices, lists, options, values int
+		var variants, foreign, stock, prices, lists, options, values, unpricedRows int
 		if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.product_variants),
 		 (SELECT count(*) FROM app.product_variants WHERE tenant_id=$1::uuid),
 		 (SELECT count(*) FROM app.stock_levels),(SELECT count(*) FROM app.price_entries),(SELECT count(*) FROM app.price_lists),
-		 (SELECT count(*) FROM app.product_options),(SELECT count(*) FROM app.product_option_values)`, tenantB).Scan(&variants, &foreign, &stock, &prices, &lists, &options, &values); err != nil {
+		 (SELECT count(*) FROM app.product_options),(SELECT count(*) FROM app.product_option_values),
+		 (SELECT count(*) FROM app.product_variants WHERE id=$2::uuid)`, tenantB, unpriced).Scan(&variants, &foreign, &stock, &prices, &lists, &options, &values, &unpricedRows); err != nil {
 			return err
 		}
-		// Only ready SKUs, the one current USD list's quantity-1 row, and assigned options.
-		if variants != 2 || foreign != 0 || stock != 2 || prices != 1 || lists != 1 || options != 1 || values != 1 {
-			t.Fatalf("public RLS scope: variants=%d foreign=%d stock=%d prices=%d lists=%d options=%d values=%d", variants, foreign, stock, prices, lists, options, values)
+		// Only the priced ready SKU (its code, options and stock); the unpriced ready SKU is
+		// invisible. Entries: quantity-1 rows of the one current USD list (READY, ARCHIVED, UNLISTED).
+		if variants != 1 || foreign != 0 || stock != 1 || prices != 3 || lists != 1 || options != 1 || values != 1 || unpricedRows != 0 {
+			t.Fatalf("public RLS scope: variants=%d foreign=%d stock=%d prices=%d lists=%d options=%d values=%d unpriced=%d", variants, foreign, stock, prices, lists, options, values, unpricedRows)
 		}
 		return nil
 	}); err != nil {
@@ -176,7 +182,7 @@ func testLiveSKUs(t *testing.T, ctx context.Context, admin pgxadapter.Runner, mo
 	if site, _ = read(hostA); !site.Products[0].SKUs[0].Available {
 		t.Fatal("availability did not return after release")
 	}
-	testManyPriceLists(t, ctx, admin, module)
+	testManyPriceLists(t, ctx, admin, module, publicDSN)
 	// Archiving the live product hides its SKUs while sealed product content remains.
 	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, "UPDATE app.products SET lifecycle_status='archived' WHERE tenant_id=$1 AND id=$2", tenantA, product)
@@ -222,7 +228,7 @@ BEGIN
  EXECUTE 'RESET ROLE';
 END $many$`
 
-func testManyPriceLists(t *testing.T, ctx context.Context, admin pgxadapter.Runner, module *publish.Module) {
+func testManyPriceLists(t *testing.T, ctx context.Context, admin pgxadapter.Runner, module *publish.Module, publicDSN string) {
 	tenant := newUUID(t)
 	host := "sku-many-" + tenant[:8] + ".c09.test"
 	if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -231,8 +237,11 @@ func testManyPriceLists(t *testing.T, ctx context.Context, admin pgxadapter.Runn
 	}); err != nil {
 		t.Fatal(err)
 	}
+	start := time.Now()
 	site, err := module.Current(ctx, host)
+	t.Logf("4,001 SKU read took %v", time.Since(start))
 	if err != nil {
+		explainPublic(t, ctx, publicDSN, host)
 		t.Fatalf("6 lists in 5 currencies x 4,001 SKUs made the storefront unavailable: %v", err)
 	}
 	total := 0
@@ -246,5 +255,36 @@ func testManyPriceLists(t *testing.T, ctx context.Context, admin pgxadapter.Runn
 	}
 	if total != 4001 || site.TenantID != tenant {
 		t.Fatalf("served %d SKUs for tenant %q", total, site.TenantID)
+	}
+}
+
+// explainPublic logs the public role's plans/timings for the live reads (failure diagnostics only).
+func explainPublic(t *testing.T, ctx context.Context, publicDSN, host string) {
+	r, closeR, err := pgxadapter.OpenPublic(ctx, publicDSN)
+	if err != nil {
+		t.Logf("diagnostics unavailable: %v", err)
+		return
+	}
+	defer closeR()
+	for _, q := range []string{`SELECT count(*) FROM app.products`, `SELECT count(*) FROM app.product_variants`,
+		`SELECT count(*) FROM app.price_entries`, `SELECT count(*) FROM app.stock_levels`} {
+		_ = r.InPublicRead(ctx, host, func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, "SELECT set_config('statement_timeout','60000',true)"); err != nil {
+				return err
+			}
+			rows, err := tx.Query(ctx, "EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY ON) "+q)
+			if err != nil {
+				t.Logf("%s: %v", q, err)
+				return nil
+			}
+			var plan []string
+			for rows.Next() {
+				var line string
+				_ = rows.Scan(&line)
+				plan = append(plan, line)
+			}
+			t.Logf("%s:\n%s", q, strings.Join(plan, "\n"))
+			return rows.Err()
+		})
 	}
 }
