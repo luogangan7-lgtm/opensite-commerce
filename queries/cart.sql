@@ -32,7 +32,7 @@ WHERE tenant_id=sqlc.arg(tenant_id) AND id=sqlc.arg(id) AND version=sqlc.arg(exp
 RETURNING *;
 
 -- name: ListCartLines :many
-SELECT cl.tenant_id,cl.cart_id,cl.sku_id,cl.quantity,v.product_id,v.sku,p.lifecycle_status
+SELECT cl.tenant_id,cl.cart_id,cl.sku_id,cl.quantity,v.product_id,v.sku,(p.lifecycle_status='ready' AND v.lifecycle_status='ready')::boolean AS active
 FROM app.cart_lines cl
 JOIN app.product_variants v ON (v.tenant_id,v.id)=(cl.tenant_id,cl.sku_id)
 JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
@@ -69,5 +69,5 @@ GROUP BY cl.sku_id ORDER BY cl.sku_id;
 SELECT v.id FROM app.product_variants v
 JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
 WHERE v.tenant_id=sqlc.arg(tenant_id) AND v.id=sqlc.arg(sku_id)
- AND p.lifecycle_status='ready'
+ AND p.lifecycle_status='ready' AND v.lifecycle_status='ready'
 FOR SHARE OF v,p;

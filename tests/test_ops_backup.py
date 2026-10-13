@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import secrets
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -193,6 +194,21 @@ class BackupTests(unittest.TestCase):
                 with self.assertRaisesRegex(common.OpsError, "INVALID_ENV_SECRET"):
                     backup.restore(archive, manifest)
                 psql.assert_not_called()
+
+    def test_missing_customer_auth_secret_refuses_restore_before_target_ddl(self):
+        from ops_deploy import LOGIN_ROLES
+        with tempfile.TemporaryDirectory() as root:
+            archive, manifest = self.fixture(Path(root))
+            env = {f'OPENSITE_{kind}_DB_PASSWORD': secrets.token_urlsafe(32) for kind in LOGIN_ROLES}
+            env['POSTGRES_PASSWORD'] = secrets.token_urlsafe(32)
+            env['OPENSITE_CUSTOMER_AUTH_DB_PASSWORD'] = str()
+            with patch.dict(os.environ, env, clear=True), patch.object(backup, 'cluster_preflight'), \
+                    patch.object(backup, 'psql') as psql, patch.object(backup, 'pg_command') as pg:
+                with self.assertRaisesRegex(common.OpsError, 'INVALID_ENV_SECRET',
+                                            msg='CUSTOMER_AUTH_RESTORE_RED: missing customer capability credential accepted'):
+                    backup.restore(archive, manifest)
+                psql.assert_not_called()
+                pg.assert_not_called()
 
     def test_tainted_login_refuses_before_restore_target_ddl(self):
         from ops_deploy import DeployError, LOGIN_ROLES

@@ -26,7 +26,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
@@ -384,7 +383,7 @@ func TestOrdersReadAPIPostgres(t *testing.T) {
 		})
 	})
 	orderGet(t, probe, base+"/"+f.discounted, 503)
-	var pgErr *pgconn.PgError
+	var pgErr *pgxadapter.PgError
 	if !errors.As(writeErr, &pgErr) || pgErr.Code != "25006" {
 		t.Fatalf("write in read path: %v", writeErr)
 	}

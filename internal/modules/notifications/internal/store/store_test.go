@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"strings"
@@ -17,7 +16,7 @@ import (
 
 func TestMapErrorSafeStatuses(t *testing.T) {
 	for code, want := range map[string]int{"P0002": 404, "42501": 404, "55000": 409, "22023": 400, "XX000": 503} {
-		e := MapError(&pgconn.PgError{Code: code, Message: "secret DB detail"})
+		e := MapError(&pgxadapter.PgError{Code: code, Message: "secret DB detail"})
 		var app *apperrors.Error
 		if !errors.As(e, &app) || app.Status != want || strings.Contains(e.Error(), "secret") {
 			t.Fatal("NOTIFICATION_ERROR_BOUNDARY", e, want)
@@ -37,7 +36,7 @@ func TestMapErrorPreservesCancellationClassification(t *testing.T) {
 			}
 		}
 	}
-	mapped := MapError(&pgconn.PgError{Code: "55000", Message: "secret SQL detail"})
+	mapped := MapError(&pgxadapter.PgError{Code: "55000", Message: "secret SQL detail"})
 	var app *apperrors.Error
 	if !errors.As(mapped, &app) || app.Status != 409 || errors.Is(mapped, context.DeadlineExceeded) || errors.Is(mapped, context.Canceled) {
 		t.Fatal("NOTIFICATION_SQL_NOT_CONTEXT", mapped)
@@ -70,7 +69,7 @@ func TestClaimPreservesWrappedDeadlineClassification(t *testing.T) {
 			t.Fatal("NOTIFICATION_CLAIM_CONTEXT_REDACTION", e)
 		}
 	}
-	w := Worker{Pool: failedBeginQueue{cause: &pgconn.PgError{Code: "55000", Message: "private SQL detail"}}}
+	w := Worker{Pool: failedBeginQueue{cause: &pgxadapter.PgError{Code: "55000", Message: "private SQL detail"}}}
 	_, e := w.Claim(context.Background(), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", 1, 30)
 	var app *apperrors.Error
 	if !errors.As(e, &app) || app.Status != 409 || errors.Is(e, context.DeadlineExceeded) {
@@ -83,7 +82,7 @@ func TestClaimNaturalDeadlineAndGenuineFailure(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		q := failedBeginQueue{wait: true}
 		if genuine {
-			q.cause = &pgconn.PgError{Code: "XX000", Message: "private genuine SQL failure"}
+			q.cause = &pgxadapter.PgError{Code: "XX000", Message: "private genuine SQL failure"}
 		}
 		_, e := (Worker{Pool: q}).Claim(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", 1, 30)
 		cancel()

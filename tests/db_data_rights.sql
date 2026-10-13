@@ -1,5 +1,5 @@
 -- Real PostgreSQL privacy gate; synthetic tenant/customer fixtures roll back.
--- Depends on 026 notifications, 027 quotes and 034 controlled functions. Called by check_pg; no production data.
+-- Depends on 026 notifications, 027 quotes and 035 controlled functions. Called by check_pg; no production data.
 -- Asserts scope, credentials exclusion, single use, erasure and runtime fences.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -44,7 +44,7 @@ DO $order$
 DECLARE sku uuid:=current_setting('test.privacy_sku')::uuid;oid uuid:=uuidv7();r app.inventory_reservations;o app.orders;l jsonb;
 BEGIN
  r:=app.inventory_reserve(sku,1,'order',oid,'privacy-reserve',900);
- l:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',r.id,'tax_snapshot',jsonb_build_object('net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD','basis_points','Secret Person','private','Private street')));
+ l:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',r.id,'tax_snapshot',jsonb_build_object('category','standard','net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD','basis_points','Secret Person','private','Private street')));
  o:=app.orders_create(oid,'privacy-create',sha256('fixture'::bytea),current_setting('test.privacy_customer')::uuid,NULL,'USD',20,'{"amount_minor":20,"currency":"USD","recipient":"Secret Person","address":"Private street"}',l,'[]');
  PERFORM set_config('test.privacy_order',oid::text,true);
  PERFORM set_config('test.privacy_order_before',(to_jsonb(o)-'shipping_snapshot')::text,true);
@@ -254,7 +254,7 @@ BEGIN
   END;
   BEGIN
    oid:=uuidv7(); r:=app.inventory_reserve(sku,1,'order',oid,'privacy-missing-parent-'||oid::text,900);
-   lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{}'::jsonb));
+   lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb));
    PERFORM app.orders_create(oid,'privacy-missing-parent-'||oid::text,sha256('fixture'::bytea),parent,NULL,'USD',0,'{"amount_minor":0,"currency":"USD"}',lines,'[]');
    RAISE EXCEPTION 'PRIVACY_GATE missing order parent accepted';
   EXCEPTION WHEN foreign_key_violation THEN
@@ -276,7 +276,7 @@ BEGIN
   IF SQLERRM<>'PRIVACY_CUSTOMER_DISABLED' THEN RAISE; END IF; END;
  BEGIN
   oid:=uuidv7(); r:=app.inventory_reserve(sku,1,'order',oid,'privacy-erased-parent-'||oid::text,900);
-  lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{}'::jsonb));
+  lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb));
   PERFORM app.orders_create(oid,'privacy-erased-parent-'||oid::text,sha256('fixture'::bytea),parent,NULL,'USD',0,'{"amount_minor":0,"currency":"USD"}',lines,'[]');
   RAISE EXCEPTION 'PRIVACY_GATE erased order parent accepted';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN

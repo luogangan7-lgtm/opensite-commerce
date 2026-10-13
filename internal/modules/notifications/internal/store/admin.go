@@ -7,11 +7,11 @@ import (
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type Admin struct {
@@ -39,7 +39,7 @@ func MapError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperrors.New(404, "notification_not_found", "Notification not found")
 	}
-	var p *pgconn.PgError
+	var p *pgxadapter.PgError
 	if errors.As(err, &p) {
 		switch p.Code {
 		case "P0002", "42501":

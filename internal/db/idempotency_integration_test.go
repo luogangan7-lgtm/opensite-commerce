@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type idemPGFixture struct {
@@ -351,7 +351,7 @@ func TestPGIdempotencyExpiryAndCompletionFence(t *testing.T) {
 	}
 	_, err = tx.Exec(f.ctx, `UPDATE app.idempotency_records SET state='completed',response_status=201,response_body_reference='fixture:response',completed_at=clock_timestamp()
  WHERE tenant_id=$1 AND actor_kind=$2 AND actor_id=$3 AND operation=$4 AND idempotency_key=$5`, idemParseUUID(scope.TenantID), scope.ActorKind, idemParseUUID(scope.ActorID), scope.Operation, scope.Key)
-	var pe *pgconn.PgError
+	var pe *pgxadapter.PgError
 	if !errors.As(err, &pe) || pe.Code != "55000" {
 		t.Fatalf("DBwrongfence want55000 got%v", err)
 	}

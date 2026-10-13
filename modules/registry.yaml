@@ -780,6 +780,8 @@
         "scripts/check_pg_races.sh",
         "scripts/check_pg_upgrade.sh",
         "tests/db_role_matrix.sql",
+        "tests/db_orders_guards.sql",
+        "internal/db/orders_guards_integration_test.go",
         "internal/modules/orders/http_test.go",
         "internal/db/orders_http_integration_test.go"
       ],
@@ -1431,7 +1433,18 @@
       ]
     },
     {
-      "file": "migrations/034_data_rights.sql",
+      "file": "migrations/034_orders_guards.sql",
+      "owner": "orders",
+      "touches_tables": [
+        "orders",
+        "order_adjustments",
+        "outbox_events",
+        "order_lines",
+        "inventory_reservations"
+      ]
+    },
+    {
+      "file": "migrations/035_data_rights.sql",
       "owner": "datarights",
       "touches_tables": [
         "data_rights_exports",

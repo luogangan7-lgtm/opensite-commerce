@@ -11,10 +11,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func dbID(id uuid.UUID) pgtype.UUID { return pgtype.UUID{Bytes: id, Valid: true} }
@@ -25,7 +25,7 @@ func mapError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperrors.New(404, "not_found", "Catalog resource not found")
 	}
-	var pgerr *pgconn.PgError
+	var pgerr *pgxadapter.PgError
 	if errors.As(err, &pgerr) && pgerr.Code == "23505" {
 		return apperrors.New(409, "catalog_conflict", "Product code, SKU or option combination already exists")
 	}
