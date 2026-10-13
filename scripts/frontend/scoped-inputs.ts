@@ -95,6 +95,8 @@ export function graphInputFiles(roots: string[], root: string): string[] {
     return repository;
   };
   const checkedConfigs = new Set<string>();
+  // Vite/Astro configs are traced like sources once the graph is defined, so files they import count as inputs.
+  const configEntries: string[] = [];
   const rejectAliases = (directory: string): void => {
     if (checkedConfigs.has(directory)) return;
     checkedConfigs.add(directory);
@@ -114,6 +116,7 @@ export function graphInputFiles(roots: string[], root: string): string[] {
     for (const name of readdirSync(directory).filter(name => /^(?:vite|astro)\.config\.(?:[cm]?[jt]s)$/.test(name))) {
       const path = join(directory, name);
       found.add(record(path));
+      configEntries.push(path);
       const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
       const scan = (node: ts.Node): void => {
         if (ts.isShorthandPropertyAssignment(node) && ['resolve', 'alias'].includes(node.name.text)) throw new Error(`Unsupported Vite resolution config: ${path}`);
@@ -245,6 +248,7 @@ export function graphInputFiles(roots: string[], root: string): string[] {
     } else script(text, path);
   };
   for (const entry of roots) visit(localFile(resolve(repository, entry)));
+  for (let index = 0; index < configEntries.length; index++) visit(configEntries[index]!);
   return [...found].sort();
 }
 
@@ -262,7 +266,7 @@ export function scopeInputs(scope: RendererScope, root = process.cwd()): string[
   // conservative across runtime Go sources and SQL: later CMS function overrides need invalidation too.
   const reader = ['tests/fixtures/storefront_seed.sql', 'scripts/start_storefront_api_e2e.sh', 'scripts/seed_storefront.sh',
     'scripts/migrate.sh', 'scripts/migrate_river.sh', 'go.mod', 'go.sum',
-    ...['internal', 'cmd/api'].flatMap(directory => filesIn(join(root, directory)))
+    ...['internal', 'cmd/api', 'cmd/river-migrate'].flatMap(directory => filesIn(join(root, directory)))
       .filter(path => path.endsWith('.go') && !path.endsWith('_test.go')).map(path => relative(root, path)),
     ...filesIn(join(root, 'migrations')).filter(path => path.endsWith('.sql')).map(path => relative(root, path))];
   const registry: Record<RendererScope, string[]> = {
