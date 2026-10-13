@@ -39,6 +39,10 @@ LANGUAGE sql AS $$ SELECT app.create_quote(current_setting('quotes.t')::uuid,cur
  coalesce(company,current_setting('quotes.company')::uuid),current_setting('quotes.staff')::uuid,'USD',subtotal,10,5,subtotal+15,
  '{"tax":{"rate":1000},"shipping":{"method":"fixed"},"totals":{"net":100,"tax":10,"shipping":5,"total":115}}',expires,
  '[{"line_no":1,"description":"negotiated","quantity":2,"unit_price":50,"line_total":100,"snapshot":{"amounts":{"net":100,"tax":10,"gross":110}}}]'::jsonb); $$;
+CREATE FUNCTION pg_temp.quote_create_padded(pad integer) RETURNS uuid
+LANGUAGE sql AS $$ SELECT app.create_quote(current_setting('quotes.t')::uuid,current_setting('quotes.site')::uuid,current_setting('quotes.inquiry')::uuid,
+ current_setting('quotes.company')::uuid,current_setting('quotes.staff')::uuid,'USD',100,10,5,115,jsonb_build_object('pad',repeat('x',pad)),clock_timestamp()+interval '1 hour',
+ '[{"line_no":1,"description":"negotiated","quantity":2,"unit_price":50,"line_total":100,"snapshot":{"amounts":{"net":100,"tax":10,"gross":110}}}]'::jsonb); $$;
 SET LOCAL ROLE app_runtime;
 DO $missing$ BEGIN
  IF EXISTS(SELECT FROM app.quotes) OR EXISTS(SELECT FROM app.quote_lines) OR EXISTS(SELECT FROM app.quote_approvals) THEN RAISE EXCEPTION 'QUOTES_UNSET_SCOPE'; END IF;
@@ -63,7 +67,9 @@ DO $runtime$ DECLARE t uuid:=current_setting('quotes.t')::uuid; q uuid; draft uu
  IF EXISTS(SELECT FROM app.quotes WHERE id=q AND app.quote_actor_access(tenant_id,buyer_company_id,'customer',outsider,'read')) THEN RAISE EXCEPTION 'QUOTES_COMPANY_READ_LEAK'; END IF;
  PERFORM pg_temp.quote_reject(format('UPDATE app.quotes SET status=''approved'' WHERE id=%L',q),'42501','direct status write');
  PERFORM pg_temp.quote_reject(format('INSERT INTO app.quote_lines(tenant_id,quote_id,line_no,description,quantity,unit_price,line_total,snapshot) VALUES(%L,%L,2,''extra'',1,1,1,''{}'')',t,q),'42501','append line');
- PERFORM pg_temp.quote_reject(format('SELECT app.transition_quote(%L,%L,1,''approve'',''customer'',%L)',t,q,approver),'23514','draft approve');
+ -- Draft terms are seller-internal: buyers can neither read nor act on them.
+ PERFORM pg_temp.quote_reject(format('SELECT app.transition_quote(%L,%L,1,''approve'',''customer'',%L)',t,q,approver),'P0002','draft approve hidden');
+ PERFORM pg_temp.quote_reject(format('SELECT app.transition_quote(%L,%L,1,''accept'',''customer'',%L)',t,q,buyer),'P0002','draft accept hidden');
  v:=app.transition_quote(t,q,1,'send','staff',staff);
  PERFORM pg_temp.quote_reject(format('SELECT app.transition_quote(%L,%L,1,''accept'',''customer'',%L)',t,q,buyer),'P0003','stale version');
  PERFORM pg_temp.quote_reject(format('SELECT app.transition_quote(%L,%L,2,''accept'',''customer'',%L)',t,q,outsider),'P0002','other company accept');
@@ -78,13 +84,16 @@ DO $runtime$ DECLARE t uuid:=current_setting('quotes.t')::uuid; q uuid; draft uu
  withdrawn:=pg_temp.quote_create(); PERFORM app.transition_quote(t,withdrawn,1,'send','staff',staff); PERFORM app.transition_quote(t,withdrawn,2,'withdraw','staff',staff);
  rejected:=pg_temp.quote_create(); PERFORM app.transition_quote(t,rejected,1,'send','staff',staff); PERFORM app.transition_quote(t,rejected,2,'accept','customer',buyer); PERFORM app.transition_quote(t,rejected,3,'reject','customer',approver);
  draft:=pg_temp.quote_create();
+ -- A 100-line quote with maximal descriptions needs far more than 64 KiB; 1 MiB stays a hard cap.
+ PERFORM pg_temp.quote_create_padded(800000);
+ PERFORM pg_temp.quote_reject('SELECT pg_temp.quote_create_padded(1048577)','23514','snapshot hard cap');
  IF (SELECT count(*) FROM app.quotes WHERE status='approved')<>1 THEN RAISE EXCEPTION 'QUOTES_ACCEPTED_PORT_ONLY_APPROVED'; END IF;
  -- Shared receipts preserve claim fencing and return a response in this transaction.
  PERFORM app.idempotency_claim(t,'customer',buyer,'quotes.accept','same',sha256('same'::bytea),interval '1 hour',q);
  PERFORM pg_temp.quote_reject(format('UPDATE app.idempotency_records SET state=''completed'',response_status=200,response_body=''{}'',completed_at=clock_timestamp() WHERE tenant_id=%L',t),'55000','receipt fence');
  PERFORM set_config('app.idempotency_claim',q::text,true);
  PERFORM pg_temp.quote_reject(format('UPDATE app.idempotency_records SET state=''completed'',response_status=200,response_body=''[]'',completed_at=clock_timestamp() WHERE tenant_id=%L',t),'23514','receipt shape');
- PERFORM pg_temp.quote_reject(format('UPDATE app.idempotency_records SET state=''completed'',response_status=200,response_body=jsonb_build_object(''x'',repeat(''x'',65537)),completed_at=clock_timestamp() WHERE tenant_id=%L',t),'23514','receipt size');
+ PERFORM pg_temp.quote_reject(format('UPDATE app.idempotency_records SET state=''completed'',response_status=200,response_body=jsonb_build_object(''x'',repeat(''x'',1048577)),completed_at=clock_timestamp() WHERE tenant_id=%L',t),'23514','receipt size');
  UPDATE app.idempotency_records SET state='completed',response_status=200,response_body=jsonb_build_object('id',q,'status','approved'),completed_at=clock_timestamp() WHERE tenant_id=t;
  IF (app.idempotency_claim(t,'customer',buyer,'quotes.accept','same',sha256('same'::bytea),interval '1 hour',uuidv7())).response_body->>'id'<>q::text THEN RAISE EXCEPTION 'QUOTES_RECEIPT_REPLAY'; END IF;
  PERFORM app.idempotency_claim(t,'user',staff,'legacy.action','legacy',sha256('legacy'::bytea),interval '1 hour',draft);

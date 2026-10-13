@@ -14,11 +14,15 @@ SELECT app.create_quote(sqlc.arg(tenant_id)::uuid,sqlc.arg(site_id)::uuid,sqlc.a
  sqlc.arg(snapshot)::jsonb,sqlc.arg(expires_at)::timestamptz,sqlc.arg(lines)::jsonb)::uuid AS quote_id;
 
 -- name: GetQuote :one
+-- Buyers see a quote only after it is sent; drafts stay seller-internal.
 SELECT q.* FROM app.quotes q WHERE q.tenant_id=sqlc.arg(tenant_id)::uuid AND q.id=sqlc.arg(quote_id)::uuid
+ AND (sqlc.arg(actor_kind)::text<>'customer' OR q.status<>'draft')
  AND app.quote_actor_access(q.tenant_id,q.buyer_company_id,sqlc.arg(actor_kind)::text,sqlc.arg(actor_id)::uuid,'read');
 
--- name: GetAcceptedQuote :one
-SELECT * FROM app.quotes WHERE tenant_id=sqlc.arg(tenant_id)::uuid AND id=sqlc.arg(quote_id)::uuid AND status='approved';
+-- name: QuoteApprovedAndUnexpired :one
+-- The DB clock is the only expiry authority, matching guard_quote/transition_quote.
+SELECT (status='approved' AND expires_at>clock_timestamp())::boolean AS valid FROM app.quotes
+WHERE tenant_id=sqlc.arg(tenant_id)::uuid AND id=sqlc.arg(quote_id)::uuid;
 
 -- name: GetQuoteLines :many
 SELECT * FROM app.quote_lines WHERE tenant_id=sqlc.arg(tenant_id)::uuid AND quote_id=sqlc.arg(quote_id)::uuid ORDER BY line_no;

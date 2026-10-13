@@ -25,7 +25,7 @@ CREATE TABLE app.quotes (
  currency char(3) NOT NULL CHECK(currency::text ~ '^[A-Z]{3}$'),
  subtotal bigint NOT NULL CHECK(subtotal>=0), tax bigint NOT NULL CHECK(tax>=0),
  shipping bigint NOT NULL CHECK(shipping>=0), total bigint NOT NULL CHECK(total>=0),
- snapshot jsonb NOT NULL CHECK(jsonb_typeof(snapshot)='object' AND octet_length(snapshot::text)<=65536),
+ snapshot jsonb NOT NULL CHECK(jsonb_typeof(snapshot)='object' AND octet_length(snapshot::text)<=1048576),
  expires_at timestamptz NOT NULL CHECK(isfinite(expires_at)),
  status text NOT NULL DEFAULT 'draft' CHECK(status IN('draft','sent','accepted_pending_approval','approved','rejected','withdrawn','expired')),
  version bigint NOT NULL DEFAULT 1 CHECK(version>0),
@@ -77,7 +77,7 @@ ALTER TABLE app.idempotency_records ADD CONSTRAINT idempotency_response_shape CH
  OR (state='completed' AND response_status BETWEEN 100 AND 599 AND response_status IS NOT NULL AND completed_at IS NOT NULL AND
   ((response_body_reference IS NOT NULL AND response_body IS NULL) OR
    (operation LIKE 'quotes.%' AND response_body_reference IS NULL AND response_body IS NOT NULL
-    AND jsonb_typeof(response_body)='object' AND octet_length(response_body::text)<=65536))));
+    AND jsonb_typeof(response_body)='object' AND octet_length(response_body::text)<=1048576))));
 DO $role$ BEGIN
  IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='app_quotes_executor') THEN CREATE ROLE app_quotes_executor; END IF;
  IF EXISTS(SELECT FROM pg_auth_members WHERE member='app_quotes_executor'::regrole OR roleid='app_quotes_executor'::regrole) THEN
@@ -197,7 +197,8 @@ RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,
 DECLARE q app.quotes; next_state text; BEGIN
  IF p_tenant IS NULL OR p_tenant IS DISTINCT FROM nullif(current_setting('app.tenant_id',true),'')::uuid THEN RAISE EXCEPTION 'QUOTES_TENANT_SCOPE' USING ERRCODE='42501'; END IF;
  SELECT * INTO q FROM app.quotes WHERE tenant_id=p_tenant AND id=p_quote FOR UPDATE;
- IF NOT FOUND OR NOT app.quote_actor_access(p_tenant,q.buyer_company_id,p_kind,p_actor,'read') THEN RAISE EXCEPTION 'QUOTES_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ -- Drafts are seller-internal: a buyer cannot distinguish one from a missing quote.
+ IF NOT FOUND OR (p_kind='customer' AND q.status='draft') OR NOT app.quote_actor_access(p_tenant,q.buyer_company_id,p_kind,p_actor,'read') THEN RAISE EXCEPTION 'QUOTES_NOT_FOUND' USING ERRCODE='P0002'; END IF;
  IF NOT app.quote_actor_access(p_tenant,q.buyer_company_id,p_kind,p_actor,p_action) THEN RAISE EXCEPTION 'QUOTES_ACTOR' USING ERRCODE='42501'; END IF;
  IF p_version IS NULL OR q.version<>p_version THEN RAISE EXCEPTION 'QUOTES_VERSION' USING ERRCODE='P0003'; END IF;
  next_state:=CASE p_action WHEN 'send' THEN 'sent' WHEN 'accept' THEN 'accepted_pending_approval'

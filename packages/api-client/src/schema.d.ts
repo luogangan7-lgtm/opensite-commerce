@@ -1039,7 +1039,7 @@ export interface components {
             /** Format: uuid */
             company_id: string;
             /** @enum {string} */
-            status: "draft" | "sent" | "accepted" | "approved" | "rejected" | "withdrawn" | "expired";
+            status: "draft" | "sent" | "accepted_pending_approval" | "approved" | "rejected" | "withdrawn" | "expired";
             /** Format: int64 */
             version: number;
             currency: string;
@@ -2080,6 +2080,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
             413: components["responses"]["PayloadTooLarge"];

@@ -36,14 +36,7 @@ func (m *Module) Transition(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor,
 	return service.Transition(ctx, tx, a, id, action, o, m.now())
 }
 func (m *Module) GetAcceptedQuote(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, id string) (c.Quote, error) {
-	quote, err := service.Get(ctx, tx, a, id)
-	if err != nil {
-		return c.Quote{}, err
-	}
-	if quote.Status != "approved" || !m.now().Before(quote.ExpiresAt) {
-		return c.Quote{}, c.ErrConflict
-	}
-	return quote, nil
+	return service.GetAccepted(ctx, tx, a, id)
 }
 func (m *Module) SubmitInquiry(ctx context.Context, tx pgx.Tx, tenantID string, in c.InquiryInput) (c.Inquiry, error) {
 	return service.SubmitInquiry(ctx, tx, tenantID, in)

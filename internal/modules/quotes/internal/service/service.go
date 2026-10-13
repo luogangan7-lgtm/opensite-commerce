@@ -47,6 +47,21 @@ func Get(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, id string) (c.Quot
 	}
 	return q, nil
 }
+// GetAccepted returns an approved quote only while the DB clock says it is unexpired.
+func GetAccepted(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, id string) (c.Quote, error) {
+	q, e := Get(ctx, tx, a, id)
+	if e != nil {
+		return c.Quote{}, e
+	}
+	valid, e := store.ApprovedAndUnexpired(ctx, tx, a.TenantID(), id)
+	if e != nil {
+		return c.Quote{}, e
+	}
+	if !valid {
+		return c.Quote{}, c.ErrConflict
+	}
+	return q, nil
+}
 func options(o c.WriteOptions) error {
 	if o.IfMatch == "" {
 		return c.ErrPreconditionRequired
@@ -100,7 +115,7 @@ func claim(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, op, target strin
 }
 func finish(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, op string, o c.WriteOptions, token string, q c.Quote) error {
 	data, e := json.Marshal(q)
-	if e != nil || len(data) > 64*1024 {
+	if e != nil || len(data) > c.MaxStoredJSONBytes {
 		return c.ErrInvalid
 	}
 	return store.Complete(ctx, tx, a, op, o.IdempotencyKey, token, data)

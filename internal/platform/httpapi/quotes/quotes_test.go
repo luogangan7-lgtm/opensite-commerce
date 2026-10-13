@@ -314,3 +314,29 @@ func TestQuotesDuplicateHeaderAndBodyLimit(t *testing.T) {
 		t.Fatalf("contenttype %d %d", w.Code, f.calls)
 	}
 }
+func TestQuotesContractDeclaresDomainStatusesAndInquiryErrors(t *testing.T) {
+	spec, err := httpapi.GetSwagger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	enum := map[any]bool{}
+	for _, v := range spec.Components.Schemas["Quote"].Value.Properties["status"].Value.Enum {
+		enum[v] = true
+	}
+	// The DB state machine (026 quotes CHECK) is the source of truth for returned states.
+	for _, s := range []string{"draft", "sent", "accepted_pending_approval", "approved", "rejected", "withdrawn", "expired"} {
+		if !enum[s] {
+			t.Errorf("Quote.status enum lacks domain state %q", s)
+		}
+	}
+	if len(enum) != 7 {
+		t.Errorf("Quote.status enum has non-domain members: %v", enum)
+	}
+	// submitInquiry can surface these service sentinels (FK 23503 -> ErrNotFound).
+	op := spec.Paths.Value("/api/public/v1/inquiries").Post
+	for _, code := range []string{"401", "403", "404", "409", "422", "500"} {
+		if op.Responses.Value(code) == nil {
+			t.Errorf("submitInquiry does not declare emitted %s", code)
+		}
+	}
+}

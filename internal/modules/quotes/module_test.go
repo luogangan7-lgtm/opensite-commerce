@@ -4,6 +4,8 @@ package quotes_test
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"errors"
 	q "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
@@ -115,4 +117,24 @@ func TestCalculatorBoundaryAndInclusive(t *testing.T) {
 	if _, e := q.CalculateSnapshot(in, r, at); !errors.Is(e, c.ErrInvalid) {
 		t.Fatalf("currency mismatch %v", e)
 	}
+}
+func TestWorstCaseHundredLineQuoteFitsStoredBound(t *testing.T) {
+	in, r, at := sample()
+	in.Lines = nil
+	// Go escapes '<' and control runes as six bytes; this is the widest legal description.
+	for i := range c.MaxQuoteLines {
+		in.Lines = append(in.Lines, c.LineInput{ProductID: "55555555-5555-5555-5555-555555555555", VariantID: "66666666-6666-6666-6666-666666666666", Description: strings.Repeat("<\x01", 500), Quantity: math.MaxInt32 + int64(i), UnitPrice: 1 << 20, TaxCategory: "standard"})
+	}
+	snap, e := q.CalculateSnapshot(in, r, at)
+	if e != nil {
+		t.Fatal(e)
+	}
+	data, e := json.Marshal(c.Quote{ID: in.SiteID, TenantID: in.SiteID, SiteID: in.SiteID, InquiryID: in.InquiryID, CompanyID: in.CompanyID, Status: "accepted_pending_approval", Version: math.MaxInt64, Currency: "USD", ExpiresAt: at, CreatedBy: in.SiteID, AcceptedBy: in.SiteID, Snapshot: snap})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(data) > c.MaxStoredJSONBytes || c.MaxStoredJSONBytes > 1<<20 {
+		t.Fatalf("worst-case quote %d bytes exceeds derived bound %d (DB hard cap 1 MiB)", len(data), c.MaxStoredJSONBytes)
+	}
+	t.Logf("worst-case 100-line quote JSON: %d bytes of %d", len(data), c.MaxStoredJSONBytes)
 }

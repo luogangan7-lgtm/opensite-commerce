@@ -48,6 +48,10 @@ func Get(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, quoteID string) (c
 	}
 	return c.Quote{ID: r.ID.String(), TenantID: r.TenantID.String(), SiteID: r.SiteID.String(), InquiryID: r.InquiryID.String(), CompanyID: r.BuyerCompanyID.String(), Status: r.Status, Version: r.Version, Currency: r.Currency, ExpiresAt: r.ExpiresAt.Time.UTC(), CreatedBy: r.CreatedBy.String(), AcceptedBy: accepted, Snapshot: snap}, nil
 }
+func ApprovedAndUnexpired(ctx context.Context, tx pgx.Tx, tenant, quoteID string) (bool, error) {
+	ok, e := db.New(tx).QuoteApprovedAndUnexpired(ctx, db.QuoteApprovedAndUnexpiredParams{TenantID: id(tenant), QuoteID: id(quoteID)})
+	return ok, MapError(e)
+}
 func Rules(ctx context.Context, tx pgx.Tx, tenant, profile string) (c.CalculationRules, error) {
 	r, e := db.New(tx).GetQuoteTaxRules(ctx, id(tenant))
 	if e != nil {
@@ -130,7 +134,11 @@ func SubmitInquiry(ctx context.Context, tx pgx.Tx, tenant string, in c.InquiryIn
 	if e != nil {
 		return c.Inquiry{}, MapError(e)
 	}
-	return c.Inquiry{ID: r.ID.String(), SiteID: r.SiteID.String(), Status: r.Status}, nil
+	// The CMS 005 default "new" is internal workflow state; the public receipt only acknowledges receipt.
+	if r.Status != "new" {
+		return c.Inquiry{}, c.ErrUnavailable
+	}
+	return c.Inquiry{ID: r.ID.String(), SiteID: r.SiteID.String(), Status: "received"}, nil
 }
 func MapError(e error) error {
 	if e == nil {

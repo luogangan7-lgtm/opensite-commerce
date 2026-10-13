@@ -16,7 +16,7 @@ import (
 )
 
 func Calculate(input c.CreateInput, rules c.CalculationRules, at time.Time) (c.Snapshot, error) {
-	if !c.ValidID(input.SiteID) || !c.ValidID(input.InquiryID) || !c.ValidID(input.CompanyID) || at.IsZero() || !input.ExpiresAt.After(at) || len(input.Lines) == 0 || len(input.Lines) > 100 || input.WeightG < 0 || strings.TrimSpace(input.ShippingProfileID) == "" {
+	if !c.ValidID(input.SiteID) || !c.ValidID(input.InquiryID) || !c.ValidID(input.CompanyID) || at.IsZero() || !input.ExpiresAt.After(at) || len(input.Lines) == 0 || len(input.Lines) > c.MaxQuoteLines || input.WeightG < 0 || strings.TrimSpace(input.ShippingProfileID) == "" {
 		return c.Snapshot{}, c.ErrInvalid
 	}
 	if (money.Money{Currency: input.Currency}).Validate() != nil {

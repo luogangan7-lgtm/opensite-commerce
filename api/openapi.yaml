@@ -834,6 +834,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
         '412':
@@ -3073,7 +3075,7 @@ components:
           enum:
             - draft
             - sent
-            - accepted
+            - accepted_pending_approval
             - approved
             - rejected
             - withdrawn

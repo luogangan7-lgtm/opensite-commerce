@@ -55,43 +55,9 @@ func (q *Queries) CreateQuote(ctx context.Context, arg CreateQuoteParams) (pgtyp
 	return quote_id, err
 }
 
-const getAcceptedQuote = `-- name: GetAcceptedQuote :one
-SELECT tenant_id, id, site_id, inquiry_id, buyer_company_id, created_by, currency, subtotal, tax, shipping, total, snapshot, expires_at, status, version, accepted_by, created_at, updated_at FROM app.quotes WHERE tenant_id=$1::uuid AND id=$2::uuid AND status='approved'
-`
-
-type GetAcceptedQuoteParams struct {
-	TenantID pgtype.UUID `json:"tenant_id"`
-	QuoteID  pgtype.UUID `json:"quote_id"`
-}
-
-func (q *Queries) GetAcceptedQuote(ctx context.Context, arg GetAcceptedQuoteParams) (AppQuote, error) {
-	row := q.db.QueryRow(ctx, getAcceptedQuote, arg.TenantID, arg.QuoteID)
-	var i AppQuote
-	err := row.Scan(
-		&i.TenantID,
-		&i.ID,
-		&i.SiteID,
-		&i.InquiryID,
-		&i.BuyerCompanyID,
-		&i.CreatedBy,
-		&i.Currency,
-		&i.Subtotal,
-		&i.Tax,
-		&i.Shipping,
-		&i.Total,
-		&i.Snapshot,
-		&i.ExpiresAt,
-		&i.Status,
-		&i.Version,
-		&i.AcceptedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getQuote = `-- name: GetQuote :one
 SELECT q.tenant_id, q.id, q.site_id, q.inquiry_id, q.buyer_company_id, q.created_by, q.currency, q.subtotal, q.tax, q.shipping, q.total, q.snapshot, q.expires_at, q.status, q.version, q.accepted_by, q.created_at, q.updated_at FROM app.quotes q WHERE q.tenant_id=$1::uuid AND q.id=$2::uuid
+ AND ($3::text<>'customer' OR q.status<>'draft')
  AND app.quote_actor_access(q.tenant_id,q.buyer_company_id,$3::text,$4::uuid,'read')
 `
 
@@ -102,6 +68,7 @@ type GetQuoteParams struct {
 	ActorID   pgtype.UUID `json:"actor_id"`
 }
 
+// Buyers see a quote only after it is sent; drafts stay seller-internal.
 func (q *Queries) GetQuote(ctx context.Context, arg GetQuoteParams) (AppQuote, error) {
 	row := q.db.QueryRow(ctx, getQuote,
 		arg.TenantID,
@@ -277,6 +244,24 @@ func (q *Queries) QuoteActorAccess(ctx context.Context, arg QuoteActorAccessPara
 	var allowed bool
 	err := row.Scan(&allowed)
 	return allowed, err
+}
+
+const quoteApprovedAndUnexpired = `-- name: QuoteApprovedAndUnexpired :one
+SELECT (status='approved' AND expires_at>clock_timestamp())::boolean AS valid FROM app.quotes
+WHERE tenant_id=$1::uuid AND id=$2::uuid
+`
+
+type QuoteApprovedAndUnexpiredParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	QuoteID  pgtype.UUID `json:"quote_id"`
+}
+
+// The DB clock is the only expiry authority, matching guard_quote/transition_quote.
+func (q *Queries) QuoteApprovedAndUnexpired(ctx context.Context, arg QuoteApprovedAndUnexpiredParams) (bool, error) {
+	row := q.db.QueryRow(ctx, quoteApprovedAndUnexpired, arg.TenantID, arg.QuoteID)
+	var valid bool
+	err := row.Scan(&valid)
+	return valid, err
 }
 
 const quoteClaimIdempotency = `-- name: QuoteClaimIdempotency :one

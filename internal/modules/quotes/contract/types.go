@@ -95,6 +95,17 @@ const (
 	Expire   Action = "expire"
 )
 
+// MaxStoredJSONBytes bounds a stored snapshot and its replay receipt. It is
+// derived from MaxQuoteLines: a line carries a <=1000-rune description (<=6
+// escaped JSON bytes per rune) plus line/tax fields, measured at ~6.9 KiB worst
+// case; 8 KiB per line plus 64 KiB of quote-level fields stays under the 1 MiB
+// hard cap enforced by the 026 quotes CHECK constraints.
+const (
+	MaxQuoteLines      = 100
+	maxLineJSONBytes   = 8 << 10
+	MaxStoredJSONBytes = 64<<10 + MaxQuoteLines*maxLineJSONBytes
+)
+
 type WriteOptions struct{ IfMatch, IdempotencyKey string }
 type LineInput struct {
 	ProductID   string `json:"product_id,omitempty"`

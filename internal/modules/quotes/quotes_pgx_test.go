@@ -17,6 +17,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -229,7 +230,7 @@ func TestQuotesPGExpiryAndPublicInquiry(t *testing.T) {
 	if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
 		_, e := m.GetAcceptedQuote(ctx, tx, buyer, draft.ID)
 		return e
-	}); !errors.Is(e, c.ErrConflict) {
+	}); !errors.Is(e, c.ErrNotFound) {
 		t.Fatalf("draft checkout read %v", e)
 	}
 	if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
@@ -250,11 +251,101 @@ func TestQuotesPGExpiryAndPublicInquiry(t *testing.T) {
 	}
 	if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
 		receipt, e := m.SubmitInquiry(ctx, tx, f.tenant, c.InquiryInput{SiteID: f.site, Email: "new@example.test", Name: "Buyer", Message: "Please quote"})
-		if e == nil && (!c.ValidID(receipt.ID) || receipt.Status != "new") {
+		if e == nil && (!c.ValidID(receipt.ID) || receipt.Status != "received") {
 			t.Fatalf("inquiry %+v", receipt)
 		}
 		return e
 	}); e != nil {
 		t.Fatal(e)
+	}
+}
+func TestQuotesPGBuyerCannotSeeDraftAndAcceptanceUsesDBClock(t *testing.T) {
+	f := quotesDB(t)
+	m := q.New()
+	staff := f.actor(t, "staff", f.staff, "")
+	buyer := f.actor(t, "customer", f.buyer, f.company)
+	approver := f.actor(t, "customer", f.approver, f.company)
+	var current c.Quote
+	if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+		var e error
+		current, e = m.Create(ctx, tx, staff, f.input(), c.WriteOptions{IfMatch: "*", IdempotencyKey: uuid.NewString()})
+		return e
+	}); e != nil {
+		t.Fatal(e)
+	}
+	// Draft terms are seller-internal: the buyer cannot read or act on them.
+	if e := f.run(func(ctx context.Context, tx pgx.Tx) error { _, e := m.Get(ctx, tx, buyer, current.ID); return e }); !errors.Is(e, c.ErrNotFound) {
+		t.Fatalf("buyer read draft: %v", e)
+	}
+	if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+		_, e := m.Transition(ctx, tx, buyer, current.ID, c.Accept, c.WriteOptions{IfMatch: current.ETag(), IdempotencyKey: uuid.NewString()})
+		return e
+	}); !errors.Is(e, c.ErrNotFound) {
+		t.Fatalf("buyer accept draft: %v", e)
+	}
+	for _, step := range []struct {
+		actor  c.AuthorizedActor
+		action c.Action
+	}{{staff, c.Send}, {buyer, c.Accept}, {approver, c.Approve}} {
+		if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+			out, e := m.Transition(ctx, tx, step.actor, current.ID, step.action, c.WriteOptions{IfMatch: current.ETag(), IdempotencyKey: uuid.NewString()})
+			current = out
+			return e
+		}); e != nil {
+			t.Fatalf("%s: %v", step.action, e)
+		}
+	}
+	// The DB clock, not a skewed API host clock, decides whether an approved quote is still valid.
+	future := q.NewWithClock(func() time.Time { return time.Now().Add(48 * time.Hour) })
+	if e := f.run(func(ctx context.Context, tx pgx.Tx) error { _, e := future.GetAcceptedQuote(ctx, tx, buyer, current.ID); return e }); e != nil {
+		t.Fatalf("fast host clock rejected DB-valid quote: %v", e)
+	}
+	if e := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		for _, s := range []string{`ALTER TABLE app.quotes DISABLE TRIGGER quote_guard`, `UPDATE app.quotes SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND id=$2`, `ALTER TABLE app.quotes ENABLE TRIGGER quote_guard`} {
+			args := []any{}
+			if strings.HasPrefix(s, "UPDATE") {
+				args = []any{f.tenant, current.ID}
+			}
+			if _, e := tx.Exec(ctx, s, args...); e != nil {
+				return e
+			}
+		}
+		return nil
+	}); e != nil {
+		t.Fatal(e)
+	}
+	past := q.NewWithClock(func() time.Time { return time.Unix(0, 0) })
+	if e := f.run(func(ctx context.Context, tx pgx.Tx) error { _, e := past.GetAcceptedQuote(ctx, tx, buyer, current.ID); return e }); !errors.Is(e, c.ErrConflict) {
+		t.Fatalf("slow host clock accepted DB-expired quote: %v", e)
+	}
+}
+func TestQuotesPGHundredLineQuotesPersistAndReplay(t *testing.T) {
+	f := quotesDB(t)
+	m := q.New()
+	staff := f.actor(t, "staff", f.staff, "")
+	// Short lines, multi-byte maximal descriptions, and maximal JSON-escaped descriptions.
+	for _, description := range []string{"short", strings.Repeat("é", 1000), strings.Repeat("\x01", 1000)} {
+		in := f.input()
+		in.Lines = nil
+		for range c.MaxQuoteLines {
+			in.Lines = append(in.Lines, c.LineInput{Description: description, Quantity: 2, UnitPrice: 100, TaxCategory: "standard"})
+		}
+		opts := c.WriteOptions{IfMatch: "*", IdempotencyKey: uuid.NewString()}
+		var first c.Quote
+		for i := range 2 {
+			if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+				got, e := m.Create(ctx, tx, staff, in, opts)
+				if e == nil && i == 1 && !reflect.DeepEqual(got, first) {
+					t.Fatalf("100-line replay changed")
+				}
+				first = got
+				return e
+			}); e != nil {
+				t.Fatalf("100 lines of %d-byte descriptions (attempt %d): %v", len(description), i, e)
+			}
+		}
+		if len(first.Snapshot.Lines) != c.MaxQuoteLines || first.Snapshot.Subtotal != 20000 {
+			t.Fatalf("100-line snapshot %d %d", len(first.Snapshot.Lines), first.Snapshot.Subtotal)
+		}
 	}
 }
