@@ -194,3 +194,15 @@ func TestProjectionSpacedInputUnderCompactBudget(t *testing.T) {
 		t.Fatalf("fixture must be spaced>1MiB, compact<=1MiB: %d %d", len(spaced), len(compact))
 	}
 }
+
+func TestProjectionRejectsDuplicateProductIDs(t *testing.T) {
+	// Live SKUs attach by product ID; two views of one ID (any case) would split them.
+	for _, second := range []string{"p1", "P1"} {
+		manifest := []byte(`{"version":1,"locale":"en","title":"Store","description":"","navigation":[],"products":[` +
+			`{"id":"p1","slug":"a","name":"A","description":"","unit_amount":"1","currency":"USD"},` +
+			`{"id":"` + second + `","slug":"b","name":"B","description":"","unit_amount":"1","currency":"USD"}]}`)
+		if _, err := Project("s", "r", "shop.example", "en", manifest, []byte(`[]`)); !errors.Is(err, contract.ErrUnavailable) {
+			t.Fatalf("duplicate product id %q accepted: %v", second, err)
+		}
+	}
+}

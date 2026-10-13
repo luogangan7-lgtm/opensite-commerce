@@ -36,5 +36,5 @@ func (m *Module) Current(ctx context.Context, host string) (contract.Site, error
 	if err != nil {
 		return contract.Site{}, err
 	}
-	return service.AttachSKUs(site, live)
+	return service.AttachSKUs(ctx, site, live)
 }

@@ -98,6 +98,7 @@ func Project(siteID, releaseID, host, locale string, rawManifest, rawPages []byt
 	targets := map[string]bool{"/products": true}
 	seenPages := map[string]bool{}
 	seenProducts := map[string]bool{}
+	seenIDs := map[string]bool{} // one view per product: live SKUs attach by case-insensitive ID
 	for _, p := range pages {
 		if !contract.SafeCMSPath(p.Path) || seenPages[p.Path] || !text(p.Title, 300, true) || !text(p.Description, 2000, false) || p.Blocks == nil || len(p.Blocks) > 200 {
 			return fail()
@@ -114,10 +115,11 @@ func Project(siteID, releaseID, host, locale string, rawManifest, rawPages []byt
 	for _, p := range m.Products {
 		products = append(products, contract.Product{ID: p.ID, Slug: p.Slug, Name: p.Name, Description: p.Description, UnitAmount: p.UnitAmount, Currency: p.Currency, SKUs: []contract.SKU{}})
 		path := "/products/" + p.Slug
-		if !text(p.ID, 128, true) || !text(p.Name, 300, true) || !text(p.Description, 10000, false) || !contract.SafePath(path) || strings.Contains(p.Slug, "/") || p.Slug == "" || seenProducts[p.Slug] || !decimal.MatchString(p.UnitAmount) || !currency.MatchString(p.Currency) {
+		if !text(p.ID, 128, true) || !text(p.Name, 300, true) || !text(p.Description, 10000, false) || !contract.SafePath(path) || strings.Contains(p.Slug, "/") || p.Slug == "" || seenProducts[p.Slug] || seenIDs[strings.ToLower(p.ID)] || !decimal.MatchString(p.UnitAmount) || !currency.MatchString(p.Currency) {
 			return fail()
 		}
 		seenProducts[p.Slug] = true
+		seenIDs[strings.ToLower(p.ID)] = true
 		targets[path] = true
 	}
 	for _, n := range m.Navigation {

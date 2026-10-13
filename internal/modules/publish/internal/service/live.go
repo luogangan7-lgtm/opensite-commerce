@@ -5,6 +5,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -34,35 +35,54 @@ type Live struct {
 
 // AttachSKUs prices each SKU for quantity 1 in the product's release currency using
 // only active audience=all lists (the anonymous/default price rule) via pricing.Quote.
-func AttachSKUs(site contract.Site, live Live) (contract.Site, error) {
+// Lists are split per SKU once, so each Quote sees only that SKU's tiers: total work is
+// linear in SKUs plus price rows. Unpriced SKUs are dropped before any shape check, and
+// the request deadline is honored between SKUs.
+func AttachSKUs(ctx context.Context, site contract.Site, live Live) (contract.Site, error) {
 	fail := func() (contract.Site, error) { return contract.Site{}, contract.ErrUnavailable }
 	index := map[string]int{}
 	products := make([]contract.Product, len(site.Products))
 	for i, p := range site.Products {
 		p.SKUs = []contract.SKU{}
 		products[i] = p
-		index[strings.ToLower(p.ID)] = i
+		index[strings.ToLower(p.ID)] = i // Project rejects duplicate (case-insensitive) IDs
 	}
-	for _, s := range live.SKUs {
+	bySKU := map[string][]pricing.PriceList{}
+	for _, list := range live.PriceLists {
+		at := map[string]int{}
+		for _, e := range list.Entries {
+			lists := bySKU[e.SKUID]
+			if i, ok := at[e.SKUID]; ok {
+				lists[i].Entries = append(lists[i].Entries, e)
+				continue
+			}
+			header := list
+			header.Entries = []pricing.Entry{e}
+			at[e.SKUID] = len(lists)
+			bySKU[e.SKUID] = append(lists, header)
+		}
+	}
+	for n, s := range live.SKUs {
+		if n%256 == 0 && ctx.Err() != nil {
+			return fail()
+		}
 		i, ok := index[strings.ToLower(s.ProductID)]
 		if !ok {
 			continue // the SQL scope already limits SKUs to release products
 		}
-		if !text(s.SKUID, 128, true) || !text(s.Code, 255, true) || s.Options == nil || len(s.Options) > 20 {
+		p := &products[i]
+		quote, err := pricing.Quote(bySKU[s.SKUID], pricing.Request{TenantID: live.TenantID, SKUID: s.SKUID, Currency: p.Currency, Quantity: 1, At: live.At})
+		if errors.Is(err, pricing.ErrNoPrice) || (err != nil && s.SKUID == "") {
+			continue // not purchasable, so never part of the response
+		}
+		if err != nil || quote.Unit.Amount < 0 || len(p.SKUs) == MaxSKUsPerProduct ||
+			!text(s.SKUID, 128, true) || !text(s.Code, 255, true) || s.Options == nil || len(s.Options) > 20 {
 			return fail()
 		}
 		for _, o := range s.Options {
 			if !text(o.Name, 255, true) || !text(o.Value, 255, false) {
 				return fail()
 			}
-		}
-		p := &products[i]
-		quote, err := pricing.Quote(live.PriceLists, pricing.Request{TenantID: live.TenantID, SKUID: s.SKUID, Currency: p.Currency, Quantity: 1, At: live.At})
-		if errors.Is(err, pricing.ErrNoPrice) {
-			continue
-		}
-		if err != nil || quote.Unit.Amount < 0 || len(p.SKUs) == MaxSKUsPerProduct {
-			return fail()
 		}
 		p.SKUs = append(p.SKUs, contract.SKU{SKUID: s.SKUID, SKUCode: s.Code, OptionValues: s.Options, PriceMinor: strconv.FormatInt(quote.Unit.Amount, 10), Currency: quote.Unit.Currency, Available: s.Available})
 	}
