@@ -29,12 +29,12 @@ type domainReceipt struct {
 }
 
 type fake struct {
-	calls    int
-	issued   string
-	limited  bool
+	calls        int
+	issued       string
+	limited      bool
 	currentError error
-	receipts []domainReceipt
-	reads    []domainReceipt
+	receipts     []domainReceipt
+	reads        []domainReceipt
 }
 
 func (f *fake) record(receipt domainReceipt) {

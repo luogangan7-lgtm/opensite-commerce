@@ -92,6 +92,15 @@ class CustomerAuthComposeTests(unittest.TestCase):
     """Customer capability and local proof delivery must be deployed together."""
     root = Path(__file__).resolve().parents[1]
 
+    def test_deployment_drill_starts_local_proof_capture(self):
+        with patch.object(ops_drill, 'compose') as compose, \
+                patch.object(ops_drill, 'live_url', return_value='http://127.0.0.1:8080'), \
+                patch.object(ops_drill, 'healthy'), patch.object(ops_drill, 'staff_login_reachable'):
+            ops_drill.start_api()
+        started = compose.call_args_list[0].args[0]
+        self.assertIn('mailpit', started,
+                      'CUSTOMER_LOCAL_PROOF_RED: deployment starts without capture SMTP server')
+
     def test_compose_provisions_independent_customer_auth_secret(self):
         import yaml
         services = yaml.safe_load((self.root / 'deploy/compose.yaml').read_text())['services']
