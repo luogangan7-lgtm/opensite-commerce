@@ -1,5 +1,6 @@
 // API executable is the composition entry point: env, signals and bootstrap.
-// It depends only on stdlib/bootstrap; all HTTP behavior lives in the platform.
+// Dependencies: stdlib/bootstrap/quotes application; HTTP lives in the platform.
+// Quotes deny by default until trusted staff/customer/host authentication is wired.
 // Invalid registration fails startup; this executable performs no business IO.
 package main
 
@@ -11,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 )
 
 func main() {
@@ -27,7 +29,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer closePublic()
-	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger, Routes: routes})
+	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger, Routes: routes, Quotes: quotes.NewApplication(nil)})
 	if err != nil {
 		logger.Error("API configuration failed", "error", err)
 		os.Exit(1)
