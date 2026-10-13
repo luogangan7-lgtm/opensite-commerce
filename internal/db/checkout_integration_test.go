@@ -2,8 +2,9 @@
 
 // Responsibility: exercise Checkout, Orders, Ledger and the Fake Payment Port
 // end to end against expendable, migrated PostgreSQL, without skipped cases.
-// Dependencies: public module contracts and the central pgxadapter; Cart is a
-// shopping-intent fixture until PR31 wiring exists. Prices/tax/shipping are SQL.
+// Dependencies: public module contracts and the central pgxadapter. These
+// orchestration cases use intent fixtures; checkout_cart_integration_test.go
+// covers the real Cart reader. Prices/tax/shipping are SQL.
 // Invariants: runtime-scoped transactions, durable replay, one terminal winner,
 // no overselling and no provider IO while the calling transaction remains open.
 package db_test
@@ -129,7 +130,7 @@ func newCheckoutPGFixture(t *testing.T, stock, quantity int64) *checkoutPGFixtur
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.cart = checkoutCartFixture{tenant: f.tenant, cart: checkoutcontract.Cart{ID: uuid.NewString(), Version: 1, Lines: []checkoutcontract.CartLine{{ID: uuid.NewString(), SKUID: f.sku, Quantity: quantity}}}}
+	f.cart = checkoutCartFixture{tenant: f.tenant, cart: checkoutcontract.Cart{ID: uuid.NewString(), Currency: "USD", Version: 1, Lines: []checkoutcontract.CartLine{{ID: uuid.NewString(), SKUID: f.sku, Quantity: quantity}}}}
 	err = r.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		product, priceList, taxZone, shippingZone := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
 		statements := []struct {

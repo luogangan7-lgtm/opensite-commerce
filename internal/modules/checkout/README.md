@@ -14,14 +14,23 @@ and active configured ledger accounts through sqlc and never creates accounts.
 
 ## Starting and pricing
 
-`CartReader` consumes PR31-compatible intent (SKU, quantity, cart version) without
-accepting projected prices. Its adapter must check tenant/actor ownership and freeze
-the snapshot in the supplied transaction. `NewSQLRules` reads ready catalog SKUs,
+`NewSQLCart(cart.ReadIntent)` consumes Cart intent (SKU, quantity, cart version
+and its original currency) without accepting projected prices. A cart in a different
+settlement currency is rejected before order/reservation/provider effects; no FX is performed. The injected Cart contract reader checks
+tenant/actor ownership, locks the cart in the supplied transaction, and restores
+the original Cart authentication settings before returning. Any read or restoration
+failure requires rollback of the borrowed transaction; restoration can fail when
+the transaction is already aborted or its context was cancelled. Its supplied transaction
+must already carry the matching tenant and effective `app_runtime` role; login
+composition sets that role before the callback. The helper never changes its role.
+`NewSQLRules` reads ready catalog SKUs,
 active price lists, tax and shipping tables, and database transaction time. Real
 pricing, tax and shipping calculators compute checked integer totals. Tax category,
 weight and shipping profile currently come from trusted tenant-keyed server
 metadata because this catalog base lacks canonical columns; they never come from
-request JSON. No authenticated customer group pricing is wired by this card.
+request JSON. Cart currency must equal the tenant settlement currency before any
+order, reservation or provider effect; checkout performs no implicit conversion.
+No authenticated customer group pricing is wired by this card.
 
 Start persists the immutable address, quote, order, stock reservation and original
 payable before `CreateIntent`. Provider I/O holds no database transaction or lock.
@@ -63,11 +72,13 @@ preserves the claim and returns an error rather than asserting a refund.
 
 ## Composition and scope
 
-Production composition has no guest/customer resolver or PR31 cart adapter yet and
-therefore denies admission. HTTP binds the target tenant to its trusted actor and
+Production composition has no guest/customer resolver and therefore denies
+admission. The real Cart adapter is available for explicit trusted composition. HTTP binds the target tenant to its trusted actor and
 keeps Fake events behind nonproduction configuration and signature verification.
-Tests substitute only the cart/resolver boundary and catalog metadata while using
-real PostgreSQL rule rows, calculators, Orders, Ledger and the Fake payment port.
+Focused orchestration tests substitute cart intent; integration witnesses also
+exercise the real Cart reader in the calling transaction. Authentication resolvers
+and catalog metadata are controlled test inputs; PostgreSQL rule rows, calculators,
+Orders, Ledger and the Fake payment port are real.
 
 This card does not connect Stripe, B2B quote checkout, fulfillment, reporting or
 reconciliation. Real money, production deployment and power-loss injection are

@@ -86,7 +86,7 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 		if spec.OperationID != StartOperation {
 			return fallback.Authenticate(ctx, r, spec)
 		}
-		if spec.Access != httpapi.InternalService || spec.Scope != "checkout.submit" || spec.Method != http.MethodPost || spec.Pattern != StartPattern || s.config.Resolver == nil {
+		if spec.Access != httpapi.Storefront || spec.Scope != "" || spec.Method != http.MethodPost || spec.Pattern != StartPattern || s.config.Resolver == nil {
 			return nil, unauthenticated()
 		}
 		origins, tokens := r.Header.Values("Origin"), r.Header.Values("X-CSRF-Token")
@@ -113,7 +113,7 @@ func (f authFunc) Authenticate(ctx context.Context, r *http.Request, s httpapi.R
 	return f(ctx, r, s)
 }
 func (s *Handler) Routes() []httpapi.Route {
-	specs := []httpapi.RouteSpec{{OperationID: StartOperation, Method: http.MethodPost, Pattern: StartPattern, Access: httpapi.InternalService, Scope: "checkout.submit", MaxBodySize: startBodyLimit}}
+	specs := []httpapi.RouteSpec{{OperationID: StartOperation, Method: http.MethodPost, Pattern: StartPattern, Access: httpapi.Storefront, MaxBodySize: startBodyLimit}}
 	if s.config.FakeEnabled {
 		specs = append(specs, httpapi.RouteSpec{OperationID: FakeOperation, Method: http.MethodPost, Pattern: FakePattern, Access: httpapi.Public, MaxBodySize: fakeBodyLimit})
 	}

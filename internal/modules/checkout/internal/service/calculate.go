@@ -22,7 +22,7 @@ type quote struct {
 
 func calculate(cart contract.Cart, rules contract.Rules, address contract.ShippingAddress) (quote, error) {
 	var q quote
-	if !tenanttx.ValidTenantID(rules.TenantID) || !tenanttx.ValidTenantID(cart.ID) || cart.Version <= 0 || len(cart.Lines) == 0 || len(cart.Lines) > 1000 || rules.At.IsZero() {
+	if !tenanttx.ValidTenantID(rules.TenantID) || !tenanttx.ValidTenantID(cart.ID) || cart.Version <= 0 || len(cart.Lines) == 0 || len(cart.Lines) > 1000 || rules.At.IsZero() || cart.Currency == "" || cart.Currency != rules.Currency {
 		return q, contract.ErrInvalid
 	}
 	ids := map[string]bool{}

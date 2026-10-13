@@ -15,7 +15,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
-type PGTenantSource struct{ Pool *pgxadapter.QueuePool }
+type PGTenantSource struct{ Pool pgxadapter.QueueDB }
 
 func (s PGTenantSource) ActiveTenants(ctx context.Context, after string, limit int32) ([]string, error) {
 	if s.Pool == nil || limit < 1 || limit > 1000 || after != "" && !tenanttx.ValidTenantID(after) {

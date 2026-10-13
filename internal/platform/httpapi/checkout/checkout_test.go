@@ -63,9 +63,13 @@ func result() contract.Result {
 type resolver struct {
 	actor contract.AuthorizedActor
 	err   error
+	calls *int
 }
 
 func (f resolver) Resolve(_ context.Context, r *http.Request) (contract.AuthorizedActor, error) {
+	if f.calls != nil {
+		(*f.calls)++
+	}
 	if f.err != nil {
 		return contract.AuthorizedActor{}, f.err
 	}
@@ -141,6 +145,52 @@ func TestCheckoutDefaultDeny(t *testing.T) {
 		t.Fatal("unconfigured authentication called service")
 	}
 }
+func TestCheckoutRejectsObsoleteAuthSpecs(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		access  httpapi.Access
+		scope   string
+		allowed bool
+	}{
+		{"storefront", httpapi.Storefront, "", true},
+		{"old_internal_service", httpapi.InternalService, "checkout.submit", false},
+		{"storefront_with_staff_scope", httpapi.Storefront, "checkout.submit", false},
+		{"staff_admin_session", httpapi.AdminSession, "checkout.submit", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			h, err := checkout.New(checkout.Config{Resolver: resolver{actor: actor(t, tenant, "guest"), calls: &calls}, Origin: origin})
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := h.Routes()[0].Spec
+			if actual.Access != httpapi.Storefront || actual.Scope != "" {
+				t.Errorf("checkout must register Storefront without staff scope: %+v", actual)
+			}
+			spec := actual
+			spec.Access = tc.access
+			spec.Scope = tc.scope
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/t/"+tenant+"/checkout", strings.NewReader(body))
+			req.SetPathValue("tenant_id", tenant)
+			req.Header.Set("Origin", origin)
+			req.Header.Set("X-CSRF-Token", "fixture-session-csrf")
+			_, err = h.Authenticator(httpapi.DenyAuthenticator{}).Authenticate(req.Context(), req, spec)
+			if tc.allowed {
+				if err != nil || calls != 1 {
+					t.Fatalf("valid Storefront rejected: err=%v resolver_calls=%d", err, calls)
+				}
+			} else {
+				if err == nil || calls != 0 {
+					t.Fatalf("obsolete/staff access spec authorized: err=%v resolver_calls=%d", err, calls)
+				}
+				w := httptest.NewRecorder()
+				httpapi.WriteProblem(w, req, err)
+				checkProblem(t, w, http.StatusUnauthorized)
+			}
+		})
+	}
+}
+
 func TestCheckoutActorAndStrictAdmission(t *testing.T) {
 	cases := []struct {
 		name, content string

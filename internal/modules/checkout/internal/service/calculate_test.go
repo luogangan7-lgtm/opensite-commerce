@@ -26,7 +26,7 @@ const (
 
 func quoteFixture() (contract.Cart, contract.Rules, contract.ShippingAddress) {
 	at := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
-	return contract.Cart{ID: cartID, Version: 1, Lines: []contract.CartLine{{ID: line, SKUID: sku, Quantity: 2}}}, contract.Rules{
+	return contract.Cart{ID: cartID, Currency: "USD", Version: 1, Lines: []contract.CartLine{{ID: line, SKUID: sku, Quantity: 2}}}, contract.Rules{
 		TenantID: tenant, Currency: "USD", At: at, ShippingProfileID: profile, SKUs: map[string]contract.SKU{sku: {ID: sku, Code: "SKU-1", TaxCategory: "standard", WeightG: 500}},
 		PriceLists:    []pricing.PriceList{{TenantID: tenant, ID: list, Currency: "USD", Status: "active", StartsAt: at.Add(-time.Hour), Audience: "all", Entries: []pricing.Entry{{SKUID: sku, MinQuantity: 1, UnitAmount: 100}}}},
 		Tax:           tax.Ruleset{Zones: []tax.Zone{{ID: zone, Locations: []tax.Destination{{Country: "US"}}}}, Categories: []tax.Category{{Code: "standard"}}, Rates: []tax.Rate{{ID: rate, ZoneID: zone, Category: "standard", BasisPoints: 1000, ValidFrom: at.Add(-time.Hour)}}},
@@ -49,6 +49,8 @@ func TestCalculateRejectsUnsafeInputs(t *testing.T) {
 		change func(*contract.Cart, *contract.Rules, *contract.ShippingAddress)
 	}{
 		{"empty", func(c *contract.Cart, r *contract.Rules, a *contract.ShippingAddress) { c.Lines = nil }},
+		{"currency_mismatch", func(c *contract.Cart, r *contract.Rules, a *contract.ShippingAddress) { c.Currency = "CAD" }},
+		{"currency_missing", func(c *contract.Cart, r *contract.Rules, a *contract.ShippingAddress) { c.Currency = "" }},
 		{"duplicate", func(c *contract.Cart, r *contract.Rules, a *contract.ShippingAddress) {
 			c.Lines = append(c.Lines, c.Lines[0])
 		}},

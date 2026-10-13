@@ -20,6 +20,13 @@ PROBLEM_RESPONSES = {
     "415": "UnsupportedMediaType", "422": "UnprocessableEntity",
     "428": "PreconditionRequired", "429": "TooManyRequests",
 }
+CART_OPERATIONS = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
+CART_PATHS = {
+    "createCart": ("/api/v1/t/{tenant_id}/carts", "post"),
+    "getCart": ("/api/v1/t/{tenant_id}/carts/{cart_id}", "get"),
+    "setCartLine": ("/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}", "put"),
+    "deleteCartLine": ("/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}", "delete"),
+}
 SELF_OPERATIONS = {"deleteAdminSession", "getCurrentActor", "listAdminSessions", "revokeAdminSession"}
 COOKIE = [{"adminSession": []}]
 COOKIE_OR_KEY = [{"adminSession": []}, {"ApiKeyBearer": []}]
@@ -155,6 +162,38 @@ def validate_contract(api):
             else:
                 require(ident in {"health", "createAdminSession", "submitInquiry"} and security == [] and
                         "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
+        elif access == "Storefront":
+            if ident == "createCheckout":
+                require((path, method) == ("/api/v1/t/{tenant_id}/checkout", "post") and tenant and
+                        "x-required-scope" not in op and op["x-opensite-status"] == "implemented" and
+                        security == [{"StorefrontSession": []}, {"GuestCapability": []}],
+                        "checkout requires the exact scope-free storefront resolver contract")
+                for name, cookie_name in (("StorefrontSession", "__Host-osc_customer_session"),
+                                          ("GuestCapability", "__Host-osc_guest_capability")):
+                    scheme = schemes.get(name, {})
+                    require((scheme.get("type"), scheme.get("in"), scheme.get("name")) ==
+                            ("apiKey", "cookie", cookie_name), "storefront credential scheme drift")
+                headers = {p["name"]: p for p in parameters if p["in"] == "header"}
+                for header, schema in {
+                        "Origin": {"type": "string", "format": "uri"},
+                        "X-CSRF-Token": {"type": "string", "minLength": 1, "maxLength": 512}}.items():
+                    require(header in headers and headers[header].get("required") is True and
+                            headers[header].get("schema") == schema,
+                            f"checkout {header} admission contract missing/incorrect")
+                require("Idempotency-Key" in headers and headers["Idempotency-Key"].get("required") is True,
+                        "checkout idempotency header required")
+            else:
+                require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and
+                        "x-required-scope" not in op, f"storefront cart tenant/scope policy drift: {ident}")
+                require(security == ([] if ident == "createCart" else [{"CartToken": []}]),
+                        f"storefront credential declaration drift: {ident}")
+                headers = {p["name"]: p for p in parameters if p["in"] == "header"}
+                require(("If-Match" in headers) == (method in {"put", "delete"}), f"cart write precondition drift: {ident}")
+                require(method not in {"put", "delete"} or headers["If-Match"].get("required") is True,
+                        f"required cart precondition drift: {ident}")
+                for code, name in {"400": "BadRequest", "404": "NotFound", "503": "ServiceUnavailable"}.items():
+                    require(op["responses"].get(code) == {"$ref": "#/components/responses/" + name},
+                            f"cart error declaration drift: {ident}")
         elif access == "AuthenticatedSelf":
             require(ident in SELF_OPERATIONS and not tenant and "tenant_id" not in names and "x-required-scope" not in op,
                     f"AuthenticatedSelf cannot carry scope/tenant: {ident}")
@@ -164,19 +203,13 @@ def validate_contract(api):
         elif access == "AdminOrAPIKey":
             require(tenant and isinstance(scope, str) and bool(scope.strip()), f"business tenant/scope required: {ident}")
             require(security in (COOKIE_OR_KEY, list(reversed(COOKIE_OR_KEY))), f"cookie OR API key required: {ident}")
-        elif access == "InternalService":
-            # C-18a has no production storefront middleware. This exact trusted
-            # resolver seam cannot expand to an arbitrary anonymous tenant API.
-            require((ident, path, method, scope) == ("createCheckout", "/api/v1/t/{tenant_id}/checkout", "post", "checkout.submit") and
-                    security == [{"StorefrontSession": []}, {"GuestCapability": []}],
-                    "checkout requires the exact trusted storefront resolver contract")
-            for name, cookie_name in (("StorefrontSession", "__Host-osc_customer_session"),
-                                      ("GuestCapability", "__Host-osc_guest_capability")):
-                scheme = schemes.get(name, {})
-                require((scheme.get("type"), scheme.get("in"), scheme.get("name")) ==
-                        ("apiKey", "cookie", cookie_name), "storefront credential scheme drift")
         else:
             raise ValueError(f"access policy missing or unsupported: {ident}")
+        if ident == "createCheckout":
+            require(access == "Storefront", "checkout cannot use employee or service authentication")
+        if ident in CART_OPERATIONS:
+            require((path, method) == CART_PATHS[ident] and access == "Storefront" and
+                    op["x-opensite-status"] == "implemented", f"cart route/access/status drift: {ident}")
         if ident in SELF_OPERATIONS:
             require(access == "AuthenticatedSelf", f"self identity access drift: {ident}")
         if access in {"AdminSession", "AdminOrAPIKey"}:
@@ -189,7 +222,7 @@ def validate_contract(api):
             continue
         for status, name in PROBLEM_RESPONSES.items():
             require(op["responses"].get(status) == {"$ref": "#/components/responses/" + name}, f"missing shared {status} mapping: {ident}")
-        if method in {"post", "put", "patch", "delete"} and (access != "Public" or ident == "createAdminSession"):
+        if method in {"post", "put", "patch", "delete"} and access != "Storefront" and (access != "Public" or ident == "createAdminSession"):
             headers = {p["name"]: p for p in parameters if p["in"] == "header"}
             required = access != "AdminOrAPIKey"
             for header in ("Origin", "X-CSRF-Token"):
@@ -199,6 +232,33 @@ def validate_contract(api):
             require({"412", "428"} <= op["responses"].keys(), f"If-Match mappings missing: {ident}")
         if any(p["name"] == "Idempotency-Key" for p in parameters):
             require({"409", "422"} <= op["responses"].keys(), f"idempotency mappings missing: {ident}")
+    require(CART_OPERATIONS <= operations.keys(), "cart operation missing")
+    cart_token = schemes.get("CartToken", {})
+    require((cart_token.get("type"), cart_token.get("in"), cart_token.get("name")) ==
+            ("apiKey", "header", "X-Cart-Token"), "cart capability scheme drift")
+    for name in ("CreateCart", "SetCartLine", "Cart", "CartLine", "CreatedCart"):
+        require(api["components"]["schemas"][name].get("additionalProperties") is False,
+                f"strict cart schema required: {name}")
+    schemas = api["components"]["schemas"]
+    quantity = schemas["SetCartLine"]["properties"]["quantity"]
+    require(quantity.get("type") == "integer" and quantity.get("minimum") == 0 and
+            quantity.get("maximum") == 1000000 and schemas["SetCartLine"]["required"] == ["quantity"],
+            "cart absolute quantity bounds/presence drift")
+    for name, required in {
+            "Cart": {"id", "currency", "version", "lines"},
+            "CartLine": {"sku_id", "quantity", "available_quantity", "sellable"}}.items():
+        require(set(schemas[name]["required"]) == required, f"recoverable cart required fields drift: {name}")
+        require(schemas[name]["properties"].get("pricing_error", {}).get("enum") ==
+                ["price_unavailable", "amount_overflow"], f"cart pricing error enum drift: {name}")
+    for name in ("Cart", "CartLine"):
+        for field, schema in schemas[name]["properties"].items():
+            if schema.get("type") == "integer":
+                require(isinstance(schema.get("minimum"), int) and isinstance(schema.get("maximum"), int),
+                        f"bounded cart integer required: {name}.{field}")
+    for name in ("BadRequest", "NotFound", "ServiceUnavailable"):
+        require(api["components"]["responses"][name].get("content") ==
+                {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}},
+                f"cart Problem media drift: {name}")
     for schema in api["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     return {"operations": len(operations), "references": len(refs), "schemas": len(api["components"]["schemas"])}

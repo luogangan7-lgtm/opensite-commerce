@@ -102,6 +102,23 @@ type AppBuyerRole struct {
 	Code     string      `json:"code"`
 }
 
+type AppCart struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	ID             pgtype.UUID        `json:"id"`
+	CustomerID     pgtype.UUID        `json:"customer_id"`
+	GuestTokenHash []byte             `json:"guest_token_hash"`
+	Currency       string             `json:"currency"`
+	Version        int64              `json:"version"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppCartLine struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	CartID   pgtype.UUID `json:"cart_id"`
+	SkuID    pgtype.UUID `json:"sku_id"`
+	Quantity int64       `json:"quantity"`
+}
+
 type AppCheckoutAttempt struct {
 	TenantID    pgtype.UUID        `json:"tenant_id"`
 	EventKind   string             `json:"event_kind"`

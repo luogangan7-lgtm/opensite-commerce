@@ -2,17 +2,16 @@
 
 Bootstrap mounts these generated routes only when `Config.Checkout` is supplied.
 Default configuration has no checkout transport. Explicit checkout composition
-without a storefront resolver returns 401 before the service runs. The existing
-six RouteSpec access classes are unchanged; `InternalService` with
-`checkout.submit` identifies the temporary trusted storefront resolver seam.
+without a storefront resolver returns 401 before the service runs. Checkout uses
+the tenant-bound `Storefront` RouteSpec access class with no employee scope.
 
 A future resolver must verify the guest capability or customer session, exact
 storefront/site and tenant binding, and session-bound CSRF. This increment
 checks the configured exact HTTPS Origin, CSRF header admission and actor/URL
 agreement, then consumes the resolver's private-field `AuthorizedActor`.
 It never authenticates an admin cookie or infers authority from Host/URL/body.
-The test resolver is a test substitute; real customer/guest middleware and the
-PR31 cart adapter remain integration work. Guest contact is a snapshot;
+The test resolver is a test substitute; real customer/guest middleware remains
+integration work. Guest contact is a snapshot;
 customer identity comes only from the actor and customer contact is omitted.
 
 The Fake callback route exists only with `FakeEnabled`, explicit `test` or

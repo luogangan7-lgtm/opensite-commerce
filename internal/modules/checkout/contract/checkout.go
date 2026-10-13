@@ -108,9 +108,10 @@ type CartLine struct {
 	Quantity  int64
 }
 type Cart struct {
-	ID      string
-	Version int64
-	Lines   []CartLine
+	ID       string
+	Currency string
+	Version  int64
+	Lines    []CartLine
 }
 type CartReader interface {
 	Read(context.Context, pgx.Tx, AuthorizedActor, string) (Cart, error)
@@ -138,6 +139,10 @@ type Rules struct {
 type RulesReader interface {
 	Load(context.Context, pgx.Tx, AuthorizedActor, Cart, ShippingAddress) (Rules, error)
 }
+
+// Run supplies a transaction already stamped with the requested tenant and
+// effective app_runtime role. Login composition must set its local role before
+// the callback; this module never elevates or opens a connection itself.
 type Run func(context.Context, string, func(context.Context, pgx.Tx) error) error
 type Config struct {
 	Run     Run

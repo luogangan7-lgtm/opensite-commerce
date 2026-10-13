@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
-	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 	"os"
 	"time"
@@ -69,7 +68,7 @@ func run() error {
 		return err
 	}
 	defer owner.Close()
-	m, err := rivermigrate.New(riverpgxv5.New(owner), &rivermigrate.Config{Schema: "queue"})
+	m, err := rivermigrate.New(owner.RiverDriver(), &rivermigrate.Config{Schema: "queue"})
 	if err != nil {
 		return err
 	}

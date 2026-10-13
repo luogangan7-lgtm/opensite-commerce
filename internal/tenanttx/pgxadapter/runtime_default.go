@@ -17,6 +17,9 @@ func OpenQueryRunner(context.Context, string) (*QueryRunner, error) {
 	return nil, errors.New("database configuration requires the pgx build tag")
 }
 func (*QueryRunner) Close() {}
+func (r *QueryRunner) RunAuthorizedSnapshot(ctx context.Context, tenant string, fn func(*db.Queries) error) error {
+	return r.RunAuthorized(ctx, tenant, fn)
+}
 func (*QueryRunner) RunAuthorized(ctx context.Context, tenant string, _ func(*db.Queries) error) error {
 	if err := authorizedTenant(ctx, tenant); err != nil {
 		return err
