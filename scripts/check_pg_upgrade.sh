@@ -994,6 +994,9 @@ done
 db "$DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('data-rights-existing') RETURNING id AS t \gset
 INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','legacy-privacy@example.invalid','Synthetic legacy') RETURNING id AS customer \gset
+-- Pre-existing addresses in the newly reserved erasure namespace stay valid
+-- legacy rows; the reservation must not fail the upgrade or rewrite them.
+INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','legacy-domain@erased.invalid','Synthetic legacy domain');
 INSERT INTO app.customer_addresses(tenant_id,customer_id,recipient,address_line1,city,country_code)
  VALUES(:'t',:'customer','Synthetic legacy','Synthetic address','Synthetic city','US');
 INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','privacy-legacy') RETURNING id AS product \gset
@@ -1026,7 +1029,7 @@ SELECT encode(sha256(jsonb_build_object(
 SQL
 }
 privacy_before=$(privacy_existing_witness "$DB")
-[[ $privacy_before == *'|1|1|1|1' ]] || bad "privacy predecessor fixture is incomplete: $privacy_before"
+[[ $privacy_before == *'|2|1|1|1' ]] || bad "privacy predecessor fixture is incomplete: $privacy_before"
 apply_forward "$DB" "${data_rights_files[0]}"
 privacy_after=$(privacy_existing_witness "$DB")
 [[ $privacy_before == "$privacy_after" ]] || bad 'data rights migration changed populated customer/address/order/line rows'
