@@ -1389,7 +1389,7 @@
       ]
     },
     {
-      "file": "migrations/035_payment_webhooks.sql",
+      "file": "migrations/pending/c19a-webhook_payment_webhooks.sql",
       "owner": "payments",
       "touches_tables": [
         "payment_provider_accounts",

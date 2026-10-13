@@ -1,3 +1,4 @@
+-- stable-id: c19a-webhook
 -- Responsibility: trusted Fake account resolution and durable normalized payment
 -- facts; inbox identity is reused. Dependencies: reliability, checkout and orders.
 -- Caller: signed Payments consumer; provisioning alone may bind provider accounts.
