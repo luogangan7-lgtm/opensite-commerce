@@ -5,6 +5,12 @@ services:
   api:
     environment:
       OSC_PUBLIC_DATABASE_URL: "host=postgres port=5432 dbname=${OPENSITE_DB} user=opensite_domain_login password=${OPENSITE_DOMAIN_DB_PASSWORD} sslmode=disable"
+      OPENSITE_STOREFRONT_ORIGIN: https://shop.e2e.test
+      OPENSITE_STOREFRONT_TENANT_ID: c0900001-0000-4000-8000-000000000001
+      OPENSITE_STOREFRONT_KEY: ${OPENSITE_STOREFRONT_KEY:?set isolated storefront proof key}
+      OPENSITE_ENVIRONMENT: development
+      OPENSITE_FAKE_PSP: "1"
+      OPENSITE_FAKE_WEBHOOK_KEY: ${OPENSITE_FAKE_WEBHOOK_KEY:?set isolated Fake webhook key}
   storefront:
     image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
     working_dir: /workspace
@@ -13,6 +19,14 @@ services:
       HOST: 0.0.0.0
       PORT: "4321"
       OSC_READ_API_ORIGIN: http://api:8080
+      OSC_COMMERCE_MODE: backend
+      OSC_COMMERCE_API_ORIGIN: http://api:8080
+      OSC_COMMERCE_SITE: http://127.0.0.1:4321
+      OSC_COMMERCE_COOKIE_KEY: ${OSC_COMMERCE_COOKIE_KEY:?set isolated storefront cookie key}
+      OPENSITE_STOREFRONT_ORIGIN: https://shop.e2e.test
+      OPENSITE_STOREFRONT_KEY: ${OPENSITE_STOREFRONT_KEY:?set isolated storefront proof key}
+      OPENSITE_FAKE_PSP: "1"
+      OPENSITE_FAKE_WEBHOOK_KEY: ${OPENSITE_FAKE_WEBHOOK_KEY:?set isolated Fake webhook key}
     volumes:
       - ../:/workspace:ro
     ports:

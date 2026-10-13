@@ -6,6 +6,7 @@ called only by mvp-e2e.yml. Guard precedes imports/IO, credentials stay private,
 all waits are bounded and finally destroys only this invocation's own project.
 """
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -163,8 +164,14 @@ def run(receipt_dir):
     # No inherited .env, target database/project/credentials or external URL.
     with tempfile.TemporaryDirectory(prefix="opensite-e2e-") as private:
         env_file = Path(private) / ".env"
+        def isolated_key():
+            return base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")
+
         credentials = {"POSTGRES_PASSWORD": secrets.token_hex(32), "JOB_SIGNING_KEY": secrets.token_hex(32),
                        "OPENSITE_AUTH_SIGNING_KEY": secrets.token_hex(32),
+                       "OSC_COMMERCE_COOKIE_KEY": isolated_key(),
+                       "OPENSITE_STOREFRONT_KEY": isolated_key(),
+                       "OPENSITE_FAKE_WEBHOOK_KEY": isolated_key(),
                        "OPENSITE_E2E_OWNER_PASSWORD": secrets.token_hex(32),
                        "OPENSITE_E2E_BOOTSTRAP_PASSWORD": secrets.token_hex(32),
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
@@ -236,8 +243,42 @@ def run(receipt_dir):
             if receipt["browser_exit"] != 0:
                 raise RuntimeError("MVP E2E browser assertions failed")
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
+            receipt["purchase_postconditions"] = json.loads(ops_common.psql("""
+DO $verify$
+DECLARE t uuid := 'c0900001-0000-4000-8000-000000000001';
+        sku uuid := 'c2400008-0000-4000-8000-000000000001';
+BEGIN
+ IF (SELECT count(*) FROM app.checkout_sessions WHERE tenant_id=t AND phase='paid'
+     AND amount_minor=5780 AND items_net_minor=4800 AND tax_minor=480 AND shipping_minor=500)<>2
+ OR (SELECT count(*) FROM app.orders WHERE tenant_id=t AND state='paid' AND sealed
+     AND total_minor=5780 AND items_net_minor=4800 AND tax_minor=480 AND shipping_minor=500)<>2
+ OR (SELECT count(*) FROM app.order_lines l JOIN app.orders o ON (o.tenant_id,o.id)=(l.tenant_id,l.order_id)
+     WHERE l.tenant_id=t AND o.state='paid' AND l.sku_id=sku AND l.quantity=2 AND l.line_total_minor=5280)<>2
+ OR (SELECT count(*) FROM app.inventory_reservations WHERE tenant_id=t AND sku_id=sku AND state='committed' AND quantity=2)<>2
+ OR EXISTS(SELECT FROM app.inventory_reservations WHERE tenant_id=t AND sku_id=sku AND state='active')
+ OR (SELECT count(*) FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku AND on_hand=16 AND reserved=0)<>1
+ OR (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=t AND sku_id=sku AND kind='commit' AND quantity=2)<>2
+ OR (SELECT count(*) FROM app.ledger_transactions j JOIN app.orders o
+     ON j.tenant_id=o.tenant_id AND j.source_type='order' AND j.source_id=o.id::text
+     WHERE j.tenant_id=t AND j.status='posted' AND o.state='paid')<>2
+ OR EXISTS(SELECT FROM app.ledger_transactions j JOIN app.orders o
+     ON j.tenant_id=o.tenant_id AND j.source_type='order' AND j.source_id=o.id::text
+     LEFT JOIN app.ledger_entries e ON (e.tenant_id,e.transaction_id)=(j.tenant_id,j.id)
+     WHERE j.tenant_id=t AND o.state='paid'
+     GROUP BY j.id HAVING count(e.line_no)<2 OR sum(e.amount) FILTER(WHERE e.side='debit')
+                       IS DISTINCT FROM sum(e.amount) FILTER(WHERE e.side='credit')) THEN
+   RAISE EXCEPTION 'C09D_REAL_PURCHASE_POSTCONDITION_FAILED';
+ END IF;
+END $verify$;
+SELECT json_build_object(
+ 'paid_orders',(SELECT count(*) FROM app.orders WHERE tenant_id='c0900001-0000-4000-8000-000000000001' AND state='paid'),
+ 'posted_journals',(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id='c0900001-0000-4000-8000-000000000001' AND status='posted'),
+ 'tote_on_hand',(SELECT on_hand FROM app.stock_levels WHERE tenant_id='c0900001-0000-4000-8000-000000000001'
+                AND sku_id='c2400008-0000-4000-8000-000000000001')
+)::text;
+""").strip())
             receipt["status"] = "PASS"
-            receipt["steps"].append("browser-and-accessibility-assertions")
+            receipt["steps"].append("browser-accessibility-and-real-pg-purchase-postconditions")
         except BaseException:
             receipt["status"] = "FAIL"
             raise
