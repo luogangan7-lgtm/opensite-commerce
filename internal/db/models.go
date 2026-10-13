@@ -219,6 +219,15 @@ type AppCustomerAddress struct {
 	CountryCode  string      `json:"country_code"`
 }
 
+type AppCustomerAuthGlobalLimit struct {
+	Kind          string             `json:"kind"`
+	KeyHash       []byte             `json:"key_hash"`
+	WindowStart   pgtype.Timestamptz `json:"window_start"`
+	Attempts      int32              `json:"attempts"`
+	Failures      int32              `json:"failures"`
+	CooldownUntil pgtype.Timestamptz `json:"cooldown_until"`
+}
+
 type AppCustomerAuthLimit struct {
 	TenantID      pgtype.UUID        `json:"tenant_id"`
 	Kind          string             `json:"kind"`
