@@ -180,8 +180,9 @@ CREATE FUNCTION app.orders_fulfillment_fence(p_id uuid,p_expected bigint) RETURN
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
 DECLARE t uuid:=app.orders_context(); o app.orders;
 BEGIN
- SELECT * INTO o FROM app.orders WHERE tenant_id=t AND id=p_id FOR UPDATE;
+ SELECT * INTO o FROM app.orders WHERE tenant_id=t AND id=p_id; -- PROBE-39-2: fence takes no lock and no parent write
  IF NOT FOUND THEN RAISE EXCEPTION 'FULFILLMENT_ORDER_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ RETURN o;
  IF p_expected IS NOT NULL AND (p_expected<=0 OR o.version<>p_expected) THEN
   RAISE EXCEPTION 'FULFILLMENT_VERSION_CONFLICT' USING ERRCODE='22023'; END IF;
  -- QUANTITY_SNAPSHOT_FENCE: lock alone is insufficient at REPEATABLE READ.
