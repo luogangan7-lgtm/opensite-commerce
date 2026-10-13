@@ -47,14 +47,6 @@ func (Service) Create(ctx context.Context, tx pgx.Tx, tenantID string, in contra
 	if err != nil {
 		return contract.Order{}, err
 	}
-	// Creation-key serialization and replay precede all reservation/stock locks.
-	existing, err := q.CheckOrderCreation(ctx, db.CheckOrderCreationParams{ID: orderID, CreationKey: in.IdempotencyKey, RequestHash: hash})
-	if err != nil {
-		return contract.Order{}, store.MapError(err)
-	}
-	if len(existing) == 1 {
-		return order(existing[0]), nil
-	}
 	var lines []lineSnapshot
 	if err = json.Unmarshal(p.lines, &lines); err != nil {
 		return contract.Order{}, contract.ErrInvalid
@@ -86,6 +78,14 @@ func (Service) Create(ctx context.Context, tx pgx.Tx, tenantID string, in contra
 			return contract.Order{}, store.MapError(err)
 		}
 		lines[i].ReservationID = uuid.UUID(reservation.ID.Bytes).String()
+	}
+	// Creation-key serialization and replay precede all reservation/stock locks.
+	existing, err := q.CheckOrderCreation(ctx, db.CheckOrderCreationParams{ID: orderID, CreationKey: in.IdempotencyKey, RequestHash: hash})
+	if err != nil {
+		return contract.Order{}, store.MapError(err)
+	}
+	if len(existing) == 1 {
+		return order(existing[0]), nil
 	}
 	p.lines, err = json.Marshal(lines)
 	if err != nil {
