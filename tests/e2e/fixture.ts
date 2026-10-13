@@ -66,10 +66,12 @@ export async function publishedSite(request: APIRequestContext): Promise<Publish
   const text = await response.text();
   assertPublicOnly(text);
   const site = JSON.parse(text) as PublishedSite;
-  expect(site).toMatchObject({ site_id: fixture.siteId, release_id: fixture.releaseId,
-    hostname: host, title: fixture.title, locale: 'en' });
+  // The serving body is host-independent (ADR_STOREFRONT_SERVING §7.3) and carries the host's tenant.
+  expect(site).toMatchObject({ tenant_id: fixture.tenantId, site_id: fixture.siteId, release_id: fixture.releaseId,
+    title: fixture.title, locale: 'en' });
+  expect(site).not.toHaveProperty('hostname');
   expect(site.products.find(product => product.slug === fixture.productSlug)).toMatchObject({
-    id: fixture.productId, name: fixture.productName, unit_amount: '2400', currency: 'USD',
+    id: fixture.productId, name: fixture.productName, unit_amount: '2400', currency: 'USD', skus: [],
   });
   return site;
 }

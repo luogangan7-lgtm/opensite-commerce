@@ -117,7 +117,7 @@ func TestServingFiltersBeforeCaps(t *testing.T) {
 // G2: the budget counts exact wire bytes plus refresh-variable fields at max width.
 func TestServingExactWireBudget(t *testing.T) {
 	build := func(descLen int, available bool) ([]byte, error) {
-		in := ServingInput{TenantID: "11111111-1111-4111-8111-111111111111", At: servingAt,
+		in := ServingInput{TenantID: "t", At: servingAt,
 			Site:       servingSite(contract.Product{ID: "p", Currency: "USD", Description: strings.Repeat("x", descLen)}),
 			PriceLists: []pricing.PriceList{usdList("l", 0, servingAt.Add(-time.Hour), nil, pricing.Entry{SKUID: "s", MinQuantity: 1, UnitAmount: 5})},
 			Candidates: []ServingCandidate{{ProductID: "p", SKUID: "s", Code: "S", Options: []contract.OptionValue{}, Ready: true, Available: available}}}
@@ -125,8 +125,8 @@ func TestServingExactWireBudget(t *testing.T) {
 		return out.Body, err
 	}
 	small, err := build(0, true)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || len(decodePublic(t, small).Products[0].SKUs) != 1 {
+		t.Fatalf("fixture SKU must be priced: %s %v", small, err)
 	}
 	extra := 18 + 1 // "5" may become 19 digits; true may become false
 	fit := WireBudget - len(small) - extra
