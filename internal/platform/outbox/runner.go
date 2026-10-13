@@ -48,7 +48,7 @@ func (r Runner) Run(ctx context.Context) error {
 			return nil
 		}
 		cycleCtx, cancel := context.WithTimeout(ctx, r.CycleTimeout)
-		next, err := r.page(cycleCtx, after)
+		next, err := r.page(ctx, cycleCtx, after)
 		cancel()
 		if ctx.Err() != nil {
 			return nil
@@ -67,9 +67,12 @@ func (r Runner) Run(ctx context.Context) error {
 	}
 }
 
-func (r Runner) page(ctx context.Context, after string) (string, error) {
+func (r Runner) page(parent, ctx context.Context, after string) (string, error) {
 	ids, err := r.Source.ActiveTenants(ctx, after, r.TenantBatchSize)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded && parent.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+			return after, nil
+		}
 		return after, ErrTenantDiscovery
 	}
 	if len(ids) == 0 {
@@ -86,7 +89,19 @@ func (r Runner) page(ctx context.Context, after string) (string, error) {
 		previous = id
 	}
 	for _, id := range ids {
-		if _, err := r.Dispatcher.Dispatch(ctx, id, r.EventsPerTenant); err != nil {
+		if ctx.Err() != nil {
+			return after, nil
+		}
+		result, err := r.Dispatcher.dispatch(ctx, parent, id, r.EventsPerTenant)
+		if err == errCycleBudget {
+			// A tenant that finished at least one claimed event gets its turn;
+			// remaining events wait for the next traversal, avoiding starvation.
+			if result.Claimed > 0 {
+				after = id
+			}
+			return after, nil
+		}
+		if err != nil {
 			return after, ErrDispatch
 		}
 		after = id

@@ -9,6 +9,7 @@ package db_test
 import (
 	"context"
 	"errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"os"
 	"strconv"
 	"strings"
@@ -37,7 +38,7 @@ func newOrderFixture(t *testing.T) orderFixture {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -371,7 +372,7 @@ func TestOrdersServiceCustomerBuyer(t *testing.T) {
 func TestOrdersServiceMixedReservationExpiryNoDeadlock(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

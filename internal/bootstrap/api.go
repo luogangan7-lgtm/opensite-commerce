@@ -1,7 +1,7 @@
-// Package bootstrap statically wires the API using platform/httpapi only.
-// cmd/api calls it; it owns no business handlers, database pool or migrations.
-// Generated business HTTP adapters stay in platform/httpapi and consume public ports.
-// Registration errors stop construction, so invalid routes cannot be served.
+// Package bootstrap wires catalog, media, cart, injected routes and operational telemetry.
+// Dependencies: module constructors, platform/httpapi and observability; caller: cmd/api.
+// It owns no business tables or pools. Registration errors refuse startup; request
+// contexts are bounded, route snapshots immutable and metric labels nonsensitive.
 package bootstrap
 
 import (
@@ -17,20 +17,28 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
+	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
+	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
 
 type Config struct {
-	Address       string
-	Logger        *slog.Logger
-	Authenticator httpapi.Authenticator
-	Routes        []httpapi.Route
-	Catalog       catalog.Config
-	Media         media.Config
-	Fulfillment   fulfillment.HTTPConfig
-	Returns       returns.HTTPConfig
-	Cart          *cart.Module
+	Fulfillment fulfillment.HTTPConfig
+	Returns returns.HTTPConfig
+	Address                  string
+	Logger                   *slog.Logger
+	Authenticator            httpapi.Authenticator
+	Routes                   []httpapi.Route
+	Catalog                  catalog.Config
+	Media                    media.Config
+	Cart                     *cart.Module
+	Quotes                   quoteshttp.QuotesService
+	QuotesBuyerAuthenticator httpapi.Authenticator
+	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
+	Notifications            notificationcontract.Service
 }
 
 func New(config Config) (server *http.Server, err error) {
@@ -52,13 +60,31 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, fulfillment.NewHTTP(config.Fulfillment).Routes()...)
 	routes = append(routes, returns.NewHTTP(config.Returns).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
+	if config.Quotes != nil {
+		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
+	}
+	routes = append(routes, notificationhttp.New(config.Notifications).Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {
 		if err := router.Register(route.Spec, route.Handler); err != nil {
 			return nil, err
 		}
 	}
-	return &http.Server{Addr: config.Address, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}, nil
+	metrics := &observability.Metrics{}
+	router.WrapTransport(metrics.Wrap)
+	// Socket deadlines do not cancel database queries or lock waits. Preserve
+	// the router's registration snapshot through the request deadline wrapper.
+	handler := deadlineHandler{Router: router}
+	return &http.Server{Addr: config.Address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second}, nil
+}
+
+// Embedding exposes the router's immutable RouteSpecs snapshot for contract gates.
+type deadlineHandler struct{ *httpapi.Router }
+
+func (h deadlineHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
+	defer cancel()
+	h.Router.ServeHTTP(w, r.WithContext(ctx))
 }
 
 func Run(ctx context.Context, config Config) error {
@@ -102,17 +128,4 @@ func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, s
 		return (httpapi.DenyAuthenticator{}).Authenticate(ctx, r, spec)
 	}
 	return a.staff.Authenticate(ctx, r, spec)
-}
-
-// ResolveActor forwards only the selected, successfully authenticated staff
-// principal. Storefront capabilities and legacy authenticators have no staff
-// actor projection; actor-requiring commands reject their absent projection.
-func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
-	if spec.Access == httpapi.Storefront {
-		return httpapi.Actor{}, nil
-	}
-	if resolver, ok := a.staff.(httpapi.ActorResolver); ok {
-		return resolver.ResolveActor(ctx, r, spec)
-	}
-	return httpapi.Actor{}, nil
 }

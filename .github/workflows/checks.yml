@@ -3,6 +3,46 @@ on: [push, pull_request]
 
 # One required CI job. No costly SKU/performance suite on every commit.
 jobs:
+  # Optional CI-only generator handoff; required drift gates remain unchanged.
+  codegen-handoff:
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[codegen-artifact]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.3.12'
+      - name: Generate pinned source in CI
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          go mod download
+          bun install --frozen-lockfile
+          go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+          bun packages/api-client/node_modules/openapi-typescript/bin/cli.js api/openapi.yaml -o packages/api-client/src/schema.d.ts
+          curl -fsSL --retry 3 https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz -o /tmp/sqlc.tar.gz
+          echo '497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354  /tmp/sqlc.tar.gz' | sha256sum -c -
+          mkdir -p /tmp/sqlc-bin
+          tar -xzf /tmp/sqlc.tar.gz -C /tmp/sqlc-bin
+          /tmp/sqlc-bin/sqlc generate
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: codegen-handoff-${{ github.run_id }}
+          path: |
+            api/openapi.yaml
+            sqlc.yaml
+            internal/platform/httpapi/generated/api.gen.go
+            internal/db/*.go
+            packages/api-client/src/schema.d.ts
+          if-no-files-found: error
+          retention-days: 7
+
   foundation:
     runs-on: ubuntu-24.04
     services:
@@ -22,7 +62,11 @@ jobs:
       JOBS_REQUIRE_PG: '1'
       IDEMPOTENCY_REQUIRE_PG: '1'
       OUTBOX_REQUIRE_PG: '1'
+      OPENSITE_REQUIRE_PGX_FIXTURES: '1'
       DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      C07_FIXTURE_PASSWORD: ci_catalog_test_only
+      C07_DATABASE_URL: postgres://c07_runtime:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
+      C07_MEDIA_DATABASE_URL: postgres://c07_media:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -33,6 +77,10 @@ jobs:
           go mod download
           go test -race -count=1 ./...
           go vet ./...
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.3.12'
+      - run: bun install --frozen-lockfile
       - name: Python tools (hash-locked)
         run: python -m pip install --quiet --require-hashes -r requirements-ci.txt
       - name: CI pin policy and offline gates
@@ -54,6 +102,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client
           ./scripts/check_pg.sh
+          python3 tests/test_inventory_race_sync.py
           ./scripts/check_pg_races.sh
           ./scripts/check_pg_upgrade.sh
       - name: Catalog/media real HTTP gates with isolated role logins
@@ -62,6 +111,8 @@ jobs:
         run: ./scripts/check_catalog_api.sh
       - name: Go pgx-tagged vet and race tests
         run: |
+          # Restore the committed isolated fixture after its HTTP mutation tests.
+          psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f tests/fixtures/catalog_api.sql
           go vet -tags pgx ./...
           go test -race -tags pgx -count=1 ./...
       - name: sqlc v1.31.1 (verified release artifact)
@@ -75,6 +126,7 @@ jobs:
           sqlc version
       - name: Typechecked pgx v5/sqlc integration and generated-code cleanliness
         run: |
+          psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f tests/fixtures/catalog_api.sql
           ./scripts/check_codegen.sh
           # Generated code and module files must be committed, not regenerated differently per build.
           git diff --exit-code -- go.mod go.sum internal/db
@@ -93,13 +145,32 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
       options: --ipc=host
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      DATABASE_URL: postgres://postgres:ci_test_only@postgres:5432/opensite?sslmode=disable
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Trust the checked-out CI workspace for Go VCS metadata
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
       - name: Bun archive extraction prerequisite
-        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends unzip
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends unzip postgresql-client
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: '1.3.12'
+      - run: go mod download
       - run: bun install --frozen-lockfile
       - name: Types, token generation, style policy and contrast
         run: bash scripts/check_frontend.sh
@@ -131,15 +202,33 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
       options: --ipc=host
     env:
+      GOTOOLCHAIN: local
+      DATABASE_URL: postgres://postgres:ci_test_only@postgres:5432/opensite?sslmode=disable
       OPENSITE_BASELINE_UPDATE: '1'
       PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Trust the checked-out CI workspace for Go VCS metadata
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
       - name: Bun archive extraction prerequisite
-        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends unzip
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends unzip postgresql-client
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: '1.3.12'
+      - run: go mod download
       - run: bun install --frozen-lockfile
       - run: bash scripts/check_frontend.sh
       - name: Generate golden images in pinned CI container

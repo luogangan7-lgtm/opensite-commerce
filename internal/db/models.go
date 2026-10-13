@@ -5,6 +5,8 @@
 package db
 
 import (
+	"net/netip"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -42,13 +44,31 @@ type AppAuditEvent struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
+type AppAuthAccountAttempt struct {
+	IdentifierNormalized string             `json:"identifier_normalized"`
+	FailureCount         int32              `json:"failure_count"`
+	WindowStartedAt      pgtype.Timestamptz `json:"window_started_at"`
+	CooldownUntil        pgtype.Timestamptz `json:"cooldown_until"`
+	LastFailedAt         pgtype.Timestamptz `json:"last_failed_at"`
+}
+
+type AppAuthLoginAttempt struct {
+	IdentifierNormalized string             `json:"identifier_normalized"`
+	Ip                   netip.Addr         `json:"ip"`
+	FailureCount         int32              `json:"failure_count"`
+	WindowStartedAt      pgtype.Timestamptz `json:"window_started_at"`
+	CooldownUntil        pgtype.Timestamptz `json:"cooldown_until"`
+	LastFailedAt         pgtype.Timestamptz `json:"last_failed_at"`
+}
+
 type AppAuthSession struct {
-	ID        pgtype.UUID        `json:"id"`
-	UserID    pgtype.UUID        `json:"user_id"`
-	TokenHash []byte             `json:"token_hash"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
-	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID         pgtype.UUID        `json:"id"`
+	UserID     pgtype.UUID        `json:"user_id"`
+	TokenHash  []byte             `json:"token_hash"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
 }
 
 type AppBlogPost struct {
@@ -208,16 +228,17 @@ type AppIdempotencyRecord struct {
 }
 
 type AppInquiry struct {
-	TenantID   pgtype.UUID        `json:"tenant_id"`
-	SiteID     pgtype.UUID        `json:"site_id"`
-	ID         pgtype.UUID        `json:"id"`
-	ProductID  pgtype.UUID        `json:"product_id"`
-	BuyerEmail string             `json:"buyer_email"`
-	BuyerName  pgtype.Text        `json:"buyer_name"`
-	Quantity   pgtype.Numeric     `json:"quantity"`
-	Message    string             `json:"message"`
-	Status     string             `json:"status"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	SiteID         pgtype.UUID        `json:"site_id"`
+	ID             pgtype.UUID        `json:"id"`
+	ProductID      pgtype.UUID        `json:"product_id"`
+	BuyerEmail     string             `json:"buyer_email"`
+	BuyerName      pgtype.Text        `json:"buyer_name"`
+	Quantity       pgtype.Numeric     `json:"quantity"`
+	Message        string             `json:"message"`
+	Status         string             `json:"status"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	BuyerCompanyID pgtype.UUID        `json:"buyer_company_id"`
 }
 
 type AppInventoryMovement struct {
@@ -253,6 +274,16 @@ type AppInventoryReservation struct {
 	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
+}
+
+type AppKnownDevice struct {
+	ID           pgtype.UUID        `json:"id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	CookieHash   []byte             `json:"cookie_hash"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt    pgtype.Timestamptz `json:"revoked_at"`
+	FailureCount int32              `json:"failure_count"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 type AppLedgerAccount struct {
@@ -325,6 +356,37 @@ type AppMediaUpload struct {
 	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	MediaID          pgtype.UUID        `json:"media_id"`
+}
+
+type AppNotificationDelivery struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ID              pgtype.UUID        `json:"id"`
+	SourceEventID   pgtype.UUID        `json:"source_event_id"`
+	DispatchEventID pgtype.UUID        `json:"dispatch_event_id"`
+	Recipient       string             `json:"recipient"`
+	Locale          string             `json:"locale"`
+	TemplateKey     string             `json:"template_key"`
+	ReferenceID     pgtype.UUID        `json:"reference_id"`
+	Status          string             `json:"status"`
+	AttemptCount    int32              `json:"attempt_count"`
+	Generation      int32              `json:"generation"`
+	SendToken       pgtype.UUID        `json:"send_token"`
+	LeaseAttempt    pgtype.Int4        `json:"lease_attempt"`
+	LeaseWorker     pgtype.UUID        `json:"lease_worker"`
+	LastError       pgtype.Text        `json:"last_error"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	SentAt          pgtype.Timestamptz `json:"sent_at"`
+}
+
+type AppNotificationRedriveRequest struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	NotificationID  pgtype.UUID        `json:"notification_id"`
+	IdempotencyKey  string             `json:"idempotency_key"`
+	RequestToken    pgtype.UUID        `json:"request_token"`
+	Generation      int32              `json:"generation"`
+	DispatchEventID pgtype.UUID        `json:"dispatch_event_id"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 }
 
 type AppOrder struct {
@@ -514,6 +576,50 @@ type AppProductVariant struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	Version         int64              `json:"version"`
 	LifecycleStatus string             `json:"lifecycle_status"`
+}
+
+type AppQuote struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	ID             pgtype.UUID        `json:"id"`
+	SiteID         pgtype.UUID        `json:"site_id"`
+	InquiryID      pgtype.UUID        `json:"inquiry_id"`
+	BuyerCompanyID pgtype.UUID        `json:"buyer_company_id"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	Currency       string             `json:"currency"`
+	Subtotal       int64              `json:"subtotal"`
+	Tax            int64              `json:"tax"`
+	Shipping       int64              `json:"shipping"`
+	Total          int64              `json:"total"`
+	Snapshot       []byte             `json:"snapshot"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	Status         string             `json:"status"`
+	Version        int64              `json:"version"`
+	AcceptedBy     pgtype.UUID        `json:"accepted_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AppQuoteApproval struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	QuoteID        pgtype.UUID        `json:"quote_id"`
+	BuyerCompanyID pgtype.UUID        `json:"buyer_company_id"`
+	RequestedBy    pgtype.UUID        `json:"requested_by"`
+	DecidedBy      pgtype.UUID        `json:"decided_by"`
+	Decision       string             `json:"decision"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppQuoteLine struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	QuoteID     pgtype.UUID `json:"quote_id"`
+	LineNo      int32       `json:"line_no"`
+	ProductID   pgtype.UUID `json:"product_id"`
+	VariantID   pgtype.UUID `json:"variant_id"`
+	Description string      `json:"description"`
+	Quantity    int64       `json:"quantity"`
+	UnitPrice   int64       `json:"unit_price"`
+	LineTotal   int64       `json:"line_total"`
+	Snapshot    []byte      `json:"snapshot"`
 }
 
 type AppReturn struct {

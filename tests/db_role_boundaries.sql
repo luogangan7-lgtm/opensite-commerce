@@ -42,6 +42,7 @@ BEGIN
 END $test$;
 RESET ROLE;
 
+SELECT set_config('app.public_hostname','verified.example.invalid',true);
 SET ROLE app_domain_resolver;
 DO $test$
 DECLARE n integer;
@@ -50,6 +51,11 @@ BEGIN
   JOIN app.sites s ON s.tenant_id=d.tenant_id AND s.id=d.site_id
   WHERE d.tenant_id=current_setting('test.boundary_tenant')::uuid;
  IF n <> 1 THEN RAISE EXCEPTION 'expected 1 public verified+published domain, got %',n; END IF;
+ PERFORM set_config('app.public_hostname','unknown.example.invalid',true);
+ SELECT count(*) INTO n FROM app.site_domains d JOIN app.sites s
+  ON (s.tenant_id,s.id)=(d.tenant_id,d.site_id);
+ IF n <> 0 THEN RAISE EXCEPTION 'unknown public hostname exposed % rows',n; END IF;
+ PERFORM set_config('app.public_hostname','verified.example.invalid',true);
  BEGIN
   PERFORM count(*) FROM app.users;
   RAISE EXCEPTION 'domain resolver unexpectedly reads users';

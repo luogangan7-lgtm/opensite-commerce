@@ -1,1 +1,27 @@
-{"name":"@opensite/storefront","version":"0.0.0","private":true,"type":"module"}
+{
+  "name": "@opensite/storefront",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "astro build",
+    "dev": "astro dev --host 127.0.0.1 --port 4321",
+    "start": "node dist/server/entry.mjs",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/node": "11.1.7",
+    "@astrojs/react": "7.0.1",
+    "astro": "7.3.8",
+    "@opensite/api-client": "workspace:*",
+    "@opensite/ui": "workspace:*",
+    "@opensite/design-tokens": "workspace:*",
+    "@fontsource/inter": "5.3.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "typescript": "6.0.3"
+  }
+}

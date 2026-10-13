@@ -24,8 +24,14 @@ sql:
       - "migrations/021_queue_authorization.sql"
       - "migrations/022_reliability_limits.sql"
       - "migrations/023_cart.sql"
-      - "migrations/024_fulfillment_returns.sql"
-    queries: "queries"
+      - "migrations/024_storefront_read.sql"
+      - "migrations/025_ops_metrics.sql"
+      - "migrations/026_notifications.sql"
+      - "migrations/027_quotes.sql"
+      - "migrations/028_identity_auth.sql"
+      - "migrations/029_identity_login.sql"
+      - "migrations/030_fulfillment_returns.sql"
+    queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:
         package: "db"

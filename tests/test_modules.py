@@ -771,6 +771,18 @@ class GovernanceTests(unittest.TestCase):
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_retired_identity_connection_adapter_red(self):
+        self.vendor_pgx()
+        self.source("internal/platform/identitydb/pgxadapter/adapter.go",
+                    'package pgxadapter\nimport "github.com/jackc/pgx/v5"\nvar Open = pgx.ConnectConfig\n')
+        self.assert_red("MODULE_RAW_CONNECTION")
+
+    def test_identity_business_connection_still_red(self):
+        self.vendor_pgx()
+        self.source("internal/modules/a/internal/store/store.go",
+                    'package store\nimport "github.com/jackc/pgx/v5"\nvar Open = pgx.ConnectConfig\n')
+        self.assert_red("MODULE_RAW_CONNECTION")
+
     def generated_server(self):
         self.source("internal/platform/httpapi/generated/api.gen.go", "package generated\nfunc HandlerFromMux() {}\n")
 
@@ -786,6 +798,7 @@ class GovernanceTests(unittest.TestCase):
         self.generated_server()
         importer = 'import "example.test/shop/internal/platform/httpapi/generated"\nvar Mount = generated.HandlerFromMux\n'
         self.source("internal/platform/httpapi/router.go", "package httpapi\n" + importer)
+        self.source("internal/platform/httpapi/notificationhttp/routes.go", "package notificationhttp\n" + importer)
         self.source("cmd/api/main_test.go", "package main\n" + importer)
         self.source("cmd/api/main.go", "package main\nfunc main() {}\n")
         result = self.run_gate()

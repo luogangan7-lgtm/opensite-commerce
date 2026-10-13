@@ -5,10 +5,13 @@
       "name": "identity",
       "status": "implemented",
       "go_path": "internal/modules/identity",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "users",
-        "auth_sessions"
+        "auth_sessions",
+        "auth_account_attempts",
+        "auth_login_attempts",
+        "known_devices"
       ],
       "operations": [
         {
@@ -30,15 +33,34 @@
         {
           "operation_id": "revokeAdminSession",
           "status": "planned"
+        },
+        {
+          "operation_id": "getAdminLoginChallenge",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createStaffLoginSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "logoutCurrentStaffSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getAdminSession",
+          "status": "implemented"
         }
       ],
       "dependencies": [],
       "tests": [
         "tests/db_role_boundaries.sql",
-        "tests/db_role_matrix.sql"
+        "tests/db_role_matrix.sql",
+        "tests/db_identity_auth.sql",
+        "tests/db_identity_login.sql",
+        "tests/test_identity_login_contract.py"
       ],
       "scopes": [],
-      "note": "Global staff identity and sessions have no tenant_id. Module status describes the existing database model; all module Go paths and HTTP operations remain planned."
+      "note": "Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented. Four staff login/challenge/session/logout HTTP operations are implemented; the five admin-session management operations remain planned."
     },
     {
       "name": "tenant",
@@ -231,15 +253,9 @@
         "page_revisions",
         "blog_posts",
         "blog_post_revisions",
-        "blog_post_publications",
-        "inquiries"
+        "blog_post_publications"
       ],
-      "operations": [
-        {
-          "operation_id": "submitInquiry",
-          "status": "planned"
-        }
-      ],
+      "operations": [],
       "dependencies": [
         "tenant",
         "site",
@@ -256,7 +272,7 @@
       "name": "publish",
       "status": "implemented",
       "go_path": "internal/modules/publish",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "site_releases",
         "site_release_routes",
@@ -282,6 +298,10 @@
         {
           "operation_id": "publishSiteDraft",
           "status": "planned"
+        },
+        {
+          "operation_id": "getPublishedSite",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -293,7 +313,11 @@
       "tests": [
         "internal/pagegraph/graph_test.go",
         "tests/db_release_integrity.sql",
-        "tests/db_publish_isolation.sql"
+        "tests/db_publish_isolation.sql",
+        "internal/modules/publish/contract/read_test.go",
+        "internal/modules/publish/internal/service/read_test.go",
+        "internal/modules/publish/handler_test.go",
+        "tests/db_storefront.sql"
       ],
       "scopes": [
         "site.draft.write",
@@ -356,7 +380,8 @@
         "tests/db_security_hardening.sql",
         "tests/db_security_services.sql",
         "tests/db_security_audit.sql",
-        "tests/db_role_matrix.sql"
+        "tests/db_role_matrix.sql",
+        "tests/db_ops_metrics.sql"
       ],
       "scopes": [],
       "note": "Owns cross-cutting role and policy migrations, not application tables. Security hardening never transfers table ownership."
@@ -666,6 +691,119 @@
         "internal/contracts/payment/v1"
       ],
       "note": "C-15a freezes the neutral Payment Port v1 and test-only Fake. Real payment storage, service and Stripe are deferred to C-19; no production payment capability exists."
+    },
+    {
+      "name": "quotes",
+      "status": "implemented",
+      "go_path": "internal/modules/quotes",
+      "go_status": "implemented",
+      "owns_tables": [
+        "inquiries",
+        "quotes",
+        "quote_lines",
+        "quote_approvals"
+      ],
+      "operations": [
+        {
+          "operation_id": "submitInquiry",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "sendQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "withdrawQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "expireQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getBuyerQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "acceptQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "approveQuote",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "rejectQuote",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "b2b",
+        "customer",
+        "catalog",
+        "money",
+        "pricing",
+        "tax",
+        "shipping",
+        "reliability"
+      ],
+      "tests": [
+        "internal/modules/quotes/module_test.go",
+        "internal/modules/quotes/quotes_pgx_test.go",
+        "internal/platform/httpapi/quotes/quotes_test.go",
+        "tests/db_quotes.sql"
+      ],
+      "scopes": [
+        "quotes:read",
+        "quotes:write"
+      ],
+      "note": "C-17a contact collection and immutable quote lifecycle; buyer endpoints require an externally verified sealed customer actor, default denied. No customer authentication implementation or order/payment creation."
+    },
+    {
+      "name": "notifications",
+      "status": "implemented",
+      "go_path": "internal/modules/notifications",
+      "go_status": "implemented",
+      "owns_tables": [
+        "notification_deliveries",
+        "notification_redrive_requests"
+      ],
+      "operations": [
+        {
+          "operation_id": "listNotificationFailures",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "redriveNotification",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "reliability",
+        "orders",
+        "customer"
+      ],
+      "tests": [
+        "tests/db_notifications.sql",
+        "tests/test_notifications_contract_static.py",
+        "tests/test_notifications_api.py",
+        "internal/platform/httpapi/notificationhttp/notifications_test.go",
+        "internal/modules/notifications/internal/service/render_test.go"
+      ],
+      "scopes": [
+        "notifications:write"
+      ],
+      "note": "Admin failure metadata and explicit idempotent dead-letter redrive. No recipient/body in public DTOs, uncertain SMTP acceptance cannot redrive; queue receipt is not email delivery. Uses lease-fenced outbox capability and stdlib fake/SMTP adapters; quotes event SQL is optional until integration."
     },
     {
       "name": "fulfillment",
@@ -1027,7 +1165,87 @@
       ]
     },
     {
-      "file": "migrations/024_fulfillment_returns.sql",
+      "file": "migrations/024_storefront_read.sql",
+      "owner": "publish",
+      "touches_tables": [
+        "site_domains",
+        "sites",
+        "site_releases",
+        "site_release_routes",
+        "page_revisions"
+      ]
+    },
+    {
+      "file": "migrations/025_ops_metrics.sql",
+      "owner": "platform-security",
+      "touches_tables": [
+        "outbox_events"
+      ]
+    },
+    {
+      "file": "migrations/026_notifications.sql",
+      "owner": "notifications",
+      "touches_tables": [
+        "notification_deliveries",
+        "notification_redrive_requests",
+        "outbox_events"
+      ]
+    },
+    {
+      "file": "migrations/027_quotes.sql",
+      "owner": "quotes",
+      "touches_tables": [
+        "inquiries",
+        "quotes",
+        "quote_lines",
+        "quote_approvals",
+        "outbox_events",
+        "idempotency_records",
+        "buyer_companies",
+        "buyer_company_members",
+        "customers",
+        "users",
+        "tenant_memberships",
+        "tenants",
+        "sites",
+        "products",
+        "product_variants",
+        "price_lists",
+        "price_entries",
+        "shipping_zones",
+        "shipping_zone_destinations",
+        "shipping_profiles",
+        "shipping_rates",
+        "tax_zones",
+        "tax_zone_locations",
+        "tax_categories",
+        "tax_rates",
+        "tax_settings"
+      ]
+    },
+    {
+      "file": "migrations/028_identity_auth.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "users",
+        "tenants",
+        "tenant_memberships",
+        "auth_account_attempts",
+        "auth_login_attempts",
+        "known_devices",
+        "api_keys",
+        "buyer_roles"
+      ]
+    },
+    {
+      "file": "migrations/029_identity_login.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "auth_sessions"
+      ]
+    },
+    {
+      "file": "migrations/030_fulfillment_returns.sql",
       "owner": "fulfillment",
       "touches_tables": [
         "shipments",

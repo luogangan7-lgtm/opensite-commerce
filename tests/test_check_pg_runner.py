@@ -48,6 +48,54 @@ await_job timeout "$pid"; status=$?
 ''', helper.replace('SECONDS + 15', 'SECONDS + 0'))
 print('PASS: actual await_job waits, propagates child failure, and marks bounded timeout')
 
+# Run the real limits upgrade fragment: its populated witness must precede
+# successors, while its final whole-schema matrix requires every migration.
+upgrade_source = (root / 'scripts/check_pg_upgrade.sh').read_text()
+limits_start = upgrade_source.index('# INT25:')
+limits_end = upgrade_source.index('[[ $fail -eq 0 ]]', limits_start)
+limits_case = upgrade_source[limits_start:limits_end]
+with tempfile.TemporaryDirectory() as limits_tmp:
+    limits_env = dict(os.environ, APPLIED_LOG=str(Path(limits_tmp) / 'applied'),
+                      WITNESS_LOG=str(Path(limits_tmp) / 'witness'))
+    limits_mock = r'''set -euo pipefail
+fail=0
+: > "$APPLIED_LOG"
+admin() { :; }
+river_db() { :; }
+pass() { :; }
+bad() { echo "FAIL: $*" >&2; fail=1; }
+apply_forward() {
+ if [[ $2 > ${limits_files[0]} && ! -f "$WITNESS_LOG" ]]; then
+  echo 'LIMITS_SUCCESSOR_BEFORE_WITNESS' >&2; return 43
+ fi
+ printf '%s\n' "$2" >> "$APPLIED_LOG"
+}
+db() {
+ local payload expected actual
+ if [[ ${2:-} == -f ]]; then
+  if [[ $3 == tests/db_role_matrix.sql ]]; then
+   expected=$(printf '%s\n' migrations/[0-9][0-9][0-9]_*.sql)
+   actual=$(cat "$APPLIED_LOG")
+   [[ $actual == "$expected" ]] || {
+    echo 'LIMITS_UPGRADE_MISSING_SUCCESSOR: final matrix requires all migrations' >&2
+    return 44
+   }
+  fi
+ else
+  payload=$(cat)
+  if [[ $payload == *LIMITS_UPGRADE=* ]]; then
+   : > "$WITNESS_LOG"
+   echo 'LIMITS_UPGRADE=4|2|2|10'
+  fi
+ fi
+}
+'''
+    limits_result = subprocess.run(['bash', '-c', limits_mock + limits_case],
+                                   cwd=root, env=limits_env, capture_output=True,
+                                   text=True, timeout=5)
+    assert limits_result.returncode == 0, (limits_result.stdout, limits_result.stderr)
+print('PASS: real limits upgrade fragment applies all migrations before final matrix, witness before successors (mock functions; NO SQL executed)')
+
 expected = [
     'db_security_audit.sql',
     'db_smoke.sql',
@@ -72,8 +120,86 @@ expected = [
     'db_queue.sql',
     'db_reliability_limits.sql',
     'db_cart.sql',
+    'db_storefront.sql',
+    'db_ops_metrics.sql',
+    'db_notifications.sql',
+    'db_quotes.sql',
+    'db_identity_auth.sql',
+    'db_identity_login.sql',
     'db_fulfillment_returns.sql',
 ]
+# Coverage guards only: real-PG runners execute the locking/upgrade contracts.
+races = (root / 'scripts/check_pg_races.sh').read_text()
+upgrade = (root / 'scripts/check_pg_upgrade.sh').read_text()
+
+def identity_runner_contract(races, upgrade):
+    assert 'BOOTSTRAP_RACE=' in races, 'first-owner concurrency case missing'
+    assert 'BOOTSTRAP_UPGRADE=' in upgrade, 'bootstrap populated-upgrade cases missing'
+    auth = races[races.index('# C-02a: global auth'):races.index('# First-owner is installation-wide:')]
+    assert 'pg_blocking_pids(second.pid)' in auth, 'auth race requires an observed blocker'
+    assert 'await auth_second advisory' in auth, 'auth contender must be parked before release'
+    assert '::timestamptz' not in auth, 'caller clock must not enter auth failure API'
+    assert not any(line.lstrip().startswith('sleep ') or 'pg_sleep(' in line for line in auth.splitlines() if not line.lstrip().startswith('#')), 'auth ordering must use observed locks'
+    assert "expected 2|2" in auth, 'account and account+IP counts must both survive'
+    assert "result prune_skip 'pruned=0|0'" in auth, 'cleanup must skip held stale rows'
+    assert "result prune_live 'pruned=0|0'" in auth, 'cleanup must preserve renewed rows'
+    boot = races[races.index('# First-owner is installation-wide:'):]
+    assert 'for f in migrations/[0-9][0-9][0-9]_*.sql; do' in boot, 'bootstrap must migrate all modules'
+    assert 'if [[ $f == *_queue_authorization.sql ]]' in boot and './scripts/migrate_river.sh' in boot, 'bootstrap must install River before queue authorization'
+    assert 'pg_blocking_pids(second.pid)' in boot, 'bootstrap contender must block on owner lock'
+    identity = upgrade[upgrade.index('# C-02a: discover'):upgrade.index('# C-02b: start')]
+    assert 'identity_files=(migrations/[0-9][0-9][0-9]_identity_auth.sql)' in identity
+    assert '[[ $f < ${identity_files[0]} ]] || break' in identity, 'all predecessors must be applied'
+    assert '[[ $f > ${identity_files[0]} ]] || continue' in identity, 'all successors must be applied'
+    assert identity.count('apply_forward "$DB" "$f"') == 2, 'identity predecessors/successors must retain River-aware apply_forward'
+    assert 'IDENTITY_UPGRADE=4|4|4' in identity, 'legacy whole-row witnesses must remain exact'
+
+identity_runner_contract(races, upgrade)
+def login_runner_contract(races, upgrade):
+    rotation = races[races.index('# C-02b: execute'):]
+    assert "source = Path('queries/identity/login.sql').read_text()" in rotation
+    assert "query('LoginRotateOldSession'" in rotation and "query('LoginInsertSession'" in rotation
+    assert 'RETURNING s.id AS rotated' in rotation and '\\gset' in rotation, 'zero-row rotation must abort before successor INSERT'
+    assert 'pg_blocking_pids(second.pid)' in rotation, 'login rotation requires an observed blocker'
+    assert "expect login_rotate_second 'no rows returned for'" in rotation
+    assert 'LOGIN_ROTATION_RACE=1|1|1|0' in rotation, 'exactly one successor must remain'
+    login = upgrade[upgrade.index('# C-02b: start'):]
+    assert 'login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)' in login
+    assert '[[ $f < ${login_files[0]} ]] || break' in login
+    assert '[[ $f > ${login_files[0]} ]] || continue' in login
+    assert login.count('apply_forward "$DB" "$f"') == 2, 'login must retain River-aware predecessor/successor application'
+    assert 'LOGIN_UPGRADE=3|3|3|true|true|false' in login
+
+login_runner_contract(races, upgrade)
+for bad_races, bad_upgrade in [
+    (races.replace('RETURNING s.id AS rotated', 'REMOVED'), upgrade),
+    (races.replace('LOGIN_ROTATION_RACE=1|1|1|0', 'LOGIN_ROTATION_RACE=1|2|1|1'), upgrade),
+    (races, upgrade.replace('apply_forward "$DB" "$f"', 'true')),
+    (races, upgrade.replace('[[ $f < ${login_files[0]} ]] || break', 'true')),
+]:
+    try:
+        login_runner_contract(bad_races, bad_upgrade)
+    except (AssertionError, ValueError):
+        pass
+    else:
+        raise AssertionError('login runner mutation escaped the guard')
+# Mutation witnesses: the guard must turn red when synchronization, the clock
+# boundary, predecessor discovery or the bootstrap case is removed.
+for bad_races, bad_upgrade in [
+    (races.replace('pg_blocking_pids(second.pid)', 'ARRAY[]::integer[]'), upgrade),
+    (races.replace('::inet);', "::inet,'2030-01-01Z'::timestamptz);"), upgrade),
+    (races.replace('BOOTSTRAP_RACE=', 'REMOVED='), upgrade),
+    (races.replace("result prune_skip 'pruned=0|0'", "result prune_skip 'pruned=1|1'"), upgrade),
+    (races.replace('if [[ $f == *_queue_authorization.sql ]]', 'if false'), upgrade),
+    (races, upgrade.replace('apply_forward "$DB" "$f"', 'true')),
+    (races, upgrade.replace('[[ $f < ${identity_files[0]} ]] || break', 'true')),
+]:
+    try:
+        identity_runner_contract(bad_races, bad_upgrade)
+    except (AssertionError, ValueError):
+        pass
+    else:
+        raise AssertionError('identity runner mutation escaped the guard')
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:
     assert (root / 'tests' / name).is_file(), name
@@ -186,10 +312,21 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('QUEUE_CROSS_TENANT_READ', 'db_queue.sql'),
                          ('RELIABILITY_LIMITS_GATE', 'db_reliability_limits.sql'),
                          ('CART_EXPECTED_REFUSAL', 'db_cart.sql'),
+                         ('QUOTES_SCHEMA_REQUIRED', 'db_quotes.sql'),
+                         ('OPS_METRICS_GATE', 'db_ops_metrics.sql'),
+                         ('IDENTITY_GATE', 'db_identity_auth.sql'),
+                         ('LOGIN_GATE', 'db_identity_login.sql'),
                          ('FULFILLMENT_GATE', 'db_fulfillment_returns.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
         assert failed.returncode == 31, (failed.stdout, failed.stderr)
         assert f'RUN tests/{name}' in failed.stdout
         assert 'PASS: module ownership' not in failed.stdout
+# check_pg_upgrade.sh: bad() only sets fail=1, so every bad() call must precede the
+# final `[[ $fail -eq 0 ]] || exit 1`, and that check must precede the overall PASS line.
+upgrade_lines = (root / 'scripts' / 'check_pg_upgrade.sh').read_text().splitlines()
+last_bad = max(i for i, line in enumerate(upgrade_lines) if re.search(r'(^|[|&;{ ])bad ', line))
+final_check = max(i for i, line in enumerate(upgrade_lines) if line.strip() == '[[ $fail -eq 0 ]] || exit 1')
+final_pass = max(i for i, line in enumerate(upgrade_lines) if line.startswith("echo 'PASS: security"))
+assert last_bad < final_check < final_pass, ('upgrade failures after the final exit check', last_bad + 1, final_check + 1, final_pass + 1)
 print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, preserves River ordering and propagates failures (mock go/psql; NO SQL executed)')

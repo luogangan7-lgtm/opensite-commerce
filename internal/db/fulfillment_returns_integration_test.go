@@ -27,6 +27,7 @@ import (
 	returnscontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/shipping"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tax"
@@ -103,7 +104,7 @@ func newFulfillmentFixture(t *testing.T) fulfillmentFixture {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: disposable migrated PG18 DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: disposable migrated PG18 DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -12,7 +16,17 @@
     "noUnusedParameters": true,
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
-    "types": ["bun", "vite/client"]
+    "types": [
+      "bun",
+      "vite/client"
+    ]
   },
-  "include": ["web/admin", "packages", "scripts/frontend", "tests/frontend", "playwright.config.ts"]
+  "include": [
+    "web/admin",
+    "packages",
+    "scripts/frontend",
+    "tests/frontend",
+    "playwright.config.ts",
+    "web/storefront/src"
+  ]
 }

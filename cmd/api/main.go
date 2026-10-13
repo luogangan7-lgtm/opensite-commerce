@@ -1,6 +1,8 @@
 // API executable is the composition entry point: env, signals and bootstrap.
-// It depends only on stdlib/bootstrap; all HTTP behavior lives in the platform.
-// Invalid registration fails startup; this executable performs no business IO.
+// Dependencies: stdlib/bootstrap/quotes application; module handlers (including
+// staff login) are installed through bootstrap, HTTP lives in the platform.
+// Quotes deny by default until trusted staff/customer/host authentication is wired.
+// Invalid registration fails startup; this executable delegates business IO to modules.
 package main
 
 import (
@@ -9,8 +11,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 )
 
 func main() {
@@ -21,12 +25,32 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger})
+	routes, closePublic, err := storefrontRoutes(ctx)
+	if err != nil {
+		logger.Error("Public read initialization failed", "error", err)
+		os.Exit(1)
+	}
+	defer closePublic()
+	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{Address: address, Logger: logger, Routes: routes, Quotes: quotes.NewApplication(nil)})
 	if err != nil {
 		logger.Error("API configuration failed", "error", err)
 		os.Exit(1)
 	}
 	defer closeRuntime()
+	staff, err := bootstrap.StaffLogin(ctx, os.Getenv("OSC_AUTH_DATABASE_URL"), os.Getenv("OSC_ADMIN_ORIGIN"), os.Getenv("OSC_AUTH_SIGNING_KEY_HEX"), os.Getenv("OSC_AUTH_TRUSTED_PROXIES"))
+	if err != nil {
+		logger.Error("staff login startup failed")
+		os.Exit(1)
+	}
+	if staff != nil {
+		config.Authenticator = staff.Authenticator()
+		config.Routes = append(config.Routes, staff.Routes()...)
+		defer func() {
+			closing, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = staff.Close(closing)
+		}()
+	}
 	if err := bootstrap.Run(ctx, config); err != nil {
 		logger.Error("API stopped", "error", err)
 		os.Exit(1)

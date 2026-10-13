@@ -146,17 +146,23 @@ TAX_DB=""
 CUSTOMERS_DB=""
 LEDGER_DB=""
 ORDERS_DB=""
+STOREFRONT_DB=""
+NOTIFICATIONS_DB=""
+QUOTES_DB=""
 CATALOG_DB=""
 CART_DB=""
 QUEUE_DB=""
 LIMITS_DB=""
+OPS_METRICS_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
+IDENTITY_DB=""
+LOGIN_DB=""
 FULFILLMENT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$FULFILLMENT_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$FULFILLMENT_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -743,12 +749,14 @@ SELECT 'LIMITS_UPGRADE='||count(*)||'|'||count(*) FILTER(WHERE status='dead_lett
 SQL
 )
 [[ $result == *'LIMITS_UPGRADE=4|2|2|10'* ]] || bad "limits populated upgrade: $result"
+# Complete the current app schema before the exact whole-schema role matrix.
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${limits_files[0]} ]] || continue
  apply_forward "$DB" "$f"
 done
 river_db "$DB" --verify
 db "$DB" -f tests/db_reliability_limits.sql >/dev/null
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; LIMITS_DB=""
 pass 'reliability limits upgrade preserves delivery identity, retires exhausted work, accepts live final ACK'
@@ -851,6 +859,305 @@ if ! db "$CART_DB" < tests/db_cart.sql >/dev/null || ! db "$CART_DB" < tests/db_
  bad 'cart owner/constraints/role matrix after populated upgrade'
 else pass 'cart upgrade preserves prior customers/catalog; owner/CAS and exact privilege gate pass'; fi
 admin -c "DROP DATABASE $CART_DB" >/dev/null; CART_DB=""
+
+# Public content capability is added only after all logical predecessors; the
+# same committed release/secret witnesses survive the forward role migration.
+storefront=(migrations/[0-9][0-9][0-9]_storefront_read.sql)
+[[ ${#storefront[@]} == 1 ]] || { echo 'FAIL: exactly one storefront read migration required' >&2; exit 1; }
+STOREFRONT_DB=storefront_upgrade_$$
+admin -c "CREATE DATABASE $STOREFRONT_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${storefront[0]} ]] || break
+ apply_forward "$STOREFRONT_DB" "$f"
+done
+db "$STOREFRONT_DB" < tests/fixtures/storefront_seed.sql >/dev/null
+before=$(db "$STOREFRONT_DB" -c "SELECT has_column_privilege('app_domain_resolver','app.page_revisions','document','SELECT')")
+[[ $before == f ]] || bad 'storefront predecessors unexpectedly grant page content'
+if red=$(db "$STOREFRONT_DB" < tests/db_storefront.sql 2>&1); then
+ bad 'storefront new SQL invariants unexpectedly pass before capability migration'
+elif [[ $red == *'permission denied for table site_releases'* ]]; then
+ pass 'storefront pre-migration negative: published content capability is absent (42501)'
+else bad "storefront pre-migration failed for an unexpected reason: $red"; fi
+apply_forward "$STOREFRONT_DB" "${storefront[0]}"
+result=$(db "$STOREFRONT_DB" <<'SQL'
+BEGIN READ ONLY;
+SET LOCAL ROLE app_domain_resolver;
+SELECT set_config('app.public_hostname','localhost',true);
+SELECT 'STOREFRONT_UPGRADE='||(SELECT count(*) FROM app.site_releases)||'|'||
+ (SELECT count(*) FROM app.page_revisions)||'|'||
+ (SELECT count(*) FROM app.page_revisions WHERE document::text LIKE '%DRAFT%');
+COMMIT;
+SQL
+)
+[[ $result == *'STOREFRONT_UPGRADE=1|2|0'* ]] || bad "storefront populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${storefront[0]} ]] || continue
+ apply_forward "$STOREFRONT_DB" "$f"
+done
+river_db "$STOREFRONT_DB" --verify
+if ! db "$STOREFRONT_DB" < tests/db_storefront.sql >/dev/null || ! db "$STOREFRONT_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'storefront RLS/role matrix after populated upgrade'
+else pass 'storefront upgrade exposes current sealed pinned pages; draft witnesses stay hidden'; fi
+admin -c "DROP DATABASE $STOREFRONT_DB" >/dev/null; STOREFRONT_DB=""
+
+# C23a: add only the metrics capability over populated pending and DLQ-only
+# tenants; preserve event identity/content and every prior forward migration.
+ops_metrics=(migrations/[0-9][0-9][0-9]_ops_metrics.sql)
+[[ ${#ops_metrics[@]} == 1 ]] || { bad 'exactly one ops-metrics migration required'; exit 1; }
+OPS_METRICS_DB=upgrade_ops_metrics_$$; DB=$OPS_METRICS_DB
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${ops_metrics[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('ops-existing-pending') RETURNING id AS ta \gset
+INSERT INTO app.tenants(name) VALUES('ops-existing-DLQ-only') RETURNING id AS tb \gset
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key,status,created_at)
+ VALUES(:'ta','ops.legacy','{"witness":"pending"}','test','legacy-pending','pending',clock_timestamp()-interval '1 minute'),
+       (:'tb','ops.legacy','{"witness":"dead"}','test','legacy-dead','dead_letter',clock_timestamp()-interval '1 hour');
+SQL
+apply_forward "$DB" "${ops_metrics[0]}"
+result=$(db "$DB" <<'SQL'
+SELECT 'OPS_PRESERVED='||count(*)||'|'||count(*) FILTER(WHERE status='pending' AND payload->>'witness'='pending')||'|'||
+ count(*) FILTER(WHERE status='dead_letter' AND payload->>'witness'='dead') FROM app.outbox_events;
+SET ROLE app_outbox_worker;
+SELECT 'OPS_METRICS='||pending||'|'||dead_letters||'|'||(oldest_pending_age_seconds>=60) FROM app.outbox_metrics();
+RESET ROLE;
+SQL
+)
+[[ $result == *'OPS_PRESERVED=2|1|1'* && $result == *'OPS_METRICS=1|1|true'* ]] || bad "ops-metrics populated upgrade: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${ops_metrics[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+river_db "$DB" --verify
+admin -c "DROP DATABASE $DB"; OPS_METRICS_DB=""
+pass 'ops metrics preserves pending/DLQ-only tenants and exposes only aggregate worker gauges'
+# Notifications additive upgrade: every actual predecessor, populated original
+# order event retained verbatim; historical source events are not silently sent.
+notifications=(migrations/[0-9][0-9][0-9]_notifications.sql)
+[[ ${#notifications[@]} == 1 ]] || { echo 'FAIL: one notifications migration required' >&2; exit 1; }
+NOTIFICATIONS_DB=notifications_upgrade_$$
+admin -c "CREATE DATABASE $NOTIFICATIONS_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${notifications[0]} ]] || break
+ apply_forward "$NOTIFICATIONS_DB" "$f"
+done
+db "$NOTIFICATIONS_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('notification-upgrade') RETURNING id AS t \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_orders_executor;
+INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+VALUES(:'t',uuidv7(),1,'upgrade',sha256('upgrade'::bytea),'{"email":"upgrade@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
+RESET ROLE;
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+VALUES(:'t','order.paid',jsonb_build_object('order_id',:'oid'),'orders.events','upgrade-source');
+SQL
+apply_forward "$NOTIFICATIONS_DB" "${notifications[0]}"
+result=$(db "$NOTIFICATIONS_DB" <<'SQL'
+SELECT t.id AS t,o.id AS oid FROM app.tenants t JOIN app.orders o ON o.tenant_id=t.id WHERE t.name='notification-upgrade' \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SELECT 'NOTIFICATIONS_UPGRADE='||(SELECT count(*) FROM app.outbox_events WHERE tenant_id=:'t' AND delivery_target='orders.events' AND status='pending' AND attempts=0 AND dedup_key='upgrade-source' AND payload=jsonb_build_object('order_id',:'oid'))||'|'||(SELECT count(*) FROM app.notification_deliveries WHERE tenant_id=:'t');
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(:'t','order.fulfilled',jsonb_build_object('order_id',:'oid'),'orders.events','upgrade-new');
+SELECT 'NOTIFICATIONS_NEW='||(SELECT count(*) FROM app.notification_deliveries WHERE tenant_id=:'t' AND recipient='upgrade@example.test' AND template_key='order.shipped')||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id=:'t' AND delivery_target='notifications.email');
+SQL
+)
+[[ $result == *'NOTIFICATIONS_UPGRADE=1|0'* && $result == *'NOTIFICATIONS_NEW=1|1'* ]] || bad "notification populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${notifications[0]} ]] || continue
+ apply_forward "$NOTIFICATIONS_DB" "$f"
+done
+db "$NOTIFICATIONS_DB" -f tests/db_notifications.sql >/dev/null
+db "$NOTIFICATIONS_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $NOTIFICATIONS_DB" >/dev/null; NOTIFICATIONS_DB=""
+pass 'notifications upgrade preserves original order outbox and fans out only newly inserted events'
+
+
+# C-02a: discover the identity upgrade by suffix. Seed only after ALL filename-
+# ordered predecessors; retain a full-row snapshot so ids, hashes and state are
+# independently compared, then apply every later module before the exact matrix.
+identity_files=(migrations/[0-9][0-9][0-9]_identity_auth.sql)
+[[ ${#identity_files[@]} -eq 1 && -f ${identity_files[0]} ]] || { echo 'FAIL: exactly one identity auth migration required'; exit 1; }
+IDENTITY_DB=upgrade_identity_$$
+DB=$IDENTITY_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${identity_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name,status) VALUES('identity-upgrade','suspended') RETURNING id AS t \gset
+INSERT INTO app.users(email,password_hash,status)
+ VALUES('identity-upgrade@example.test','legacy-preserved-password-hash','disabled') RETURNING id AS u \gset
+INSERT INTO app.tenant_memberships(tenant_id,user_id,role,status)
+ VALUES(:'t',:'u','viewer','suspended');
+INSERT INTO app.api_keys(tenant_id,issued_by,key_prefix,key_hash,scopes,expires_at,revoked_at)
+ VALUES(:'t',:'u','legacy-upgrade',sha256('identity-upgrade-key'::bytea),ARRAY['catalog:read'],
+        '2031-01-01T00:00:00Z','2030-01-01T00:00:00Z');
+CREATE TABLE public.identity_upgrade_expected(entity text PRIMARY KEY,payload jsonb NOT NULL);
+INSERT INTO public.identity_upgrade_expected
+ SELECT 'tenant',to_jsonb(t) FROM app.tenants t WHERE t.id=:'t'
+ UNION ALL SELECT 'user',to_jsonb(u) FROM app.users u WHERE u.id=:'u'
+ UNION ALL SELECT 'membership',to_jsonb(m) FROM app.tenant_memberships m WHERE m.tenant_id=:'t' AND m.user_id=:'u'
+ UNION ALL SELECT 'api_key',to_jsonb(k) FROM app.api_keys k WHERE k.tenant_id=:'t' AND k.issued_by=:'u';
+SQL
+apply_forward "$DB" "${identity_files[0]}"
+result=$(db "$DB" <<'SQL'
+WITH actual(entity,payload) AS (
+ SELECT 'tenant',to_jsonb(t) FROM app.tenants t WHERE t.name='identity-upgrade'
+ UNION ALL SELECT 'user',to_jsonb(u) FROM app.users u WHERE u.email_normalized='identity-upgrade@example.test'
+ UNION ALL SELECT 'membership',to_jsonb(m) FROM app.tenant_memberships m JOIN app.users u ON u.id=m.user_id WHERE u.email_normalized='identity-upgrade@example.test'
+ UNION ALL SELECT 'api_key',to_jsonb(k) FROM app.api_keys k WHERE k.key_prefix='legacy-upgrade'
+)
+SELECT 'IDENTITY_UPGRADE='||(SELECT count(*) FROM public.identity_upgrade_expected)||'|'||
+ (SELECT count(*) FROM actual)||'|'||
+ (SELECT count(*) FROM actual a JOIN public.identity_upgrade_expected e USING(entity,payload));
+SQL
+)
+if [[ $result == 'IDENTITY_UPGRADE=4|4|4' ]]; then pass 'identity upgrade preserves all legacy user/tenant/viewer/API-key ids, hashes and state'
+else bad "identity upgrade witness: $result"; fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${identity_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+
+# Execute-only bootstrap after a populated identity upgrade, with no prior owner.
+# Every call uses a real SET ROLE transaction, including the isolation rejection.
+# The deliberately duplicate email must leave no new tenant/user/owner behind.
+if out=$(db "$DB" -v VERBOSITY=verbose 2>&1 <<'SQL'
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('identity-upgrade@example.test','duplicate rollback',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SQL
+); then bad 'bootstrap accepted duplicate legacy email'
+elif [[ $out != *23505* ]]; then bad "bootstrap duplicate email failed for another reason: $out"
+elif [[ $(db "$DB" -c "SELECT (SELECT count(*) FROM app.users)||'|'||(SELECT count(*) FROM app.tenants)||'|'||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')") != '1|1|0' ]]; then bad 'bootstrap duplicate-email rollback left user/tenant/owner'
+else pass 'bootstrap duplicate-email rollback preserves legacy user and creates no tenant/owner'; fi
+result=$(db "$DB" <<'SQL'
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('upgraded-owner@example.test','upgraded first owner',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SELECT 'BOOTSTRAP_UPGRADE='||(SELECT count(*) FROM app.users)||'|'||
+ (SELECT count(*) FROM app.tenants)||'|'||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')||'|'||
+ EXISTS(SELECT FROM app.tenant_memberships m JOIN app.users u ON u.id=m.user_id JOIN app.tenants t ON t.id=m.tenant_id
+  WHERE m.role='owner' AND m.status='active' AND u.email_normalized='upgraded-owner@example.test'
+   AND u.status='active' AND t.name='upgraded first owner' AND t.status='active'
+   AND u.password_hash='$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+SQL
+)
+if [[ $result == *'BOOTSTRAP_UPGRADE=2|2|1|true'* ]]; then pass 'bootstrap creates first upgraded installation tenant/user/owner through app_admin_bootstrap'
+else bad "bootstrap upgraded first-owner witness: $result"; fi
+if out=$(db "$DB" -v VERBOSITY=verbose 2>&1 <<'SQL'
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('other-owner@example.test','another tenant',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SQL
+); then bad 'bootstrap created a second installation owner in another tenant'
+elif [[ $out != *55000* || $out != *BOOTSTRAP_OWNER_EXISTS* ]]; then bad "bootstrap repeated call failed for another reason: $out"
+else pass 'bootstrap rejects second owner globally across tenants'; fi
+if out=$(db "$DB" -v VERBOSITY=verbose 2>&1 <<'SQL'
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('rr-owner@example.test','repeatable-read tenant',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SQL
+); then bad 'bootstrap accepted REPEATABLE READ'
+elif [[ $out != *25000* || $out != *BOOTSTRAP_REQUIRES_READ_COMMITTED* ]]; then bad "bootstrap isolation rejection failed for another reason: $out"
+else pass 'bootstrap requires READ COMMITTED in a real app_admin_bootstrap transaction'; fi
+if [[ $(db "$DB" -c "SELECT (SELECT count(*) FROM app.users)||'|'||(SELECT count(*) FROM app.tenants)||'|'||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')") != '2|2|1' ]]; then
+ bad 'bootstrap rejected repeat/isolation calls left partial user/tenant/owner rows'
+fi
+db "$DB" -f tests/db_identity_auth.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"
+IDENTITY_DB=""
+
+# C-02b: start immediately before the logical session-activity migration, after
+# every predecessor (including identity-auth), then compare all legacy row fields.
+login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)
+[[ ${#login_files[@]} -eq 1 && -f ${login_files[0]} ]] || { echo 'FAIL: exactly one identity login migration required'; exit 1; }
+LOGIN_DB=upgrade_login_$$
+DB=$LOGIN_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${login_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.users(email,password_hash) VALUES('login-upgrade@example.test','fixture-only') RETURNING id AS u \gset
+INSERT INTO app.auth_sessions(user_id,token_hash,created_at,expires_at,revoked_at) VALUES
+ (:'u',sha256('legacy-live'::bytea),'2040-01-01Z','2040-01-02Z',NULL),
+ (:'u',sha256('legacy-expired'::bytea),'2020-01-01Z','2020-01-02Z',NULL),
+ (:'u',sha256('legacy-revoked'::bytea),'2040-01-01Z','2040-01-02Z','2040-01-01T00:01Z');
+CREATE TABLE public.login_upgrade_expected AS SELECT id,to_jsonb(s) AS payload FROM app.auth_sessions s;
+SQL
+apply_forward "$DB" "${login_files[0]}"
+result=$(db "$DB" <<'SQL'
+SELECT 'LOGIN_UPGRADE='||(SELECT count(*) FROM app.auth_sessions)||'|'||
+ (SELECT count(*) FROM app.auth_sessions s JOIN public.login_upgrade_expected e ON e.id=s.id
+  AND e.payload=to_jsonb(s)-'last_seen_at')||'|'||
+ (SELECT count(*) FROM app.auth_sessions WHERE last_seen_at=created_at)||'|'||
+ (SELECT a.attnotnull FROM pg_attribute a WHERE a.attrelid='app.auth_sessions'::regclass
+  AND a.attname='last_seen_at' AND NOT a.attisdropped)||'|'||
+ has_column_privilege('app_auth','app.auth_sessions','last_seen_at','UPDATE')||'|'||
+ has_column_privilege('app_runtime','app.auth_sessions','last_seen_at','UPDATE');
+SQL
+)
+if [[ $result == 'LOGIN_UPGRADE=3|3|3|true|true|false' ]]; then
+ pass 'login upgrade preserves old session ids/hashes/expiry/revocation, backfills original creation and restricts activity writes'
+else bad "login upgrade witness: $result"; fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${login_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" -f tests/db_identity_login.sql >/dev/null
+db "$DB" -f tests/db_identity_auth.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"
+LOGIN_DB=""
+
+# Aggregate only after all module upgrade steps.
+[[ $fail -eq 0 ]] || exit 1
+# Quotes takes over the existing005 inquiry table without rebuilding contacts.
+# Filename order applies every predecessor, including any integrator renumbering.
+quotes=(migrations/[0-9][0-9][0-9]_quotes.sql)
+[[ ${#quotes[@]} == 1 ]] || { echo 'FAIL: exactly one quotes migration required' >&2; exit 1; }
+QUOTES_DB=quotes_upgrade_$$
+admin -c "CREATE DATABASE $QUOTES_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${quotes[0]} ]] || break
+ apply_forward "$QUOTES_DB" "$f"
+done
+db "$QUOTES_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('quote-existing') RETURNING id AS t \gset
+INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','legacy') RETURNING id AS o \gset
+INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','legacy') RETURNING id AS s \gset
+INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,buyer_name,message,status)
+VALUES(:'t',:'s','legacy@example.invalid','Legacy contact','preserve this inquiry','contacted');
+SQL
+apply_forward "$QUOTES_DB" "${quotes[0]}"
+result=$(db "$QUOTES_DB" -c "SELECT 'QUOTES_UPGRADE='||count(*) FROM app.inquiries WHERE buyer_email='legacy@example.invalid' AND buyer_name='Legacy contact' AND message='preserve this inquiry' AND status='contacted' AND buyer_company_id IS NULL;")
+[[ $result == 'QUOTES_UPGRADE=1' ]] || bad "quotes existing inquiry contact preservation: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${quotes[0]} ]] || continue
+ apply_forward "$QUOTES_DB" "$f"
+done
+river_db "$QUOTES_DB" --verify
+if ! db "$QUOTES_DB" < tests/db_quotes.sql >/dev/null || ! db "$QUOTES_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'quotes lifecycle and exact role matrix after populated inquiry upgrade'
+else pass 'quotes forward ALTER preserves existing contact inquiry and runtime lifecycle/grants'; fi
+admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
+
 # C-20a: preserve a pre-module paid/committed order, then allocate shipment
 # and compensate its unshipped remainder. Module identity follows filename suffix.
 fulfillment_files=(migrations/[0-9][0-9][0-9]_fulfillment_returns.sql)
@@ -904,5 +1211,6 @@ db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; FULFILLMENT_DB=""
 pass 'fulfillment upgrade preserves paid inventory and compensates only unshipped quantities'
 
+
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits and cart upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login and fulfillment/returns upgrade gates'

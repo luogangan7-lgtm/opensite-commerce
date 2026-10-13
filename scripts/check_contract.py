@@ -27,9 +27,32 @@ CART_PATHS = {
     "setCartLine": ("/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}", "put"),
     "deleteCartLine": ("/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}", "delete"),
 }
-SELF_OPERATIONS = {"deleteAdminSession", "getCurrentActor", "listAdminSessions", "revokeAdminSession"}
+SELF_OPERATIONS = {"deleteAdminSession", "getCurrentActor", "listAdminSessions", "revokeAdminSession",
+                   "logoutCurrentStaffSession", "getAdminSession"}
+STAFF_OPERATIONS = {
+    "getAdminLoginChallenge": ("/api/v1/auth/login", "get", "Public"),
+    "createStaffLoginSession": ("/api/v1/auth/login", "post", "Public"),
+    "logoutCurrentStaffSession": ("/api/v1/auth/logout", "post", "AuthenticatedSelf"),
+    "getAdminSession": ("/api/v1/auth/session", "get", "AuthenticatedSelf"),
+}
 COOKIE = [{"adminSession": []}]
 COOKIE_OR_KEY = [{"adminSession": []}, {"ApiKeyBearer": []}]
+# Buyer identity is supplied by the customer-auth seam; Public here describes
+# the platform router access class, never permission to bypass trusted actors.
+BUYER_QUOTES = {
+    "getBuyerQuote": ("get", "/api/public/v1/quotes/{quote_id}"),
+    "acceptQuote": ("post", "/api/public/v1/quotes/{quote_id}/accept"),
+    "approveQuote": ("post", "/api/public/v1/quotes/{quote_id}/approve"),
+    "rejectQuote": ("post", "/api/public/v1/quotes/{quote_id}/reject"),
+}
+SELLER_QUOTES = {
+    "createQuote": ("post", "/api/v1/t/{tenant_id}/quotes"),
+    "getQuote": ("get", "/api/v1/t/{tenant_id}/quotes/{quote_id}"),
+    "sendQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/send"),
+    "withdrawQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw"),
+    "expireQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/expire"),
+}
+QUOTE_OPERATIONS = SELLER_QUOTES.keys() | BUYER_QUOTES.keys() | {"submitInquiry"}
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -124,7 +147,51 @@ def validate_contract(api):
                 f"Problem response mapping drift: {name}")
 
     operations = operation_inventory(api)
-    require(SELF_OPERATIONS | {"createAdminSession", "health"} <= operations.keys(), "identity/health operation missing")
+    require(SELF_OPERATIONS | {"createAdminSession", "health"} | STAFF_OPERATIONS.keys() <= operations.keys(), "identity/health operation missing")
+    notification_routes = {
+        "listNotificationFailures": ("/api/v1/t/{tenant_id}/notifications/failures", "get"),
+        "redriveNotification": ("/api/v1/t/{tenant_id}/notifications/{notification_id}/redrive", "post"),
+    }
+    require(notification_routes.keys() <= operations.keys(), "notification operation missing")
+    for ident, expected in notification_routes.items():
+        path, method, op = operations[ident]
+        require((path, method) == expected and op.get("x-opensite-status") == "implemented" and
+                op.get("x-opensite-access") == "AdminOrAPIKey" and
+                op.get("x-required-scope") == "notifications:write", f"notification route/scope/status drift: {ident}")
+        require("requestBody" not in op, f"notification body forbidden: {ident}")
+        response = "NotificationFailures" if ident == "listNotificationFailures" else "NotificationRedriveReceipt"
+        require(op["responses"].get("200", {}).get("content") ==
+                {"application/json": {"schema": {"$ref": "#/components/schemas/" + response}}},
+                f"notification success response drift: {ident}")
+        for code, name in {"400": "BadRequest", "404": "NotFound", "500": "InternalServerError", "503": "ServiceUnavailable"}.items():
+            require(op["responses"].get(code) == {"$ref": "#/components/responses/" + name},
+                    f"notification error response drift: {ident}")
+    list_op = operations["listNotificationFailures"][2]
+    limit = next((p for p in list_op.get("parameters", []) if p.get("name") == "limit"), {})
+    require(limit.get("in") == "query" and limit.get("schema") ==
+            {"type": "integer", "format": "int32", "minimum": 1, "maximum": 100, "default": 25},
+            "notification limit must be bounded")
+    key = api["components"]["parameters"].get("NotificationIdempotencyKey", {})
+    require(key.get("name") == "Idempotency-Key" and key.get("in") == "header" and key.get("required") is True and
+            key.get("schema") == {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[!-~]+$"},
+            "notification redrive key must be bounded printable ASCII")
+    require({"$ref": "#/components/parameters/NotificationIdempotencyKey"} in
+            operations["redriveNotification"][2].get("parameters", []), "notification redrive key missing")
+    schemas = api["components"]["schemas"]
+    failure = schemas["NotificationFailure"]
+    require(failure.get("additionalProperties") is False and set(failure["properties"]) ==
+            {"id", "event_id", "template_key", "status", "attempts", "generation", "created_at", "updated_at", "safe_error"},
+            "notification failure must expose only safe fields")
+    require(failure["properties"]["safe_error"] ==
+            {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z0-9_]+$"},
+            "notification error must be a bounded safe code")
+    require(failure["properties"]["status"].get("enum") == ["failed", "dead_letter", "uncertain"],
+            "notification failure states drift")
+    receipt = schemas["NotificationRedriveReceipt"]
+    require(receipt.get("additionalProperties") is False and set(receipt["properties"]) ==
+            {"notification_id", "token", "status", "generation"} and
+            receipt["properties"]["status"].get("enum") == ["pending"], "notification receipt must expose only queued safe fields")
+
     for ident, (path, method, op) in operations.items():
         require(op.get("x-opensite-status") in {"planned", "implemented"}, f"explicit operation status required: {ident}")
         require(isinstance(op.get("responses"), dict) and bool(op["responses"]), f"nonempty responses required: {ident}")
@@ -146,7 +213,7 @@ def validate_contract(api):
             require(tenant_parameter.get("required") is True and tenant_parameter.get("schema") ==
                     {"type": "string", "format": "uuid"}, f"required tenant UUID parameter missing: {ident}")
         if access == "Public":
-            require(ident in {"health", "createAdminSession", "submitInquiry"} and security == [] and
+            require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite", "getAdminLoginChallenge", "createStaffLoginSession"} | BUYER_QUOTES.keys() and security == [] and
                     "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
         elif access == "Storefront":
             require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and
@@ -171,6 +238,26 @@ def validate_contract(api):
             require(security in (COOKIE_OR_KEY, list(reversed(COOKIE_OR_KEY))), f"cookie OR API key required: {ident}")
         else:
             raise ValueError(f"access policy missing or unsupported: {ident}")
+        if ident in QUOTE_OPERATIONS:
+            require(op["x-opensite-status"] == "implemented", f"quote operation status drift: {ident}")
+        if ident == "submitInquiry":
+            require((path, method, access) == ("/api/public/v1/inquiries", "post", "Public"),
+                    "public inquiry route/access drift")
+        if ident in BUYER_QUOTES:
+            require((method, path) == BUYER_QUOTES[ident], f"buyer quote route drift: {ident}")
+            require(access == "Public" and op.get("x-opensite-trusted-buyer") == "required",
+                    f"trusted buyer declaration required: {ident}")
+        elif "x-opensite-trusted-buyer" in op:
+            raise ValueError(f"trusted buyer marker outside buyer quote operation: {ident}")
+        if ident in SELLER_QUOTES:
+            require((method, path) == SELLER_QUOTES[ident], f"seller quote route drift: {ident}")
+            require(access == "AdminOrAPIKey" and scope == ("quotes:read" if ident == "getQuote" else "quotes:write"),
+                    f"seller quotes scope required: {ident}")
+        if ident in SELLER_QUOTES.keys() | BUYER_QUOTES.keys() and method != "get":
+            headers = {p["name"]: p for p in parameters if p["in"] == "header"}
+            for header in ("If-Match", "Idempotency-Key"):
+                require(headers.get(header, {}).get("required") is True,
+                        f"quote write {header} required: {ident}")
         if ident in CART_OPERATIONS:
             require((path, method) == CART_PATHS[ident] and access == "Storefront" and
                     op["x-opensite-status"] == "implemented", f"cart route/access/status drift: {ident}")
@@ -178,15 +265,21 @@ def validate_contract(api):
             require(access == "AuthenticatedSelf", f"self identity access drift: {ident}")
         if access in {"AdminSession", "AdminOrAPIKey"}:
             require(tenant, f"private business operation requires tenant path: {ident}")
-        if ident == "createAdminSession":
+        if ident in {"createAdminSession", "createStaffLoginSession"}:
             require(access == "Public" and method == "post" and "x-required-scope" not in op, "login must be Public with pre-login CSRF")
+        if ident in STAFF_OPERATIONS:
+            require((path, method, access) == STAFF_OPERATIONS[ident] and op["x-opensite-status"] == "implemented",
+                    f"implemented staff declaration drift: {ident}")
+        if ident == "createStaffLoginSession":
+            challenge = next((p for p in parameters if p["in"] == "cookie" and p["name"] == "__Host-osc_login_csrf"), {})
+            require(challenge.get("required") is True, "staff login requires anonymous challenge cookie")
         if ident == "health":
             require((path, method, access, op["x-opensite-status"]) == ("/healthz", "get", "Public", "implemented"), "health declaration drift")
             require(set(op["responses"]) == {"204"} and "content" not in op["responses"]["204"], "health is a bodyless 204")
             continue
         for status, name in PROBLEM_RESPONSES.items():
             require(op["responses"].get(status) == {"$ref": "#/components/responses/" + name}, f"missing shared {status} mapping: {ident}")
-        if method in {"post", "put", "patch", "delete"} and access != "Storefront" and (access != "Public" or ident == "createAdminSession"):
+        if method in {"post", "put", "patch", "delete"} and access != "Storefront" and (access != "Public" or ident in {"createAdminSession", "createStaffLoginSession"}):
             headers = {p["name"]: p for p in parameters if p["in"] == "header"}
             required = access != "AdminOrAPIKey"
             for header in ("Origin", "X-CSRF-Token"):
@@ -196,6 +289,7 @@ def validate_contract(api):
             require({"412", "428"} <= op["responses"].keys(), f"If-Match mappings missing: {ident}")
         if any(p["name"] == "Idempotency-Key" for p in parameters):
             require({"409", "422"} <= op["responses"].keys(), f"idempotency mappings missing: {ident}")
+    require(QUOTE_OPERATIONS <= operations.keys(), "quote operation missing")
     require(CART_OPERATIONS <= operations.keys(), "cart operation missing")
     cart_token = schemes.get("CartToken", {})
     require((cart_token.get("type"), cart_token.get("in"), cart_token.get("name")) ==
