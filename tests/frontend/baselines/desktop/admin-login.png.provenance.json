@@ -3,7 +3,7 @@
   "snapshot": "desktop/admin-login.png",
   "scope": "admin",
   "sourceFingerprint": "db762bad5952e9d28ed55278292a2a06e012416e5ae8edaa5d04c8401ce1e38d",
-  "pngSha256": "a2cd6710f8bfcb131d3f5505e95a0f59b1453515c7cd1f55f7d9c949e08165fa",
+  "pngSha256": "1d240cfad15d81453f71e55b23e73cfe6ea92a7a865987baa93f0d2e498c528c",
   "scopeSnapshots": [
     "desktop/admin-create.png",
     "desktop/admin-edit.png",
