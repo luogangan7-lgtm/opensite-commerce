@@ -765,6 +765,49 @@ got=$(sql <<<"SELECT generation||'|'||status||'|'||(SELECT count(*) FROM app.not
 echo "notification concurrent redrive: $got (expected 2|pending|1|2)"
 [[ $got == '2|pending|1|2' ]] || fail=1
 
+# Quotes: freeze a pending quote and use the same expected version for both
+# writers. Run both deterministic winners; a rowlock wait precedes gate release.
+for winner in approve withdraw; do
+ read -r T U A Q <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('quote-race') RETURNING id AS t \gset
+INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','R') RETURNING id AS o \gset
+INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','R') RETURNING id AS s \gset
+INSERT INTO app.users(email,password_hash) VALUES(uuidv7()::text||'@race.invalid','fixture') RETURNING id AS u \gset
+INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES(:'t',:'u','admin');
+INSERT INTO app.customers(tenant_id,email) VALUES(:'t',uuidv7()::text||'@race.invalid') RETURNING id AS b \gset
+INSERT INTO app.customers(tenant_id,email) VALUES(:'t',uuidv7()::text||'@race.invalid') RETURNING id AS a \gset
+INSERT INTO app.buyer_companies(tenant_id,name) VALUES(:'t','R') RETURNING id AS c \gset
+INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code)
+VALUES(:'t',:'c',:'b','purchaser'),(:'t',:'c',:'a','approver');
+INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message) VALUES(:'t',:'s','race@example.invalid','race') RETURNING id AS i \gset
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_runtime;
+SELECT app.create_quote(:'t',:'s',:'i',:'c',:'u','USD',100,0,0,100,'{}',clock_timestamp()+interval '1 hour',
+ '[{"line_no":1,"description":"race","quantity":1,"unit_price":100,"line_total":100,"snapshot":{}}]') AS q \gset
+SELECT app.transition_quote(:'t',:'q',1,'send','staff',:'u');
+SELECT app.transition_quote(:'t',:'q',2,'accept','customer',:'b');
+COMMIT;
+SELECT :'t'||' '||:'u'||' '||:'a'||' '||:'q';
+SQL
+)"
+ approve="SELECT app.transition_quote('$T','$Q',3,'approve','customer','$A');"
+ withdraw="SELECT app.transition_quote('$T','$Q',3,'withdraw','staff','$U');"
+ first=$approve; second=$withdraw; expected=approved; approvals=1
+ if [[ $winner == withdraw ]]; then first=$withdraw; second=$approve; expected=withdrawn; approvals=0; fi
+ gate_close 50
+ tx quote_first app_runtime "$T" "$first $(park 50)" &
+ await quote_first advisory
+ tx quote_second app_runtime "$T" "$second" &
+ await quote_second "${ROWLOCK[@]}"
+ gate_open 50; wait
+ expect quote_first ok; expect quote_second QUOTES_VERSION; expect quote_second P0003
+ got=$(sql <<<"SELECT status||'|'||version||'|'||(SELECT count(*) FROM app.quote_approvals WHERE tenant_id='$T' AND quote_id='$Q')||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T' AND payload->>'quote_id'='$Q') FROM app.quotes WHERE tenant_id='$T' AND id='$Q';")
+ echo "quote $winner/contender race: $got (expected $expected|4|$approvals|4)"
+ [[ $got == "$expected|4|$approvals|4" ]] || fail=1
+done
+
+
 # C09b gates 80/81: controlled publication site-lock/CAS and ABA restore fence.
 read -r CMS_T CMS_S <<<"$(sql <<'SQL' | tail -1
 INSERT INTO app.tenants(name) VALUES('cms-race-80') RETURNING id AS t \gset
@@ -829,7 +872,7 @@ got=$(sql <<<"SELECT s.publication_revision||'|'||d.revision||'|'||d.status||'|'
 echo "CMS gate82 apply/publish lock order: $got (expected 2|2|open|1)"
 [[ $got == '2|2|open|1' ]] || fail=1
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders contract" >&2; exit 1; fi
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
@@ -840,6 +883,7 @@ echo 'PASS: ledger identical and conflicting posting races preserve one posted j
 echo 'PASS: catalog stale CAS waits for row lock, rechecks version and leaves winner unchanged'
 echo 'PASS: cart row-lock/CAS contender cannot overwrite winner line or version'
 echo 'PASS: orders pay/cancel and prelock/expiry races conserve inventory and events'
+echo 'PASS: quote approve/withdraw row-lock CAS races have exactly one winner and atomic outbox/approval'
 echo 'PASS: CMS gate80 one publisher, gate81 restore ABA epoch fence, gate82 apply/publish lock order'
 # Focused native River/claim/fence gates cannot silently skip for missing PG.
 reliability_packages=(./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)

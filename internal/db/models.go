@@ -217,16 +217,17 @@ type AppIdempotencyRecord struct {
 }
 
 type AppInquiry struct {
-	TenantID   pgtype.UUID        `json:"tenant_id"`
-	SiteID     pgtype.UUID        `json:"site_id"`
-	ID         pgtype.UUID        `json:"id"`
-	ProductID  pgtype.UUID        `json:"product_id"`
-	BuyerEmail string             `json:"buyer_email"`
-	BuyerName  pgtype.Text        `json:"buyer_name"`
-	Quantity   pgtype.Numeric     `json:"quantity"`
-	Message    string             `json:"message"`
-	Status     string             `json:"status"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	SiteID         pgtype.UUID        `json:"site_id"`
+	ID             pgtype.UUID        `json:"id"`
+	ProductID      pgtype.UUID        `json:"product_id"`
+	BuyerEmail     string             `json:"buyer_email"`
+	BuyerName      pgtype.Text        `json:"buyer_name"`
+	Quantity       pgtype.Numeric     `json:"quantity"`
+	Message        string             `json:"message"`
+	Status         string             `json:"status"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	BuyerCompanyID pgtype.UUID        `json:"buyer_company_id"`
 }
 
 type AppInventoryMovement struct {
@@ -554,6 +555,50 @@ type AppProductVariant struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	Version         int64              `json:"version"`
 	LifecycleStatus string             `json:"lifecycle_status"`
+}
+
+type AppQuote struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	ID             pgtype.UUID        `json:"id"`
+	SiteID         pgtype.UUID        `json:"site_id"`
+	InquiryID      pgtype.UUID        `json:"inquiry_id"`
+	BuyerCompanyID pgtype.UUID        `json:"buyer_company_id"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	Currency       string             `json:"currency"`
+	Subtotal       int64              `json:"subtotal"`
+	Tax            int64              `json:"tax"`
+	Shipping       int64              `json:"shipping"`
+	Total          int64              `json:"total"`
+	Snapshot       []byte             `json:"snapshot"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	Status         string             `json:"status"`
+	Version        int64              `json:"version"`
+	AcceptedBy     pgtype.UUID        `json:"accepted_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AppQuoteApproval struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	QuoteID        pgtype.UUID        `json:"quote_id"`
+	BuyerCompanyID pgtype.UUID        `json:"buyer_company_id"`
+	RequestedBy    pgtype.UUID        `json:"requested_by"`
+	DecidedBy      pgtype.UUID        `json:"decided_by"`
+	Decision       string             `json:"decision"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppQuoteLine struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	QuoteID     pgtype.UUID `json:"quote_id"`
+	LineNo      int32       `json:"line_no"`
+	ProductID   pgtype.UUID `json:"product_id"`
+	VariantID   pgtype.UUID `json:"variant_id"`
+	Description string      `json:"description"`
+	Quantity    int64       `json:"quantity"`
+	UnitPrice   int64       `json:"unit_price"`
+	LineTotal   int64       `json:"line_total"`
+	Snapshot    []byte      `json:"snapshot"`
 }
 
 type AppShippingProfile struct {

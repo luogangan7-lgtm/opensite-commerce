@@ -20,19 +20,23 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
+	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
 
 type Config struct {
-	Address       string
-	Logger        *slog.Logger
-	Authenticator httpapi.Authenticator
-	Routes        []httpapi.Route
-	Catalog       catalog.Config
-	Media         media.Config
-	Cart          *cart.Module
-	CMS           publish.CMSHTTPConfig
-	Notifications notificationcontract.Service
+	Address                  string
+	Logger                   *slog.Logger
+	Authenticator            httpapi.Authenticator
+	Routes                   []httpapi.Route
+	Catalog                  catalog.Config
+	Media                    media.Config
+	Cart                     *cart.Module
+	Quotes                   quoteshttp.QuotesService
+	QuotesBuyerAuthenticator httpapi.Authenticator
+	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
+	CMS                      publish.CMSHTTPConfig
+	Notifications            notificationcontract.Service
 }
 
 func New(config Config) (server *http.Server, err error) {
@@ -53,6 +57,9 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, media.New(config.Media).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
 	routes = append(routes, publish.NewCMSHandler(config.CMS).Routes()...)
+	if config.Quotes != nil {
+		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
+	}
 	routes = append(routes, notificationhttp.New(config.Notifications).Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {

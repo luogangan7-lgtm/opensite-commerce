@@ -148,6 +148,7 @@ LEDGER_DB=""
 ORDERS_DB=""
 STOREFRONT_DB=""
 NOTIFICATIONS_DB=""
+QUOTES_DB=""
 CMS_DB=""
 CATALOG_DB=""
 CART_DB=""
@@ -159,7 +160,7 @@ PRICING_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$CMS_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$CMS_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -746,6 +747,7 @@ SELECT 'LIMITS_UPGRADE='||count(*)||'|'||count(*) FILTER(WHERE status='dead_lett
 SQL
 )
 [[ $result == *'LIMITS_UPGRADE=4|2|2|10'* ]] || bad "limits populated upgrade: $result"
+# Complete the current app schema before the exact whole-schema role matrix.
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${limits_files[0]} ]] || continue
  apply_forward "$DB" "$f"
@@ -972,6 +974,37 @@ admin -c "DROP DATABASE $NOTIFICATIONS_DB" >/dev/null; NOTIFICATIONS_DB=""
 pass 'notifications upgrade preserves original order outbox and fans out only newly inserted events'
 
 
+# Quotes takes over the existing005 inquiry table without rebuilding contacts.
+# Filename order applies every predecessor, including any integrator renumbering.
+quotes=(migrations/[0-9][0-9][0-9]_quotes.sql)
+[[ ${#quotes[@]} == 1 ]] || { echo 'FAIL: exactly one quotes migration required' >&2; exit 1; }
+QUOTES_DB=quotes_upgrade_$$
+admin -c "CREATE DATABASE $QUOTES_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${quotes[0]} ]] || break
+ apply_forward "$QUOTES_DB" "$f"
+done
+db "$QUOTES_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('quote-existing') RETURNING id AS t \gset
+INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','legacy') RETURNING id AS o \gset
+INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','legacy') RETURNING id AS s \gset
+INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,buyer_name,message,status)
+VALUES(:'t',:'s','legacy@example.invalid','Legacy contact','preserve this inquiry','contacted');
+SQL
+apply_forward "$QUOTES_DB" "${quotes[0]}"
+result=$(db "$QUOTES_DB" -c "SELECT 'QUOTES_UPGRADE='||count(*) FROM app.inquiries WHERE buyer_email='legacy@example.invalid' AND buyer_name='Legacy contact' AND message='preserve this inquiry' AND status='contacted' AND buyer_company_id IS NULL;")
+[[ $result == 'QUOTES_UPGRADE=1' ]] || bad "quotes existing inquiry contact preservation: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${quotes[0]} ]] || continue
+ apply_forward "$QUOTES_DB" "$f"
+done
+river_db "$QUOTES_DB" --verify
+if ! db "$QUOTES_DB" < tests/db_quotes.sql >/dev/null || ! db "$QUOTES_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'quotes lifecycle and exact role matrix after populated inquiry upgrade'
+else pass 'quotes forward ALTER preserves existing contact inquiry and runtime lifecycle/grants'; fi
+admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
+
+
 # Controlled CMS upgrade preserves populated legacy drafts/releases and adds
 # capability-fenced managed drafts without rewriting predecessor migrations.
 cms=(migrations/[0-9][0-9][0-9]_cms_publish.sql)
@@ -1001,4 +1034,4 @@ admin -c "DROP DATABASE $CMS_DB" >/dev/null; CMS_DB=""
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications and CMS upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes and CMS upgrade gates'
