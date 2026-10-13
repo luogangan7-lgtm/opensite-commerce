@@ -98,8 +98,7 @@ func (a *ConversionApplication) Convert(ctx context.Context, quoteID, key string
 			}
 			labels[line.VariantID] = label
 		}
-		orderKey := conversionOrderKey(actor.TenantID(), actor.Kind(), actor.ID(), quoteID, key)
-		in, e := quoteOrder(q, uuid.NewString(), actor.ID(), orderKey, labels)
+		in, e := quoteOrder(q, uuid.NewString(), actor.ID(), key, labels)
 		if e != nil {
 			return e
 		}
