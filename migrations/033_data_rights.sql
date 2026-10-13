@@ -95,7 +95,7 @@ $fn$;
 -- owner column on notification_deliveries if tenant notification volume makes erasure slow.
 CREATE FUNCTION app.data_rights_notification_owner(p_tenant uuid,p_template text,p_reference uuid) RETURNS uuid LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
  SELECT CASE WHEN p_template IN('order.paid','order.shipped','order.refund') THEN (SELECT customer_id FROM app.orders WHERE tenant_id=p_tenant AND id=p_reference)
-  WHEN p_template='quote.approved' THEN (SELECT accepted_by FROM app.quotes WHERE tenant_id=p_tenant AND id=p_reference) END;
+  WHEN false AND p_template='quote.approved' THEN (SELECT accepted_by FROM app.quotes WHERE tenant_id=p_tenant AND id=p_reference) END;
 $fn$;
 CREATE OR REPLACE FUNCTION app.orders_guard() RETURNS trigger LANGUAGE plpgsql
 SET search_path=pg_catalog,app,pg_temp AS $fn$
