@@ -559,3 +559,12 @@ func (q *Queries) TransitionOrder(ctx context.Context, arg TransitionOrderParams
 	)
 	return i, err
 }
+
+const validatePaymentReservations = `-- name: ValidatePaymentReservations :exec
+SELECT app.orders_validate_payment_reservations($1::uuid)
+`
+
+func (q *Queries) ValidatePaymentReservations(ctx context.Context, orderID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, validatePaymentReservations, orderID)
+	return err
+}
