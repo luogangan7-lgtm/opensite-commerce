@@ -37,6 +37,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		runners = append(runners, runner)
 		config.Catalog.Run = runner.RunAuthorized
+		config.Orders.Read = runner.RunAuthorizedSnapshot
 		if config.Cart == nil {
 			config.Cart = cart.NewPostgres(cart.Config{Run: runner.RunAuthorized, Read: runner.RunAuthorizedSnapshot}, nil)
 		}

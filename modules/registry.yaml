@@ -630,7 +630,16 @@
         "order_lines",
         "order_adjustments"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "listOrders",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getOrder",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [
         "tenant",
         "catalog",
@@ -645,12 +654,16 @@
       "tests": [
         "tests/db_orders.sql",
         "internal/modules/orders/internal/service/snapshot_test.go",
+        "internal/modules/orders/http_test.go",
+        "internal/db/orders_http_integration_test.go",
         "scripts/check_pg_races.sh",
         "scripts/check_pg_upgrade.sh",
         "tests/db_role_matrix.sql"
       ],
-      "scopes": [],
-      "note": "Tenant-bound immutable order snapshots and caller-transaction financial state transitions. Customer references use the integrated tenant/customer foreign key. Checkout orchestration and real payment adapters remain separate."
+      "scopes": [
+        "orders:read"
+      ],
+      "note": "Tenant-bound immutable order snapshots and caller-transaction financial state transitions. Customer references use the integrated tenant/customer foreign key. Admin read API (orders:read) serves sealed snapshots from a read-only snapshot transaction, money as decimal strings and no guest contact. Checkout orchestration and real payment adapters remain separate."
     },
     {
       "name": "payments",

@@ -1,5 +1,5 @@
 // Responsibility: expose the platform typed API contract port to business services.
-// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish strict services.
+// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish/orders strict services.
 // Invariant: generated server mounting stays in StrictRoutes behind Router admission.
 // Type aliases preserve compiler-checked oneOf/nullable/responses without copies.
 package httpapi
@@ -70,3 +70,19 @@ type GetPublishedSite404ApplicationProblemPlusJSONResponse = generated.GetPublis
 type GetPublishedSite503ApplicationProblemPlusJSONResponse = generated.GetPublishedSite503ApplicationProblemPlusJSONResponse
 type Problem = generated.Problem
 type PublishedSite = generated.PublishedSite
+type GetOrder200JSONResponse = generated.GetOrder200JSONResponse
+type GetOrder200ResponseHeaders = generated.GetOrder200ResponseHeaders
+type GetOrderRequestObject = generated.GetOrderRequestObject
+type GetOrderResponseObject = generated.GetOrderResponseObject
+type ListOrders200JSONResponse = generated.ListOrders200JSONResponse
+type ListOrders200ResponseHeaders = generated.ListOrders200ResponseHeaders
+type ListOrdersRequestObject = generated.ListOrdersRequestObject
+type ListOrdersResponseObject = generated.ListOrdersResponseObject
+type OrderAdjustment = generated.OrderAdjustment
+type OrderDetail = generated.OrderDetail
+type OrderLine = generated.OrderLine
+type OrderPage = generated.OrderPage
+type OrderShipping = generated.OrderShipping
+type OrderState = generated.OrderState
+type OrderSummary = generated.OrderSummary
+type OrderSummaryCustomerKind = generated.OrderSummaryCustomerKind
