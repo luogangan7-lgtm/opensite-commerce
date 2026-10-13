@@ -35,3 +35,16 @@ jobs:
           bash scripts/check_pg.sh
       - name: Scoped actual PostgreSQL activity and availability witnesses
         run: go test -race -tags pgx -count=1 -v -run 'TestC02c|TestStaffSessionIdleConfiguration' ./internal/modules/identity/... ./internal/tenanttx/pgxadapter ./internal/modules/tenant/... ./internal/bootstrap
+  access-class-witness:
+    if: contains(github.event.head_commit.message, '[c02c-class-probe]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with:
+          go-version: '1.27.2'
+      - name: Exact staff access-class regression witness
+        run: go test -race -count=1 -v -run '^TestC02cStaffAuthenticatorRejectsOtherAccessClasses$' ./internal/modules/identity/internal/httpapi

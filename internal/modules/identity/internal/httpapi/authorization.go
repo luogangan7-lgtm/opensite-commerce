@@ -75,7 +75,7 @@ func selfRoute(spec platform.RouteSpec) bool {
 
 func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platform.RouteSpec) (context.Context, error) {
 	self := selfRoute(spec)
-	if !self && (spec.Access != platform.AdminSession && spec.Access != platform.APIKey && spec.Access != platform.AdminOrAPIKey || !strings.Contains(spec.Pattern, "{tenant_id}") || spec.Scope == "") {
+	if !self && (!strings.Contains(spec.Pattern, "{tenant_id}") || spec.Scope == "") {
 		return nil, unauthenticated()
 	}
 	// Ambiguous credential classes never fall back to a different class.
