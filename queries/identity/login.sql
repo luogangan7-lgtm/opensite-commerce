@@ -1,8 +1,8 @@
 -- Responsibility: typed private authentication persistence and admission.
 -- Dependencies: global identity schema; callers: private login store only.
 -- Invariants: exact dedicated LOGIN authority, active user, atomic rotation.
--- Admission uses volatile DB time, including row-lock EPQ rechecks; arrival
--- timestamps only advance activity monotonically and cannot set future activity.
+-- User locks precede rotation locks; session locks precede fresh validity checks.
+-- Durable clocks come from PostgreSQL; caller timestamps convey lifetimes only.
 -- name: ValidateAuthConnection :one
 SELECT current_user=session_user
  AND EXISTS(SELECT FROM pg_catalog.pg_roles r WHERE r.rolname=current_user
@@ -31,18 +31,35 @@ SELECT current_user=session_user
 SELECT id,password_hash,status FROM app.users WHERE email_normalized=sqlc.arg(identifier)::text;
 
 -- name: LoginCooldowns :one
-SELECT (SELECT cooldown_until FROM app.auth_account_attempts WHERE identifier_normalized=sqlc.arg(identifier)::text)::timestamptz AS account_until,
- (SELECT cooldown_until FROM app.auth_login_attempts WHERE identifier_normalized=sqlc.arg(identifier)::text AND ip=sqlc.arg(ip)::inet)::timestamptz AS ip_until;
+SELECT (SELECT CASE WHEN isfinite(cooldown_until) THEN cooldown_until ELSE clock_timestamp() END FROM app.auth_account_attempts WHERE identifier_normalized=sqlc.arg(identifier)::text AND cooldown_until>clock_timestamp())::timestamptz AS account_until,
+ (SELECT CASE WHEN isfinite(cooldown_until) THEN cooldown_until ELSE clock_timestamp() END FROM app.auth_login_attempts WHERE identifier_normalized=sqlc.arg(identifier)::text AND ip=sqlc.arg(ip)::inet AND cooldown_until>clock_timestamp())::timestamptz AS ip_until;
 
 -- name: LoginRecordFailure :exec
 SELECT app.auth_record_failure(sqlc.arg(identifier)::text,sqlc.arg(ip)::inet);
 
 -- name: LoginDevice :one
 SELECT id,user_id,expires_at,revoked_at FROM app.known_devices
- WHERE cookie_hash=sqlc.arg(cookie_hash)::bytea AND revoked_at IS NULL;
+ WHERE cookie_hash=sqlc.arg(cookie_hash)::bytea AND revoked_at IS NULL
+ AND expires_at>clock_timestamp();
 
 -- name: LoginFailDevice :exec
 SELECT app.auth_fail_known_device(sqlc.arg(id)::uuid);
+
+-- name: LoginLockUser :one
+SELECT id FROM app.users WHERE id=sqlc.arg(user_id)::uuid
+ AND app.auth_lock_login_user(sqlc.arg(user_id)::uuid,sqlc.arg(verified_password_hash)::text);
+
+-- name: LoginLockSession :one
+SELECT id FROM app.auth_sessions WHERE token_hash=sqlc.arg(token_hash)::bytea FOR UPDATE;
+
+-- name: LoginRotationSession :one
+SELECT EXISTS(SELECT FROM app.auth_sessions s JOIN app.users u ON u.id=s.user_id
+ WHERE s.token_hash=sqlc.arg(token_hash)::bytea AND s.user_id=sqlc.arg(user_id)::uuid
+ AND u.status='active' AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
+ AND isfinite(s.expires_at) AND isfinite(s.created_at) AND isfinite(s.last_seen_at)
+ AND s.last_seen_at>=s.created_at AND s.expires_at>s.created_at
+ AND s.created_at<=clock_timestamp() AND s.last_seen_at<=clock_timestamp()
+ AND s.last_seen_at>clock_timestamp()-sqlc.arg(idle_seconds)::bigint*interval '1 second') AS allowed;
 
 -- name: LoginRotateOldSession :execrows
 UPDATE app.auth_sessions s SET revoked_at=clock_timestamp()
@@ -55,25 +72,30 @@ UPDATE app.auth_sessions s SET revoked_at=clock_timestamp()
  AND s.last_seen_at>clock_timestamp()-sqlc.arg(idle_seconds)::bigint*interval '1 second';
 
 -- name: LoginInsertSession :one
+WITH instant AS MATERIALIZED (SELECT clock_timestamp()::timestamptz AS at)
 INSERT INTO app.auth_sessions(user_id,token_hash,created_at,last_seen_at,expires_at)
- SELECT u.id,sqlc.arg(token_hash)::bytea,sqlc.arg(created_at)::timestamptz,sqlc.arg(created_at)::timestamptz,sqlc.arg(expires_at)::timestamptz
- FROM app.users u WHERE u.id=sqlc.arg(user_id)::uuid AND u.status='active'
- RETURNING id,user_id,created_at,last_seen_at,expires_at;
+ SELECT u.id,sqlc.arg(token_hash)::bytea,instant.at,instant.at,
+ instant.at+(sqlc.arg(expires_at)::timestamptz-sqlc.arg(created_at)::timestamptz)
+ FROM app.users u CROSS JOIN instant WHERE u.id=sqlc.arg(user_id)::uuid AND u.status='active'
+ AND u.password_hash=sqlc.arg(verified_password_hash)::text
+ RETURNING id,user_id,created_at,last_seen_at,expires_at,clock_timestamp()::timestamptz AS database_now;
 
 -- name: LoginInsertDevice :exec
+WITH instant AS MATERIALIZED (SELECT clock_timestamp()::timestamptz AS at)
 INSERT INTO app.known_devices(user_id,cookie_hash,created_at,expires_at)
- VALUES(sqlc.arg(user_id)::uuid,sqlc.arg(cookie_hash)::bytea,sqlc.arg(created_at)::timestamptz,sqlc.arg(expires_at)::timestamptz);
+ SELECT sqlc.arg(user_id)::uuid,sqlc.arg(cookie_hash)::bytea,instant.at,
+ instant.at+(sqlc.arg(expires_at)::timestamptz-sqlc.arg(created_at)::timestamptz) FROM instant;
 
 -- name: LoginLookupSession :one
-UPDATE app.auth_sessions s SET last_seen_at=greatest(s.last_seen_at,least(sqlc.arg(at)::timestamptz,clock_timestamp()))
+UPDATE app.auth_sessions s SET last_seen_at=greatest(s.last_seen_at,clock_timestamp())
  FROM app.users u WHERE s.token_hash=sqlc.arg(token_hash)::bytea AND u.id=s.user_id AND u.status='active'
  AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
  AND isfinite(s.expires_at) AND isfinite(s.created_at) AND isfinite(s.last_seen_at)
  AND s.last_seen_at>=s.created_at AND s.expires_at>s.created_at
  AND s.created_at<=clock_timestamp() AND s.last_seen_at<=clock_timestamp()
  AND s.last_seen_at>clock_timestamp()-sqlc.arg(idle_seconds)::bigint*interval '1 second'
- RETURNING s.id,s.user_id,s.created_at,s.last_seen_at,s.expires_at;
+ RETURNING s.id,s.user_id,s.created_at,s.last_seen_at,s.expires_at,clock_timestamp()::timestamptz AS database_now;
 
 -- name: LoginRevokeSession :execrows
-UPDATE app.auth_sessions SET revoked_at=sqlc.arg(at)::timestamptz
+UPDATE app.auth_sessions SET revoked_at=clock_timestamp()
  WHERE id=sqlc.arg(id)::uuid AND revoked_at IS NULL;

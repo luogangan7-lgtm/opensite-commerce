@@ -182,7 +182,7 @@ func TestH4LockedSessionExpiryPostgres(t *testing.T) {
 				go func() { _, err := r.LookupSession(ctx, hash, time.Now(), 30*time.Minute); out <- err }()
 			} else {
 				at := time.Now()
-				in := login.SessionInput{UserID: uid, TokenHash: hardeningEntropy(t), DeviceHash: hardeningEntropy(t), CreatedAt: at, ExpiresAt: at.Add(time.Hour), DeviceExpiresAt: at.Add(24 * time.Hour), OldTokenHash: &hash}
+				in := login.SessionInput{UserID: uid, VerifiedPasswordHash: seededLoginPHC(), TokenHash: hardeningEntropy(t), DeviceHash: hardeningEntropy(t), CreatedAt: at, ExpiresAt: at.Add(time.Hour), DeviceExpiresAt: at.Add(24 * time.Hour), OldTokenHash: &hash}
 				go func() { _, err := r.SaveLogin(ctx, in); out <- err }()
 			}
 			waitLoginLocks(t, ctx, witness, "%app.auth_sessions%", 1)
@@ -229,36 +229,81 @@ func TestH4PasswordChangeRevocationPostgres(t *testing.T) {
 	cfg.HashTimeout = 20 * time.Second
 	_, router := fixtureRouter(t, ctx, dsn, cfg)
 	witness := hardeningWitness(t, ctx, dsn)
-	const email = "reset-h4@example.test"
-	uid := seedLoginPG(t, ctx, db, email)
-	for _, ip := range []string{repairInitialIP, repairOtherIP} {
-		if w := loginAsSeeded(t, router, email, ip); w.Code != 201 {
-			t.Fatal("reset fixture login refused", w.Code)
+	t.Run("all_sessions_revoked", func(t *testing.T) {
+		const email = "reset-h4@example.test"
+		uid := seedLoginPG(t, ctx, db, email)
+		for _, ip := range []string{repairInitialIP, repairOtherIP} {
+			if w := loginAsSeeded(t, router, email, ip); w.Code != 201 {
+				t.Fatal("reset fixture login refused", w.Code)
+			}
 		}
+		if _, err := db.Exec(ctx, "UPDATE app.users SET password_hash=password_hash WHERE id=$1", uid); err != nil {
+			t.Fatal("unchanged hash fixture failed")
+		}
+		var unchanged int
+		if err := db.QueryRow(ctx, "SELECT count(*) FROM app.auth_sessions WHERE user_id=$1 AND revoked_at IS NULL", uid).Scan(&unchanged); err != nil || unchanged != 2 {
+			t.Fatal("unchanged password revoked sessions", unchanged)
+		}
+		if _, err := db.Exec(ctx, "UPDATE app.users SET password_hash=password_hash||'-changed' WHERE id=$1", uid); err != nil {
+			t.Fatal("password reset fixture failed")
+		}
+		var active int
+		if err := db.QueryRow(ctx, "SELECT count(*) FROM app.auth_sessions WHERE user_id=$1 AND revoked_at IS NULL", uid).Scan(&active); err != nil || active != 0 {
+			t.Fatal("password update did not revoke all sessions", active)
+		}
+	})
+	t.Run("inflight_old_hash_rejected", func(t *testing.T) {
+		const email = "concurrent-reset-h4@example.test"
+		uid := seedLoginPG(t, ctx, db, email)
+		// Stage an uncommitted password change. The login sees the old committed
+		// PHC but must recheck it after waiting for the user's row lock.
+		client := prepareSeededLogin(t, router, email, repairFreshIP, false)
+		release := holdLoginGate(t, ctx, db, "UPDATE app.users SET password_hash=password_hash||'-changed-again' WHERE id=$1", uid)
+		defer release()
+		out := make(chan int, 1)
+		go func() { out <- client.send().Code }()
+		waitLoginLocks(t, ctx, witness, "%app.users%", 1)
+		release()
+		if code := <-out; code != 401 {
+			t.Fatal("in-flight old credential recreated session after reset", code)
+		}
+		var active int
+		if err := db.QueryRow(ctx, "SELECT count(*) FROM app.auth_sessions WHERE user_id=$1 AND revoked_at IS NULL", uid).Scan(&active); err != nil || active != 0 {
+			t.Fatal("reset left concurrent successor active", active)
+		}
+	})
+}
+
+func TestH4UserLockFencePostgres(t *testing.T) {
+	ctx, db, dsn, _ := setupLoginPG(t)
+	const email = "user-lock-h4@example.test"
+	uid := seedLoginPG(t, ctx, db, email)
+	runner, err := identityadapter.OpenIdentity(ctx, dsn)
+	if err != nil {
+		t.Fatal("user lock fixture unavailable")
 	}
-	if _, err := db.Exec(ctx, "UPDATE app.users SET password_hash=password_hash||'-changed' WHERE id=$1", uid); err != nil {
-		t.Fatal("password reset fixture failed")
+	defer runner.Close(context.Background())
+	auth := &testLoginDB{runner: runner}
+	for _, probe := range []struct {
+		name, hash string
+		allowed    bool
+	}{
+		{"verified_hash", seededLoginPHC(), true},
+		{"stale_hash", seededLoginPHC() + "-stale", false},
+		{"empty_hash", "", false},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			var allowed bool
+			if err := auth.QueryRow(ctx, "SELECT app.auth_lock_login_user($1,$2)", uid, probe.hash).Scan(&allowed); err != nil || allowed != probe.allowed {
+				t.Fatal("restricted user lock returned incorrect verdict", safeCode(err))
+			}
+		})
 	}
-	var active int
-	if err := db.QueryRow(ctx, "SELECT count(*) FROM app.auth_sessions WHERE user_id=$1 AND revoked_at IS NULL", uid).Scan(&active); err != nil || active != 0 {
-		t.Fatal("password update did not revoke all sessions", active)
+	if _, err := db.Exec(ctx, "UPDATE app.users SET status='disabled' WHERE id=$1", uid); err != nil {
+		t.Fatal("disabled lock fixture failed")
 	}
-	// Restore the seeded PHC, then stage an uncommitted password change. The
-	// login sees the old committed PHC but must recheck it after the user lock.
-	if _, err := db.Exec(ctx, "UPDATE app.users SET password_hash=$2 WHERE id=$1", uid, seededLoginPHC()); err != nil {
-		t.Fatal("reset fixture restore failed")
-	}
-	client := prepareSeededLogin(t, router, email, repairFreshIP, false)
-	release := holdLoginGate(t, ctx, db, "UPDATE app.users SET password_hash=password_hash||'-changed-again' WHERE id=$1", uid)
-	defer release()
-	out := make(chan int, 1)
-	go func() { out <- client.send().Code }()
-	waitLoginLocks(t, ctx, witness, "%app.users%", 1)
-	release()
-	if code := <-out; code != 401 {
-		t.Fatal("in-flight old credential recreated session after reset", code)
-	}
-	if err := db.QueryRow(ctx, "SELECT count(*) FROM app.auth_sessions WHERE user_id=$1 AND revoked_at IS NULL", uid).Scan(&active); err != nil || active != 0 {
-		t.Fatal("reset left concurrent successor active", active)
+	var allowed bool
+	if err := auth.QueryRow(ctx, "SELECT app.auth_lock_login_user($1,$2)", uid, seededLoginPHC()).Scan(&allowed); err != nil || allowed {
+		t.Fatal("disabled user passed restricted lock")
 	}
 }

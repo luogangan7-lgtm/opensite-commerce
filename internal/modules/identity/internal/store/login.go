@@ -1,7 +1,7 @@
 // Responsibility: private staff-auth persistence through generated SQL.
 // Dependencies: tenanttx identity runner and internal/db; identity login service calls.
-// Invariants: dedicated app_auth LOGIN; serialized connection; atomic rotation;
-// driver errors and credentials never escape this boundary.
+// Invariants: exact app_auth LOGIN on every transaction; isolated session lane;
+// user-before-session locks fence passwords and rotation; errors stay private.
 package store
 
 import (
@@ -22,12 +22,12 @@ type authRunner interface {
 	Close(context.Context) error
 }
 
-// LoginRepository owns one dedicated connection. Waiting for it observes the
-// caller's deadline so authentication cannot create an unbounded lock queue.
+// LoginRepository isolates token lookups from credential/login work. Each lane
+// owns one dedicated connection and deadline-aware gate; every tx checks authority.
 type LoginRepository struct {
-	runner authRunner
-	gate   chan struct{}
-	idle   time.Duration
+	runner, sessionRunner authRunner
+	gate, sessionGate     chan struct{}
+	idle                  time.Duration
 }
 
 var _ login.Repository = (*LoginRepository)(nil)
@@ -40,18 +40,24 @@ func OpenLogin(ctx context.Context, dsn string, idleTimeout time.Duration) (*Log
 	if err != nil {
 		return nil, login.ErrDatabase
 	}
-	r := &LoginRepository{runner: runner, gate: make(chan struct{}, 1), idle: idleTimeout}
-	err = r.run(ctx, func(ctx context.Context, q *db.Queries) error {
-		allowed, err := q.ValidateAuthConnection(ctx)
-		if err != nil || !allowed.Valid || !allowed.Bool {
-			return login.ErrDatabase
-		}
-		return nil
-	})
+	sessions, err := identityadapter.OpenIdentity(ctx, dsn)
 	if err != nil {
 		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = runner.Close(closeCtx)
+		return nil, login.ErrDatabase
+	}
+	r := &LoginRepository{runner: runner, sessionRunner: sessions, gate: make(chan struct{}, 1), sessionGate: make(chan struct{}, 1), idle: idleTimeout}
+	noop := func(context.Context, *db.Queries) error { return nil }
+	err = r.run(ctx, noop)
+	if err == nil {
+		err = r.runLane(ctx, r.sessionRunner, r.sessionGate, noop)
+	}
+	if err != nil {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = runner.Close(closeCtx)
+		_ = sessions.Close(closeCtx)
 		return nil, login.ErrDatabase
 	}
 	return r, nil
@@ -60,22 +66,35 @@ func OpenLogin(ctx context.Context, dsn string, idleTimeout time.Duration) (*Log
 // run holds the deadline-aware connection gate through callback and commit.
 // Only sqlc queries constructed from the current transaction reach callers.
 func (r *LoginRepository) run(ctx context.Context, fn func(context.Context, *db.Queries) error) error {
-	if err := r.enter(ctx); err != nil {
+	return r.runLane(ctx, r.runner, r.gate, fn)
+}
+func (r *LoginRepository) runLane(ctx context.Context, runner authRunner, gate chan struct{}, fn func(context.Context, *db.Queries) error) error {
+	if err := enterLoginLane(ctx, gate); err != nil {
 		return err
 	}
-	defer r.leave()
-	err := r.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error { return fn(ctx, db.New(tx)) })
-	if err == nil || errors.Is(err, login.ErrNotFound) || errors.Is(err, login.ErrSession) {
+	defer func() { <-gate }()
+	err := runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		q := db.New(tx)
+		allowed, err := q.ValidateAuthConnection(ctx)
+		if err != nil || !allowed.Valid || !allowed.Bool {
+			return login.ErrDatabase
+		}
+		return fn(ctx, q)
+	})
+	if err == nil || errors.Is(err, login.ErrNotFound) || errors.Is(err, login.ErrSession) || errors.Is(err, login.ErrCredentials) {
 		return err
 	}
 	return login.ErrDatabase
 }
 func (r *LoginRepository) enter(ctx context.Context) error {
+	return enterLoginLane(ctx, r.gate)
+}
+func enterLoginLane(ctx context.Context, gate chan struct{}) error {
 	if ctx.Err() != nil {
 		return login.ErrDatabase
 	}
 	select {
-	case r.gate <- struct{}{}:
+	case gate <- struct{}{}:
 		return nil
 	case <-ctx.Done():
 		return login.ErrDatabase
@@ -87,15 +106,26 @@ func (r *LoginRepository) Close(ctx context.Context) error {
 		return err
 	}
 	defer r.leave()
-	if err := r.runner.Close(ctx); err != nil {
+	if r.sessionRunner != nil {
+		if err := enterLoginLane(ctx, r.sessionGate); err != nil {
+			return err
+		}
+		defer func() { <-r.sessionGate }()
+	}
+	err := r.runner.Close(ctx)
+	var sessionErr error
+	if r.sessionRunner != nil {
+		sessionErr = r.sessionRunner.Close(ctx)
+	}
+	if err != nil || sessionErr != nil {
 		return login.ErrDatabase
 	}
 	return nil
 }
 func uuid(s string) (pgtype.UUID, error)   { var u pgtype.UUID; err := u.Scan(s); return u, err }
 func stamp(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }
-func session(id, user pgtype.UUID, created, last, expires pgtype.Timestamptz) login.Session {
-	return login.Session{ID: id.String(), UserID: user.String(), CreatedAt: created.Time, LastSeenAt: last.Time, ExpiresAt: expires.Time}
+func session(id, user pgtype.UUID, created, last, expires, now pgtype.Timestamptz) login.Session {
+	return login.Session{ID: id.String(), UserID: user.String(), CreatedAt: created.Time, LastSeenAt: last.Time, ExpiresAt: expires.Time, DatabaseNow: now.Time}
 }
 func (r *LoginRepository) Credential(ctx context.Context, identifier string) (login.Credential, error) {
 	var result login.Credential
@@ -128,7 +158,14 @@ func (r *LoginRepository) Cooldowns(ctx context.Context, identifier string, ip n
 	if err != nil {
 		return time.Time{}, time.Time{}, login.ErrDatabase
 	}
-	return row.AccountUntil.Time, row.IpUntil.Time, nil
+	var account, pair time.Time
+	if row.AccountUntil.Valid && row.AccountUntil.InfinityModifier == pgtype.Finite {
+		account = row.AccountUntil.Time
+	}
+	if row.IpUntil.Valid && row.IpUntil.InfinityModifier == pgtype.Finite {
+		pair = row.IpUntil.Time
+	}
+	return account, pair, nil
 }
 func (r *LoginRepository) RecordFailure(ctx context.Context, identifier string, ip netip.Addr) error {
 	if !ip.IsValid() {
@@ -160,6 +197,22 @@ func (r *LoginRepository) FailDevice(ctx context.Context, id string) error {
 	}
 	return r.run(ctx, func(ctx context.Context, q *db.Queries) error { return q.LoginFailDevice(ctx, u) })
 }
+func (r *LoginRepository) RotationSession(ctx context.Context, hash [32]byte, userID string) (bool, error) {
+	u, err := uuid(userID)
+	if err != nil {
+		return false, login.ErrDatabase
+	}
+	var allowed bool
+	err = r.run(ctx, func(ctx context.Context, q *db.Queries) error {
+		var err error
+		allowed, err = q.LoginRotationSession(ctx, db.LoginRotationSessionParams{TokenHash: hash[:], UserID: u, IdleSeconds: int64(r.idle / time.Second)})
+		return err
+	})
+	if err != nil {
+		return false, err
+	}
+	return allowed, nil
+}
 func (r *LoginRepository) SaveLogin(ctx context.Context, in login.SessionInput) (login.Session, error) {
 	u, err := uuid(in.UserID)
 	if err != nil || in.CreatedAt.IsZero() || !in.ExpiresAt.After(in.CreatedAt) || !in.DeviceExpiresAt.After(in.CreatedAt) {
@@ -167,7 +220,18 @@ func (r *LoginRepository) SaveLogin(ctx context.Context, in login.SessionInput) 
 	}
 	var result login.Session
 	err = r.run(ctx, func(ctx context.Context, q *db.Queries) error {
+		// Password reset already locks users before revoking sessions. Match that
+		// order and fence the credential that was verified before KDF completion.
+		if _, err := q.LoginLockUser(ctx, db.LoginLockUserParams{UserID: u, VerifiedPasswordHash: in.VerifiedPasswordHash}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return login.ErrCredentials
+			}
+			return err
+		}
 		if in.OldTokenHash != nil {
+			if err := lockLoginSession(ctx, q, *in.OldTokenHash); err != nil {
+				return err
+			}
 			n, err := q.LoginRotateOldSession(ctx, db.LoginRotateOldSessionParams{TokenHash: in.OldTokenHash[:], UserID: u, IdleSeconds: int64(r.idle / time.Second)})
 			if err != nil {
 				return err
@@ -176,7 +240,7 @@ func (r *LoginRepository) SaveLogin(ctx context.Context, in login.SessionInput) 
 				return login.ErrSession
 			}
 		}
-		row, err := q.LoginInsertSession(ctx, db.LoginInsertSessionParams{UserID: u, TokenHash: in.TokenHash[:], CreatedAt: stamp(in.CreatedAt), ExpiresAt: stamp(in.ExpiresAt)})
+		row, err := q.LoginInsertSession(ctx, db.LoginInsertSessionParams{UserID: u, VerifiedPasswordHash: in.VerifiedPasswordHash, TokenHash: in.TokenHash[:], CreatedAt: stamp(in.CreatedAt), ExpiresAt: stamp(in.ExpiresAt)})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return login.ErrSession
 		}
@@ -186,7 +250,7 @@ func (r *LoginRepository) SaveLogin(ctx context.Context, in login.SessionInput) 
 		if err = q.LoginInsertDevice(ctx, db.LoginInsertDeviceParams{UserID: u, CookieHash: in.DeviceHash[:], CreatedAt: stamp(in.CreatedAt), ExpiresAt: stamp(in.DeviceExpiresAt)}); err != nil {
 			return err
 		}
-		result = session(row.ID, row.UserID, row.CreatedAt, row.LastSeenAt, row.ExpiresAt)
+		result = session(row.ID, row.UserID, row.CreatedAt, row.LastSeenAt, row.ExpiresAt, row.DatabaseNow)
 		return nil
 	})
 	if err != nil {
@@ -194,14 +258,24 @@ func (r *LoginRepository) SaveLogin(ctx context.Context, in login.SessionInput) 
 	}
 	return result, nil
 }
-func (r *LoginRepository) LookupSession(ctx context.Context, hash [32]byte, at time.Time, idle time.Duration) (login.Session, error) {
-	if idle < time.Second || at.IsZero() {
+func lockLoginSession(ctx context.Context, q *db.Queries, hash [32]byte) error {
+	_, err := q.LoginLockSession(ctx, hash[:])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return login.ErrSession
+	}
+	return err
+}
+func (r *LoginRepository) LookupSession(ctx context.Context, hash [32]byte, _ time.Time, idle time.Duration) (login.Session, error) {
+	if idle < time.Second {
 		return login.Session{}, login.ErrSession
 	}
 	var row db.LoginLookupSessionRow
-	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
+	err := r.runLane(ctx, r.sessionRunner, r.sessionGate, func(ctx context.Context, q *db.Queries) error {
+		if err := lockLoginSession(ctx, q, hash); err != nil {
+			return err
+		}
 		var err error
-		row, err = q.LoginLookupSession(ctx, db.LoginLookupSessionParams{At: stamp(at), TokenHash: hash[:], IdleSeconds: int64(idle / time.Second)})
+		row, err = q.LoginLookupSession(ctx, db.LoginLookupSessionParams{TokenHash: hash[:], IdleSeconds: int64(idle / time.Second)})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return login.ErrSession
 		}
@@ -210,15 +284,15 @@ func (r *LoginRepository) LookupSession(ctx context.Context, hash [32]byte, at t
 	if err != nil {
 		return login.Session{}, err
 	}
-	return session(row.ID, row.UserID, row.CreatedAt, row.LastSeenAt, row.ExpiresAt), nil
+	return session(row.ID, row.UserID, row.CreatedAt, row.LastSeenAt, row.ExpiresAt, row.DatabaseNow), nil
 }
-func (r *LoginRepository) RevokeSession(ctx context.Context, id string, at time.Time) error {
+func (r *LoginRepository) RevokeSession(ctx context.Context, id string, _ time.Time) error {
 	u, err := uuid(id)
 	if err != nil {
 		return login.ErrSession
 	}
 	return r.run(ctx, func(ctx context.Context, q *db.Queries) error {
-		n, err := q.LoginRevokeSession(ctx, db.LoginRevokeSessionParams{At: stamp(at), ID: u})
+		n, err := q.LoginRevokeSession(ctx, u)
 		if err != nil {
 			return err
 		}
