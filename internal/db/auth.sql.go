@@ -231,6 +231,15 @@ func (q *Queries) TenantRevokeAPIKey(ctx context.Context, arg TenantRevokeAPIKey
 	return allowed, err
 }
 
+const tenantSetContext = `-- name: TenantSetContext :exec
+SELECT set_config('app.tenant_id',$1::uuid::text,true)
+`
+
+func (q *Queries) TenantSetContext(ctx context.Context, tenantID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, tenantSetContext, tenantID)
+	return err
+}
+
 const tenantTouchAPIKey = `-- name: TenantTouchAPIKey :one
 SELECT COALESCE(app.auth_touch_api_key($1::uuid),false)::boolean AS allowed
 `

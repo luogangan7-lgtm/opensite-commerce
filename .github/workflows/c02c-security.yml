@@ -16,7 +16,7 @@ jobs:
         with:
           go-version: '1.27.2'
       - name: Session and key security regressions
-        run: go test -v -race -count=1 -run 'TestC02c' ./internal/modules/identity/internal/httpapi ./internal/platform/httpapi ./internal/bootstrap
+        run: go test -v -race -count=1 -run 'TestC02c' ./internal/modules/identity/internal/httpapi ./internal/platform/httpapi ./internal/bootstrap ./internal/modules/tenant/internal/httpapi
   security-pg:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -43,7 +43,7 @@ jobs:
       - name: PostgreSQL client
         run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
       - name: Real role capabilities and write authority regressions
-        run: go test -v -race -tags pgx -count=1 -timeout=10m -run 'TestC02c' ./internal/modules/identity
+        run: go test -v -race -tags pgx -count=1 -timeout=10m -run 'TestC02c' ./internal/modules/identity ./internal/bootstrap
   security-contract:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
