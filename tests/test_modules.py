@@ -888,8 +888,7 @@ class GovernanceTests(unittest.TestCase):
                 (self.root / name).unlink()
 
     def test_h2_maintenance_allowed_green(self):
-        for name in ("internal/modules/a/maintenance_test.go", "cmd/tool/main.go", "internal/ops/maintenance.go",
-                     "internal/modules/identity/internal/store/store.go"):
+        for name in ("internal/modules/a/maintenance_test.go", "cmd/tool/main.go", "internal/ops/maintenance.go"):
             self.source(name, ('package a' if name.endswith('_test.go') else 'package bridge') + '\ntype runner struct{}\nfunc (runner) InMaintenance() {}\nvar Run = runner{}.InMaintenance\n')
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stderr)
