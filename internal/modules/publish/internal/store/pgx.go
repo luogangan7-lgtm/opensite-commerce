@@ -23,8 +23,8 @@ import (
 // 1 MiB response anyway, so more rows fail closed before projection.
 const maxSKURows = 5000
 
-// maxPriceRows: one winning row per SKU and currency, allowing four release currencies.
-const maxPriceRows = maxSKURows * 4
+// maxPriceRows: at most one winning row per visible SKU.
+const maxPriceRows = maxSKURows
 
 // preBudget bounds the jsonb::text bytes summed before aggregation. jsonb::text only adds
 // one space after each ':' and ',' and never escapes more than Go's json.Marshal, and every
@@ -85,7 +85,8 @@ func readLive(ctx context.Context, tx pgx.Tx, host string) (live service.Live, e
 	const scope = `FROM app.site_domains d JOIN app.sites st ON (st.tenant_id,st.id)=(d.tenant_id,d.site_id)
    JOIN app.site_releases r ON (r.tenant_id,r.site_id,r.id)=(st.tenant_id,st.id,st.published_release_id)
    WHERE d.normalized_hostname=$1 AND d.status='verified' AND d.verified_at IS NOT NULL AND r.sealed`
-	if err = tx.QueryRow(ctx, `SELECT r.tenant_id::text,now() `+scope, host).Scan(&live.TenantID, &live.At); err != nil {
+	var releaseID string
+	if err = tx.QueryRow(ctx, `SELECT r.tenant_id::text,r.id::text,now() `+scope, host).Scan(&live.TenantID, &releaseID, &live.At); err != nil {
 		return
 	}
 	rows, err := tx.Query(ctx, `SELECT v.product_id::text,v.id::text,v.sku,
@@ -115,15 +116,18 @@ func readLive(ctx context.Context, tx pgx.Tx, host string) (live service.Live, e
 	if len(live.SKUs) > maxSKURows {
 		return live, contract.ErrUnavailable
 	}
-	// Only the winning anonymous default price per SKU and currency (pricing.Quote precedence:
-	// priority desc, then list id asc; UUID order equals lowercase text order), so the row
-	// cap scales with SKUs, not with how many lists a tenant keeps. Quote re-checks the row.
-	rows, err = tx.Query(ctx, `SELECT DISTINCT ON (e.sku_id,l.currency) l.id::text,l.currency::text,l.status,l.priority,l.starts_at,l.ends_at,l.audience,e.sku_id::text,e.min_quantity,e.unit_amount
+	// Only the winning anonymous default price per SKU, in its release product's currency
+	// (pricing.Quote precedence: priority desc, then list id asc; UUID order equals lowercase
+	// text order), so at most one row per visible SKU. Quote re-checks the row.
+	rows, err = tx.Query(ctx, `SELECT DISTINCT ON (e.sku_id) l.id::text,l.currency::text,l.status,l.priority,l.starts_at,l.ends_at,l.audience,e.sku_id::text,e.min_quantity,e.unit_amount
    FROM app.price_entries e JOIN app.price_lists l ON (l.tenant_id,l.id)=(e.tenant_id,e.price_list_id)
    JOIN app.product_variants v ON (v.tenant_id,v.id)=(e.tenant_id,e.sku_id)
+   JOIN app.site_releases r ON r.tenant_id=e.tenant_id AND r.id=$4::uuid
+   CROSS JOIN LATERAL jsonb_array_elements(r.manifest->'products') item
    WHERE e.tenant_id=$1::uuid AND e.min_quantity=1 AND l.status='active' AND l.audience='all'
     AND l.starts_at<=$2 AND (l.ends_at IS NULL OR $2<l.ends_at)
-   ORDER BY e.sku_id,l.currency,l.priority DESC,l.id LIMIT $3`, live.TenantID, live.At, maxPriceRows+1)
+    AND lower(item->>'id')=v.product_id::text AND item->>'currency'=l.currency::text
+   ORDER BY e.sku_id,l.priority DESC,l.id LIMIT $3`, live.TenantID, live.At, maxPriceRows+1, releaseID)
 	if err != nil {
 		return
 	}

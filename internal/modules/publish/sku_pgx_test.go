@@ -189,15 +189,16 @@ func testLiveSKUs(t *testing.T, ctx context.Context, admin pgxadapter.Runner, mo
 	}
 }
 
-// manySKUSQL args: tenant, host. 41 released products, 4,001 ready SKUs, five active
-// audience=all USD lists pricing every SKU: 20,005 candidate rows, one winner per SKU.
+// manySKUSQL args: tenant, host. 41 released products in five currencies, 4,001 ready SKUs,
+// six active audience=all lists (one per currency at priority 5, one extra USD at 1)
+// pricing every SKU: 24,006 candidate rows, exactly one winner per SKU in its currency.
 const manySKUSQL = `DO $many$
 DECLARE t uuid := '%[1]s'; o uuid := gen_random_uuid(); s uuid := gen_random_uuid(); rel uuid := gen_random_uuid(); m jsonb;
 BEGIN
  INSERT INTO app.tenants(id,name) VALUES(t,'SKU many '||t);
  PERFORM set_config('app.tenant_id',t::text,true);
  CREATE TEMP TABLE many_products ON COMMIT DROP AS SELECT n,gen_random_uuid() AS id FROM generate_series(1,41) n;
- SELECT jsonb_agg(jsonb_build_object('id',id::text,'slug','p'||n,'name','P'||n,'description','','unit_amount','1','currency','USD') ORDER BY n) INTO m FROM many_products;
+ SELECT jsonb_agg(jsonb_build_object('id',id::text,'slug','p'||n,'name','P'||n,'description','','unit_amount','1','currency',(ARRAY['USD','EUR','GBP','JPY','CAD'])[1+n%%5]) ORDER BY n) INTO m FROM many_products;
  m := jsonb_build_object('version',1,'locale','en','title','Many','description','','navigation','[]'::jsonb,'products',m);
  EXECUTE 'SET LOCAL ROLE app_runtime';
  INSERT INTO app.organizations(tenant_id,id,display_name) VALUES(t,o,'Many');
@@ -209,7 +210,8 @@ BEGIN
  INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status)
   SELECT t,p.id,'S'||g,'k'||g,'ready' FROM generate_series(1,4001) g JOIN many_products p ON p.n=1+(g-1)%%41;
  INSERT INTO app.price_lists(tenant_id,currency,status,starts_at,priority,audience)
-  SELECT t,'USD','active',now()-interval '1 day',k,'all' FROM generate_series(1,5) k;
+  SELECT t,c,'active',now()-interval '1 day',5,'all' FROM unnest(ARRAY['USD','EUR','GBP','JPY','CAD']) c
+  UNION ALL SELECT t,'USD','active',now()-interval '1 day',1,'all';
  INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount)
   SELECT t,l.id,v.id,1,l.priority FROM app.price_lists l CROSS JOIN app.product_variants v WHERE l.tenant_id=t AND v.tenant_id=t;
  EXECUTE 'SET LOCAL ROLE app_domain_verifier';
@@ -231,14 +233,14 @@ func testManyPriceLists(t *testing.T, ctx context.Context, admin pgxadapter.Runn
 	}
 	site, err := module.Current(ctx, host)
 	if err != nil {
-		t.Fatalf("5 lists x 4,001 SKUs made the storefront unavailable: %v", err)
+		t.Fatalf("6 lists in 5 currencies x 4,001 SKUs made the storefront unavailable: %v", err)
 	}
 	total := 0
 	for _, p := range site.Products {
 		total += len(p.SKUs)
 		for _, s := range p.SKUs {
-			if s.PriceMinor != "5" {
-				t.Fatalf("highest-priority list must win: %+v", s)
+			if s.PriceMinor != "5" || s.Currency != p.Currency {
+				t.Fatalf("highest-priority list in the product currency must win: %+v", s)
 			}
 		}
 	}
