@@ -12,7 +12,7 @@ GRANT SELECT (tenant_id,product_id,option_id,id,label) ON app.product_option_val
 GRANT SELECT (tenant_id,product_id,variant_id,option_id,value_id) ON app.variant_option_values TO app_domain_resolver;
 GRANT SELECT (tenant_id,id,currency,status,starts_at,ends_at,priority,audience) ON app.price_lists TO app_domain_resolver;
 GRANT SELECT (tenant_id,price_list_id,sku_id,min_quantity,unit_amount) ON app.price_entries TO app_domain_resolver;
-GRANT SELECT (tenant_id,sku_id,in_stock) ON app.stock_levels TO app_domain_resolver;
+GRANT SELECT (tenant_id,sku_id,in_stock,on_hand) ON app.stock_levels TO app_domain_resolver;
 -- site_releases is visible to this role only as the host's current sealed release (024).
 -- Every policy uses UNCORRELATED IN-subqueries, so PostgreSQL evaluates each visibility set
 -- once per statement (hashed SubPlan) instead of re-running the 024 release validation per
