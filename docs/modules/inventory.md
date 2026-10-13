@@ -68,12 +68,14 @@ not-found, and 55000 `INVENTORY_INVALID_TRANSITION` /
 Acceptance: `tests/db_inventory.sql`; exact ACL/role matrix; and lock-synchronized
 last-unit, same-key, expiry/commit and first-initialization cases in
 `scripts/check_pg_races.sh`. Gate readiness requires the exact granted advisory
-lock, including its two-int namespace. The waiting-commit transaction parks before
-its call; the driver places expiry between its observed start and the current
-database clock. The driver then verifies the actual stock holder blocks commit,
+lock, including its two-int namespace. The waiting commit's SQL statement parks
+inside a materialized volatile barrier before evaluating its call; the driver
+places expiry after both its observed transaction and statement starts and before
+the current database clock. The driver verifies the actual stock holder blocks commit,
 requires the sweep to skip the busy reservation, and requires 55000 after that
 stock lock is released, with unchanged physical stock. This witnesses the wall
-clock guard without a worker-startup deadline. CI also exercises an explicit
+clock guard against both transaction and statement clocks without a startup deadline.
+CI also exercises an explicit
 startup gap and rejects idle/sleeping sessions and incorrect advisory lock keys.
 The optional `inventory-race-soak` workflow repeats the actual inventory block
 50 times without retries and preserves every log and its SHA-bound receipt.

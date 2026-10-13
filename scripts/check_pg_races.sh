@@ -342,26 +342,27 @@ expect inv_expire ok; expect inv_commit INVENTORY_INVALID_TRANSITION; expect inv
 inventory_check 'race inventory expiry beats commit' '1|0|0|3' "$T" "$SKU"
 
 # Commit owns the reservation but waits on stock; expiry must skip, not release
-# its counter. Its transaction starts before expiry; its call and stock wait
-# finish after expiry. No scheduler must meet a short wall-clock deadline.
+# its counter. Its transaction and commit statement start before expiry; the
+# call finishes after expiry. No scheduler must meet a short clock deadline.
 read -r T SKU OWNER <<<"$(inventory_fixture)"
 RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SELECT (app.inventory_reserve('$SKU',1,'order','$OWNER','skip-race',900)).id;" | tail -1)
 gate_close 14
 tx inv_stock app_inventory_manager "$T" "SELECT app.inventory_adjust('$SKU',1,'concurrent receipt','$OWNER','inbound'); $(park 14)" &
 await inv_stock advisory
 # Park before acquiring the reservation, so the driver can put its expiry
-# strictly between the worker's observed transaction start and database clock.
-# now() would then admit it incorrectly; clock_timestamp() must reject it.
+# strictly between the worker's observed statement start and database clock.
+# Both now() and statement_timestamp() would then admit it incorrectly. The
+# materialized volatile barrier must complete before evaluating commit's call.
 gate_close 114
-tx inv_commit_wait app_inventory_executor "$T" "$(park 114) SELECT app.inventory_commit('$RID');" &
+tx inv_commit_wait app_inventory_executor "$T" "WITH barrier AS MATERIALIZED (SELECT pg_advisory_xact_lock_shared($$,114)) SELECT app.inventory_commit('$RID') FROM barrier;" &
 await inv_commit_wait advisory
 EXPIRY_POSITION=$(sql <<<"UPDATE app.inventory_reservations r
- SET expires_at=a.xact_start+(clock_timestamp()-a.xact_start)/2
+ SET expires_at=a.query_start+(clock_timestamp()-a.query_start)/2
  FROM pg_stat_activity a WHERE a.application_name='${RACE_PREFIX}inv_commit_wait'
  AND a.xact_start IS NOT NULL AND r.tenant_id='$T' AND r.id='$RID'
- RETURNING r.expires_at>a.xact_start AND r.expires_at<clock_timestamp();")
+ RETURNING r.expires_at>a.xact_start AND r.expires_at>a.query_start AND r.expires_at<clock_timestamp();")
 echo "race inventory expiry position: $EXPIRY_POSITION (expected t)"
-[[ $EXPIRY_POSITION == t ]] || { echo 'FAIL: inventory transaction/expiry clock witness missing'; exit 1; }
+[[ $EXPIRY_POSITION == t ]] || { echo 'FAIL: inventory transaction/statement/expiry clock witness missing'; exit 1; }
 gate_open 114
 await inv_commit_wait "${ROWLOCK[@]}"
 STOCK_BLOCKER=$(sql <<<"SELECT count(*)=1 AND bool_and(h.pid=ANY(pg_blocking_pids(c.pid)))
