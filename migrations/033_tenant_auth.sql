@@ -131,5 +131,5 @@ ALTER FUNCTION app.auth_create_api_key(uuid,uuid,uuid,text,bytea,text[],timestam
 ALTER FUNCTION app.auth_revoke_api_key(uuid,uuid,uuid) OWNER TO app_credential_writer;
 ALTER FUNCTION app.auth_touch_api_key(uuid) OWNER TO app_credential_writer;
 REVOKE CREATE ON SCHEMA app FROM app_credential_writer;
-GRANT EXECUTE ON FUNCTION app.auth_revalidate_tenant(uuid,uuid,text,uuid,text) TO app_runtime;
+GRANT EXECUTE ON FUNCTION app.auth_revalidate_tenant(uuid,uuid,text,uuid,text) TO app_runtime,app_auth;
 GRANT EXECUTE ON FUNCTION app.auth_create_api_key(uuid,uuid,uuid,text,bytea,text[],timestamptz),app.auth_revoke_api_key(uuid,uuid,uuid),app.auth_touch_api_key(uuid) TO app_auth;

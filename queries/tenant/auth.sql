@@ -38,3 +38,6 @@ SELECT COALESCE(app.auth_touch_api_key(sqlc.arg(id)::uuid),false)::boolean AS al
 -- name: TenantRevalidateAuthorization :one
 SELECT COALESCE(app.auth_revalidate_tenant(sqlc.arg(tenant_id)::uuid,sqlc.arg(user_id)::uuid,
  sqlc.arg(kind)::text,sqlc.arg(credential_id)::uuid,sqlc.arg(scope)::text),false)::boolean AS allowed;
+
+-- name: TenantSetContext :exec
+SELECT set_config('app.tenant_id',sqlc.arg(tenant_id)::uuid::text,true);

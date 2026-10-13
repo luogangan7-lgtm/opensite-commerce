@@ -15,6 +15,7 @@ import (
 	auth "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
+	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -40,6 +41,16 @@ func (r *Repository) run(ctx context.Context, fn func(*db.Queries) error) error 
 		if e != nil || !valid.Valid || !valid.Bool {
 			return auth.ErrUnavailable
 		}
+		// Only Router's private stamp can select the tenant. Pre-admission
+		// lookups/startup remain global and never consume request path values.
+		if tenant, e := platform.AuthorizedTenant(ctx); e == nil {
+			if e := q.TenantSetContext(ctx, id(tenant)); e != nil {
+				return auth.ErrUnavailable
+			}
+			if e := platform.RevalidateTransaction(ctx, q); e != nil {
+				return e
+			}
+		}
 		return fn(q)
 	})
 	if err == nil {
@@ -47,6 +58,10 @@ func (r *Repository) run(ctx context.Context, fn func(*db.Queries) error) error 
 	}
 	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, auth.ErrNotFound) {
 		return auth.ErrNotFound
+	}
+	var failure *apperrors.Error
+	if errors.As(err, &failure) && failure != nil {
+		return err
 	}
 	if code, ok := err.(interface{ SQLState() string }); ok {
 		switch code.SQLState() {
@@ -59,15 +74,6 @@ func (r *Repository) run(ctx context.Context, fn func(*db.Queries) error) error 
 	return auth.ErrUnavailable
 }
 func id(value string) pgtype.UUID { var v pgtype.UUID; _ = v.Scan(value); return v }
-func boolAllowed(value any) bool {
-	switch v := value.(type) {
-	case bool:
-		return v
-	case pgtype.Bool:
-		return v.Valid && v.Bool
-	}
-	return false
-}
 func nullableTime(value *time.Time) pgtype.Timestamptz {
 	if value == nil {
 		return pgtype.Timestamptz{}
@@ -118,7 +124,7 @@ func (r *Repository) TouchKey(ctx context.Context, keyID string) error {
 		if e != nil {
 			return e
 		}
-		if !boolAllowed(v) {
+		if !v {
 			return auth.ErrNotFound
 		}
 		return nil
@@ -132,7 +138,7 @@ func (r *Repository) Revalidate(ctx context.Context, q *db.Queries, tenant strin
 	if e != nil {
 		return auth.ErrUnavailable
 	}
-	if !boolAllowed(valid) {
+	if !valid {
 		return auth.ErrNotFound
 	}
 	return nil
@@ -180,7 +186,7 @@ func (r *Repository) Revoke(ctx context.Context, tenant, user, keyID string) err
 		if e != nil {
 			return e
 		}
-		if !boolAllowed(valid) {
+		if !valid {
 			return auth.ErrNotFound
 		}
 		return nil
