@@ -1,11 +1,11 @@
 # ADR: Storefront serving projection (C-15b / C-15c)
 
-- Status: accepted 2026-10-13 with the amendments in §7; C-15b implemented in the same PR
+- Status: accepted 2026-10-13; revised after design review (§8). C-15b and C-15c are implemented in this PR.
 - Date: 2026-10-13
 - Base: `origin/main` b296a2a
 - Supersedes: the design in PR #55 (live SKU joins on the anonymous read path). #55 will be
   closed when the C-15b implementation lands.
-- Owners: C-15b (publish-time serving projection), C-15c (refresh jobs and fallback)
+- Owners: C-15b (publish-time serving projection) and C-15c (refresh and invalidation), folded into one card
 
 ## 1. Context
 
@@ -34,205 +34,203 @@ path that can take the whole storefront down.
 
 ### 2.1 Immutable release, including SKU membership
 
-- A release seals its product views (as today) and the purchasable SKU membership of each
-  product: `sku_id`, `sku_code` and `option_values` (option code and label). Membership is
-  fixed at publish time.
-- Adding SKUs, or offering a SKU that had no eligible price when the release was sealed,
-  requires a republish. Removing or archiving a SKU after publish does not change the
-  release. The serving projection marks it not purchasable (§2.3); cart and checkout
-  re-validate it.
-- Storage: a new immutable table `app.site_release_skus(tenant_id, site_id, release_id,
-  product_id, sku_id, ordinal, sku_code, option_values jsonb)`, written inside the publish
-  transaction. The same guard trigger as other release children blocks writes once the
-  release is sealed. The version-1 manifest and the 024 manifest shape stay unchanged, so
-  restoring an older release remains possible.
-- A release sealed before C-15b has no SKU rows. Restoring it serves the release with
-  `skus: []` until it is republished.
+- A release seals its product views and the purchasable SKU membership of each product:
+  `sku_id`, `sku_code` and `option_values` (option code and label). Membership is fixed at
+  publish time.
+- Unpriced or non-ready SKUs at publish are not members. If they become priced or ready
+  later, they need a republish. A member SKU that is archived or priced out after publish
+  stays in membership but is omitted from the served `skus` by the next build (§2.6).
+- Storage: an immutable table `app.site_release_skus(tenant_id, site_id, release_id,
+  product_id, sku_id, ordinal, sku_code, option_values jsonb)`.
+- Writing it is atomic with the seal. The release is created, sealed and made current by
+  `cms_publish` in the publish transaction. Membership is written in **that same
+  transaction**, before commit, by `app.cms_seal_skus`. That routine admits only the
+  current release created by the calling transaction (`site_releases.created_at = now()`,
+  the transaction timestamp) and only when the release has no membership yet. It does not
+  rely on `guard_release_children`, so there is no `RELEASE_SEALED` abort. A trigger
+  rejects every UPDATE and DELETE, and no later transaction can add rows. Any failure rolls
+  back the release, the pointer move and the membership together.
+- A release sealed before this change has no membership rows; it serves `skus: []`. The
+  version-1 manifest and the 024 manifest shape stay unchanged.
 
 ### 2.2 Rebuildable serving row per (tenant, site)
 
-New table `app.storefront_serving`, one row per `(tenant_id, site_id)`. It is a derived
-artifact that can be rebuilt from the release plus live price and stock.
+`app.storefront_serving` has one row per `(tenant_id, site_id)`. It is derived data,
+rebuilt from the release, its membership, and live price, stock and readiness.
 
 | Column | Meaning |
 |---|---|
 | `tenant_id, site_id` | primary key |
 | `release_id` | release the body was built from |
 | `publication_revision` | `sites.publication_revision` at build time (031 epoch) |
-| `serving_generation` | bigint, +1 on every successful write; compare-and-swap token |
-| `body` | `bytea`: exact HTTP response body of `getPublishedSite` (UTF-8 JSON plus the trailing newline) |
-| `fallback_body` | `bytea`: same pages and products with `skus: []` everywhere (never stale) |
-| `body_sha256` | `sha256(body)`; check value and ETag source |
-| `valid_until` | `timestamptz`: in C-15b, the next start or end boundary of any price list (in the product's currency) that prices a member SKU; `NULL` if none. C-15c adds a staleness cap (§7) |
-| `built_at` | build time (the transaction's `now()`) |
+| `serving_generation` | +1 on every successful write; compare-and-swap token |
+| `body` | exact `getPublishedSite` response bytes (UTF-8 JSON plus the trailing newline) |
+| `fallback_body` | same pages and products with `skus: []` everywhere (never stale) |
+| `body_sha256`, `fallback_sha256` | SHA-256 of each representation; the ETag source |
+| `valid_until` | `min(next price-list boundary of a member SKU, built_at + max_lifetime)`; lowered further by invalidation (§2.6) |
+| `built_at` | build time (the DB transaction time) |
 
-Public read rule: serve `body` while `now() < valid_until` (or `valid_until IS NULL`),
-otherwise serve `fallback_body`. A stale serving row therefore degrades to "no purchasable
-SKUs". It never returns a site-wide 503 and never shows an expired price.
+Public read rule: serve `body` and `body_sha256` while `now() < valid_until`; otherwise
+serve `fallback_body` and `fallback_sha256`. A stale row degrades to "no purchasable SKUs".
+It never returns a site-wide 503 and never shows a price beyond its bound. `max_lifetime`
+defaults to 15 minutes.
 
-### 2.3 Built in Go, inside the publish (and restore) tenant transaction
+### 2.3 Build (publish, restore, refresh): one Go builder
 
-`WriteStore` already runs `cms_publish` and `cms_restore` and then `projectSealed` in one
-tenant transaction. C-15b adds one step in the same transaction, before commit:
+All three entry points use the same builder inside a tenant transaction with normal tenant
+RLS:
 
-1. **Read inputs** under the tenant transaction with normal tenant RLS, for the release's
-   products only. Inputs: ready variants and option labels, quantity-1 entries of active
-   `audience='all'` lists in the product's release currency, and stock rows.
-   A separate **input scan budget** applies (default 20,000 variant rows and
-   100,000 price rows). Exceeding it rejects the publish with a typed error
-   (`CMS_SERVING_INPUT_BOUNDS`, HTTP 422). It never causes a 503 on the live site.
-2. **Price** each SKU with the single pricing rule through the existing Pricing Port
-   (`internal/pricing.Quote`): anonymous (no customer group or buyer company),
-   quantity 1, the product's release currency, at the transaction time, with the window
-   `[starts_at, ends_at)` and `±infinity` bounds allowed, priority descending, then list id
-   ascending. Indexing is per SKU, so the work is linear.
-3. **Filter before caps.** Drop unpriced and non-ready SKUs first. Only then apply the
-   output caps: at most 100 SKUs per product and 5,000 per site, plus option and text
-   limits. Exceeding an output cap rejects the publish (422). Unpriced rows never consume
-   a cap.
-4. **Seal** the surviving membership into `site_release_skus` (publish only; restore reads
-   the target release's rows).
-5. **Encode** the exact wire bytes for `body` and `fallback_body` from one Go DTO
-   (§2.5) with `encoding/json`, then check the budget on the **exact final bytes**. The
-   bytes include the trailing newline and the 36-byte `tenant_id`. Fields that a refresh
-   may change are measured at their maximum width: `price_minor` at 19 digits and
-   `available` at `false`. Over 1 MiB rejects the publish (422). A later refresh can
-   therefore never push the body over budget.
-6. **Write** the serving row through one narrow routine,
-   `app.cms_serving_put(tenant, site, release, publication_revision,
-   expected_generation, body, fallback_body, sha, valid_until)`. It compares and swaps on
-   `(publication_revision = sites.publication_revision AND serving_generation =
-   expected_generation)`. Any error rolls back the whole publish (atomicity).
+1. **Lock the publication.** `SELECT ... FROM app.sites ... FOR SHARE` before reading any
+   input. A refresh therefore waits for an in-flight publish (which holds the row
+   `FOR UPDATE`), then reads the committed revision and drops itself if the revision
+   changed. Publish and restore already hold the row lock.
+2. **Read inputs** for the release's products only:
+   - live readiness (variant and product `lifecycle_status`);
+   - quantity-1 entries of active `audience='all'` lists that have not ended;
+   - stock (`on_hand − reserved > 0`; 012 counts active reservations in `reserved`).
 
-`available` is computed as `on_hand − reserved > 0` (012 counts active reservations in
-`reserved`). It is a display hint: the cart and checkout reserve against stock
-authoritatively.
+   Publish reads ready variants and their option labels. Restore and refresh read the
+   sealed membership and join live readiness.
 
-### 2.4 Anonymous resolver role: three relations only
+   A separate **input scan budget** applies: 20,000 variant rows and 100,000 price rows.
+   Exceeding it rejects a publish with a typed 422; a refresh writes the fallback instead.
+3. **Price** each SKU with the single pricing rule through the Pricing Port
+   (`internal/pricing.Quote`): anonymous, quantity 1, the product's release currency, at
+   DB transaction time, within the window `[starts_at, ends_at)` with `±infinity`
+   allowed, priority descending then list id ascending. Indexing is per SKU, so the work
+   is linear.
+4. **Filter before caps.** Drop unpriced and non-ready SKUs first, then apply the output
+   caps: 100 SKUs per product, 5,000 per site, plus option and text limits. Exceeding a cap
+   rejects a publish (422). Unpriced rows never consume a cap.
+5. **Seal** the surviving membership (publish only, §2.1).
+6. **Encode** the exact wire bytes for `body` and `fallback_body` from one Go DTO (§2.5),
+   then check the 1 MiB budget on the **exact final bytes**. Refresh-variable fields count
+   at maximum width: 19 digits per `price_minor`, `false` per `available`, plus the
+   36-byte `tenant_id`.
+7. **Write** through `app.cms_serving_put(tenant, site, release, publication_revision,
+   expected_generation, body, fallback_body, valid_until)`. It locks the site row,
+   compares and swaps on `(publication_revision, serving_generation)`, stores both hashes,
+   and clears the dirty mark. In publish and restore, any error rolls back the whole
+   transaction. In a refresh, a failed CAS drops the result.
 
-`app_domain_resolver` keeps SELECT on the domain map (`site_domains` columns), on
-publication (`sites.tenant_id, id, published_release_id, publication_revision`) and on the
-serving row columns `body, fallback_body, valid_until, publication_revision, tenant_id,
-site_id`. RLS on `storefront_serving` admits only the verified host's site, and only while
-the row's `publication_revision` equals the current one.
+### 2.4 Anonymous resolver role
 
-- No grants on catalog, pricing or inventory tables. The PR #55 grants never merged; the
-  C-15b migration asserts their absence and `db_role_matrix.sql` stays exact.
-- The 024 grants on `site_releases`, `site_release_routes` and `page_revisions` are
-  revoked once the serving row replaces the snapshot query.
-- `pgxadapter.OpenPublic`'s capability audit is narrowed the same way.
-- Public read: one statement, one bounded row. The handler writes the stored bytes as-is
-  (no re-encoding) with `ETag: "<body_sha256>"` and `Cache-Control: no-store`. A missing
-  row is 404; a row present for the wrong revision is 404 (unpublished).
+`app_domain_resolver` reads:
+- the domain map (`site_domains` columns);
+- publication (`sites.tenant_id, id, published_release_id, publication_revision`);
+- the serving row: `tenant_id, site_id, publication_revision, body, fallback_body,
+  body_sha256, fallback_sha256, valid_until`. RLS admits only the verified host's site
+  while the row's revision is current.
 
-### 2.5 Separate DTOs
+`pgxadapter.OpenPublic`'s exact capability audit lists the same columns.
 
-- **Public DTO** `PublishedSite`: `tenant_id`, pages, products with `skus`. It is built
-  only by the serving builder.
-- **CMS Preview DTO** `SitePreview`: pages and products, with no `tenant_id` and no
-  `skus`. It is produced by the draft projection and is unaffected by serving rows.
-  `getSitePreview` switches to `SitePreview` in the OpenAPI spec.
-- The publish-time draft and release validators keep using the preview projection. The
-  public budget is enforced only by the serving builder (§2.3 step 5).
+- There are no grants on catalog, pricing, inventory or membership tables.
+  `db_role_matrix.sql` is exact.
+- **Compatibility, no 404 for existing hosts.** A published site without a current serving
+  row (published before this change, or published by SQL outside the CMS path) is
+  projected from its sealed release with `skus: []`. Its `tenant_id` and content come
+  from **one snapshot query**. The refresh sweeper (§2.6) backfills serving rows for such
+  sites. The 024 release, route and page grants are revoked only in a later card, after
+  the backfill is proven complete in production.
+- Public read: one statement, one bounded row. The handler writes the selected stored
+  bytes as-is with `ETag: "<sha256 of those bytes>"` and `Cache-Control: no-store`.
 
-### 2.6 Refresh: C-15c (described here, implemented later)
+### 2.5 Separate DTOs; host-independent public body
 
-- Triggers: price-list and price-entry changes, stock and reservation changes (debounced),
-  and `valid_until` boundaries. All are queued as idempotent River jobs keyed by
-  `(tenant, site)`.
-- A refresh job reads the current publication, the release, its `site_release_skus` and
-  live price and stock under the tenant transaction. It rebuilds `body`, `valid_until` and
-  `body_sha256` with the same builder (`fallback_body` is unchanged), then writes through
-  `cms_serving_put` with the generation it read. A stale writer can never
-  overwrite a newer publish or newer refresh, because CAS fails on
-  `publication_revision` or `serving_generation`; a failed CAS drops the result.
-- A SKU archived or priced out after publish stays in membership but is omitted from
-  `skus` by the refresh. Republishing is the only way to add SKUs.
-- If the worker is down, the read serves `fallback_body` once `valid_until` passes; the
-  site stays up.
-- Live price default: the storefront shows the asynchronously refreshed serving price.
-  Cart and checkout re-price authoritatively (existing cart quote). The owner may revisit
-  this (for example a per-SKU live price lookup).
+- **Public DTO** `PublishedSite` contains `tenant_id`, `site_id`, `release_id`, `locale`,
+  `title`, `description`, `navigation`, `pages` and `products`. Each public product has
+  `id`, `slug`, `name`, `description` and `skus`.
+  - **No `hostname`.** A site has several verified hostnames, and one stored body must be
+    valid for all of them. The caller already knows the host it asked for.
+  - **No product-level `unit_amount` or `currency`.** These were the immutable price at
+    publish time. Displayed prices come only from the refreshed `skus`; the storefront
+    shows the lowest purchasable SKU price, or "unavailable" when `skus` is empty.
+- **CMS Preview DTO** `SitePreview` keeps the previous projection (with `hostname` and
+  release product prices). It has no `tenant_id` and no `skus`, and it is unaffected by
+  serving rows.
 
-## 3. Acceptance gates (C-15b unless noted)
+### 2.6 Refresh and invalidation (in this PR)
 
-Each gate must go red when the property is broken; record a fault-injection red→green.
+- **Synchronous invalidation.** Triggers fire on every mutation that can change a served
+  value: `price_lists`, `price_entries`, `product_variants` (lifecycle), `products`
+  (lifecycle) and `stock_levels` (`on_hand`, `reserved`). In the **same transaction**, they
+  mark the affected serving rows dirty and lower `valid_until` to
+  `least(valid_until, now() + grace)`, with a 30-second `grace`. Affected rows are the
+  tenant's rows whose membership contains the SKU, or every row of the tenant for
+  list-level changes. The triggers are `SECURITY DEFINER` routines owned by
+  `app_publish_executor` and write only `dirty` and `valid_until`.
+- **Refresh worker.** A River periodic sweeper (every 10 s) enqueues an idempotent refresh
+  job per `(tenant, site)`. It covers dirty rows, rows within 60 s of `valid_until`, and
+  published sites without a current serving row (the backfill). The job runs the §2.3
+  builder with the publication lock and CAS-writes the result.
+- **Failure modes.** If the worker is down, every changed row reaches `valid_until` within
+  `grace` and every row within `max_lifetime`; the site then serves the fallback and stays
+  up. A stale or concurrent writer can never overwrite a newer publish or refresh.
+- **Authority.** Cart and checkout re-price and reserve against live data; the served price
+  and availability are display values.
+
+## 3. Acceptance gates
+
+Each gate must go red when its property is broken. The independent reviewer runs the
+fault probes.
 
 | # | Gate | Test (CI) |
 |---|---|---|
-| G1 | Publish atomicity | inject a failure in the serving build or CAS write: no new release, no pointer move, no SKU rows, old serving row intact |
-| G2 | Exact 1 MiB wire budget | serving body at exactly 1 MiB with max-width variable fields and `tenant_id` is accepted; one byte more is rejected at publish (422); served bytes equal stored bytes (sha) |
-| G3 | Unpriced rows don't consume output caps | 6,000 unpriced or ineligible variants plus 10 priced ones publishes; exactly 10 SKUs are served; input budget overrun returns a typed 422, never a 503 |
-| G4 | Anonymous SELECT on live tables fails | as the public login: SELECT on `product_variants`, `price_lists`, `price_entries`, `stock_levels`, `inventory_reservations`, `site_release_skus` and other tenants' serving rows returns 42501 or 0 rows; `db_role_matrix.sql` is exact; OpenPublic rejects any extra grant |
-| G5 | Stale refresh cannot overwrite a newer publish | (C-15b primitive, C-15c caller) a write with an old `publication_revision` or `serving_generation` fails CAS and leaves the newer row byte-identical |
-| G6 | Preview unaffected | preview works with no serving row; it returns `SitePreview` with no `tenant_id` or `skus`; publish failure does not change preview |
-| G7 | Fallback, not 503 | after `valid_until`, the read returns `fallback_body` (200, `skus: []`) |
-| G8 | Isolation | two tenants with identical product and SKU UUIDs; each host serves only its own body; unknown, unverified or unpublished hosts return 404 |
-| G9 | Pricing rule parity | serving `price_minor` equals `pricing.Quote` for qty 1 and the release currency (priority, tiebreak, window, `±infinity`); uppercase manifest ids rejected or canonicalized at seal |
-| G10 | Restore | restoring a pre-C-15b release serves `skus: []`; restoring a C-15b release rebuilds from its sealed SKU rows |
-| G11 | Refresh correctness (C-15c) | stale `available=true` never oversells (checkout reservation fails cleanly); expired price never quoted; worker down → fallback, site up |
+| G1 | Publish atomicity | a serving-build failure (cap overrun) leaves no new release, no pointer move, no SKU rows, and the old serving row intact |
+| G2 | Exact 1 MiB wire budget | body at exactly 1 MiB with max-width variable fields and `tenant_id` accepted; one byte more rejected (422); served bytes equal stored bytes and the ETag is the served representation's hash |
+| G3 | Unpriced rows don't consume caps | 6,000 unpriced variants plus priced ones publish; only priced SKUs are served; input budget overrun returns a typed 422 |
+| G4 | Anonymous SELECT on live tables fails | public login: catalog, pricing, inventory and membership return 42501; `db_role_matrix.sql` exact; `OpenPublic` exact |
+| G5 | Stale writer cannot overwrite | an old `publication_revision` or `serving_generation` fails CAS; the newer row stays byte-identical; a refresh waits for an in-flight publish |
+| G6 | Preview unaffected | `SitePreview` has no `tenant_id` or `skus`; it works without a serving row |
+| G7 | Fallback, not 503 | after `valid_until` (boundary, max lifetime, or invalidation `grace`), the read returns `fallback_body` with its own ETag |
+| G8 | Isolation | two tenants with identical product and SKU UUIDs each serve only their own body; unknown hosts return 404; the compatibility path returns tenant and content from one snapshot |
+| G9 | Pricing parity | served `price_minor` equals `pricing.Quote` (priority, tiebreak, window, `±infinity`) |
+| G10 | Restore | a restored release without membership serves `skus: []`; a restored release with membership rebuilds from its sealed rows |
+| G11 | Invalidation and refresh | a price, stock, reservation or archive change invalidates the row in the same transaction; the refresh rebuilds it (archived member omitted, new price served); with no worker, the fallback is served after `grace` |
 
 ## 4. Reuse from PR #55
 
-- Contract types `SKU` and `OptionValue`, the OpenAPI `PublishedSku` schema, `tenant_id`,
-  and the regenerated TS client shape (already consumed by #53's cart pages).
-- The one-pass `pricing.Quote` attachment and its 5,000 × 20,000 bounded-work unit test.
-  It moves from the read path to the builder.
-- The pgx fixtures: two tenants with shared UUIDs, archived, unpriced, unlisted and
-  uppercase ids, infinite list bounds, 41 products × 5 currencies × 4,001 SKUs. They
-  become publish and serving tests.
-- The tenant-placeholder budget test (becomes G2).
-- Dropped: the 033 RLS policies and grants, the `stock_levels.in_stock` generated column,
-  the live `LiveSKUSQL` path and the per-request Go projection on the public path.
+- Contract types `SKU` and `OptionValue`, the OpenAPI `PublishedSku` schema and
+  `tenant_id`.
+- The one-pass `pricing.Quote` attachment and its bounded-work test, moved to the builder.
+- The pgx fixtures: two tenants with shared UUIDs, archived and unpriced SKUs, infinite
+  list bounds.
+- Dropped: the 033 RLS policies and grants, the `stock_levels.in_stock` column and the
+  live `LiveSKUSQL` path.
 
 ## 5. Consequences
 
-- The anonymous path does O(1) bounded work and has no live joins. Publish does more
-  work, but all of it is bounded and fails as a typed 422 the merchant can act on.
-- SKU and price changes reach the storefront through republish (membership) or refresh
-  (price and availability, C-15c). Until C-15c lands, prices and availability are as of
-  publish time, valid until `valid_until`, after which the fallback is served.
-- One more derived artifact (the serving row) must stay in sync. That is handled by
-  generation CAS plus an always-correct fallback.
-- Module ownership: `publish` owns `site_release_skus` and `storefront_serving`. It reads
-  catalog, pricing and inventory only inside tenant transactions, through declared
-  dependencies (`catalog`, `pricing`, `inventory`), and calls the Pricing Port as its only
-  pricing logic.
+- The anonymous path does O(1) bounded work with no live joins. Publish does more work,
+  but it is bounded and fails as a typed 422 the merchant can act on.
+- Displayed prices and availability lag live data by at most `grace` after a change (or
+  fall back), and never by more than `max_lifetime`. Checkout is the authority.
+- Catalog, pricing and inventory writes pay a small trigger cost. It touches only the
+  tenant's serving rows that reference the changed SKU.
+- `publish` owns `site_release_skus` and `storefront_serving`. It reads catalog, pricing
+  and inventory only inside tenant transactions through declared dependencies, and uses
+  the Pricing Port as its only pricing logic.
 
-## 6. Out of scope / open questions
+## 6. Out of scope
 
-- Per-product offers split or a static snapshot CDN (post-MVP, on measured need).
-- Live per-SKU price lookup instead of the async serving price (owner decision; §2.6).
-- Migration number: next contiguous at push, or `migrations/pending/<stable-id>` once
-  INF-MIG lands.
+- Revoking the 024 snapshot grants (after a production backfill is verified).
+- A per-SKU live price lookup on the product page (owner decision).
+- Splitting serving into a static snapshot plus per-product offers (post-MVP).
 
-## 7. Amendments at acceptance and implementation notes (C-15b)
+## 7. Superseded amendment
 
-1. **valid_until in C-15b is the next price-list boundary only.** It has no maximum-staleness
-   cap: without the C-15c worker, a cap would push every site to the fallback. C-15c sets
-   `valid_until = min(next boundary, built_at + max_staleness)` and ships the refresh worker
-   at the same time. **Until C-15c lands, the displayed price and availability are as of the
-   last publish or restore and can be stale until a republish. Checkout is the authority**:
-   the cart re-quotes and checkout reserves stock against live data.
-2. **Unpriced or non-ready SKUs at publish are not members.** If they become priced or ready
-   later, they need a republish (§2.1).
-3. **The public body is host-independent.** A site can have several verified hostnames, and
-   one serving row per (tenant, site) must be valid for all of them, so `PublishedSite` no
-   longer carries `hostname`. The storefront SSR already uses its request URL. The CMS
-   preview (`SitePreview`) keeps `hostname`.
-4. **Routines.** SKU membership is written by `app.cms_seal_skus`. It is write-once, only for
-   the current release created by the same transaction (`created_at = now()`), and an
-   immutability trigger blocks later changes. The serving row is written only by
-   `app.cms_serving_put`, which does the compare-and-swap on publication revision and
-   generation. Both are `SECURITY DEFINER` routines owned by `app_publish_executor` and
-   executable only by `app_runtime`. They are covered by the existing CMS routine matrix.
-5. **Legacy releases.** Releases published outside the CMS write path (pre-C-15b data, SQL
-   fixtures, `app.publish_release` callers) have no serving row. The public read serves their
-   sealed projection with `skus: []` and `tenant_id`, which is byte-identical in shape to a
-   fallback body. Revoking the 024 release, route and page grants is therefore deferred until
-   C-15c backfills serving rows. `app_domain_resolver` still has no catalog, pricing,
-   inventory or membership grants (G4).
-6. **Transport.** `contract.Reader.Serve` returns the stored bytes. The HTTP handler writes
-   them as-is, with `ETag` set to the body's SHA-256. Errors keep the generated
-   problem responses.
+The earlier amendment "C-15b uses the price boundary only, no max staleness" is withdrawn:
+refresh and invalidation are in scope, so `max_lifetime` applies from the start.
 
+## 8. Design review resolutions (PR #96)
+
+| Thread | Resolution |
+|---|---|
+| 4259961107 | §2.1: membership is written by `cms_seal_skus` in the same transaction that creates and seals the release; it does not use the release-children guard |
+| 4259961120 | §2.4: the compatibility path serves existing hosts from one snapshot; the sweeper backfills; grant revocation is deferred |
+| 4259961129 | §2.6: synchronous invalidation in the mutation transaction plus a bounded lifetime |
+| 4259961139 | §2.3/§2.6: refresh reads live readiness; variant and product lifecycle changes invalidate |
+| 4259961189 | §2.3 step 1: the refresh locks the site row `FOR SHARE` before reading inputs |
+| 4259961150 | §2.2/§2.4: `fallback_sha256`; the ETag is the hash of the bytes served |
+| 4259961159 | §2.5: `hostname` removed from the public body; consumers updated |
+| 4259961172 | §2.5: product-level `unit_amount` and `currency` removed from the public DTO; the storefront uses SKU prices |
+| 4259961175 | §2.4: both hashes granted to the resolver and listed in the `OpenPublic` audit |
