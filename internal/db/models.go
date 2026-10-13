@@ -139,6 +139,43 @@ type AppCartLine struct {
 	Quantity int64       `json:"quantity"`
 }
 
+type AppCheckoutAttempt struct {
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	EventKind   string             `json:"event_kind"`
+	EventKey    string             `json:"event_key"`
+	CheckoutID  pgtype.UUID        `json:"checkout_id"`
+	RequestHash []byte             `json:"request_hash"`
+	Result      []byte             `json:"result"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppCheckoutSession struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ID              pgtype.UUID        `json:"id"`
+	ActorKind       string             `json:"actor_kind"`
+	ActorID         string             `json:"actor_id"`
+	RequestKey      string             `json:"request_key"`
+	RequestHash     []byte             `json:"request_hash"`
+	CartID          pgtype.UUID        `json:"cart_id"`
+	CartVersion     int64              `json:"cart_version"`
+	OrderID         pgtype.UUID        `json:"order_id"`
+	AddressSnapshot []byte             `json:"address_snapshot"`
+	Currency        string             `json:"currency"`
+	AmountMinor     int64              `json:"amount_minor"`
+	ItemsNetMinor   int64              `json:"items_net_minor"`
+	TaxMinor        int64              `json:"tax_minor"`
+	ShippingMinor   int64              `json:"shipping_minor"`
+	PayableVersion  int64              `json:"payable_version"`
+	Phase           string             `json:"phase"`
+	ProviderRef     string             `json:"provider_ref"`
+	StartResult     []byte             `json:"start_result"`
+	FinalResult     []byte             `json:"final_result"`
+	ClaimKind       pgtype.Text        `json:"claim_kind"`
+	ClaimKey        pgtype.Text        `json:"claim_key"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 type AppCompanyContact struct {
 	TenantID       pgtype.UUID `json:"tenant_id"`
 	OrganizationID pgtype.UUID `json:"organization_id"`

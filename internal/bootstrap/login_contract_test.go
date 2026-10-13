@@ -5,6 +5,7 @@ package bootstrap_test
 
 import (
 	"context"
+	"crypto/rand"
 	"os/exec"
 	"strings"
 	"testing"
@@ -16,13 +17,24 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
 
 func TestConfiguredIdentityRouteContract(t *testing.T) {
 	// Construct the production transport without a repository. Route registration
 	// needs no database; this test inspects registrations without invoking handlers.
 	handler := testfixture.LoginHandler("https://admin.example.test", 30*time.Minute)
-	server, err := bootstrap.New(bootstrap.Config{Routes: append(handler.Routes(), publish.StorefrontRoute(nil)), Authenticator: handler, Quotes: quotes.NewApplication(nil)})
+	// Optional checkout is composed explicitly with a per-test isolated Fake key.
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	verifier, err := checkout.NewFakeHMACVerifier(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := bootstrap.New(bootstrap.Config{Routes: append(handler.Routes(), publish.StorefrontRoute(nil)), Authenticator: handler, Quotes: quotes.NewApplication(nil),
+		Checkout: &checkout.Config{FakeEnabled: true, Environment: "test", Verifier: verifier}})
 	if err != nil {
 		t.Fatal(err)
 	}

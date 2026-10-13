@@ -32,7 +32,8 @@ sql:
       - "migrations/029_identity_login.sql"
       - "migrations/030_orders_admin_list_index.sql"
       - "migrations/031_cms_publish.sql"
-      - "migrations/032_fulfillment_returns.sql"
+      - "migrations/032_checkout.sql"
+      - "migrations/034_fulfillment_returns.sql"
     queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:

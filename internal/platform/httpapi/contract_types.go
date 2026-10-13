@@ -1,5 +1,6 @@
 // Responsibility: expose the platform typed API contract port to business services.
-// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish/orders strict services and platform quote transport.
+// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish/orders strict services, platform quote transport
+// and checkout HTTP adapter.
 // Invariant: generated server mounting stays in StrictRoutes or platform transports behind Router admission.
 // Type aliases preserve compiler-checked oneOf/nullable/responses without copies.
 package httpapi
@@ -181,6 +182,16 @@ type OrderShipping = generated.OrderShipping
 type OrderState = generated.OrderState
 type OrderSummary = generated.OrderSummary
 type OrderSummaryCustomerKind = generated.OrderSummaryCustomerKind
+type CheckoutResult = generated.CheckoutResult
+type CheckoutStart = generated.CheckoutStart
+type CheckoutShippingAddress = generated.CheckoutShippingAddress
+type FakePaymentEvent = generated.FakePaymentEvent
+type CreateCheckoutRequestObject = generated.CreateCheckoutRequestObject
+type CreateCheckoutResponseObject = generated.CreateCheckoutResponseObject
+type CreateCheckout201JSONResponse = generated.CreateCheckout201JSONResponse
+type ReceiveFakePaymentEventRequestObject = generated.ReceiveFakePaymentEventRequestObject
+type ReceiveFakePaymentEventResponseObject = generated.ReceiveFakePaymentEventResponseObject
+type ReceiveFakePaymentEvent200JSONResponse = generated.ReceiveFakePaymentEvent200JSONResponse
 
 // Fulfillment/Returns ports preserve compiler-checked strict contract types.
 type CreateShipment = generated.CreateShipment

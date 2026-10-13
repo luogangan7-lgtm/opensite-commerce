@@ -159,11 +159,12 @@ INVENTORY_DB=""
 PRICING_DB=""
 IDENTITY_DB=""
 LOGIN_DB=""
+CHECKOUT_DB=""
 FULFILLMENT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$FULFILLMENT_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$FULFILLMENT_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1185,6 +1186,46 @@ else pass 'CMS upgrade preserves legacy state; controlled writes/immutable histo
 admin -c "DROP DATABASE $CMS_DB" >/dev/null; CMS_DB=""
 
 
+# Checkout installs after EVERY prior forward migration; numeric allocation is
+# deliberately irrelevant. Legacy paid orders and their outbox are not rewritten
+# (created + paid + notifications fan-out email = 3 events).
+checkout_files=(migrations/[0-9][0-9][0-9]_checkout.sql)
+[[ ${#checkout_files[@]} == 1 ]] || { echo 'FAIL: exactly one checkout migration required'; exit 1; }
+CHECKOUT_DB=upgrade_checkout_$$
+admin -c "DROP DATABASE IF EXISTS $CHECKOUT_DB" -c "CREATE DATABASE $CHECKOUT_DB" 2>/dev/null
+river_db "$CHECKOUT_DB"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${checkout_files[0]} ]] || break
+ apply_forward "$CHECKOUT_DB" "$f"
+done
+db "$CHECKOUT_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('checkout-legacy') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','checkout-legacy') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','checkout-legacy','default') RETURNING id AS sku \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_inventory_manager;
+SELECT app.inventory_adjust(:'sku',2,'legacy stock',uuidv7(),'inbound');
+RESET ROLE; SET ROLE app_runtime;
+SELECT uuidv7() AS oid \gset
+SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','checkout-legacy-stock',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','checkout-legacy-order',sha256('legacy'::bytea),NULL,'{"email":"legacy@example.invalid"}','USD',0,'{}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','checkout-legacy','quantity',1,'unit_price_minor',100,
+ 'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{}'::jsonb)),'[]');
+SELECT app.orders_transition(:'oid','paid','legacy-paid',0);
+SQL
+apply_forward "$CHECKOUT_DB" "${checkout_files[0]}"
+result=$(db "$CHECKOUT_DB" -c "SELECT o.state||'|'||o.version||'|'||o.total_minor||'|'||s.on_hand||'|'||s.reserved||'|'||(SELECT count(*) FROM app.outbox_events)||'|'||(SELECT count(*) FROM app.checkout_sessions)||'|'||(SELECT count(*) FROM app.checkout_attempts) FROM app.orders o JOIN app.stock_levels s USING(tenant_id);")
+[[ $result == 'paid|2|100|1|0|3|0|0' ]] || bad "checkout populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${checkout_files[0]} ]] || continue
+ apply_forward "$CHECKOUT_DB" "$f"
+done
+river_db "$CHECKOUT_DB" --verify
+db "$CHECKOUT_DB" -f tests/db_checkout.sql >/dev/null
+db "$CHECKOUT_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $CHECKOUT_DB"; CHECKOUT_DB=""
+pass 'checkout upgrade preserves paid legacy orders/inventory/outbox and installs permanent fenced receipts'
+
 # C-20a: preserve a pre-module paid/committed order, then allocate shipment
 # and compensate its unshipped remainder. Module identity follows filename suffix.
 fulfillment_files=(migrations/[0-9][0-9][0-9]_fulfillment_returns.sql)
@@ -1241,4 +1282,4 @@ pass 'fulfillment upgrade preserves paid inventory and compensates only unshippe
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login, CMS and fulfillment/returns upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login, CMS, checkout and fulfillment/returns upgrade gates'
