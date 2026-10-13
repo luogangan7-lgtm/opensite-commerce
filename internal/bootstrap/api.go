@@ -17,6 +17,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
@@ -37,6 +38,7 @@ type Config struct {
 	Quotes                   quoteshttp.QuotesService
 	QuotesBuyerAuthenticator httpapi.Authenticator
 	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
+	CMS                      publish.CMSHTTPConfig
 	Notifications            notificationcontract.Service
 	Checkout                 *checkout.Config
 }
@@ -69,6 +71,7 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, media.New(config.Media).Routes()...)
 	routes = append(routes, orders.NewHTTP(config.Orders).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
+	routes = append(routes, publish.NewCMSHandler(config.CMS).Routes()...)
 	routes = append(routes, checkoutRoutes...)
 	if config.Quotes != nil {
 		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
@@ -138,4 +141,16 @@ func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, s
 		return (httpapi.DenyAuthenticator{}).Authenticate(ctx, r, spec)
 	}
 	return a.staff.Authenticate(ctx, r, spec)
+}
+
+// ResolveActor preserves the identity projection of the selected staff
+// authenticator. It never manufactures an actor from an HTTP field.
+func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
+	if spec.Access == httpapi.Storefront {
+		return httpapi.Actor{}, nil
+	}
+	if resolver, ok := a.staff.(httpapi.ActorResolver); ok {
+		return resolver.ResolveActor(ctx, r, spec)
+	}
+	return httpapi.Actor{}, nil
 }

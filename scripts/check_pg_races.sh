@@ -989,8 +989,74 @@ SQL
  [[ $got == "$expected|4|$approvals|4" ]] || fail=1
 done
 
+
+# C09b gates 80/81: controlled publication site-lock/CAS and ABA restore fence.
+read -r CMS_T CMS_S <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('cms-race-80') RETURNING id AS t \gset
+INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','CMS race') RETURNING id AS o \gset
+INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','CMS race') RETURNING id AS s \gset
+SELECT :'t'||' '||:'s';
+SQL
+)"
+CMS_A=cc09b000-0000-4000-8000-000000000080
+CMS_ACTOR="SELECT set_config('app.actor_kind','user',true),set_config('app.actor_id','$CMS_A',true);"
+CMS_D=$(sql <<SQL | tail -1
+BEGIN; SELECT set_config('app.tenant_id','$CMS_T',true); SET LOCAL ROLE app_runtime; $CMS_ACTOR
+SELECT app.cms_create_draft('$CMS_T','$CMS_S','user','$CMS_A','en','Race','Race')->>'draft_id' AS d \gset
+SELECT app.cms_apply('$CMS_T','$CMS_S',:'d','user','$CMS_A',1,'save_page','{"page_key":"home","locale":"en","path":"/","document":{"title":"Race","description":"Race","blocks":[]},"media_ids":[]}');
+COMMIT;
+SELECT :'d';
+SQL
+)
+CMS_PUBLISH="$CMS_ACTOR SELECT app.cms_publish('$CMS_T','$CMS_S','$CMS_D','user','$CMS_A',2,NULL,0,'race80');"
+gate_close 80
+tx cms_publish_winner app_runtime "$CMS_T" "$CMS_PUBLISH $(park 80)" &
+await cms_publish_winner advisory
+tx cms_publish_loser app_runtime "$CMS_T" "$CMS_PUBLISH" &
+await cms_publish_loser "${ROWLOCK[@]}"
+gate_open 80; wait
+expect cms_publish_winner ok; expect cms_publish_loser CMS_PUBLICATION_STALE; expect cms_publish_loser 40001
+got=$(sql <<<"SELECT s.publication_revision||'|'||d.status||'|'||(SELECT count(*) FROM app.site_releases WHERE tenant_id='$CMS_T' AND site_id='$CMS_S')||'|'||(SELECT count(*) FROM app.audit_events WHERE tenant_id='$CMS_T' AND operation='cms.publish') FROM app.sites s JOIN app.site_drafts d ON (s.tenant_id,s.id)=(d.tenant_id,d.site_id) WHERE s.tenant_id='$CMS_T' AND s.id='$CMS_S';")
+echo "CMS gate80 publish winner: $got (expected 1|published|1|1)"
+[[ $got == '1|published|1|1' ]] || fail=1
+CMS_R=$(sql <<<"SELECT published_release_id FROM app.sites WHERE tenant_id='$CMS_T' AND id='$CMS_S';")
+# Both contenders restore the identical target/pointer. UUID CAS alone would
+# admit both; the publication epoch makes the second request stale (ABA proof).
+CMS_RESTORE="$CMS_ACTOR SELECT app.cms_restore('$CMS_T','$CMS_S','user','$CMS_A','$CMS_R',1,'$CMS_R');"
+gate_close 81
+tx cms_restore_winner app_runtime "$CMS_T" "$CMS_RESTORE $(park 81)" &
+await cms_restore_winner advisory
+tx cms_restore_loser app_runtime "$CMS_T" "$CMS_RESTORE" &
+await cms_restore_loser "${ROWLOCK[@]}"
+gate_open 81; wait
+expect cms_restore_winner ok; expect cms_restore_loser CMS_PUBLICATION_STALE; expect cms_restore_loser 40001
+got=$(sql <<<"SELECT publication_revision||'|'||(published_release_id='$CMS_R')||'|'||(SELECT count(*) FROM app.site_releases WHERE tenant_id='$CMS_T' AND site_id='$CMS_S')||'|'||(SELECT count(*) FROM app.audit_events WHERE tenant_id='$CMS_T' AND operation='cms.restore') FROM app.sites WHERE tenant_id='$CMS_T' AND id='$CMS_S';")
+echo "CMS gate81 restore ABA: $got (expected 2|true|1|1)"
+[[ $got == '2|true|1|1' ]] || fail=1
+
+# A publisher's validation read and a concurrent apply use site -> draft order.
+# Park the editor after its site lock but before draft mutation; the publisher
+# must wait at the site, then observe the stale draft revision without deadlock.
+CMS_D=$(sql <<SQL | tail -1
+BEGIN; SELECT set_config('app.tenant_id','$CMS_T',true); SET LOCAL ROLE app_runtime; $CMS_ACTOR
+SELECT app.cms_create_draft('$CMS_T','$CMS_S','user','$CMS_A','en','Race','Race')->>'draft_id' AS d \gset
+COMMIT; SELECT :'d';
+SQL
+)
+gate_close 82
+tx cms_apply_order app_runtime "$CMS_T" "$CMS_ACTOR SELECT id FROM app.sites WHERE tenant_id='$CMS_T' AND id='$CMS_S' FOR UPDATE; $(park 82) SELECT app.cms_apply('$CMS_T','$CMS_S','$CMS_D','user','$CMS_A',1,'set_metadata','{\"locale\":\"en\",\"title\":\"Edited\",\"description\":\"Race\"}');" &
+await cms_apply_order advisory
+tx cms_publish_order app_runtime "$CMS_T" "$CMS_ACTOR SELECT app.cms_read_draft('$CMS_T','$CMS_S','$CMS_D',1); SELECT app.cms_publish('$CMS_T','$CMS_S','$CMS_D','user','$CMS_A',1,'$CMS_R',2,'race82');" &
+await cms_publish_order "${ROWLOCK[@]}"
+gate_open 82; wait
+expect cms_apply_order ok; expect cms_publish_order CMS_DRAFT_STALE; expect cms_publish_order 40001
+got=$(sql <<<"SELECT s.publication_revision||'|'||d.revision||'|'||d.status||'|'||(SELECT count(*) FROM app.site_releases WHERE tenant_id='$CMS_T' AND site_id='$CMS_S') FROM app.sites s JOIN app.site_drafts d ON (s.tenant_id,s.id)=(d.tenant_id,d.site_id) WHERE s.tenant_id='$CMS_T' AND s.id='$CMS_S' AND d.id='$CMS_D';")
+echo "CMS gate82 apply/publish lock order: $got (expected 2|2|open|1)"
+[[ $got == '2|2|open|1' ]] || fail=1
+
+
 # Checkout durable claim competes before provider IO. Both winner directions
-# are synchronized by gates 80/81, with a witnessed contender row-lock wait.
+# are synchronized by gates 90/91, with a witnessed contender row-lock wait.
 # Then only the committed claimant applies Orders/Ledger side effects. Outbox:
 # order.created + terminal event, plus the notifications fan-out email for paid. The Go
 # pgx E2E repeats this protocol through the actual Fake provider/service.
@@ -1013,8 +1079,8 @@ INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,r
  VALUES('$T','$CID','guest',repeat('a',64),'checkout-race',sha256('start'::bytea),uuidv7(),1,'$OID','USD',130,100,10,20,1,'{}');
 UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake-race',start_result='{}' WHERE tenant_id='$T' AND id='$CID';
 SQL
- if [[ $first_phase == confirming ]]; then second_phase=cancelling; first_kind=payment; second_kind=cancel; final=paid; stock=0; journals=1; outbox=3; race_gate=80
- else second_phase=confirming; first_kind=cancel; second_kind=payment; final=cancelled; stock=1; journals=0; outbox=2; race_gate=81; fi
+ if [[ $first_phase == confirming ]]; then second_phase=cancelling; first_kind=payment; second_kind=cancel; final=paid; stock=0; journals=1; outbox=3; race_gate=90
+ else second_phase=confirming; first_kind=cancel; second_kind=payment; final=cancelled; stock=1; journals=0; outbox=2; race_gate=91; fi
  claim_first="WITH changed AS (UPDATE app.checkout_sessions SET phase='$first_phase',claim_kind='$first_kind',claim_key='race-first' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_FIRST='||count(*) FROM changed;"
  claim_second="WITH changed AS (UPDATE app.checkout_sessions SET phase='$second_phase',claim_kind='$second_kind',claim_key='race-second' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_SECOND='||count(*) FROM changed;"
  gate_close "$race_gate"
@@ -1037,7 +1103,8 @@ SQL
  [[ $got == "$final|$final|$stock|0|$journals|$outbox|3" ]] || fail=1
 done
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/checkout contract" >&2; exit 1; fi
+
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
@@ -1049,6 +1116,7 @@ echo 'PASS: catalog stale CAS waits for row lock, rechecks version and leaves wi
 echo 'PASS: cart row-lock/CAS contender cannot overwrite winner line or version'
 echo 'PASS: orders pay/cancel and prelock/expiry races conserve inventory and events'
 echo 'PASS: quote approve/withdraw row-lock CAS races have exactly one winner and atomic outbox/approval'
+echo 'PASS: CMS gate80 one publisher, gate81 restore ABA epoch fence, gate82 apply/publish lock order'
 echo 'PASS: checkout confirm/cancel claims choose one durable winner with atomic order, stock, ledger and outbox witnesses'
 # Focused native River/claim/fence gates cannot silently skip for missing PG.
 reliability_packages=(./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)

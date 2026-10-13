@@ -212,7 +212,20 @@ def validate_contract(api):
             tenant_parameter = next((p for p in parameters if p["name"] == "tenant_id" and p["in"] == "path"), {})
             require(tenant_parameter.get("required") is True and tenant_parameter.get("schema") ==
                     {"type": "string", "format": "uuid"}, f"required tenant UUID parameter missing: {ident}")
-        if access == "Public":
+        if access == "Public" and ident == "getSitePreview":
+            # Staff authentication is bypassed only for this read-only signed
+            # capability. The publish module verifies the bearer before SQL.
+            require(path == "/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview" and
+                    method == "get" and security == [] and "x-required-scope" not in op,
+                    "signed preview access/path policy drift")
+            headers = {p["name"]: p for p in parameters if p["in"] == "header"}
+            require(headers.get("Authorization", {}).get("required") is True,
+                    "signed preview bearer must be required")
+            success_headers = op["responses"].get("200", {}).get("headers", {})
+            require(success_headers.get("Cache-Control", {}).get("schema", {}).get("const") == "no-store" and
+                    success_headers.get("X-Robots-Tag", {}).get("schema", {}).get("const") == "noindex, nofollow",
+                    "signed preview cache/index policy drift")
+        elif access == "Public":
             if ident == "receiveFakePaymentEvent":
                 require((path, method) == ("/api/v1/testing/payments/fake/webhook", "post") and
                         op.get("x-test-only") is True and security == [{"FakeWebhookSignature": []}] and
