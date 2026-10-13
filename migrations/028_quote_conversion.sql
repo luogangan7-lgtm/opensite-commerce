@@ -55,7 +55,7 @@ RETURNS app.quotes LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,
 DECLARE q app.quotes; BEGIN
  IF p_tenant IS NULL OR p_tenant IS DISTINCT FROM nullif(current_setting('app.tenant_id',true),'')::uuid THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_NOT_FOUND' USING ERRCODE='P0002'; END IF;
- SELECT * INTO q FROM app.quotes WHERE tenant_id=p_tenant AND id=p_quote FOR UPDATE;
+ SELECT * INTO q FROM app.quotes WHERE tenant_id=p_tenant AND id=p_quote;
  IF NOT FOUND OR q.buyer_company_id IS DISTINCT FROM p_company OR q.status='draft'
  OR NOT app.quote_actor_access(p_tenant,p_company,'customer',p_customer,'read') THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_NOT_FOUND' USING ERRCODE='P0002'; END IF;
