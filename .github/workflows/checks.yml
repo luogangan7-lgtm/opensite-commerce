@@ -138,8 +138,9 @@ jobs:
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
-          # HEAD^1 is the trusted base (PR merge commit's base, or previous main) for changed-golden provenance.
-          fetch-depth: 2
+          # pull_request: HEAD^1 of the merge ref is the base. push: full history so github.event.before is checked
+          # as an ancestor and every pushed commit's goldens are verified (else all goldens are).
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
       - name: Trust the checked-out CI workspace for Go VCS metadata
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -157,6 +158,7 @@ jobs:
       - name: Golden provenance (records, pins, hashes; changed goldens against their CI producer)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENSITE_GOLDEN_BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
         run: |
           bun scripts/frontend/check-baselines.ts
           bun scripts/frontend/verify-baseline-artifact.ts

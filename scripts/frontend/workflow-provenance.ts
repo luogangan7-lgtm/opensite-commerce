@@ -82,3 +82,8 @@ export function assertWriterInputs(atSource: Record<string, string | null>, cand
     if (!(file in atSource) || !(file in candidate) || atSource[file] !== candidate[file]) throw new Error(`Golden writer input at producer SHA differs from candidate: ${file}`);
   }
 }
+/** Bun loads .env* from the working directory into the writer (like bunfig.toml); only .env.example may exist. */
+export function assertNoBunEnvFiles(names: string[]) {
+  const found = names.filter(name => name.startsWith('.env') && name !== '.env.example');
+  if (found.length) throw new Error(`Golden writer environment must not include Bun-loaded ${found.join(', ')}`);
+}

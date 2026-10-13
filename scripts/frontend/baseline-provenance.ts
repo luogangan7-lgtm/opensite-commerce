@@ -123,3 +123,22 @@ export function changedSnapshots(paths: string[]): Set<string> {
     .map(path => path.slice(BASELINES.length + 1).replace(/\.provenance\.json$/, ''))
     .filter(snapshot => /^(desktop|mobile)\/[a-z0-9-]+\.png$/.test(snapshot)));
 }
+/**
+ * Goldens to verify against their producer artifact. `HEAD^1` is the pull_request merge-ref base; on push the
+ * base is `github.event.before`, which must be an ancestor of HEAD so every pushed commit is covered. A zero,
+ * empty, unknown or non-ancestor (force-push) base fails closed to 'all'.
+ */
+export function goldenChangeSet(base: string, cwd = process.cwd()): Set<string> | 'all' {
+  const git = (...args: string[]) => Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+  if (base !== 'HEAD^1') {
+    if (!/^[0-9a-f]{40}$/.test(base) || /^0+$/.test(base)) return 'all';
+    if (git('cat-file', '-e', `${base}^{commit}`).exitCode !== 0) {
+      git('fetch', '--no-tags', '--quiet', 'origin', base);
+      if (git('cat-file', '-e', `${base}^{commit}`).exitCode !== 0) return 'all';
+    }
+    if (git('merge-base', '--is-ancestor', base, 'HEAD').exitCode !== 0) return 'all';
+  }
+  const diff = git('diff', '--name-only', '--no-renames', base, 'HEAD', '--', BASELINES);
+  if (diff.exitCode !== 0) throw new Error(`Cannot diff goldens against ${base}`);
+  return changedSnapshots(new TextDecoder().decode(diff.stdout).split('\n').filter(Boolean));
+}
