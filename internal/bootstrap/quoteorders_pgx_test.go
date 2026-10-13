@@ -391,7 +391,7 @@ func TestQuoteOrdersPGApprovedSnapshotAndReplay(t *testing.T) {
 		t.Fatalf("conversion %+v", first)
 	}
 	second, e := f.app.Convert(f.buyerCtx, f.quote.ID, key)
-	if e != nil || second.OrderID != first.OrderID || second.ProviderRef != first.ProviderRef {
+	if e != nil || second.OrderID != first.OrderID || second.State != first.State || second.Amount != first.Amount {
 		t.Fatalf("replay %+v %v", second, e)
 	}
 	if _, e := f.app.Convert(f.buyerCtx, f.quote.ID, uuid.NewString()); !errors.Is(e, qc.ErrConflict) {

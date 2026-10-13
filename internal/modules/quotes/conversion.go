@@ -62,6 +62,7 @@ func (a *ConversionApplication) Convert(ctx context.Context, quoteID, key string
 	}
 	body, _ := json.Marshal([]string{"quotes.orders.v1", actor.TenantID(), actor.CompanyID(), actor.ID(), quoteID})
 	hash := sha256.Sum256(body)
+	replay := false
 	err = a.config.Runner.InTenant(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
 		q, e := a.config.Quotes.LockForConversion(ctx, tx, actor, quoteID)
 		if e != nil {
@@ -73,6 +74,7 @@ func (a *ConversionApplication) Convert(ctx context.Context, quoteID, key string
 				return c.ErrConflict
 			}
 			out = existing
+			replay = true
 			return nil
 		}
 		if !errors.Is(e, c.ErrNotFound) {
@@ -102,6 +104,11 @@ func (a *ConversionApplication) Convert(ctx context.Context, quoteID, key string
 	})
 	if err != nil {
 		return c.Conversion{}, err
+	}
+	// The durable order projection is the replay result once payment has left
+	// pending. Fulfillment and refunds must never restart the payment port.
+	if replay && out.State != string(oc.PendingPayment) {
+		return out, nil
 	}
 	paid, err := a.config.Checkout.Prepay(ctx, actor, out)
 	if err != nil {
