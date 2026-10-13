@@ -1,3 +1,4 @@
+/* C-08d probe: identical-pixel input change. */
 /* Development catalog composition; loaded by guarded gallery.tsx only. Token padding encloses every focus outline. */
 html { scroll-padding-block-start: var(--space-6); }
 .skip-link { position: fixed; inset-block-start: var(--space-3); inset-inline-start: var(--space-3); padding: var(--space-3); background: var(--color-surface); transform: translateY(calc(-100% - var(--space-6))); }

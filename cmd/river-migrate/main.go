@@ -99,3 +99,4 @@ func main() {
 		os.Exit(1)
 	}
 }
+// C-08d probe: identical-pixel input change.
