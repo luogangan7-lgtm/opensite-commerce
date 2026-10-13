@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"net/url"
 	"os"
@@ -25,7 +26,7 @@ import (
 func TestCMSWritePublishRestorePG(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: migrated disposable DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: migrated disposable DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -341,7 +342,7 @@ func newCMSPG(t *testing.T, ctx context.Context, seed ...string) *cmsPG {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: migrated disposable DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: migrated disposable DATABASE_URL required")
 	}
 	admin, closeAdmin, err := pgxadapter.Open(ctx, dsn)
 	if err != nil {
