@@ -290,9 +290,9 @@ def check_raw_connection(text, location, allow_raw=False):
     # All owned source (including tests and ignored tags) is checked before go list.
     tokens, imports = go_imports(text)
     for alias, imported in imports:
-        # A dot import hides Conn/Connect origins even inside the adapter, so it is never exempt.
-        require(not (alias == "." and imported == "github.com/jackc/pgx/v5"),
-                "MODULE_RAW_CONNECTION", location + " (pgx dot import)")
+        # A dot import hides Conn/Pool/Connect origins even inside the adapter, so it is never exempt.
+        require(not (alias == "." and (imported in POOL_TYPES or imported == "github.com/jackc/pgx/v5")),
+                "MODULE_RAW_CONNECTION", location + " (raw-capability dot import)")
     if allow_raw and Path(location).parent == Path("internal/tenanttx/pgxadapter"):
         return
     imported_paths = {path for _, path in imports}
@@ -339,7 +339,8 @@ def check_raw_connection(text, location, allow_raw=False):
 # pgxpool.Pool/Conn or pgx.Conn hands callers a way around tenanttx.Run.
 POOL_TYPES = {"github.com/jackc/pgx/v5/pgxpool": ("pgxpool", {"Pool", "Conn"}),
               "github.com/jackc/pgx/v5": ("pgx", {"Conn"}),
-              "github.com/jackc/pgx/v5/pgconn": ("pgconn", {"PgConn"}),
+              "github.com/jackc/pgx/v5/pgconn": ("pgconn", {"PgConn", "Pipeline"}),
+              "database/sql/driver": ("driver", {"Connector", "Driver", "DriverContext", "Conn", "Stmt"}),
               "database/sql": ("sql", {"DB", "Conn", "Stmt", "Tx"})}
 
 

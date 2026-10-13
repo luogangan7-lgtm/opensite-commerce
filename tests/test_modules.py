@@ -921,6 +921,12 @@ class GovernanceTests(unittest.TestCase):
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_adapter_dot_import_of_any_raw_package_red(self):
+        self.vendor_pgx_and_pool()
+        self.source("internal/tenanttx/pgxadapter/dotpool.go",
+                    'package pgxadapter\nimport . "github.com/jackc/pgx/v5/pgxpool"\nvar Raw *Pool\n')
+        self.assert_red("MODULE_RAW_CONNECTION")
+
     def test_adapter_exported_sql_transaction_red(self):
         self.source("internal/tenanttx/pgxadapter/tx.go",
                     'package pgxadapter\nimport "database/sql"\nfunc BeginRaw() *sql.Tx { return nil }\n')

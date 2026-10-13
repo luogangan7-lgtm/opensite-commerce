@@ -19,7 +19,8 @@ import (
 var rawTypes = map[string]map[string]bool{
 	"github.com/jackc/pgx/v5/pgxpool": {"Pool": true, "Conn": true},
 	"github.com/jackc/pgx/v5":         {"Conn": true},
-	"github.com/jackc/pgx/v5/pgconn":  {"PgConn": true},
+	"github.com/jackc/pgx/v5/pgconn":  {"PgConn": true, "Pipeline": true},
+	"database/sql/driver":             {"Connector": true, "Driver": true, "DriverContext": true, "Conn": true, "Stmt": true},
 	"database/sql":                    {"DB": true, "Conn": true, "Stmt": true, "Tx": true},
 }
 
@@ -117,6 +118,10 @@ func foreignExposure(t *types.Named, pkg *types.Package, seen map[types.Type]boo
 			methods = append(methods, it.Method(i))
 		}
 	} else {
+		// Function types and structs carry connection pointers in their signature or fields.
+		if s := exposure(t.Underlying(), pkg, seen); s != "" {
+			return t.Obj().Name() + " -> " + s
+		}
 		for i := 0; i < t.NumMethods(); i++ {
 			methods = append(methods, t.Method(i))
 		}
@@ -223,6 +228,9 @@ func TestExportSurfaceDetectorRedAndGreen(t *testing.T) {
 		"anonymous interface field": {"a.go": header + "type Provider struct { Open interface { Get() *pgxpool.Pool } }\n"},
 		"sql statement":             {"a.go": header + "func Prepared() *sql.Stmt { return nil }\n"},
 		"sql transaction":           {"a.go": header + "func BeginRaw() *sql.Tx { return nil }\n"},
+		"pgconn pipeline":           {"a.go": "package fixture\nimport \"github.com/jackc/pgx/v5/pgconn\"\nvar _ pgconn.CommandTag\nfunc RawPipeline() *pgconn.Pipeline { return nil }\n"},
+		"driver connector":          {"a.go": "package fixture\nimport \"database/sql/driver\"\nfunc C() driver.Connector { return nil }\n"},
+		"foreign callback type":     {"a.go": "package fixture\nimport \"github.com/jackc/pgx/v5/pgconn\"\nfunc Install(h pgconn.NoticeHandler) {}\n"},
 		"exported method":           {"a.go": header + "type Runner struct{ pool *pgxpool.Pool }\nfunc (r Runner) Raw() *pgxpool.Pool { return r.pool }\n"},
 		"unexported carrier":        {"a.go": header + "type runner struct{ pool *pgxpool.Pool }\nfunc (r runner) Pool() *pgxpool.Pool { return r.pool }\nfunc New() runner { return runner{} }\n"},
 		"pgx connection value":      {"a.go": header + "var Open = pgx.Connect\n"},
