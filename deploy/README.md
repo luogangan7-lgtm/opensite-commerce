@@ -9,7 +9,12 @@ this stack.
 
 Copy `.env.example` to `.env`, restrict its permissions (`chmod 600 .env`) and
 replace all seven password placeholders with independent random values of at
-least 24 characters, and the independent 64-hex job signing key. Use simple `KEY=value` or single-quoted values, with no
+least 24 characters, the independent 64-hex job signing key, and the staff
+login settings: `OPENSITE_ADMIN_ORIGIN` (the exact HTTPS origin of the admin
+UI, no path) and an independent 64-hex `OPENSITE_AUTH_SIGNING_KEY` (for example
+`openssl rand -hex 32`). Compose passes them to the API as `OSC_ADMIN_ORIGIN`
+and `OSC_AUTH_SIGNING_KEY_HEX`; staff login reuses the auth login DSN, and the
+API refuses to start if either value is missing or malformed. Use simple `KEY=value` or single-quoted values, with no
 interpolation or multiline values. Never commit the file or print resolved
 Compose configuration. The helpers read `.env`; exported variables take
 precedence. Set `OPENSITE_ENV_FILE` to use another private file and
@@ -18,6 +23,7 @@ precedence. Set `OPENSITE_ENV_FILE` to use another private file and
 ```sh
 docker compose --env-file .env -f deploy/compose.yaml up -d --build --wait api worker
 curl --fail http://127.0.0.1:8080/healthz
+curl --fail http://127.0.0.1:8080/api/v1/auth/login
 curl --fail http://127.0.0.1:8080/metrics
 curl --fail http://127.0.0.1:8081/healthz
 curl --fail http://127.0.0.1:8081/metrics
@@ -29,8 +35,8 @@ installs the locked River history in its independently owned `queue` schema,
 applies frozen forward-only/checksum-checked application migrations, verifies
 River history, and provisions restricted login identities. API startup waits for successful
 migration and verifies its separately configured runtime, auth, domain and
-media pools. Auth/domain consumers remain pending their application wiring;
-configuration does not install an authenticator. The separate media identity
+media pools. Staff login (`/api/v1/auth/*`) is installed on the auth pool's
+DSN; the domain consumer remains pending its application wiring. The separate media identity
 uses the existing media capability rather than granting it to runtime.
 
 Run an explicit migration/provisioning step after changing migration files:
