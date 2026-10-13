@@ -77,7 +77,12 @@ func (r *QueryRunner) RunTrustedTx(ctx context.Context, tenant string, fn func(c
 	if r == nil || fn == nil {
 		return errors.New("runtime database is unavailable")
 	}
-	return r.runner.InTenant(ctx, tenant, fn)
+	return r.runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error { // REVIEW PROBE 96-r1b
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id','',true)`); err != nil {
+			return err
+		}
+		return fn(ctx, tx)
+	})
 }
 
 func (r *QueryRunner) run(ctx context.Context, tenant string, snapshot bool, fn func(*db.Queries) error) error {
