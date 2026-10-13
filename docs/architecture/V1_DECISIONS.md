@@ -711,7 +711,7 @@ Checkout 统一负责交易集成，不允许各模块自行建立第二套结�
 4. **正式验收阶段**：对最终编号、最终文件内容和最终 Commit SHA 重新执行真实 PostgreSQL 18 迁移、空库测试、升级测试、`sqlc generate`、Go 编译、RLS/约束检查。更新后的 CI 与独立审核必须通过才能合入。
 5. **合入后**：迁移文件名及内容永久冻结，禁止改号、改名、改内容或复用已合入编号。修复只能新增下一份迁移。
 
-**实现（INF-MIG，2026-10-13）**：提案目录实际为 `migrations/pending/<stable-id>_<name>.sql`（stable-id 为短 slug，如 `c15b-serving`；`registry.yaml`/`sqlc.yaml` 直接引用该路径）。顺序 = stable-id 字典序，可用文件头 `-- depends-on: <stable-id>` 覆盖；未知依赖、环、重名一律失败。`scripts/migrate.sh` 在 `OPENSITE_ALLOW_PENDING_MIGRATIONS=1`（仅一次性开发/CI 库）时于临时目录接续编号执行，否则只要 `pending/` 非空即拒绝（生产/演练 fail closed）；CI 各 job 先在临时 checkout 中执行 `scripts/pending_migrations.py ci-normalize`。合入时集成者执行一次 `scripts/land_migration.sh <stable-id>`（字节不变地移动到下一个连续编号并改写引用；pending 文件首行必须是 `-- stable-id: <id>`，落号后其他提案的 depends-on 仍可解析，开发库校验和不变；`ops_deploy` 遇到 pending 拒绝时报 `MIGRATION_REFUSED_PENDING`）。已合入的编号文件（含 001–014）仍永久冻结、只前进。开发库上 pending 迁移的版本名在落号后会变，重建开发库即可。
+**实现（INF-MIG，2026-10-13）**：提案目录实际为 `migrations/pending/<stable-id>_<name>.sql`（stable-id 为短 slug，如 `c15b-serving`；`registry.yaml`/`sqlc.yaml` 直接引用该路径）。顺序 = stable-id 字典序，可用文件头 `-- depends-on: <stable-id>` 覆盖；未知依赖、环、重名一律失败。`scripts/migrate.sh` 在 `OPENSITE_ALLOW_PENDING_MIGRATIONS=1`（仅一次性开发/CI 库）时于临时目录接续编号执行，否则只要 `pending/` 非空即拒绝（生产/演练 fail closed）；CI 的 foundation 与 mvp-e2e 先在临时 checkout 中执行 `scripts/pending_migrations.py ci-normalize`；frontend 与基线生产 job 不改 checkout，由一次性库夹具 `start_storefront_api_e2e.sh` 以该标志经临时目录应用。合入时集成者执行一次 `scripts/land_migration.sh <stable-id>`（字节不变地移动到下一个连续编号并改写引用；pending 文件首行必须是 `-- stable-id: <id>`，落号后其他提案的 depends-on 仍可解析，开发库校验和不变；`ops_deploy` 遇到 pending 拒绝时报 `MIGRATION_REFUSED_PENDING`）。已合入的编号文件（含 001–014）仍永久冻结、只前进。开发库上 pending 迁移的版本名在落号后会变，重建开发库即可。
 
 PR-01B 仍是首个需要合入的基础变更，因此正常情况下其安全加固迁移将获得 `010`；但其他 PR 不预留 `011+`。
 
