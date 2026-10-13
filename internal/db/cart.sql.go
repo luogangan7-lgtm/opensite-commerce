@@ -129,7 +129,7 @@ const getActiveCartSKU = `-- name: GetActiveCartSKU :one
 SELECT v.id FROM app.product_variants v
 JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
 WHERE v.tenant_id=$1 AND v.id=$2
- AND p.lifecycle_status='ready'
+ AND p.lifecycle_status='ready' AND v.lifecycle_status='ready'
 FOR SHARE OF v,p
 `
 
@@ -223,7 +223,7 @@ func (q *Queries) GetCartForUpdate(ctx context.Context, arg GetCartForUpdatePara
 }
 
 const listCartLines = `-- name: ListCartLines :many
-SELECT cl.tenant_id,cl.cart_id,cl.sku_id,cl.quantity,v.product_id,v.sku,p.lifecycle_status
+SELECT cl.tenant_id,cl.cart_id,cl.sku_id,cl.quantity,v.product_id,v.sku,(p.lifecycle_status='ready' AND v.lifecycle_status='ready')::boolean AS active
 FROM app.cart_lines cl
 JOIN app.product_variants v ON (v.tenant_id,v.id)=(cl.tenant_id,cl.sku_id)
 JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
@@ -237,13 +237,13 @@ type ListCartLinesParams struct {
 }
 
 type ListCartLinesRow struct {
-	TenantID        pgtype.UUID `json:"tenant_id"`
-	CartID          pgtype.UUID `json:"cart_id"`
-	SkuID           pgtype.UUID `json:"sku_id"`
-	Quantity        int64       `json:"quantity"`
-	ProductID       pgtype.UUID `json:"product_id"`
-	Sku             string      `json:"sku"`
-	LifecycleStatus string      `json:"lifecycle_status"`
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	CartID    pgtype.UUID `json:"cart_id"`
+	SkuID     pgtype.UUID `json:"sku_id"`
+	Quantity  int64       `json:"quantity"`
+	ProductID pgtype.UUID `json:"product_id"`
+	Sku       string      `json:"sku"`
+	Active    bool        `json:"active"`
 }
 
 func (q *Queries) ListCartLines(ctx context.Context, arg ListCartLinesParams) ([]ListCartLinesRow, error) {
@@ -262,7 +262,7 @@ func (q *Queries) ListCartLines(ctx context.Context, arg ListCartLinesParams) ([
 			&i.Quantity,
 			&i.ProductID,
 			&i.Sku,
-			&i.LifecycleStatus,
+			&i.Active,
 		); err != nil {
 			return nil, err
 		}
