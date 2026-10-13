@@ -99,7 +99,7 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 		}
 		origins, tokens := r.Header.Values("Origin"), r.Header.Values("X-CSRF-Token")
 		if len(origins) != 1 || origins[0] != s.config.Origin || len(tokens) != 1 || tokens[0] == "" || len(tokens[0]) > 512 {
-			return nil, apperrors.New(403, "forbidden", "Storefront Origin and CSRF admission required")
+			return nil, notFound()
 		}
 		actor, err := s.config.Resolver.Resolve(ctx, r)
 		if err != nil {
@@ -122,7 +122,11 @@ func (f authFunc) Authenticate(ctx context.Context, r *http.Request, s httpapi.R
 	return f(ctx, r, s)
 }
 func (s *Handler) Routes() []httpapi.Route {
-	specs := []httpapi.RouteSpec{{OperationID: StartOperation, Method: http.MethodPost, Pattern: StartPattern, Access: httpapi.Storefront, MaxBodySize: startBodyLimit}}
+	specs := []httpapi.RouteSpec{
+		{OperationID: StartOperation, Method: http.MethodPost, Pattern: StartPattern, Access: httpapi.Storefront, MaxBodySize: startBodyLimit},
+		{OperationID: PreviewOperation, Method: http.MethodPost, Pattern: PreviewPattern, Access: httpapi.Storefront, MaxBodySize: startBodyLimit},
+		{OperationID: GetOperation, Method: http.MethodGet, Pattern: GetPattern, Access: httpapi.Storefront},
+	}
 	if s.config.FakeEnabled {
 		specs = append(specs, httpapi.RouteSpec{OperationID: FakeOperation, Method: http.MethodPost, Pattern: FakePattern, Access: httpapi.Public, MaxBodySize: fakeBodyLimit})
 	}
@@ -132,20 +136,16 @@ func (s *Handler) Routes() []httpapi.Route {
 			routes[i].Handler = s.verifyWebhook(routes[i].Handler)
 		}
 	}
-	routes = append(routes,
-		httpapi.Route{Spec: httpapi.RouteSpec{OperationID: PreviewOperation, Method: http.MethodPost, Pattern: PreviewPattern, Access: httpapi.Storefront, MaxBodySize: startBodyLimit}, Handler: http.HandlerFunc(s.preview)},
-		httpapi.Route{Spec: httpapi.RouteSpec{OperationID: GetOperation, Method: http.MethodGet, Pattern: GetPattern, Access: httpapi.Storefront}, Handler: http.HandlerFunc(s.get)},
-	)
 	return routes
 }
 
-func (s *Handler) browserReader(r *http.Request) (contract.AuthorizedActor, contract.BrowserReader, error) {
-	actor, ok := r.Context().Value(actorKey{}).(contract.AuthorizedActor)
-	tenant, err := httpapi.AuthorizedTenant(r.Context())
+func (s *Handler) browserReader(ctx context.Context, target string) (contract.AuthorizedActor, contract.BrowserReader, error) {
+	actor, ok := ctx.Value(actorKey{}).(contract.AuthorizedActor)
+	tenant, err := httpapi.AuthorizedTenant(ctx)
 	if !ok || !actor.Valid() || err != nil {
 		return contract.AuthorizedActor{}, nil, unauthenticated()
 	}
-	if tenant != actor.TenantID() {
+	if tenant != actor.TenantID() || tenant != target {
 		return contract.AuthorizedActor{}, nil, notFound()
 	}
 	reader, ok := s.config.Service.(contract.BrowserReader)
@@ -169,62 +169,54 @@ type previewJSON struct {
 	ShippingOptions []previewOptionJSON `json:"shipping_options"`
 }
 
-func (s *Handler) preview(w http.ResponseWriter, r *http.Request) {
-	actor, reader, err := s.browserReader(r)
+func (s *Handler) PreviewCheckout(ctx context.Context, r httpapi.PreviewCheckoutRequestObject) (httpapi.PreviewCheckoutResponseObject, error) {
+	actor, reader, err := s.browserReader(ctx, r.TenantId.String())
 	if err != nil {
-		httpapi.WriteProblem(w, r, err)
-		return
+		return nil, err
 	}
-	var body struct {
-		CartID          string `json:"cart_id"`
-		ShippingAddress struct {
-			Country    string `json:"country"`
-			Region     string `json:"region"`
-			PostalCode string `json:"postal_code"`
-		} `json:"shipping_address"`
+	if r.Body == nil {
+		return nil, apperrors.New(400, "invalid_json", "Checkout preview body required")
 	}
-	if err := httpapi.DecodeJSON(w, r, &body); err != nil {
-		httpapi.WriteProblem(w, r, err)
-		return
+	if cartID, ok := ctx.Value(cartIDKey{}).(string); !ok || cartID != r.Body.CartId.String() {
+		return nil, notFound()
 	}
-	if body.CartID != r.Header.Get("X-Cart-ID") {
-		httpapi.WriteProblem(w, r, notFound())
-		return
-	}
-	result, err := reader.Preview(r.Context(), actor, contract.PreviewInput{CartID: body.CartID, Country: body.ShippingAddress.Country, Region: body.ShippingAddress.Region, PostalCode: body.ShippingAddress.PostalCode})
+	result, err := reader.Preview(ctx, actor, contract.PreviewInput{CartID: r.Body.CartId.String(), Country: r.Body.ShippingAddress.Country, Region: value(r.Body.ShippingAddress.Region), PostalCode: r.Body.ShippingAddress.PostalCode})
 	if err != nil {
-		httpapi.WriteProblem(w, r, mapError(err))
-		return
+		return nil, mapError(err)
 	}
 	options := make([]previewOptionJSON, 0, len(result.ShippingOptions))
 	for _, option := range result.ShippingOptions {
 		options = append(options, previewOptionJSON{option.RateID, option.Method, strconv.FormatInt(option.AmountMinor, 10)})
 	}
-	writeJSON(w, http.StatusOK, previewJSON{strconv.FormatInt(result.SubtotalMinor, 10), strconv.FormatInt(result.TaxMinor, 10), strconv.FormatInt(result.ShippingMinor, 10), strconv.FormatInt(result.TotalMinor, 10), result.Currency, options})
-}
-func (s *Handler) get(w http.ResponseWriter, r *http.Request) {
-	actor, reader, err := s.browserReader(r)
+	wire := previewJSON{strconv.FormatInt(result.SubtotalMinor, 10), strconv.FormatInt(result.TaxMinor, 10), strconv.FormatInt(result.ShippingMinor, 10), strconv.FormatInt(result.TotalMinor, 10), result.Currency, options}
+	encoded, err := json.Marshal(wire)
 	if err != nil {
-		httpapi.WriteProblem(w, r, err)
-		return
+		return nil, err
 	}
-	result, err := reader.Get(r.Context(), actor, r.PathValue("checkout_id"), r.Header.Get("X-Cart-ID"))
+	var dto httpapi.CheckoutPreview
+	if err := json.Unmarshal(encoded, &dto); err != nil {
+		return nil, err
+	}
+	return httpapi.PreviewCheckout200JSONResponse(dto), nil
+}
+func (s *Handler) GetCheckout(ctx context.Context, r httpapi.GetCheckoutRequestObject) (httpapi.GetCheckoutResponseObject, error) {
+	actor, reader, err := s.browserReader(ctx, r.TenantId.String())
 	if err != nil {
-		httpapi.WriteProblem(w, r, mapError(err))
-		return
+		return nil, err
+	}
+	cartID, ok := ctx.Value(cartIDKey{}).(string)
+	if !ok || cartID == "" {
+		return nil, notFound()
+	}
+	result, err := reader.Get(ctx, actor, r.CheckoutId.String(), cartID)
+	if err != nil {
+		return nil, mapError(err)
 	}
 	dto, err := representation(result)
 	if err != nil {
-		httpapi.WriteProblem(w, r, err)
-		return
+		return nil, err
 	}
-	writeJSON(w, http.StatusOK, dto)
-}
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	return httpapi.GetCheckout200JSONResponse(dto), nil
 }
 func (s *Handler) verifyWebhook(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

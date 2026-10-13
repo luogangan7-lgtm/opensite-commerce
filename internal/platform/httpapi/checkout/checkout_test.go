@@ -209,8 +209,8 @@ func TestCheckoutActorAndStrictAdmission(t *testing.T) {
 		{"missing key", body, map[string]string{"Idempotency-Key": ""}, 400},
 		{"forged buyer identity", strings.TrimSuffix(body, "}") + `,"buyer_id":"` + cart + `"}`, nil, 400},
 		{"body idempotency", strings.TrimSuffix(body, "}") + `,"idempotency_key":"body-key"}`, nil, 400},
-		{"bad origin", body, map[string]string{"Origin": "https://forged.example.invalid"}, 403},
-		{"missing csrf", body, map[string]string{"X-CSRF-Token": ""}, 403},
+		{"bad origin", body, map[string]string{"Origin": "https://forged.example.invalid"}, 404},
+		{"missing csrf", body, map[string]string{"X-CSRF-Token": ""}, 404},
 		{"unbound csrf", body, map[string]string{"X-CSRF-Token": "other-material"}, 403},
 		{"quote unsupported", strings.TrimSuffix(body, "}") + `,"quote_id":"` + cart + `"}`, nil, 422},
 	}
@@ -412,7 +412,7 @@ func TestDuplicateSecurityHeadersRejected(t *testing.T) {
 		q.Header.Add(header, q.Header.Get(header))
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, q)
-		status := 403
+		status := 404
 		if header == "Idempotency-Key" || header == "X-Cart-ID" || header == "X-Cart-Token" {
 			status = 400
 		}

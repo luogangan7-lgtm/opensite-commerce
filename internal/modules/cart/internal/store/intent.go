@@ -1,12 +1,13 @@
 // Responsibility: read frozen shopping intent inside an existing authorized tx.
 // Dependencies: generated SQL and cart contract; caller: cart.ReadIntent.
-// Invariants: matching tenant/runtime stamp, actor RLS, row lock before lines,
+// Invariants: matching tenant/runtime stamp, actor RLS, command row lock or
+// read-only snapshot before lines,
 // exact restoration of caller actor GUCs; no transaction/pool or projected prices.
 package store
 
 import (
-	"bytes"
 	"context"
+	"crypto/hmac"
 	"encoding/hex"
 	"errors"
 
@@ -65,7 +66,7 @@ func readIntent(ctx context.Context, tx pgx.Tx, actor contract.AuthorizedActor, 
 	}
 	if id(row.TenantID) != actor.TenantID || id(row.ID) != cartID || row.Version <= 0 ||
 		(customer && (id(row.CustomerID) != actor.CustomerID || len(row.GuestTokenHash) != 0)) ||
-		(guest && (row.CustomerID.Valid || !bytes.Equal(row.GuestTokenHash, actor.GuestTokenHash))) {
+		(guest && (row.CustomerID.Valid || !hmac.Equal(row.GuestTokenHash, actor.GuestTokenHash))) {
 		return out, missing()
 	}
 	lines, err := q.ListCartLines(ctx, db.ListCartLinesParams{TenantID: row.TenantID, CartID: row.ID})

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	contract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
+	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
 
@@ -49,6 +50,11 @@ func TestGuestResolverBindsTenantCartAndProof(t *testing.T) {
 	for _, r := range []*http.Request{request(otherTenant, cart, origin, proof), request(tenant, cart, "https://forged.example.invalid", proof), request(tenant, cart, origin, base64.RawURLEncoding.EncodeToString(make([]byte, 32))), request(tenant, orderID, origin, proof)} {
 		if _, err := resolver.Resolve(context.Background(), r); err == nil {
 			t.Fatal("unbound guest request admitted")
+		} else {
+			var denial *apperrors.Error
+			if !errors.As(err, &denial) || denial.Status != http.StatusNotFound {
+				t.Fatalf("capability denial must be 404: %v", err)
+			}
 		}
 	}
 	if calls != 2 {
