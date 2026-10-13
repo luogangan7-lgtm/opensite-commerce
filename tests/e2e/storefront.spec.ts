@@ -129,7 +129,7 @@ test('real guest browse → cart quantity → checkout → Fake capture → orde
   await expect(page.getByRole('main')).toContainText('$57.80');
   await audit(page, info);
 
-  const session = (await context.cookies(fixture.storefront)).find(cookie => cookie.name === '__Host-osc_storefront_fixture');
+  const session = (await context.cookies(fixture.storefront)).find(cookie => cookie.name === '__Host-osc_storefront_cart');
   expect(session).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax', path: '/' });
   const browserStorage = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage }, cookie: document.cookie }));
   for (const exposed of [browserStorage, page.url(), await page.content(), ...purchaseCalls]) {

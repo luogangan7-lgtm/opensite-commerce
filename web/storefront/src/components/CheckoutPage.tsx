@@ -4,10 +4,11 @@
  */
 import { useEffect, useRef, useState, type SubmitEvent } from 'react';
 import { Button, EmptyState, FormField, TextInput } from '@opensite/ui';
-import { getCart, previewCheckout, startCheckout, confirmFixturePayment } from '../lib/commerce-client';
+import { getCart, previewCheckout, startCheckout, confirmPayment, purchaseErrorMessage } from '../lib/commerce-client';
 import type { CartEnvelope, CheckoutResult, PaymentOutcome, Preview, PurchaseContext } from '../lib/commerce-contract';
 import { commerceCopy } from '../lib/commerce-copy';
 import { checkoutInput, validateCheckout, type CheckoutErrors, type CheckoutFields } from '../lib/checkout-validation';
+import { formatAmount } from '../lib/presentation';
 import { PurchaseNotice, PurchaseTotals } from './PurchaseShared';
 const initialFields: CheckoutFields = { email: '', name: '', phone: '', country: '', address1: '', address2: '', city: '', subdivision: '', postal_code: '' };
 export default function CheckoutPage({ context, locale = 'en' }: { context: PurchaseContext; locale?: string }) {
@@ -23,7 +24,7 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
   const idempotencyKey = useRef<string | null>(null);
   async function load() {
     setLoading(true); setError('');
-    try { setCart(await getCart()); } catch { setError(ui.requestFailed); }
+    try { setCart(await getCart()); } catch (cause) { setError(purchaseErrorMessage(cause,ui)); }
     finally { setLoading(false); }
   }
   useEffect(() => { if (context.enabled) void load(); }, []);
@@ -38,7 +39,7 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
     if (Object.keys(invalid).length) return;
     setBusy(true); setError(''); setPreview(null);
     try { setPreview(await previewCheckout(checkoutInput(fields, context.actor).shipping_address, context.csrf)); }
-    catch { setError(ui.requestFailed); }
+    catch (cause) { setError(purchaseErrorMessage(cause,ui)); }
     finally { setBusy(false); }
   }
   async function start() {
@@ -46,16 +47,26 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
     const invalid = validateCheckout(fields, context.actor); setErrors(invalid);
     if (Object.keys(invalid).length) return;
     setBusy(true); setError('');
-    idempotencyKey.current ??= crypto.randomUUID();
-    try { setResult(await startCheckout(checkoutInput(fields, context.actor), idempotencyKey.current, context.csrf)); }
-    catch { setError(ui.requestFailed); }
+    try {
+      if (!idempotencyKey.current) {
+        const latest=await previewCheckout(checkoutInput(fields,context.actor).shipping_address,context.csrf);
+        if (latest.total_minor !== preview.total_minor || latest.currency !== preview.currency) {
+          setPreview(latest);setError(ui.priceChanged);return;
+        }
+        idempotencyKey.current=crypto.randomUUID();
+      }
+      const received=await startCheckout(checkoutInput(fields,context.actor),idempotencyKey.current,context.csrf);
+      setResult(received);
+      if (received.amount_minor !== preview.total_minor || received.currency !== preview.currency) setError(ui.priceChanged);
+    }
+    catch (cause) { setError(purchaseErrorMessage(cause,ui)); }
     finally { setBusy(false); }
   }
   async function confirm(outcome: PaymentOutcome) {
-    if (!context.fixture || !result || busy) return;
+    if (!(context.fixture || context.fakePayment) || !result || busy) return;
     setBusy(true); setError('');
-    try { setResult(await confirmFixturePayment(result.checkout_id, outcome, context.csrf)); }
-    catch { setError(ui.requestFailed); }
+    try { setResult(await confirmPayment(result.checkout_id, outcome, context.csrf)); }
+    catch (cause) { setError(purchaseErrorMessage(cause,ui)); }
     finally { setBusy(false); }
   }
   function input(key: keyof CheckoutFields, required = false, maxLength = 256) {
@@ -89,10 +100,11 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
         </aside>
       </div>}
       {result && <section className="payment-result" data-payment-status={result.payment.status}>
+        <p className="product-price">{formatAmount(result.amount_minor,result.currency,locale)}</p>
         <h2>{captured ? ui.paymentCaptured : failed ? ui.paymentFailed : canceled ? ui.paymentCanceled : ui.paymentPending}</h2>
         {captured ? <a className="purchase-primary-link" href="/order-complete">{ui.viewConfirmation}</a> : failed || canceled ? <><p>{ui.paymentRetry}</p><a href="/cart">{ui.backCart}</a></> : <>
           <p>{ui.paymentPendingDescription}</p>
-          {context.fixture && <div className="purchase-actions"><Button loading={busy} onClick={() => confirm('captured')}>{ui.fakeCapture}</Button><Button variant="secondary" disabled={busy} onClick={() => confirm('failed')}>{ui.fakeFail}</Button><Button variant="ghost" disabled={busy} onClick={() => confirm('canceled')}>{ui.fakeCancel}</Button></div>}
+          {(context.fixture || context.fakePayment) && <div className="purchase-actions"><Button loading={busy} onClick={() => confirm('captured')}>{ui.fakeCapture}</Button><Button variant="secondary" disabled={busy} onClick={() => confirm('failed')}>{ui.fakeFail}</Button><Button variant="ghost" disabled={busy} onClick={() => confirm('canceled')}>{ui.fakeCancel}</Button></div>}
         </>}
       </section>}
     </>}

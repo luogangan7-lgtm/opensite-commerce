@@ -10,7 +10,7 @@ const site = 'https://shop.example.test', tenant = 'c0900001-0000-4000-8000-0000
 const sku = 'c0900008-0000-4000-8000-000000000001', product = 'c0900007-0000-4000-8000-000000000001';
 const cart = 'c09d0001-0000-4000-8000-000000000001', token = randomBytes(32).toString('base64url');
 const etag = `"v1-${'a'.repeat(64)}"`;
-const names = ['OSC_COMMERCE_MODE','OSC_COMMERCE_API_ORIGIN','OSC_COMMERCE_SITE','OSC_COMMERCE_COOKIE_KEY','OSC_STOREFRONT_ALLOWED_HOSTS'];
+const names = ['OSC_COMMERCE_MODE','OSC_COMMERCE_API_ORIGIN','OSC_COMMERCE_SITE','OSC_COMMERCE_COOKIE_KEY','OSC_STOREFRONT_ALLOWED_HOSTS','OPENSITE_STOREFRONT_ORIGIN','OPENSITE_STOREFRONT_KEY'];
 const saved = new Map(names.map(name => [name, process.env[name]]));
 let mock: ReturnType<typeof spyOn>;
 const calls: Request[] = [];
@@ -25,7 +25,7 @@ function request(operation: string, csrf?: string, value?: unknown) {
     ...(value ? {method:'POST',body:JSON.stringify(value)} : {}) });
 }
 beforeEach(() => {
-  Object.assign(process.env, {OSC_COMMERCE_MODE:'backend',OSC_COMMERCE_API_ORIGIN:'http://api:8080',OSC_COMMERCE_SITE:site,OSC_COMMERCE_COOKIE_KEY:randomBytes(32).toString('base64url'),OSC_STOREFRONT_ALLOWED_HOSTS:'shop.example.test'});
+  Object.assign(process.env, {OSC_COMMERCE_MODE:'backend',OSC_COMMERCE_API_ORIGIN:'http://api:8080',OSC_COMMERCE_SITE:site,OSC_COMMERCE_COOKIE_KEY:randomBytes(32).toString('base64url'),OSC_STOREFRONT_ALLOWED_HOSTS:'shop.example.test',OPENSITE_STOREFRONT_ORIGIN:site,OPENSITE_STOREFRONT_KEY:randomBytes(32).toString('base64url')});
   calls.length=0; failure=false;
   mock=spyOn(globalThis,'fetch').mockImplementation(Object.assign(async(input:RequestInfo|URL,init?:RequestInit)=>{
     const req=input instanceof Request ? input : new Request(input,init); calls.push(req);

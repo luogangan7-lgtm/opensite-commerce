@@ -4,7 +4,7 @@
  */
 import { useState } from 'react';
 import { Button, FormField, Select, TextInput } from '@opensite/ui';
-import { addCartLine } from '../lib/commerce-client';
+import { addCartLine, purchaseErrorMessage } from '../lib/commerce-client';
 import type { PurchaseContext } from '../lib/commerce-contract';
 import { commerceCopy } from '../lib/commerce-copy';
 import { formatAmount } from '../lib/presentation';
@@ -23,7 +23,7 @@ export default function ProductPurchase({ context, product_id, locale = 'en' }: 
     if (!context.enabled || !sku?.available || !validQuantity || busy) return;
     setBusy(true); setError(''); setAdded(false);
     try { await addCartLine(sku.sku_id, Number(quantity), context.csrf); setAdded(true); }
-    catch { setError(ui.requestFailed); }
+    catch (cause) { setError(purchaseErrorMessage(cause,ui)); }
     finally { setBusy(false); }
   }
   return <section className="purchase-panel" data-purchase-ready="true">

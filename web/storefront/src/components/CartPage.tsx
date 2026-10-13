@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Button, EmptyState, FormField, TextInput } from '@opensite/ui';
-import { CommerceError, getCart, setCartLine, removeCartLine } from '../lib/commerce-client';
+import { CommerceError, getCart, setCartLine, removeCartLine, purchaseErrorMessage } from '../lib/commerce-client';
 import type { CartEnvelope, CartLine, PurchaseContext } from '../lib/commerce-contract';
 import { commerceCopy, type CommerceDictionary } from '../lib/commerce-copy';
 import { formatAmount } from '../lib/presentation';
@@ -47,7 +47,7 @@ export default function CartPage({ context, locale = 'en' }: { context: Purchase
     } catch (cause) {
       if (cause instanceof CommerceError && cause.status === 412) {
         try { setEnvelope(await getCart()); setHint(ui.cartChanged); } catch { setError(ui.requestFailed); }
-      } else setError(ui.requestFailed);
+      } else setError(purchaseErrorMessage(cause,ui));
     } finally { setBusy(false); }
   }
   const cart = envelope?.cart;

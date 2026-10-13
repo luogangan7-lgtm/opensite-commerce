@@ -8,7 +8,7 @@ import { commerceCopy } from '../lib/commerce-copy';
 import { formatAmount } from '../lib/presentation';
 export function PurchaseNotice({ context, locale }: { context: PurchaseContext; locale: string }) {
   const ui = commerceCopy(locale);
-  return <>{context.fixture && <p className="purchase-notice" data-fixture-notice="true">{ui.fixtureNotice}</p>}{!context.enabled && <div className="purchase-unavailable">
+  return <>{context.fixture && <p className="purchase-notice" data-fixture-notice="true">{ui.fixtureNotice}</p>}{context.fakePayment && !context.fixture && <p className="purchase-notice" data-fake-payment-notice="true">{ui.fakeNotice}</p>}{!context.enabled && <div className="purchase-unavailable">
     <p>{ui.unavailableDescription}</p><Button disabled>{ui.temporarilyUnavailable}</Button>
   </div>}</>;
 }

@@ -27,3 +27,10 @@ test('checkout stable idempotency header and guest body forwarded, reads sameori
  expect(calls[0]!.url).toBe('/purchase/api/checkout');
  await getCart(); expect(calls[1]!.url).toBe('/purchase/api/cart'); expect(calls[1]!.init?.credentials).toBe('same-origin');
 });
+
+test('problem code survives while private details stay outside public error messages',async()=>{
+ transport(Response.json({code:'stock_unavailable',detail:'private database error'},{status:409,headers:{'Content-Type':'application/problem+json'}}));
+ try {await getCart();throw new Error('expected failure');}catch(error){
+  expect(error).toBeInstanceOf(CommerceError);expect((error as CommerceError).code).toBe('stock_unavailable');expect((error as Error).message).not.toContain('private');
+ }
+});
