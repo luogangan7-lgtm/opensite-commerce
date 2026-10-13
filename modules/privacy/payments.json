@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "module": "payments",
+  "note": "Only normalized Fake facts: no raw body, contact data, secret or provider metadata. Account and intent identifiers are provider-issued opaque operational identifiers; amounts are integer bookkeeping. Raw body digest/reference lives in reliability inbox. Account binding is immutable provisioning authority.",
+  "tables": {
+    "payment_provider_accounts": {
+      "columns": {
+        "tenant_id": {
+          "classification": "operational"
+        },
+        "provider": {
+          "classification": "operational"
+        },
+        "provider_account_id": {
+          "classification": "operational"
+        },
+        "environment": {
+          "classification": "operational"
+        },
+        "enabled": {
+          "classification": "operational"
+        },
+        "created_at": {
+          "classification": "operational"
+        }
+      }
+    },
+    "payment_events": {
+      "columns": {
+        "tenant_id": {
+          "classification": "operational"
+        },
+        "id": {
+          "classification": "operational"
+        },
+        "provider": {
+          "classification": "operational"
+        },
+        "provider_account_id": {
+          "classification": "operational"
+        },
+        "environment": {
+          "classification": "operational"
+        },
+        "provider_ref": {
+          "classification": "operational"
+        },
+        "event_key": {
+          "classification": "operational"
+        },
+        "order_id": {
+          "classification": "operational"
+        },
+        "order_version": {
+          "classification": "operational"
+        },
+        "status": {
+          "classification": "operational"
+        },
+        "amount_minor": {
+          "classification": "financial_non_contact"
+        },
+        "currency": {
+          "classification": "financial_non_contact"
+        },
+        "applied": {
+          "classification": "operational"
+        },
+        "error_code": {
+          "classification": "operational"
+        },
+        "created_at": {
+          "classification": "operational"
+        }
+      }
+    }
+  }
+}
