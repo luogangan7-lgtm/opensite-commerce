@@ -907,6 +907,20 @@ class GovernanceTests(unittest.TestCase):
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_sql_connector_entry_points_red_with_any_driver(self):
+        for expression, alias in (("sql.Open", "sql"), ("sql.OpenDB", "sql"), ("db.Open", "db")):
+            with self.subTest(expression=expression):
+                self.source("internal/modules/a/open.go",
+                            f'package a\nimport {alias if alias != "sql" else ""} "database/sql"\nvar Open = {expression}\n')
+                self.assert_red("MODULE_RAW_CONNECTION")
+        self.source("internal/modules/a/open.go", 'package a\nimport . "database/sql"\nvar X = Open\n')
+        self.assert_red("MODULE_RAW_CONNECTION")
+
+    def test_sql_inert_types_stay_green(self):
+        self.source("internal/modules/a/inert.go", 'package a\nimport "database/sql"\nvar S sql.NullString\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_adapter_exported_sql_transaction_red(self):
         self.source("internal/tenanttx/pgxadapter/tx.go",
                     'package pgxadapter\nimport "database/sql"\nfunc BeginRaw() *sql.Tx { return nil }\n')

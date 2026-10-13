@@ -39,6 +39,11 @@ func exposure(t types.Type, pkg *types.Package, seen map[types.Type]bool) string
 				return o.Pkg().Path() + "." + o.Name()
 			}
 			if o.Pkg() != pkg {
+				// pgx value types are inspected through their exported methods; other
+				// foreign types (context, errors, River) carry no connection capability.
+				if strings.HasPrefix(o.Pkg().Path(), "github.com/jackc/pgx/v5") {
+					return foreignExposure(t, pkg, seen)
+				}
 				return ""
 			}
 		}
@@ -91,6 +96,38 @@ func exposure(t types.Type, pkg *types.Package, seen map[types.Type]bool) string
 					return s
 				}
 			}
+		}
+	}
+	return ""
+}
+
+// transactionPort models the one accepted contract: callbacks receive pgx.Tx and pgx.Rows,
+// whose Conn() accessor is part of the transaction-scoped port. Any other path to a raw
+// connection through pgx types fails. Retaining Conn() past commit remains a caller bug that
+// only a wrapper type without Conn() could remove.
+var transactionPort = map[string]bool{
+	"github.com/jackc/pgx/v5.Tx.Conn":   true,
+	"github.com/jackc/pgx/v5.Rows.Conn": true,
+}
+
+func foreignExposure(t *types.Named, pkg *types.Package, seen map[types.Type]bool) string {
+	var methods []*types.Func
+	if it, ok := t.Underlying().(*types.Interface); ok {
+		for i := 0; i < it.NumMethods(); i++ {
+			methods = append(methods, it.Method(i))
+		}
+	} else {
+		for i := 0; i < t.NumMethods(); i++ {
+			methods = append(methods, t.Method(i))
+		}
+	}
+	for _, m := range methods {
+		key := t.Obj().Pkg().Path() + "." + t.Obj().Name() + "." + m.Name()
+		if !m.Exported() || transactionPort[key] {
+			continue
+		}
+		if s := exposure(m.Type(), pkg, seen); s != "" {
+			return key + " -> " + s
 		}
 	}
 	return ""
@@ -190,6 +227,14 @@ func TestExportSurfaceDetectorRedAndGreen(t *testing.T) {
 		"unexported carrier":        {"a.go": header + "type runner struct{ pool *pgxpool.Pool }\nfunc (r runner) Pool() *pgxpool.Pool { return r.pool }\nfunc New() runner { return runner{} }\n"},
 		"pgx connection value":      {"a.go": header + "var Open = pgx.Connect\n"},
 	}
+	t.Run("red pgx.Tx.Conn without the transaction-port allowance", func(t *testing.T) {
+		saved := transactionPort
+		transactionPort = map[string]bool{}
+		defer func() { transactionPort = saved }()
+		if len(exposures(check(t, map[string]string{"a.go": header + "var T pgx.Tx\n"}))) == 0 {
+			t.Fatal("foreign method set was not inspected")
+		}
+	})
 	for name, sources := range red {
 		t.Run("red "+name, func(t *testing.T) {
 			if len(exposures(check(t, sources))) == 0 {
