@@ -7,16 +7,15 @@ package publish_test
 
 import (
 	"context"
+	"encoding/json"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/internal/store"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"net/url"
 	"os"
@@ -30,7 +29,7 @@ import (
 func TestPublicPublishedReadPG(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		pgxtest.Skip(t, "NOT_RUN: migrated expendable DATABASE_URL required")
+		t.Skip("NOT_RUN: migrated expendable DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
