@@ -373,7 +373,7 @@ func (q *Queries) InsertCheckoutAttempt(ctx context.Context, arg InsertCheckoutA
 
 const listCheckoutShippingLocations = `-- name: ListCheckoutShippingLocations :many
 SELECT d.zone_id,d.country_code,d.subdivision_code FROM app.shipping_zone_destinations d WHERE d.tenant_id=$1
- AND EXISTS(SELECT FROM app.shipping_rates r WHERE r.tenant_id=d.tenant_id AND r.profile_id=$2 AND r.zone_id=d.zone_id)
+ AND $2::uuid IS NOT NULL
  ORDER BY d.zone_id,d.country_code,d.subdivision_code
 `
 
