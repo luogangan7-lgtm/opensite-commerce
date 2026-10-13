@@ -116,3 +116,12 @@ The login migration adds `auth_sessions.last_seen_at` and grants `app_auth`
 only that additional UPDATE column, preserving the existing revocation update
 and dedicated LOGIN boundary. Existing session activity is backfilled from
 `created_at`; no runtime credential access or tenant/RLS authority is added.
+
+H-4 session hardening uses two private one-connection runners under the same
+strict auth LOGIN: one for session lookups, one for credential/login work. Both
+validate exact role/privilege state before each transaction, including reconnects.
+The NOLOGIN, unreachable `app_credential_writer` additionally reads user hash/status
+and session user/revocation columns and updates only session revocation. It owns
+the fixed-search-path password-change trigger and execute-only `app_auth` user-lock
+helper. No LOGIN, password, tenant access or credential-writing grant is added to
+`app_auth`; the exact role matrix covers the extra columns and helper ACLs.

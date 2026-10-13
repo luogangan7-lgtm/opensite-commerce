@@ -34,17 +34,40 @@ Both in-memory IP admission and durable account-IP counters group IPv6 clients b
 account and account-IP failure counters are durable database state. Multiple
 application instances need a deployment-level admission policy.
 
-A login creates a new session. If an explicit old-session token is invalid, stale
-or belongs to another account, the login returns HTTP 401 and clears that cookie;
-the next credential submission can recover without a manual cookie clear.
-Other failures do not clear the session cookie. When a valid same-user old token is supplied, the private
-store conditionally revokes only the same user's active, unexpired, non-idle
-session, then inserts its successor in the same transaction. Zero updated rows
-roll back before insertion. Admission checks active user status, finite clocks,
-absolute expiry and idle expiry using the database execution clock before
-touching `last_seen_at`. Row-lock waits must not preserve an earlier application
-time sample for expiry admission. Logout retains
-its global session admission even after the final membership is suspended.
+A credential login creates a fresh session. A malformed, absent, expired,
+revoked or wrong-user old cookie confers no identity; a read-only preflight
+ignores it so valid credentials can recover immediately. A valid same-user old
+cookie is retained for conditional revocation and insertion in one transaction.
+Two requests that both observe it active have one rotation winner; zero updated
+rows roll back before insertion. A later request observing an already-revoked
+cookie may perform a fresh credential login. Failed login/rotation responses
+never set or delete the session cookie, so a late loser cannot erase a newer
+winner. The preflight does not touch session activity, and unknown users still
+perform the dummy password check without a user-ID lookup.
+
+Session admission locks the row before a separate execution-clock validity check
+and touch. It returns that database timestamp for service-side absolute/idle
+checks and browser cookie lifetime; API host clock skew cannot extend cooldown,
+device or session validity. Logout retains global session admission even after
+the final membership is suspended.
+
+H-4 adds `_identity_login_hardening.sql`. Password-hash updates revoke every
+session for that user; unchanged hashes preserve them. Login takes the same
+user-before-session lock order and rechecks the verified hash after locking,
+preventing an in-flight old password from recreating a session after reset.
+The lock helper is SECURITY DEFINER under the unreachable credential writer,
+with fixed search_path and execute only for app_auth; app_auth still cannot
+update passwords. The trigger also applies to the future password-reset path.
+
+Session queries have their own one-connection private auth runner and independent
+IP/global/in-flight limits, leaving login its own one-connection runner. Defaults
+are 60 queries per IP per minute, 600 global, two admitted calls and a two-second
+query deadline; LoginConfig exposes SessionIPBurst, SessionGlobalBurst,
+SessionQuerySlots and SessionQueryTimeout. Overflow fails promptly with 429;
+malformed/noncanonical tokens never reach the database. The HTTP middleware
+passes the admitted session to its handler instead of querying twice. Every
+transaction validates dedicated LOGIN authority before business SQL, including
+reconnected sessions; unexpected role/privilege state fails closed with 503.
 
 The additive migration is discovered by `_identity_login.sql` suffix. It keeps
 legacy session identity/hash/expiry/revocation and backfills `last_seen_at` from
@@ -73,7 +96,7 @@ throughput guarantees.
 same auth DSN it already derives for the auth capability
 (`OPENSITE_AUTH_DATABASE_URL`, or `OPENSITE_AUTH_DB_PASSWORD` for the
 `opensite_auth_login` LOGIN inheriting only `app_auth`), plus
-`OSC_ADMIN_ORIGIN` (an exact HTTPS origin with no path) and
+`OSC_ADMIN_ORIGIN` (an exact HTTPS origin with no path or explicit default :443 port) and
 `OSC_AUTH_SIGNING_KEY_HEX` (32 random bytes encoded as hex). Supply credentials
 through secret management; partial configuration and excessive DB privileges
 fail startup and name the missing variables. A deployment that configures the
@@ -98,8 +121,8 @@ request timeout the response returns rate limited, capacity is not freed early,
 and the worker cannot perform late failure-counter or session writes. Worker
 growth is bounded by the configured actual KDF slots (at most 16 total). The
 legacy `Config.Wait` hook is deprecated and unused.
-Five failed passwords revoke the device; the existing 90-day device expiry is
-enforced. **FOLLOWUP CARD d:** per-user active known-device cap and expired-row
+Five failed passwords revoke the device; database expiry and the configured
+device cookie lifetime (default 90 days) are enforced. **FOLLOWUP CARD d:** per-user active known-device cap and expired-row
 cleanup remain deferred; this card does not implement either lifecycle policy.
 
 These handlers are handwritten adapters to the existing strict HTTP platform;
@@ -107,3 +130,12 @@ the 03b generated-server POC is outside this repair's scope. Registry and
 OpenAPI include all four implemented operations now. Target-host Argon2 timing,
 real browser/proxy integration, signing-key rotation and shared multi-instance IP/global
 admission are deployment acceptance work and are NOT_RUN in this card.
+
+H-4 follow-ups: per-user device eviction and expired-row scheduling remain outside
+this bounded repair; MAC-valid candidate validation still has a separate bounded
+in-flight lane but no independent global pre-validation budget. Distributing
+session/login limits across replicas needs deployment-level shared admission.
+These are not claims of production load or timing acceptance. CI regression
+pointers: identity `h4_test.go`, `h4_policy_test.go`, `login_hardening_pgx_test.go`,
+`login_reconnect_negative_pgx_test.go`, `login_session_isolation_pgx_test.go`,
+and `tests/db_identity_hardening.sql`; exact run/SHA receipts belong in the PR.
