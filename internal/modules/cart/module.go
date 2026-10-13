@@ -49,6 +49,14 @@ func NewPostgres(config Config, resolver ActorResolver) *Module {
 	return newModule(store.New(config.Run, config.Read), resolver, config.AnonymousCreateLimit)
 }
 
+// WithActorResolver replaces only the composition seam on a shallow copy.
+// Bootstrap installs verified customer context without changing cart business logic.
+func (m *Module) WithActorResolver(resolver ActorResolver) *Module {
+	copy := *m
+	copy.resolver = resolver
+	return &copy
+}
+
 func (m *Module) Authenticate(ctx context.Context, r *http.Request, spec platform.RouteSpec) (context.Context, error) {
 	denied := func() (context.Context, error) { return ctx, apperrors.New(404, "cart_not_found", "Cart not found") }
 	tenant := strings.ToLower(r.PathValue("tenant_id"))

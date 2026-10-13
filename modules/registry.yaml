@@ -576,13 +576,47 @@
       "name": "customer",
       "status": "implemented",
       "go_path": "internal/modules/customer",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "customers",
         "customer_credentials",
-        "customer_addresses"
+        "customer_addresses",
+        "customer_auth_tokens",
+        "customer_sessions",
+        "customer_guest_order_links",
+        "customer_auth_limits",
+        "customer_auth_global_limits"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "registerCustomer",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "verifyCustomerEmail",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getCustomerSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createCustomerSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "deleteCustomerSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "requestCustomerPasswordReset",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "confirmCustomerPasswordReset",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [
         "tenant"
       ],
@@ -590,10 +624,15 @@
         "tests/db_customers.sql",
         "tests/db_role_matrix.sql",
         "scripts/check_pg_races.sh",
-        "scripts/check_pg_upgrade.sh"
+        "scripts/check_pg_upgrade.sh",
+        "tests/db_customer_auth.sql",
+        "tests/test_customer_auth_contract.py",
+        "internal/modules/customer/internal/auth/service_test.go",
+        "internal/modules/customer/customer_limits_pgx_test.go",
+        "internal/platform/httpapi/customerhttp/customer_test.go"
       ],
       "scopes": [],
-      "note": "Storefront customer identity is independent of employee users. Dedicated customer-auth credentials; HTTP and module Go path remain planned."
+      "note": "Tenant customer email proof, separate sessions and reset under app_customer_auth; global/IP durable quotas shared across tenants with tenant account quotas. Fake/local SMTP only. Guest orders retain immutable snapshots and verified customer-owned associations."
     },
     {
       "name": "b2b",
@@ -1313,6 +1352,20 @@
       "touches_tables": [
         "checkout_sessions",
         "checkout_attempts"
+      ]
+    },
+    {
+      "file": "migrations/033_customer_auth.sql",
+      "owner": "customer",
+      "touches_tables": [
+        "customers",
+        "customer_credentials",
+        "customer_auth_tokens",
+        "customer_sessions",
+        "customer_guest_order_links",
+        "customer_auth_limits",
+        "customer_auth_global_limits",
+        "orders"
       ]
     }
   ]
