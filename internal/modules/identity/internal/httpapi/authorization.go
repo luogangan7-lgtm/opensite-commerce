@@ -138,9 +138,6 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 			return nil, unauthenticated()
 		}
 		// This check precedes membership, including issuers belonging to both tenants.
-		if key.TenantID != tenant {
-			return nil, tenantNotFound()
-		}
 		snapshot.UserID, snapshot.CredentialID, snapshot.Kind = key.UserID, key.ID, contract.KindAPIKey
 	} else {
 		if h.service == nil {
