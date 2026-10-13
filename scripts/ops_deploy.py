@@ -117,6 +117,8 @@ def provision_sql(database, passwords):
              f"DO $login_audit$ BEGIN IF ({login_role_audit_sql(database)}) THEN RAISE EXCEPTION 'TAINTED_LOGIN_ROLE: direct privileges, object ownership or policy targets require administrator review'; END IF; END $login_audit$;",
              f'REVOKE CONNECT ON DATABASE "{database}" FROM PUBLIC;']
     for kind, (login, group) in LOGIN_ROLES.items():
+        if kind == 'CUSTOMER_AUTH':
+            continue  # REVIEW PROBE: customer login not provisioned
         password = verified[kind]
         lines.append(f"DO $role$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname={literal(login)}) THEN CREATE ROLE {login}; END IF; END $role$;")
         lines.append(f"ALTER ROLE {login} LOGIN INHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD {literal(password)};")
