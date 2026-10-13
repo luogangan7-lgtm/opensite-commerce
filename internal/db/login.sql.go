@@ -13,8 +13,8 @@ import (
 )
 
 const loginCooldowns = `-- name: LoginCooldowns :one
-SELECT (SELECT cooldown_until FROM app.auth_account_attempts WHERE identifier_normalized=$1::text)::timestamptz AS account_until,
- (SELECT cooldown_until FROM app.auth_login_attempts WHERE identifier_normalized=$1::text AND ip=$2::inet)::timestamptz AS ip_until
+SELECT (SELECT CASE WHEN isfinite(cooldown_until) THEN cooldown_until ELSE clock_timestamp() END FROM app.auth_account_attempts WHERE identifier_normalized=$1::text AND cooldown_until>clock_timestamp())::timestamptz AS account_until,
+ (SELECT CASE WHEN isfinite(cooldown_until) THEN cooldown_until ELSE clock_timestamp() END FROM app.auth_login_attempts WHERE identifier_normalized=$1::text AND ip=$2::inet AND cooldown_until>clock_timestamp())::timestamptz AS ip_until
 `
 
 type LoginCooldownsParams struct {
@@ -54,6 +54,7 @@ func (q *Queries) LoginCredential(ctx context.Context, identifier string) (Login
 const loginDevice = `-- name: LoginDevice :one
 SELECT id,user_id,expires_at,revoked_at FROM app.known_devices
  WHERE cookie_hash=$1::bytea AND revoked_at IS NULL
+ AND expires_at>clock_timestamp()
 `
 
 type LoginDeviceRow struct {
@@ -85,55 +86,63 @@ func (q *Queries) LoginFailDevice(ctx context.Context, id pgtype.UUID) error {
 }
 
 const loginInsertDevice = `-- name: LoginInsertDevice :exec
+WITH instant AS MATERIALIZED (SELECT clock_timestamp()::timestamptz AS at)
 INSERT INTO app.known_devices(user_id,cookie_hash,created_at,expires_at)
- VALUES($1::uuid,$2::bytea,$3::timestamptz,$4::timestamptz)
+ SELECT $1::uuid,$2::bytea,instant.at,
+ instant.at+($3::timestamptz-$4::timestamptz) FROM instant
 `
 
 type LoginInsertDeviceParams struct {
 	UserID     pgtype.UUID        `json:"user_id"`
 	CookieHash []byte             `json:"cookie_hash"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
 func (q *Queries) LoginInsertDevice(ctx context.Context, arg LoginInsertDeviceParams) error {
 	_, err := q.db.Exec(ctx, loginInsertDevice,
 		arg.UserID,
 		arg.CookieHash,
-		arg.CreatedAt,
 		arg.ExpiresAt,
+		arg.CreatedAt,
 	)
 	return err
 }
 
 const loginInsertSession = `-- name: LoginInsertSession :one
+WITH instant AS MATERIALIZED (SELECT clock_timestamp()::timestamptz AS at)
 INSERT INTO app.auth_sessions(user_id,token_hash,created_at,last_seen_at,expires_at)
- SELECT u.id,$1::bytea,$2::timestamptz,$2::timestamptz,$3::timestamptz
- FROM app.users u WHERE u.id=$4::uuid AND u.status='active'
- RETURNING id,user_id,created_at,last_seen_at,expires_at
+ SELECT u.id,$1::bytea,instant.at,instant.at,
+ instant.at+($2::timestamptz-$3::timestamptz)
+ FROM app.users u CROSS JOIN instant WHERE u.id=$4::uuid AND u.status='active'
+ AND u.password_hash=$5::text
+ RETURNING id,user_id,created_at,last_seen_at,expires_at,clock_timestamp()::timestamptz AS database_now
 `
 
 type LoginInsertSessionParams struct {
-	TokenHash []byte             `json:"token_hash"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
-	UserID    pgtype.UUID        `json:"user_id"`
+	TokenHash            []byte             `json:"token_hash"`
+	ExpiresAt            pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	UserID               pgtype.UUID        `json:"user_id"`
+	VerifiedPasswordHash string             `json:"verified_password_hash"`
 }
 
 type LoginInsertSessionRow struct {
-	ID         pgtype.UUID        `json:"id"`
-	UserID     pgtype.UUID        `json:"user_id"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
-	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	ID          pgtype.UUID        `json:"id"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	LastSeenAt  pgtype.Timestamptz `json:"last_seen_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	DatabaseNow pgtype.Timestamptz `json:"database_now"`
 }
 
 func (q *Queries) LoginInsertSession(ctx context.Context, arg LoginInsertSessionParams) (LoginInsertSessionRow, error) {
 	row := q.db.QueryRow(ctx, loginInsertSession,
 		arg.TokenHash,
-		arg.CreatedAt,
 		arg.ExpiresAt,
+		arg.CreatedAt,
 		arg.UserID,
+		arg.VerifiedPasswordHash,
 	)
 	var i LoginInsertSessionRow
 	err := row.Scan(
@@ -142,37 +151,66 @@ func (q *Queries) LoginInsertSession(ctx context.Context, arg LoginInsertSession
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.DatabaseNow,
 	)
 	return i, err
 }
 
+const loginLockSession = `-- name: LoginLockSession :one
+SELECT id FROM app.auth_sessions WHERE token_hash=$1::bytea FOR UPDATE
+`
+
+func (q *Queries) LoginLockSession(ctx context.Context, tokenHash []byte) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, loginLockSession, tokenHash)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const loginLockUser = `-- name: LoginLockUser :one
+SELECT id FROM app.users WHERE id=$1::uuid
+ AND app.auth_lock_login_user($1::uuid,$2::text)
+`
+
+type LoginLockUserParams struct {
+	UserID               pgtype.UUID `json:"user_id"`
+	VerifiedPasswordHash string      `json:"verified_password_hash"`
+}
+
+func (q *Queries) LoginLockUser(ctx context.Context, arg LoginLockUserParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, loginLockUser, arg.UserID, arg.VerifiedPasswordHash)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const loginLookupSession = `-- name: LoginLookupSession :one
-UPDATE app.auth_sessions s SET last_seen_at=greatest(s.last_seen_at,least($1::timestamptz,clock_timestamp()))
- FROM app.users u WHERE s.token_hash=$2::bytea AND u.id=s.user_id AND u.status='active'
+UPDATE app.auth_sessions s SET last_seen_at=greatest(s.last_seen_at,clock_timestamp())
+ FROM app.users u WHERE s.token_hash=$1::bytea AND u.id=s.user_id AND u.status='active'
  AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
  AND isfinite(s.expires_at) AND isfinite(s.created_at) AND isfinite(s.last_seen_at)
  AND s.last_seen_at>=s.created_at AND s.expires_at>s.created_at
  AND s.created_at<=clock_timestamp() AND s.last_seen_at<=clock_timestamp()
- AND s.last_seen_at>clock_timestamp()-$3::bigint*interval '1 second'
- RETURNING s.id,s.user_id,s.created_at,s.last_seen_at,s.expires_at
+ AND s.last_seen_at>clock_timestamp()-$2::bigint*interval '1 second'
+ RETURNING s.id,s.user_id,s.created_at,s.last_seen_at,s.expires_at,clock_timestamp()::timestamptz AS database_now
 `
 
 type LoginLookupSessionParams struct {
-	At          pgtype.Timestamptz `json:"at"`
-	TokenHash   []byte             `json:"token_hash"`
-	IdleSeconds int64              `json:"idle_seconds"`
+	TokenHash   []byte `json:"token_hash"`
+	IdleSeconds int64  `json:"idle_seconds"`
 }
 
 type LoginLookupSessionRow struct {
-	ID         pgtype.UUID        `json:"id"`
-	UserID     pgtype.UUID        `json:"user_id"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
-	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	ID          pgtype.UUID        `json:"id"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	LastSeenAt  pgtype.Timestamptz `json:"last_seen_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	DatabaseNow pgtype.Timestamptz `json:"database_now"`
 }
 
 func (q *Queries) LoginLookupSession(ctx context.Context, arg LoginLookupSessionParams) (LoginLookupSessionRow, error) {
-	row := q.db.QueryRow(ctx, loginLookupSession, arg.At, arg.TokenHash, arg.IdleSeconds)
+	row := q.db.QueryRow(ctx, loginLookupSession, arg.TokenHash, arg.IdleSeconds)
 	var i LoginLookupSessionRow
 	err := row.Scan(
 		&i.ID,
@@ -180,6 +218,7 @@ func (q *Queries) LoginLookupSession(ctx context.Context, arg LoginLookupSession
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.DatabaseNow,
 	)
 	return i, err
 }
@@ -199,17 +238,12 @@ func (q *Queries) LoginRecordFailure(ctx context.Context, arg LoginRecordFailure
 }
 
 const loginRevokeSession = `-- name: LoginRevokeSession :execrows
-UPDATE app.auth_sessions SET revoked_at=$1::timestamptz
- WHERE id=$2::uuid AND revoked_at IS NULL
+UPDATE app.auth_sessions SET revoked_at=clock_timestamp()
+ WHERE id=$1::uuid AND revoked_at IS NULL
 `
 
-type LoginRevokeSessionParams struct {
-	At pgtype.Timestamptz `json:"at"`
-	ID pgtype.UUID        `json:"id"`
-}
-
-func (q *Queries) LoginRevokeSession(ctx context.Context, arg LoginRevokeSessionParams) (int64, error) {
-	result, err := q.db.Exec(ctx, loginRevokeSession, arg.At, arg.ID)
+func (q *Queries) LoginRevokeSession(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, loginRevokeSession, id)
 	if err != nil {
 		return 0, err
 	}
@@ -241,6 +275,29 @@ func (q *Queries) LoginRotateOldSession(ctx context.Context, arg LoginRotateOldS
 	return result.RowsAffected(), nil
 }
 
+const loginRotationSession = `-- name: LoginRotationSession :one
+SELECT EXISTS(SELECT FROM app.auth_sessions s JOIN app.users u ON u.id=s.user_id
+ WHERE s.token_hash=$1::bytea AND s.user_id=$2::uuid
+ AND u.status='active' AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
+ AND isfinite(s.expires_at) AND isfinite(s.created_at) AND isfinite(s.last_seen_at)
+ AND s.last_seen_at>=s.created_at AND s.expires_at>s.created_at
+ AND s.created_at<=clock_timestamp() AND s.last_seen_at<=clock_timestamp()
+ AND s.last_seen_at>clock_timestamp()-$3::bigint*interval '1 second') AS allowed
+`
+
+type LoginRotationSessionParams struct {
+	TokenHash   []byte      `json:"token_hash"`
+	UserID      pgtype.UUID `json:"user_id"`
+	IdleSeconds int64       `json:"idle_seconds"`
+}
+
+func (q *Queries) LoginRotationSession(ctx context.Context, arg LoginRotationSessionParams) (bool, error) {
+	row := q.db.QueryRow(ctx, loginRotationSession, arg.TokenHash, arg.UserID, arg.IdleSeconds)
+	var allowed bool
+	err := row.Scan(&allowed)
+	return allowed, err
+}
+
 const validateAuthConnection = `-- name: ValidateAuthConnection :one
 SELECT current_user=session_user
  AND EXISTS(SELECT FROM pg_catalog.pg_roles r WHERE r.rolname=current_user
@@ -269,8 +326,8 @@ SELECT current_user=session_user
 // Responsibility: typed private authentication persistence and admission.
 // Dependencies: global identity schema; callers: private login store only.
 // Invariants: exact dedicated LOGIN authority, active user, atomic rotation.
-// Admission uses volatile DB time, including row-lock EPQ rechecks; arrival
-// timestamps only advance activity monotonically and cannot set future activity.
+// User locks precede rotation locks; session locks precede fresh validity checks.
+// Durable clocks come from PostgreSQL; caller timestamps convey lifetimes only.
 func (q *Queries) ValidateAuthConnection(ctx context.Context) (pgtype.Bool, error) {
 	row := q.db.QueryRow(ctx, validateAuthConnection)
 	var allowed pgtype.Bool
