@@ -1073,7 +1073,7 @@ SET ROLE app_runtime;
 SELECT (app.inventory_reserve('$SKU',1,'order','$OID','checkout-race-stock',900)).id AS rid \gset
 SELECT app.orders_create('$OID','checkout-race-order',sha256('race'::bytea),NULL,'{"email":"race@example.invalid"}','USD',20,'{}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','checkout-race','quantity',1,'unit_price_minor',100,
- 'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',:'rid','tax_snapshot','{}'::jsonb)),'[]');
+ 'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
 INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,currency,
  amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version,address_snapshot)
  VALUES('$T','$CID','guest',repeat('a',64),'checkout-race',sha256('start'::bytea),uuidv7(),1,'$OID','USD',130,100,10,20,1,'{}');
