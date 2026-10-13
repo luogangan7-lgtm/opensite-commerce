@@ -70,11 +70,14 @@ type Config struct {
 	IdleTimeout, AbsoluteTimeout, DeviceLifetime time.Duration
 	// HashTimeout bounds admission/database work and forbids writes after KDF deadline.
 	// A bounded worker retains its slot until Argon2 completes; it cannot be preempted.
-	HashTimeout                     time.Duration
-	TrustedProxies                  []netip.Prefix
-	HashSlots, KnownDeviceHashSlots int
-	IPBurst, GlobalBurst            int
-	Now                             func() time.Time
+	// Session admission has a separate bounded budget and database lane.
+	SessionQueryTimeout                                   time.Duration
+	SessionQuerySlots, SessionIPBurst, SessionGlobalBurst int
+	HashTimeout                                           time.Duration
+	TrustedProxies                                        []netip.Prefix
+	HashSlots, KnownDeviceHashSlots                       int
+	IPBurst, GlobalBurst                                  int
+	Now                                                   func() time.Time
 	// Deprecated: cooldowns reject immediately. Kept for config source compatibility.
 	Wait func(context.Context, time.Duration) error
 }

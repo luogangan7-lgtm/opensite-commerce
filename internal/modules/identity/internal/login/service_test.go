@@ -198,8 +198,9 @@ func (f *fakeRepo) RecordFailure(_ context.Context, _ string, ip netip.Addr) err
 	f.failureIP = ip
 	return f.failureErr
 }
+func (f *fakeRepo) RotationSession(context.Context, [32]byte, string) (bool, error) { return true, nil }
 func (f *fakeRepo) Device(context.Context, [32]byte) (Device, error) {
-	if f.device.ID == "" {
+	if f.device.ID == "" || !f.device.ExpiresAt.After(time.Unix(10000, 0)) {
 		return Device{}, ErrNotFound
 	}
 	return f.device, nil
@@ -211,7 +212,7 @@ func (f *fakeRepo) FailDevice(context.Context, string) error {
 func (f *fakeRepo) SaveLogin(_ context.Context, i SessionInput) (Session, error) {
 	f.saves++
 	f.saved = i
-	return Session{ID: "session", UserID: i.UserID, CreatedAt: i.CreatedAt, LastSeenAt: i.CreatedAt, ExpiresAt: i.ExpiresAt}, nil
+	return Session{DatabaseNow: i.CreatedAt, ID: "session", UserID: i.UserID, CreatedAt: i.CreatedAt, LastSeenAt: i.CreatedAt, ExpiresAt: i.ExpiresAt}, nil
 }
 func (f *fakeRepo) LookupSession(context.Context, [32]byte, time.Time, time.Duration) (Session, error) {
 	if f.lookupHook != nil {
@@ -224,7 +225,7 @@ func (f *fakeRepo) LookupSession(context.Context, [32]byte, time.Time, time.Dura
 }
 func (f *fakeRepo) RevokeSession(context.Context, string, time.Time) error { return nil }
 
-func TestAuthenticateUsesCompletionClockAfterReorderedLookup(t *testing.T) {
+func TestAuthenticateUsesDatabaseCompletionClockAfterReorderedLookup(t *testing.T) {
 	for _, tc := range []struct {
 		name                   string
 		created, last, expires time.Duration
@@ -236,7 +237,7 @@ func TestAuthenticateUsesCompletionClockAfterReorderedLookup(t *testing.T) {
 			r := &fakeRepo{}
 			r.lookupHook = func() (Session, error) {
 				now = start.Add(10 * time.Second)
-				return Session{ID: "session", UserID: "user", CreatedAt: start.Add(tc.created), LastSeenAt: start.Add(tc.last), ExpiresAt: start.Add(tc.expires)}, nil
+				return Session{DatabaseNow: start.Add(10 * time.Second), ID: "session", UserID: "user", CreatedAt: start.Add(tc.created), LastSeenAt: start.Add(tc.last), ExpiresAt: start.Add(tc.expires)}, nil
 			}
 			s, _ := New(r, testConfig(&now))
 			raw, _ := newToken()
@@ -455,14 +456,14 @@ func TestSessionLifecycleAndRotationInput(t *testing.T) {
 		t.Fatal("idle expired admitted")
 	}
 	in.OldSessionToken = old + "="
-	if _, e := s.Login(context.Background(), in); !errors.Is(e, ErrSession) || r.saves != 1 {
-		t.Fatal("invalid old token admitted", e)
+	if _, e := s.Login(context.Background(), in); e != nil || r.saves != 2 || r.saved.OldTokenHash != nil {
+		t.Fatal("malformed old token blocked fresh credential login", e)
 	}
 }
 
 func TestConfigOriginAndKeyCopy(t *testing.T) {
 	now := time.Unix(10000, 0)
-	for _, origin := range []string{"http://admin.example.com", "https://admin.example.com/", "https://user@admin.example.com", "https://admin.example.com?", "https://:443", "https://admin.example.com:"} {
+	for _, origin := range []string{"http://admin.example.com", "https://admin.example.com/", "https://user@admin.example.com", "https://admin.example.com?", "https://:443", "https://admin.example.com:", "https://admin.example.com:443"} {
 		cfg := testConfig(&now)
 		cfg.Origin = origin
 		if _, e := New(&fakeRepo{}, cfg); e == nil {

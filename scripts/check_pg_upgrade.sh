@@ -1125,6 +1125,34 @@ db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 LOGIN_DB=""
 
+# H-4: preserve existing sessions while installing the password-change fence.
+# Discover by suffix so integration renumbering cannot skip any predecessor.
+hardening=(migrations/[0-9][0-9][0-9]_identity_hardening.sql)
+[[ ${#hardening[@]} == 1 && -f ${hardening[0]} ]] || { echo 'FAIL: exactly one identity hardening migration required'; exit 1; }
+DB=upgrade_h4_$$
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${hardening[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.users(email,password_hash)
+VALUES('h4-upgrade@example.test',encode(sha256(uuidv7()::text::bytea),'hex')) RETURNING id AS u \gset
+INSERT INTO app.auth_sessions(user_id,token_hash,created_at,last_seen_at,expires_at)
+VALUES(:'u',sha256(uuidv7()::text::bytea),clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 hour');
+CREATE TABLE public.h4_upgrade_expected AS SELECT id,to_jsonb(s) AS payload FROM app.auth_sessions s;
+SQL
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${hardening[0]} ]] && continue
+ apply_forward "$DB" "$f"
+done
+result=$(db "$DB" -c "SELECT count(*) FROM app.auth_sessions s JOIN public.h4_upgrade_expected e ON e.id=s.id AND e.payload=to_jsonb(s);")
+[[ $result == 1 ]] || { bad 'H4 migration changed existing session'; }
+db "$DB" -f tests/db_identity_hardening.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB" >/dev/null
+pass 'H4 upgrade preserves sessions, installs password revocation and exact ACL'
+
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
 # Quotes takes over the existing005 inquiry table without rebuilding contacts.

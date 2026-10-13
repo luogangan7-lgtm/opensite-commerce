@@ -60,7 +60,7 @@ func (f *h4Repository) SaveLogin(context.Context, login.SessionInput) (login.Ses
 	return f.session, nil
 }
 
-func h4Fixture(t *testing.T) (*platform.Router, *login.Service, *h4Repository, string) {
+func h4Fixture(t *testing.T, configure ...func(*login.Config)) (*platform.Router, *login.Service, *h4Repository, string) {
 	t.Helper()
 	secret := make([]byte, 24)
 	if _, err := rand.Read(secret); err != nil {
@@ -72,8 +72,12 @@ func h4Fixture(t *testing.T) (*platform.Router, *login.Service, *h4Repository, s
 	format := "$argon2id$v=19$m=19456,t=2,p=1$%s$%s"
 	phc := fmt.Sprintf(format, base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(digest))
 	now := time.Now()
-	f := &h4Repository{fakeRepo: fakeRepo{credential: login.Credential{UserID: "user", Status: "active", PasswordHash: phc}, session: login.Session{ID: "session", UserID: "user", CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(time.Hour)}}}
-	s, err := login.New(f, login.Config{Origin: "https://admin.example.test", SigningKey: secretKey(t)})
+	f := &h4Repository{fakeRepo: fakeRepo{credential: login.Credential{UserID: "user", Status: "active", PasswordHash: phc}, session: login.Session{DatabaseNow: now, ID: "session", UserID: "user", CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(time.Hour)}}}
+	cfg := login.Config{Origin: "https://admin.example.test", SigningKey: secretKey(t)}
+	for _, change := range configure {
+		change(&cfg)
+	}
+	s, err := login.New(f, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

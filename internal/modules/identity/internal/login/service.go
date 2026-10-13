@@ -33,12 +33,15 @@ type Service struct {
 	ips                            map[netip.Addr]ipWindow
 	knownIPs                       map[netip.Addr]ipWindow
 	global, knownGlobal            ipWindow
+	sessionSlots                   chan struct{}
+	sessionIPs                     map[netip.Addr]ipWindow
+	sessionGlobal                  ipWindow
 	deriveKey                      func([]byte, []byte, uint32, uint32, uint8, uint32) []byte
 }
 
 func New(repo Repository, cfg Config) (*Service, error) {
 	u, e := url.Parse(cfg.Origin)
-	if repo == nil || e != nil || u.Scheme != "https" || u.Hostname() == "" || strings.HasSuffix(u.Host, ":") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || u.String() != cfg.Origin || len(cfg.SigningKey) < 32 {
+	if repo == nil || e != nil || u.Scheme != "https" || u.Hostname() == "" || u.Port() == "443" || strings.HasSuffix(u.Host, ":") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || u.String() != cfg.Origin || len(cfg.SigningKey) < 32 {
 		return nil, ErrDatabase
 	}
 	if cfg.IdleTimeout == 0 {
@@ -68,6 +71,21 @@ func New(repo Repository, cfg Config) (*Service, error) {
 	if cfg.HashTimeout < time.Millisecond || cfg.HashTimeout > 30*time.Second || cfg.IdleTimeout < time.Minute || cfg.IdleTimeout > 24*time.Hour || cfg.AbsoluteTimeout < cfg.IdleTimeout || cfg.AbsoluteTimeout > 7*24*time.Hour || cfg.DeviceLifetime < time.Hour || cfg.DeviceLifetime > 365*24*time.Hour || cfg.HashSlots < 1 || cfg.KnownDeviceHashSlots < 1 || cfg.HashSlots+cfg.KnownDeviceHashSlots > 16 || cfg.IPBurst < 1 || cfg.IPBurst > 10000 || cfg.GlobalBurst < 2 || cfg.GlobalBurst > 100000 {
 		return nil, ErrDatabase
 	}
+	if cfg.SessionQueryTimeout == 0 {
+		cfg.SessionQueryTimeout = 2 * time.Second
+	}
+	if cfg.SessionQuerySlots == 0 {
+		cfg.SessionQuerySlots = 2
+	}
+	if cfg.SessionIPBurst == 0 {
+		cfg.SessionIPBurst = 60
+	}
+	if cfg.SessionGlobalBurst == 0 {
+		cfg.SessionGlobalBurst = 600
+	}
+	if cfg.SessionQueryTimeout < time.Millisecond || cfg.SessionQueryTimeout > 10*time.Second || cfg.SessionQuerySlots < 1 || cfg.SessionQuerySlots > 16 || cfg.SessionIPBurst < 1 || cfg.SessionIPBurst > 10000 || cfg.SessionGlobalBurst < 1 || cfg.SessionGlobalBurst > 100000 {
+		return nil, ErrDatabase
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -78,7 +96,7 @@ func New(repo Repository, cfg Config) (*Service, error) {
 	}
 	cfg.TrustedProxies = append([]netip.Prefix(nil), cfg.TrustedProxies...)
 	cfg.SigningKey = append([]byte(nil), cfg.SigningKey...)
-	return &Service{repo: repo, cfg: cfg, hashSlots: make(chan struct{}, cfg.HashSlots), knownSlots: make(chan struct{}, cfg.KnownDeviceHashSlots), admissionSlots: make(chan struct{}, cfg.HashSlots), candidateSlots: make(chan struct{}, cfg.KnownDeviceHashSlots), ips: make(map[netip.Addr]ipWindow), knownIPs: make(map[netip.Addr]ipWindow), deriveKey: argon2.IDKey}, nil
+	return &Service{repo: repo, cfg: cfg, hashSlots: make(chan struct{}, cfg.HashSlots), knownSlots: make(chan struct{}, cfg.KnownDeviceHashSlots), admissionSlots: make(chan struct{}, cfg.HashSlots), candidateSlots: make(chan struct{}, cfg.KnownDeviceHashSlots), ips: make(map[netip.Addr]ipWindow), knownIPs: make(map[netip.Addr]ipWindow), deriveKey: argon2.IDKey, sessionSlots: make(chan struct{}, cfg.SessionQuerySlots), sessionIPs: make(map[netip.Addr]ipWindow)}, nil
 }
 
 // ValidIdentifier is shared with schema admission to keep malformed identifiers out of DB work.
@@ -134,10 +152,11 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	var oldHash *[32]byte
 	if in.OldSessionToken != "" {
 		h, e := tokenHash(in.OldSessionToken)
-		if e != nil {
-			return LoginResult{}, ErrSession
+		// Malformed old cookies carry no authority. A successful credential
+		// login replaces them; a failure must never delete a newer cookie.
+		if e == nil {
+			oldHash = &h
 		}
-		oldHash = &h
 	}
 	credential, e := s.repo.Credential(ctx, in.Identifier)
 	if ctx.Err() != nil {
@@ -158,7 +177,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return LoginResult{}, ErrDatabase
 		}
-		known = err == nil && device.ID != "" && device.UserID == credential.UserID && !device.Revoked && device.ExpiresAt.After(arrival)
+		known = err == nil && device.ID != "" && device.UserID == credential.UserID && !device.Revoked
 	}
 	if candidate && !s.admitGlobal(known, arrival) {
 		return LoginResult{}, ErrRateLimited
@@ -181,14 +200,25 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	if e != nil {
 		return LoginResult{}, ErrDatabase
 	}
-	if accountIP.After(arrival) {
+	if !accountIP.IsZero() {
 		return LoginResult{}, ErrRateLimited
 	}
-	if !known && account.After(arrival) {
+	if !known && !account.IsZero() {
 		return LoginResult{}, ErrRateLimited
 	}
 	if ctx.Err() != nil {
 		return LoginResult{}, ErrRateLimited
+	}
+	if oldHash != nil {
+		valid, err := s.repo.RotationSession(ctx, *oldHash, credential.UserID)
+		if err != nil {
+			return LoginResult{}, ErrDatabase
+		}
+		// A stale cookie does not obstruct a fresh credential login. A valid
+		// preflight retains the old token for the atomic CAS after hashing.
+		if !valid {
+			oldHash = nil
+		}
 	}
 	// DB admission is distinct from KDF capacity; never retain it while hashing.
 	<-admission
@@ -245,37 +275,78 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	hash, _ := tokenHash(raw)
 	dh, _ := tokenHash(deviceRaw)
 	now := s.cfg.Now()
-	session, e := s.repo.SaveLogin(ctx, SessionInput{UserID: credential.UserID, TokenHash: hash, DeviceHash: dh, CreatedAt: now, ExpiresAt: now.Add(s.cfg.AbsoluteTimeout), DeviceExpiresAt: now.Add(s.cfg.DeviceLifetime), OldTokenHash: oldHash})
+	session, e := s.repo.SaveLogin(ctx, SessionInput{UserID: credential.UserID, VerifiedPasswordHash: credential.PasswordHash, TokenHash: hash, DeviceHash: dh, CreatedAt: now, ExpiresAt: now.Add(s.cfg.AbsoluteTimeout), DeviceExpiresAt: now.Add(s.cfg.DeviceLifetime), OldTokenHash: oldHash})
 	if e != nil {
-		if errors.Is(e, ErrSession) {
-			return LoginResult{}, ErrSession
+		if errors.Is(e, ErrSession) || errors.Is(e, ErrCredentials) {
+			return LoginResult{}, e
 		}
 		return LoginResult{}, ErrDatabase
 	}
 	return LoginResult{SessionToken: raw, DeviceToken: s.sign("device", deviceRaw), CSRFToken: s.SessionCSRF(raw), Session: session}, nil
 }
 
-func (s *Service) Authenticate(ctx context.Context, rawToken string) (Actor, Session, error) {
+// Authenticate accepts only canonical opaque tokens; HTTP supplies its trusted
+// client address. Direct callers share an unknown-address bucket by default.
+func (s *Service) Authenticate(ctx context.Context, rawToken string, clientIP ...netip.Addr) (Actor, Session, error) {
 	hash, e := tokenHash(rawToken)
 	if e != nil {
 		return Actor{}, Session{}, ErrSession
 	}
-	now := s.cfg.Now()
-	session, e := s.repo.LookupSession(ctx, hash, now, s.cfg.IdleTimeout)
+	var ip netip.Addr
+	if len(clientIP) > 0 {
+		ip = rateLimitIP(clientIP[0])
+	}
+	if !s.admitSession(ip, s.cfg.Now()) {
+		return Actor{}, Session{}, ErrRateLimited
+	}
+	select {
+	case s.sessionSlots <- struct{}{}:
+	default:
+		return Actor{}, Session{}, ErrRateLimited
+	}
+	defer func() { <-s.sessionSlots }()
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.SessionQueryTimeout)
+	defer cancel()
+	session, e := s.repo.LookupSession(ctx, hash, time.Time{}, s.cfg.IdleTimeout)
 	if e != nil {
 		if errors.Is(e, ErrNotFound) || errors.Is(e, ErrSession) {
 			return Actor{}, Session{}, ErrSession
 		}
 		return Actor{}, Session{}, ErrDatabase
 	}
-	// A queued lookup may finish after another request advanced last_seen_at.
-	// Validate the returned record against completion, not the earlier arrival.
-	now = s.cfg.Now()
-	if session.ID == "" || session.UserID == "" || !session.ExpiresAt.After(now) || session.CreatedAt.After(now) || session.LastSeenAt.After(now) || !session.CreatedAt.Add(s.cfg.AbsoluteTimeout).After(now) || !session.LastSeenAt.Add(s.cfg.IdleTimeout).After(now) {
+	// Durable validity is judged only against the DB clock captured after
+	// lock acquisition. Host time is used solely for in-memory rate windows.
+	now := session.DatabaseNow
+	if now.IsZero() || session.ID == "" || session.UserID == "" || !session.ExpiresAt.After(now) || session.CreatedAt.After(now) || session.LastSeenAt.After(now) || !session.CreatedAt.Add(s.cfg.AbsoluteTimeout).After(now) || !session.LastSeenAt.Add(s.cfg.IdleTimeout).After(now) {
 		return Actor{}, Session{}, ErrSession
 	}
 	return Actor{userID: session.UserID, sessionID: session.ID}, session, nil
 }
+
+func (s *Service) admitSession(ip netip.Addr, now time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.sessionIPs[ip]; !exists && len(s.sessionIPs) >= 4096 {
+		for key, w := range s.sessionIPs {
+			if !now.Before(w.start.Add(time.Minute)) {
+				delete(s.sessionIPs, key)
+			}
+		}
+		if len(s.sessionIPs) >= 4096 {
+			return false
+		}
+	}
+	w, ok := takeWindow(s.sessionIPs[ip], now, s.cfg.SessionIPBurst)
+	s.sessionIPs[ip] = w
+	if !ok {
+		return false
+	}
+	s.sessionGlobal, ok = takeWindow(s.sessionGlobal, now, s.cfg.SessionGlobalBurst)
+	return ok
+}
+
+func (s *Service) DeviceLifetime() time.Duration { return s.cfg.DeviceLifetime }
+
 func (s *Service) Logout(ctx context.Context, a Actor) error {
 	if a.userID == "" || a.sessionID == "" {
 		return ErrSession
