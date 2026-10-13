@@ -50,8 +50,8 @@ Port. Positive refunds retain `received` → `refund_pending` → `refunded`.
 This is the mandatory design contract for plan item 7, recorded before production
 implementation. Earlier conservation tests do not establish that this shared
 command exists. Implementation and current-source CI evidence are required.
-The integration remains migration `034_fulfillment_returns.sql`, after main's
-`033_customer_auth.sql`; it must not replace or renumber the customer migration.
+The integration remains migration `035_fulfillment_returns.sql`, after main's
+`034_orders_guards.sql`; neither applied main migration is renumbered.
 
 Orders owns the single internal command with this frozen SQL identity:
 

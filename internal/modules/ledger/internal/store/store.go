@@ -9,10 +9,10 @@ import (
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"time"
 )
 
@@ -52,7 +52,7 @@ func mapError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.ErrNotFound
 	}
-	var pg *pgconn.PgError
+	var pg *pgxadapter.PgError
 	if errors.As(err, &pg) {
 		switch pg.Code {
 		case "23505":

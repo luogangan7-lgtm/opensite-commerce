@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 // creationKeyConstraint names UNIQUE(tenant_id,creation_key) in 020_orders.sql.
@@ -52,7 +52,7 @@ func MapError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.ErrNotFound
 	}
-	var e *pgconn.PgError
+	var e *pgxadapter.PgError
 	if !errors.As(err, &e) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err

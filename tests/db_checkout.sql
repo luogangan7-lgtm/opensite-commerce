@@ -18,7 +18,7 @@ DECLARE t uuid:=current_setting('test.checkout_t')::uuid; sku uuid:=current_sett
 BEGIN
  r:=app.inventory_reserve(sku,2,'order',oid,'checkout-hold',900);
  o:=app.orders_create(oid,'checkout-order',sha256('order'::bytea),NULL,'{"email":"checkout@example.invalid"}','USD',20,'{}',
-  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','checkout-sku','quantity',2,'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',10,'line_total_minor',210,'reservation_id',r.id,'tax_snapshot','{}'::jsonb)),'[]');
+  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','checkout-sku','quantity',2,'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',10,'line_total_minor',210,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
  INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
  VALUES(t,cid,'guest',repeat('a',64),'first',sha256('start'::bytea),uuidv7(),1,oid,'{}','USD',230,200,10,20,1) RETURNING * INTO session;
  BEGIN
