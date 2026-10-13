@@ -260,7 +260,7 @@
       "name": "publish",
       "status": "implemented",
       "go_path": "internal/modules/publish",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "site_releases",
         "site_release_routes",
@@ -286,6 +286,10 @@
         {
           "operation_id": "publishSiteDraft",
           "status": "planned"
+        },
+        {
+          "operation_id": "getPublishedSite",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -297,7 +301,11 @@
       "tests": [
         "internal/pagegraph/graph_test.go",
         "tests/db_release_integrity.sql",
-        "tests/db_publish_isolation.sql"
+        "tests/db_publish_isolation.sql",
+        "internal/modules/publish/contract/read_test.go",
+        "internal/modules/publish/internal/service/read_test.go",
+        "internal/modules/publish/handler_test.go",
+        "tests/db_storefront.sql"
       ],
       "scopes": [
         "site.draft.write",
@@ -950,7 +958,18 @@
       ]
     },
     {
-      "file": "migrations/024_identity_auth.sql",
+      "file": "migrations/024_storefront_read.sql",
+      "owner": "publish",
+      "touches_tables": [
+        "site_domains",
+        "sites",
+        "site_releases",
+        "site_release_routes",
+        "page_revisions"
+      ]
+    },
+    {
+      "file": "migrations/025_identity_auth.sql",
       "owner": "identity",
       "touches_tables": [
         "users",

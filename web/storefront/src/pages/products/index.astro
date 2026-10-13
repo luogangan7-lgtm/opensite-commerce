@@ -1,0 +1,7 @@
+---
+/** Responsibility: read-only product index SSR route; dependency: published page composition. */
+import PublishedPage from '../../components/PublishedPage.astro';
+import { preparePublishedPage } from '../../lib/published-page';
+const view = await preparePublishedPage(Astro, '/products');
+---
+<PublishedPage view={view} />
