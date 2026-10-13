@@ -69,7 +69,7 @@ BEGIN
 END $verify$;
 -- C-19a owns separate tenants: this is webhook acceptance, not a purchase UI seed.
 DO $payment_seed$
-DECLARE n integer; suffix text; t uuid; fixture_sku uuid; oid uuid; cid uuid; r app.inventory_reservations; o app.orders; account_code text; account_kind text;
+DECLARE n integer; suffix text; t uuid; fixture_sku uuid; oid uuid; cid uuid; r app.inventory_reservations; fixture_order app.orders; account_code text; account_kind text;
 BEGIN
  FOR n IN 1..2 LOOP
   suffix:=lpad(n::text,12,'0');
@@ -94,7 +94,7 @@ BEGIN
   IF NOT EXISTS(SELECT FROM app.checkout_sessions WHERE tenant_id=t AND id=cid) THEN
    PERFORM app.inventory_adjust(fixture_sku,10,'C19 webhook seed',('c1900006-0000-4000-8000-'||suffix)::uuid,'inbound');
    r:=app.inventory_reserve(fixture_sku,2,'order',oid,'c19-e2e-hold',3600);
-   o:=app.orders_create(oid,'c19-e2e-order',sha256('c19-e2e-order'::bytea),NULL,'{"email":"c19-webhook@example.invalid"}','USD',50,'{}',
+   fixture_order:=app.orders_create(oid,'c19-e2e-order',sha256('c19-e2e-order'::bytea),NULL,'{"email":"c19-webhook@example.invalid"}','USD',50,'{}',
     jsonb_build_array(jsonb_build_object('id',('c1900007-0000-4000-8000-'||suffix)::uuid,'sku_id',fixture_sku,'sku','C19-WEBHOOK','quantity',2,'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',20,'line_total_minor',220,'reservation_id',r.id,'tax_snapshot','{}'::jsonb)),'[]');
    INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
     VALUES(t,cid,'guest',repeat('a',64),'c19-e2e-checkout',sha256('c19-e2e-checkout'::bytea),('c1900005-0000-4000-8000-'||suffix)::uuid,1,oid,'{}','USD',270,200,20,50,1);
