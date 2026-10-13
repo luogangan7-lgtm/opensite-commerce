@@ -1,3 +1,4 @@
+-- stable-id: c15b-serving
 -- Responsibility: sealed SKU membership per release and the rebuildable public serving row.
 -- Dependencies: 006/010/024/031; caller: publish WriteStore (tenant tx) and public read.
 -- Invariants: SKU membership is write-once in the transaction that created the release;

@@ -1391,7 +1391,7 @@
       ]
     },
     {
-      "file": "migrations/035_storefront_serving.sql",
+      "file": "migrations/pending/c15b-serving_storefront_serving.sql",
       "owner": "publish",
       "touches_tables": [
         "site_release_skus",
