@@ -264,6 +264,109 @@ func TestRefundConservationZeroReceiveAfterRefunded(t *testing.T) {
 	runRefundConservation(t, 2, 1, 0, 0, 1, 0, []int64{1, 1}, []int{1, 0}, true)
 }
 
+// No active nonzero RMA exists at the legacy event. Already frozen/paid RMA
+// money must stay immutable while that event consumes the remaining capacity.
+func runTerminalRMAThenLegacy(t *testing.T, quantity, unit, discount, firstQuantity, legacy int64) {
+	t.Helper()
+	f, initialStock := newConservationFixture(t, quantity, unit, 0, 0, discount)
+	total := quantity*unit - discount
+	firstAmount := total * firstQuantity / quantity
+	remainingAmount := total - firstAmount - legacy
+	if remainingAmount < 0 {
+		t.Fatal("invalid interleaving fixture")
+	}
+	positive := int64(0)
+	createAndFinish := func(index int, qty, expected int64) returnscontract.Return {
+		version, _, _ := conservationOrder(t, f)
+		in := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: fmt.Sprintf("interleave-rma-%d", index), Kind: returnscontract.UnshippedCancel, Reason: "terminal RMA then legacy", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: qty}}}
+		var rma returnscontract.Return
+		err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			var err error
+			rma, err = f.returns.Request(ctx, tx, f.tenant, in)
+			return err
+		})
+		if err != nil {
+			t.Fatalf("interleaved request %d: %v", index, err)
+		}
+		if rma.RefundMinor != expected || !rma.Restocked {
+			t.Fatalf("interleaved frozen amount %d got %+v want %d", index, rma, expected)
+		}
+		if expected == 0 {
+			if rma.Status != "completed" {
+				t.Fatalf("zero interleaved RMA not terminal: %+v", rma)
+			}
+			return rma
+		}
+		positive++
+		version, _, _ = conservationOrder(t, f)
+		refund := returnscontract.RefundInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fmt.Sprintf("interleave-refund-%d", index)}
+		rma, err = f.returns.Refund(f.ctx, f.tenant, refund)
+		if err != nil || rma.Status != "refunded" || rma.RefundMinor != expected {
+			t.Fatalf("interleaved refund %d: %+v %v", index, rma, err)
+		}
+		events, stock := len(f.payments.Events()), f.stock(t)
+		if _, err := f.returns.Refund(f.ctx, f.tenant, refund); err != nil || len(f.payments.Events()) != events || f.stock(t) != stock {
+			t.Fatalf("interleaved refund replay: %v", err)
+		}
+		return rma
+	}
+	first := createAndFinish(0, firstQuantity, firstAmount)
+	_, beforeLegacy, _ := conservationOrder(t, f)
+	if beforeLegacy != firstAmount {
+		t.Fatalf("first RMA money drift: %d want %d", beforeLegacy, firstAmount)
+	}
+	target := orderscontract.PartiallyRefunded
+	if firstAmount+legacy == total {
+		target = orderscontract.Refunded
+	}
+	err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := orders.New().Transition(ctx, tx, f.tenant, orderscontract.TransitionInput{OrderID: f.order.ID, Target: target, EventKey: "intervening-legacy", RefundMinor: legacy})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("legacy event after terminal RMA was rejected: %v", err)
+	}
+	second := createAndFinish(1, quantity-firstQuantity, remainingAmount)
+	_, refunded, state := conservationOrder(t, f)
+	if first.RefundMinor+legacy+second.RefundMinor != total || refunded != total || state != "refunded" || f.stock(t) != initialStock {
+		t.Fatalf("terminal interleaving drift: first=%d legacy=%d second=%d order=%d state=%s stock=%d", first.RefundMinor, legacy, second.RefundMinor, refunded, state, f.stock(t))
+	}
+	var frozenFirst, movements, credits, unbalanced, zeroFinancial int64
+	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT
+		 (SELECT refund_minor FROM app.returns WHERE tenant_id=$1 AND id=$3),
+		 (SELECT count(*) FROM app.inventory_movements m JOIN app.returns r ON r.tenant_id=m.tenant_id AND r.id=m.owner_id WHERE r.tenant_id=$1 AND r.order_id=$2 AND m.owner_type='return'),
+		 (SELECT coalesce(sum(e.amount),0)::bigint FROM app.ledger_entries e JOIN app.returns r ON r.tenant_id=e.tenant_id AND r.ledger_transaction_id=e.transaction_id WHERE r.tenant_id=$1 AND r.order_id=$2 AND e.side='credit'),
+		 (SELECT count(*) FROM (SELECT e.transaction_id FROM app.ledger_entries e JOIN app.returns r ON r.tenant_id=e.tenant_id AND r.ledger_transaction_id=e.transaction_id WHERE r.tenant_id=$1 AND r.order_id=$2 GROUP BY e.transaction_id HAVING sum(CASE e.side WHEN 'debit' THEN e.amount ELSE -e.amount END)<>0) bad),
+		 (SELECT count(*) FROM app.returns WHERE tenant_id=$1 AND order_id=$2 AND refund_minor=0 AND (status<>'completed' OR refund_key IS NOT NULL OR ledger_transaction_id IS NOT NULL))`, f.tenant, f.order.ID, first.ID).Scan(&frozenFirst, &movements, &credits, &unbalanced, &zeroFinancial)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frozenFirst != firstAmount || movements != 2 || credits != total-legacy || unbalanced != 0 || zeroFinancial != 0 || int64(len(f.payments.Events())) != positive+2 {
+		t.Fatalf("interleaving receipts drift: first=%d moves=%d credits=%d unbalanced=%d zeroFinancial=%d PSP=%d", frozenFirst, movements, credits, unbalanced, zeroFinancial, len(f.payments.Events()))
+	}
+}
+
+func TestRefundConservationTerminalRMAThenLegacy(t *testing.T) {
+	t.Run("refunded100Legacy10Remaining90", func(t *testing.T) { runTerminalRMAThenLegacy(t, 2, 100, 0, 1, 10) })
+	t.Run("completedZeroLegacy1RemainingZero", func(t *testing.T) { runTerminalRMAThenLegacy(t, 2, 1, 1, 1, 1) })
+	const seed int64 = 39_20261014
+	rng := rand.New(rand.NewSource(seed))
+	for i := 0; i < 25; i++ {
+		quantity, unit := int64(2+rng.Intn(8)), int64(1+rng.Intn(100))
+		discount := rng.Int63n(quantity * unit)
+		total := quantity*unit - discount
+		firstQuantity := int64(1 + rng.Intn(int(quantity-1)))
+		firstAmount := total * firstQuantity / quantity
+		legacy := 1 + rng.Int63n(total-firstAmount)
+		t.Run(fmt.Sprintf("seed%d-case%02d", seed, i), func(t *testing.T) {
+			t.Logf("qty=%d unit=%d discount=%d firstqty=%d legacy=%d", quantity, unit, discount, firstQuantity, legacy)
+			runTerminalRMAThenLegacy(t, quantity, unit, discount, firstQuantity, legacy)
+		})
+	}
+}
+
 func TestRefundConservationSeeded150Orders(t *testing.T) {
 	const seed int64 = 39_20261013
 	rng := rand.New(rand.NewSource(seed))
