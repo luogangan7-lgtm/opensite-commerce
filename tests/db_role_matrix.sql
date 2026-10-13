@@ -1,5 +1,5 @@
 -- Responsibility: audit effective identity, business, queue and ops capability boundaries.
--- Dependencies: PostgreSQL 18 catalogs, app/queue schema and forward migrations 001..027.
+-- Dependencies: PostgreSQL 18 catalogs, app/queue schema and all current forward migrations, including identity, CMS, checkout and customer auth.
 -- Caller: privileged psql test runner on an expendable database, after hardening.
 -- Invariant: effective privileges (including PUBLIC/inheritance) match the contract
 -- on every table AND column; table ACL absence alone cannot prove column denial.
@@ -25,6 +25,7 @@ DECLARE
   'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
   'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
+  'customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits',
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals',
@@ -74,7 +75,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','customer_credentials','auth_account_attempts','auth_login_attempts','known_devices']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='INSERT' THEN
@@ -148,16 +149,13 @@ BEGIN
       allowed_columns := ARRAY['revoked_at','last_seen_at'];
      END IF;
     ELSIF role_name='app_customer_auth' THEN
-     IF privilege='SELECT' AND t.relname=ANY(ARRAY['customers','customer_credentials']) THEN
+     IF privilege='SELECT' AND t.relname=ANY(ARRAY['customers','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='INSERT' THEN
       allowed_columns := CASE t.relname
        WHEN 'customers' THEN ARRAY['tenant_id','id','email','display_name']
-       WHEN 'customer_credentials' THEN ARRAY['tenant_id','customer_id','password_hash']
        ELSE ARRAY[]::text[] END;
-     ELSIF privilege='UPDATE' AND t.relname='customer_credentials' THEN
-      allowed_columns := ARRAY['password_hash'];
      END IF;
     ELSIF role_name='app_domain_resolver' AND privilege='SELECT' THEN
      allowed_columns := CASE t.relname
@@ -206,7 +204,9 @@ BEGIN
   END IF;
  END LOOP;
  FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-  WHERE n.nspname='app' LOOP
+  WHERE n.nspname='app' AND p.proname NOT IN('customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
+   'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
+   'customer_session','customer_revoke_session','customer_admit','customer_failed') LOOP
   IF has_function_privilege('app_customer_auth',f.oid,'EXECUTE')
    OR has_function_privilege('app_customer_auth',f.oid,'EXECUTE WITH GRANT OPTION') THEN
    RAISE EXCEPTION 'customer auth can execute foreign routine: %',f.proname;
@@ -369,7 +369,10 @@ BEGIN
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
-   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard') LOOP
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard',
+   'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
+   'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
+   'customer_session','customer_revoke_session','customer_admit','customer_failed') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -394,7 +397,10 @@ BEGIN
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
-   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard'))<>10 THEN
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard',
+   'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
+   'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
+   'customer_session','customer_revoke_session','customer_admit','customer_failed'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -979,3 +985,76 @@ BEGIN
  END LOOP;
 END $checkout_capability$;
 SELECT 'PASS: checkout exact table/column grants and private invoker trigger' AS result;
+
+-- Independent least-privilege expectations for the customer proof executor.
+DO $customer_executor$
+DECLARE r record; t record; a record; f record; role_name text; privilege text;
+ allowed text[]; expected_table boolean; expected_column boolean;
+ signatures text[]:=ARRAY['app.customer_auth_context()', 'app.customer_claim_guest_orders(uuid)',
+ 'app.customer_prepare_registration(text,text,bytea,timestamp with time zone)',
+ 'app.customer_consume_verification(bytea)','app.customer_prepare_reset(text,bytea,timestamp with time zone)',
+ 'app.customer_consume_reset(bytea,text)','app.customer_save_session(uuid,text,bytea,bytea,timestamp with time zone,timestamp with time zone)',
+ 'app.customer_session(bytea,bigint)','app.customer_revoke_session(bytea)',
+ 'app.customer_admit(bytea,bytea,timestamp with time zone)','app.customer_failed(bytea,bytea)'];
+ signature text; expected_functions oid[]:=ARRAY[]::oid[];
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_customer_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+  OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+  OR has_schema_privilege(r.oid,'app','CREATE') OR NOT has_schema_privilege(r.oid,'app','USAGE')
+  OR has_schema_privilege(r.oid,'app','USAGE WITH GRANT OPTION') THEN RAISE EXCEPTION 'CUSTOMER_AUTH_EXECUTOR_UNSAFE'; END IF;
+ FOREACH signature IN ARRAY signatures LOOP
+  IF to_regprocedure(signature) IS NULL THEN RAISE EXCEPTION 'CUSTOMER_AUTH_ROUTINE_MISSING %',signature; END IF;
+  expected_functions:=array_append(expected_functions,to_regprocedure(signature)::oid);
+ END LOOP;
+ FOR t IN SELECT c.oid,c.relname,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c
+  WHERE c.relnamespace='app'::regnamespace AND c.relkind IN('r','p') LOOP
+  IF t.relname=ANY(ARRAY['customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits'])
+   AND(NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_FORCE_RLS %',t.relname; END IF;
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   allowed:=ARRAY[]::text[];
+   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['customers','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits']);
+   IF expected_table THEN
+    SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+   ELSIF privilege='SELECT' THEN
+    allowed:=CASE t.relname WHEN 'tenants' THEN ARRAY['id','status'] WHEN 'orders' THEN ARRAY['tenant_id','id','customer_id','guest_contact','sealed'] ELSE allowed END;
+   ELSIF privilege='INSERT' THEN
+    allowed:=CASE t.relname WHEN 'customers' THEN ARRAY['tenant_id','id','email','display_name']
+     WHEN 'customer_credentials' THEN ARRAY['tenant_id','customer_id','password_hash']
+     WHEN 'customer_auth_tokens' THEN ARRAY['tenant_id','customer_id','token_hash','purpose','email_normalized','pending_password_hash','credential_version','expires_at']
+     WHEN 'customer_sessions' THEN ARRAY['tenant_id','customer_id','token_hash','credential_version','expires_at','idle_expires_at']
+     WHEN 'customer_guest_order_links' THEN ARRAY['tenant_id','customer_id','order_id']
+     WHEN 'customer_auth_limits' THEN ARRAY['tenant_id','kind','key_hash']
+     WHEN 'customer_auth_global_limits' THEN ARRAY['kind','key_hash'] ELSE allowed END;
+   ELSIF privilege='UPDATE' THEN
+    allowed:=CASE t.relname WHEN 'customers' THEN ARRAY['verified_at'] WHEN 'customer_credentials' THEN ARRAY['password_hash']
+     WHEN 'customer_auth_tokens' THEN ARRAY['consumed_at'] WHEN 'customer_sessions' THEN ARRAY['revoked_at','idle_expires_at','last_seen_at']
+     WHEN 'customer_auth_limits' THEN ARRAY['window_start','attempts','failures','cooldown_until']
+     WHEN 'customer_auth_global_limits' THEN ARRAY['window_start','attempts','failures','cooldown_until'] ELSE allowed END;
+   END IF;
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected_table OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'CUSTOMER_AUTH_TABLE_CAPABILITY % %',t.relname,privilege; END IF;
+   IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
+    FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     expected_column:=a.attname::text=ANY(allowed);
+     IF has_column_privilege(r.oid,t.oid,a.attnum,privilege) IS DISTINCT FROM expected_column OR has_column_privilege(r.oid,t.oid,a.attnum,privilege||' WITH GRANT OPTION') THEN
+      RAISE EXCEPTION 'CUSTOMER_AUTH_COLUMN_CAPABILITY %.% %',t.relname,a.attname,privilege; END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  IF f.oid=ANY(expected_functions) THEN
+   IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM(f.proname<>'customer_auth_context')
+    OR f.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog']::text[]
+    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+    RAISE EXCEPTION 'CUSTOMER_AUTH_UNSAFE_ROUTINE %',f.proname; END IF;
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') AND rolname<>'app_customer_executor' LOOP
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM(role_name='app_customer_auth' AND f.proname<>'customer_auth_context')
+     OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'CUSTOMER_AUTH_ROUTINE_CAPABILITY % %',role_name,f.proname; END IF;
+   END LOOP;
+  ELSIF has_function_privilege(r.oid,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'CUSTOMER_AUTH_FOREIGN_ROUTINE %',f.proname; END IF;
+ END LOOP;
+END $customer_executor$;
+SELECT 'PASS: exact customer function signatures, executor isolation and column privileges';

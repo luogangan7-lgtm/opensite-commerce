@@ -129,6 +129,7 @@ expected = [
     'db_identity_login.sql',
     'db_cms_publish.sql',
     'db_checkout.sql',
+    'db_customer_auth.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
 races = (root / 'scripts/check_pg_races.sh').read_text()
@@ -319,7 +320,8 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('IDENTITY_GATE', 'db_identity_auth.sql'),
                          ('LOGIN_GATE', 'db_identity_login.sql'),
                          ('CMS_EXPECTED_REFUSAL', 'db_cms_publish.sql'),
-                         ('checkout SQL PASS', 'db_checkout.sql')]:
+                         ('checkout SQL PASS', 'db_checkout.sql'),
+                         ('CUSTOMER_AUTH_GLOBAL_SCHEMA_MISSING', 'db_customer_auth.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
         assert failed.returncode == 31, (failed.stdout, failed.stderr)
