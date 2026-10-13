@@ -1383,7 +1383,7 @@
       ]
     },
     {
-      "file": "migrations/035_inventory_hold_owner.sql",
+      "file": "migrations/pending/c20b-hold-owner_inventory_hold_owner.sql",
       "owner": "inventory",
       "touches_tables": [
         "warehouses",

@@ -1,3 +1,4 @@
+-- stable-id: c20b-hold-owner
 -- Responsibility: DB-enforced holder possession for non-order inventory holds.
 -- Depends on inventory/order/queue capabilities; used by controlled inventory commands.
 -- Invariants: readable owner/id/hash is not a bearer; only due queue cleanup bypasses it.
