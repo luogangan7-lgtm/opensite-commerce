@@ -67,11 +67,18 @@ rebuilt from the release, its membership, and live price, stock and readiness.
 | `body` | exact `getPublishedSite` response bytes (UTF-8 JSON plus the trailing newline) |
 | `fallback_body` | same pages and products with `skus: []` everywhere (never stale) |
 | `body_sha256`, `fallback_sha256` | SHA-256 of each representation; the ETag source |
-| `valid_until` | `min(next price-list boundary of a member SKU, built_at + max_lifetime)`; lowered further by invalidation (§2.6) |
+| `valid_until` | `min(next price-list boundary of a member SKU, built_at + max_lifetime)` |
+| `built_through_seq` | highest invalidation `seq` folded into this build (observability; §2.6) |
 | `built_at` | build time (the DB transaction time) |
 
-Public read rule: serve `body` and `body_sha256` while `now() < valid_until`; otherwise
-serve `fallback_body` and `fallback_sha256`. A stale row degrades to "no purchasable SKUs".
+A separate **append-only** table holds invalidations:
+`app.serving_invalidations(tenant_id, site_id, seq identity, reason, created_at)`, with an
+index on `(tenant_id, site_id, created_at)`. It has no foreign keys, so an insert takes no
+lock on a shared parent row.
+
+Public read rule: serve `body` and `body_sha256` while `now() < valid_until` **and** the
+site has no unfolded invalidation older than the 30-second `grace` (one indexed `EXISTS`).
+Otherwise serve `fallback_body` and `fallback_sha256`. A stale row degrades to "no purchasable SKUs".
 It never returns a site-wide 503 and never shows a price beyond its bound. `max_lifetime`
 defaults to 15 minutes.
 
@@ -80,10 +87,10 @@ defaults to 15 minutes.
 All three entry points use the same builder inside a tenant transaction with normal tenant
 RLS:
 
-1. **Lock the publication.** `SELECT ... FROM app.sites ... FOR UPDATE` before reading any
-   input. `FOR UPDATE` rather than `FOR SHARE` also serializes concurrent refreshers. A refresh therefore waits for an in-flight publish (which holds the row
-   `FOR UPDATE`), then reads the committed revision and drops itself if the revision
-   changed. Publish and restore already hold the row lock.
+1. **Lock the publication.** `SELECT ... FROM app.sites ... FOR NO KEY UPDATE` before
+   reading any input. This serializes concurrent refreshers. A refresh waits for an
+   in-flight publish (which holds the row `FOR UPDATE`), then reads the committed revision,
+   or drops itself if the revision changed. Publish and restore already hold the row lock.
 2. **Read inputs** for the release's products only:
    - live readiness (variant and product `lifecycle_status`);
    - quantity-1 entries of active `audience='all'` lists that have not ended;
@@ -94,6 +101,8 @@ RLS:
 
    A separate **input scan budget** applies: 20,000 variant rows and 100,000 price rows.
    Exceeding it rejects a publish with a typed 422; a refresh writes the fallback instead.
+   `FOR NO KEY UPDATE` does not conflict with foreign-key `KEY SHARE` checks from other
+   modules.
 3. **Price** each SKU with the single pricing rule through the Pricing Port
    (`internal/pricing.Quote`): anonymous, quantity 1, the product's release currency, at
    DB transaction time, within the window `[starts_at, ends_at)` with `±infinity`
@@ -110,8 +119,8 @@ RLS:
 7. **Write** through `app.cms_serving_put(tenant, site, release, publication_revision,
    expected_generation, body, fallback_body, valid_until)`. It locks the site row,
    compares and swaps on `(publication_revision, serving_generation)`, stores both hashes,
-   and clears the dirty mark. In publish and restore, any error rolls back the whole
-   transaction. In a refresh, a failed CAS drops the result.
+   and checks that the bodies name the row's `tenant_id`, `site_id` and `release_id`. In
+   publish and restore, any error rolls back the whole transaction. In a refresh, a failed CAS drops the result.
 
 ### 2.4 Anonymous resolver role
 
@@ -151,36 +160,62 @@ RLS:
 
 ### 2.6 Refresh and invalidation (in this PR)
 
-- **Synchronous invalidation.** Triggers fire on every mutation that can change a served
-  value: `price_lists`, `price_entries`, `product_variants` (lifecycle), `products`
-  (lifecycle) and `stock_levels` (`on_hand`, `reserved`). In the **same transaction**, they
-  mark the affected serving rows dirty and lower `valid_until` to
-  `least(valid_until, now() + grace)`, with a 30-second `grace`. Affected rows are the
-  tenant's rows whose membership contains the SKU, or every row of the tenant for
-  list-level changes. The triggers are `SECURITY DEFINER` routines owned by
-  `app_publish_executor` and write only `dirty` and `valid_until`.
+- **Append-only invalidation.** Triggers fire on every mutation that can change a served
+  value:
+  - `price_lists` (every site of the tenant with a serving row);
+  - `price_entries`, `product_variants` lifecycle and `products` lifecycle (sites whose
+    membership contains the SKU or product);
+  - `stock_levels`, **only when the public availability boolean of a member SKU flips**
+    (`on_hand > reserved` changes). The MVP has a single warehouse, so the per-row flip
+    equals the aggregate.
+
+  In the mutating transaction they **only INSERT** into `serving_invalidations`. They never
+  UPDATE or lock `storefront_serving`, `sites` or any other shared row. Catalog, pricing,
+  inventory and checkout transactions therefore gain no lock and no change to their lock
+  order. The triggers are `SECURITY DEFINER` routines owned by `app_publish_executor`,
+  with INSERT-only access to the log and read access to membership and serving.
 - **Refresher.** A sweeper inside the API process runs every 10 s
   (`publish.Refresher`). For each tenant on the deployment-authorized list
   `OPENSITE_SERVING_REFRESH_TENANTS`, it finds:
-  - dirty rows;
+  - sites with unfolded invalidations;
   - rows within 60 s of `valid_until`;
   - published sites without a current serving row (the backfill).
 
-  Each site is rebuilt by the §2.3 builder in its own tenant transaction (runtime role,
-  tenant RLS), under the publication lock, and CAS-written. A lost CAS is skipped. Several
-  API replicas are safe: the lock serializes them and CAS discards duplicates.
+  Each site is rebuilt in its own tenant transaction (runtime role, tenant RLS):
+  1. Lock the publication row (`FOR NO KEY UPDATE`; see §2.3 step 1).
+  2. Read the invalidation rows of the site visible in the transaction's snapshot: the
+     *folded set*.
+  3. Build from live inputs read after step 2.
+  4. CAS-write the row with `built_through_seq = max(folded seq)`.
+  5. **Delete exactly the folded rows**, in the same transaction.
 
+  An invalidation that commits during the build is not in the folded set and survives, so
+  the row stays dirty. This fixes the review's lost invalidation (P1-1).
+
+  **Why a folded set rather than a pure high-water mark:** identity values are allocated
+  at insert but become visible at commit. A transaction holding a lower `seq` can commit
+  after the refresher read `max(seq)`. A rule of "dirty iff `seq > built_through_seq`"
+  would then lose it. Deleting exactly the rows that were seen has no such ordering gap.
+  The refresher is the only pruner, and its deletes touch only log rows, never rows the
+  money path locks.
+
+  A lost CAS is skipped. Several API replicas are safe: the publication lock serializes
+  them.
   **Implementation note:** it is not a River job. The River worker role has no catalog,
   pricing or inventory capability, and adding one would need a new cross-tenant capability
   role. The trusted-tenant-list model mirrors `JOB_TENANTS`. The only new seam is
   `QueryRunner.RunTrustedTx`, a tenant write transaction composed solely behind the
   refresher.
+- **Deployment.** `OPENSITE_SERVING_REFRESH_TENANTS` is wired into `deploy/compose.yaml`,
+  `.env.example`, the deploy README and the e2e runner. The API logs a warning at startup
+  when the runtime pool is configured but the list is empty. `RunTrustedTx` may be
+  referenced only by `internal/bootstrap`; a `check_modules` rule enforces this.
 - **Tenant context required.** The invalidation triggers rely on `app.tenant_id`, which
   every application write path sets. A maintenance write without tenant context is not
   invalidated and is bounded only by `max_lifetime`.
-- **Failure modes.** If the worker is down, every changed row reaches `valid_until` within
-  `grace` and every row within `max_lifetime`; the site then serves the fallback and stays
-  up. A stale or concurrent writer can never overwrite a newer publish or refresh.
+- **Failure modes.** If the refresher is down, a changed site serves its fallback once its
+  oldest unfolded invalidation is older than `grace`, and every row expires within
+  `max_lifetime`; the site stays up. A stale or concurrent writer can never overwrite a newer publish or refresh.
 - **Authority.** Cart and checkout re-price and reserve against live data; the served price
   and availability are display values.
 
@@ -195,13 +230,15 @@ fault probes.
 | G2 | Exact 1 MiB wire budget | body at exactly 1 MiB with max-width variable fields and `tenant_id` accepted; one byte more rejected (422); served bytes equal stored bytes and the ETag is the served representation's hash |
 | G3 | Unpriced rows don't consume caps | 6,000 unpriced variants plus priced ones publish; only priced SKUs are served; input budget overrun returns a typed 422 |
 | G4 | Anonymous SELECT on live tables fails | public login: catalog, pricing, inventory and membership return 42501; `db_role_matrix.sql` exact; `OpenPublic` exact |
-| G5 | Stale writer cannot overwrite | an old `publication_revision` or `serving_generation` fails CAS; the newer row stays byte-identical; a refresh waits for an in-flight publish |
+| G5 | Stale writer cannot overwrite | an old `publication_revision` or `serving_generation` fails CAS; the newer row stays byte-identical; a refresh blocks on the publication lock **before reading inputs** (observed in `pg_stat_activity`); an invalidation committed while a refresh is blocked in its write survives (barrier test, not sleeps) |
 | G6 | Preview unaffected | `SitePreview` has no `tenant_id` or `skus`; it works without a serving row |
 | G7 | Fallback, not 503 | after `valid_until` (boundary, max lifetime, or invalidation `grace`), the read returns `fallback_body` with its own ETag |
-| G8 | Isolation | two tenants with identical product and SKU UUIDs each serve only their own body; unknown hosts return 404; the compatibility path returns tenant and content from one snapshot |
+| G8 | Isolation | two tenants with identical product and SKU UUIDs each serve only their own body; unknown hosts return 404; the compatibility path returns tenant and content from one snapshot (a hook moves the hostname between the read's statements; the test fails if tenant and content come from different snapshots) |
 | G9 | Pricing parity | served `price_minor` equals `pricing.Quote` (priority, tiebreak, window, `±infinity`) |
 | G10 | Restore | a restored release without membership serves `skus: []`; a restored release with membership rebuilds from its sealed rows |
-| G11 | Invalidation and refresh | a price, stock, reservation or archive change invalidates the row in the same transaction; the refresh rebuilds it (archived member omitted, new price served); with no worker, the fallback is served after `grace` |
+| G11 | Invalidation and refresh | price, availability flip, variant archive and product archive each append an invalidation in the mutating transaction; a reservation that does not flip availability appends none; the refresher, driven through the production `QueryRunner.RunTrustedTx`, rebuilds the row; with no refresher, the fallback is served after `grace`; a forced-short lifetime is refreshed so SKUs stay purchasable past expiry |
+| G12 | No lock on the money path | two concurrent checkouts reserving overlapping member SKUs (c1: A then B; c2: B) both commit; no deadlock, and c2 never waits on serving data |
+| G13 | Trusted seam governance | `check_modules` rejects any `RunTrustedTx` reference outside `internal/bootstrap` |
 
 ## 4. Reuse from PR #55
 
@@ -233,13 +270,23 @@ fault probes.
   has a current serving row).
 - Refresh tenant discovery beyond the deployment list (a cross-tenant broker role), if
   operators need it.
+- Deferred to C-15d from the PR #96 review:
+  - Price-gap boundary (thread 4260912941). A sealed SKU between two price lists is
+    hidden until the next refresh, at most `max_lifetime`.
+  - The `site_release_skus → product_variants` foreign key blocks hard deletion of a
+    published variant. Decide this with #44 data rights and CSV replace.
 - A per-SKU live price lookup on the product page (owner decision).
 - Splitting serving into a static snapshot plus per-product offers (post-MVP).
 
-## 7. Superseded amendment
+## 7. Superseded amendments
 
-The earlier amendment "C-15b uses the price boundary only, no max staleness" is withdrawn:
-refresh and invalidation are in scope, so `max_lifetime` applies from the start.
+- The first refresh design had the triggers UPDATE `storefront_serving` (`dirty`,
+  `valid_until`). Independent review (PR #96 @68b09ff) found that this lost invalidations
+  (probe 96-4) and deadlocked overlapping checkouts (probe 96-5). It is replaced by the
+  append-only log (§2.6).
+- The earlier amendment "C-15b uses the price boundary only, no max staleness" is
+  withdrawn: refresh and invalidation are in scope, so `max_lifetime` applies from the
+  start.
 
 ## 8. Design review resolutions (PR #96)
 
@@ -249,9 +296,24 @@ refresh and invalidation are in scope, so `max_lifetime` applies from the start.
 | 4259961120 | §2.4: the compatibility path serves existing hosts from one snapshot; the sweeper backfills; grant revocation is deferred |
 | 4259961129 | §2.6: synchronous invalidation in the mutation transaction plus a bounded lifetime |
 | 4259961139 | §2.3/§2.6: refresh reads live readiness; variant and product lifecycle changes invalidate |
-| 4259961189 | §2.3 step 1: the refresh locks the site row (`FOR UPDATE`) before reading inputs |
+| 4259961189 | §2.3 step 1: the refresh locks the site row (`FOR NO KEY UPDATE`) before reading inputs |
 | 4259961150 | §2.2/§2.4: `fallback_sha256`; the ETag is the hash of the bytes served |
 | 4259961159 | §2.5: `hostname` removed from the public body; consumers updated |
 | 4259961172 | §2.5: product-level `unit_amount` and `currency` removed from the public DTO; the storefront uses SKU prices |
 | 4259961175 | §2.4: both hashes granted to the resolver and listed in the `OpenPublic` audit |
 | 4260039759 | §2.4: the compatibility read returns `tenant_id` from the same snapshot row as the content (P1 security fix) |
+
+## 9. Independent review round (PR #96 @68b09ff)
+
+| Finding | Resolution |
+|---|---|
+| P1-1 lost invalidation (probe 96-4, thread 4260912932) | append-only log with folded-set deletion (§2.6); barrier gate in G5 |
+| P1-2 hot-row lock and deadlock on checkout (probe 96-5) | triggers only INSERT the log; stock triggers fire only on an availability flip; G12 |
+| P1-3 refresher not deployed | deploy, env and e2e wiring; startup warning; forced-short-lifetime gate in G11 |
+| 96-1 `RunTrustedTx` untested | G11 drives the refresher through the real `QueryRunner.RunTrustedTx`; G13 |
+| 96-3 host move not interleaved | statement-boundary hook; G8 |
+| 96-6 early publication lock ungated | `pg_stat_activity` gate in G5 |
+| 96-7 product archive not covered | G11 |
+| P2-5 `cms_serving_put` stores arbitrary bytes | the put validates the body's tenant, site and release; `cms_seal_skus` checks code and product against the variant |
+| P2-4 cross-module touches undeclared | `registry.yaml` `touches_tables` lists every table that carries a serving trigger |
+| P2-1, P2 foreign key | deferred to C-15d (§6) |
