@@ -112,7 +112,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	// Ordinary arrivals pay the global budget before any DB work. A candidate
 	// pays nothing global until DB validation: only a valid, unexpired,
 	// unrevoked device bound to this account may draw the reserved budget.
-	if !s.admitIPClass(in.IP, arrival, candidate) || (!candidate && !s.admitGlobal(false, arrival)) {
+	if !s.admitIPClass(in.IP, arrival, candidate) || !s.admitGlobal(candidate, arrival) {
 		return LoginResult{}, ErrRateLimited
 	}
 	admission := s.admissionSlots
@@ -160,7 +160,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		}
 		known = err == nil && device.ID != "" && device.UserID == credential.UserID && !device.Revoked && device.ExpiresAt.After(arrival)
 	}
-	if candidate && !s.admitGlobal(known, arrival) {
+	if candidate && !known && !s.admitGlobal(false, arrival) {
 		return LoginResult{}, ErrRateLimited
 	}
 	if candidate && !known {
