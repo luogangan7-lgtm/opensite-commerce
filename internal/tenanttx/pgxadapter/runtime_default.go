@@ -8,6 +8,7 @@ package pgxadapter
 import (
 	"context"
 	"errors"
+	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 )
 
@@ -17,6 +18,18 @@ func OpenQueryRunner(context.Context, string) (*QueryRunner, error) {
 	return nil, errors.New("database configuration requires the pgx build tag")
 }
 func (*QueryRunner) Close() {}
+func (*QueryRunner) RunAuthorizedTx(ctx context.Context, tenant string, _ func(context.Context, pgx.Tx) error) error {
+	if err := authorizedTenant(ctx, tenant); err != nil {
+		return err
+	}
+	return errors.New("runtime database is unavailable")
+}
+func (r *QueryRunner) RunAuthorizedTxSnapshot(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+	return r.RunAuthorizedTx(ctx, tenant, fn)
+}
+func (*QueryRunner) RunCapabilitySnapshot(context.Context, string, func(context.Context, pgx.Tx) error) error {
+	return errors.New("runtime database is unavailable")
+}
 func (r *QueryRunner) RunAuthorizedSnapshot(ctx context.Context, tenant string, fn func(*db.Queries) error) error {
 	return r.RunAuthorized(ctx, tenant, fn)
 }
