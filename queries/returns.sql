@@ -13,6 +13,9 @@ SELECT total_minor,currency FROM app.orders WHERE tenant_id=sqlc.arg(tenant_id):
 -- name: GetPreparedReturnRefund :one
 SELECT app.returns_refund_snapshot(sqlc.arg(return_id)::uuid,sqlc.arg(idempotency_key)::text)::jsonb AS result;
 
+-- name: LockReturnRefund :one
+SELECT app.returns_lock_refund(sqlc.arg(return_id)::uuid,sqlc.arg(idempotency_key)::text)::jsonb AS result;
+
 -- name: CreateReturn :one
 SELECT app.returns_create(sqlc.arg(order_id)::uuid,sqlc.arg(expected_version)::bigint,
  sqlc.arg(idempotency_key)::text,sqlc.arg(kind)::text,sqlc.arg(reason)::text,sqlc.arg(lines)::jsonb)::jsonb AS result;

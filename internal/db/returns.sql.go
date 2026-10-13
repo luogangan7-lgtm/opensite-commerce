@@ -130,6 +130,22 @@ func (q *Queries) GetReturnsTenantContext(ctx context.Context) (pgtype.UUID, err
 	return tenant_id, err
 }
 
+const lockReturnRefund = `-- name: LockReturnRefund :one
+SELECT app.returns_lock_refund($1::uuid,$2::text)::jsonb AS result
+`
+
+type LockReturnRefundParams struct {
+	ReturnID       pgtype.UUID `json:"return_id"`
+	IdempotencyKey string      `json:"idempotency_key"`
+}
+
+func (q *Queries) LockReturnRefund(ctx context.Context, arg LockReturnRefundParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, lockReturnRefund, arg.ReturnID, arg.IdempotencyKey)
+	var result []byte
+	err := row.Scan(&result)
+	return result, err
+}
+
 const prepareReturnRefund = `-- name: PrepareReturnRefund :one
 SELECT app.returns_prepare_refund($1::uuid,$2::bigint,
  $3::text,$4::text,$5::bigint,

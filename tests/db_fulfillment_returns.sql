@@ -15,6 +15,7 @@ BEGIN
  END IF;
  IF NOT EXISTS(SELECT FROM pg_proc p WHERE p.oid=command AND p.prorettype='app.orders'::regtype
   AND p.proowner='app_orders_executor'::regrole AND p.prosecdef
+  AND p.prolang=(SELECT oid FROM pg_language WHERE lanname='plpgsql')
   AND p.proconfig=ARRAY['search_path=pg_catalog, app, pg_temp']) THEN
   RAISE EXCEPTION 'SHARED_REFUND_BUDGET_AUTHORITY_CATALOG';
  END IF;
@@ -587,8 +588,10 @@ BEGIN
  IF n<>1 THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE refund completion unavailable'; END IF;
 END $refund_c04$;
 RESET ROLE;
--- Poison only the common command, keeping its OID/ACL/signature. Every valid
--- public route must fail at this authority and roll back all preceding writes.
+-- Poison only the target mode of the common command, keeping its OID/ACL and
+-- signature. Other modes execute the unchanged original body. In particular,
+-- completion must pass lock mode and reach complete; freeze is tested both
+-- before creation and after its sealed receipt exists in the same transaction.
 CREATE FUNCTION pg_temp.refund_budget_witness(t uuid) RETURNS jsonb LANGUAGE sql AS $$
  SELECT jsonb_build_object(
   'orders',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM app.orders x WHERE tenant_id=t),
@@ -603,11 +606,16 @@ $$;
 DO $budget_intervention$
 DECLARE command oid:='app.orders_refund_budget(uuid,text,uuid,bigint,text,text,bigint)'::regprocedure;
  original text:=pg_get_functiondef(command); args text:=pg_get_function_identity_arguments(command);
- phase text; t uuid; product uuid; sku uuid; oid uuid; lid uuid; rid uuid; journal uuid;
+ original_body text; trap text; phase text; target text;
+ t uuid; product uuid; sku uuid; oid uuid; lid uuid; rid uuid; journal uuid;
  income uuid; tax uuid; shipping uuid; cash uuid; reservation app.inventory_reservations; ord app.orders;
  r jsonb; before jsonb; hit boolean;
 BEGIN
- FOREACH phase IN ARRAY ARRAY['legacy','freeze','reserve','lock','complete'] LOOP
+ SELECT regexp_replace(prosrc,'[[:space:]]+$','') INTO original_body FROM pg_proc WHERE pg_proc.oid=command;
+ -- A nested original PL/pgSQL block retains all declarations and RETURNs.
+ IF right(original_body,1)<>';' THEN original_body:=original_body||';'; END IF;
+ FOREACH phase IN ARRAY ARRAY['legacy','freeze_before','freeze_after','reserve','lock','complete'] LOOP
+  target:=CASE WHEN starts_with(phase,'freeze_') THEN 'freeze' ELSE phase END;
   INSERT INTO app.tenants(name,settlement_currency) VALUES('budget intervention '||phase,'USD') RETURNING id INTO t;
   INSERT INTO app.products(tenant_id,product_code) VALUES(t,'budget') RETURNING id INTO product;
   INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(t,product,'budget','default') RETURNING id INTO sku;
@@ -641,16 +649,44 @@ BEGIN
   END IF;
   EXECUTE 'RESET ROLE';
   before:=pg_temp.refund_budget_witness(t);
+  IF phase='reserve' THEN
+   -- This is a nonempty, tenant-visible RMA. Column lock authority must not
+   -- permit even a no-op SQL UPDATE to bypass the header command guard.
+   IF NOT EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND id=rid) THEN
+    RAISE EXCEPTION 'SHARED_REFUND_BUDGET_GUARD_EMPTY_FIXTURE'; END IF;
+   hit:=false;
+   BEGIN
+    EXECUTE 'SET LOCAL ROLE app_orders_executor';
+    UPDATE app.returns SET id=id WHERE tenant_id=t AND id=rid;
+   EXCEPTION WHEN SQLSTATE '55000' THEN
+    IF SQLERRM<>'FULFILLMENT_CONTROLLED_COMMAND_REQUIRED' THEN RAISE; END IF;
+    hit:=true;
+   END;
+   EXECUTE 'RESET ROLE';
+   IF NOT hit THEN RAISE EXCEPTION 'SHARED_REFUND_BUDGET_ORDERS_MUTATION_ALLOWED'; END IF;
+   IF pg_temp.refund_budget_witness(t) IS DISTINCT FROM before THEN
+    RAISE EXCEPTION 'SHARED_REFUND_BUDGET_GUARD_ROLLBACK'; END IF;
+   RAISE NOTICE 'PASS: Orders lock-only UPDATE(id) reaches nonempty RMA header guard 55000';
+  END IF;
+  trap:=format('$2=%L',target);
+  IF phase='freeze_before' THEN
+   trap:=trap||' AND NOT EXISTS(SELECT FROM app.returns WHERE tenant_id=app.orders_context() AND order_id=$1 AND sealed)';
+  ELSIF phase='freeze_after' THEN
+   trap:=trap||' AND EXISTS(SELECT FROM app.returns WHERE tenant_id=app.orders_context() AND order_id=$1 AND sealed)';
+  END IF;
   EXECUTE format('CREATE OR REPLACE FUNCTION app.orders_refund_budget(%s) RETURNS app.orders
    LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $sentinel$
-   BEGIN RAISE EXCEPTION ''SHARED_REFUND_BUDGET_SENTINEL'' USING ERRCODE=''P39B1''; END $sentinel$',args);
+   BEGIN
+    IF %s THEN RAISE EXCEPTION ''SHARED_REFUND_BUDGET_SENTINEL'' USING ERRCODE=''P39B1''; END IF;
+    %s
+   END $sentinel$',args,trap,original_body);
   hit:=false;
   BEGIN
-   IF phase IN('legacy','freeze') THEN EXECUTE 'SET LOCAL ROLE app_runtime';
+   IF target IN('legacy','freeze') THEN EXECUTE 'SET LOCAL ROLE app_runtime';
    ELSE EXECUTE 'SET LOCAL ROLE app_returns_service'; END IF;
    IF phase='legacy' THEN
     PERFORM app.orders_transition(oid,'partially_refunded','budget-legacy',2);
-   ELSIF phase='freeze' THEN
+   ELSIF target='freeze' THEN
     PERFORM app.returns_create(oid,ord.version,'budget-return','unshipped_cancel','budget test',
      jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
    ELSIF phase='reserve' THEN

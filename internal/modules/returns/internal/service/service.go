@@ -3,6 +3,7 @@
 // Callers: bootstrap/admin API. Invariants: PSP is outside database transactions;
 // a prepared request survives failures, while final ledger/order/receipt commit
 // together. Retry uses the persisted PSP fingerprint, never current order data.
+// Finalization locks the order and return before any ledger or receipt write.
 package service
 
 import (
@@ -22,6 +23,7 @@ type Repository interface {
 	OrderID(context.Context, pgx.Tx, string, string) (string, error)
 	OrderTotal(context.Context, pgx.Tx, string, string) (contract.CapturedPayment, error)
 	Prepared(context.Context, pgx.Tx, string, contract.RefundInput) (contract.PreparedRefund, bool, error)
+	LockPrepared(context.Context, pgx.Tx, string, contract.RefundInput) (contract.PreparedRefund, bool, error)
 	Prepare(context.Context, pgx.Tx, string, contract.RefundInput, contract.CapturedPayment, contract.RefundAccounts) (contract.PreparedRefund, error)
 	Complete(context.Context, pgx.Tx, string, contract.PreparedRefund, string) (contract.Return, error)
 }
@@ -134,7 +136,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	}
 	var out contract.Return
 	err = s.config.Runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
-		latest, exists, err := s.repo.Prepared(ctx, tx, tenant, in)
+		latest, exists, err := s.repo.LockPrepared(ctx, tx, tenant, in)
 		if err != nil {
 			return err
 		}

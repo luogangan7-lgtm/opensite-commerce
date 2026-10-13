@@ -105,6 +105,9 @@ DO $tables$ DECLARE name text; BEGIN
  END LOOP;
 END $tables$;
 GRANT SELECT ON app.returns,app.return_lines TO app_returns_service,app_inventory_executor;
+-- FOR UPDATE needs a column UPDATE grant. The header guard still forbids this
+-- role from changing a real return, including the identity no-op UPDATE.
+GRANT UPDATE(id) ON app.returns TO app_orders_executor;
 GRANT UPDATE(sealed,order_version) ON app.shipments TO app_fulfillment_executor;
 GRANT UPDATE(creation_response,receive_response,sealed,order_version,status,restocked,received_at,receive_key,receive_hash,refund_key,refund_hash,refund_expected_version,provider_ref,payment_version,
  income_account_id,tax_account_id,shipping_account_id,cash_account_id,ledger_transaction_id,refunded_at,
@@ -185,6 +188,98 @@ BEGIN
  UPDATE app.orders SET updated_at=clock_timestamp() WHERE tenant_id=t AND id=p_id RETURNING * INTO o;
  RETURN o;
 END $$;
+-- Orders owns every refund budget decision, including legacy commands. Always
+-- take the physical parent fence, then every child in UUID order, before Ledger.
+-- Only complete/legacy write confirmed money; pending/terminal receipts are
+-- written by the closed Returns caller under these same transaction locks.
+CREATE FUNCTION app.orders_refund_budget(p_order uuid,p_phase text,p_return uuid,
+ p_expected bigint,p_target text,p_event_key text,p_refund_minor bigint) RETURNS app.orders
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
+DECLARE t uuid:=app.orders_context(); o app.orders; r app.returns; e app.outbox_events;
+ pending numeric; confirmed_rmas numeric; frozen numeric; legacy numeric; next_confirmed numeric;
+BEGIN
+ IF p_order IS NULL OR p_phase IS NULL OR p_phase NOT IN('freeze','reserve','lock','complete','legacy')
+  OR (p_expected IS NOT NULL AND p_expected<=0)
+  OR (p_phase='legacy' AND (p_return IS NOT NULL OR p_target IS NULL OR p_target NOT IN('partially_refunded','refunded')
+   OR p_event_key IS NULL OR btrim(p_event_key)='' OR length(p_event_key)>128 OR p_refund_minor IS NULL OR p_refund_minor<=0))
+  OR (p_phase<>'legacy' AND (p_target IS NOT NULL OR p_event_key IS NOT NULL OR p_refund_minor IS DISTINCT FROM 0))
+  OR (p_phase IN('reserve','lock','complete') AND p_return IS NULL) THEN
+  RAISE EXCEPTION 'ORDER_INVALID_REFUND' USING ERRCODE='22023'; END IF;
+ SELECT * INTO o FROM app.orders WHERE tenant_id=t AND id=p_order FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'ORDER_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ IF p_expected IS NOT NULL AND o.version<>p_expected THEN
+  RAISE EXCEPTION 'FULFILLMENT_VERSION_CONFLICT' USING ERRCODE='22023'; END IF;
+ -- REFUND_BUDGET_PARENT_FENCE: real MVCC write, even on exact event replay.
+ -- Preserve the full replay snapshot; financial changes below use the DB clock.
+ UPDATE app.orders SET updated_at=updated_at WHERE tenant_id=t AND id=p_order RETURNING * INTO o;
+ PERFORM rr.id FROM app.returns rr WHERE rr.tenant_id=t AND rr.order_id=p_order ORDER BY rr.id FOR UPDATE;
+ IF NOT o.sealed OR EXISTS(SELECT FROM app.returns rr WHERE rr.tenant_id=t AND rr.order_id=p_order
+  AND (NOT rr.sealed OR rr.currency IS DISTINCT FROM o.currency OR rr.refund_minor<0
+   OR rr.refund_minor::numeric IS DISTINCT FROM (SELECT coalesce(sum(rl.income_minor::numeric+rl.tax_minor+rl.shipping_minor),0)
+     FROM app.return_lines rl WHERE rl.tenant_id=t AND rl.return_id=rr.id))) THEN
+  RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
+ SELECT coalesce(sum(rr.refund_minor) FILTER(WHERE rr.status='refund_pending'),0),
+  coalesce(sum(rr.refund_minor) FILTER(WHERE rr.status='refunded'),0),coalesce(sum(rr.refund_minor),0)
+ INTO pending,confirmed_rmas,frozen FROM app.returns rr WHERE rr.tenant_id=t AND rr.order_id=p_order;
+ legacy:=o.refunded_minor::numeric-confirmed_rmas;
+ IF legacy<0 OR pending<0 OR frozen<0 OR o.refunded_minor<0 OR o.refunded_minor::numeric+pending>o.total_minor
+  OR legacy+frozen>o.total_minor THEN
+  RAISE EXCEPTION 'FULFILLMENT_REFUND_BOUND' USING ERRCODE='23514'; END IF;
+ IF p_phase='freeze' THEN
+  IF o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded','refunded') THEN
+   RAISE EXCEPTION 'FULFILLMENT_ORDER_STATE' USING ERRCODE='55000'; END IF;
+  RETURN o;
+ END IF;
+ IF p_phase='legacy' THEN
+  SELECT * INTO e FROM app.outbox_events WHERE tenant_id=t AND delivery_target='orders.events'
+   AND dedup_key='transition:'||p_order::text||':'||p_event_key;
+  IF FOUND THEN
+   IF e.payload->>'target' IS DISTINCT FROM p_target OR (e.payload->>'refund_minor')::bigint IS DISTINCT FROM p_refund_minor THEN
+    RAISE EXCEPTION 'ORDER_EVENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
+   RETURN o;
+  END IF;
+  IF EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND order_id=p_order AND status IN('requested','received','refund_pending')) THEN
+   RAISE EXCEPTION 'FULFILLMENT_PENDING_REFUND_COMMAND_REQUIRED' USING ERRCODE='55000'; END IF;
+  IF o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded') THEN
+   RAISE EXCEPTION 'ORDER_INVALID_TRANSITION' USING ERRCODE='55000'; END IF;
+  next_confirmed:=o.refunded_minor::numeric+p_refund_minor;
+  IF next_confirmed+pending>o.total_minor OR legacy+p_refund_minor+frozen>o.total_minor
+   OR (p_target='partially_refunded' AND next_confirmed>=o.total_minor)
+   OR (p_target='refunded' AND next_confirmed<>o.total_minor) THEN
+   RAISE EXCEPTION 'ORDER_INVALID_REFUND' USING ERRCODE='22023'; END IF;
+  UPDATE app.orders SET refunded_minor=next_confirmed::bigint,state=p_target,version=version+1,updated_at=clock_timestamp()
+   WHERE tenant_id=t AND id=p_order RETURNING * INTO o;
+  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+   VALUES(t,'order.'||p_target,jsonb_build_object('order_id',p_order,'target',p_target,'refund_minor',p_refund_minor,'version',o.version),
+    'orders.events','transition:'||p_order::text||':'||p_event_key);
+  RETURN o;
+ END IF;
+ SELECT * INTO r FROM app.returns WHERE tenant_id=t AND order_id=p_order AND id=p_return;
+ IF NOT FOUND THEN RAISE EXCEPTION 'FULFILLMENT_RETURN_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ IF r.status='refunded' THEN RETURN o; END IF;
+ IF o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded') THEN
+  RAISE EXCEPTION 'FULFILLMENT_ORDER_STATE' USING ERRCODE='55000'; END IF;
+ IF r.refund_minor<=0 OR (p_phase='reserve' AND r.status NOT IN('received','refund_pending'))
+  OR (p_phase IN('lock','complete') AND r.status<>'refund_pending') THEN
+  RAISE EXCEPTION 'FULFILLMENT_RETURN_STATE' USING ERRCODE='55000'; END IF;
+ IF p_phase='reserve' THEN
+  -- Already-pending replay owns this quota; never reserve it twice.
+  IF r.status='received' AND o.refunded_minor::numeric+pending+r.refund_minor>o.total_minor THEN
+   RAISE EXCEPTION 'FULFILLMENT_REFUND_BOUND' USING ERRCODE='23514'; END IF;
+  RETURN o;
+ END IF;
+ IF p_phase='lock' THEN RETURN o; END IF;
+ next_confirmed:=o.refunded_minor::numeric+r.refund_minor;
+ IF next_confirmed+pending-r.refund_minor>o.total_minor OR next_confirmed>o.total_minor THEN
+  RAISE EXCEPTION 'FULFILLMENT_REFUND_BOUND' USING ERRCODE='23514'; END IF;
+ UPDATE app.orders SET refunded_minor=next_confirmed::bigint,
+  state=CASE WHEN next_confirmed=total_minor THEN 'refunded' ELSE 'partially_refunded' END,
+  version=version+1,updated_at=clock_timestamp() WHERE tenant_id=t AND id=p_order RETURNING * INTO o;
+ INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+  VALUES(t,'order.'||o.state,jsonb_build_object('order_id',o.id,'return_id',r.id,'refund_minor',r.refund_minor,'version',o.version),
+   'orders.events','return-refund:'||r.id::text);
+ RETURN o;
+END $$;
 CREATE FUNCTION app.orders_fulfillment_advance(p_id uuid,p_event text) RETURNS app.orders
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
 DECLARE t uuid:=app.orders_context(); o app.orders; target text; has_shipped boolean; all_shipped boolean;
@@ -205,20 +300,10 @@ BEGIN
 END $$;
 CREATE FUNCTION app.orders_finish_return_refund(p_return uuid) RETURNS app.orders
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
-DECLARE t uuid:=app.orders_context(); r app.returns; o app.orders; refunded bigint;
+DECLARE t uuid:=app.orders_context(); r app.returns;
 BEGIN
  SELECT * INTO STRICT r FROM app.returns WHERE tenant_id=t AND id=p_return;
- SELECT * INTO STRICT o FROM app.orders WHERE tenant_id=t AND id=r.order_id FOR UPDATE;
- IF r.status<>'refund_pending' OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded')
-  OR r.refund_minor<=0 OR r.refund_minor>o.total_minor-o.refunded_minor THEN
-  RAISE EXCEPTION 'FULFILLMENT_REFUND_BOUND' USING ERRCODE='23514'; END IF;
- refunded:=o.refunded_minor+r.refund_minor;
- UPDATE app.orders SET refunded_minor=refunded,state=CASE WHEN refunded=total_minor THEN 'refunded' ELSE 'partially_refunded' END,
-  version=version+1,updated_at=clock_timestamp() WHERE tenant_id=t AND id=o.id RETURNING * INTO o;
- INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
- VALUES(t,'order.'||o.state,jsonb_build_object('order_id',o.id,'return_id',r.id,'refund_minor',r.refund_minor,'version',o.version),
-  'orders.events','return-refund:'||r.id::text);
- RETURN o;
+ RETURN app.orders_refund_budget(r.order_id,'complete',r.id,NULL,NULL,NULL,0);
 END $$;
 -- Inventory owns restoration; caller supplies only the immutable return ID.
 CREATE FUNCTION app.inventory_restore_return(p_return uuid) RETURNS void
@@ -410,9 +495,10 @@ BEGIN
  SELECT * INTO r FROM app.returns WHERE tenant_id=t AND creation_key=p_key;
  IF FOUND THEN
   IF r.request_hash<>h THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
+  PERFORM app.orders_refund_budget(p_order,'freeze',r.id,NULL,NULL,NULL,0);
   RETURN r.creation_response;
  END IF;
- o:=app.orders_fulfillment_fence(p_order,NULL);
+ o:=app.orders_refund_budget(p_order,'freeze',NULL,NULL,NULL,NULL,0);
  SELECT * INTO r FROM app.returns WHERE tenant_id=t AND creation_key=p_key;
  IF FOUND THEN
   IF r.request_hash<>h THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
@@ -494,6 +580,8 @@ BEGIN
  FROM app.return_lines WHERE tenant_id=t AND return_id=r.id;
  UPDATE app.returns SET income_minor=total_income,tax_minor=total_tax,shipping_minor=total_shipping,
   refund_minor=total_income+total_tax+total_shipping,sealed=true WHERE tenant_id=t AND id=r.id;
+ -- The new immutable allocation must fit the same locked money authority.
+ PERFORM app.orders_refund_budget(p_order,'freeze',r.id,NULL,NULL,NULL,0);
  IF p_kind='unshipped_cancel' THEN PERFORM app.inventory_restore_return(r.id); END IF;
  IF p_kind='unshipped_cancel' AND total_income+total_tax+total_shipping=0 THEN
   UPDATE app.returns SET status='completed' WHERE tenant_id=t AND id=r.id;
@@ -549,7 +637,7 @@ END $$;
 CREATE FUNCTION app.returns_prepare_refund(p_return uuid,p_expected_version bigint,p_key text,p_provider_ref text,p_payment_version bigint,
  p_income_account uuid,p_tax_account uuid,p_shipping_account uuid,p_cash_account uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
-DECLARE t uuid:=app.orders_context(); r app.returns; o app.orders; h bytea; pending numeric;
+DECLARE t uuid:=app.orders_context(); r app.returns; o app.orders; h bytea;
 BEGIN
  IF p_return IS NULL OR p_expected_version IS NULL OR p_expected_version<=0 OR p_key IS NULL OR p_key !~ '^[!-~]{1,128}$'
   OR p_provider_ref IS NULL OR length(p_provider_ref) NOT BETWEEN 1 AND 256 OR btrim(p_provider_ref)='' OR p_payment_version IS NULL OR p_payment_version<=0
@@ -560,11 +648,7 @@ BEGIN
   'income_account_id',p_income_account,'tax_account_id',p_tax_account,'shipping_account_id',p_shipping_account,'cash_account_id',p_cash_account)::text,'UTF8'));
  SELECT * INTO r FROM app.returns WHERE tenant_id=t AND id=p_return;
  IF NOT FOUND THEN RAISE EXCEPTION 'FULFILLMENT_RETURN_NOT_FOUND' USING ERRCODE='P0002'; END IF;
- IF r.refund_key IS NOT NULL THEN
-  IF r.refund_key<>p_key OR r.refund_hash<>h THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
-  RETURN app.fulfillment_return_json(r.id);
- END IF;
- o:=app.orders_fulfillment_fence(r.order_id,NULL);
+ o:=app.orders_refund_budget(r.order_id,'reserve',r.id,NULL,NULL,NULL,0);
  SELECT * INTO STRICT r FROM app.returns WHERE tenant_id=t AND id=p_return FOR UPDATE;
  IF r.refund_key IS NOT NULL THEN
   IF r.refund_key<>p_key OR r.refund_hash<>h THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
@@ -574,10 +658,6 @@ BEGIN
  IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded') THEN
   RAISE EXCEPTION 'FULFILLMENT_ORDER_STATE' USING ERRCODE='55000'; END IF;
  IF r.status<>'received' OR r.refund_minor<=0 THEN RAISE EXCEPTION 'FULFILLMENT_RETURN_STATE' USING ERRCODE='55000'; END IF;
- SELECT coalesce(sum(refund_minor),0) INTO pending FROM app.returns WHERE tenant_id=t AND order_id=r.order_id AND status='refund_pending';
- -- REFUND_PENDING_BOUND: durable reservations bound independent PSP operations.
- IF o.refunded_minor+pending+r.refund_minor>o.total_minor THEN
-  RAISE EXCEPTION 'FULFILLMENT_REFUND_BOUND' USING ERRCODE='23514'; END IF;
  IF NOT EXISTS(SELECT FROM app.ledger_accounts WHERE tenant_id=t AND id=p_income_account AND currency=r.currency AND status='active' AND account_type='revenue')
   OR NOT EXISTS(SELECT FROM app.ledger_accounts WHERE tenant_id=t AND id=p_tax_account AND currency=r.currency AND status='active' AND account_type='liability')
   OR NOT EXISTS(SELECT FROM app.ledger_accounts WHERE tenant_id=t AND id=p_shipping_account AND currency=r.currency AND status='active' AND account_type='revenue')
@@ -590,6 +670,20 @@ BEGIN
  UPDATE app.returns SET order_version=o.version WHERE tenant_id=t AND id=p_return;
  RETURN app.fulfillment_return_json(r.id);
 END $$;
+-- Closed completion entry: locks Order then all RMAs before Go calls Ledger.
+CREATE FUNCTION app.returns_lock_refund(p_return uuid,p_key text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
+DECLARE t uuid:=app.orders_context(); r app.returns;
+BEGIN
+ IF p_return IS NULL OR p_key IS NULL OR p_key !~ '^[!-~]{1,128}$' THEN
+  RAISE EXCEPTION 'FULFILLMENT_ARGUMENT' USING ERRCODE='22023'; END IF;
+ SELECT * INTO r FROM app.returns WHERE tenant_id=t AND id=p_return;
+ IF NOT FOUND THEN RAISE EXCEPTION 'FULFILLMENT_RETURN_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ PERFORM app.orders_refund_budget(r.order_id,'lock',r.id,NULL,NULL,NULL,0);
+ SELECT * INTO STRICT r FROM app.returns WHERE tenant_id=t AND id=p_return;
+ IF r.refund_key IS DISTINCT FROM p_key THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
+ RETURN app.fulfillment_return_json(r.id);
+END $$;
 CREATE FUNCTION app.returns_complete_refund(p_return uuid,p_key text,p_provider_ref text,p_ledger_transaction uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
 DECLARE t uuid:=app.orders_context(); r app.returns; o app.orders; j app.ledger_transactions;
@@ -600,14 +694,10 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'FULFILLMENT_RETURN_NOT_FOUND' USING ERRCODE='P0002'; END IF;
  IF p_key IS NULL OR p_provider_ref IS NULL OR p_ledger_transaction IS NULL OR r.refund_key IS DISTINCT FROM p_key OR r.provider_ref IS DISTINCT FROM p_provider_ref THEN
   RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
- IF r.status='refunded' THEN
-  IF r.ledger_transaction_id<>p_ledger_transaction THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
-  RETURN app.fulfillment_return_json(r.id);
- END IF;
- o:=app.orders_fulfillment_fence(r.order_id,NULL);
+ o:=app.orders_refund_budget(r.order_id,'lock',r.id,NULL,NULL,NULL,0);
  SELECT * INTO STRICT r FROM app.returns WHERE tenant_id=t AND id=p_return FOR UPDATE;
  IF r.status='refunded' THEN
-  IF r.ledger_transaction_id<>p_ledger_transaction THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
+  IF r.ledger_transaction_id IS DISTINCT FROM p_ledger_transaction THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
   RETURN app.fulfillment_return_json(r.id);
  END IF;
  IF r.status<>'refund_pending' THEN RAISE EXCEPTION 'FULFILLMENT_RETURN_STATE' USING ERRCODE='55000'; END IF;
@@ -619,7 +709,8 @@ BEGIN
  SELECT array_agg(account_id ORDER BY line_no),array_agg(side ORDER BY line_no),array_agg(amount ORDER BY line_no)
  INTO got_accounts,got_sides,got_amounts FROM app.ledger_entries WHERE tenant_id=t AND transaction_id=p_ledger_transaction;
  -- REFUND_LEDGER_RECEIPT: Ledger.Post alone owns writes; completion proves exact journal identity/content.
- IF j.id IS NULL OR j.status<>'posted' OR j.currency<>r.currency OR j.source_type<>'return' OR j.source_id<>r.id::text OR j.event<>'refund'
+ IF j.id IS NULL OR j.status IS DISTINCT FROM 'posted' OR j.currency IS DISTINCT FROM r.currency
+  OR j.source_type IS DISTINCT FROM 'return' OR j.source_id IS DISTINCT FROM r.id::text OR j.event IS DISTINCT FROM 'refund'
   OR got_accounts IS DISTINCT FROM accounts OR got_sides IS DISTINCT FROM sides OR got_amounts IS DISTINCT FROM amounts THEN
   RAISE EXCEPTION 'FULFILLMENT_LEDGER_RECEIPT' USING ERRCODE='23514'; END IF;
  o:=app.orders_finish_return_refund(r.id);
@@ -631,12 +722,15 @@ END $$;
 CREATE OR REPLACE FUNCTION app.orders_transition(p_id uuid,p_target text,p_event_key text,p_refund_minor bigint DEFAULT 0)
 RETURNS app.orders LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
 DECLARE t uuid:=app.orders_context(); o app.orders; e app.outbox_events; l app.order_lines; r app.inventory_reservations;
- refunded bigint;
 BEGIN
  IF p_id IS NULL OR p_target IS NULL OR p_event_key IS NULL OR btrim(p_event_key)='' OR length(p_event_key)>128
   OR p_refund_minor IS NULL OR p_refund_minor<0 THEN
   RAISE EXCEPTION 'ORDER_INVALID_ARGUMENT' USING ERRCODE='22023';
  END IF;
+ IF p_target IN('partially_refunded','refunded') THEN
+  RETURN app.orders_refund_budget(p_id,'legacy',NULL,NULL,p_target,p_event_key,p_refund_minor);
+ END IF;
+ IF p_refund_minor<>0 THEN RAISE EXCEPTION 'ORDER_INVALID_REFUND' USING ERRCODE='22023'; END IF;
  SELECT * INTO o FROM app.orders WHERE tenant_id=t AND id=p_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'ORDER_NOT_FOUND' USING ERRCODE='P0002'; END IF;
  SELECT * INTO e FROM app.outbox_events WHERE tenant_id=t AND delivery_target='orders.events'
@@ -647,8 +741,6 @@ BEGIN
   END IF;
   RETURN o;
  END IF;
- IF p_target IN('partially_refunded','refunded') AND EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND order_id=p_id AND status IN('requested','received','refund_pending')) THEN
-  RAISE EXCEPTION 'FULFILLMENT_PENDING_REFUND_COMMAND_REQUIRED' USING ERRCODE='55000'; END IF;
  IF p_target='fulfilled' AND EXISTS(SELECT FROM app.order_lines ol_check WHERE ol_check.tenant_id=t AND ol_check.order_id=p_id AND
   coalesce((SELECT sum(quantity) FROM app.shipment_lines WHERE tenant_id=t AND order_line_id=ol_check.id),0)<>ol_check.quantity) THEN
   RAISE EXCEPTION 'FULFILLMENT_SHIPMENT_COMMAND_REQUIRED' USING ERRCODE='55000'; END IF;
@@ -661,12 +753,6 @@ BEGIN
   OR (o.state='fulfilled' AND p_target IN('partially_refunded','refunded'))
   OR (o.state='partially_refunded' AND p_target IN('partially_refunded','refunded'))) THEN
   RAISE EXCEPTION 'ORDER_INVALID_TRANSITION' USING ERRCODE='55000';
- END IF;
- refunded:=o.refunded_minor+p_refund_minor;
- IF (p_target IN('partially_refunded','refunded') AND (p_refund_minor<=0 OR refunded>o.total_minor
-   OR (p_target='partially_refunded' AND refunded>=o.total_minor) OR (p_target='refunded' AND refunded<>o.total_minor)))
-   OR (p_target NOT IN('partially_refunded','refunded') AND p_refund_minor<>0) THEN
-  RAISE EXCEPTION 'ORDER_INVALID_REFUND' USING ERRCODE='22023';
  END IF;
  IF p_target IN('paid','cancelled') THEN
   -- Prelock every reservation before any stock write. Expiry's SKIP LOCKED
@@ -692,7 +778,7 @@ BEGIN
    END IF;
   END LOOP;
  END IF;
- UPDATE app.orders SET state=p_target,version=version+1,refunded_minor=refunded,updated_at=clock_timestamp()
+ UPDATE app.orders SET state=p_target,version=version+1,updated_at=clock_timestamp()
  WHERE tenant_id=t AND id=p_id RETURNING * INTO o;
  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
  VALUES(t,'order.'||p_target,jsonb_build_object('order_id',p_id,'target',p_target,'refund_minor',p_refund_minor,'version',o.version),
@@ -707,7 +793,7 @@ GRANT CREATE ON SCHEMA app TO app_fulfillment_executor,app_orders_executor,app_i
 DO $owners$ DECLARE f record; role_name text; BEGIN
  FOR f IN SELECT p.oid::regprocedure AS identity,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname='app' AND (starts_with(p.proname,'fulfillment_') OR starts_with(p.proname,'returns_')
-   OR p.proname IN('orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','inventory_restore_return')) LOOP
+   OR p.proname IN('orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return')) LOOP
   role_name:=CASE WHEN starts_with(f.proname,'orders_') THEN 'app_orders_executor'
    WHEN starts_with(f.proname,'inventory_') THEN 'app_inventory_executor' ELSE 'app_fulfillment_executor' END;
   EXECUTE format('ALTER FUNCTION %s OWNER TO %I',f.identity,role_name);
@@ -716,9 +802,9 @@ DO $owners$ DECLARE f record; role_name text; BEGIN
 END $owners$;
 REVOKE CREATE ON SCHEMA app FROM app_fulfillment_executor,app_orders_executor,app_inventory_executor;
 GRANT EXECUTE ON FUNCTION app.orders_context(),app.orders_fulfillment_fence(uuid,bigint),app.orders_fulfillment_advance(uuid,text),
- app.orders_finish_return_refund(uuid),app.inventory_restore_return(uuid) TO app_fulfillment_executor;
+ app.orders_finish_return_refund(uuid),app.orders_refund_budget(uuid,text,uuid,bigint,text,text,bigint),app.inventory_restore_return(uuid) TO app_fulfillment_executor;
 GRANT EXECUTE ON FUNCTION app.fulfillment_create_shipment(uuid,bigint,text,text,text,jsonb),app.returns_create(uuid,bigint,text,text,text,jsonb),
  app.returns_receive(uuid,bigint,text,boolean),app.returns_refund_snapshot(uuid,text) TO app_runtime;
-GRANT EXECUTE ON FUNCTION app.returns_refund_snapshot(uuid,text),
+GRANT EXECUTE ON FUNCTION app.returns_refund_snapshot(uuid,text),app.returns_lock_refund(uuid,text),
  app.returns_prepare_refund(uuid,bigint,text,text,bigint,uuid,uuid,uuid,uuid),app.returns_complete_refund(uuid,text,text,uuid),
  app.post_ledger(uuid,text,text,text,text,uuid[],text[],bigint[]) TO app_returns_service;

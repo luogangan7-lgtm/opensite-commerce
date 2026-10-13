@@ -102,6 +102,23 @@ func (Repository) Prepared(ctx context.Context, tx pgx.Tx, tenant string, in con
 	}
 	return out, out.RefundKey != "", nil
 }
+
+// LockPrepared holds the controlled order/RMA locks through finalization.
+func (Repository) LockPrepared(ctx context.Context, tx pgx.Tx, tenant string, in contract.RefundInput) (contract.PreparedRefund, bool, error) {
+	q, err := Tenant(ctx, tx, tenant)
+	if err != nil {
+		return contract.PreparedRefund{}, false, err
+	}
+	raw, err := q.LockReturnRefund(ctx, db.LockReturnRefundParams{ReturnID: UUID(in.ReturnID), IdempotencyKey: in.IdempotencyKey})
+	if err != nil {
+		return contract.PreparedRefund{}, false, MapError(err)
+	}
+	var out contract.PreparedRefund
+	if json.Unmarshal(raw, &out) != nil {
+		return contract.PreparedRefund{}, false, contract.ErrUnavailable
+	}
+	return out, out.RefundKey != "", nil
+}
 func (Repository) Prepare(ctx context.Context, tx pgx.Tx, tenant string, in contract.RefundInput, capture contract.CapturedPayment, accounts contract.RefundAccounts) (contract.PreparedRefund, error) {
 	q, err := Tenant(ctx, tx, tenant)
 	if err != nil {
