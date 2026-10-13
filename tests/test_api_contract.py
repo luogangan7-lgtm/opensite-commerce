@@ -92,6 +92,11 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(set(schemas["CartLine"]["required"]), {"sku_id", "quantity", "available_quantity", "sellable"})
         self.assertEqual(set(schemas["Cart"]["required"]), {"id", "currency", "version", "lines"})
 
+    def test_published_product_slug_fits_safe_path(self):
+        # Review thread rsvIP: Project rejects "/products/"+slug paths over 512 bytes.
+        slug = self.api["components"]["schemas"]["PublishedProduct"]["properties"]["slug"]
+        self.assertEqual(slug.get("maxLength"), 512 - len("/products/"))
+
     def test_cookie_and_bearer_are_alternatives(self):
         self.assertEqual(self.api["security"], [{"adminSession": []}, {"ApiKeyBearer": []}])
         cookie = self.api["components"]["securitySchemes"]["adminSession"]
@@ -105,17 +110,20 @@ class APIContractTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(name, ops)
                 self.assertEqual(ops[name][2]["x-opensite-status"], "planned")
+        self.assertEqual(ops["getPublishedSite"][:2], ("/api/v1/public/sites/current", "get"))
+        self.assertEqual(ops["getPublishedSite"][2]["x-opensite-access"], "Public")
+        self.assertEqual(ops["getPublishedSite"][2]["security"], [])
         self.assertEqual(ops["health"][:2], ("/healthz", "get"))
         self.assertEqual(set(ops["health"][2]["responses"]), {"204"})
         self.assertNotIn("content", ops["health"][2]["responses"]["204"])
-        expected = {"health", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
+        expected = {"health", "getPublishedSite", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
                           if op["x-opensite-status"] == "implemented"}, expected | cart |
                          {"getAdminLoginChallenge", "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession"})
-        for name in expected - {"health"}:
+        for name in expected - {"health", "getPublishedSite"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
             self.assertIn(operation["x-required-scope"], {"catalog:read", "catalog:write", "media:write"})
@@ -123,6 +131,7 @@ class APIContractTests(unittest.TestCase):
                 self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, operation["parameters"])
             if name in {"updateProduct", "archiveProduct", "updateVariant", "archiveVariant"}:
                 self.assertIn({"$ref": "#/components/parameters/IfMatch"}, operation["parameters"])
+
 
     def test_all_business_paths_include_tenant_and_allow_cookie_or_key(self):
         ops = operations(self.api)

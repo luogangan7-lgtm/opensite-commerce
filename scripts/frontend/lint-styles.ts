@@ -93,12 +93,12 @@ export function lintText(source:string,path:string): string[] {
 export function collectStyleFiles(directory:string):string[] {
  let entries;try {entries=readdirSync(directory,{withFileTypes:true});}catch {return [];}
  return entries.flatMap(entry=>{
-  if(['node_modules','dist','dist-gallery','build','.git','coverage'].includes(entry.name)) return [];
-  const path=join(directory,entry.name);return entry.isDirectory()?collectStyleFiles(path):/\.(css|tsx|ts)$/.test(path)?[path]:[];
+  if(['node_modules','dist','dist-gallery','build','.git','.astro','coverage'].includes(entry.name)) return [];
+  const path=join(directory,entry.name);return entry.isDirectory()?collectStyleFiles(path):/\.(astro|css|tsx|ts)$/.test(path)?[path]:[];
  });
 }
 if(import.meta.main) {
- const paths=['packages/ui','web/admin'].flatMap(collectStyleFiles);
+ const paths=['packages/ui','web/admin','web/storefront'].flatMap(collectStyleFiles);
  if(!paths.length) {console.error('No UI/admin source files found');process.exitCode=1;}
  const errors=paths.flatMap(path=>lintText(readFileSync(path,'utf8'),path));
  if(errors.length) {console.error(errors.join('\n'));process.exitCode=1;}else if(paths.length) console.log(`Styles PASS (${paths.length} files)`);

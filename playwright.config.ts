@@ -31,7 +31,10 @@ export default defineConfig({
     { name: 'mobile', use: { viewport: { width: 390, height: 844 } } }
   ],
   webServer: [
+    { command: 'bash scripts/start_storefront_api_e2e.sh', url: 'http://127.0.0.1:4175/healthz', reuseExistingServer: false, timeout: 180_000 },
     { command: 'bun run build:gallery && bun x --no-install vite preview --config web/admin/vite.config.ts web/admin --outDir dist-gallery --port 4173 --strictPort', url: 'http://127.0.0.1:4173', reuseExistingServer: false, timeout: 120_000 },
-    { command: 'bun run build:admin && bun x --no-install vite preview --config web/admin/vite.config.ts web/admin --port 4174 --strictPort', url: 'http://127.0.0.1:4174', reuseExistingServer: false, timeout: 120_000 }
+    { command: 'bun run build:admin && bun x --no-install vite preview --config web/admin/vite.config.ts web/admin --port 4174 --strictPort', url: 'http://127.0.0.1:4174', reuseExistingServer: false, timeout: 120_000 },
+    { command: 'HOST=127.0.0.1 PORT=4321 OSC_READ_API_ORIGIN=http://127.0.0.1:4175 bun run start:storefront', url: 'http://127.0.0.1:4321', reuseExistingServer: false, timeout: 120_000 },
+    { command: 'HOST=127.0.0.1 PORT=4322 OSC_READ_API_ORIGIN=http://127.0.0.1:1 bun run start:storefront', port: 4322, reuseExistingServer: false, timeout: 120_000 }
   ]
 });

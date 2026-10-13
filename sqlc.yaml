@@ -24,7 +24,9 @@ sql:
       - "migrations/021_queue_authorization.sql"
       - "migrations/022_reliability_limits.sql"
       - "migrations/023_cart.sql"
-      - "migrations/024_identity_auth.sql"
+      - "migrations/024_storefront_read.sql"
+      - "migrations/025_identity_auth.sql"
+      - "migrations/026_identity_login.sql"
     queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:

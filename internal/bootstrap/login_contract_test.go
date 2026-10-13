@@ -13,6 +13,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/testfixture"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
@@ -20,7 +21,7 @@ func TestConfiguredIdentityRouteContract(t *testing.T) {
 	// Construct the production transport without a repository. Route registration
 	// needs no database; this test inspects registrations without invoking handlers.
 	handler := testfixture.LoginHandler("https://admin.example.test", 30*time.Minute)
-	server, err := bootstrap.New(bootstrap.Config{Routes: handler.Routes(), Authenticator: handler})
+	server, err := bootstrap.New(bootstrap.Config{Routes: append(handler.Routes(), publish.StorefrontRoute(nil)), Authenticator: handler})
 	if err != nil {
 		t.Fatal(err)
 	}

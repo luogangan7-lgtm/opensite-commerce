@@ -14,6 +14,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
@@ -55,7 +56,7 @@ func scope(op *openapi3.Operation) string {
 }
 
 func TestUnconfiguredIdentityRouteContract(t *testing.T) {
-	server, err := bootstrap.New(bootstrap.Config{})
+	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{publish.StorefrontRoute(nil)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,8 @@ func TestUnconfiguredIdentityRouteContract(t *testing.T) {
 	if err := reconcileRoutes(doc, router.RouteSpecs()); err == nil || !strings.Contains(err.Error(), "has no registered handler") {
 		t.Fatalf("unconfigured startup must fail the full implemented contract: %v", err)
 	}
-	// Default startup registers health, catalog and media, but no login handlers.
+	// This mode registers health, catalog, media, cart and public storefront routes,
+	// but no login handlers.
 	// Remove exactly the optional login operations for this mode; every remaining
 	// operation stays under strict reconciliation. TestConfiguredIdentityRouteContract
 	// covers the full mode with real login registrations.

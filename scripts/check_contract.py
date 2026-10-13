@@ -153,7 +153,7 @@ def validate_contract(api):
             require(tenant_parameter.get("required") is True and tenant_parameter.get("schema") ==
                     {"type": "string", "format": "uuid"}, f"required tenant UUID parameter missing: {ident}")
         if access == "Public":
-            require(ident in {"health", "createAdminSession", "submitInquiry", "getAdminLoginChallenge", "createStaffLoginSession"} and security == [] and
+            require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite", "getAdminLoginChallenge", "createStaffLoginSession"} and security == [] and
                     "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
         elif access == "Storefront":
             require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and
