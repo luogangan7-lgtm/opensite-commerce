@@ -117,7 +117,7 @@ SELECT jsonb_agg(jsonb_build_object('project',f.project,'order_state',o.state,'p
  'processed',(SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=f.tenant AND provider='fake' AND provider_account_id='c19-e2e-'||f.project AND environment='test' AND provider_event_id='c19-e2e-'||f.project||'-captured' AND status='processed' AND processed_at IS NOT NULL),
  'hash',(SELECT encode(payload_hash,'hex') FROM app.webhook_inbox WHERE tenant_id=f.tenant AND provider_event_id='c19-e2e-'||f.project||'-captured'),
  'events',(SELECT count(*) FROM app.payment_events WHERE tenant_id=f.tenant),
- 'applied',(SELECT count(*) FROM app.payment_events WHERE tenant_id=f.tenant AND provider_account_id='c19-e2e-'||f.project AND order_id=f.order_id AND provider_ref='fake_c19_e2e_'||f.n AND status='captured' AND amount_minor=270 AND currency='USD' AND applied AND error_code IS NULL),
+ 'applied',(SELECT count(*) FROM app.payment_events WHERE tenant_id=f.tenant AND provider_account_id='c19-e2e-'||f.project AND claimed_order_id=f.order_id AND provider_ref='fake_c19_e2e_'||f.n AND status='captured' AND amount_minor=270 AND currency='USD' AND applied AND error_code IS NULL),
  'journals',(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=f.tenant AND source_id=f.order_id::text),
  'debits',(SELECT coalesce(sum(amount),0) FROM app.ledger_entries WHERE tenant_id=f.tenant AND side='debit'),
  'credits',(SELECT coalesce(sum(amount),0) FROM app.ledger_entries WHERE tenant_id=f.tenant AND side='credit'),
