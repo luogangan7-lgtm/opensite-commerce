@@ -1,5 +1,5 @@
 -- Real PostgreSQL privacy gate; synthetic tenant/customer fixtures roll back.
--- Depends on 026 notifications, 027 quotes and 035 controlled functions. Called by check_pg; no production data.
+-- Depends on 026 notifications, 027 quotes and the data-rights (pending c22a-data-rights) controlled functions. Called by check_pg; no production data.
 -- Asserts scope, credentials exclusion, single use, erasure and runtime fences.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -156,6 +156,8 @@ DO $notification_privacy$
 DECLARE t uuid:=current_setting('app.tenant_id')::uuid; oid uuid:=current_setting('test.privacy_order')::uuid; n uuid:=current_setting('test.privacy_notification')::uuid; source uuid; nd app.notification_deliveries;
 BEGIN
  IF (SELECT recipient FROM app.notification_deliveries WHERE tenant_id=t AND id=current_setting('test.privacy_unowned_notification')::uuid)<>'erasure-subject@example.invalid' THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION unowned email matched'; END IF;
+ -- An UNLINKED guest order with the same email is not the customer's: untouched.
+ IF (SELECT guest_contact FROM app.orders WHERE tenant_id=t AND id=current_setting('test.privacy_unowned_order')::uuid)<>'{"email":"erasure-subject@example.invalid"}'::jsonb THEN RAISE EXCEPTION 'PRIVACY_GATE unlinked guest order scrubbed'; END IF;
  IF EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND reference_id=oid AND (recipient<>'erased-'||id::text||'@invalid.test' OR status<>'dead_letter' OR last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR send_token IS NOT NULL OR lease_worker IS NOT NULL OR lease_attempt IS NOT NULL OR sent_at IS NOT NULL)) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION PII or live send residue'; END IF;
  IF EXISTS(SELECT FROM app.outbox_events e JOIN app.notification_deliveries d ON d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id) WHERE d.tenant_id=t AND d.reference_id=oid AND (e.status NOT IN('dead_letter','delivered') OR e.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR e.lease_owner IS NOT NULL OR e.lease_until IS NOT NULL)) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION live dispatch generation'; END IF;
  BEGIN PERFORM app.notification_redrive(t,n,'privacy-revive');RAISE EXCEPTION 'PRIVACY_NOTIFICATION redrive revival'; EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;

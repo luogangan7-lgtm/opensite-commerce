@@ -82,12 +82,17 @@ A newly declared personal column fails that gate until its ownership is decided.
 ## An email never establishes ownership
 
 Customer erasure follows registered identity paths only (customer ID on the
-row, its order, its accepted quote or its own command receipt). Matching an
+row, its order, its accepted quote or its own command receipt). A
+`customer_guest_order_links` row is such a path: it is created only after the
+customer proved control of that order's mailbox (mailbox verification), so a
+linked guest order is exported and erased exactly like the customer's own orders
+(guest contact, shipping/tax/adjustment text, checkout copies, notifications);
+the link itself is deleted last. Matching an
 email string never assigns data to a customer, because anyone can type anyone's
 address. Therefore customer erasure does **not** scrub:
 
-- guest orders (`orders.guest_contact`, `customer_id IS NULL`) and their
-  notifications, even when the guest email equals the customer's email;
+- **unlinked** guest orders (`orders.guest_contact`, `customer_id IS NULL`) and
+  their notifications, even when the guest email equals the customer's email;
 - quote inquiry contacts (`inquiries.buyer_email/buyer_name/message`) and the
   `quote.sent` notifications addressed to them;
 - staff, merchant/public content, rate-limit evidence and free-text audit,

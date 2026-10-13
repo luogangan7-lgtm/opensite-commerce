@@ -5,7 +5,7 @@ Depends on scripts/privacy_registry.py (--emit-fixture/--manifest) and a fully
 migrated disposable DATABASE_URL. Called by the foundation workflow after the
 registry gate. One transaction: load every declared personal/contact canary,
 erase ONLY the fixture's verified customer through app_runtime, then search
-every app table and queue.river_job. Subject-owned canaries must be gone;
+every table of every non-system schema (app, queue, public, ...). Subject-owned canaries must be gone;
 retained / other-subject / unverified-contact canaries must survive. ROLLBACK.
 Invariant: every registry canary is classified below, so a new personal column
 fails here until its erase ownership is decided (no email matching, ever).
@@ -29,6 +29,8 @@ ERASED = {
     "checkout_sessions.address_snapshot", "checkout_sessions.start_result", "checkout_sessions.final_result",
     "checkout_attempts.result", "quotes.snapshot", "quote_lines.description", "quote_lines.snapshot",
     "idempotency_records.response_body", "idempotency_records.response_body_reference",
+    # Guest order linked to the customer by mailbox proof (customer_guest_order_links).
+    "orders.guest_contact", "order_adjustments.reason",
 }
 # Retain strategy, a different subject (staff, merchant, guest, inquiry contact),
 # or no verified owner (null_subject_policy): customer erasure must not touch them.
@@ -41,7 +43,7 @@ RETAINED = {
     "draft_operations.operation", "site_releases.manifest", "site_release_templates.document",
     "inquiries.buyer_email", "inquiries.buyer_name", "inquiries.message",
     "media_assets.filename", "media_uploads.original_filename", "inventory_movements.reason",
-    "orders.guest_contact", "order_adjustments.reason", "audit_events.payload",
+    "audit_events.payload",
     "outbox_events.payload", "outbox_events.last_error", "webhook_inbox.payload_reference",
     "queue.river_job.args", "queue.river_job.errors", "queue.river_job.metadata",
 }
@@ -76,7 +78,7 @@ CREATE FUNCTION pg_temp.privacy_hits() RETURNS TABLE(key text,expect text,hits t
 DECLARE r record; BEGIN
  CREATE TEMP TABLE IF NOT EXISTS privacy_hit(key text,tab text) ON COMMIT DROP; TRUNCATE privacy_hit;
  FOR r IN SELECT n.nspname s,c.relname t FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-  WHERE c.relkind IN('r','p') AND (n.nspname='app' OR (n.nspname='queue' AND c.relname='river_job')) LOOP
+  WHERE c.relkind IN('r','p','m') AND n.nspname NOT IN('pg_catalog','information_schema') AND NOT starts_with(n.nspname,'pg_') LOOP
   EXECUTE format('INSERT INTO privacy_hit SELECT p.key,%L FROM privacy_canary p WHERE EXISTS(SELECT 1 FROM %I.%I x WHERE strpos(x::text,p.val)>0)',r.s||'.'||r.t,r.s,r.t);
  END LOOP;
  RETURN QUERY SELECT p.key,p.expect,string_agg(h.tab,',' ORDER BY h.tab) FROM privacy_canary p LEFT JOIN privacy_hit h USING(key) GROUP BY p.key,p.expect;

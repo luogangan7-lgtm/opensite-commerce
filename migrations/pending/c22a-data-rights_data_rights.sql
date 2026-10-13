@@ -69,7 +69,7 @@ GRANT SELECT(tenant_id,customer_id),DELETE ON app.customer_credentials TO app_da
 GRANT DELETE ON app.customer_addresses TO app_data_rights_executor;
 GRANT UPDATE(email,display_name,status) ON app.customers TO app_data_rights_executor;
 GRANT UPDATE(status) ON app.buyer_company_members TO app_data_rights_executor;
-GRANT UPDATE(shipping_snapshot) ON app.orders TO app_data_rights_executor;
+GRANT UPDATE(shipping_snapshot,guest_contact) ON app.orders TO app_data_rights_executor;
 GRANT UPDATE(tax_snapshot) ON app.order_lines TO app_data_rights_executor;
 GRANT INSERT,UPDATE ON app.data_rights_exports TO app_data_rights_executor;
 GRANT INSERT ON app.data_rights_erasures,app.audit_events TO app_data_rights_executor;
@@ -92,6 +92,7 @@ GRANT SELECT(tenant_id,quote_id,line_no),UPDATE(description,snapshot) ON app.quo
 GRANT SELECT(tenant_id,id,order_id),UPDATE(reason) ON app.order_adjustments TO app_data_rights_executor;
 GRANT SELECT(tenant_id,actor_kind,actor_id,operation,idempotency_key,response_body,response_body_reference),UPDATE(response_body,response_body_reference) ON app.idempotency_records TO app_data_rights_executor;
 GRANT SELECT(tenant_id,customer_id),DELETE ON app.customer_auth_tokens,app.customer_sessions,app.customer_guest_order_links TO app_data_rights_executor;
+GRANT SELECT(order_id) ON app.customer_guest_order_links TO app_data_rights_executor;
 CREATE POLICY data_rights_scope ON app.outbox_events TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid) WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid AND delivery_target='notifications.email');
 
 CREATE FUNCTION app.data_rights_context() RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
@@ -131,16 +132,24 @@ $fn$;
 -- quote.accepted_by. Recipient text never establishes ownership.
 -- ponytail: per-row lookup over the tenant's deliveries during erasure; add an
 -- owner column on notification_deliveries if tenant notification volume makes erasure slow.
+-- Orders a customer owns: its own orders plus guest orders whose mailbox the
+-- customer proved (customer_guest_order_links). A bare email match never counts.
+CREATE FUNCTION app.data_rights_customer_orders(p_tenant uuid,p_customer uuid) RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+ SELECT id FROM app.orders WHERE tenant_id=p_tenant AND customer_id=p_customer
+ UNION SELECT order_id FROM app.customer_guest_order_links WHERE tenant_id=p_tenant AND customer_id=p_customer;
+$fn$;
 CREATE FUNCTION app.data_rights_notification_owner(p_tenant uuid,p_template text,p_reference uuid) RETURNS uuid LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
- SELECT CASE WHEN p_template IN('order.paid','order.shipped','order.refund') THEN (SELECT customer_id FROM app.orders WHERE tenant_id=p_tenant AND id=p_reference)
+ SELECT CASE WHEN p_template IN('order.paid','order.shipped','order.refund') THEN coalesce((SELECT customer_id FROM app.orders WHERE tenant_id=p_tenant AND id=p_reference),
+   (SELECT customer_id FROM app.customer_guest_order_links WHERE tenant_id=p_tenant AND order_id=p_reference))
   WHEN p_template='quote.approved' THEN (SELECT accepted_by FROM app.quotes WHERE tenant_id=p_tenant AND id=p_reference) END;
 $fn$;
 CREATE OR REPLACE FUNCTION app.orders_guard() RETURNS trigger LANGUAGE plpgsql
 SET search_path=pg_catalog,app,pg_temp AS $fn$
 BEGIN
  IF TG_OP='UPDATE' AND current_user='app_data_rights_executor' THEN
-  IF (to_jsonb(NEW)-'shipping_snapshot') IS DISTINCT FROM (to_jsonb(OLD)-'shipping_snapshot')
-   OR NEW.shipping_snapshot IS DISTINCT FROM jsonb_build_object('erased',true,'amount_minor',OLD.shipping_minor,'currency',OLD.currency) THEN
+  IF (to_jsonb(NEW)-ARRAY['shipping_snapshot','guest_contact']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['shipping_snapshot','guest_contact'])
+   OR NEW.shipping_snapshot IS DISTINCT FROM jsonb_build_object('erased',true,'amount_minor',OLD.shipping_minor,'currency',OLD.currency)
+   OR NEW.guest_contact IS DISTINCT FROM (CASE WHEN OLD.guest_contact IS NULL THEN NULL ELSE jsonb_build_object('email','erased-'||OLD.id::text||'@invalid.test','erased',true) END) THEN
    RAISE EXCEPTION 'ORDER_PRIVACY_SCRUB_ONLY' USING ERRCODE='55000'; END IF;
   RETURN NEW;
  END IF;
@@ -231,15 +240,15 @@ DECLARE r app.data_rights_exports:=app.data_rights_lock_export(p_id); j jsonb; n
 BEGIN
  IF r.status<>'pending' THEN RAISE EXCEPTION 'PRIVACY_NOT_PENDING' USING ERRCODE='55000'; END IF;
  SELECT (SELECT count(*) FROM app.customer_addresses WHERE tenant_id=r.tenant_id AND customer_id=r.customer_id)
-  +(SELECT count(*) FROM app.orders WHERE tenant_id=r.tenant_id AND customer_id=r.customer_id)
-  +(SELECT count(*) FROM app.order_lines l JOIN app.orders o ON(o.tenant_id,o.id)=(l.tenant_id,l.order_id) WHERE o.tenant_id=r.tenant_id AND o.customer_id=r.customer_id)
+  +(SELECT count(*) FROM app.orders WHERE tenant_id=r.tenant_id AND id IN(SELECT app.data_rights_customer_orders(r.tenant_id,r.customer_id)))
+  +(SELECT count(*) FROM app.order_lines l WHERE l.tenant_id=r.tenant_id AND l.order_id IN(SELECT app.data_rights_customer_orders(r.tenant_id,r.customer_id)))
   +(SELECT count(*) FROM app.carts WHERE tenant_id=r.tenant_id AND customer_id=r.customer_id)
   +(SELECT count(*) FROM app.cart_lines l JOIN app.carts c ON(c.tenant_id,c.id)=(l.tenant_id,l.cart_id) WHERE c.tenant_id=r.tenant_id AND c.customer_id=r.customer_id) INTO n;
  IF n>10000 THEN RAISE EXCEPTION 'PRIVACY_EXPORT_RECORD_LIMIT' USING ERRCODE='22023'; END IF;
  SELECT jsonb_build_object('schema_version',1,'customer',jsonb_build_object('id',c.id,'email',c.email,'display_name',c.display_name,'status',c.status,'created_at',c.created_at),
  'addresses',coalesce((SELECT jsonb_agg(to_jsonb(a)-ARRAY['tenant_id','customer_id'] ORDER BY a.id) FROM app.customer_addresses a WHERE a.tenant_id=r.tenant_id AND a.customer_id=r.customer_id),'[]'::jsonb),
- 'orders',coalesce((SELECT jsonb_agg(jsonb_build_object('id',o.id,'order_number',o.order_number,'currency',o.currency,'total_minor',o.total_minor,'state',o.state,'shipping_snapshot',o.shipping_snapshot,'created_at',o.created_at,
- 'lines',coalesce((SELECT jsonb_agg(jsonb_build_object('sku',l.sku,'quantity',l.quantity,'unit_price_minor',l.unit_price_minor,'line_net_minor',l.line_net_minor,'line_tax_minor',l.line_tax_minor,'line_total_minor',l.line_total_minor,'tax_snapshot',l.tax_snapshot) ORDER BY l.id) FROM app.order_lines l WHERE (l.tenant_id,l.order_id)=(o.tenant_id,o.id)),'[]'::jsonb)) ORDER BY o.id) FROM app.orders o WHERE o.tenant_id=r.tenant_id AND o.customer_id=r.customer_id),'[]'::jsonb),
+ 'orders',coalesce((SELECT jsonb_agg(jsonb_build_object('id',o.id,'order_number',o.order_number,'currency',o.currency,'total_minor',o.total_minor,'state',o.state,'guest_contact',o.guest_contact,'shipping_snapshot',o.shipping_snapshot,'created_at',o.created_at,
+ 'lines',coalesce((SELECT jsonb_agg(jsonb_build_object('sku',l.sku,'quantity',l.quantity,'unit_price_minor',l.unit_price_minor,'line_net_minor',l.line_net_minor,'line_tax_minor',l.line_tax_minor,'line_total_minor',l.line_total_minor,'tax_snapshot',l.tax_snapshot) ORDER BY l.id) FROM app.order_lines l WHERE (l.tenant_id,l.order_id)=(o.tenant_id,o.id)),'[]'::jsonb)) ORDER BY o.id) FROM app.orders o WHERE o.tenant_id=r.tenant_id AND o.id IN(SELECT app.data_rights_customer_orders(r.tenant_id,r.customer_id))),'[]'::jsonb),
  'carts',coalesce((SELECT jsonb_agg(jsonb_build_object('id',ca.id,'currency',ca.currency,'lines',coalesce((SELECT jsonb_agg(jsonb_build_object('sku_id',l.sku_id,'quantity',l.quantity) ORDER BY l.sku_id) FROM app.cart_lines l WHERE (l.tenant_id,l.cart_id)=(ca.tenant_id,ca.id)),'[]'::jsonb)) ORDER BY ca.id) FROM app.carts ca WHERE ca.tenant_id=r.tenant_id AND ca.customer_id=r.customer_id),'[]'::jsonb)) INTO j
  FROM app.customers c WHERE (c.tenant_id,c.id)=(r.tenant_id,r.customer_id);
  IF octet_length(j::text)>10485760 THEN RAISE EXCEPTION 'PRIVACY_EXPORT_BYTES_LIMIT' USING ERRCODE='22023'; END IF;
@@ -276,16 +285,18 @@ BEGIN
  RETURN jsonb_build_object('id',r.id,'status','consumed');
 END $fn$;
 CREATE FUNCTION app.data_rights_erase_customer(p_customer uuid,p_actor_kind text,p_actor_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
-DECLARE t uuid:=app.data_rights_context();c app.customers; requests jsonb; naddr integer;ncred integer;nb2b integer;norder integer;nline integer;nnotification integer;ncheckout integer;nattempt integer;nquote integer;nquoteline integer;nadjust integer;nreceipt integer;nauth integer;n integer;
+DECLARE t uuid:=app.data_rights_context();c app.customers; owned uuid[]; requests jsonb; naddr integer;ncred integer;nb2b integer;norder integer;nline integer;nnotification integer;ncheckout integer;nattempt integer;nquote integer;nquoteline integer;nadjust integer;nreceipt integer;nauth integer;n integer;
 BEGIN
  IF p_customer IS NULL OR p_actor_id IS NULL OR p_actor_kind IS NULL OR p_actor_kind NOT IN('user','api_key','service') THEN RAISE EXCEPTION 'PRIVACY_INVALID' USING ERRCODE='22023'; END IF;
  -- Existing financial writers lock order before notification fanout locks customer.
- PERFORM id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer ORDER BY id FOR UPDATE;
+ PERFORM id FROM app.orders WHERE tenant_id=t AND id IN(SELECT app.data_rights_customer_orders(t,p_customer)) ORDER BY id FOR UPDATE;
  SELECT * INTO c FROM app.customers WHERE tenant_id=t AND id=p_customer FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'PRIVACY_NOT_FOUND' USING ERRCODE='P0002'; END IF;
  -- Catch orders committed while the first pass waited for customer admission.
  -- Fail atomically rather than wait on a transition that now needs our customer.
- PERFORM id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer ORDER BY id FOR UPDATE NOWAIT;
+ PERFORM id FROM app.orders WHERE tenant_id=t AND id IN(SELECT app.data_rights_customer_orders(t,p_customer)) ORDER BY id FOR UPDATE NOWAIT;
+ -- Fixed before any link is deleted: own + mailbox-linked guest orders.
+ SELECT coalesce(array_agg(o ORDER BY o),'{}') INTO owned FROM app.data_rights_customer_orders(t,p_customer) o;
  PERFORM id FROM app.data_rights_exports WHERE tenant_id=t AND customer_id=p_customer ORDER BY id FOR UPDATE;
  SELECT coalesce(jsonb_agg(id ORDER BY id),'[]'::jsonb) INTO requests FROM app.data_rights_exports WHERE tenant_id=t AND customer_id=p_customer;
  UPDATE app.data_rights_exports SET status='revoked',token_hash=NULL,content_hash=NULL WHERE tenant_id=t AND customer_id=p_customer;
@@ -314,21 +325,21 @@ BEGIN
  -- Other declared copies (C-PII identity paths). Their writers lock the copy
  -- before the customer, so NOWAIT turns contention into a retryable busy
  -- rollback instead of a deadlock; nothing is partially erased.
- PERFORM s.id FROM app.checkout_sessions s WHERE s.tenant_id=t AND s.order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer) ORDER BY s.id FOR UPDATE NOWAIT;
+ PERFORM s.id FROM app.checkout_sessions s WHERE s.tenant_id=t AND s.order_id =ANY(owned) ORDER BY s.id FOR UPDATE NOWAIT;
  PERFORM a.event_key FROM app.checkout_attempts a JOIN app.checkout_sessions s ON(s.tenant_id,s.id)=(a.tenant_id,a.checkout_id)
-  WHERE s.tenant_id=t AND s.order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer) ORDER BY a.event_kind,a.event_key FOR UPDATE OF a NOWAIT;
+  WHERE s.tenant_id=t AND s.order_id =ANY(owned) ORDER BY a.event_kind,a.event_key FOR UPDATE OF a NOWAIT;
  PERFORM id FROM app.quotes WHERE tenant_id=t AND accepted_by=p_customer ORDER BY id FOR UPDATE NOWAIT;
  PERFORM operation FROM app.idempotency_records WHERE tenant_id=t AND actor_kind='customer' AND actor_id=p_customer ORDER BY operation,idempotency_key FOR UPDATE NOWAIT;
  UPDATE app.checkout_attempts a SET result='{"erased":true}' FROM app.checkout_sessions s WHERE (s.tenant_id,s.id)=(a.tenant_id,a.checkout_id)
-  AND s.tenant_id=t AND s.order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer) AND a.result IS NOT NULL;GET DIAGNOSTICS nattempt=ROW_COUNT;
+  AND s.tenant_id=t AND s.order_id =ANY(owned) AND a.result IS NOT NULL;GET DIAGNOSTICS nattempt=ROW_COUNT;
  UPDATE app.checkout_sessions SET address_snapshot='{"erased":true}',
   start_result=CASE WHEN start_result IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END,
   final_result=CASE WHEN final_result IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END
-  WHERE tenant_id=t AND order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer);GET DIAGNOSTICS ncheckout=ROW_COUNT;
+  WHERE tenant_id=t AND order_id =ANY(owned);GET DIAGNOSTICS ncheckout=ROW_COUNT;
  UPDATE app.quote_lines l SET description='[erased]',snapshot='{"erased":true}' FROM app.quotes q
   WHERE (q.tenant_id,q.id)=(l.tenant_id,l.quote_id) AND q.tenant_id=t AND q.accepted_by=p_customer;GET DIAGNOSTICS nquoteline=ROW_COUNT;
  UPDATE app.quotes SET snapshot=app.data_rights_quote_scrub(snapshot) WHERE tenant_id=t AND accepted_by=p_customer;GET DIAGNOSTICS nquote=ROW_COUNT;
- UPDATE app.order_adjustments SET reason='[erased]' WHERE tenant_id=t AND order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer);GET DIAGNOSTICS nadjust=ROW_COUNT;
+ UPDATE app.order_adjustments SET reason='[erased]' WHERE tenant_id=t AND order_id =ANY(owned);GET DIAGNOSTICS nadjust=ROW_COUNT;
  UPDATE app.idempotency_records SET
   response_body=CASE WHEN response_body IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END,
   response_body_reference=CASE WHEN response_body_reference IS NULL THEN NULL ELSE 'erased' END
@@ -341,8 +352,10 @@ BEGIN
  DELETE FROM app.customer_addresses WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS naddr=ROW_COUNT;
  DELETE FROM app.customer_credentials WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS ncred=ROW_COUNT;
  UPDATE app.buyer_company_members SET status='revoked' WHERE tenant_id=t AND customer_id=p_customer AND status<>'revoked';GET DIAGNOSTICS nb2b=ROW_COUNT;
- UPDATE app.orders SET shipping_snapshot=jsonb_build_object('erased',true,'amount_minor',shipping_minor,'currency',currency) WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS norder=ROW_COUNT;
- UPDATE app.order_lines l SET tax_snapshot=app.data_rights_tax_scrub(l.tax_snapshot) FROM app.orders o WHERE (o.tenant_id,o.id)=(l.tenant_id,l.order_id) AND o.tenant_id=t AND o.customer_id=p_customer;GET DIAGNOSTICS nline=ROW_COUNT;
+ UPDATE app.orders SET shipping_snapshot=jsonb_build_object('erased',true,'amount_minor',shipping_minor,'currency',currency),
+  guest_contact=CASE WHEN guest_contact IS NULL THEN NULL ELSE jsonb_build_object('email','erased-'||id::text||'@invalid.test','erased',true) END
+  WHERE tenant_id=t AND id=ANY(owned);GET DIAGNOSTICS norder=ROW_COUNT;
+ UPDATE app.order_lines l SET tax_snapshot=app.data_rights_tax_scrub(l.tax_snapshot) WHERE l.tenant_id=t AND l.order_id=ANY(owned);GET DIAGNOSTICS nline=ROW_COUNT;
  UPDATE app.customers SET email='erased+'||id::text||'@erased.invalid',display_name='[erased]',status='disabled' WHERE tenant_id=t AND id=p_customer;
  INSERT INTO app.data_rights_erasures(tenant_id,customer_id,actor_kind,actor_id) VALUES(t,p_customer,p_actor_kind,p_actor_id) ON CONFLICT DO NOTHING;
  INSERT INTO app.audit_events(tenant_id,actor_kind,actor_id,operation,resource_type,resource_id,payload) VALUES(t,p_actor_kind,p_actor_id,'data_rights.customer.erase','customer',p_customer,jsonb_build_object('scope','customer','addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification,'checkouts',ncheckout,'checkout_attempts',nattempt,'quotes',nquote,'quote_lines',nquoteline,'order_adjustments',nadjust,'command_receipts',nreceipt,'customer_auth',nauth));
@@ -401,14 +414,21 @@ CREATE TRIGGER data_rights_customer_guard BEFORE UPDATE ON app.customers FOR EAC
 -- admission. Function-local tenant binding supports existing privileged fixtures
 -- while the caller's ordinary table RLS still controls the INSERT itself.
 CREATE FUNCTION app.data_rights_notification_insert_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp SET app.tenant_id='' AS $fn$
-DECLARE customer uuid;c app.customers;
+DECLARE customer uuid;c app.customers;erased boolean:=false;
 BEGIN
  IF NEW.template_key NOT IN('order.paid','order.shipped','order.refund','quote.approved') THEN RETURN NEW; END IF;
  PERFORM set_config('app.tenant_id',NEW.tenant_id::text,true);
+ -- A scrubbed (formerly linked) guest order stays erased after its link is gone.
+ IF NEW.template_key<>'quote.approved' THEN
+  erased:=EXISTS(SELECT FROM app.orders WHERE tenant_id=NEW.tenant_id AND id=NEW.reference_id AND (guest_contact->>'erased')::boolean);
+ END IF;
  customer:=app.data_rights_notification_owner(NEW.tenant_id,NEW.template_key,NEW.reference_id);
- IF customer IS NULL THEN RETURN NEW; END IF;
- SELECT * INTO c FROM app.customers WHERE tenant_id=NEW.tenant_id AND id=customer FOR SHARE;
- IF FOUND AND (c.status<>'active' OR EXISTS(SELECT FROM app.data_rights_erasures WHERE tenant_id=NEW.tenant_id AND customer_id=customer)) AND NEW.recipient<>'' THEN
+ IF customer IS NOT NULL THEN
+  SELECT * INTO c FROM app.customers WHERE tenant_id=NEW.tenant_id AND id=customer FOR SHARE;
+  -- Only erasure blocks delivery; a merely disabled account is merchant-managed.
+  erased:=erased OR (FOUND AND (c.email='erased+'||c.id::text||'@erased.invalid' OR EXISTS(SELECT FROM app.data_rights_erasures WHERE tenant_id=NEW.tenant_id AND customer_id=customer)));
+ END IF;
+ IF erased AND NEW.recipient<>'' THEN
   NEW.recipient:='erased-'||NEW.id::text||'@invalid.test';NEW.status:='dead_letter';NEW.last_error:='PRIVACY_ERASED';NEW.send_token:=NULL;NEW.lease_attempt:=NULL;NEW.lease_worker:=NULL;NEW.sent_at:=NULL;
  END IF;
  RETURN NEW;

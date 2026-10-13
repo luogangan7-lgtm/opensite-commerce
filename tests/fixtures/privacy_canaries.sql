@@ -196,6 +196,9 @@ BEGIN
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','surcharge','amount_minor',1,
    'reason',{{canary:order_adjustments.reason}})));
  PERFORM app.orders_transition(guest_order,'paid','privacy-guest-payment');
+ -- Mailbox-proven link (customer_guest_order_links): the verified customer now
+ -- owns this guest order, its contact copy, adjustment text and notifications.
+ INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES(t,customer,guest_order);
 
  quote := app.create_quote(t,site,inquiry,company,staff,'USD',100,10,5,115,
   jsonb_build_object('contact',{{canary:quotes.snapshot}}),clock_timestamp()+interval '1 hour',
