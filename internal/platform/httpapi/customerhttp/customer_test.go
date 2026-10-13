@@ -503,7 +503,8 @@ func TestCustomerResolverRequiresLiveTenantSessionAndCSRF(t *testing.T) {
 	}
 	req.SetPathValue("tenant_id", "22222222-2222-4222-8222-222222222222")
 	req.Method = "GET"
-	if _, err = h.Resolve(context.Background(), req); err == nil {
-		t.Fatal("cross tenant actor minted")
+	actor, err = h.Resolve(context.Background(), req)
+	if err != nil || actor != (c.Actor{}) {
+		t.Fatal("invalid cross-tenant bearer did not return a guest with zero customer authority")
 	}
 }

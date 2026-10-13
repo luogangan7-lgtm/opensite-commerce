@@ -209,7 +209,9 @@ func (s *Service) Login(ctx context.Context, tenant, email, password string, ip 
 	}
 	session.Email = normalizedEmail(session.Email)
 	if !s.validSession(session, tenant) || session.CustomerID != credential.CustomerID {
-		return c.Session{}, c.ErrUnauthorized
+		// A successful repository response with invalid data is a dependency
+		// failure, not proof that the caller's bearer has become invalid.
+		return c.Session{}, c.ErrUnavailable
 	}
 	session.Token = raw
 	return session, nil
@@ -233,7 +235,7 @@ func (s *Service) Current(ctx context.Context, tenant, token string) (c.Session,
 	}
 	session.Email = normalizedEmail(session.Email)
 	if !s.validSession(session, tenant) {
-		return c.Session{}, c.ErrUnauthorized
+		return c.Session{}, c.ErrUnavailable
 	}
 	session.Token = ""
 	return session, nil
