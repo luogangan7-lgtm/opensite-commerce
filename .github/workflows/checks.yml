@@ -126,6 +126,8 @@ jobs:
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
+          # Patch must apply to the contributor's branch, not the synthetic merge commit.
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
@@ -145,6 +147,8 @@ jobs:
       - name: Regenerate OpenAPI Go (oapi-codegen v2.8.0), sqlc and TS client (openapi-typescript)
         run: |
           go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+          # sqlc never deletes outputs of removed/renamed query files: start from a clean output set.
+          rm -f internal/db/db.go internal/db/models.go internal/db/*.sql.go
           sqlc generate
           bun packages/api-client/node_modules/openapi-typescript/bin/cli.js api/openapi.yaml -o packages/api-client/src/schema.d.ts
       - name: Collect drift as a patch
