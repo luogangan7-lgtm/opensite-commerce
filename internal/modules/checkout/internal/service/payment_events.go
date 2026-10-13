@@ -58,7 +58,7 @@ func (s *Service) applyPaymentFact(ctx context.Context, tx pgx.Tx, event payment
 		return false, store.MapError(err)
 	}
 	if row.ProviderRef != event.ProviderRef || row.PayableVersion != event.OrderVersion || row.Currency != event.Amount.Currency ||
-		(!refund && row.AmountMinor != event.Amount.Amount) || (refund && event.Amount.Amount > row.AmountMinor) {
+		(refund && event.Amount.Amount > row.AmountMinor) {
 		return false, contract.ErrConflict
 	}
 	// The same permanent identity used by command confirmation binds all facts.
