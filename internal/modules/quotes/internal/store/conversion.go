@@ -8,14 +8,14 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func conversionError(err error) error {
-	var p *pgconn.PgError
+	var p *pgxadapter.PgError
 	if errors.As(err, &p) {
 		if p.Code == "22000" {
 			return c.ErrIdempotencyReused

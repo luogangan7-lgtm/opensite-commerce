@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 const tenant = "11111111-1111-4111-8111-111111111111"
@@ -31,9 +31,9 @@ func (x *validationTx) QueryRow(context.Context, string, ...any) pgx.Row {
 	x.reads++
 	return tenantRow(x.active)
 }
-func (x *validationTx) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+func (x *validationTx) Exec(context.Context, string, ...any) (pgxadapter.CommandTag, error) {
 	x.execs++
-	return pgconn.CommandTag{}, x.err
+	return pgxadapter.CommandTag{}, x.err
 }
 
 func TestReservationValidatorAdmission(t *testing.T) {
@@ -50,8 +50,8 @@ func TestReservationValidatorAdmission(t *testing.T) {
 	if err := svc.ValidateReservations(ctx, x, tenant, order); !errors.Is(err, contract.ErrNotFound) || x.execs != 0 {
 		t.Fatalf("foreign tenant reached preflight: %v %+v", err, x)
 	}
-	x = &validationTx{active: tenant, err: &pgconn.PgError{Code: "55000", Message: "ORDER_RESERVATION_EXPIRED"}}
-	if err := svc.ValidateReservations(ctx, x, tenant, order); !errors.Is(err, contract.ErrConflict) || x.execs != 1 || errors.As(err, new(*pgconn.PgError)) {
+	x = &validationTx{active: tenant, err: &pgxadapter.PgError{Code: "55000", Message: "ORDER_RESERVATION_EXPIRED"}}
+	if err := svc.ValidateReservations(ctx, x, tenant, order); !errors.Is(err, contract.ErrConflict) || x.execs != 1 || errors.As(err, new(*pgxadapter.PgError)) {
 		t.Fatalf("preflight error escaped: %v %+v", err, x)
 	}
 	x = &validationTx{active: tenant}
