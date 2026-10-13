@@ -30,6 +30,22 @@ CART_PATHS = {
 SELF_OPERATIONS = {"deleteAdminSession", "getCurrentActor", "listAdminSessions", "revokeAdminSession"}
 COOKIE = [{"adminSession": []}]
 COOKIE_OR_KEY = [{"adminSession": []}, {"ApiKeyBearer": []}]
+# Buyer identity is supplied by the customer-auth seam; Public here describes
+# the platform router access class, never permission to bypass trusted actors.
+BUYER_QUOTES = {
+    "getBuyerQuote": ("get", "/api/public/v1/quotes/{quote_id}"),
+    "acceptQuote": ("post", "/api/public/v1/quotes/{quote_id}/accept"),
+    "approveQuote": ("post", "/api/public/v1/quotes/{quote_id}/approve"),
+    "rejectQuote": ("post", "/api/public/v1/quotes/{quote_id}/reject"),
+}
+SELLER_QUOTES = {
+    "createQuote": ("post", "/api/v1/t/{tenant_id}/quotes"),
+    "getQuote": ("get", "/api/v1/t/{tenant_id}/quotes/{quote_id}"),
+    "sendQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/send"),
+    "withdrawQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw"),
+    "expireQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/expire"),
+}
+QUOTE_OPERATIONS = SELLER_QUOTES.keys() | BUYER_QUOTES.keys() | {"submitInquiry"}
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -190,7 +206,7 @@ def validate_contract(api):
             require(tenant_parameter.get("required") is True and tenant_parameter.get("schema") ==
                     {"type": "string", "format": "uuid"}, f"required tenant UUID parameter missing: {ident}")
         if access == "Public":
-            require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite"} and security == [] and
+            require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite"} | BUYER_QUOTES.keys() and security == [] and
                     "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
         elif access == "Storefront":
             require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and
@@ -215,6 +231,26 @@ def validate_contract(api):
             require(security in (COOKIE_OR_KEY, list(reversed(COOKIE_OR_KEY))), f"cookie OR API key required: {ident}")
         else:
             raise ValueError(f"access policy missing or unsupported: {ident}")
+        if ident in QUOTE_OPERATIONS:
+            require(op["x-opensite-status"] == "implemented", f"quote operation status drift: {ident}")
+        if ident == "submitInquiry":
+            require((path, method, access) == ("/api/public/v1/inquiries", "post", "Public"),
+                    "public inquiry route/access drift")
+        if ident in BUYER_QUOTES:
+            require((method, path) == BUYER_QUOTES[ident], f"buyer quote route drift: {ident}")
+            require(access == "Public" and op.get("x-opensite-trusted-buyer") == "required",
+                    f"trusted buyer declaration required: {ident}")
+        elif "x-opensite-trusted-buyer" in op:
+            raise ValueError(f"trusted buyer marker outside buyer quote operation: {ident}")
+        if ident in SELLER_QUOTES:
+            require((method, path) == SELLER_QUOTES[ident], f"seller quote route drift: {ident}")
+            require(access == "AdminOrAPIKey" and scope == ("quotes:read" if ident == "getQuote" else "quotes:write"),
+                    f"seller quotes scope required: {ident}")
+        if ident in SELLER_QUOTES.keys() | BUYER_QUOTES.keys() and method != "get":
+            headers = {p["name"]: p for p in parameters if p["in"] == "header"}
+            for header in ("If-Match", "Idempotency-Key"):
+                require(headers.get(header, {}).get("required") is True,
+                        f"quote write {header} required: {ident}")
         if ident in CART_OPERATIONS:
             require((path, method) == CART_PATHS[ident] and access == "Storefront" and
                     op["x-opensite-status"] == "implemented", f"cart route/access/status drift: {ident}")
@@ -240,6 +276,7 @@ def validate_contract(api):
             require({"412", "428"} <= op["responses"].keys(), f"If-Match mappings missing: {ident}")
         if any(p["name"] == "Idempotency-Key" for p in parameters):
             require({"409", "422"} <= op["responses"].keys(), f"idempotency mappings missing: {ident}")
+    require(QUOTE_OPERATIONS <= operations.keys(), "quote operation missing")
     require(CART_OPERATIONS <= operations.keys(), "cart operation missing")
     cart_token = schemes.get("CartToken", {})
     require((cart_token.get("type"), cart_token.get("in"), cart_token.get("name")) ==
