@@ -101,3 +101,5 @@ export function OrderDetailPage({api, tenantId, fixture = false}: PageProps) {
     </>}
   </section>;
 }
+
+// review probe 75-1: stale admin input without provenance update
