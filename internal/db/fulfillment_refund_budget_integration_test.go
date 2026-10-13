@@ -222,7 +222,7 @@ func assertBudgetFinal(t *testing.T, f fulfillmentFixture, initialStock, legacy,
 		 (SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=$1 AND source_type='return' AND event='refund'),
 		 (SELECT sum(amount) FROM app.ledger_entries WHERE tenant_id=$1 AND side='credit'),
 		 (SELECT count(*) FROM (SELECT transaction_id FROM app.ledger_entries WHERE tenant_id=$1 GROUP BY transaction_id HAVING sum(CASE WHEN side='debit' THEN amount ELSE -amount END)<>0) x),
-		 (SELECT count(*) FROM app.outbox_events WHERE tenant_id=$1 AND payload->>'order_id'=$2 AND event_type IN('order.partially_refunded','order.refunded'))`, f.tenant, f.order.ID).Scan(&frozen, &moves, &journals, &credits, &unbalanced, &events)
+		 (SELECT count(*) FROM app.outbox_events WHERE tenant_id=$1 AND payload->>'order_id'=$2::text AND event_type IN('order.partially_refunded','order.refunded'))`, f.tenant, f.order.ID).Scan(&frozen, &moves, &journals, &credits, &unbalanced, &events)
 	})
 	if err != nil {
 		t.Fatal(err)
