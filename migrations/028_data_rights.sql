@@ -73,6 +73,9 @@ CREATE POLICY data_rights_scope ON app.notification_deliveries TO app_data_right
 -- Quote approval mail goes to quotes.accepted_by; that ID, never an email, is ownership.
 GRANT SELECT(tenant_id,id,accepted_by) ON app.quotes TO app_data_rights_executor;
 CREATE POLICY data_rights_scope ON app.quotes TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
+-- Erased placeholders live in a reserved non-routable namespace that only the
+-- erased row itself may hold, so no account can pre-register one to block erasure.
+ALTER TABLE app.customers ADD CONSTRAINT customers_erased_namespace CHECK(email_normalized NOT LIKE '%@erased.invalid' OR (email='erased+'||id::text||'@erased.invalid' AND status='disabled'));
 CREATE POLICY data_rights_scope ON app.outbox_events TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid) WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid AND delivery_target='notifications.email');
 
 CREATE FUNCTION app.data_rights_context() RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
@@ -275,7 +278,7 @@ BEGIN
  UPDATE app.buyer_company_members SET status='revoked' WHERE tenant_id=t AND customer_id=p_customer AND status<>'revoked';GET DIAGNOSTICS nb2b=ROW_COUNT;
  UPDATE app.orders SET shipping_snapshot=jsonb_build_object('erased',true,'amount_minor',shipping_minor,'currency',currency) WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS norder=ROW_COUNT;
  UPDATE app.order_lines l SET tax_snapshot=app.data_rights_tax_scrub(l.tax_snapshot) FROM app.orders o WHERE (o.tenant_id,o.id)=(l.tenant_id,l.order_id) AND o.tenant_id=t AND o.customer_id=p_customer;GET DIAGNOSTICS nline=ROW_COUNT;
- UPDATE app.customers SET email='erased+'||id::text||'@invalid.example',display_name='[erased]',status='disabled' WHERE tenant_id=t AND id=p_customer;
+ UPDATE app.customers SET email='erased+'||id::text||'@erased.invalid',display_name='[erased]',status='disabled' WHERE tenant_id=t AND id=p_customer;
  INSERT INTO app.data_rights_erasures(tenant_id,customer_id,actor_kind,actor_id) VALUES(t,p_customer,p_actor_kind,p_actor_id) ON CONFLICT DO NOTHING;
  INSERT INTO app.audit_events(tenant_id,actor_kind,actor_id,operation,resource_type,resource_id,payload) VALUES(t,p_actor_kind,p_actor_id,'data_rights.customer.erase','customer',p_customer,jsonb_build_object('scope','customer','addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification));
  RETURN jsonb_build_object('customer_id',p_customer,'requests',requests,'counts',jsonb_build_object('addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification));
@@ -318,7 +321,7 @@ CREATE TRIGGER data_rights_order_customer_guard BEFORE INSERT ON app.orders FOR 
 CREATE FUNCTION app.data_rights_customer_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
 BEGIN
  IF OLD.status='disabled' AND (NEW.email IS DISTINCT FROM OLD.email OR NEW.display_name IS DISTINCT FROM OLD.display_name OR NEW.status IS DISTINCT FROM OLD.status) THEN
-  IF current_user<>'app_data_rights_executor' OR NEW.status<>'disabled' OR NEW.display_name<>'[erased]' OR NEW.email<>'erased+'||OLD.id::text||'@invalid.example' THEN
+  IF current_user<>'app_data_rights_executor' OR NEW.status<>'disabled' OR NEW.display_name<>'[erased]' OR NEW.email<>'erased+'||OLD.id::text||'@erased.invalid' THEN
    RAISE EXCEPTION 'PRIVACY_DISABLED_CUSTOMER_IMMUTABLE' USING ERRCODE='55000'; END IF;
  END IF;
  RETURN NEW;
