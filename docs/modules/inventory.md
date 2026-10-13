@@ -19,8 +19,11 @@ ENABLE/FORCE RLS with the nullif tenant policy.
 
 - `app.inventory_reserve(sku uuid, quantity bigint, owner_type text, owner_id uuid,
   idempotency_key text, ttl_seconds integer DEFAULT 900)`;
-- `app.inventory_release(reservation_id uuid)`;
-- `app.inventory_commit(reservation_id uuid)`;
+- `app.inventory_release_non_order(reservation_id uuid)`;
+- `app.inventory_commit_non_order(reservation_id uuid)` (C-15a: these refuse
+  `owner_type='order'` with 42501 `INVENTORY_ORDER_OWNED_RESERVATION`; order
+  holds finish only via `orders_transition`. Raw `inventory_release/commit`
+  are executable only by `app_orders_executor`);
 - `app.inventory_expire_due(batch integer DEFAULT 100)` (1–1000).
 
 Reserve/release/commit return the reservation row. Expiry returns the number

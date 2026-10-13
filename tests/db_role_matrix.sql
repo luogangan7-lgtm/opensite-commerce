@@ -25,7 +25,8 @@ DECLARE
   'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
   'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
-  'ledger_accounts','ledger_transactions','ledger_entries'];
+  'ledger_accounts','ledger_transactions','ledger_entries',
+  'orders','order_lines','order_adjustments'];
  role_name text;
  r record;
  t record;
@@ -174,7 +175,7 @@ DECLARE role_name text; f record;
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver',
   'app_domain_verifier','app_media_service','app_publisher','app_publish_executor',
-  'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor'] LOOP
+  'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_ledger_executor','app_orders_executor'] LOOP
   IF pg_has_role(role_name,'app_customer_auth','SET')
    OR pg_has_role('app_customer_auth',role_name,'SET') THEN
    RAISE EXCEPTION 'customer/staff/service capability path: %',role_name;
@@ -249,8 +250,10 @@ BEGIN
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+   'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
-   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger') LOOP
+   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -270,8 +273,10 @@ BEGIN
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT IN ('inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+   'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
-   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger'))<>10 THEN
+   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -281,9 +286,10 @@ SELECT 'PASS: isolated service matrix and SECURITY DEFINER owner/search_path/EXE
 DO $inventory$
 DECLARE role_name text; r record; t record; a record; privilege text; f record;
  expected boolean; allowed_tables text[]:=ARRAY['warehouses','stock_levels','inventory_reservations','inventory_movements'];
- public_commands text[]:=ARRAY['inventory_reserve','inventory_release','inventory_commit','inventory_expire_due'];
+ public_commands text[]:=ARRAY['inventory_reserve','inventory_expire_due','inventory_release_non_order','inventory_commit_non_order'];
  names text[]:=ARRAY['inventory_context','inventory_immutable_movement','inventory_adjust',
-  'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due'];
+  'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+  'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order'];
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['app_inventory_manager','app_inventory_executor'] LOOP
   SELECT * INTO STRICT r FROM pg_roles WHERE rolname=role_name;
@@ -324,9 +330,10 @@ BEGIN
    RAISE EXCEPTION 'unsafe inventory function definition: %',f.proname;
   END IF;
   FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier',
-   'app_media_service','app_publisher','app_publish_executor','app_inventory_manager'] LOOP
+   'app_media_service','app_publisher','app_publish_executor','app_inventory_manager','app_orders_executor','app_customer_auth','app_ledger_executor'] LOOP
    expected := role_name='app_runtime' AND f.proname=ANY(public_commands)
-    OR role_name='app_inventory_manager' AND f.proname='inventory_adjust';
+    OR role_name='app_inventory_manager' AND f.proname='inventory_adjust'
+    OR role_name='app_orders_executor' AND f.proname IN('inventory_commit','inventory_release');
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'inventory routine authority mismatch: % %',role_name,f.proname;
@@ -340,7 +347,7 @@ BEGIN
    RAISE EXCEPTION 'inventory role has foreign routine capability: %',f.proname;
   END IF;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>8 THEN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
   RAISE EXCEPTION 'inventory function contract incomplete';
  END IF;
 END $inventory$;
@@ -438,7 +445,7 @@ BEGIN
     RAISE EXCEPTION 'unsafe ledger routine definition: %',f.proname;
    END IF;
    FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
-    'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth'] LOOP
+    'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_orders_executor'] LOOP
     IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name='app_runtime' AND f.proname='post_ledger')
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
      RAISE EXCEPTION 'ledger routine authority: % %',role_name,f.proname;
@@ -453,3 +460,78 @@ BEGIN
  END IF;
 END $ledger$;
 SELECT 'PASS: ledger exact executor/runtime table-column-function capabilities and FORCE RLS' AS result;
+
+-- Orders owns sealed snapshots. Its capability only locks reservations, terminates
+-- them through inventory commands and appends reserved-namespace outbox events.
+DO $orders$
+DECLARE r record; t record; a record; f record; role_name text; privilege text;
+ expected boolean; allowed text[];
+ names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations'];
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_orders_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+  OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+  OR pg_has_role('app_runtime',r.oid,'SET') OR has_schema_privilege(r.oid,'app','CREATE')
+  OR NOT has_schema_privilege(r.oid,'app','USAGE') OR has_schema_privilege(r.oid,'app','USAGE WITH GRANT OPTION') THEN
+  RAISE EXCEPTION 'unsafe orders executor role';
+ END IF;
+ FOR t IN SELECT c.oid,c.relname,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
+  IF t.relname IN('orders','order_lines','order_adjustments') AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN
+   RAISE EXCEPTION 'orders RLS must ENABLE and FORCE';
+  END IF;
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=privilege='SELECT' AND t.relname IN('orders','order_lines','order_adjustments','tenants','inventory_reservations','outbox_events')
+    OR privilege='INSERT' AND t.relname IN('orders','order_lines','order_adjustments');
+   allowed:=ARRAY[]::text[];
+   IF expected THEN SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+   ELSIF privilege='UPDATE' AND t.relname='orders' THEN allowed:=ARRAY['state','version','sealed','refunded_minor','updated_at'];
+   ELSIF privilege='UPDATE' AND t.relname='inventory_reservations' THEN allowed:=ARRAY['id'];
+   ELSIF privilege='INSERT' AND t.relname='outbox_events' THEN allowed:=ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key','created_at'];
+   END IF;
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected
+    OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'orders executor table privilege mismatch app.% %',t.relname,privilege;
+   END IF;
+   IF privilege IN('SELECT','INSERT','UPDATE','REFERENCES') THEN
+    FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     IF has_column_privilege(r.oid,t.oid,a.attnum,privilege) IS DISTINCT FROM (a.attname::text=ANY(allowed))
+      OR has_column_privilege(r.oid,t.oid,a.attnum,privilege||' WITH GRANT OPTION') THEN
+      RAISE EXCEPTION 'orders executor column privilege mismatch app.%.% %',t.relname,a.attname,privilege;
+     END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl FROM pg_proc p
+  JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' LOOP
+  IF f.proname=ANY(names) AND (f.proowner<>'app_orders_executor'::regrole
+   OR f.prosecdef IS DISTINCT FROM (f.proname<>'orders_guard')
+   OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE')) THEN
+   RAISE EXCEPTION 'unsafe orders function %',f.proname;
+  END IF;
+  IF has_function_privilege('app_orders_executor',f.oid,'EXECUTE') IS DISTINCT FROM
+   (f.proname=ANY(names) OR f.proname IN('inventory_commit','inventory_release'))
+   OR has_function_privilege('app_orders_executor',f.oid,'EXECUTE WITH GRANT OPTION') THEN
+   -- An owner implicitly has grant option for its own routines.
+   IF NOT (f.proname=ANY(names) AND f.proowner='app_orders_executor'::regrole) THEN
+    RAISE EXCEPTION 'orders foreign routine authority %',f.proname;
+   END IF;
+  END IF;
+  IF f.proname=ANY(names) THEN
+   FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
+    'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_ledger_executor'] LOOP
+    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition','orders_lock_reservations');
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
+     OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'orders routine authority % %',role_name,f.proname;
+    END IF;
+   END LOOP;
+  END IF;
+ END LOOP;
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
+  RAISE EXCEPTION 'orders function contract incomplete';
+ END IF;
+END $orders$;
+SELECT 'PASS: orders exact role/table/column/routine and FORCE RLS matrix' AS result;

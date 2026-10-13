@@ -68,6 +68,7 @@ expected = [
     'db_customers.sql',
     'db_ledger.sql',
     'db_catalog_api.sql',
+    'db_orders.sql',
     'db_storefront.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
@@ -144,4 +145,9 @@ fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_customers.sql' in failed.stdout
+    env['FAKE_FAIL_ON'] = 'ORDERS_GATE'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_orders.sql' in failed.stdout
+    assert 'PASS: module ownership' not in failed.stdout
 print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, propagates failures (mock psql; NO SQL executed)')
