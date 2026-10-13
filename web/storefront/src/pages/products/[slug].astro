@@ -1,7 +1,12 @@
 ---
-/** Responsibility: read-only product detail SSR route; dependency: published page composition. */
+/** Responsibility: published product SSR and private fixture-session initialization before rendering.
+ * Dependencies: published reader, purchasing boundary; caller: Astro router. Invariant: response cookies/headers are written at route level.
+ */
 import PublishedPage from '../../components/PublishedPage.astro';
 import { preparePublishedPage } from '../../lib/published-page';
+import { readPurchaseContext } from '../../lib/commerce-server';
 const view = await preparePublishedPage(Astro, `/products/${Astro.params.slug}`);
+const purchaseContext = !view.status && view.product ? await readPurchaseContext(Astro.request, Astro.cookies) : undefined;
+if (purchaseContext?.enabled) Astro.response.headers.set('Cache-Control', 'no-store');
 ---
-<PublishedPage view={view} />
+<PublishedPage view={view} purchaseContext={purchaseContext} />
