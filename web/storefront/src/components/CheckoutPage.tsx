@@ -78,8 +78,8 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
       {!loading && !error && !ready && <EmptyState title={cart?.cart.lines.length ? ui.pricingUnavailable : ui.emptyCart} action={<a href="/cart">{ui.backCart}</a>} />}
       {ready && !result && <div className="purchase-layout">
         <form className="checkout-form" onSubmit={review} noValidate>
-          {context.actor === 'guest' && <fieldset disabled={busy}><legend>{ui.checkoutContact}</legend><div className="purchase-fields">{input('email', true, 254)}{input('name')}{input('phone', false, 64)}</div></fieldset>}
-          <fieldset disabled={busy}><legend>{ui.shippingAddress}</legend><div className="purchase-fields">{input('country', true, 2)}{input('address1', true)}{input('address2')}{input('city', true, 128)}{input('subdivision', false, 128)}{input('postal_code', true, 32)}</div></fieldset>
+          {context.actor === 'guest' && <fieldset disabled={busy}><legend>{ui.checkoutContact}</legend><div className="purchase-fields">{input('email', true, 254)}{input('name', false, 200)}{input('phone', false, 64)}</div></fieldset>}
+          <fieldset disabled={busy}><legend>{ui.shippingAddress}</legend><div className="purchase-fields">{input('country', true, 2)}{input('address1', true)}{input('address2')}{input('city', true, 128)}{input('subdivision', false, 100)}{input('postal_code', true, 32)}</div></fieldset>
           <div className="purchase-actions"><Button type="submit" loading={busy}>{ui.reviewTotals}</Button><a href="/cart">{ui.backCart}</a></div>
         </form>
         <aside className="purchase-summary"><h2>{ui.total}</h2><p className="purchase-muted">{ui.totalsDescription}</p>

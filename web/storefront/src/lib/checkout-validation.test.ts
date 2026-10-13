@@ -25,3 +25,8 @@ test('customer checkout validates only address and never emits guest buyer_conta
   expect(checkoutInput(fields, 'customer')).toEqual({ shipping_address: { country: 'US', address1: '1 Main Street', city: 'Boston', subdivision: 'MA', postal_code: '02108' } });
   expect(validateCheckout({ ...fields, country: 'us' }, 'customer').country).toBe('country');
 });
+test('name and subdivision follow checkout contract limits', () => {
+  expect(validateCheckout({ ...valid, name: 'n'.repeat(200), subdivision: 's'.repeat(100) })).toEqual({});
+  expect(validateCheckout({ ...valid, name: 'n'.repeat(201) }).name).toBe('tooLong');
+  expect(validateCheckout({ ...valid, subdivision: 's'.repeat(101) }).subdivision).toBe('tooLong');
+});

@@ -7,7 +7,7 @@ export type ValidationError = 'required' | 'tooLong' | 'country' | 'email';
 export type CheckoutErrors = Partial<Record<keyof CheckoutFields, ValidationError>>;
 export function validateCheckout(fields: CheckoutFields, actor: PurchaseContext['actor'] = 'guest'): CheckoutErrors {
   const errors: CheckoutErrors = {};
-  const limits = { email: 254, name: 256, phone: 64, country: 2, address1: 256, address2: 256, city: 128, subdivision: 128, postal_code: 32 } as const;
+  const limits = { email: 254, name: 200, phone: 64, country: 2, address1: 256, address2: 256, city: 128, subdivision: 100, postal_code: 32 } as const;
   for (const field of Object.keys(limits) as (keyof CheckoutFields)[]) {
     if (actor === 'customer' && ['email', 'name', 'phone'].includes(field)) continue;
     if (fields[field].length > limits[field]) errors[field] = 'tooLong';

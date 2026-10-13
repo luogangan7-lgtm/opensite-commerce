@@ -205,6 +205,7 @@ test('commerce upstream contract: private owner, If-Match, API pricing and idemp
   expect(await preview.json()).toMatchObject({ subtotal_minor: '4800', tax_minor: '480', shipping_minor: '500', total_minor: '5780' });
   const checkoutHeaders = { ...headers, 'Idempotency-Key': `test-${crypto.randomUUID()}` };
   expect((await upstream(request, unique, `${prefix}/checkout`, 'POST', { ...input, shipping_address: { country: 'US', postal_code: '10001' } }, checkoutHeaders)).status()).toBe(422);
+  expect((await upstream(request, unique, `${prefix}/checkout`, 'POST', { ...input, buyer_contact: { ...input.buyer_contact, name: 'x'.repeat(201) } }, checkoutHeaders)).status()).toBe(422);
   const checkout = await upstream(request, unique, `${prefix}/checkout`, 'POST', input, checkoutHeaders);
   const result = await checkout.json(); expect(checkout.status()).toBe(201); expect(result).toMatchObject({ state: 'ready', amount_minor: 5780 });
   expect(await (await upstream(request, unique, `${prefix}/checkout`, 'POST', input, checkoutHeaders)).json()).toEqual(result);
@@ -212,5 +213,8 @@ test('commerce upstream contract: private owner, If-Match, API pricing and idemp
   expect((await upstream(request, foreign, '/__fixture/payment', 'POST', { checkout_id: result.checkout_id, outcome: 'captured' }, headers)).status()).toBe(404);
   expect((await upstream(request, unique, '/__fixture/payment', 'POST', { checkout_id: result.checkout_id, outcome: 'captured' }, headers)).status()).toBe(200);
   expect(await (await upstream(request, unique, '/__fixture/completion', 'GET', undefined, headers)).json()).toMatchObject({ state: 'paid' });
+  const current = await upstream(request, unique, cartPath, 'GET', undefined, headers);
+  const emptied = await upstream(request, unique, `${cartPath}/lines/${sku}`, 'DELETE', undefined, { ...headers, 'If-Match': current.headers().etag });
+  expect(emptied.status()).toBe(200); expect((await emptied.json()).lines).toEqual([]);
   expect(await (await upstream(request, unique, `${prefix}/checkout`, 'POST', input, checkoutHeaders)).json()).toEqual(result);
 });

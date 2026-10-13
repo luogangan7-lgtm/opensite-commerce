@@ -40,7 +40,7 @@ function shipping(value: unknown): boolean {
 function checkoutAddress(value: unknown): boolean {
   if (!shipping(value)) return false;
   const address = value as Record<string, unknown>;
-  const limits: Record<string, number> = { country: 2, address1: 256, address2: 256, city: 128, subdivision: 128, postal_code: 32 };
+  const limits: Record<string, number> = { country: 2, address1: 256, address2: 256, city: 128, subdivision: 100, postal_code: 32 };
   if (Object.keys(address).some(key => !(key in limits))) return false;
   if (['address1', 'city', 'postal_code'].some(key => typeof address[key] !== 'string' || !String(address[key]).trim())) return false;
   return Object.entries(address).every(([key, value]) => typeof value === 'string' && value.length <= limits[key]);
@@ -49,7 +49,7 @@ function guestContact(value: unknown): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const contact = value as Record<string, unknown>;
   return typeof contact.email === 'string' && contact.email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email) &&
-    Object.entries(contact).every(([key, value]) => ['email', 'name', 'phone'].includes(key) && typeof value === 'string' && value.length <= (key === 'phone' ? 64 : 254));
+    Object.entries(contact).every(([key, value]) => ['email', 'name', 'phone'].includes(key) && typeof value === 'string' && value.length <= (key === 'phone' ? 64 : key === 'name' ? 200 : 254));
 }
 export const commerceFixtureServer = createServer(async (req, res) => {
   try {
@@ -107,11 +107,11 @@ export const commerceFixtureServer = createServer(async (req, res) => {
     if (path === `${prefix}/checkout` && method === 'POST') {
       const input = await body(req); const key = req.headers['idempotency-key'];
       if (typeof key !== 'string' || !/^[!-~]{1,128}$/.test(key)) return reject(res, 400, 'idempotency_key_required');
+      const fingerprint = JSON.stringify(input); const previous = session.idempotency.get(key);
+      if (previous) return previous.fingerprint === fingerprint ? reply(res, 200, previous.result) : reject(res, 422, 'idempotency_conflict');
       if (input.cart_id !== cart.id || !checkoutAddress(input.shipping_address) || !cart.lines.length) return reject(res, 422, 'checkout_invalid');
       if (session.actor === 'customer' && input.buyer_contact !== undefined) return reject(res, 422, 'buyer_contact_forbidden');
       if (session.actor === 'guest') { if (!guestContact(input.buyer_contact)) return reject(res, 422, 'buyer_contact_required'); }
-      const fingerprint = JSON.stringify(input); const previous = session.idempotency.get(key);
-      if (previous) return previous.fingerprint === fingerprint ? reply(res, 200, previous.result) : reject(res, 422, 'idempotency_conflict');
       if (session.checkout?.state === 'paid') return reject(res, 409, 'cart_consumed');
       const ordinal = String(session.idempotency.size + 1).padStart(12, '0');
       const result: Checkout = { checkout_id: `c09c0010-0000-4000-8000-${ordinal}`, order_id: `c09c0011-0000-4000-8000-${ordinal}`, state: 'ready', amount_minor: Number(totals(cart).total_minor), currency: 'USD', order_version: 1, payment: { provider_ref: `fake:${ordinal}`, status: 'authorized' } };
