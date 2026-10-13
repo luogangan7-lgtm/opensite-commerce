@@ -146,17 +146,19 @@ TAX_DB=""
 CUSTOMERS_DB=""
 LEDGER_DB=""
 ORDERS_DB=""
+STOREFRONT_DB=""
 QUOTES_DB=""
 CATALOG_DB=""
 CART_DB=""
 QUEUE_DB=""
 LIMITS_DB=""
+OPS_METRICS_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUOTES_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$QUOTES_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -750,6 +752,7 @@ for f in migrations/[0-9][0-9][0-9]_*.sql; do
 done
 river_db "$DB" --verify
 db "$DB" -f tests/db_reliability_limits.sql >/dev/null
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; LIMITS_DB=""
 pass 'reliability limits upgrade preserves delivery identity, retires exhausted work, accepts live final ACK'
@@ -853,6 +856,85 @@ if ! db "$CART_DB" < tests/db_cart.sql >/dev/null || ! db "$CART_DB" < tests/db_
 else pass 'cart upgrade preserves prior customers/catalog; owner/CAS and exact privilege gate pass'; fi
 admin -c "DROP DATABASE $CART_DB" >/dev/null; CART_DB=""
 
+# Public content capability is added only after all logical predecessors; the
+# same committed release/secret witnesses survive the forward role migration.
+storefront=(migrations/[0-9][0-9][0-9]_storefront_read.sql)
+[[ ${#storefront[@]} == 1 ]] || { echo 'FAIL: exactly one storefront read migration required' >&2; exit 1; }
+STOREFRONT_DB=storefront_upgrade_$$
+admin -c "CREATE DATABASE $STOREFRONT_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${storefront[0]} ]] || break
+ apply_forward "$STOREFRONT_DB" "$f"
+done
+db "$STOREFRONT_DB" < tests/fixtures/storefront_seed.sql >/dev/null
+before=$(db "$STOREFRONT_DB" -c "SELECT has_column_privilege('app_domain_resolver','app.page_revisions','document','SELECT')")
+[[ $before == f ]] || bad 'storefront predecessors unexpectedly grant page content'
+if red=$(db "$STOREFRONT_DB" < tests/db_storefront.sql 2>&1); then
+ bad 'storefront new SQL invariants unexpectedly pass before capability migration'
+elif [[ $red == *'permission denied for table site_releases'* ]]; then
+ pass 'storefront pre-migration negative: published content capability is absent (42501)'
+else bad "storefront pre-migration failed for an unexpected reason: $red"; fi
+apply_forward "$STOREFRONT_DB" "${storefront[0]}"
+result=$(db "$STOREFRONT_DB" <<'SQL'
+BEGIN READ ONLY;
+SET LOCAL ROLE app_domain_resolver;
+SELECT set_config('app.public_hostname','localhost',true);
+SELECT 'STOREFRONT_UPGRADE='||(SELECT count(*) FROM app.site_releases)||'|'||
+ (SELECT count(*) FROM app.page_revisions)||'|'||
+ (SELECT count(*) FROM app.page_revisions WHERE document::text LIKE '%DRAFT%');
+COMMIT;
+SQL
+)
+[[ $result == *'STOREFRONT_UPGRADE=1|2|0'* ]] || bad "storefront populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${storefront[0]} ]] || continue
+ apply_forward "$STOREFRONT_DB" "$f"
+done
+river_db "$STOREFRONT_DB" --verify
+if ! db "$STOREFRONT_DB" < tests/db_storefront.sql >/dev/null || ! db "$STOREFRONT_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'storefront RLS/role matrix after populated upgrade'
+else pass 'storefront upgrade exposes current sealed pinned pages; draft witnesses stay hidden'; fi
+admin -c "DROP DATABASE $STOREFRONT_DB" >/dev/null; STOREFRONT_DB=""
+
+# Every module step above reports through bad(); aggregate them before the overall PASS.
+[[ $fail -eq 0 ]] || exit 1
+# C23a: add only the metrics capability over populated pending and DLQ-only
+# tenants; preserve event identity/content and every prior forward migration.
+ops_metrics=(migrations/[0-9][0-9][0-9]_ops_metrics.sql)
+[[ ${#ops_metrics[@]} == 1 ]] || { bad 'exactly one ops-metrics migration required'; exit 1; }
+OPS_METRICS_DB=upgrade_ops_metrics_$$; DB=$OPS_METRICS_DB
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${ops_metrics[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('ops-existing-pending') RETURNING id AS ta \gset
+INSERT INTO app.tenants(name) VALUES('ops-existing-DLQ-only') RETURNING id AS tb \gset
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key,status,created_at)
+ VALUES(:'ta','ops.legacy','{"witness":"pending"}','test','legacy-pending','pending',clock_timestamp()-interval '1 minute'),
+       (:'tb','ops.legacy','{"witness":"dead"}','test','legacy-dead','dead_letter',clock_timestamp()-interval '1 hour');
+SQL
+apply_forward "$DB" "${ops_metrics[0]}"
+result=$(db "$DB" <<'SQL'
+SELECT 'OPS_PRESERVED='||count(*)||'|'||count(*) FILTER(WHERE status='pending' AND payload->>'witness'='pending')||'|'||
+ count(*) FILTER(WHERE status='dead_letter' AND payload->>'witness'='dead') FROM app.outbox_events;
+SET ROLE app_outbox_worker;
+SELECT 'OPS_METRICS='||pending||'|'||dead_letters||'|'||(oldest_pending_age_seconds>=60) FROM app.outbox_metrics();
+RESET ROLE;
+SQL
+)
+[[ $result == *'OPS_PRESERVED=2|1|1'* && $result == *'OPS_METRICS=1|1|true'* ]] || bad "ops-metrics populated upgrade: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${ops_metrics[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+river_db "$DB" --verify
+admin -c "DROP DATABASE $DB"; OPS_METRICS_DB=""
+pass 'ops metrics preserves pending/DLQ-only tenants and exposes only aggregate worker gauges'
+[[ $fail -eq 0 ]] || exit 1
 # Quotes takes over the existing005 inquiry table without rebuilding contacts.
 # Filename order applies every predecessor, including any integrator renumbering.
 quotes=(migrations/[0-9][0-9][0-9]_quotes.sql)
@@ -882,7 +964,5 @@ if ! db "$QUOTES_DB" < tests/db_quotes.sql >/dev/null || ! db "$QUOTES_DB" < tes
  bad 'quotes lifecycle and exact role matrix after populated inquiry upgrade'
 else pass 'quotes forward ALTER preserves existing contact inquiry and runtime lifecycle/grants'; fi
 admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
-
-
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart and quotes upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics and quotes upgrade gates'

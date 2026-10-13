@@ -250,7 +250,7 @@
       "name": "publish",
       "status": "implemented",
       "go_path": "internal/modules/publish",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "site_releases",
         "site_release_routes",
@@ -276,6 +276,10 @@
         {
           "operation_id": "publishSiteDraft",
           "status": "planned"
+        },
+        {
+          "operation_id": "getPublishedSite",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -287,7 +291,11 @@
       "tests": [
         "internal/pagegraph/graph_test.go",
         "tests/db_release_integrity.sql",
-        "tests/db_publish_isolation.sql"
+        "tests/db_publish_isolation.sql",
+        "internal/modules/publish/contract/read_test.go",
+        "internal/modules/publish/internal/service/read_test.go",
+        "internal/modules/publish/handler_test.go",
+        "tests/db_storefront.sql"
       ],
       "scopes": [
         "site.draft.write",
@@ -350,7 +358,8 @@
         "tests/db_security_hardening.sql",
         "tests/db_security_services.sql",
         "tests/db_security_audit.sql",
-        "tests/db_role_matrix.sql"
+        "tests/db_role_matrix.sql",
+        "tests/db_ops_metrics.sql"
       ],
       "scopes": [],
       "note": "Owns cross-cutting role and policy migrations, not application tables. Security hardening never transfers table ownership."
@@ -1016,7 +1025,25 @@
       ]
     },
     {
-      "file": "migrations/024_quotes.sql",
+      "file": "migrations/024_storefront_read.sql",
+      "owner": "publish",
+      "touches_tables": [
+        "site_domains",
+        "sites",
+        "site_releases",
+        "site_release_routes",
+        "page_revisions"
+      ]
+    },
+    {
+      "file": "migrations/025_ops_metrics.sql",
+      "owner": "platform-security",
+      "touches_tables": [
+        "outbox_events"
+      ]
+    },
+    {
+      "file": "migrations/026_quotes.sql",
       "owner": "quotes",
       "touches_tables": [
         "inquiries",

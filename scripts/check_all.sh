@@ -19,6 +19,9 @@ python3 tests/test_sqlc_contract_static.py
 python3 tests/test_shipping_contract_static.py
 python3 tests/test_api_contract.py
 python3 tests/test_quotes_contract.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_ops_deploy tests.test_ops_backup tests.test_ops_drill tests.test_ops_connection_policy
 python3 scripts/check_oapi_codegen.py
-bash -n scripts/*.sh
+for script in scripts/*.sh; do
+ bash -n "$script"
+done
 echo 'PASS: offline checks (does not test PostgreSQL or production API)'

@@ -146,6 +146,9 @@ BEGIN
      allowed_columns := CASE t.relname
       WHEN 'site_domains' THEN ARRAY['tenant_id','site_id','normalized_hostname','status','verified_at']
       WHEN 'sites' THEN ARRAY['tenant_id','id','published_release_id','default_locale']
+      WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','sealed','manifest']
+      WHEN 'site_release_routes' THEN ARRAY['tenant_id','site_id','release_id','locale','path','page_id','page_revision']
+      WHEN 'page_revisions' THEN ARRAY['tenant_id','site_id','page_id','locale','revision','document']
       ELSE ARRAY[]::text[] END;
     END IF;
     IF has_table_privilege(role_name,t.oid,privilege) IS DISTINCT FROM expected_table THEN
@@ -257,7 +260,7 @@ BEGIN
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants',
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants','outbox_metrics',
    'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
@@ -281,7 +284,7 @@ BEGIN
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants',
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants','outbox_metrics',
    'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
@@ -686,7 +689,7 @@ BEGIN
 END $queue_matrix$;
 SELECT 'PASS: queue exact table-column-sequence-function matrix and isolated worker capability' AS result;
 
--- Outbox discovery intentionally grants only cross-tenant work IDs, no payload.
+-- Outbox broker grants work tenant IDs and aggregate gauges, never event content.
 DO $discovery_matrix$
 DECLARE r record; t record; a record; f record; privilege text; expected boolean; role_name text;
  roles text[]:=ARRAY['app_runtime','app_queue_worker','app_customer_auth','app_ledger_executor','app_auth','app_domain_resolver','app_domain_verifier','app_media_service','app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_outbox_tenant_broker','app_orders_executor'];
@@ -700,25 +703,28 @@ BEGIN
    IF has_table_privilege(r.oid,t.oid,privilege) OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_TABLE_CAPABILITY'; END IF;
    IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
     FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
-     expected:=t.relname='outbox_events' AND privilege='SELECT' AND a.attname=ANY(ARRAY['tenant_id','status']);
+     expected:=t.relname='outbox_events' AND privilege='SELECT' AND a.attname=ANY(ARRAY['tenant_id','status','created_at']);
      IF has_column_privilege(r.oid,t.oid,a.attnum,privilege) IS DISTINCT FROM expected OR has_column_privilege(r.oid,t.oid,a.attnum,privilege||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_COLUMN_CAPABILITY'; END IF;
     END LOOP;
    END IF;
   END LOOP;
  END LOOP;
- SELECT p.* INTO STRICT f FROM pg_proc p WHERE p.oid='app.outbox_active_tenants(uuid,integer)'::regprocedure;
- IF f.proowner<>r.oid OR NOT f.prosecdef OR f.proretset IS DISTINCT FROM true OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
- OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0) THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_ROUTINE_OWNER'; END IF;
- FOREACH role_name IN ARRAY roles LOOP
-  expected:=role_name=ANY(ARRAY['app_outbox_worker','app_outbox_tenant_broker']);
-  IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') IS DISTINCT FROM (role_name='app_outbox_tenant_broker') THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_EXECUTE_CAPABILITY: %',role_name; END IF;
+ FOR f IN SELECT p.* FROM pg_proc p WHERE p.oid=ANY(ARRAY[
+  'app.outbox_active_tenants(uuid,integer)'::regprocedure,'app.outbox_metrics()'::regprocedure]) LOOP
+  IF f.proowner<>r.oid OR NOT f.prosecdef OR f.proretset IS DISTINCT FROM true OR cardinality(f.proconfig) IS DISTINCT FROM 1
+  OR replace(f.proconfig[1],' ','') IS DISTINCT FROM (CASE WHEN f.proname='outbox_metrics' THEN 'search_path=pg_catalog,app' ELSE 'search_path=pg_catalog,app,pg_temp' END)
+  OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0) THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_ROUTINE_OWNER'; END IF;
+  FOREACH role_name IN ARRAY roles LOOP
+   expected:=role_name=ANY(ARRAY['app_outbox_worker','app_outbox_tenant_broker']);
+   IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') IS DISTINCT FROM (role_name='app_outbox_tenant_broker') THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_EXECUTE_CAPABILITY: % %',role_name,f.proname; END IF;
+  END LOOP;
  END LOOP;
  FOR f IN SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' LOOP
-  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM (f.oid='app.outbox_active_tenants(uuid,integer)'::regprocedure) THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_FOREIGN_ROUTINE'; END IF;
+  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM (f.oid=ANY(ARRAY['app.outbox_active_tenants(uuid,integer)'::regprocedure,'app.outbox_metrics()'::regprocedure])) THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_FOREIGN_ROUTINE'; END IF;
  END LOOP;
  IF NOT EXISTS(SELECT FROM pg_policy p WHERE p.polrelid='app.outbox_events'::regclass AND p.polname='outbox_tenant_discovery' AND p.polcmd='r' AND p.polroles=ARRAY[r.oid] AND pg_get_expr(p.polqual,p.polrelid)='true' AND p.polwithcheck IS NULL) THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_POLICY'; END IF;
 END $discovery_matrix$;
-SELECT 'PASS: outbox broker IDs-only exact table-column-routine/RLS matrix' AS result;
+SELECT 'PASS: outbox broker exact discovery/aggregate table-column-routine/RLS matrix' AS result;
 
 -- Quotes uses a non-login, non-inheritable command capability with no identity secrets.
 DO $quotes$

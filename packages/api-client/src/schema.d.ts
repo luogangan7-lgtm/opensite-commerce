@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/v1/public/sites/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Current sealed public release for a verified DNS hostname. Version-1 public manifest seals product view models derived from catalog published listings and pinned content revisions. */
+        get: operations["getPublishedSite"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -670,6 +687,41 @@ export interface components {
             cart: components["schemas"]["Cart"];
             cart_token?: string;
         };
+        PublishedBlock: {
+            /** @enum {string} */
+            kind: "heading" | "paragraph";
+            text: string;
+        };
+        PublishedNavigation: {
+            label: string;
+            href: string;
+        };
+        PublishedPage: {
+            /** @description Root-relative CMS path, including nested pages; product and error routes are reserved. */
+            path: string;
+            title: string;
+            description: string;
+            blocks: components["schemas"]["PublishedBlock"][];
+        };
+        PublishedProduct: {
+            id: string;
+            slug: string;
+            name: string;
+            description: string;
+            unit_amount: string;
+            currency: string;
+        };
+        PublishedSite: {
+            site_id: string;
+            release_id: string;
+            hostname: string;
+            locale: string;
+            title: string;
+            description: string;
+            navigation: components["schemas"]["PublishedNavigation"][];
+            pages: components["schemas"]["PublishedPage"][];
+            products: components["schemas"]["PublishedProduct"][];
+        };
         CreateAdminSession: {
             identifier: string;
             password: string;
@@ -1211,6 +1263,48 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getPublishedSite: {
+        parameters: {
+            query: {
+                host: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated immutable public snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishedSite"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description Published read unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     health: {
         parameters: {
             query?: never;

@@ -1,0 +1,10 @@
+---
+/** Responsibility: backend-unavailable error document; dependency: error composition. */
+import ErrorPage from '../components/ErrorPage.astro';
+import { requestCanonical } from '../lib/host-policy';
+const canonical = requestCanonical(Astro);
+const status = canonical ? 502 : 404;
+Astro.response.status = status;
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+<ErrorPage status={status} canonical={canonical} />

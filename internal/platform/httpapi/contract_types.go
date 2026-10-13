@@ -1,6 +1,6 @@
 // Responsibility: expose the platform typed API contract port to business services.
-// Dependency: pinned generated OpenAPI types; callers: catalog/media services and platform quote transport.
-// Invariant: generated server mounting stays in platform transports behind Router admission.
+// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish strict services and platform quote transport.
+// Invariant: generated server mounting stays in StrictRoutes or platform transports behind Router admission.
 // Type aliases preserve compiler-checked oneOf/nullable/responses without copies.
 package httpapi
 
@@ -63,6 +63,13 @@ type UploadSessionStatus = generated.UploadSessionStatus
 type Variant = generated.Variant
 type VariantLifecycleStatus = generated.VariantLifecycleStatus
 type VariantList = generated.VariantList
+type GetPublishedSiteRequestObject = generated.GetPublishedSiteRequestObject
+type GetPublishedSiteResponseObject = generated.GetPublishedSiteResponseObject
+type GetPublishedSite200JSONResponse = generated.GetPublishedSite200JSONResponse
+type GetPublishedSite404ApplicationProblemPlusJSONResponse = generated.GetPublishedSite404ApplicationProblemPlusJSONResponse
+type GetPublishedSite503ApplicationProblemPlusJSONResponse = generated.GetPublishedSite503ApplicationProblemPlusJSONResponse
+type Problem = generated.Problem
+type PublishedSite = generated.PublishedSite
 
 type AcceptQuote200JSONResponse = generated.AcceptQuote200JSONResponse
 type AcceptQuote200ResponseHeaders = generated.AcceptQuote200ResponseHeaders

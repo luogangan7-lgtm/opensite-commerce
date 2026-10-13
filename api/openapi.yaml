@@ -4,8 +4,8 @@ info:
   version: 0.7.0-draft
   description: >-
     Contract-first first-vertical-slice API. Declared operations are not all implemented in this increment. Tenant
-    business targets come from the URL path; credentials authorize them. Health, catalog, media and cart operations are implemented; other
-    operations are planned contracts.
+    business targets come from the URL path; credentials authorize them. Health, catalog, media, cart and the published-site
+    read operations are implemented; other operations are planned contracts.
 servers:
   - url: /
 security:
@@ -21,6 +21,41 @@ tags:
   - name: Health
   - name: Quotes
 paths:
+  /api/v1/public/sites/current:
+    get:
+      tags: [Builder]
+      operationId: getPublishedSite
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Current sealed public release for a verified DNS hostname. Version-1 public manifest seals product view models derived from catalog published listings and pinned content revisions.
+      parameters:
+        - name: host
+          in: query
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 254}
+      responses:
+        '200':
+          description: Validated immutable public snapshot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PublishedSite'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503':
+          description: Published read unavailable
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
   /healthz:
     get:
       tags: [Health]
@@ -2297,6 +2332,74 @@ components:
           pattern: ^[A-Za-z0-9_-]{43}$
           minLength: 43
           maxLength: 43
+    PublishedBlock:
+      type: object
+      additionalProperties: false
+      required: [kind, text]
+      properties:
+        kind: {type: string, enum: [heading, paragraph]}
+        text: {type: string, minLength: 1, maxLength: 10000}
+    PublishedNavigation:
+      type: object
+      additionalProperties: false
+      required: [label, href]
+      properties:
+        label: {type: string, minLength: 1, maxLength: 200}
+        href: {type: string, pattern: '^/(?:[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*)?$', maxLength: 512}
+    PublishedPage:
+      type: object
+      additionalProperties: false
+      required: [path, title, description, blocks]
+      properties:
+        path:
+          type: string
+          description: Root-relative CMS path, including nested pages; product and error routes are reserved.
+          pattern: '^/(?:[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*)?$'
+          maxLength: 512
+          not:
+            anyOf:
+              - enum: ['/404', '/502', '/products']
+              - pattern: '^/products/'
+        title: {type: string, minLength: 1, maxLength: 300}
+        description: {type: string, maxLength: 2000}
+        blocks:
+          type: array
+          maxItems: 200
+          items: {$ref: '#/components/schemas/PublishedBlock'}
+    PublishedProduct:
+      type: object
+      additionalProperties: false
+      required: [id, slug, name, description, unit_amount, currency]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 128}
+        slug: {type: string, pattern: '^[a-zA-Z0-9_-]+$', maxLength: 502}
+        name: {type: string, minLength: 1, maxLength: 300}
+        description: {type: string, maxLength: 10000}
+        unit_amount: {type: string, pattern: '^(0|[1-9][0-9]{0,37})$'}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+    PublishedSite:
+      type: object
+      additionalProperties: false
+      required: [site_id, release_id, hostname, locale, title, description, navigation, pages, products]
+      properties:
+        site_id: {type: string}
+        release_id: {type: string}
+        hostname: {type: string}
+        locale: {type: string}
+        title: {type: string, minLength: 1, maxLength: 300}
+        description: {type: string, maxLength: 2000}
+        navigation:
+          type: array
+          maxItems: 50
+          items: {$ref: '#/components/schemas/PublishedNavigation'}
+        pages:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/PublishedPage'}
+        products:
+          type: array
+          maxItems: 500
+          items: {$ref: '#/components/schemas/PublishedProduct'}
     CreateAdminSession:
       type: object
       required:

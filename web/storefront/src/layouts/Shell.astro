@@ -1,0 +1,43 @@
+---
+/** Responsibility: shared semantic document/SEO and merchant navigation.
+ * Dependencies: token/UI CSS, typed interface copy, local navigation validator.
+ * Callers: all storefront pages; invariants: escaped text, no credentials, one canonical pathname.
+ */
+import '@opensite/design-tokens/css';
+import '@opensite/ui/css';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '../styles.css';
+import { copy } from '../lib/copy';
+import { safeHref } from '../lib/presentation';
+interface Props {
+  title: string; description: string; canonical: string | undefined; siteTitle?: string; locale?: string;
+  navigation?: { label: string; href: string }[]; noindex?: boolean; homeHref?: string | undefined;
+}
+const { title, description, canonical, siteTitle, locale = 'en', navigation = [], noindex = false, homeHref = '/' } = Astro.props;
+const ui = copy(locale);
+const links = navigation.map(link => ({ ...link, href: safeHref(link.href) })).filter(link => link.href);
+---
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {canonical && <link rel="canonical" href={canonical} />}
+    {noindex && <meta name="robots" content="noindex" />}
+  </head>
+  <body>
+    <a class="skip-link" href="#content">{ui.skip}</a>
+    <header class="site-header">
+      {homeHref ? <a class="site-name" href={homeHref}>{siteTitle ?? ui.storefront}</a> : <span class="site-name">{siteTitle ?? ui.storefront}</span>}
+      <nav aria-label={ui.navigation}>
+        {links.map(link => <a href={link.href!} aria-current={link.href === Astro.url.pathname ? 'page' : undefined}>{link.label}</a>)}
+      </nav>
+    </header>
+    <main id="content" tabindex="-1"><slot /></main>
+    <footer class="site-footer">{siteTitle ?? ui.storefront}</footer>
+  </body>
+</html>
