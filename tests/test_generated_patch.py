@@ -6,7 +6,7 @@ scripts/apply_generated_patch.sh applies a downloaded patch exactly while
 refusing any patch that touches a non-generated path.
 """
 from pathlib import Path
-import os, shutil, subprocess, tempfile
+import json, os, shutil, subprocess, tempfile
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,7 +15,7 @@ GENERATED = ('internal/platform/httpapi/generated', 'internal/db', 'packages/api
 job = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']['generated-patch']
 assert job['permissions'] == {'contents': 'read'}, 'untrusted PR code: read-only token only'
 assert 'pull_request' in job['if']
-text = yaml.safe_dump(job)
+text = json.dumps(job)  # no line folding, unlike yaml.safe_dump
 for forbidden in ('secrets.', 'git push', 'git commit', 'pull_request_target', 'contents: write'):
     assert forbidden not in text, forbidden
 checkout = next(s for s in job['steps'] if s.get('uses', '').startswith('actions/checkout@'))
@@ -28,7 +28,7 @@ assert 'apply_generated_patch.sh' in text and 'generated-patch' in text
 
 FAKE_GH = '''#!/usr/bin/env bash
 # fake: gh run download <id> -n generated-patch -D <dir>
-[[ $1 $2 $4 $5 == "run download -n generated-patch" && $3 == 4242 && $6 == -D ]] || exit 9
+[[ "$1 $2 $4 $5" == "run download -n generated-patch" && $3 == 4242 && $6 == -D ]] || exit 9
 cp "$FAKE_PATCH" "$7/generated.patch"
 '''
 
