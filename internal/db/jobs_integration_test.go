@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	jobs "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/jobs"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"os"
 	"os/exec"
@@ -47,7 +48,7 @@ func jobsRolePool(t *testing.T, ctx context.Context, role, name string) *pgxpool
 		if os.Getenv("JOBS_REQUIRE_PG") == "1" {
 			t.Fatal("DATABASE_URL required")
 		}
-		t.Skip("NOT_RUN: DATABASE_URL absent")
+		pgxtest.Skip(t, "NOT_RUN: DATABASE_URL absent")
 	}
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -509,6 +510,7 @@ func (s jobsBlockingExpirer) Expire(ctx context.Context, tenant string, batch in
 
 func TestJobsPGCrashHelper(t *testing.T) {
 	if os.Getenv("JOBS_CRASH_HELPER") != "1" {
+		// Exempt: subprocess helper launched by its parent test; plain skip is intended.
 		t.Skip("subprocess only")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)

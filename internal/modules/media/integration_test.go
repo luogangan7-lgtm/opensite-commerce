@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"io"
 	"io/fs"
 	"net/http"
@@ -48,7 +49,7 @@ type uploadReceipt struct {
 func TestMediaPostgresHTTP(t *testing.T) {
 	dsn := os.Getenv("C07_MEDIA_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: C07_MEDIA_DATABASE_URL not configured")
+		pgxtest.Skip(t, "NOT_RUN: C07_MEDIA_DATABASE_URL not configured")
 	}
 	parsed, err := url.Parse(dsn)
 	// The disposable login inherits only app_media_service; URI query user must

@@ -10,21 +10,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestPricingGeneratedQuery(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

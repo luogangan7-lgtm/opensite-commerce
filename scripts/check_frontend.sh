@@ -14,4 +14,5 @@ bun run build:gallery
 bun run build:storefront
 bun run test:frontend
 bun test web/storefront/src/lib
+bun test web/admin/src
 echo 'PASS: frontend source gates'
