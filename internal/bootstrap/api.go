@@ -1,4 +1,4 @@
-// Package bootstrap wires catalog, media, cart, injected routes and operational telemetry.
+// Package bootstrap wires catalog, media, cart, customer, optional checkout, injected routes and operational telemetry.
 // Dependencies: module constructors, platform/httpapi and observability; caller: cmd/api.
 // It owns no business tables or pools. Registration errors refuse startup; request
 // contexts are bounded, route snapshots immutable and metric labels nonsensitive.
@@ -22,6 +22,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
+	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
 	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
@@ -42,6 +43,7 @@ type Config struct {
 	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
 	CMS                      publish.CMSHTTPConfig
 	Notifications            notificationcontract.Service
+	Checkout                 *checkout.Config
 	Customer                 customercontract.Service
 	CustomerOrigin           string
 	CustomerSecret           []byte
@@ -68,7 +70,17 @@ func New(config Config) (server *http.Server, err error) {
 			return cartcontract.AuthorizedActor{TenantID: actor.TenantID, CustomerID: actor.CustomerID}, nil
 		})
 	}
-	router := httpapi.New(routeAuthenticator{cart: cartModule, staff: config.Authenticator, customer: customerHTTP}, config.Logger)
+	var authenticator httpapi.Authenticator = routeAuthenticator{cart: cartModule, staff: config.Authenticator, customer: customerHTTP}
+	var checkoutRoutes []httpapi.Route
+	if config.Checkout != nil {
+		handler, err := checkout.New(*config.Checkout)
+		if err != nil {
+			return nil, err
+		}
+		authenticator = handler.Authenticator(authenticator)
+		checkoutRoutes = handler.Routes()
+	}
+	router := httpapi.New(authenticator, config.Logger)
 	health := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "health", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })}
 	routes := []httpapi.Route{health}
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
@@ -76,6 +88,7 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, orders.NewHTTP(config.Orders).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
 	routes = append(routes, publish.NewCMSHandler(config.CMS).Routes()...)
+	routes = append(routes, checkoutRoutes...)
 	if config.Quotes != nil {
 		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
 	}

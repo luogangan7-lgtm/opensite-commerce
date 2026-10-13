@@ -1054,12 +1054,62 @@ got=$(sql <<<"SELECT s.publication_revision||'|'||d.revision||'|'||d.status||'|'
 echo "CMS gate82 apply/publish lock order: $got (expected 2|2|open|1)"
 [[ $got == '2|2|open|1' ]] || fail=1
 
-# Gate 90: two genuinely overlapping connections for each single-use auth command.
+
+# Checkout durable claim competes before provider IO. Both winner directions
+# are synchronized by gates 90/91, with a witnessed contender row-lock wait.
+# Then only the committed claimant applies Orders/Ledger side effects. Outbox:
+# order.created + terminal event, plus the notifications fan-out email for paid. The Go
+# pgx E2E repeats this protocol through the actual Fake provider/service.
+for first_phase in confirming cancelling; do
+ read -r T SKU OID <<<"$(inventory_fixture)"
+ CID=$(sql <<<"SELECT uuidv7();")
+ sql <<SQL >/dev/null
+UPDATE app.tenants SET settlement_currency='USD' WHERE id='$T';
+INSERT INTO app.ledger_accounts(tenant_id,code,currency,account_type) VALUES
+ ('$T','cash','USD','asset'),('$T','accounts_receivable','USD','asset'),
+ ('$T','revenue','USD','revenue'),('$T','tax_payable','USD','liability'),('$T','shipping_revenue','USD','revenue');
+SELECT set_config('app.tenant_id','$T',false);
+SET ROLE app_runtime;
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','checkout-race-stock',900)).id AS rid \gset
+SELECT app.orders_create('$OID','checkout-race-order',sha256('race'::bytea),NULL,'{"email":"race@example.invalid"}','USD',20,'{}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','checkout-race','quantity',1,'unit_price_minor',100,
+ 'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',:'rid','tax_snapshot','{}'::jsonb)),'[]');
+INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,currency,
+ amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version,address_snapshot)
+ VALUES('$T','$CID','guest',repeat('a',64),'checkout-race',sha256('start'::bytea),uuidv7(),1,'$OID','USD',130,100,10,20,1,'{}');
+UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake-race',start_result='{}' WHERE tenant_id='$T' AND id='$CID';
+SQL
+ if [[ $first_phase == confirming ]]; then second_phase=cancelling; first_kind=payment; second_kind=cancel; final=paid; stock=0; journals=1; outbox=3; race_gate=90
+ else second_phase=confirming; first_kind=cancel; second_kind=payment; final=cancelled; stock=1; journals=0; outbox=2; race_gate=91; fi
+ claim_first="WITH changed AS (UPDATE app.checkout_sessions SET phase='$first_phase',claim_kind='$first_kind',claim_key='race-first' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_FIRST='||count(*) FROM changed;"
+ claim_second="WITH changed AS (UPDATE app.checkout_sessions SET phase='$second_phase',claim_kind='$second_kind',claim_key='race-second' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_SECOND='||count(*) FROM changed;"
+ gate_close "$race_gate"
+ tx checkout_first app_runtime "$T" "$claim_first $(park "$race_gate")" &
+ await checkout_first advisory
+ tx checkout_second app_runtime "$T" "$claim_second" &
+ await checkout_second "${ROWLOCK[@]}"
+ gate_open "$race_gate"; wait
+ expect checkout_first ok; expect checkout_second ok
+ result checkout_first 'C18_CLAIM_FIRST=1'; result checkout_second 'C18_CLAIM_SECOND=0'
+ finish="SELECT app.orders_transition('$OID','$final','checkout-race-terminal',0);"
+ if [[ $final == paid ]]; then
+ finish+=" SELECT app.post_ledger('$T','USD','order','$OID','checkout:race',
+ ARRAY[(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='accounts_receivable'),(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='revenue'),(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='tax_payable'),(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='shipping_revenue'),(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='cash'),(SELECT id FROM app.ledger_accounts WHERE tenant_id='$T' AND code='accounts_receivable')], ARRAY['debit','credit','credit','credit','debit','credit'],ARRAY[130,100,10,20,130,130]::bigint[]);"
+ fi
+ tx checkout_finish app_runtime "$T" "$finish UPDATE app.checkout_sessions SET phase='$final',final_result='{}' WHERE tenant_id='$T' AND id='$CID';"
+ expect checkout_finish ok
+ got=$(sql <<<"SELECT c.phase||'|'||o.state||'|'||s.on_hand||'|'||s.reserved||'|'||(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id='$T')||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T')||'|'||(SELECT count(*) FROM app.inventory_movements WHERE tenant_id='$T') FROM app.checkout_sessions c JOIN app.orders o ON(o.tenant_id,o.id)=(c.tenant_id,c.order_id) JOIN app.stock_levels s ON s.tenant_id=c.tenant_id WHERE c.tenant_id='$T' AND c.id='$CID';")
+ echo "checkout claim $first_phase wins: $got (expected $final|$final|$stock|0|$journals|$outbox|3)"
+ [[ $got == "$final|$final|$stock|0|$journals|$outbox|3" ]] || fail=1
+done
+
+
+# Gate 92: two genuinely overlapping connections for each single-use auth command.
 # Winner owns the customer lock and parks. Every contender must be observed
 # waiting on the row/transaction lock, never merely spawned, before release.
 for auth_case in verify reset rotate; do
  read -r T CUSTOMER PHC <<<"$(sql <<'SQL' | tail -1
-INSERT INTO app.tenants(name) VALUES('customer-auth-gate90-race') RETURNING id AS t \gset
+INSERT INTO app.tenants(name) VALUES('customer-auth-gate92-race') RETURNING id AS t \gset
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_customer_auth;
 SELECT app.customer_prepare_registration('race@example.invalid',
@@ -1082,7 +1132,7 @@ SQL
   tx auth_rotate_prepare app_customer_auth "$T" "SELECT app.customer_save_session('$CUSTOMER','$PHC',NULL,sha256('old-session'::bytea),clock_timestamp()+interval '1 day',clock_timestamp()+interval '1 hour');"
   expect auth_rotate_prepare ok
  fi
- gate_close 90
+ gate_close 92
  auth_jobs=()
  for participant in $(seq 0 1); do
   auth_command="app.customer_consume_verification(sha256('verify'::bytea))"
@@ -1092,7 +1142,7 @@ SQL
   elif [[ $auth_case == rotate ]]; then
    auth_command="(app.customer_save_session('$CUSTOMER','$PHC',sha256('old-session'::bytea),sha256('new-session-$participant'::bytea),clock_timestamp()+interval '1 day',clock_timestamp()+interval '1 hour') IS NOT NULL)"
   fi
-  auth_park=''; [[ $participant == 0 ]] && auth_park=$(park 90)
+  auth_park=''; [[ $participant == 0 ]] && auth_park=$(park 92)
   tx "auth_${auth_case}_$participant" app_customer_auth "$T" "SELECT 'AUTH_WIN='||($auth_command)::text; $auth_park" &
   auth_jobs+=("$!")
   [[ $participant != 0 ]] || await "auth_${auth_case}_0" advisory
@@ -1103,8 +1153,8 @@ SQL
   if [[ $blocked == 1 ]]; then auth_synchronized=1; break; fi
   sleep 0.05
  done
- [[ $auth_synchronized == 1 ]] || { echo "FAIL: CUSTOMER_AUTH_90_SYNC $auth_case expected1 blocked, observed$blocked"; fail=1; }
- gate_open 90
+ [[ $auth_synchronized == 1 ]] || { echo "FAIL: CUSTOMER_AUTH_92_SYNC $auth_case expected1 blocked, observed$blocked"; fail=1; }
+ gate_open 92
  for participant in $(seq 0 1); do
   await_job "auth_${auth_case}_$participant" "${auth_jobs[$participant]}"
   expect "auth_${auth_case}_$participant" ok
@@ -1117,11 +1167,11 @@ SQL
   auth_purpose=register; [[ $auth_case != reset ]] || auth_purpose=reset
   got=$(sql <<<"SELECT count(*) FROM app.customer_auth_tokens WHERE tenant_id='$T' AND purpose='$auth_purpose' AND consumed_at IS NOT NULL;")
  fi
- [[ $got == 1 ]] || { echo "FAIL: CUSTOMER_AUTH_90_END_STATE $auth_case expected1 observed$got"; fail=1; }
- echo "customer auth $auth_case: 2 synchronized connections (gate 90), exactly one winner"
+ [[ $got == 1 ]] || { echo "FAIL: CUSTOMER_AUTH_92_END_STATE $auth_case expected1 observed$got"; fail=1; }
+ echo "customer auth $auth_case: 2 synchronized connections (gate 92), exactly one winner"
 done
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/customer-auth contract" >&2; exit 1; fi
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
@@ -1134,6 +1184,7 @@ echo 'PASS: cart row-lock/CAS contender cannot overwrite winner line or version'
 echo 'PASS: orders pay/cancel and prelock/expiry races conserve inventory and events'
 echo 'PASS: quote approve/withdraw row-lock CAS races have exactly one winner and atomic outbox/approval'
 echo 'PASS: CMS gate80 one publisher, gate81 restore ABA epoch fence, gate82 apply/publish lock order'
+echo 'PASS: checkout confirm/cancel claims choose one durable winner with atomic order, stock, ledger and outbox witnesses'
 # Focused native River/claim/fence gates cannot silently skip for missing PG.
 reliability_packages=(./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)
 if [[ -n "${DATABASE_URL:-}" ]]; then
