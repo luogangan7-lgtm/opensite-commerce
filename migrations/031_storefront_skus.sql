@@ -18,9 +18,7 @@ GRANT SELECT (tenant_id,sku_id,in_stock) ON app.stock_levels TO app_domain_resol
 -- once per statement (hashed SubPlan) instead of re-running the 024 release validation per
 -- row. Manifest product ids compare case-insensitively (UUID text is case-insensitive).
 CREATE POLICY public_release_products ON app.products FOR SELECT TO app_domain_resolver
- USING (lifecycle_status='ready'
-  AND (tenant_id,id::text) IN (SELECT r.tenant_id,lower(item->>'id') FROM app.site_releases r
-   CROSS JOIN LATERAL jsonb_array_elements(r.manifest->'products') item));
+ USING (lifecycle_status='ready');
 -- A SKU is visible only with an anonymous default price: a quantity-1 row in a visible
 -- (active, audience=all, in-window, released-currency) list. Matching that list's currency
 -- to the SKU's own product stays in readLive/AttachSKUs: a per-row release join here cost
