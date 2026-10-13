@@ -102,6 +102,8 @@ def load_registry(root):
                 if "structure" in field:
                     require(isinstance(field["structure"], str) and field["structure"] in structures,
                             "PRIVACY_STRUCTURE_MISSING", key)
+                if field["classification"] == "secret_hash":
+                    require(field.get("export") == "exclude", "PRIVACY_SECRET_EXPORT", key)
                 if field["classification"] in PII:
                     subject = field.get("subject")
                     require(isinstance(subject, dict) and "tenant_key" in subject and
@@ -136,6 +138,12 @@ def validate_catalog(registry, rows):
     phantom = sorted(registry.keys() - actual.keys())
     require(not unknown, "PRIVACY_UNDECLARED_COLUMN", ", ".join(unknown))
     require(not phantom, "PRIVACY_PHANTOM_COLUMN", ", ".join(phantom))
+    for key, spec in registry.items():
+        tenant_key = (spec.get("subject") or {}).get("tenant_key")
+        if tenant_key:
+            schema, table, _ = field_parts(key)
+            require(field_key(schema, table, tenant_key) in actual, "PRIVACY_TENANT_KEY_UNKNOWN",
+                    f"{key} -> {tenant_key}")
     for key, row in actual.items():
         if row["udt_name"] in {"json", "jsonb", "bytea", "_json", "_jsonb", "_bytea"}:
             require(registry[key].get("structure"), "PRIVACY_STRUCTURE_MISSING", key)
@@ -248,6 +256,8 @@ def main():
     parser.add_argument("--prefix", default="run" + secrets.token_hex(4))
     args = parser.parse_args()
     try:
+        require(not args.manifest or args.fixture or args.emit_fixture, "PRIVACY_MANIFEST_USAGE",
+                "--manifest requires --fixture or --emit-fixture")
         root = args.root.resolve()
         registry = load_registry(root)
         require((root / "modules/registry.yaml").is_file(), "PRIVACY_REGISTRY_INVALID", "missing module ownership registry")
