@@ -21,6 +21,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Issues short-lived signed anonymous CSRF material in a Secure HttpOnly host-only cookie and returns the matching header token. No tenant context. */
+        get: operations["getAdminLoginChallenge"];
+        put?: never;
+        /** @description Requires the signed anonymous challenge cookie and matching X-CSRF-Token, plus the exact configured Origin. Always creates a fresh opaque session; rotation consumes a valid same-user old session atomically. Credentials and raw tokens are never included in problem details. */
+        post: operations["createStaffLoginSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Checks only active user and session, even after the last membership is suspended. Requires session-bound signed CSRF and exact configured Origin. Revokes the current session and clears the admin session cookie. */
+        post: operations["logoutCurrentStaffSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Active global user/session admission with idle and absolute expiry; no membership required. */
+        get: operations["getAdminSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -813,6 +865,22 @@ export interface components {
             pages: components["schemas"]["PublishedPage"][];
             products: components["schemas"]["PublishedProduct"][];
         };
+        LoginChallenge: {
+            csrf_token: string;
+        };
+        AdminLogin: {
+            email: string;
+            password: string;
+        };
+        AdminSessionView: {
+            /** Format: uuid */
+            user_id: string;
+            /** Format: uuid */
+            session_id: string;
+            /** Format: date-time */
+            expires_at: string;
+            csrf_token: string;
+        };
         CreateAdminSession: {
             identifier: string;
             password: string;
@@ -1334,6 +1402,8 @@ export interface components {
         CartId: string;
         SkuId: string;
         CartToken: string;
+        /** @description Signed anonymous login challenge with five-minute expiry; Secure HttpOnly SameSite=Lax Path=/ and no Domain. */
+        LoginChallengeCookie: string;
         /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
         TenantId: string;
         /** @description Session owned by the caller; never a token. */
@@ -1406,6 +1476,145 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getAdminLoginChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Anonymous login challenge; Cache-Control no-store */
+            200: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginChallenge"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    createStaffLoginSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
+                Origin: components["parameters"]["Origin"];
+            };
+            path?: never;
+            cookie: {
+                /** @description Signed anonymous login challenge with five-minute expiry; Secure HttpOnly SameSite=Lax Path=/ and no Domain. */
+                "__Host-osc_login_csrf": components["parameters"]["LoginChallengeCookie"];
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminLogin"];
+            };
+        };
+        responses: {
+            /** @description New admin session and signed known-device cookies; Cache-Control no-store */
+            201: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSessionView"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    logoutCurrentStaffSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
+                Origin: components["parameters"]["Origin"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session revoked; cookie cleared; Cache-Control no-store */
+            204: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getAdminSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current actor and session-bound CSRF; Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSessionView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
         };
     };
     health: {

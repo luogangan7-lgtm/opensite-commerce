@@ -56,7 +56,7 @@ BEGIN
  IF (SELECT count(document) FROM app.page_revisions)<>0 THEN RAISE EXCEPTION 'STOREFRONT_UNKNOWN_HOST'; END IF;
  BEGIN PERFORM document FROM app.draft_pages; RAISE EXCEPTION 'STOREFRONT_DRAFT_ACL'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN PERFORM product_code FROM app.products; RAISE EXCEPTION 'STOREFRONT_CATALOG_ACL'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
- -- 028: stock is public only as the generated in_stock boolean, never as counts.
+ -- storefront_skus: stock is public only as the generated in_stock boolean, never as counts.
  BEGIN PERFORM on_hand FROM app.stock_levels; RAISE EXCEPTION 'STOREFRONT_STOCK_COUNT_ACL'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN PERFORM reserved FROM app.stock_levels; RAISE EXCEPTION 'STOREFRONT_STOCK_COUNT_ACL'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN PERFORM quantity FROM app.inventory_reservations; RAISE EXCEPTION 'STOREFRONT_RESERVATION_ACL'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;

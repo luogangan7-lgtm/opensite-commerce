@@ -4,7 +4,7 @@
 // Dependencies: pgxadapter and publish contract; caller: publish facade.
 // Invariant: one repeatable-read snapshot, current sealed release, exact pinned page
 // revisions; locale comes from the sealed manifest; byte budget checked before
-// aggregation. Live SKUs/prices/stock are read in the same transaction (028 RLS).
+// aggregation. Live SKUs/prices/stock are read in the same transaction (storefront_skus RLS).
 package store
 
 import (
@@ -104,7 +104,7 @@ const LiveSKUSQL = `WITH released AS MATERIALIZED (
    ORDER BY v.product_id,v.sku,v.id LIMIT $2`
 
 // readLive scopes explicitly by the verified host's current sealed release AND relies on
-// 028 RLS; it never reads stock counts, only the generated in_stock boolean.
+// storefront_skus RLS; it never reads stock counts, only the generated in_stock boolean.
 func readLive(ctx context.Context, tx pgx.Tx, host string) (live service.Live, err error) {
 	const scope = `FROM app.site_domains d JOIN app.sites st ON (st.tenant_id,st.id)=(d.tenant_id,d.site_id)
    JOIN app.site_releases r ON (r.tenant_id,r.site_id,r.id)=(st.tenant_id,st.id,st.published_release_id)
