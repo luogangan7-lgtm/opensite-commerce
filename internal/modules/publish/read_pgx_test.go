@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/internal/store"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"net/url"
 	"os"
@@ -87,6 +88,11 @@ func TestPublicPublishedReadPG(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer close()
+	rawStore, closeStore, err := store.Open(ctx, publicDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeStore()
 	got, err := module.Current(ctx, "LOCALHOST.")
 	if err != nil || got.Title != "OpenSite sample shop" || len(got.Pages) != 3 || len(got.Products) != 2 {
 		t.Fatalf("public snapshot: %+v %v", got, err)
@@ -214,7 +220,7 @@ func TestPublicPublishedReadPG(t *testing.T) {
 	for _, nav := range []string{`[]`, `[{"label":"About","href":"/about"}]`} {
 		tenant, host := newUUID(t), "large-"+newUUID(t)[:8]+".c09.test"
 		if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, fmt.Sprintf(largeSiteSQL, tenant, host, nav))
+			_, err := tx.Exec(ctx, fmt.Sprintf(largeSiteSQL, tenant, host, nav, 1, 7, "en"))
 			return err
 		}); err != nil {
 			t.Fatal(err)
@@ -239,6 +245,34 @@ func TestPublicPublishedReadPG(t *testing.T) {
 			t.Fatalf("mutable default_locale changed sealed release read: %+v %v", after.Locale, err)
 		}
 	}
+	// Review thread rtzAC: an over-budget snapshot (two ~630 KB pages) is rejected by the
+	// store before pages are aggregated or transferred; rtvb1: lowercase locale is canonical.
+	for _, tc := range []struct {
+		pages, blocks int
+		locale        string
+		oversized     bool
+	}{{2, 70, "en", true}, {1, 7, "en-us", false}} {
+		tenant, host := newUUID(t), "budget-"+newUUID(t)[:8]+".c09.test"
+		if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, fmt.Sprintf(largeSiteSQL, tenant, host, `[]`, tc.pages, tc.blocks, tc.locale))
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		_, _, _, _, pages, err := rawStore.Current(ctx, host)
+		if tc.oversized {
+			if !errors.Is(err, contract.ErrUnavailable) || len(pages) != 0 {
+				t.Errorf("over-budget snapshot not rejected before aggregation: err=%v pages=%d bytes", err, len(pages))
+			}
+			if _, err := module.Current(ctx, host); !errors.Is(err, contract.ErrUnavailable) {
+				t.Errorf("over-budget snapshot served: %v", err)
+			}
+			continue
+		}
+		if got, err := module.Current(ctx, host); err != nil || got.Locale != "en-US" || len(got.Pages) != tc.pages {
+			t.Errorf("lowercase locale release: %+v %v", got.Locale, err)
+		}
+	}
 	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, "GRANT app_runtime TO "+quoted)
 		return err
@@ -261,27 +295,31 @@ func newUUID(t *testing.T) string {
 	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
 }
 
-// largeSiteSQL publishes one sealed release whose /about page is about 63 KB
-// (seven 9,000-character paragraphs). Args: tenant uuid, verified host, navigation JSON.
+// largeSiteSQL publishes one sealed release. Args: tenant uuid, verified host,
+// navigation JSON, page count, 9,000-character paragraphs per page, release locale.
+// The first page is /about (7 blocks is about 63 KB); others are /about-<n>.
 const largeSiteSQL = `DO $large$
 DECLARE t uuid := '%[1]s'; o uuid := gen_random_uuid(); s uuid := gen_random_uuid();
- pg uuid := gen_random_uuid(); rel uuid := gen_random_uuid(); m jsonb;
+ pg uuid; rel uuid := gen_random_uuid(); m jsonb; i int;
 BEGIN
  INSERT INTO app.tenants(id,name) VALUES(t,'C09 large page '||t);
  PERFORM set_config('app.tenant_id',t::text,true);
  EXECUTE 'SET LOCAL ROLE app_runtime';
  INSERT INTO app.organizations(tenant_id,id,display_name) VALUES(t,o,'C09 large');
- INSERT INTO app.sites(tenant_id,id,organization_id,name,default_locale) VALUES(t,s,o,'Large','en');
- INSERT INTO app.pages(tenant_id,site_id,id,page_key) VALUES(t,s,pg,'about');
- INSERT INTO app.page_revisions(tenant_id,site_id,page_id,locale,revision,document) VALUES(t,s,pg,'en',1,
-  jsonb_build_object('title','About','description','','blocks',
-   (SELECT jsonb_agg(jsonb_build_object('kind','paragraph','text',repeat('x',9000))) FROM generate_series(1,7))));
- m := jsonb_build_object('version',1,'locale','en','title','Large','description','',
+ INSERT INTO app.sites(tenant_id,id,organization_id,name,default_locale) VALUES(t,s,o,'Large','%[6]s');
+ m := jsonb_build_object('version',1,'locale','%[6]s','title','Large','description','',
   'navigation','%[3]s'::jsonb,'products','[]'::jsonb);
  INSERT INTO app.site_releases(tenant_id,site_id,id,release_no,renderer_build_id,manifest,manifest_hash)
   VALUES(t,s,rel,1,'c09-review',m,sha256(convert_to(m::text,'UTF8')));
- INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,page_id,page_revision)
-  VALUES(t,s,rel,'en','/about',pg,1);
+ FOR i IN 1..%[4]d LOOP
+  pg := gen_random_uuid();
+  INSERT INTO app.pages(tenant_id,site_id,id,page_key) VALUES(t,s,pg,'about'||i);
+  INSERT INTO app.page_revisions(tenant_id,site_id,page_id,locale,revision,document) VALUES(t,s,pg,'%[6]s',1,
+   jsonb_build_object('title','About','description','','blocks',
+    (SELECT jsonb_agg(jsonb_build_object('kind','paragraph','text',repeat('x',9000))) FROM generate_series(1,%[5]d))));
+  INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,page_id,page_revision)
+   VALUES(t,s,rel,'%[6]s',CASE WHEN i=1 THEN '/about' ELSE '/about-'||i END,pg,1);
+ END LOOP;
  EXECUTE 'RESET ROLE';
  EXECUTE 'SET LOCAL ROLE app_domain_verifier';
  INSERT INTO app.site_domains(tenant_id,site_id,hostname,status,verified_at) VALUES(t,s,'%[2]s','verified',now());

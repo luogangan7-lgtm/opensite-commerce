@@ -24,24 +24,34 @@ type manifest struct {
 
 var decimal = regexp.MustCompile(`^(0|[1-9][0-9]{0,37})$`)
 var currency = regexp.MustCompile(`^[A-Z]{3}$`)
-// Well-formed BCP 47 subset (language[-Script][-REGION](-variant)*) that Intl accepts;
+// Well-formed BCP 47 subset (language[-script][-region](-variant)*) that Intl accepts,
+// matched case-insensitively (BCP 47 tags are case-insensitive) on the lowercased tag;
 // duplicate variants are rejected separately because Intl rejects them too.
-var localePattern = regexp.MustCompile(`^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*$`)
+var localePattern = regexp.MustCompile(`^[a-z]{2,3}(?:-[a-z]{4})?(?:-(?:[a-z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*$`)
 
-func validLocale(v string) bool {
-	if !localePattern.MatchString(v) {
-		return false
+// canonicalLocale returns the tag in canonical case (en-US, zh-Hant-TW) or false.
+func canonicalLocale(v string) (string, bool) {
+	lower := strings.ToLower(v)
+	if !localePattern.MatchString(lower) {
+		return "", false
 	}
+	parts := strings.Split(lower, "-")
 	seen := map[string]bool{}
-	for _, part := range strings.Split(v, "-")[1:] {
-		if len(part) >= 5 || (len(part) == 4 && part[0] >= '0' && part[0] <= '9') {
+	for i := 1; i < len(parts); i++ {
+		part := parts[i]
+		switch {
+		case i == 1 && len(part) == 4 && part[0] >= 'a':
+			parts[i] = strings.ToUpper(part[:1]) + part[1:]
+		case len(part) == 2:
+			parts[i] = strings.ToUpper(part)
+		case len(part) >= 4:
 			if seen[part] {
-				return false
+				return "", false
 			}
 			seen[part] = true
 		}
 	}
-	return true
+	return strings.Join(parts, "-"), true
 }
 
 func decode(raw []byte, v any) error {
@@ -68,7 +78,8 @@ func Project(siteID, releaseID, host, locale string, rawManifest, rawPages []byt
 	if decode(rawManifest, &m) != nil || decode(rawPages, &pages) != nil {
 		return fail()
 	}
-	if m.Version != 1 || m.Locale != locale || !validLocale(m.Locale) || !text(m.Title, 300, true) || !text(m.Description, 2000, false) || m.Navigation == nil || m.Products == nil || pages == nil || len(m.Navigation) > 50 || len(m.Products) > 500 || len(pages) > 100 {
+	canonical, ok := canonicalLocale(m.Locale)
+	if m.Version != 1 || !strings.EqualFold(m.Locale, locale) || !ok || !text(m.Title, 300, true) || !text(m.Description, 2000, false) || m.Navigation == nil || m.Products == nil || pages == nil || len(m.Navigation) > 50 || len(m.Products) > 500 || len(pages) > 100 {
 		return fail()
 	}
 	// "/" is a valid target only when the release actually pins a root page.
@@ -100,7 +111,7 @@ func Project(siteID, releaseID, host, locale string, rawManifest, rawPages []byt
 			return fail()
 		}
 	}
-	site := contract.Site{SiteID: siteID, ReleaseID: releaseID, Hostname: host, Locale: m.Locale, Title: m.Title, Description: m.Description, Navigation: m.Navigation, Pages: pages, Products: m.Products}
+	site := contract.Site{SiteID: siteID, ReleaseID: releaseID, Hostname: host, Locale: canonical, Title: m.Title, Description: m.Description, Navigation: m.Navigation, Pages: pages, Products: m.Products}
 	// The HTTP buffer limits the complete JSON response, including Encoder's newline.
 	response, err := json.Marshal(site)
 	if err != nil || len(response)+1 > 1<<20 {

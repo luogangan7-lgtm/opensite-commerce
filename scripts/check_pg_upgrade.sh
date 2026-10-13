@@ -852,7 +852,6 @@ if ! db "$CART_DB" < tests/db_cart.sql >/dev/null || ! db "$CART_DB" < tests/db_
 else pass 'cart upgrade preserves prior customers/catalog; owner/CAS and exact privilege gate pass'; fi
 admin -c "DROP DATABASE $CART_DB" >/dev/null; CART_DB=""
 
-[[ $fail -eq 0 ]] || exit 1
 # Public content capability is added only after all logical predecessors; the
 # same committed release/secret witnesses survive the forward role migration.
 storefront=(migrations/[0-9][0-9][0-9]_storefront_read.sql)
@@ -893,4 +892,6 @@ if ! db "$STOREFRONT_DB" < tests/db_storefront.sql >/dev/null || ! db "$STOREFRO
 else pass 'storefront upgrade exposes current sealed pinned pages; draft witnesses stay hidden'; fi
 admin -c "DROP DATABASE $STOREFRONT_DB" >/dev/null; STOREFRONT_DB=""
 
+# Every module step above reports through bad(); aggregate them before the overall PASS.
+[[ $fail -eq 0 ]] || exit 1
 echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart and storefront upgrade gates'

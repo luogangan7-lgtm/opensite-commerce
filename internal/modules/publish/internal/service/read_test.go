@@ -146,9 +146,27 @@ func TestProjectionReviewBoundaries(t *testing.T) {
 			t.Errorf("valid locale %q rejected: %v", locale, err)
 		}
 	}
-	for _, locale := range []string{"en-US-US", "en-abcd-abcd", "en-abcde-abcde", "EN", "en_US", "en-", "e"} {
+	for _, locale := range []string{"en-US-US", "en-abcd-abcd", "en-abcde-abcde", "en_US", "en-", "e"} {
 		if err := project(locale, "Shop", `[]`, `[]`); !errors.Is(err, contract.ErrUnavailable) {
 			t.Errorf("Intl-invalid locale %q accepted: %v", locale, err)
+		}
+	}
+}
+
+// Review thread rtvb1: BCP 47 tags are case-insensitive; output uses canonical case.
+func TestProjectionLocaleCaseInsensitive(t *testing.T) {
+	for raw, want := range map[string]string{"en-us": "en-US", "EN-US": "en-US", "en-US": "en-US", "EN": "en",
+		"zh-hant-tw": "zh-Hant-TW", "ZH-HANT-TW": "zh-Hant-TW", "es-419": "es-419", "de-ch-1996": "de-CH-1996"} {
+		manifest := []byte(`{"version":1,"locale":"` + raw + `","title":"Shop","description":"","navigation":[],"products":[]}`)
+		got, err := Project("s", "r", "shop.example", raw, manifest, []byte(`[]`))
+		if err != nil || got.Locale != want {
+			t.Errorf("locale %q: got %q, %v; want %q", raw, got.Locale, err, want)
+		}
+	}
+	for _, raw := range []string{"en-us-us", "EN-US-US", "en_us", "en-abcd-abcd", "en-", "e"} {
+		manifest := []byte(`{"version":1,"locale":"` + raw + `","title":"Shop","description":"","navigation":[],"products":[]}`)
+		if _, err := Project("s", "r", "shop.example", raw, manifest, []byte(`[]`)); !errors.Is(err, contract.ErrUnavailable) {
+			t.Errorf("invalid locale %q accepted: %v", raw, err)
 		}
 	}
 }
