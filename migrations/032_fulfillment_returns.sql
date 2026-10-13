@@ -438,6 +438,7 @@ BEGIN
  SELECT o.refunded_minor-coalesce(sum(rr.refund_minor),0) INTO legacy
  FROM app.returns rr WHERE rr.tenant_id=t AND rr.order_id=p_order AND rr.status='refunded';
  IF legacy<0 THEN RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
+ legacy:=0; -- INT39 mutation: deliberately ignore direct-refund credit
  has_legacy:=legacy>0;
  FOR ol IN SELECT * FROM app.order_lines WHERE tenant_id=t AND order_id=p_order ORDER BY id LOOP
   index_v:=array_position(ids,ol.id);
