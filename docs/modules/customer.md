@@ -58,9 +58,16 @@ GET session without a cookie issues a five-minute signed CSRF challenge. Every
 write requires the exact configured Origin and signed CSRF bound to origin,
 tenant and session/challenge. Cookies survive until the absolute deadline; the
 database checks the idle deadline on each use. No bearer token appears in JSON.
-Verified customer context is wired into the existing cart resolver. Checkout
-and customer privacy can consume the same public actor context when their
-storefront HTTP adapters merge; their business logic is outside this card.
+Verified customer context is wired into the existing cart resolver. When
+checkout is configured without an explicit resolver, bootstrap resolves the
+live customer session once before checkout admission, retains its public actor
+context, and reuses cart's tenant and mixed guest-token checks. The automatic
+checkout resolver constructs its actor from that admitted context; it accepts
+no guest or staff fallback. Checkout shares the configured customer Origin;
+a conflicting Origin refuses startup. Explicit checkout resolvers are preserved.
+The outer wrapper also forwards staff identity projection for CMS and other
+private routes using their authenticated context. Customer privacy can consume
+the same public actor context; purchasing business logic is outside this card.
 The current purchasing BFF remains its explicitly labeled contract fixture and
 is closed in production. Connecting that BFF to these real cookie/challenge
 endpoints is separate frontend work; this change does not treat fixture login
