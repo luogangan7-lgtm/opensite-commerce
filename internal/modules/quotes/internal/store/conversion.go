@@ -53,9 +53,11 @@ func GetConversion(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, quoteID 
 	if err != nil {
 		return c.Conversion{}, conversionError(err)
 	}
-	return conversion(db.AppQuoteConversion{QuoteID: r.QuoteID, OrderID: r.OrderID, BuyerCompanyID: r.BuyerCompanyID,
+	out := conversion(db.AppQuoteConversion{QuoteID: r.QuoteID, OrderID: r.OrderID, BuyerCompanyID: r.BuyerCompanyID,
 		CustomerID: r.CustomerID, QuoteVersion: r.QuoteVersion, OrderNumber: r.OrderNumber,
-		IdempotencyKey: r.IdempotencyKey, Currency: r.Currency, TotalMinor: r.TotalMinor, CreatedAt: r.CreatedAt}, r.State), nil
+		IdempotencyKey: r.IdempotencyKey, Currency: r.Currency, TotalMinor: r.TotalMinor, CreatedAt: r.CreatedAt}, r.State)
+	out.ProviderRef = r.ProviderRef
+	return out, nil
 }
 
 func conversion(r db.AppQuoteConversion, state string) c.Conversion {

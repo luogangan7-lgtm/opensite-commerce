@@ -28,11 +28,12 @@ type ConversionRepository interface {
 	ConversionSKU(context.Context, pgx.Tx, AuthorizedActor, string, string) (string, error)
 }
 
-// PrepaymentPort is the future checkout adapter for an already-created immutable
-// order. It must persist intent/capture/cancel claims, validate owned live holds
-// BEFORE Capture, and post paid + balanced ledger + outbox atomically. Repeated
-// calls adopt the same order, never create a second intent or repeat a capture.
-// No implementation is wired to production until checkout's quote adapter lands.
+// PrepaymentPort is the checkout adoption adapter for an already-created immutable
+// order. Prepay adopts the same durable intent on repeated calls. Checkout owns
+// capture/cancel claims, validates owned live holds BEFORE Capture, and posts
+// paid + balanced ledger + outbox atomically through its verified callbacks.
+// Bootstrap derives its production implementation from ExistingOrderService;
+// only verified provider callbacks can confirm payment through checkout.
 type PrepaymentPort interface {
 	Prepay(context.Context, AuthorizedActor, Conversion) (Prepayment, error)
 }

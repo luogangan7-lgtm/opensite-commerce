@@ -27,7 +27,9 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	oc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
+	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
@@ -38,6 +40,18 @@ import (
 )
 
 type quoteCustomerMailbox struct{ token string }
+
+// A scoped staff fixture selects a real seeded admin; public seller GET still
+// executes the module's live tenant/member permission checks in PostgreSQL.
+// This fixture never authenticates buyer mutations or reads identity headers.
+type quoteSellerReadAuth struct{ tenant, staff string }
+
+func (a quoteSellerReadAuth) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	if spec.OperationID != "getQuoteOrderConversion" || spec.Method != http.MethodGet || spec.Scope != "quotes:read" || spec.Access != httpapi.AdminOrAPIKey || r.PathValue("tenant_id") != a.tenant {
+		return (httpapi.DenyAuthenticator{}).Authenticate(ctx, r, spec)
+	}
+	return qc.WithTrustedActor(ctx, qc.ActorIdentity{TenantID: a.tenant, StaffID: a.staff}), nil
+}
 
 func (m *quoteCustomerMailbox) Send(_ context.Context, _, _, purpose, token string) error {
 	if purpose == "register" {
@@ -98,7 +112,7 @@ func TestQuoteOrdersPGProductionCompositionAdmissionAndConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := bootstrap.New(bootstrap.Config{Customer: service, CustomerOrigin: origin, CustomerSecret: secret,
+	server, err := bootstrap.New(bootstrap.Config{Customer: service, CustomerOrigin: origin, CustomerSecret: secret, Authenticator: quoteSellerReadAuth{tenant: f.tenant, staff: f.staff},
 		Checkout:        &checkouthttp.Config{Service: f.checkout, Origin: origin, FakeEnabled: true, Environment: "test", Verifier: verifier},
 		QuoteConversion: &bootstrap.QuoteConversionConfig{Runner: f.runner, Quotes: quotes.New(), Orders: orders.NewQuoteCreator()}})
 	if err != nil {
@@ -168,6 +182,29 @@ func TestQuoteOrdersPGProductionCompositionAdmissionAndConfirm(t *testing.T) {
 	if f.prepay.captureCalls != 0 {
 		t.Fatal("conversion captured before signed Confirm")
 	}
+	assertRef := func(response *httptest.ResponseRecorder, wantStatus int, state string) {
+		t.Helper()
+		var projection struct {
+			OrderID     string `json:"order_id"`
+			State       string `json:"state"`
+			ProviderRef string `json:"provider_ref"`
+		}
+		if response.Code != wantStatus || json.Unmarshal(response.Body.Bytes(), &projection) != nil || projection.OrderID != receipt.OrderID || projection.State != state || projection.ProviderRef != receipt.ProviderRef {
+			t.Fatalf("durable provider ref replay: status=%d projection=%+v", response.Code, projection)
+		}
+	}
+	sellerStatus := func(state string) {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodGet, origin+"/api/v1/t/"+f.tenant+"/quotes/"+f.quote.ID+"/order-conversion", nil).WithContext(f.ctx)
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, r)
+		assertRef(response, http.StatusOK, state)
+	}
+	assertRef(post(f.quote.ID, session.CSRF, origin, "{}", cookie), http.StatusCreated, "pending_payment")
+	sellerStatus("pending_payment")
+	if f.prepay.createCalls != 1 || f.prepay.captureCalls != 0 || f.prepay.cancelCalls != 0 {
+		t.Fatal("pending replay or seller status repeated provider effect")
+	}
 	f.assertEffects(t, receipt.OrderID, "pending_payment", 1, 0, 0, 100, 2)
 	for i := 0; i < 2; i++ {
 		if confirmed := f.deliver(t, receipt.OrderID); confirmed.Code != 200 {
@@ -176,13 +213,18 @@ func TestQuoteOrdersPGProductionCompositionAdmissionAndConfirm(t *testing.T) {
 	}
 	w = post(f.quote.ID, session.CSRF, origin, "{}", cookie)
 	var replay struct {
-		OrderID string `json:"order_id"`
-		State   string `json:"state"`
+		OrderID     string `json:"order_id"`
+		State       string `json:"state"`
+		ProviderRef string `json:"provider_ref"`
 	}
-	if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &replay) != nil || replay.OrderID != receipt.OrderID || replay.State != "paid" {
+	if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &replay) != nil || replay.OrderID != receipt.OrderID || replay.State != "paid" || replay.ProviderRef != receipt.ProviderRef {
 		t.Fatalf("durable HTTP replay: %d %s", w.Code, w.Body.String())
 	}
-	if f.prepay.createCalls != 1 || f.prepay.captureCalls != 1 {
+	for i := 0; i < 2; i++ {
+		assertRef(post(f.quote.ID, session.CSRF, origin, "{}", cookie), http.StatusCreated, "paid")
+		sellerStatus("paid")
+	}
+	if f.prepay.createCalls != 1 || f.prepay.captureCalls != 1 || f.prepay.cancelCalls != 0 {
 		t.Fatal("provider effect repeated")
 	}
 	f.assertEffects(t, receipt.OrderID, "paid", 1, 1, 1, 98, 0)

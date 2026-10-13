@@ -39,9 +39,11 @@ SELECT * FROM app.quote_conversion_bind(sqlc.arg(tenant_id)::uuid,sqlc.arg(quote
  sqlc.arg(quote_version)::bigint,sqlc.arg(idempotency_key)::text,sqlc.arg(request_hash)::bytea);
 
 -- name: GetQuoteConversion :one
-SELECT c.*,o.state FROM app.quote_conversion_get(sqlc.arg(tenant_id)::uuid,sqlc.arg(quote_id)::uuid,
+-- Checkout owns this immutable intent reference; the authorized quote projection only reads it.
+SELECT c.*,o.state,COALESCE(s.provider_ref,'')::text AS provider_ref FROM app.quote_conversion_get(sqlc.arg(tenant_id)::uuid,sqlc.arg(quote_id)::uuid,
  sqlc.narg(company_id)::uuid,sqlc.arg(actor_kind)::text,sqlc.arg(actor_id)::uuid) c
- JOIN app.orders o ON(o.tenant_id,o.id)=(c.tenant_id,c.order_id);
+ JOIN app.orders o ON(o.tenant_id,o.id)=(c.tenant_id,c.order_id)
+ LEFT JOIN app.checkout_sessions s ON(s.tenant_id,s.order_id)=(c.tenant_id,c.order_id);
 
 -- name: GetQuoteConversionSKU :one
 -- This is only a label lookup. Negotiated amounts never read live price lists.

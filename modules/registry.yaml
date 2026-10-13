@@ -919,7 +919,8 @@
         "tax",
         "shipping",
         "reliability",
-        "orders"
+        "orders",
+        "checkout"
       ],
       "tests": [
         "internal/modules/quotes/module_test.go",
