@@ -469,10 +469,12 @@ paths:
         anonymous default price (quantity 1, the product's release currency, active audience=all lists
         in their time window, priority descending then list id ascending) computed when the serving row
         was built; available is on-hand minus reserved > 0 at build time, never a count. Unpriced or
-        non-ready SKUs at publish are not members (adding them requires republish). After the next price
-        boundary the body falls back to skus [] until rebuilt. Cart and checkout re-price and reserve
-        authoritatively. The body is host-independent (no hostname) and carries the host's tenant_id
-        for tenant-scoped cart APIs.
+        non-ready SKUs at publish are not members (adding them requires republish). Price, stock and
+        lifecycle changes invalidate the body in their own transaction and a refresher rebuilds it; a body
+        past its next price boundary, 15-minute lifetime or 30-second invalidation grace is replaced by the
+        fallback (skus []), never served stale. Products carry no product-level price: display prices come
+        from skus. Cart and checkout re-price and reserve authoritatively. The body is host-independent
+        (no hostname) and carries the host's tenant_id for tenant-scoped cart APIs.
       parameters:
         - name: host
           in: query

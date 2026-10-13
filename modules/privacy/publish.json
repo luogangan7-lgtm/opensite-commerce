@@ -2,8 +2,38 @@
   "version": 1,
   "module": "publish",
   "note": "Sealed manifests/templates, draft pages/navigation and edit operations can duplicate public contact data. Declaration does not bypass immutable release rules; privacy overlay/removal requires a separate owner-authorized implementation.",
-  "structures": {"DraftNavigation": "Navigation array permits authored text/links and possible contact copies.", "DraftOperation": "Persisted edit operation object may contain prior/new personal or contact content.", "DraftPageDocument": "Draft page object before publication, including possible contact/person copy.", "ReleaseManifest": "Sealed public release view models including possible copied contact/profile data.", "ReleaseTemplateDocument": "Sealed template object including possible contact/person copy.", "Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data."},
+  "structures": {"DraftNavigation": "Navigation array permits authored text/links and possible contact copies.", "DraftOperation": "Persisted edit operation object may contain prior/new personal or contact content.", "DraftPageDocument": "Draft page object before publication, including possible contact/person copy.", "ReleaseManifest": "Sealed public release view models including possible copied contact/profile data.", "ReleaseTemplateDocument": "Sealed template object including possible contact/person copy.", "Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data.", "ServingBody": "Exact public storefront response bytes (UTF-8 JSON) derived from the sealed release view plus SKU codes/labels, prices and availability; may contain published contact/person copy.", "SkuOptionValues": "Sealed array of {name,value} catalog option code/label pairs of a purchasable SKU; merchant catalog data."},
   "tables": {
+    "site_release_skus": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Merchant catalog SKU membership of a release; no personal or customer data."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "release_id": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "sku_id": {"classification": "operational"},
+        "ordinal": {"classification": "operational"},
+        "sku_code": {"classification": "operational"},
+        "option_values": {"classification": "operational", "structure": "SkuOptionValues"}
+      }
+    },
+    "storefront_serving": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public storefront content derived from the sealed release has no verified customer identity FK; do not associate a customer by matching text."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "release_id": {"classification": "operational"},
+        "publication_revision": {"classification": "operational"},
+        "serving_generation": {"classification": "operational"},
+        "body": {"classification": "personal", "structure": "ServingBody", "erase": {"strategy": "retain", "reason": "Derived copy of the sealed public release (same content as site_releases.manifest); rebuilt from that source and follows its owner-resolved privacy handling, never matched to a customer by text."}, "export": "include"},
+        "fallback_body": {"classification": "personal", "structure": "ServingBody", "erase": {"strategy": "retain", "reason": "Derived copy of the sealed public release (same content as site_releases.manifest); rebuilt from that source and follows its owner-resolved privacy handling, never matched to a customer by text."}, "export": "include"},
+        "body_sha256": {"classification": "operational", "structure": "Sha256Digest"},
+        "fallback_sha256": {"classification": "operational", "structure": "Sha256Digest"},
+        "valid_until": {"classification": "operational"},
+        "dirty": {"classification": "operational"},
+        "built_at": {"classification": "operational"}
+      }
+    },
     "site_releases": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
       "columns": {

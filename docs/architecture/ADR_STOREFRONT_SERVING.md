@@ -80,8 +80,8 @@ defaults to 15 minutes.
 All three entry points use the same builder inside a tenant transaction with normal tenant
 RLS:
 
-1. **Lock the publication.** `SELECT ... FROM app.sites ... FOR SHARE` before reading any
-   input. A refresh therefore waits for an in-flight publish (which holds the row
+1. **Lock the publication.** `SELECT ... FROM app.sites ... FOR UPDATE` before reading any
+   input. `FOR UPDATE` rather than `FOR SHARE` also serializes concurrent refreshers. A refresh therefore waits for an in-flight publish (which holds the row
    `FOR UPDATE`), then reads the committed revision and drops itself if the revision
    changed. Publish and restore already hold the row lock.
 2. **Read inputs** for the release's products only:
@@ -159,10 +159,25 @@ RLS:
   tenant's rows whose membership contains the SKU, or every row of the tenant for
   list-level changes. The triggers are `SECURITY DEFINER` routines owned by
   `app_publish_executor` and write only `dirty` and `valid_until`.
-- **Refresh worker.** A River periodic sweeper (every 10 s) enqueues an idempotent refresh
-  job per `(tenant, site)`. It covers dirty rows, rows within 60 s of `valid_until`, and
-  published sites without a current serving row (the backfill). The job runs the §2.3
-  builder with the publication lock and CAS-writes the result.
+- **Refresher.** A sweeper inside the API process runs every 10 s
+  (`publish.Refresher`). For each tenant on the deployment-authorized list
+  `OPENSITE_SERVING_REFRESH_TENANTS`, it finds:
+  - dirty rows;
+  - rows within 60 s of `valid_until`;
+  - published sites without a current serving row (the backfill).
+
+  Each site is rebuilt by the §2.3 builder in its own tenant transaction (runtime role,
+  tenant RLS), under the publication lock, and CAS-written. A lost CAS is skipped. Several
+  API replicas are safe: the lock serializes them and CAS discards duplicates.
+
+  **Implementation note:** it is not a River job. The River worker role has no catalog,
+  pricing or inventory capability, and adding one would need a new cross-tenant capability
+  role. The trusted-tenant-list model mirrors `JOB_TENANTS`. The only new seam is
+  `QueryRunner.RunTrustedTx`, a tenant write transaction composed solely behind the
+  refresher.
+- **Tenant context required.** The invalidation triggers rely on `app.tenant_id`, which
+  every application write path sets. A maintenance write without tenant context is not
+  invalidated and is bounded only by `max_lifetime`.
 - **Failure modes.** If the worker is down, every changed row reaches `valid_until` within
   `grace` and every row within `max_lifetime`; the site then serves the fallback and stays
   up. A stale or concurrent writer can never overwrite a newer publish or refresh.
@@ -212,7 +227,12 @@ fault probes.
 
 ## 6. Out of scope
 
-- Revoking the 024 snapshot grants (after a production backfill is verified).
+- **C-15d (follow-up card):** revoke the 024 snapshot grants on `site_releases`,
+  `site_release_routes` and `page_revisions` from `app_domain_resolver`. Remove the
+  compatibility projection after a verified production backfill (every published site
+  has a current serving row).
+- Refresh tenant discovery beyond the deployment list (a cross-tenant broker role), if
+  operators need it.
 - A per-SKU live price lookup on the product page (owner decision).
 - Splitting serving into a static snapshot plus per-product offers (post-MVP).
 
@@ -229,8 +249,9 @@ refresh and invalidation are in scope, so `max_lifetime` applies from the start.
 | 4259961120 | §2.4: the compatibility path serves existing hosts from one snapshot; the sweeper backfills; grant revocation is deferred |
 | 4259961129 | §2.6: synchronous invalidation in the mutation transaction plus a bounded lifetime |
 | 4259961139 | §2.3/§2.6: refresh reads live readiness; variant and product lifecycle changes invalidate |
-| 4259961189 | §2.3 step 1: the refresh locks the site row `FOR SHARE` before reading inputs |
+| 4259961189 | §2.3 step 1: the refresh locks the site row (`FOR UPDATE`) before reading inputs |
 | 4259961150 | §2.2/§2.4: `fallback_sha256`; the ETag is the hash of the bytes served |
 | 4259961159 | §2.5: `hostname` removed from the public body; consumers updated |
 | 4259961172 | §2.5: product-level `unit_amount` and `currency` removed from the public DTO; the storefront uses SKU prices |
 | 4259961175 | §2.4: both hashes granted to the resolver and listed in the `OpenPublic` audit |
+| 4260039759 | §2.4: the compatibility read returns `tenant_id` from the same snapshot row as the content (P1 security fix) |
