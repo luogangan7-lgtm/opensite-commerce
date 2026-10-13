@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "module": "site",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {"Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data."},
+  "tables": {
+    "organizations": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "legal_name": {"classification": "operational"},
+        "display_name": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "sites": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "organization_id": {"classification": "operational"},
+        "name": {"classification": "operational"},
+        "default_locale": {"classification": "operational"},
+        "published_release_id": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "publication_revision": {"classification": "operational"}
+      }
+    },
+    "site_domains": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "hostname": {"classification": "operational"},
+        "normalized_hostname": {"classification": "operational"},
+        "verification_token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "verified_at": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "site_locales": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "locale": {"classification": "operational"},
+        "enabled": {"classification": "operational"}
+      }
+    }
+  }
+}

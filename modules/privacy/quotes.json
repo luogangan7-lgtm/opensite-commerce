@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "module": "quotes",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {"QuoteLineSnapshot": "Frozen line calculation/details; arbitrary personal keys conservatively covered.", "QuoteSnapshot": "Frozen quote totals, tax/shipping and potentially inquiry/contact details."},
+  "tables": {
+    "inquiries": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Buyer contact is inquiry-owned; buyer_company_id identifies a company but buyer_email does not prove individual customer ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "buyer_email": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "buyer_name": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
+        "quantity": {"classification": "operational"},
+        "message": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "buyer_company_id": {"classification": "operational"}
+      }
+    },
+    "quotes": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "quotes.accepted_by -> buyer_company_members.customer_id -> customers.id", "null_subject_policy": "Before acceptance, inquiry contact is unverified; company membership does not assign all free-form snapshot content to one member."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "inquiry_id": {"classification": "operational"},
+        "buyer_company_id": {"classification": "operational"},
+        "created_by": {"classification": "operational"},
+        "currency": {"classification": "financial_non_contact"},
+        "subtotal": {"classification": "financial_non_contact"},
+        "tax": {"classification": "financial_non_contact"},
+        "shipping": {"classification": "financial_non_contact"},
+        "total": {"classification": "financial_non_contact"},
+        "snapshot": {"classification": "personal", "structure": "QuoteSnapshot", "erase": {"strategy": "scrub"}, "export": "include"},
+        "expires_at": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "version": {"classification": "operational"},
+        "accepted_by": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "updated_at": {"classification": "operational"}
+      }
+    },
+    "quote_lines": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "quote_lines.quote_id -> quotes.id -> quotes.accepted_by -> customers.id", "null_subject_policy": "Draft/sent quote uses unverified inquiry contact policy."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "quote_id": {"classification": "operational"},
+        "line_no": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "variant_id": {"classification": "operational"},
+        "description": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
+        "quantity": {"classification": "operational"},
+        "unit_price": {"classification": "financial_non_contact"},
+        "line_total": {"classification": "financial_non_contact"},
+        "snapshot": {"classification": "personal", "structure": "QuoteLineSnapshot", "erase": {"strategy": "scrub"}, "export": "include"}
+      }
+    },
+    "quote_approvals": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "quote_id": {"classification": "operational"},
+        "buyer_company_id": {"classification": "operational"},
+        "requested_by": {"classification": "operational"},
+        "decided_by": {"classification": "operational"},
+        "decision": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    }
+  }
+}
