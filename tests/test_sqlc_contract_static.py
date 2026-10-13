@@ -12,14 +12,16 @@ sql = config['sql'][0]
 assert sql['engine'] == 'postgresql'
 assert sql['gen']['go']['sql_package'] == 'pgx/v5'
 assert sql['gen']['go']['out'] == 'internal/db'
-assert set(sql['schema']) == {str(p.relative_to(root)) for p in (root/'migrations').glob('*.sql') if p.name[:3] not in ('008','009')}
+# migrations/pending/*.sql (in-development, see scripts/pending_migrations.py) participate in codegen too.
+pending = [p.relative_to(root).as_posix() for p in (root/'migrations').glob('pending/*.sql')]
+assert set(sql['schema']) == {str(p.relative_to(root)) for p in (root/'migrations').glob('*.sql') if p.name[:3] not in ('008','009')} | set(pending)
 for suffix in ('_security_hardening.sql', '_platform_reliability.sql', '_money_pricing.sql', '_shipping.sql', '_tax.sql', '_customers_b2b.sql', '_queue_authorization.sql', '_reliability_limits.sql'):
     matches = list((root/'migrations').glob('[0-9][0-9][0-9]'+suffix))
     assert len(matches) == 1, suffix
     assert str(matches[0].relative_to(root)) in sql['schema'], suffix
 # New DDL must participate in real codegen, independent of provisional number.
 expected_schema = sorted(m.relative_to(root).as_posix() for m in (root/'migrations').glob('[0-9][0-9][0-9]_*.sql')
-                         if not m.name.startswith(('008_', '009_')))
+                         if not m.name.startswith(('008_', '009_'))) + sorted(pending)
 assert sorted(sql['schema']) == expected_schema, (sql['schema'], expected_schema)
 inventory = list((root/'migrations').glob('*_inventory.sql'))
 assert len(inventory) == 1

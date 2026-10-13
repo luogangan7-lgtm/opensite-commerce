@@ -57,6 +57,13 @@ class DeployTests(unittest.TestCase):
             with self.assertRaises(ops.DeployError): ops.install_migrations({'DATABASE_URL':'fixture'})
         self.assertEqual(calls, [['/usr/local/bin/river-migrate']])
 
+    def test_pending_migration_refusal_is_reported_as_such(self):
+        # migrate.sh exits 7 when migrations/pending/ is non-empty (fail closed in production).
+        results = iter([0, 7])
+        with patch.object(ops.subprocess, 'run', side_effect=lambda argv, **kw: SimpleNamespace(returncode=next(results))):
+            with self.assertRaisesRegex(ops.DeployError, 'MIGRATION_REFUSED_PENDING'):
+                ops.install_migrations({'DATABASE_URL': 'fixture'})
+
     def test_preflight_checks_every_nontemplate_database(self):
         calls = []
         def query(sql, database):
