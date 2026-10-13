@@ -165,7 +165,7 @@ func project(ctx context.Context, q *db.Queries, row db.AppCart, at time.Time) (
 		available[id(stock.SkuID)] = stock.Available
 	}
 	for _, line := range lines {
-		s.Lines = append(s.Lines, contract.StoredLine{SKUID: id(line.SkuID), Quantity: line.Quantity, AvailableQuantity: available[id(line.SkuID)], Active: line.LifecycleStatus == "ready"})
+		s.Lines = append(s.Lines, contract.StoredLine{SKUID: id(line.SkuID), Quantity: line.Quantity, AvailableQuantity: available[id(line.SkuID)], Active: line.Active})
 	}
 	prices, err := q.ListCartPriceEntries(ctx, db.ListCartPriceEntriesParams{TenantID: row.TenantID, CartID: row.ID, Currency: row.Currency, AtTime: pgtype.Timestamptz{Time: at, Valid: true}})
 	if err != nil {
