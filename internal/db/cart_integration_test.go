@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"io"
@@ -27,7 +28,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
@@ -93,8 +96,8 @@ func newCartFixture(t *testing.T) *cartFixture {
 		}
 	})
 	f.product = f.id("INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES($1,'CART-P','ready') RETURNING id::text", f.tenant)
-	f.sku = f.id("INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES($1,$2,'CART-SKU','one') RETURNING id::text", f.tenant, f.product)
-	f.otherSKU = f.id("INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES($1,$2,'CART-SKU-2','two') RETURNING id::text", f.tenant, f.product)
+	f.sku = f.id("INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status) VALUES($1,$2,'CART-SKU','one','ready') RETURNING id::text", f.tenant, f.product)
+	f.otherSKU = f.id("INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status) VALUES($1,$2,'CART-SKU-2','two','ready') RETURNING id::text", f.tenant, f.product)
 	f.customer = f.id("INSERT INTO app.customers(tenant_id,email) VALUES($1,'cart-owner@example.invalid') RETURNING id::text", f.tenant)
 	f.otherCustomer = f.id("INSERT INTO app.customers(tenant_id,email) VALUES($1,'cart-other@example.invalid') RETURNING id::text", f.tenant)
 	f.priceList = f.id("INSERT INTO app.price_lists(tenant_id,currency,status,priority,audience,starts_at) VALUES($1,'USD','active',1,'all','2020-01-01') RETURNING id::text", f.tenant)
@@ -529,4 +532,126 @@ INSERT INTO app.cart_lines(tenant_id,cart_id,sku_id,quantity) SELECT $1,$3,id,1 
 	wantStatus(t, w, 200)
 	w = cartRequest(f.registered, "PUT", path+"/lines/"+f.otherSKU, `{"quantity":1}`, "", w.Header().Get("ETag"))
 	wantStatus(t, w, 200)
+}
+
+func TestCartVariantLifecycle(t *testing.T) {
+	f := newCartFixture(t)
+	// Existing fixtures predate the variant lifecycle guard; this test makes the
+	// independently owned catalog lifecycle explicit before cart admission.
+	f.exec("UPDATE app.product_variants SET lifecycle_status='ready' WHERE tenant_id=$1", f.tenant)
+	created, match := f.create(f.registered)
+	path := f.path(created.Cart.ID)
+	added := cartRequest(f.registered, "PUT", path+"/lines/"+f.sku, `{"quantity":2}`, "", match)
+	wantStatus(t, added, 200)
+	for _, status := range []string{"archived", "draft"} {
+		f.exec("UPDATE app.product_variants SET lifecycle_status=$2 WHERE id=$1", f.sku, status)
+		read := cartRequest(f.registered, "GET", path, "", "", "")
+		wantStatus(t, read, 200)
+		view := cartView(t, read)
+		if len(view.Lines) != 1 || view.Lines[0].Sellable {
+			t.Fatalf("%s variant shown sellable: %+v", status, view)
+		}
+		rejected := cartRequest(f.registered, "PUT", path+"/lines/"+f.sku, `{"quantity":3}`, "", read.Header().Get("ETag"))
+		wantStatus(t, rejected, 422)
+		version, quantity := f.state(created.Cart.ID)
+		if version != 2 || quantity != 2 {
+			t.Fatalf("inactive mutation persisted version=%d quantity=%d", version, quantity)
+		}
+	}
+	removed := cartRequest(f.registered, "PUT", path+"/lines/"+f.sku, `{"quantity":0}`, "", cartRequest(f.registered, "GET", path, "", "", "").Header().Get("ETag"))
+	wantStatus(t, removed, 200)
+}
+
+func TestCartSnapshotReadOnlyAndStable(t *testing.T) {
+	f := newCartFixture(t)
+	created, _ := f.create(f.registered)
+	cartID := pgtype.UUID{}
+	if err := cartID.Scan(created.Cart.ID); err != nil {
+		t.Fatal(err)
+	}
+	tenantID := pgtype.UUID{}
+	if err := tenantID.Scan(f.tenant); err != nil {
+		t.Fatal(err)
+	}
+	params := db.GetCartParams{TenantID: tenantID, ID: cartID}
+	var writeError error
+	read := func(ctx context.Context, tenant string, fn func(*db.Queries) error) error {
+		return f.runtime.RunAuthorizedSnapshot(ctx, tenant, func(q *db.Queries) error {
+			if err := fn(q); err != nil {
+				return err
+			}
+			_, writeError = q.AdvanceCartVersion(ctx, db.AdvanceCartVersionParams{TenantID: tenantID, ID: cartID, ExpectedVersion: 1})
+			return writeError
+		})
+	}
+	handler := func(read func(context.Context, string, func(*db.Queries) error) error) http.Handler {
+		server, err := bootstrap.New(bootstrap.Config{Cart: cart.NewPostgres(cart.Config{Run: f.runtime.RunAuthorized, Read: read}, func(context.Context, *http.Request) (contract.AuthorizedActor, error) { return f.actor, nil }), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return server.Handler
+	}
+	rejected := cartRequest(handler(read), "GET", f.path(created.Cart.ID), "", "", "")
+	wantStatus(t, rejected, 500)
+	var pgerr *pgxadapter.PgError
+	if !errors.As(writeError, &pgerr) || pgerr.Code != "25006" {
+		t.Fatalf("snapshot allowed write: %v", writeError)
+	}
+	if version, _ := f.state(created.Cart.ID); version != 1 {
+		t.Fatalf("snapshot write persisted version=%d", version)
+	}
+	var observed int64
+	read = func(ctx context.Context, tenant string, fn func(*db.Queries) error) error {
+		return f.runtime.RunAuthorizedSnapshot(ctx, tenant, func(q *db.Queries) error {
+			if err := fn(q); err != nil {
+				return err
+			}
+			// A separate committed maintenance transaction changes intent after the
+			// first snapshot read, without sleep ordering or raw connection access.
+			f.exec("UPDATE app.carts SET version=version+1 WHERE id=$1", created.Cart.ID)
+			row, err := q.GetCart(ctx, params)
+			observed = row.Version
+			return err
+		})
+	}
+	stable := cartRequest(handler(read), "GET", f.path(created.Cart.ID), "", "", "")
+	wantStatus(t, stable, 200)
+	if observed != 1 || cartView(t, stable).Version != 1 {
+		t.Fatalf("GET observed mixed snapshot version=%d", observed)
+	}
+	if version, _ := f.state(created.Cart.ID); version != 2 {
+		t.Fatalf("writer did not commit version=%d", version)
+	}
+}
+
+func TestCartInactiveVariantCannotBeAdded(t *testing.T) {
+	f := newCartFixture(t)
+	created, match := f.create(f.registered)
+	for _, status := range []string{"draft", "archived"} {
+		f.exec("UPDATE app.product_variants SET lifecycle_status=$2 WHERE id=$1", f.sku, status)
+		rejected := cartRequest(f.registered, "PUT", f.path(created.Cart.ID)+"/lines/"+f.sku, `{"quantity":1}`, "", match)
+		wantStatus(t, rejected, 422)
+		if version, quantity := f.state(created.Cart.ID); version != 1 || quantity != 0 {
+			t.Fatalf("%s admission persisted %d/%d", status, version, quantity)
+		}
+	}
+}
+
+func TestCartAnonymousCreateRateLimitDoesNotPersist(t *testing.T) {
+	f := newCartFixture(t)
+	server, err := bootstrap.New(bootstrap.Config{Cart: cart.NewPostgres(cart.Config{Run: f.runtime.RunAuthorized, Read: f.runtime.RunAuthorizedSnapshot, AnonymousCreateLimit: cart.AnonymousCreateLimit{IPBurst: 1}}, nil), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.create(server.Handler)
+	denied := cartRequest(server.Handler, "POST", "/api/v1/t/"+f.tenant+"/carts", `{"currency":"USD"}`, "", "")
+	wantStatus(t, denied, 429)
+	if !strings.Contains(denied.Body.String(), "cart_create_rate_limited") || denied.Header().Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("bad quota problem: %s", denied.Body.String())
+	}
+	var count int
+	f.scan("SELECT count(*) FROM app.carts WHERE tenant_id=$1", []any{f.tenant}, &count)
+	if count != 1 {
+		t.Fatalf("quota denial inserted cart count=%d", count)
+	}
 }

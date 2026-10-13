@@ -11,11 +11,11 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type Repository struct{}
@@ -155,7 +155,7 @@ func MapError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.ErrNotFound
 	}
-	var pg *pgconn.PgError
+	var pg *pgxadapter.PgError
 	if !errors.As(err, &pg) {
 		return contract.ErrUnavailable
 	}

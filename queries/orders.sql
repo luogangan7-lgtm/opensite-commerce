@@ -27,6 +27,9 @@ SELECT id,total_minor,currency,version,state FROM app.orders WHERE tenant_id=$1 
 SELECT * FROM app.orders_transition(sqlc.arg(id)::uuid,sqlc.arg(target)::text,
  sqlc.arg(event_key)::text,sqlc.arg(refund_minor)::bigint);
 
+-- name: CheckOrderCreation :many
+SELECT * FROM app.orders_check_creation(sqlc.arg(id)::uuid,sqlc.arg(creation_key)::text,sqlc.arg(request_hash)::bytea);
+
 -- Admin reads: sealed snapshots only, newest first by (created_at,id); guest
 -- contact never leaves the database, only whether the buyer was a customer.
 -- name: ListAdminOrders :many

@@ -8,11 +8,11 @@ import (
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"strings"
 	"testing"
 	"time"
@@ -97,15 +97,15 @@ func TestErrorBoundary(t *testing.T) {
 		name     string
 		in, want error
 	}{
-		{"same key different content", &pgconn.PgError{Code: "23505", ConstraintName: "ledger_idempotency_content", Message: "secret driver diagnostic"}, contract.ErrConflict},
-		{"other unique failure", &pgconn.PgError{Code: "23505", ConstraintName: "other", Message: "secret driver diagnostic"}, contract.ErrUnavailable},
-		{"overflow", &pgconn.PgError{Code: "22003"}, contract.ErrOverflow},
-		{"arguments", &pgconn.PgError{Code: "22023"}, contract.ErrInvalid},
-		{"balance", &pgconn.PgError{Code: "23514"}, contract.ErrInvalid},
-		{"missing account", &pgconn.PgError{Code: "23503"}, contract.ErrNotFound},
-		{"tenant denial", &pgconn.PgError{Code: "42501"}, contract.ErrForbidden},
-		{"serialization", &pgconn.PgError{Code: "40001"}, contract.ErrRetry},
-		{"deadlock", &pgconn.PgError{Code: "40P01"}, contract.ErrRetry},
+		{"same key different content", &pgxadapter.PgError{Code: "23505", ConstraintName: "ledger_idempotency_content", Message: "secret driver diagnostic"}, contract.ErrConflict},
+		{"other unique failure", &pgxadapter.PgError{Code: "23505", ConstraintName: "other", Message: "secret driver diagnostic"}, contract.ErrUnavailable},
+		{"overflow", &pgxadapter.PgError{Code: "22003"}, contract.ErrOverflow},
+		{"arguments", &pgxadapter.PgError{Code: "22023"}, contract.ErrInvalid},
+		{"balance", &pgxadapter.PgError{Code: "23514"}, contract.ErrInvalid},
+		{"missing account", &pgxadapter.PgError{Code: "23503"}, contract.ErrNotFound},
+		{"tenant denial", &pgxadapter.PgError{Code: "42501"}, contract.ErrForbidden},
+		{"serialization", &pgxadapter.PgError{Code: "40001"}, contract.ErrRetry},
+		{"deadlock", &pgxadapter.PgError{Code: "40P01"}, contract.ErrRetry},
 		{"missing row", pgx.ErrNoRows, contract.ErrNotFound},
 		{"unknown", errors.New("secret driver diagnostic"), contract.ErrUnavailable},
 		{"canceled", context.Canceled, context.Canceled},
@@ -118,7 +118,7 @@ func TestErrorBoundary(t *testing.T) {
 			if !errors.Is(err, c.want) || strings.Contains(err.Error(), "secret") {
 				t.Fatalf("got %v; want %v", err, c.want)
 			}
-			if errors.As(err, new(*pgconn.PgError)) {
+			if errors.As(err, new(*pgxadapter.PgError)) {
 				t.Fatal("driver error escaped")
 			}
 		})

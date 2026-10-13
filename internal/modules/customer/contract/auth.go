@@ -57,14 +57,16 @@ type Credential struct {
 // revoke every customer session in the same transaction as the password change.
 // SaveSession compares the verified credential snapshot under the customer lock
 // before rotating the old hash or inserting the successor, so reset wins over
-// an in-flight login that verified a previous password.
+// an in-flight login that verified a previous password. Deadline inputs are
+// durations: the repository's database clock owns issuance and expiry checks,
+// so an application's wall-clock skew cannot extend or deny a valid session.
 type Repository interface {
 	Credential(context.Context, string, string) (Credential, error)
-	PrepareRegistration(context.Context, string, string, string, [32]byte, time.Time) error
+	PrepareRegistration(context.Context, string, string, string, [32]byte, time.Duration) error
 	ConsumeVerification(context.Context, string, [32]byte) error
-	PrepareReset(context.Context, string, string, [32]byte, time.Time) error
+	PrepareReset(context.Context, string, string, [32]byte, time.Duration) error
 	ConsumeReset(context.Context, string, [32]byte, string) error
-	SaveSession(context.Context, string, string, string, *[32]byte, [32]byte, time.Time, time.Time) (Session, error)
+	SaveSession(context.Context, string, string, string, *[32]byte, [32]byte, time.Duration, time.Duration) (Session, error)
 	Session(context.Context, string, [32]byte, time.Duration) (Session, error)
 	RevokeSession(context.Context, string, [32]byte) error
 	Admit(context.Context, string, [32]byte, [32]byte, time.Time) (time.Duration, error)

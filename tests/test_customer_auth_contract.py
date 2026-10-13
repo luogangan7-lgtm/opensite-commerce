@@ -13,6 +13,55 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class CustomerAuthContractTests(unittest.TestCase):
+    def test_password_bounds_are_utf8_bytes_not_character_counts(self):
+        api = yaml.safe_load((ROOT / 'api/openapi.yaml').read_text())
+        for name, minimum in (
+            ('CustomerRegistrationInput', 12),
+            ('CustomerCredentialsInput', 1),
+            ('CustomerResetConfirm', 12),
+        ):
+            with self.subTest(schema=name):
+                field = api['components']['schemas'][name]['properties']['password']
+                self.assertNotIn('minLength', field,
+                                 'CUSTOMER_AUTH_UTF8_CONTRACT_RED: minLength counts characters')
+                self.assertNotIn('maxLength', field,
+                                 'CUSTOMER_AUTH_UTF8_CONTRACT_RED: maxLength counts characters')
+                self.assertEqual(field.get('x-opensite-min-utf8-bytes'), minimum)
+                self.assertEqual(field.get('x-opensite-max-utf8-bytes'), 1024)
+                self.assertIn('UTF-8 bytes', field.get('description', ''))
+
+    def test_password_contract_multibyte_boundaries_match_service_policy(self):
+        api = yaml.safe_load((ROOT / 'api/openapi.yaml').read_text())
+        # Values are constructed during the test; these are byte-count probes,
+        # not reusable login credentials. Go runtime tests exercise admission.
+        two_byte = chr(0xE9)
+        four_byte = chr(0x1F642)
+        examples = (
+            (two_byte * 5, False, True),
+            (two_byte * 6, True, True),
+            (four_byte * 3, True, True),
+            (two_byte * 512, True, True),
+            (two_byte * 513, False, False),
+            (four_byte * 256, True, True),
+            (four_byte * 257, False, False),
+        )
+        for name, is_login in (
+            ('CustomerRegistrationInput', False),
+            ('CustomerCredentialsInput', True),
+            ('CustomerResetConfirm', False),
+        ):
+            field = api['components']['schemas'][name]['properties']['password']
+            self.assertIn('x-opensite-min-utf8-bytes', field,
+                          'CUSTOMER_AUTH_UTF8_CONTRACT_RED: missing byte minimum')
+            self.assertIn('x-opensite-max-utf8-bytes', field,
+                          'CUSTOMER_AUTH_UTF8_CONTRACT_RED: missing byte maximum')
+            for value, new_accepts, login_accepts in examples:
+                with self.subTest(schema=name, utf8_bytes=len(value.encode('utf-8'))):
+                    size = len(value.encode('utf-8'))
+                    accepted = (field['x-opensite-min-utf8-bytes'] <= size
+                                <= field['x-opensite-max-utf8-bytes'])
+                    self.assertEqual(accepted, login_accepts if is_login else new_accepts)
+
     def test_separate_cookie_and_complete_tenant_operations(self):
         api = yaml.safe_load((ROOT / 'api/openapi.yaml').read_text())
         scheme = api['components']['securitySchemes'].get('customerSession')

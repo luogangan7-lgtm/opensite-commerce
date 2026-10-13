@@ -154,7 +154,7 @@ BEGIN
   jsonb_build_object('method','fixed','contact',{{canary:orders.shipping_snapshot}}),
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
-   'reservation_id',reservation.id,'tax_snapshot',jsonb_build_object('rate_bp',1000,
+   'reservation_id',reservation.id,'tax_snapshot',jsonb_build_object('category','standard','rate_bp',1000,
     'contact',{{canary:order_lines.tax_snapshot}}))),'[]'::jsonb);
  INSERT INTO app.carts(tenant_id,id,customer_id,currency) VALUES(t,cart,customer,'USD');
  INSERT INTO app.cart_lines(tenant_id,cart_id,sku_id,quantity) VALUES(t,cart,sku,1);
@@ -188,7 +188,7 @@ BEGIN
   sha256('privacy-notification-order'::bytea),customer,NULL,'USD',0,'{}'::jsonb,
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
-   'reservation_id',reservation.id,'tax_snapshot','{}'::jsonb)),'[]'::jsonb);
+   'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]'::jsonb);
  PERFORM app.orders_transition(notification_order,'paid','privacy-notification-payment');
  IF NOT EXISTS(SELECT 1 FROM app.notification_deliveries n JOIN app.orders o
   ON (o.tenant_id,o.id)=(n.tenant_id,n.reference_id)
@@ -205,7 +205,7 @@ BEGIN
   sha256('privacy-fulfillment-order'::bytea),customer,NULL,'USD',0,'{}'::jsonb,
   jsonb_build_array(jsonb_build_object('id',fulfillment_line,'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',2,'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
-   'reservation_id',reservation.id,'tax_snapshot','{}'::jsonb)),'[]'::jsonb);
+   'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]'::jsonb);
  registered := app.orders_transition(fulfillment_order,'paid','privacy-fulfillment-payment');
  shipment_receipt := app.fulfillment_create_shipment(fulfillment_order,registered.version,
   'privacy-shipment',{{canary:shipments.carrier}},{{canary:shipments.tracking_number}},
@@ -238,7 +238,7 @@ BEGIN
   NULL,jsonb_build_object('email',{{canary:orders.guest_contact}}||'@canary.invalid'),'USD',0,'{}'::jsonb,
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
-   'reservation_id',reservation.id,'tax_snapshot','{}'::jsonb)),
+   'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','surcharge','amount_minor',1,
    'reason',{{canary:order_adjustments.reason}})));
  PERFORM app.orders_transition(guest_order,'paid','privacy-guest-payment');

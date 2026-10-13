@@ -165,6 +165,7 @@ def run(receipt_dir):
         env_file = Path(private) / ".env"
         credentials = {"POSTGRES_PASSWORD": secrets.token_hex(32), "JOB_SIGNING_KEY": secrets.token_hex(32),
                        "OPENSITE_AUTH_SIGNING_KEY": secrets.token_hex(32),
+                       "OPENSITE_CUSTOMER_CSRF_SECRET": secrets.token_urlsafe(32),
                        "OPENSITE_E2E_OWNER_PASSWORD": secrets.token_hex(32),
                        "OPENSITE_E2E_BOOTSTRAP_PASSWORD": secrets.token_hex(32),
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
@@ -173,6 +174,7 @@ def run(receipt_dir):
                          # Staff login requires an HTTPS Origin; the admin preview proxy presents this
                          # exact value to the API (CI-only), see scripts/e2e/admin.vite.config.ts.
                          OPENSITE_ADMIN_ORIGIN="https://admin.e2e.test",
+                         OPENSITE_STOREFRONT_ORIGIN="https://store.e2e.test",
                          OPENSITE_E2E_OWNER_EMAIL="c24-owner@example.test")
         env_file.write_text("".join(f"{key}={value}\n" for key, value in variables.items()))
         env_file.chmod(0o600)
