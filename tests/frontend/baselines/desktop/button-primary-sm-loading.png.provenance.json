@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "desktop/button-primary-sm-loading.png",
   "scope": "gallery",
-  "sourceFingerprint": "e196d8d67f7dfca82ba6590245d9e0eb69421fda1a62af600130ee355540bd81",
+  "sourceFingerprint": "980929f29823c6c437a6c7d5205cd0673700342c24d56afd1504635dacd4a2b2",
   "pngSha256": "02512ae3061b7b17daac9cacac72bc72a732b934bc22bb223d7b5f7833453789",
   "scopeSnapshots": [
     "desktop/badge-danger.png",
@@ -186,8 +186,8 @@
     "mobile/table-populated-hover.png",
     "mobile/table-populated.png"
   ],
-  "sourceSha": "5aa3107d9c70779898e3b43c47602a0810ce4d3d",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38428427796",
+  "sourceSha": "423d4c069c68f82098ae1530d4aa8ae59aa8a68f",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38412793719",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",

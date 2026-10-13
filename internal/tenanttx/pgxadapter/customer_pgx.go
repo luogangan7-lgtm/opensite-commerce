@@ -29,7 +29,7 @@ func OpenCustomerRunner(ctx context.Context, dsn string) (*CustomerRunner, error
 		return nil, errors.New("customer database is unavailable or misconfigured")
 	}
 	var capabilityErr error
-	err = r.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = r.inMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var safe bool
 		err := tx.QueryRow(ctx, `WITH expected_functions AS (
  SELECT unnest(ARRAY[

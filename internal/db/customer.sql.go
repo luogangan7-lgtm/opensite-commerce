@@ -88,6 +88,8 @@ type CustomerCredentialRow struct {
 // Responsibility: typed customer authentication commands and credential reads.
 // Dependencies: customer-owned proof functions; caller: dedicated tenant-scoped repository.
 // Invariants: no direct credential DML, opaque hashes and explicit SQL casts.
+// Issuance deadlines use one materialized database-clock reading per command;
+// duration inputs are bounded by the repository and preserve microsecond precision.
 func (q *Queries) CustomerCredential(ctx context.Context, arg CustomerCredentialParams) (CustomerCredentialRow, error) {
 	row := q.db.QueryRow(ctx, customerCredential, arg.TenantID, arg.Email)
 	var i CustomerCredentialRow
@@ -163,14 +165,16 @@ func (q *Queries) ListCustomerLinkedOrderIDs(ctx context.Context, arg ListCustom
 }
 
 const prepareCustomerRegistration = `-- name: PrepareCustomerRegistration :one
-SELECT app.customer_prepare_registration($1::text,$2::text,$3::bytea,$4::timestamptz)::boolean AS prepared
+WITH issue_clock AS MATERIALIZED (SELECT clock_timestamp() AS issued_at)
+SELECT app.customer_prepare_registration($1::text,$2::text,$3::bytea,
+ issued_at+$4::bigint*interval '1 microsecond')::boolean AS prepared FROM issue_clock
 `
 
 type PrepareCustomerRegistrationParams struct {
-	Email       string             `json:"email"`
-	PendingHash string             `json:"pending_hash"`
-	TokenHash   []byte             `json:"token_hash"`
-	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	Email       string `json:"email"`
+	PendingHash string `json:"pending_hash"`
+	TokenHash   []byte `json:"token_hash"`
+	ChallengeUs int64  `json:"challenge_us"`
 }
 
 func (q *Queries) PrepareCustomerRegistration(ctx context.Context, arg PrepareCustomerRegistrationParams) (bool, error) {
@@ -178,7 +182,7 @@ func (q *Queries) PrepareCustomerRegistration(ctx context.Context, arg PrepareCu
 		arg.Email,
 		arg.PendingHash,
 		arg.TokenHash,
-		arg.ExpiresAt,
+		arg.ChallengeUs,
 	)
 	var prepared bool
 	err := row.Scan(&prepared)
@@ -186,17 +190,19 @@ func (q *Queries) PrepareCustomerRegistration(ctx context.Context, arg PrepareCu
 }
 
 const prepareCustomerReset = `-- name: PrepareCustomerReset :one
-SELECT app.customer_prepare_reset($1::text,$2::bytea,$3::timestamptz)::boolean AS prepared
+WITH issue_clock AS MATERIALIZED (SELECT clock_timestamp() AS issued_at)
+SELECT app.customer_prepare_reset($1::text,$2::bytea,
+ issued_at+$3::bigint*interval '1 microsecond')::boolean AS prepared FROM issue_clock
 `
 
 type PrepareCustomerResetParams struct {
-	Email     string             `json:"email"`
-	TokenHash []byte             `json:"token_hash"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	Email       string `json:"email"`
+	TokenHash   []byte `json:"token_hash"`
+	ChallengeUs int64  `json:"challenge_us"`
 }
 
 func (q *Queries) PrepareCustomerReset(ctx context.Context, arg PrepareCustomerResetParams) (bool, error) {
-	row := q.db.QueryRow(ctx, prepareCustomerReset, arg.Email, arg.TokenHash, arg.ExpiresAt)
+	row := q.db.QueryRow(ctx, prepareCustomerReset, arg.Email, arg.TokenHash, arg.ChallengeUs)
 	var prepared bool
 	err := row.Scan(&prepared)
 	return prepared, err
@@ -214,17 +220,19 @@ func (q *Queries) RevokeCustomerSession(ctx context.Context, tokenHash []byte) (
 }
 
 const saveCustomerSession = `-- name: SaveCustomerSession :one
+WITH issue_clock AS MATERIALIZED (SELECT clock_timestamp() AS issued_at)
 SELECT coalesce(app.customer_save_session($1::uuid,$2::text,$3::bytea,
- $4::bytea,$5::timestamptz,$6::timestamptz)::text,'')::text AS document
+ $4::bytea,issued_at+$5::bigint*interval '1 microsecond',
+ issued_at+$6::bigint*interval '1 microsecond')::text,'')::text AS document FROM issue_clock
 `
 
 type SaveCustomerSessionParams struct {
-	CustomerID        pgtype.UUID        `json:"customer_id"`
-	ExpectedHash      string             `json:"expected_hash"`
-	OldHash           []byte             `json:"old_hash"`
-	TokenHash         []byte             `json:"token_hash"`
-	AbsoluteExpiresAt pgtype.Timestamptz `json:"absolute_expires_at"`
-	IdleExpiresAt     pgtype.Timestamptz `json:"idle_expires_at"`
+	CustomerID   pgtype.UUID `json:"customer_id"`
+	ExpectedHash string      `json:"expected_hash"`
+	OldHash      []byte      `json:"old_hash"`
+	TokenHash    []byte      `json:"token_hash"`
+	AbsoluteUs   int64       `json:"absolute_us"`
+	IdleUs       int64       `json:"idle_us"`
 }
 
 func (q *Queries) SaveCustomerSession(ctx context.Context, arg SaveCustomerSessionParams) (string, error) {
@@ -233,8 +241,8 @@ func (q *Queries) SaveCustomerSession(ctx context.Context, arg SaveCustomerSessi
 		arg.ExpectedHash,
 		arg.OldHash,
 		arg.TokenHash,
-		arg.AbsoluteExpiresAt,
-		arg.IdleExpiresAt,
+		arg.AbsoluteUs,
+		arg.IdleUs,
 	)
 	var document string
 	err := row.Scan(&document)

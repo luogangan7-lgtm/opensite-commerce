@@ -22,13 +22,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type Config = contract.Config
@@ -208,7 +208,7 @@ func (m *Module) Receive(ctx context.Context, raw []byte, signature string) (con
 		return nil
 	})
 	if err != nil {
-		var pe *pgconn.PgError
+		var pe *pgxadapter.PgError
 		if errors.As(err, &pe) {
 			switch pe.Code {
 			case "23505":

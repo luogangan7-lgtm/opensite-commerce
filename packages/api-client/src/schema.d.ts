@@ -117,7 +117,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Explicit test/development configuration only; never mounted in production. Payments authenticates timestamp plus exact raw bytes and derives tenant authority from a trusted account binding. The durable receipt reports pending or processed; external facts never reissue provider commands. */
+        /** @description Explicit test/development configuration only; never mounted in production. The verifier authenticates exact raw bytes before a trusted event reaches checkout. Checkout rechecks persisted tenant/order, amount, currency, version and provider binding and deduplicates delivery inside a transaction. */
         post: operations["receiveFakePaymentEvent"];
         delete?: never;
         options?: never;
@@ -1048,11 +1048,13 @@ export interface components {
         CustomerRegistrationInput: {
             /** Format: email */
             email: string;
+            /** @description Length is 12 to 1024 UTF-8 bytes after JSON decoding, not a Unicode character count. No Unicode normalization is applied. NUL, CR and LF are rejected. */
             password: string;
         };
         CustomerCredentialsInput: {
             /** Format: email */
             email: string;
+            /** @description Length is 1 to 1024 UTF-8 bytes after JSON decoding, not a Unicode character count. No Unicode normalization is applied. NUL, CR and LF are rejected. */
             password: string;
         };
         CustomerTokenInput: {
@@ -1064,6 +1066,7 @@ export interface components {
         };
         CustomerResetConfirm: {
             token: string;
+            /** @description Length is 12 to 1024 UTF-8 bytes after JSON decoding, not a Unicode character count. No Unicode normalization is applied. NUL, CR and LF are rejected. */
             password: string;
         };
         CustomerRegistrationReceipt: {
@@ -1136,22 +1139,18 @@ export interface components {
         };
         FakePaymentEvent: {
             event_id: string;
-            account_id: string;
+            /** Format: uuid */
+            tenant_id: string;
             /** Format: uuid */
             order_id: string;
             /** Format: int64 */
             order_version: number;
             provider_ref: string;
             /** @enum {string} */
-            status: "captured" | "failed" | "canceled" | "partially_refunded" | "refunded";
+            status: "authorized" | "captured" | "failed" | "canceled";
             /** Format: int64 */
             amount_minor: number;
             currency: string;
-        };
-        FakePaymentReceipt: {
-            event_id: string;
-            /** @enum {string} */
-            status: "pending" | "processed" | "rejected";
         };
         NotificationFailure: {
             /** Format: uuid */
@@ -2394,13 +2393,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Durable payment fact receipt after admission or replay. */
+            /** @description Stable result after payment event admission or replay. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FakePaymentReceipt"];
+                    "application/json": components["schemas"]["CheckoutResult"];
                 };
             };
             400: components["responses"]["BadRequest"];

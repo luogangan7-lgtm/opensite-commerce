@@ -41,7 +41,7 @@ only tenant `id,status` for suspension checks. API keys remain tenant-bound.
 
 **No credentials or application LOGIN role is created by migrations.** A
 production operator must provision separate login identities out-of-band. The
-local Compose migrator provisions environment-backed logins for these four API
+local Compose migrator provisions environment-backed logins for these five API
 capabilities and separate queue/outbox capabilities; see [README.md](README.md) for the rehearsal and password policy.
 Use `psql` interactively with a privileged administrator and commands such as:
 
@@ -128,3 +128,8 @@ components, a pinned HTTPS `OPENSITE_STOREFRONT_ORIGIN`, and a CSPRNG-generated
 32–128 byte base64url `OPENSITE_CUSTOMER_CSRF_SECRET`. Secrets are never committed
 or logged. SMTP remains disabled unless explicitly configured for loopback and
 non-production use; customer challenges are restricted to test recipients.
+The local migrator/restore validates the independent customer login credential
+before migration or target-database writes. Fresh Compose HBA rules fence this
+login to the same exact application database as the other six component logins.
+The recovery drill includes real local proof/login/cart witnesses and restores
+the authentication tables with the all-table archive; see [README.md](README.md).

@@ -4,9 +4,11 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -243,5 +245,24 @@ func TestReservationLocksCanonicalOrder(t *testing.T) {
 	}
 	if !reflect.DeepEqual(lines, before) {
 		t.Fatal("reservation sort mutated snapshot order")
+	}
+}
+
+func TestTaxCategoryTrustBoundary(t *testing.T) {
+	for _, category := range []string{"Standard", "_standard", "1standard", "bad-code", "bad code", "é", strings.Repeat("a", 65), string([]byte{0xff})} {
+		t.Run(fmt.Sprintf("%x", category), func(t *testing.T) {
+			in := input()
+			in.Lines[0].Tax.Snapshot.Category = category
+			if _, err := prepare(in); !errors.Is(err, contract.ErrInvalid) {
+				t.Fatalf("invalid category accepted: %q: %v", category, err)
+			}
+		})
+	}
+	for _, category := range []string{"a", "standard_01", strings.Repeat("a", 64)} {
+		in := input()
+		in.Lines[0].Tax.Snapshot.Category = category
+		if _, err := prepare(in); err != nil {
+			t.Fatalf("valid category %q: %v", category, err)
+		}
 	}
 }

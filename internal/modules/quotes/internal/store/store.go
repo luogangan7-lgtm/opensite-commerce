@@ -9,11 +9,11 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/shipping"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func id(v string) pgtype.UUID { var x pgtype.UUID; _ = x.Scan(v); return x }
@@ -155,7 +155,7 @@ func MapError(e error) error {
 	if errors.Is(e, pgx.ErrNoRows) {
 		return c.ErrNotFound
 	}
-	var p *pgconn.PgError
+	var p *pgxadapter.PgError
 	if errors.As(e, &p) {
 		switch p.Code {
 		case "42501":

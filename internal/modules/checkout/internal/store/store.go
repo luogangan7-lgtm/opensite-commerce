@@ -7,10 +7,10 @@ import (
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func UUID(s string) pgtype.UUID { var u pgtype.UUID; _ = u.Scan(s); return u }
@@ -28,7 +28,7 @@ func MapError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.ErrNotFound
 	}
-	var p *pgconn.PgError
+	var p *pgxadapter.PgError
 	if errors.As(err, &p) {
 		switch p.Code {
 		case "23505":

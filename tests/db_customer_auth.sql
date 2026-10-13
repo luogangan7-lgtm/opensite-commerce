@@ -83,6 +83,11 @@ BEGIN
   RAISE EXCEPTION 'CUSTOMER_AUTH_RESET_FIRST_LOST';
  END IF;
  IF app.customer_consume_reset(reset_hash,phc) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_RESET_REPLAY'; END IF;
+ -- A changed credential version also denies access, so checking the public
+ -- session function alone cannot prove reset actually marked the old row.
+ IF NOT EXISTS(SELECT FROM app.customer_sessions WHERE tenant_id=t AND id=sid AND revoked_at IS NOT NULL)
+  OR EXISTS(SELECT FROM app.customer_sessions WHERE tenant_id=t AND customer_id=customer AND revoked_at IS NULL) THEN
+  RAISE EXCEPTION 'CUSTOMER_AUTH_RESET_REVOKED_MARK_MISSING'; END IF;
  IF app.customer_session(session_hash,3600) IS NOT NULL THEN RAISE EXCEPTION 'CUSTOMER_AUTH_RESET_SESSION_SURVIVED'; END IF;
  IF app.customer_save_session(customer,phc,NULL,sha256('stale-login'::bytea),clock_timestamp()+interval '1 day',clock_timestamp()+interval '1 hour') IS NOT NULL THEN
   RAISE EXCEPTION 'CUSTOMER_AUTH_STALE_KDF_SESSION'; END IF;

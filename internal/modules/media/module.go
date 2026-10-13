@@ -13,12 +13,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/storage/local"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type Config struct {
@@ -68,7 +68,7 @@ func (s *Service) transaction(ctx context.Context, id uuid.UUID, fn func(*db.Que
 	if errors.Is(err, pgx.ErrNoRows) {
 		return notFound()
 	}
-	var pe *pgconn.PgError
+	var pe *pgxadapter.PgError
 	if errors.As(err, &pe) {
 		switch pe.Code {
 		case "23503", "23505", "55000":
