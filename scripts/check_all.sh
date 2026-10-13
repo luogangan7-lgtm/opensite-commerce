@@ -18,9 +18,12 @@ python3 tests/test_reliability_contract_static.py
 python3 tests/test_sqlc_contract_static.py
 python3 tests/test_shipping_contract_static.py
 python3 tests/test_api_contract.py
+python3 tests/test_customer_auth_contract.py
 python3 tests/test_quotes_contract.py
 python3 tests/test_notifications_contract_static.py
 python3 tests/test_notifications_api.py
+python3 tests/test_privacy_registry.py
+python3 scripts/privacy_registry.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_ops_deploy tests.test_ops_backup tests.test_ops_drill tests.test_ops_connection_policy
 python3 scripts/check_oapi_codegen.py
 python3 tests/test_identity_login_contract.py

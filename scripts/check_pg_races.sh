@@ -1253,7 +1253,74 @@ SQL
 done
 
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout contract" >&2; exit 1; fi
+# Gate 92: two genuinely overlapping connections for each single-use auth command.
+# Winner owns the customer lock and parks. Every contender must be observed
+# waiting on the row/transaction lock, never merely spawned, before release.
+for auth_case in verify reset rotate; do
+ read -r T CUSTOMER PHC <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('customer-auth-gate92-race') RETURNING id AS t \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_customer_auth;
+SELECT app.customer_prepare_registration('race@example.invalid',
+ '$argon2id$v=19$m=19456,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU',
+ sha256('verify'::bytea),clock_timestamp()+interval '1 hour');
+RESET ROLE;
+SELECT :'t'||' '||id||' '||
+ '$argon2id$v=19$m=19456,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU'
+ FROM app.customers WHERE tenant_id=:'t';
+SQL
+)"
+ if [[ $auth_case != verify ]]; then
+  tx "auth_${auth_case}_seed" app_customer_auth "$T" "SELECT app.customer_consume_verification(sha256('verify'::bytea));"
+  expect "auth_${auth_case}_seed" ok
+ fi
+ if [[ $auth_case == reset ]]; then
+  tx auth_reset_prepare app_customer_auth "$T" "SELECT app.customer_prepare_reset('race@example.invalid',sha256('reset'::bytea),clock_timestamp()+interval '1 hour');"
+  expect auth_reset_prepare ok
+ elif [[ $auth_case == rotate ]]; then
+  tx auth_rotate_prepare app_customer_auth "$T" "SELECT app.customer_save_session('$CUSTOMER','$PHC',NULL,sha256('old-session'::bytea),clock_timestamp()+interval '1 day',clock_timestamp()+interval '1 hour');"
+  expect auth_rotate_prepare ok
+ fi
+ gate_close 92
+ auth_jobs=()
+ for participant in $(seq 0 1); do
+  auth_command="app.customer_consume_verification(sha256('verify'::bytea))"
+  if [[ $auth_case == reset ]]; then
+   changed_phc=${PHC/YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU/ZWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU}
+   auth_command="app.customer_consume_reset(sha256('reset'::bytea),'$changed_phc')"
+  elif [[ $auth_case == rotate ]]; then
+   auth_command="(app.customer_save_session('$CUSTOMER','$PHC',sha256('old-session'::bytea),sha256('new-session-$participant'::bytea),clock_timestamp()+interval '1 day',clock_timestamp()+interval '1 hour') IS NOT NULL)"
+  fi
+  auth_park=''; [[ $participant == 0 ]] && auth_park=$(park 92)
+  tx "auth_${auth_case}_$participant" app_customer_auth "$T" "SELECT 'AUTH_WIN='||($auth_command)::text; $auth_park" &
+  auth_jobs+=("$!")
+  [[ $participant != 0 ]] || await "auth_${auth_case}_0" advisory
+ done
+ auth_synchronized=0
+ for attempt in $(seq 1 300); do
+  blocked=$(sql <<<"SELECT count(*) FROM pg_stat_activity WHERE left(application_name,length('${RACE_PREFIX}auth_${auth_case}_'))='${RACE_PREFIX}auth_${auth_case}_' AND wait_event IN('transactionid','tuple');")
+  if [[ $blocked == 1 ]]; then auth_synchronized=1; break; fi
+  sleep 0.05
+ done
+ [[ $auth_synchronized == 1 ]] || { echo "FAIL: CUSTOMER_AUTH_92_SYNC $auth_case expected1 blocked, observed$blocked"; fail=1; }
+ gate_open 92
+ for participant in $(seq 0 1); do
+  await_job "auth_${auth_case}_$participant" "${auth_jobs[$participant]}"
+  expect "auth_${auth_case}_$participant" ok
+  expected=false; [[ $participant != 0 ]] || expected=true
+  result "auth_${auth_case}_$participant" "AUTH_WIN=$expected"
+ done
+ if [[ $auth_case == rotate ]]; then
+  got=$(sql <<<"SELECT count(*) FROM app.customer_sessions WHERE tenant_id='$T' AND revoked_at IS NULL AND expires_at>clock_timestamp() AND idle_expires_at>clock_timestamp();")
+ else
+  auth_purpose=register; [[ $auth_case != reset ]] || auth_purpose=reset
+  got=$(sql <<<"SELECT count(*) FROM app.customer_auth_tokens WHERE tenant_id='$T' AND purpose='$auth_purpose' AND consumed_at IS NOT NULL;")
+ fi
+ [[ $got == 1 ]] || { echo "FAIL: CUSTOMER_AUTH_92_END_STATE $auth_case expected1 observed$got"; fail=1; }
+ echo "customer auth $auth_case: 2 synchronized connections (gate 92), exactly one winner"
+done
+
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'

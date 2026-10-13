@@ -146,7 +146,7 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual({name for name, (_, _, op) in ops.items()
                           if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | cms | data_rights | csv |
                          {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
-                          "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession"})
+                          "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession"} | contract.CUSTOMER_OPERATIONS)
         for name in data_rights | csv:
             path, method, operation = ops[name]
             self.assertIn("{tenant_id}", path)
