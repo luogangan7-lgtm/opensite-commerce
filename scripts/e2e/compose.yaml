@@ -23,6 +23,8 @@ services:
       OSC_COMMERCE_MODE: backend
       OSC_COMMERCE_API_ORIGIN: http://api:8080
       OSC_COMMERCE_SITE: http://127.0.0.1:4321
+      GITHUB_ACTIONS: "true"
+      OPENSITE_ENVIRONMENT: development
       OSC_COMMERCE_COOKIE_KEY: ${OSC_COMMERCE_COOKIE_KEY:?set isolated storefront cookie key}
       OPENSITE_STOREFRONT_ORIGIN: https://shop.e2e.test
       OPENSITE_STOREFRONT_KEY: ${OPENSITE_STOREFRONT_KEY:?set isolated storefront proof key}
