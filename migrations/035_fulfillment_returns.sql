@@ -728,7 +728,16 @@ BEGIN
   RAISE EXCEPTION 'ORDER_INVALID_ARGUMENT' USING ERRCODE='22023';
  END IF;
  IF p_target IN('partially_refunded','refunded') THEN
-  RETURN app.orders_refund_budget(p_id,'legacy',NULL,NULL,p_target,p_event_key,p_refund_minor);
+  -- PROBE-39-1: legacy entry bypasses the shared refund budget primitive.
+  SELECT * INTO o FROM app.orders WHERE tenant_id=t AND id=p_id FOR UPDATE;
+  SELECT * INTO e FROM app.outbox_events WHERE tenant_id=t AND delivery_target='orders.events' AND dedup_key='transition:'||p_id::text||':'||p_event_key;
+  IF FOUND THEN RETURN o; END IF;
+  IF o.refunded_minor+p_refund_minor>o.total_minor OR p_refund_minor<=0 THEN RAISE EXCEPTION 'ORDER_INVALID_REFUND' USING ERRCODE='22023'; END IF;
+  UPDATE app.orders SET refunded_minor=refunded_minor+p_refund_minor,state=p_target,version=version+1,updated_at=clock_timestamp()
+   WHERE tenant_id=t AND id=p_id RETURNING * INTO o;
+  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+   VALUES(t,'order.'||p_target,jsonb_build_object('order_id',p_id,'target',p_target,'refund_minor',p_refund_minor,'version',o.version),'orders.events','transition:'||p_id::text||':'||p_event_key);
+  RETURN o;
  END IF;
  IF p_refund_minor<>0 THEN RAISE EXCEPTION 'ORDER_INVALID_REFUND' USING ERRCODE='22023'; END IF;
  SELECT * INTO o FROM app.orders WHERE tenant_id=t AND id=p_id FOR UPDATE;
