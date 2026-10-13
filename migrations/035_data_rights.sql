@@ -320,10 +320,7 @@ BEGIN
  PERFORM operation FROM app.idempotency_records WHERE tenant_id=t AND actor_kind='customer' AND actor_id=p_customer ORDER BY operation,idempotency_key FOR UPDATE NOWAIT;
  UPDATE app.checkout_attempts a SET result='{"erased":true}' FROM app.checkout_sessions s WHERE (s.tenant_id,s.id)=(a.tenant_id,a.checkout_id)
   AND s.tenant_id=t AND s.order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer) AND a.result IS NOT NULL;GET DIAGNOSTICS nattempt=ROW_COUNT;
- UPDATE app.checkout_sessions SET address_snapshot='{"erased":true}',
-  start_result=CASE WHEN start_result IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END,
-  final_result=CASE WHEN final_result IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END
-  WHERE tenant_id=t AND order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer);GET DIAGNOSTICS ncheckout=ROW_COUNT;
+ ncheckout:=0; -- probe: checkout scrub removed
  UPDATE app.quote_lines l SET description='[erased]',snapshot='{"erased":true}' FROM app.quotes q
   WHERE (q.tenant_id,q.id)=(l.tenant_id,l.quote_id) AND q.tenant_id=t AND q.accepted_by=p_customer;GET DIAGNOSTICS nquoteline=ROW_COUNT;
  UPDATE app.quotes SET snapshot=app.data_rights_quote_scrub(snapshot) WHERE tenant_id=t AND accepted_by=p_customer;GET DIAGNOSTICS nquote=ROW_COUNT;
