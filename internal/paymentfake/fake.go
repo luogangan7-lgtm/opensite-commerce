@@ -32,6 +32,7 @@ func (e Event) Validate() error { return payment.VerifiedEvent(e).Validate() }
 type binding struct {
 	fingerprint string
 	result      payment.PaymentIntentResult
+	failure     *payment.PaymentError
 	complete    bool
 }
 type intent struct {
@@ -56,7 +57,8 @@ func New() *Fake {
 }
 
 // FailNext injects one boundary error before side effects. The accepted request
-// still binds its key, so a retry may resume but cannot change its parameters.
+// still binds its key. Retryable errors may resume; a non-retryable rejection
+// is permanent for that key and always replays without creating effects.
 // Copying the error keeps caller mutation from changing a scheduled failure.
 func (f *Fake) FailNext(op Operation, err *payment.PaymentError) {
 	if err == nil {
@@ -117,6 +119,10 @@ func (f *Fake) apply(ctx context.Context, op Operation, r payment.PaymentOperati
 		return zero, payment.ErrKeyReused
 	}
 	if exists && bound.complete {
+		if bound.failure != nil {
+			copied := *bound.failure
+			return zero, &copied
+		}
 		return bound.result, nil
 	}
 	ref := r.ProviderRef
@@ -162,6 +168,10 @@ func (f *Fake) apply(ctx context.Context, op Operation, r payment.PaymentOperati
 	if queue := f.failures[op]; len(queue) > 0 {
 		f.failures[op] = queue[1:]
 		copied := *queue[0]
+		if copied.Code == payment.ErrorNonRetryable {
+			cached := copied
+			f.bindings[key] = binding{fingerprint: fingerprint, failure: &cached, complete: true}
+		}
 		return zero, &copied
 	}
 	result := payment.PaymentIntentResult{ProviderRef: ref, Status: current.status}
