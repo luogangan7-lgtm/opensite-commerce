@@ -85,7 +85,7 @@ BEGIN
       ELSE
        IF t.relname=ANY(ARRAY['checkout_sessions','checkout_attempts']) THEN expected_table := true; END IF;
        allowed_columns := CASE t.relname
-        WHEN 'payment_events' THEN ARRAY['tenant_id','id','provider_account_id','provider_ref','event_key','order_id','order_version','status','amount_minor','currency']
+        WHEN 'payment_events' THEN ARRAY['tenant_id','id','provider_account_id','provider_ref','event_key','claimed_order_id','order_version','status','amount_minor','currency']
         WHEN 'checkout_sessions' THEN all_columns
         WHEN 'checkout_attempts' THEN all_columns
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
@@ -1060,3 +1060,36 @@ BEGIN
  END LOOP;
 END $customer_executor$;
 SELECT 'PASS: exact customer function signatures, executor isolation and column privileges';
+
+-- Payment resolver is a NOLOGIN account-directory capability only. Check every
+-- table/column and every function, including inherited/PUBLIC privileges.
+DO $payments_matrix$
+DECLARE r record; t record; c record; f record; privilege text; expected boolean; role_name text;
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_payment_resolver';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+ OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+ OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_UNSAFE_ROLE'; END IF;
+ FOR t IN SELECT oid,relname FROM pg_class WHERE relnamespace='app'::regnamespace AND relkind IN('r','p') LOOP
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=t.relname='payment_provider_accounts' AND privilege='SELECT';
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_TABLE % %',t.relname,privilege; END IF;
+  END LOOP;
+  FOR c IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
+    expected:=t.relname='payment_provider_accounts' AND (privilege='SELECT' OR privilege='UPDATE' AND c.attname='enabled');
+    IF has_column_privilege(r.oid,t.oid,c.attnum,privilege) IS DISTINCT FROM expected THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_COLUMN % % %',t.relname,c.attname,privilege; END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM (f.proname='resolve_fake_payment_account') THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_FUNCTION %',f.proname; END IF;
+  IF f.proname='resolve_fake_payment_account' THEN
+   IF NOT f.prosecdef OR f.proowner<>r.oid OR NOT f.proconfig @> ARRAY['search_path=pg_catalog, app, pg_temp'] THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_RESOLVER'; END IF;
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+    expected:=role_name IN('app_runtime','app_payment_resolver');
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_RESOLVE_GRANT %',role_name; END IF;
+   END LOOP;
+  END IF;
+ END LOOP;
+END $payments_matrix$;

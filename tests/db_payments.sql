@@ -8,10 +8,15 @@ INSERT INTO app.tenants(name) VALUES('payments-account-A') RETURNING id AS t \gs
 INSERT INTO app.tenants(name) VALUES('payments-account-B') RETURNING id AS other_t \gset
 SELECT set_config('test.payments_t',:'t',true),set_config('test.payments_other_t',:'other_t',true);
 INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment,enabled)
- VALUES(:'t','fake','c19-sql-authority','test',true),(:'t','fake','c19-sql-disabled','test',false);
+ VALUES(:'t','fake','c19-sql-authority','test',true),(:'other_t','fake','c19-sql-disabled','test',false);
 DO $payments$
 DECLARE t uuid:=current_setting('test.payments_t')::uuid; mapped uuid; observed timestamptz;
 BEGIN
+ BEGIN
+  INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment)
+  VALUES(t,'fake','another-same-tenant','test');
+  RAISE EXCEPTION 'PAYMENTS_GATE ambiguous tenant account admitted';
+ EXCEPTION WHEN unique_violation THEN NULL; END;
  BEGIN
   INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment)
   VALUES(t,'fake','c19-live-denied','live');

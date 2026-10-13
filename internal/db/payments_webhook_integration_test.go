@@ -154,7 +154,7 @@ func (p *paymentFactFixture) witness(t *testing.T) paymentFactWitness {
 }
 
 func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
-	for _, name := range []string{"bad_signature", "tampered_bytes", "stale", "future", "unknown_account", "disabled_account", "foreign_account", "payload_tenant", "wrong_amount", "wrong_currency", "wrong_ref", "wrong_version"} {
+	for _, name := range []string{"bad_signature", "tampered_bytes", "stale", "future", "unknown_account", "disabled_account", "foreign_account", "payload_tenant", "unknown_order", "wrong_amount", "wrong_currency", "wrong_ref", "wrong_version"} {
 		t.Run(name, func(t *testing.T) {
 			p := newPaymentFactFixture(t)
 			before := p.witness(t)
@@ -193,6 +193,8 @@ func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
 				}
 			case "payload_tenant":
 				body["tenant_id"] = uuid.NewString()
+			case "unknown_order":
+				body["order_id"] = uuid.NewString()
 			case "wrong_amount":
 				body["amount_minor"] = p.start.AmountMinor + 1
 			case "wrong_currency":
@@ -214,7 +216,7 @@ func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
 				t.Fatal("invalid fact accepted")
 			}
 			after := p.witness(t)
-			rejectedFact := name == "wrong_amount" || name == "wrong_currency" || name == "wrong_ref" || name == "wrong_version"
+			rejectedFact := name == "unknown_order" || name == "wrong_amount" || name == "wrong_currency" || name == "wrong_ref" || name == "wrong_version"
 			if rejectedFact {
 				if after.checkout != before.checkout || after.refunded != 0 || after.inbox != 1 || after.events != 1 || after.applied != 0 {
 					t.Fatalf("reconciliation refusal %+v", after)
@@ -228,10 +230,10 @@ func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
 			} else if after != before {
 				t.Fatalf("invalid admission wrote state: before %+v after %+v", before, after)
 			}
-			// Maintenance sees both tenants: foreign mapping must not leave an inbox.
+			// Mapped foreign/unknown order claims retain only a failed receipt; no business effects.
 			var count int
 			expected := 0
-			if rejectedFact {
+			if rejectedFact || name == "foreign_account" {
 				expected = 1
 			}
 			if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -246,7 +248,10 @@ func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
 func TestPaymentsPGAuthorizedDoesNotPayAndAccountScopedEventIdentity(t *testing.T) {
 	a, b := newPaymentFactFixture(t), newPaymentFactFixture(t)
 	shared := "same-provider-event:" + uuid.NewString()
-	a.receive(t, "authorized:"+uuid.NewString(), payment.StatusAuthorized, a.start.AmountMinor)
+	raw := a.raw("authorized:"+uuid.NewString(), payment.StatusAuthorized, a.start.AmountMinor)
+	if _, err := a.module.Receive(a.f.ctx, raw, a.signature(raw, a.at)); err == nil {
+		t.Fatal("authorization accepted as a completed fact")
+	}
 	before := a.witness(t)
 	if before.checkout.state != "pending_payment" || before.checkout.cash != 0 || before.checkout.journals != 0 || before.checkout.onHand != 10 || before.checkout.reserved != 2 {
 		t.Fatalf("authorization was consumed as capture %+v", before)

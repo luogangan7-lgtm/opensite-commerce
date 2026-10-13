@@ -11,7 +11,8 @@ CREATE TABLE app.payment_provider_accounts (
  enabled boolean NOT NULL DEFAULT true,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  PRIMARY KEY(tenant_id,provider,provider_account_id,environment),
- UNIQUE(provider,provider_account_id,environment)
+ UNIQUE(provider,provider_account_id,environment),
+ UNIQUE(tenant_id,provider,environment)
 );
 CREATE TABLE app.payment_events (
  tenant_id uuid NOT NULL,
@@ -21,7 +22,7 @@ CREATE TABLE app.payment_events (
  environment text NOT NULL DEFAULT 'test' CHECK(environment='test'),
  provider_ref text NOT NULL CHECK(length(provider_ref) BETWEEN 1 AND 200),
  event_key text NOT NULL CHECK(event_key ~ '^[a-f0-9]{64}$'),
- order_id uuid NOT NULL,
+ claimed_order_id uuid NOT NULL,
  order_version bigint NOT NULL CHECK(order_version>0),
  status text NOT NULL CHECK(status IN('captured','failed','canceled','partially_refunded','refunded')),
  amount_minor bigint NOT NULL CHECK(amount_minor>0),
@@ -32,7 +33,6 @@ CREATE TABLE app.payment_events (
  PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,event_key),
  FOREIGN KEY(tenant_id,id) REFERENCES app.webhook_inbox(tenant_id,id),
  FOREIGN KEY(tenant_id,provider,provider_account_id,environment) REFERENCES app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment),
- FOREIGN KEY(tenant_id,order_id) REFERENCES app.orders(tenant_id,id),
  CHECK(NOT applied OR error_code IS NULL)
 );
 CREATE INDEX payment_events_pending ON app.payment_events(tenant_id,provider_account_id,provider_ref,created_at,id) WHERE NOT applied;
@@ -44,7 +44,7 @@ CREATE POLICY tenant_scope ON app.payment_provider_accounts USING(tenant_id=null
 CREATE POLICY tenant_scope ON app.payment_events USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid) WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
 REVOKE ALL ON app.payment_provider_accounts,app.payment_events FROM PUBLIC,app_runtime;
 GRANT SELECT ON app.payment_events TO app_runtime;
-GRANT INSERT(tenant_id,id,provider_account_id,provider_ref,event_key,order_id,order_version,status,amount_minor,currency) ON app.payment_events TO app_runtime;
+GRANT INSERT(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency) ON app.payment_events TO app_runtime;
 GRANT UPDATE(applied,error_code) ON app.payment_events TO app_runtime;
 
 DO $role$ BEGIN
@@ -70,10 +70,11 @@ ALTER FUNCTION app.resolve_fake_payment_account(text) OWNER TO app_payment_resol
 REVOKE ALL ON FUNCTION app.resolve_fake_payment_account(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.resolve_fake_payment_account(text) TO app_runtime;
 
-CREATE FUNCTION app.lock_payment_stream(p_account text,p_ref text) RETURNS void LANGUAGE sql
-SET search_path=pg_catalog,app,pg_temp AS $$
- SELECT pg_advisory_xact_lock(hashtextextended('payments:fake:test:'||p_account||':'||p_ref,19))
-$$;
+CREATE FUNCTION app.lock_payment_stream(p_account text,p_ref text) RETURNS timestamptz LANGUAGE plpgsql
+SET search_path=pg_catalog,app,pg_temp AS $$ BEGIN
+ PERFORM pg_advisory_xact_lock(hashtextextended('payments:fake:test:'||p_account||':'||p_ref,19));
+ RETURN clock_timestamp();
+END $$;
 REVOKE ALL ON FUNCTION app.lock_payment_stream(text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.lock_payment_stream(text,text) TO app_runtime;
 

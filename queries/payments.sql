@@ -2,12 +2,12 @@
 -- the mapped tenant transaction. No raw webhook body or cross-module DML.
 -- name: ResolveFakePaymentAccount :one
 SELECT tenant_id::uuid,at_time::timestamptz FROM app.resolve_fake_payment_account(sqlc.arg(account)::text);
--- name: LockPaymentStream :exec
-SELECT app.lock_payment_stream(sqlc.arg(account)::text,sqlc.arg(provider_ref)::text);
+-- name: LockPaymentStream :one
+SELECT app.lock_payment_stream(sqlc.arg(account)::text,sqlc.arg(provider_ref)::text)::timestamptz AS at_time;
 -- name: AdmitPaymentInbox :one
 SELECT app.admit_payment_inbox(sqlc.arg(account)::text,sqlc.arg(event_id)::text,sqlc.arg(payload_hash)::bytea)::uuid AS id;
 -- name: InsertPaymentEvent :exec
-INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,order_id,order_version,status,amount_minor,currency)
+INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(tenant_id,id) DO NOTHING;
 -- name: ListPendingPaymentEvents :many
 SELECT * FROM app.payment_events WHERE tenant_id=$1 AND provider_account_id=$2 AND provider_ref=$3 AND NOT applied

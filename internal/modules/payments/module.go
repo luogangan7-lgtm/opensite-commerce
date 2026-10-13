@@ -144,14 +144,20 @@ func (m *Module) Receive(ctx context.Context, raw []byte, signature string) (con
 			return rejected()
 		}
 		q := db.New(tx)
-		if e := q.LockPaymentStream(ctx, db.LockPaymentStreamParams{Account: in.AccountID, ProviderRef: in.ProviderRef}); e != nil {
+		lockedAt, e := q.LockPaymentStream(ctx, db.LockPaymentStreamParams{Account: in.AccountID, ProviderRef: in.ProviderRef})
+		if e != nil {
 			return e
+		}
+		// A queued delivery must still be fresh when it actually gains admission.
+		delta = lockedAt.Time.Sub(time.Unix(stamp, 0))
+		if delta > 5*time.Minute || delta < -5*time.Minute {
+			return rejected()
 		}
 		inbox, e := q.AdmitPaymentInbox(ctx, db.AdmitPaymentInboxParams{Account: in.AccountID, EventID: in.EventID, PayloadHash: payload[:]})
 		if e != nil {
 			return e
 		}
-		e = q.InsertPaymentEvent(ctx, db.InsertPaymentEventParams{TenantID: id(tenant), ID: inbox, ProviderAccountID: in.AccountID, ProviderRef: in.ProviderRef, EventKey: hex.EncodeToString(eventKey[:]), OrderID: id(in.OrderID), OrderVersion: in.OrderVersion, Status: string(in.Status), AmountMinor: in.AmountMinor, Currency: in.Currency})
+		e = q.InsertPaymentEvent(ctx, db.InsertPaymentEventParams{TenantID: id(tenant), ID: inbox, ProviderAccountID: in.AccountID, ProviderRef: in.ProviderRef, EventKey: hex.EncodeToString(eventKey[:]), ClaimedOrderID: id(in.OrderID), OrderVersion: in.OrderVersion, Status: string(in.Status), AmountMinor: in.AmountMinor, Currency: in.Currency})
 		if e != nil {
 			return e
 		}
@@ -166,7 +172,7 @@ func (m *Module) Receive(ctx context.Context, raw []byte, signature string) (con
 			if e != nil {
 				return e
 			}
-			done, applyErr := m.config.Apply(ctx, child, payment.VerifiedEvent{EventID: r.EventKey, TenantID: tenant, OrderID: r.OrderID.String(), OrderVersion: r.OrderVersion, ProviderRef: r.ProviderRef, Status: payment.PaymentStatus(r.Status), Amount: money.Money{Amount: r.AmountMinor, Currency: r.Currency}})
+			done, applyErr := m.config.Apply(ctx, child, payment.VerifiedEvent{EventID: r.EventKey, TenantID: tenant, OrderID: r.ClaimedOrderID.String(), OrderVersion: r.OrderVersion, ProviderRef: r.ProviderRef, Status: payment.PaymentStatus(r.Status), Amount: money.Money{Amount: r.AmountMinor, Currency: r.Currency}})
 			var code pgtype.Text
 			if applyErr != nil {
 				if e = child.Rollback(ctx); e != nil {

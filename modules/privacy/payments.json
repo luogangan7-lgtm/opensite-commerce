@@ -48,7 +48,7 @@
         "event_key": {
           "classification": "operational"
         },
-        "order_id": {
+        "claimed_order_id": {
           "classification": "operational"
         },
         "order_version": {
