@@ -28,8 +28,15 @@ sql:
       - "migrations/025_ops_metrics.sql"
       - "migrations/026_notifications.sql"
       - "migrations/027_quotes.sql"
-      - "migrations/028_quote_conversion.sql"
-    queries: "queries"
+      - "migrations/028_identity_auth.sql"
+      - "migrations/029_identity_login.sql"
+      - "migrations/030_orders_admin_list_index.sql"
+      - "migrations/031_cms_publish.sql"
+      - "migrations/032_checkout.sql"
+      - "migrations/033_customer_auth.sql"
+      - "migrations/034_orders_guards.sql"
+      - "migrations/pending/c18b-quote-conversion_quote_conversion.sql"
+    queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:
         package: "db"

@@ -1,5 +1,6 @@
 // Responsibility: expose the platform typed API contract port to business services.
-// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish strict services and platform quote transport.
+// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish/orders strict services, platform quote transport
+// and checkout HTTP adapter.
 // Invariant: generated server mounting stays in StrictRoutes or platform transports behind Router admission.
 // Type aliases preserve compiler-checked oneOf/nullable/responses without copies.
 package httpapi
@@ -80,6 +81,46 @@ type GetPublishedSite404ApplicationProblemPlusJSONResponse = generated.GetPublis
 type GetPublishedSite503ApplicationProblemPlusJSONResponse = generated.GetPublishedSite503ApplicationProblemPlusJSONResponse
 type Problem = generated.Problem
 type PublishedSite = generated.PublishedSite
+type CreateSiteDraftRequestObject = generated.CreateSiteDraftRequestObject
+type CreateSiteDraftResponseObject = generated.CreateSiteDraftResponseObject
+type GetSiteDraftRequestObject = generated.GetSiteDraftRequestObject
+type GetSiteDraftResponseObject = generated.GetSiteDraftResponseObject
+type ListDraftPagesRequestObject = generated.ListDraftPagesRequestObject
+type ListDraftPagesResponseObject = generated.ListDraftPagesResponseObject
+type GetDraftPageRequestObject = generated.GetDraftPageRequestObject
+type GetDraftPageResponseObject = generated.GetDraftPageResponseObject
+type CreateDraftPageRequestObject = generated.CreateDraftPageRequestObject
+type CreateDraftPageResponseObject = generated.CreateDraftPageResponseObject
+type UpdateDraftPageRequestObject = generated.UpdateDraftPageRequestObject
+type UpdateDraftPageResponseObject = generated.UpdateDraftPageResponseObject
+type DeleteDraftPageRequestObject = generated.DeleteDraftPageRequestObject
+type DeleteDraftPageResponseObject = generated.DeleteDraftPageResponseObject
+type UpdateDraftNavigationRequestObject = generated.UpdateDraftNavigationRequestObject
+type UpdateDraftNavigationResponseObject = generated.UpdateDraftNavigationResponseObject
+type ApplyPageOperationsRequestObject = generated.ApplyPageOperationsRequestObject
+type ApplyPageOperationsResponseObject = generated.ApplyPageOperationsResponseObject
+type ValidateSiteDraftRequestObject = generated.ValidateSiteDraftRequestObject
+type ValidateSiteDraftResponseObject = generated.ValidateSiteDraftResponseObject
+type PublishSiteDraftRequestObject = generated.PublishSiteDraftRequestObject
+type PublishSiteDraftResponseObject = generated.PublishSiteDraftResponseObject
+type CreateSitePreviewTokenRequestObject = generated.CreateSitePreviewTokenRequestObject
+type CreateSitePreviewTokenResponseObject = generated.CreateSitePreviewTokenResponseObject
+type GetSitePreviewRequestObject = generated.GetSitePreviewRequestObject
+type GetSitePreviewResponseObject = generated.GetSitePreviewResponseObject
+type GetSiteReleaseHistoryRequestObject = generated.GetSiteReleaseHistoryRequestObject
+type GetSiteReleaseHistoryResponseObject = generated.GetSiteReleaseHistoryResponseObject
+type RestoreSiteReleaseRequestObject = generated.RestoreSiteReleaseRequestObject
+type RestoreSiteReleaseResponseObject = generated.RestoreSiteReleaseResponseObject
+type CMSDraft = generated.CMSDraft
+type CMSDraftPage = generated.CMSDraftPage
+type CMSDraftPageList = generated.CMSDraftPageList
+type CMSNavigationInput = generated.CMSNavigationInput
+type CMSPreviewGrant = generated.CMSPreviewGrant
+type CMSRelease = generated.CMSRelease
+type CMSReleaseList = generated.CMSReleaseList
+type CMSValidation = generated.CMSValidation
+type CMSPublishInput = generated.CMSPublishInput
+type CMSRestoreInput = generated.CMSRestoreInput
 
 type AcceptQuote200JSONResponse = generated.AcceptQuote200JSONResponse
 type AcceptQuote200ResponseHeaders = generated.AcceptQuote200ResponseHeaders
@@ -134,3 +175,30 @@ type WithdrawQuoteResponseObject = generated.WithdrawQuoteResponseObject
 // Neither helper supplies authority or registers routes.
 var NewStrictHandlerWithOptions = generated.NewStrictHandlerWithOptions
 var GetSwagger = generated.GetSwagger
+
+type GetOrder200JSONResponse = generated.GetOrder200JSONResponse
+type GetOrder200ResponseHeaders = generated.GetOrder200ResponseHeaders
+type GetOrderRequestObject = generated.GetOrderRequestObject
+type GetOrderResponseObject = generated.GetOrderResponseObject
+type ListOrders200JSONResponse = generated.ListOrders200JSONResponse
+type ListOrders200ResponseHeaders = generated.ListOrders200ResponseHeaders
+type ListOrdersRequestObject = generated.ListOrdersRequestObject
+type ListOrdersResponseObject = generated.ListOrdersResponseObject
+type OrderAdjustment = generated.OrderAdjustment
+type OrderDetail = generated.OrderDetail
+type OrderLine = generated.OrderLine
+type OrderPage = generated.OrderPage
+type OrderShipping = generated.OrderShipping
+type OrderState = generated.OrderState
+type OrderSummary = generated.OrderSummary
+type OrderSummaryCustomerKind = generated.OrderSummaryCustomerKind
+type CheckoutResult = generated.CheckoutResult
+type CheckoutStart = generated.CheckoutStart
+type CheckoutShippingAddress = generated.CheckoutShippingAddress
+type FakePaymentEvent = generated.FakePaymentEvent
+type CreateCheckoutRequestObject = generated.CreateCheckoutRequestObject
+type CreateCheckoutResponseObject = generated.CreateCheckoutResponseObject
+type CreateCheckout201JSONResponse = generated.CreateCheckout201JSONResponse
+type ReceiveFakePaymentEventRequestObject = generated.ReceiveFakePaymentEventRequestObject
+type ReceiveFakePaymentEventResponseObject = generated.ReceiveFakePaymentEventResponseObject
+type ReceiveFakePaymentEvent200JSONResponse = generated.ReceiveFakePaymentEvent200JSONResponse

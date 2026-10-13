@@ -11,52 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const bindQuoteConversion = `-- name: BindQuoteConversion :one
-SELECT tenant_id, quote_id, buyer_company_id, customer_id, order_id, quote_version, idempotency_key, request_hash, order_number, currency, total_minor, created_at FROM app.quote_conversion_bind($1::uuid,$2::uuid,
- $3::uuid,$4::uuid,$5::uuid,
- $6::bigint,$7::text,$8::bytea)
-`
-
-type BindQuoteConversionParams struct {
-	TenantID       pgtype.UUID `json:"tenant_id"`
-	QuoteID        pgtype.UUID `json:"quote_id"`
-	CompanyID      pgtype.UUID `json:"company_id"`
-	CustomerID     pgtype.UUID `json:"customer_id"`
-	OrderID        pgtype.UUID `json:"order_id"`
-	QuoteVersion   int64       `json:"quote_version"`
-	IdempotencyKey string      `json:"idempotency_key"`
-	RequestHash    []byte      `json:"request_hash"`
-}
-
-func (q *Queries) BindQuoteConversion(ctx context.Context, arg BindQuoteConversionParams) (AppQuoteConversion, error) {
-	row := q.db.QueryRow(ctx, bindQuoteConversion,
-		arg.TenantID,
-		arg.QuoteID,
-		arg.CompanyID,
-		arg.CustomerID,
-		arg.OrderID,
-		arg.QuoteVersion,
-		arg.IdempotencyKey,
-		arg.RequestHash,
-	)
-	var i AppQuoteConversion
-	err := row.Scan(
-		&i.TenantID,
-		&i.QuoteID,
-		&i.BuyerCompanyID,
-		&i.CustomerID,
-		&i.OrderID,
-		&i.QuoteVersion,
-		&i.IdempotencyKey,
-		&i.RequestHash,
-		&i.OrderNumber,
-		&i.Currency,
-		&i.TotalMinor,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const createQuote = `-- name: CreateQuote :one
 SELECT app.create_quote($1::uuid,$2::uuid,$3::uuid,
  $4::uuid,$5::uuid,$6::text,
@@ -229,82 +183,6 @@ func (q *Queries) GetQuoteApprovals(ctx context.Context, arg GetQuoteApprovalsPa
 	return items, nil
 }
 
-const getQuoteConversion = `-- name: GetQuoteConversion :one
-SELECT c.tenant_id, c.quote_id, c.buyer_company_id, c.customer_id, c.order_id, c.quote_version, c.idempotency_key, c.request_hash, c.order_number, c.currency, c.total_minor, c.created_at,o.state FROM app.quote_conversion_get($1::uuid,$2::uuid,
- $3::uuid,$4::text,$5::uuid) c
- JOIN app.orders o ON(o.tenant_id,o.id)=(c.tenant_id,c.order_id)
-`
-
-type GetQuoteConversionParams struct {
-	TenantID  pgtype.UUID `json:"tenant_id"`
-	QuoteID   pgtype.UUID `json:"quote_id"`
-	CompanyID pgtype.UUID `json:"company_id"`
-	ActorKind string      `json:"actor_kind"`
-	ActorID   pgtype.UUID `json:"actor_id"`
-}
-
-type GetQuoteConversionRow struct {
-	TenantID       pgtype.UUID        `json:"tenant_id"`
-	QuoteID        pgtype.UUID        `json:"quote_id"`
-	BuyerCompanyID pgtype.UUID        `json:"buyer_company_id"`
-	CustomerID     pgtype.UUID        `json:"customer_id"`
-	OrderID        pgtype.UUID        `json:"order_id"`
-	QuoteVersion   int64              `json:"quote_version"`
-	IdempotencyKey string             `json:"idempotency_key"`
-	RequestHash    []byte             `json:"request_hash"`
-	OrderNumber    int64              `json:"order_number"`
-	Currency       string             `json:"currency"`
-	TotalMinor     int64              `json:"total_minor"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	State          string             `json:"state"`
-}
-
-func (q *Queries) GetQuoteConversion(ctx context.Context, arg GetQuoteConversionParams) (GetQuoteConversionRow, error) {
-	row := q.db.QueryRow(ctx, getQuoteConversion,
-		arg.TenantID,
-		arg.QuoteID,
-		arg.CompanyID,
-		arg.ActorKind,
-		arg.ActorID,
-	)
-	var i GetQuoteConversionRow
-	err := row.Scan(
-		&i.TenantID,
-		&i.QuoteID,
-		&i.BuyerCompanyID,
-		&i.CustomerID,
-		&i.OrderID,
-		&i.QuoteVersion,
-		&i.IdempotencyKey,
-		&i.RequestHash,
-		&i.OrderNumber,
-		&i.Currency,
-		&i.TotalMinor,
-		&i.CreatedAt,
-		&i.State,
-	)
-	return i, err
-}
-
-const getQuoteConversionSKU = `-- name: GetQuoteConversionSKU :one
-SELECT sku FROM app.product_variants WHERE tenant_id=$1::uuid
- AND product_id=$2::uuid AND id=$3::uuid
-`
-
-type GetQuoteConversionSKUParams struct {
-	TenantID  pgtype.UUID `json:"tenant_id"`
-	ProductID pgtype.UUID `json:"product_id"`
-	VariantID pgtype.UUID `json:"variant_id"`
-}
-
-// This is only a label lookup. Negotiated amounts never read live price lists.
-func (q *Queries) GetQuoteConversionSKU(ctx context.Context, arg GetQuoteConversionSKUParams) (string, error) {
-	row := q.db.QueryRow(ctx, getQuoteConversionSKU, arg.TenantID, arg.ProductID, arg.VariantID)
-	var sku string
-	err := row.Scan(&sku)
-	return sku, err
-}
-
 const getQuoteLines = `-- name: GetQuoteLines :many
 SELECT tenant_id, quote_id, line_no, product_id, variant_id, description, quantity, unit_price, line_total, snapshot FROM app.quote_lines WHERE tenant_id=$1::uuid AND quote_id=$2::uuid ORDER BY line_no
 `
@@ -387,49 +265,6 @@ func (q *Queries) GetQuoteTaxRules(ctx context.Context, tenantID pgtype.UUID) (G
 	row := q.db.QueryRow(ctx, getQuoteTaxRules, tenantID)
 	var i GetQuoteTaxRulesRow
 	err := row.Scan(&i.Rules, &i.PricesIncludeTax)
-	return i, err
-}
-
-const lockQuoteConversion = `-- name: LockQuoteConversion :one
-SELECT tenant_id, id, site_id, inquiry_id, buyer_company_id, created_by, currency, subtotal, tax, shipping, total, snapshot, expires_at, status, version, accepted_by, created_at, updated_at FROM app.quote_conversion_lock($1::uuid,$2::uuid,
- $3::uuid,$4::uuid)
-`
-
-type LockQuoteConversionParams struct {
-	TenantID   pgtype.UUID `json:"tenant_id"`
-	QuoteID    pgtype.UUID `json:"quote_id"`
-	CompanyID  pgtype.UUID `json:"company_id"`
-	CustomerID pgtype.UUID `json:"customer_id"`
-}
-
-func (q *Queries) LockQuoteConversion(ctx context.Context, arg LockQuoteConversionParams) (AppQuote, error) {
-	row := q.db.QueryRow(ctx, lockQuoteConversion,
-		arg.TenantID,
-		arg.QuoteID,
-		arg.CompanyID,
-		arg.CustomerID,
-	)
-	var i AppQuote
-	err := row.Scan(
-		&i.TenantID,
-		&i.ID,
-		&i.SiteID,
-		&i.InquiryID,
-		&i.BuyerCompanyID,
-		&i.CreatedBy,
-		&i.Currency,
-		&i.Subtotal,
-		&i.Tax,
-		&i.Shipping,
-		&i.Total,
-		&i.Snapshot,
-		&i.ExpiresAt,
-		&i.Status,
-		&i.Version,
-		&i.AcceptedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
 	return i, err
 }
 

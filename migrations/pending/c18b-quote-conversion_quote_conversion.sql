@@ -1,3 +1,4 @@
+-- stable-id: c18b-quote-conversion
 -- Responsibility: quote-owned immutable order conversion receipts.
 -- Dependencies: approved quotes027 and orders020 public commands; called by quotes.
 -- Invariants: one quote/order/key binding, fresh company authority, DB-clock expiry,

@@ -29,6 +29,20 @@ class APIContractTests(unittest.TestCase):
     def setUp(self):
         self.api = yaml.safe_load((ROOT / "api/openapi.yaml").read_text())
 
+    def test_signed_cms_preview_contract(self):
+        self.assertTrue(contract.validate_contract(self.api))
+        for fault in ("no bearer", "optional bearer", "cache", "index", "scope", "other public"):
+            with self.subTest(fault=fault):
+                broken = copy.deepcopy(self.api)
+                _, _, op = operations(broken)["getSitePreview"]
+                if fault == "no bearer": op["parameters"] = []
+                elif fault == "optional bearer": op["parameters"][0]["required"] = False
+                elif fault == "cache": op["responses"]["200"]["headers"]["Cache-Control"]["schema"]["const"] = "public"
+                elif fault == "index": del op["responses"]["200"]["headers"]["X-Robots-Tag"]
+                elif fault == "scope": op["x-required-scope"] = "cms:write"
+                elif fault == "other public": op["operationId"] = "arbitraryPublicTenantRead"
+                with self.assertRaises(ValueError): contract.validate_contract(broken)
+
     def test_cart_is_strict_storefront_contract(self):
         ops = operations(self.api)
         for name in ("createCart", "getCart", "setCartLine", "deleteCartLine"):
@@ -116,14 +130,35 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(ops["health"][:2], ("/healthz", "get"))
         self.assertEqual(set(ops["health"][2]["responses"]), {"204"})
         self.assertNotIn("content", ops["health"][2]["responses"]["204"])
-        expected = {"health", "getPublishedSite", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
+        expected = {"createCheckout", "receiveFakePaymentEvent", "health", "getPublishedSite", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
         quote_operations = {"submitInquiry", "createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote", "getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote", "createQuoteOrder", "getQuoteOrderConversion"}
+        cms = {"createSiteDraft", "getSiteDraft", "listDraftPages", "createDraftPage", "getDraftPage",
+               "updateDraftPage", "deleteDraftPage", "updateDraftNavigation", "applyPageOperations",
+               "validateSiteDraft", "publishSiteDraft", "createSitePreviewToken", "getSiteReleaseHistory",
+               "restoreSiteRelease", "getSitePreview"}
+        orders = {"listOrders", "getOrder"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | {"listNotificationFailures", "redriveNotification"})
-        for name in expected - {"health", "getPublishedSite"}:
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | cms |
+                         {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
+                          "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession"} | contract.CUSTOMER_OPERATIONS)
+        for name in orders:
+            path, method, operation = ops[name]
+            self.assertTrue(path.startswith("/api/v1/t/{tenant_id}/orders"))
+            self.assertEqual((method, operation["x-opensite-access"], operation["x-required-scope"]),
+                             ("get", "AdminOrAPIKey", "orders:read"))
+        for name in cms - {"getSitePreview"}:
+            _, method, operation = ops[name]
+            self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
+            self.assertEqual(operation["x-required-scope"],
+                             "cms:publish" if name in {"publishSiteDraft", "restoreSiteRelease"} else "cms:write")
+            if method != "get":
+                self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, operation["parameters"])
+                if name != "createSiteDraft":
+                    self.assertIn({"$ref": "#/components/parameters/IfMatch"}, operation["parameters"])
+        for name in expected - {"health", "getPublishedSite", "createCheckout", "receiveFakePaymentEvent"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
             self.assertIn(operation["x-required-scope"], {"catalog:read", "catalog:write", "media:write"})
@@ -172,8 +207,8 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual((path, method), ("/api/v1/t/{tenant_id}/quotes/{quote_id}/orders", "post"))
         self.assertEqual(op["x-opensite-access"], "BuyerCompany")
         self.assertEqual(op["x-required-scope"], "quotes:convert")
-        self.assertEqual(op["security"], [{"CustomerSession": []}])
-        scheme = self.api["components"]["securitySchemes"]["CustomerSession"]
+        self.assertEqual(op["security"], [{"customerSession": []}])
+        scheme = self.api["components"]["securitySchemes"]["customerSession"]
         self.assertEqual((scheme["type"], scheme["in"], scheme["name"]),
                          ("apiKey", "cookie", "__Host-osc_customer_session"))
         contract.validate_contract(self.api)
@@ -182,9 +217,9 @@ class APIContractTests(unittest.TestCase):
             "staff session": lambda a: operations(a)["createQuoteOrder"][2].update(security=[{"adminSession": []}]),
             "scope drift": lambda a: operations(a)["createQuoteOrder"][2].update({"x-required-scope": "quotes:write"}),
             "missing scope": lambda a: operations(a)["createQuoteOrder"][2].pop("x-required-scope"),
-            "customer cookie drift": lambda a: a["components"]["securitySchemes"]["CustomerSession"].update(name="__Host-osc_admin_session"),
-            "missing CSRF": lambda a: operations(a)["createQuoteOrder"][2].update(parameters=[p for p in operations(a)["createQuoteOrder"][2]["parameters"] if p.get("$ref") != "#/components/parameters/CSRFToken"]),
-            "missing Origin": lambda a: operations(a)["createQuoteOrder"][2].update(parameters=[p for p in operations(a)["createQuoteOrder"][2]["parameters"] if p.get("$ref") != "#/components/parameters/BuyerOrigin"]),
+            "customer cookie drift": lambda a: a["components"]["securitySchemes"]["customerSession"].update(name="__Host-osc_admin_session"),
+            "missing CSRF": lambda a: operations(a)["createQuoteOrder"][2].update(parameters=[p for p in operations(a)["createQuoteOrder"][2]["parameters"] if p.get("$ref") != "#/components/parameters/CheckoutCSRFToken"]),
+            "missing Origin": lambda a: operations(a)["createQuoteOrder"][2].update(parameters=[p for p in operations(a)["createQuoteOrder"][2]["parameters"] if p.get("$ref") != "#/components/parameters/CheckoutOrigin"]),
             "missing trusted marker": lambda a: operations(a)["createQuoteOrder"][2].pop("x-opensite-trusted-buyer"),
         }
         for name, mutate in mutations.items():
@@ -217,6 +252,50 @@ class APIContractTests(unittest.TestCase):
             self.assertNotIn("x-required-scope", op)
             self.assertEqual(op["x-opensite-access"], "AuthenticatedSelf")
             self.assertEqual(op["security"], [{"adminSession": []}])
+
+    def test_checkout_auth_and_test_webhook_policy(self):
+        contract.validate_contract(self.api)
+        ops = operations(self.api)
+        checkout = ops["createCheckout"]
+        self.assertEqual(checkout[:2], ("/api/v1/t/{tenant_id}/checkout", "post"))
+        self.assertEqual(checkout[2]["x-opensite-access"], "Storefront")
+        self.assertNotIn("x-required-scope", checkout[2])
+        webhook = ops["receiveFakePaymentEvent"]
+        self.assertEqual(webhook[:2], ("/api/v1/testing/payments/fake/webhook", "post"))
+        self.assertIs(webhook[2]["x-test-only"], True)
+        for target, changes in (
+            ("createCheckout", {"x-opensite-access": "Public", "security": []}),
+            ("createCheckout", {"x-opensite-access": "InternalService", "x-required-scope": "checkout.submit"}),
+            ("createCheckout", {"x-required-scope": "orders:write"}),
+            ("createCheckout", {"x-required-scope": ""}),
+            ("createCheckout", {"security": [{"adminSession": []}]}),
+            ("receiveFakePaymentEvent", {"x-test-only": False}),
+            ("receiveFakePaymentEvent", {"security": []}),
+        ):
+            with self.subTest(target=target, changes=changes):
+                candidate = copy.deepcopy(self.api)
+                operations(candidate)[target][2].update(changes)
+                with self.assertRaises(ValueError):
+                    contract.validate_contract(candidate)
+        for parameter in ("CheckoutOrigin", "CheckoutCSRFToken", "IdempotencyKey"):
+            for mutation in ("missing", "optional"):
+                with self.subTest(parameter=parameter, mutation=mutation):
+                    candidate = copy.deepcopy(self.api)
+                    op = operations(candidate)["createCheckout"][2]
+                    if mutation == "missing":
+                        op["parameters"] = [p for p in op["parameters"]
+                                            if p.get("$ref") != "#/components/parameters/" + parameter]
+                    else:
+                        # Effective inline parameters override inherited/ref values.
+                        changed = copy.deepcopy(candidate["components"]["parameters"][parameter])
+                        changed["required"] = False
+                        op["parameters"].append(changed)
+                    with self.assertRaises(ValueError):
+                        contract.validate_contract(candidate)
+        candidate = copy.deepcopy(self.api)
+        candidate["paths"]["/api/v1/payments/webhook"] = candidate["paths"].pop(webhook[0])
+        with self.assertRaises(ValueError):
+            contract.validate_contract(candidate)
 
     def test_checker_accepts_current_contract(self):
         contract.validate_contract(self.api)
@@ -255,6 +334,11 @@ class APIContractTests(unittest.TestCase):
             "wrong Problem media": lambda a: a["components"]["responses"]["Unauthorized"].update(content={"application/json": {"schema": {"type": "object"}}}),
             "unknown status": lambda a: op(a, "getCurrentActor").update({"x-opensite-status": "unknown"}),
             "login skips csrf": lambda a: op(a, "createAdminSession").update(parameters=[]),
+            "staff login skips csrf": lambda a: op(a, "createStaffLoginSession").update(parameters=[]),
+            "staff challenge optional": lambda a: a["components"]["parameters"]["LoginChallengeCookie"].update(required=False),
+            "staff login status planned": lambda a: op(a, "createStaffLoginSession").update({"x-opensite-status": "planned"}),
+            "staff self bearer": lambda a: op(a, "getAdminSession").update(security=[{"ApiKeyBearer": []}]),
+            "staff self scope": lambda a: op(a, "logoutCurrentStaffSession").update({"x-required-scope": "identity.write"}),
             "cookie write headers missing": lambda a: op(a, "createProduct").update(parameters=[]),
             "cookie-only headers unconditional": lambda a: a["components"]["parameters"]["CSRFTokenIfCookie"].update(required=True),
             "responses missing": lambda a: op(a, "createProduct").pop("responses"),

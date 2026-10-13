@@ -11,6 +11,82 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const checkOrderCreation = `-- name: CheckOrderCreation :many
+SELECT tenant_id, id, order_number, creation_key, request_hash, customer_id, guest_contact, currency, items_net_minor, tax_minor, shipping_minor, shipping_snapshot, adjustment_minor, total_minor, refunded_minor, state, version, sealed, created_at, updated_at FROM app.orders_check_creation($1::uuid,$2::text,$3::bytea)
+`
+
+type CheckOrderCreationParams struct {
+	ID          pgtype.UUID `json:"id"`
+	CreationKey string      `json:"creation_key"`
+	RequestHash []byte      `json:"request_hash"`
+}
+
+func (q *Queries) CheckOrderCreation(ctx context.Context, arg CheckOrderCreationParams) ([]AppOrder, error) {
+	rows, err := q.db.Query(ctx, checkOrderCreation, arg.ID, arg.CreationKey, arg.RequestHash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AppOrder
+	for rows.Next() {
+		var i AppOrder
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.ID,
+			&i.OrderNumber,
+			&i.CreationKey,
+			&i.RequestHash,
+			&i.CustomerID,
+			&i.GuestContact,
+			&i.Currency,
+			&i.ItemsNetMinor,
+			&i.TaxMinor,
+			&i.ShippingMinor,
+			&i.ShippingSnapshot,
+			&i.AdjustmentMinor,
+			&i.TotalMinor,
+			&i.RefundedMinor,
+			&i.State,
+			&i.Version,
+			&i.Sealed,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countLiveOrderReservations = `-- name: CountLiveOrderReservations :one
+SELECT count(*) FILTER(WHERE state='active' AND expires_at>clock_timestamp()+make_interval(secs=>$1::integer))::bigint AS live,
+ count(*)::bigint AS total
+FROM app.inventory_reservations WHERE tenant_id=$2 AND id=ANY($3::uuid[])
+`
+
+type CountLiveOrderReservationsParams struct {
+	MinRemainingSeconds int32         `json:"min_remaining_seconds"`
+	TenantID            pgtype.UUID   `json:"tenant_id"`
+	ReservationIds      []pgtype.UUID `json:"reservation_ids"`
+}
+
+type CountLiveOrderReservationsRow struct {
+	Live  int64 `json:"live"`
+	Total int64 `json:"total"`
+}
+
+// Read after LockOrderReservations; locked rows reflect the latest committed state.
+func (q *Queries) CountLiveOrderReservations(ctx context.Context, arg CountLiveOrderReservationsParams) (CountLiveOrderReservationsRow, error) {
+	row := q.db.QueryRow(ctx, countLiveOrderReservations, arg.MinRemainingSeconds, arg.TenantID, arg.ReservationIds)
+	var i CountLiveOrderReservationsRow
+	err := row.Scan(&i.Live, &i.Total)
+	return i, err
+}
+
 const createOrder = `-- name: CreateOrder :one
 SELECT tenant_id, id, order_number, creation_key, request_hash, customer_id, guest_contact, currency, items_net_minor, tax_minor, shipping_minor, shipping_snapshot, adjustment_minor, total_minor, refunded_minor, state, version, sealed, created_at, updated_at FROM app.orders_create($1::uuid,$2::text,$3::bytea,
  $4::uuid,$5::jsonb,$6::text,
@@ -70,6 +146,50 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (AppOr
 	return i, err
 }
 
+const getAdminOrder = `-- name: GetAdminOrder :one
+SELECT id,order_number,state,version,currency,tax_minor,shipping_minor,total_minor,
+ coalesce(shipping_snapshot->>'Method','')::text AS shipping_method,created_at,updated_at
+FROM app.orders WHERE tenant_id=$1 AND id=$2 AND sealed
+`
+
+type GetAdminOrderParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+}
+
+type GetAdminOrderRow struct {
+	ID             pgtype.UUID        `json:"id"`
+	OrderNumber    int64              `json:"order_number"`
+	State          string             `json:"state"`
+	Version        int64              `json:"version"`
+	Currency       string             `json:"currency"`
+	TaxMinor       int64              `json:"tax_minor"`
+	ShippingMinor  int64              `json:"shipping_minor"`
+	TotalMinor     int64              `json:"total_minor"`
+	ShippingMethod string             `json:"shipping_method"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetAdminOrder(ctx context.Context, arg GetAdminOrderParams) (GetAdminOrderRow, error) {
+	row := q.db.QueryRow(ctx, getAdminOrder, arg.TenantID, arg.ID)
+	var i GetAdminOrderRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrderNumber,
+		&i.State,
+		&i.Version,
+		&i.Currency,
+		&i.TaxMinor,
+		&i.ShippingMinor,
+		&i.TotalMinor,
+		&i.ShippingMethod,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getOrder = `-- name: GetOrder :one
 SELECT tenant_id, id, order_number, creation_key, request_hash, customer_id, guest_contact, currency, items_net_minor, tax_minor, shipping_minor, shipping_snapshot, adjustment_minor, total_minor, refunded_minor, state, version, sealed, created_at, updated_at FROM app.orders WHERE tenant_id=$1 AND id=$2 AND sealed
 `
@@ -121,6 +241,18 @@ func (q *Queries) GetOrdersTenantContext(ctx context.Context) (pgtype.UUID, erro
 	return tenant_id, err
 }
 
+const getOrdersTransactionReadOnly = `-- name: GetOrdersTransactionReadOnly :one
+SELECT current_setting('transaction_read_only')::boolean AS read_only
+`
+
+// The admin read path refuses to run in a writable transaction (fail closed).
+func (q *Queries) GetOrdersTransactionReadOnly(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, getOrdersTransactionReadOnly)
+	var read_only bool
+	err := row.Scan(&read_only)
+	return read_only, err
+}
+
 const getPayableOrder = `-- name: GetPayableOrder :one
 SELECT id,total_minor,currency,version,state FROM app.orders WHERE tenant_id=$1 AND id=$2 AND sealed
 `
@@ -149,6 +281,183 @@ func (q *Queries) GetPayableOrder(ctx context.Context, arg GetPayableOrderParams
 		&i.State,
 	)
 	return i, err
+}
+
+const listAdminOrderAdjustments = `-- name: ListAdminOrderAdjustments :many
+SELECT id,reason,amount_minor
+FROM app.order_adjustments WHERE tenant_id=$1 AND order_id=$2 ORDER BY id
+`
+
+type ListAdminOrderAdjustmentsParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	OrderID  pgtype.UUID `json:"order_id"`
+}
+
+type ListAdminOrderAdjustmentsRow struct {
+	ID          pgtype.UUID `json:"id"`
+	Reason      string      `json:"reason"`
+	AmountMinor int64       `json:"amount_minor"`
+}
+
+func (q *Queries) ListAdminOrderAdjustments(ctx context.Context, arg ListAdminOrderAdjustmentsParams) ([]ListAdminOrderAdjustmentsRow, error) {
+	rows, err := q.db.Query(ctx, listAdminOrderAdjustments, arg.TenantID, arg.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAdminOrderAdjustmentsRow
+	for rows.Next() {
+		var i ListAdminOrderAdjustmentsRow
+		if err := rows.Scan(&i.ID, &i.Reason, &i.AmountMinor); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAdminOrderLines = `-- name: ListAdminOrderLines :many
+SELECT id,sku,quantity,unit_price_minor,line_tax_minor,line_total_minor
+FROM app.order_lines WHERE tenant_id=$1 AND order_id=$2 ORDER BY id
+`
+
+type ListAdminOrderLinesParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	OrderID  pgtype.UUID `json:"order_id"`
+}
+
+type ListAdminOrderLinesRow struct {
+	ID             pgtype.UUID `json:"id"`
+	Sku            string      `json:"sku"`
+	Quantity       int64       `json:"quantity"`
+	UnitPriceMinor int64       `json:"unit_price_minor"`
+	LineTaxMinor   int64       `json:"line_tax_minor"`
+	LineTotalMinor int64       `json:"line_total_minor"`
+}
+
+func (q *Queries) ListAdminOrderLines(ctx context.Context, arg ListAdminOrderLinesParams) ([]ListAdminOrderLinesRow, error) {
+	rows, err := q.db.Query(ctx, listAdminOrderLines, arg.TenantID, arg.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAdminOrderLinesRow
+	for rows.Next() {
+		var i ListAdminOrderLinesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Sku,
+			&i.Quantity,
+			&i.UnitPriceMinor,
+			&i.LineTaxMinor,
+			&i.LineTotalMinor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAdminOrders = `-- name: ListAdminOrders :many
+SELECT id,order_number,state,currency,total_minor,(customer_id IS NOT NULL)::boolean AS is_customer,created_at
+FROM app.orders
+WHERE tenant_id=$1 AND sealed
+ AND ($2::text IS NULL OR state=$2::text)
+ AND (NOT $3::boolean OR (created_at,id)<($4::timestamptz,$5::uuid))
+ORDER BY created_at DESC,id DESC
+LIMIT $6::integer
+`
+
+type ListAdminOrdersParams struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	State           pgtype.Text        `json:"state"`
+	HasCursor       bool               `json:"has_cursor"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        pgtype.UUID        `json:"cursor_id"`
+	PageSize        int32              `json:"page_size"`
+}
+
+type ListAdminOrdersRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	OrderNumber int64              `json:"order_number"`
+	State       string             `json:"state"`
+	Currency    string             `json:"currency"`
+	TotalMinor  int64              `json:"total_minor"`
+	IsCustomer  bool               `json:"is_customer"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+// Admin reads: sealed snapshots only, newest first by (created_at,id); guest
+// contact never leaves the database, only whether the buyer was a customer.
+func (q *Queries) ListAdminOrders(ctx context.Context, arg ListAdminOrdersParams) ([]ListAdminOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listAdminOrders,
+		arg.TenantID,
+		arg.State,
+		arg.HasCursor,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAdminOrdersRow
+	for rows.Next() {
+		var i ListAdminOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderNumber,
+			&i.State,
+			&i.Currency,
+			&i.TotalMinor,
+			&i.IsCustomer,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrderReservationIDs = `-- name: ListOrderReservationIDs :many
+SELECT reservation_id FROM app.order_lines WHERE tenant_id=$1 AND order_id=$2 ORDER BY reservation_id
+`
+
+type ListOrderReservationIDsParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	OrderID  pgtype.UUID `json:"order_id"`
+}
+
+func (q *Queries) ListOrderReservationIDs(ctx context.Context, arg ListOrderReservationIDsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listOrderReservationIDs, arg.TenantID, arg.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var reservation_id pgtype.UUID
+		if err := rows.Scan(&reservation_id); err != nil {
+			return nil, err
+		}
+		items = append(items, reservation_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockOrderReservations = `-- name: LockOrderReservations :exec
@@ -249,13 +558,4 @@ func (q *Queries) TransitionOrder(ctx context.Context, arg TransitionOrderParams
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const validatePaymentReservations = `-- name: ValidatePaymentReservations :exec
-SELECT app.orders_validate_payment_reservations($1::uuid)
-`
-
-func (q *Queries) ValidatePaymentReservations(ctx context.Context, orderID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, validatePaymentReservations, orderID)
-	return err
 }

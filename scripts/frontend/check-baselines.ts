@@ -1,12 +1,11 @@
-/** Rejects stale or modified golden inputs before comparisons; CI artifact/run must be independently inspected on update. */
-import { readFileSync } from 'node:fs';
-import { BASELINES, PLAYWRIGHT_IMAGE, pngHashes, sourceFingerprint } from './baseline-provenance';
-const provenance = JSON.parse(readFileSync(`${BASELINES}/provenance.json`, 'utf8'));
-if (provenance.image !== PLAYWRIGHT_IMAGE || provenance.sourceFingerprint !== sourceFingerprint() ||
-    !/^https:\/\/github\.com\/luogangan7-lgtm\/opensite-commerce\/actions\/runs\/\d+$/.test(provenance.runUrl) ||
-    !/^[0-9a-f]{40}$/.test(provenance.sourceSha) ||
-    JSON.stringify(provenance.pngHashes) !== JSON.stringify(pngHashes())) {
-  console.error('FAIL: golden inputs changed; request an explicit CI baseline update');
+/** Rejects missing/orphan/tampered per-PNG records and unpinned renderers; CI calls this before artifact authority
+ * and the candidate comparison. It does not compare input fingerprints (C-08d): pixels decide staleness. */
+import { checkedRecords } from './baseline-provenance';
+try {
+  const records = checkedRecords();
+  if (records.length === 0) throw new Error('Missing all PNG provenance records');
+  console.log(`PASS: ${records.length} per-PNG provenance records, pins and hashes; changed goldens get artifact authority next`);
+} catch (error) {
+  console.error(`FAIL: ${error instanceof Error ? error.message : 'Invalid baseline records'}; request an explicit CI baseline update`);
   process.exit(1);
 }
-console.log('PASS: baseline metadata consistency and source/PNG hashes (artifact authority checked separately)');

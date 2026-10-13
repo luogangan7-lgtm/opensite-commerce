@@ -129,7 +129,7 @@ const getActiveCartSKU = `-- name: GetActiveCartSKU :one
 SELECT v.id FROM app.product_variants v
 JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
 WHERE v.tenant_id=$1 AND v.id=$2
- AND p.lifecycle_status='ready'
+ AND p.lifecycle_status='ready' AND v.lifecycle_status='ready'
 FOR SHARE OF v,p
 `
 
@@ -169,6 +169,35 @@ func (q *Queries) GetCart(ctx context.Context, arg GetCartParams) (AppCart, erro
 	return i, err
 }
 
+const getCartContext = `-- name: GetCartContext :one
+SELECT coalesce(current_setting('app.tenant_id',true),'')::text AS tenant_context,
+ coalesce(current_setting('app.cart_customer_id',true),'')::text AS customer_context,
+ coalesce(current_setting('app.cart_token_hash',true),'')::text AS token_context,
+ current_user::text AS runtime_role
+`
+
+type GetCartContextRow struct {
+	TenantContext   string `json:"tenant_context"`
+	CustomerContext string `json:"customer_context"`
+	TokenContext    string `json:"token_context"`
+	RuntimeRole     string `json:"runtime_role"`
+}
+
+// Cart store SQL; depends on cart DDL plus public customer/catalog/price/stock reads.
+// Caller owns one actor-scoped transaction, locks cart before quote/mutation/CAS.
+// No inventory reservation; absolute quantity and deterministic batched quote reads.
+func (q *Queries) GetCartContext(ctx context.Context) (GetCartContextRow, error) {
+	row := q.db.QueryRow(ctx, getCartContext)
+	var i GetCartContextRow
+	err := row.Scan(
+		&i.TenantContext,
+		&i.CustomerContext,
+		&i.TokenContext,
+		&i.RuntimeRole,
+	)
+	return i, err
+}
+
 const getCartForUpdate = `-- name: GetCartForUpdate :one
 SELECT tenant_id, id, customer_id, guest_token_hash, currency, version, created_at FROM app.carts WHERE tenant_id=$1 AND id=$2 FOR UPDATE
 `
@@ -194,7 +223,7 @@ func (q *Queries) GetCartForUpdate(ctx context.Context, arg GetCartForUpdatePara
 }
 
 const listCartLines = `-- name: ListCartLines :many
-SELECT cl.tenant_id,cl.cart_id,cl.sku_id,cl.quantity,v.product_id,v.sku,p.lifecycle_status
+SELECT cl.tenant_id,cl.cart_id,cl.sku_id,cl.quantity,v.product_id,v.sku,(p.lifecycle_status='ready' AND v.lifecycle_status='ready')::boolean AS active
 FROM app.cart_lines cl
 JOIN app.product_variants v ON (v.tenant_id,v.id)=(cl.tenant_id,cl.sku_id)
 JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
@@ -208,13 +237,13 @@ type ListCartLinesParams struct {
 }
 
 type ListCartLinesRow struct {
-	TenantID        pgtype.UUID `json:"tenant_id"`
-	CartID          pgtype.UUID `json:"cart_id"`
-	SkuID           pgtype.UUID `json:"sku_id"`
-	Quantity        int64       `json:"quantity"`
-	ProductID       pgtype.UUID `json:"product_id"`
-	Sku             string      `json:"sku"`
-	LifecycleStatus string      `json:"lifecycle_status"`
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	CartID    pgtype.UUID `json:"cart_id"`
+	SkuID     pgtype.UUID `json:"sku_id"`
+	Quantity  int64       `json:"quantity"`
+	ProductID pgtype.UUID `json:"product_id"`
+	Sku       string      `json:"sku"`
+	Active    bool        `json:"active"`
 }
 
 func (q *Queries) ListCartLines(ctx context.Context, arg ListCartLinesParams) ([]ListCartLinesRow, error) {
@@ -233,7 +262,7 @@ func (q *Queries) ListCartLines(ctx context.Context, arg ListCartLinesParams) ([
 			&i.Quantity,
 			&i.ProductID,
 			&i.Sku,
-			&i.LifecycleStatus,
+			&i.Active,
 		); err != nil {
 			return nil, err
 		}
@@ -332,9 +361,6 @@ type SetCartContextParams struct {
 	TokenContext    string `json:"token_context"`
 }
 
-// Cart store SQL; depends on cart DDL plus public customer/catalog/price/stock reads.
-// Caller owns one actor-scoped transaction, locks cart before quote/mutation/CAS.
-// No inventory reservation; absolute quantity and deterministic batched quote reads.
 func (q *Queries) SetCartContext(ctx context.Context, arg SetCartContextParams) error {
 	_, err := q.db.Exec(ctx, setCartContext, arg.TenantContext, arg.CustomerContext, arg.TokenContext)
 	return err

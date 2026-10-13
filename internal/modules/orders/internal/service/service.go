@@ -61,6 +61,14 @@ func create(ctx context.Context, tx pgx.Tx, tenantID string, in contract.CreateI
 	if err != nil {
 		return contract.Order{}, err
 	}
+	// Creation-key serialization and replay precede all reservation/stock locks.
+	existing, err := q.CheckOrderCreation(ctx, db.CheckOrderCreationParams{ID: orderID, CreationKey: in.IdempotencyKey, RequestHash: hash})
+	if err != nil {
+		return contract.Order{}, store.MapError(err)
+	}
+	if len(existing) == 1 {
+		return order(existing[0]), nil
+	}
 	var lines []lineSnapshot
 	if err = json.Unmarshal(p.lines, &lines); err != nil {
 		return contract.Order{}, contract.ErrInvalid
@@ -175,17 +183,39 @@ func (Service) GetPayable(ctx context.Context, tx pgx.Tx, tenantID, orderID stri
 	canonicalID := uuid.UUID(row.ID.Bytes).String()
 	return contract.Payable{OrderID: canonicalID, Amount: amount, IntentKey: fmt.Sprintf("payable:v1:%s:%s:%s", canonicalTenant, canonicalID, strconv.FormatInt(row.Version, 10)), Version: row.Version}, nil
 }
+func (s Service) ValidateReservations(ctx context.Context, tx pgx.Tx, tenantID, orderID string) error {
+	return s.LockLiveReservations(ctx, tx, tenantID, orderID, 0)
+}
 
-func (Service) ValidateReservations(ctx context.Context, tx pgx.Tx, tenantID, orderID string) error {
-	if !validID(orderID) {
+func (Service) LockLiveReservations(ctx context.Context, tx pgx.Tx, tenantID, orderID string, minRemainingSeconds int32) error {
+	if !validID(orderID) || minRemainingSeconds < 0 {
 		return contract.ErrInvalid
 	}
 	q, err := store.Tenant(ctx, tx, tenantID)
 	if err != nil {
 		return err
 	}
+	tenant, _ := store.UUID(tenantID)
 	id, _ := store.UUID(orderID)
-	return store.MapError(q.ValidatePaymentReservations(ctx, id))
+	ids, err := q.ListOrderReservationIDs(ctx, db.ListOrderReservationIDsParams{TenantID: tenant, OrderID: id})
+	if err != nil {
+		return store.MapError(err)
+	}
+	if len(ids) == 0 {
+		return contract.ErrNotFound
+	}
+	// Same global lock order (reservation id) as create, transition and expiry.
+	if err = q.LockOrderReservations(ctx, db.LockOrderReservationsParams{OrderID: id, ReservationIds: ids}); err != nil {
+		return store.MapError(err)
+	}
+	n, err := q.CountLiveOrderReservations(ctx, db.CountLiveOrderReservationsParams{MinRemainingSeconds: minRemainingSeconds, TenantID: tenant, ReservationIds: ids})
+	if err != nil {
+		return store.MapError(err)
+	}
+	if n.Live != n.Total || n.Total != int64(len(ids)) {
+		return contract.ErrReservationInactive
+	}
+	return nil
 }
 func order(row db.AppOrder) contract.Order {
 	return contract.Order{ID: uuid.UUID(row.ID.Bytes).String(), TenantID: uuid.UUID(row.TenantID.Bytes).String(), Number: row.OrderNumber, Version: row.Version, State: contract.State(row.State), Total: money.Money{Amount: row.TotalMinor, Currency: row.Currency}}

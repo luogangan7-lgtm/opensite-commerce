@@ -25,20 +25,36 @@ type ActorResolver func(context.Context, *http.Request) (contract.AuthorizedActo
 type Module struct {
 	*service.Service
 	resolver ActorResolver
+	limiter  *createLimiter
+	// unconfigured: bootstrap fallback without storage must answer
+	// cart_unavailable, never spend or exhaust the anonymous quota.
+	unconfigured bool
 }
 
 func New(repo contract.Repository, resolver ActorResolver) *Module {
-	return &Module{Service: service.New(repo), resolver: resolver}
+	return newModule(repo, resolver, AnonymousCreateLimit{})
+}
+func newModule(repo contract.Repository, resolver ActorResolver, limits AnonymousCreateLimit) *Module {
+	return &Module{Service: service.New(repo), resolver: resolver, limiter: newCreateLimiter(limits), unconfigured: repo == nil}
 }
 
 // Config receives the platform's authorized tenant runners (bootstrap wires
 // pgxadapter.QueryRunner.RunAuthorized / RunAuthorizedSnapshot); never a pool.
 type Config struct {
-	Run, Read func(context.Context, string, func(*db.Queries) error) error
+	Run, Read            func(context.Context, string, func(*db.Queries) error) error
+	AnonymousCreateLimit AnonymousCreateLimit
 }
 
 func NewPostgres(config Config, resolver ActorResolver) *Module {
-	return New(store.New(config.Run, config.Read), resolver)
+	return newModule(store.New(config.Run, config.Read), resolver, config.AnonymousCreateLimit)
+}
+
+// WithActorResolver replaces only the composition seam on a shallow copy.
+// Bootstrap installs verified customer context without changing cart business logic.
+func (m *Module) WithActorResolver(resolver ActorResolver) *Module {
+	copy := *m
+	copy.resolver = resolver
+	return &copy
 }
 
 func (m *Module) Authenticate(ctx context.Context, r *http.Request, spec platform.RouteSpec) (context.Context, error) {
@@ -70,6 +86,12 @@ func (m *Module) Authenticate(ctx context.Context, r *http.Request, spec platfor
 	}
 	actor.TenantID = tenant
 	if spec.OperationID == "createCart" && len(tokens) == 0 {
+		if m.unconfigured {
+			return contract.WithActor(ctx, actor), nil
+		}
+		if !m.limiter.allow(r.RemoteAddr, nil) {
+			return ctx, createLimited()
+		}
 		return contract.WithActor(ctx, actor), nil
 	}
 	if len(tokens) != 1 {
@@ -81,5 +103,8 @@ func (m *Module) Authenticate(ctx context.Context, r *http.Request, spec platfor
 	}
 	hash := sha256.Sum256([]byte(tokens[0]))
 	actor.GuestTokenHash = hash[:]
+	if spec.OperationID == "createCart" && !m.unconfigured && !m.limiter.allow(r.RemoteAddr, actor.GuestTokenHash) {
+		return ctx, createLimited()
+	}
 	return contract.WithActor(ctx, actor), nil
 }

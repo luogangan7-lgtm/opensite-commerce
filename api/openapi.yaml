@@ -4,14 +4,16 @@ info:
   version: 0.7.0-draft
   description: >-
     Contract-first first-vertical-slice API. Declared operations are not all implemented in this increment. Tenant
-    business targets come from the URL path; credentials authorize them. Health, catalog, media, cart, notifications and
-    published-site read operations are implemented; other operations are planned contracts.
+    business targets come from the URL path; credentials authorize them. Health, catalog, media, cart, notifications,
+    published-site read and staff login operations are implemented; other operations are planned contracts. Checkout composition is opt-in;
+    its trusted storefront resolver is deferred and Fake callback transport is restricted to explicit test/development mode.
 servers:
   - url: /
 security:
   - adminSession: []
   - ApiKeyBearer: []
 tags:
+  - name: Checkout
   - name: Organization
   - name: Catalog
   - name: Media
@@ -21,7 +23,438 @@ tags:
   - name: Health
   - name: Quotes
   - name: Notifications
+  - name: Orders
 paths:
+  /api/v1/t/{tenant_id}/customer/registrations:
+    post:
+      operationId: registerCustomer
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRegistrationInput'
+      responses:
+        '202':
+          description: Customer authentication result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerRegistrationReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/customer/verifications:
+    post:
+      operationId: verifyCustomerEmail
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerTokenInput'
+      responses:
+        '204':
+          description: Customer authentication result
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/customer/session:
+    get:
+      operationId: getCustomerSession
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Customer authentication result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerSessionEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      operationId: createCustomerSession
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCredentialsInput'
+      responses:
+        '200':
+          description: Customer authentication result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerSessionEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      operationId: deleteCustomerSession
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      responses:
+        '204':
+          description: Customer authentication result
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/customer/password-resets:
+    post:
+      operationId: requestCustomerPasswordReset
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerResetRequest'
+      responses:
+        '202':
+          description: Customer authentication result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResetReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/customer/password-resets/confirm:
+    post:
+      operationId: confirmCustomerPasswordReset
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerResetConfirm'
+      responses:
+        '204':
+          description: Customer authentication result
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/checkout:
+    post:
+      tags: [Checkout]
+      operationId: createCheckout
+      x-opensite-status: implemented
+      x-opensite-access: Storefront
+      description: >-
+        C-18a trusted storefront resolver seam. Guest capability or customer session must be verified
+        independently of URL and Host, with exact Origin and session-bound CSRF. This increment has no
+        production resolver; missing resolver rejects. Storefront access carries no employee scope and
+        never falls back to staff authentication. Prices, buyer identity and tenant authorization are not input.
+        quote_id is rejected in this increment; B2B conversion is deferred.
+      security:
+        - StorefrontSession: []
+        - GuestCapability: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutOrigin'
+        - $ref: '#/components/parameters/CheckoutCSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CheckoutStart'}
+      responses:
+        '201':
+          description: Stable checkout and provider-neutral payment intent; replay returns the same IDs.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CheckoutResult'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/testing/payments/fake/webhook:
+    post:
+      tags: [Checkout]
+      operationId: receiveFakePaymentEvent
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      x-test-only: true
+      description: >-
+        Explicit test/development configuration only; never mounted in production. The verifier authenticates
+        exact raw bytes before a trusted event reaches checkout. Checkout rechecks persisted tenant/order,
+        amount, currency, version and provider binding and deduplicates delivery inside a transaction.
+      security:
+        - FakeWebhookSignature: []
+      parameters:
+        - name: X-Fake-Signature
+          in: header
+          required: true
+          schema: {type: string, pattern: '^[0-9a-f]{64}$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/FakePaymentEvent'}
+      responses:
+        '200':
+          description: Stable result after payment event admission or replay.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CheckoutResult'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
   /api/v1/public/sites/current:
     get:
       tags: [Builder]
@@ -57,6 +490,182 @@ paths:
           content:
             application/problem+json:
               schema: {$ref: '#/components/schemas/Problem'}
+  /api/v1/auth/login:
+    get:
+      tags:
+        - Identity
+      operationId: getAdminLoginChallenge
+      security: []
+      description: Issues short-lived signed anonymous CSRF material in a Secure HttpOnly
+        host-only cookie and returns the matching header token. No tenant context.
+      responses:
+        '200':
+          description: Anonymous login challenge; Cache-Control no-store
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginChallenge'
+        '503':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      x-opensite-status: implemented
+      x-opensite-access: Public
+    post:
+      tags:
+        - Identity
+      operationId: createStaffLoginSession
+      security: []
+      description: Requires the signed anonymous challenge cookie and matching X-CSRF-Token,
+        plus the exact configured Origin. Always creates a fresh opaque session; rotation
+        consumes a valid same-user old session atomically. Credentials and raw tokens
+        are never included in problem details.
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/LoginChallengeCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminLogin'
+      responses:
+        '201':
+          description: New admin session and signed known-device cookies; Cache-Control
+            no-store
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSessionView'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+      x-opensite-status: implemented
+      x-opensite-access: Public
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - Identity
+      operationId: logoutCurrentStaffSession
+      security:
+        - adminSession: []
+      description: Checks only active user and session, even after the last membership
+        is suspended. Requires session-bound signed CSRF and exact configured Origin.
+        Revokes the current session and clears the admin session cookie.
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+        - $ref: '#/components/parameters/Origin'
+      responses:
+        '204':
+          description: Session revoked; cookie cleared; Cache-Control no-store
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      x-opensite-status: implemented
+      x-opensite-access: AuthenticatedSelf
+  /api/v1/auth/session:
+    get:
+      tags:
+        - Identity
+      operationId: getAdminSession
+      security:
+        - adminSession: []
+      description: Active global user/session admission with idle and absolute expiry;
+        no membership required.
+      responses:
+        '200':
+          description: Current actor and session-bound CSRF; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSessionView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      x-opensite-status: implemented
+      x-opensite-access: AuthenticatedSelf
   /healthz:
     get:
       tags: [Health]
@@ -670,14 +1279,20 @@ paths:
           $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts:
     parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/SiteId'
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
     post:
       tags: [Builder]
       operationId: createSiteDraft
-      x-opensite-status: planned
+      x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
-      x-required-scope: site.draft.write
+      x-required-scope: cms:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/OriginIfCookie'
@@ -686,120 +1301,638 @@ paths:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/CreateDraft'}
+            schema: {$ref: '#/components/schemas/CreateCMSDraft'}
       responses:
         '201':
-          description: Draft created
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Draft'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
-  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations:
-    parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/SiteId'
-      - $ref: '#/components/parameters/DraftId'
-    post:
-      tags: [Builder]
-      operationId: applyPageOperations
-      x-opensite-status: planned
-      x-opensite-access: AdminOrAPIKey
-      x-required-scope: site.draft.write
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/IfMatch'
-        - $ref: '#/components/parameters/OriginIfCookie'
-        - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/OperationBatch'}
-      responses:
-        '200':
-          description: Draft revision incremented
+          description: CMS operation result
           headers:
             ETag: {schema: {type: string}}
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Draft'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '409': {$ref: '#/components/responses/Conflict'}
+              schema: {$ref: '#/components/schemas/CMSDraft'}
+        '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
         '413': {$ref: '#/components/responses/PayloadTooLarge'}
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
         '428': {$ref: '#/components/responses/PreconditionRequired'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Builder]
+      operationId: getSiteDraft
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraft'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Builder]
+      operationId: listDraftPages
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraftPageList'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+    post:
+      tags: [Builder]
+      operationId: createDraftPage
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SaveCMSPage'}
+      responses:
+        '201':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraftPage'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id}:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: page_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Builder]
+      operationId: getDraftPage
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraftPage'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+    put:
+      tags: [Builder]
+      operationId: updateDraftPage
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SaveCMSPage'}
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraftPage'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+    delete:
+      tags: [Builder]
+      operationId: deleteDraftPage
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSDeletePageInput'}
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraft'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/navigation:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      tags: [Builder]
+      operationId: updateDraftNavigation
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSNavigationInput'}
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraft'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Builder]
+      operationId: applyPageOperations
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSOperationBatch'}
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraft'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/validate:
     parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/SiteId'
-      - $ref: '#/components/parameters/DraftId'
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
     post:
       tags: [Builder]
       operationId: validateSiteDraft
-      x-opensite-status: planned
+      x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
-      x-required-scope: site.draft.write
-      parameters:
-        - $ref: '#/components/parameters/OriginIfCookie'
-        - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      responses:
-        '200':
-          description: Validation report
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/ValidationResult'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
-  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/publish:
-    parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/SiteId'
-      - $ref: '#/components/parameters/DraftId'
-    post:
-      tags: [Builder]
-      operationId: publishSiteDraft
-      x-opensite-status: planned
-      x-opensite-access: AdminOrAPIKey
-      x-required-scope: site.publish
+      x-required-scope: cms:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/IfMatch'
         - $ref: '#/components/parameters/OriginIfCookie'
         - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
-        '201':
-          description: New immutable release; commit is atomic in PostgreSQL
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/PublishedRelease'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+              schema: {$ref: '#/components/schemas/CMSValidation'}
+        '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
         '413': {$ref: '#/components/responses/PayloadTooLarge'}
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
         '428': {$ref: '#/components/responses/PreconditionRequired'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/publish:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Builder]
+      operationId: publishSiteDraft
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:publish
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSPublishInput'}
+      responses:
+        '201':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSRelease'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview-tokens:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Builder]
+      operationId: createSitePreviewToken
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSPreviewInput'}
+      responses:
+        '201':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSPreviewGrant'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/releases:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Builder]
+      operationId: getSiteReleaseHistory
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSReleaseList'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/releases/{release_id}/restore:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: release_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Builder]
+      operationId: restoreSiteRelease
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:publish
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSRestoreInput'}
+      responses:
+        '201':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSRelease'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Builder]
+      operationId: getSitePreview
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Signed draft projection. Bearer token is mandatory; tampered or expired tokens are denied before database access. Never accepts tokens in query parameters.
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema: {type: string, minLength: 20, maxLength: 4096}
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+            Cache-Control: {schema: {type: string, const: no-store}}
+            X-Robots-Tag: {schema: {type: string, const: 'noindex, nofollow'}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PublishedSite'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
   /api/public/v1/inquiries:
     post:
       tags:
@@ -1558,7 +2691,7 @@ paths:
       x-required-scope: quotes:convert
       x-opensite-trusted-buyer: required
       security:
-        - CustomerSession: []
+        - customerSession: []
       description: >-
         Convert an approved quote to exactly one order from its immutable payable snapshot.
         The router's injected buyer authenticator must verify the separate customer session,
@@ -1573,8 +2706,8 @@ paths:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/QuoteId'
         - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/BuyerOrigin'
-        - $ref: '#/components/parameters/CSRFToken'
+        - $ref: '#/components/parameters/CheckoutOrigin'
+        - $ref: '#/components/parameters/CheckoutCSRFToken'
       requestBody:
         required: true
         content:
@@ -2103,18 +3236,156 @@ paths:
         '422': {$ref: '#/components/responses/UnprocessableEntity'}
         '428': {$ref: '#/components/responses/PreconditionRequired'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+  /api/v1/t/{tenant_id}/orders:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: orders:read
+      description: Sealed order snapshots, newest first by (created_at, id), in a read-only
+        snapshot transaction. Guest contact PII is never returned; customer_kind only says
+        whether the buyer was a tenant customer or a guest. A malformed cursor, or one issued
+        for a different state filter, is a 400. The cursor is opaque and not authenticated;
+        it only positions the page within the caller's own tenant and cannot reveal other rows.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque, unauthenticated next_cursor from the prior page with the same state filter; positions only within the caller's tenant.
+          schema: {type: string, maxLength: 512}
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/OrderState'
+      responses:
+        '200':
+          description: One page of order summaries; no-store.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/orders/{order_id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - name: order_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: orders:read
+      description: One sealed order snapshot. Missing, unsealed and other-tenant orders are
+        all 404. Line titles are not part of the immutable snapshot, so title is always null;
+        shipping.method is the frozen rate method (fixed, by_weight, free_over_amount), not a
+        carrier. Guest contact (including email) is not exposed by this operation.
+      responses:
+        '200':
+          description: Order snapshot; no-store.
+          headers:
+            ETag:
+              required: true
+              schema:
+                type: string
+              description: Strong validator, the quoted order version.
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
 components:
   securitySchemes:
-    CustomerSession:
+    customerSession:
       type: apiKey
       in: cookie
       name: __Host-osc_customer_session
-      description: >-
-        Reserved separate storefront customer session cookie, Secure, HttpOnly, SameSite=Lax,
-        Path=/ and no Domain. This is a provisional authentication contract, not a recognizing
-        middleware implementation. The injected BuyerCompany resolver must verify session,
-        canonical tenant, company membership, exact storefront Origin and session-bound HMAC CSRF;
-        the missing production resolver returns 401. Staff cookies/API keys never grant customer access.
+      description: Tenant customer session only; Secure, HttpOnly, SameSite=Lax, Path=/, no Domain.
+    StorefrontSession:
+      type: apiKey
+      in: cookie
+      name: __Host-osc_customer_session
+      description: Reserved for trusted customer middleware; C-18a does not implement it.
+    GuestCapability:
+      type: apiKey
+      in: cookie
+      name: __Host-osc_guest_capability
+      description: Reserved for a verified opaque guest capability; never an admin cookie.
+    FakeWebhookSignature:
+      type: apiKey
+      in: header
+      name: X-Fake-Signature
+      description: HMAC SHA256 of exact request bytes with isolated test key; test/development only.
     adminSession:
       type: apiKey
       in: cookie
@@ -2164,6 +3435,27 @@ components:
         pattern: ^[A-Za-z0-9_-]{43}$
         minLength: 43
         maxLength: 43
+    LoginChallengeCookie:
+      name: __Host-osc_login_csrf
+      in: cookie
+      required: true
+      schema:
+        type: string
+        minLength: 1
+      description: Signed anonymous login challenge with five-minute expiry; Secure
+        HttpOnly SameSite=Lax Path=/ and no Domain.
+    CheckoutOrigin:
+      name: Origin
+      in: header
+      required: true
+      description: Exact configured storefront origin; never the admin origin.
+      schema: {type: string, format: uri}
+    CheckoutCSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: Verified by the trusted resolver against the customer session or guest capability.
+      schema: {type: string, minLength: 1, maxLength: 512}
     TenantId:
       name: tenant_id
       in: path
@@ -2181,12 +3473,6 @@ components:
       schema:
         type: string
         format: uuid
-    BuyerOrigin:
-      name: Origin
-      in: header
-      required: true
-      description: Must exactly match the configured verified storefront origin for this customer session and tenant; staff origin is not a fallback.
-      schema: {type: string, format: uri}
     Origin:
       name: Origin
       in: header
@@ -2389,6 +3675,158 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    CustomerRegistrationInput:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          description: >-
+            Length is 12 to 1024 UTF-8 bytes after JSON decoding, not a Unicode
+            character count. No Unicode normalization is applied. NUL, CR and LF
+            are rejected.
+          x-opensite-min-utf8-bytes: 12
+          x-opensite-max-utf8-bytes: 1024
+    CustomerCredentialsInput:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: {type: string, format: email, maxLength: 320}
+        password:
+          type: string
+          description: >-
+            Length is 1 to 1024 UTF-8 bytes after JSON decoding, not a Unicode
+            character count. No Unicode normalization is applied. NUL, CR and LF
+            are rejected.
+          x-opensite-min-utf8-bytes: 1
+          x-opensite-max-utf8-bytes: 1024
+    CustomerTokenInput:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+    CustomerResetRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: {type: string, format: email, maxLength: 320}
+    CustomerResetConfirm:
+      type: object
+      additionalProperties: false
+      required: [token, password]
+      properties:
+        token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        password:
+          type: string
+          description: >-
+            Length is 12 to 1024 UTF-8 bytes after JSON decoding, not a Unicode
+            character count. No Unicode normalization is applied. NUL, CR and LF
+            are rejected.
+          x-opensite-min-utf8-bytes: 12
+          x-opensite-max-utf8-bytes: 1024
+    CustomerRegistrationReceipt:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {type: string, enum: [verification_pending]}
+    CustomerResetReceipt:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {type: string, enum: [accepted]}
+    CustomerSessionView:
+      type: object
+      additionalProperties: false
+      required: [session_id, tenant_id, customer_id, email, expires_at, idle_expires_at]
+      properties:
+        session_id: {type: string, format: uuid}
+        tenant_id: {type: string, format: uuid}
+        customer_id: {type: string, format: uuid}
+        email: {type: string, format: email}
+        expires_at: {type: string, format: date-time}
+        idle_expires_at: {type: string, format: date-time}
+    CustomerSessionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [customer, csrf_token]
+      properties:
+        customer:
+          anyOf:
+            - $ref: '#/components/schemas/CustomerSessionView'
+            - {type: 'null'}
+        csrf_token: {type: string}
+    CheckoutStart:
+      type: object
+      additionalProperties: false
+      required: [cart_id, shipping_address]
+      properties:
+        cart_id: {type: string, format: uuid}
+        quote_id: {type: string, format: uuid, description: Unsupported in C-18a; returns 422.}
+        buyer_contact:
+          description: Guest snapshot only; required for a guest actor and forbidden for a customer actor.
+          type: object
+          additionalProperties: false
+          required: [email]
+          properties:
+            email: {type: string, maxLength: 320, minLength: 3}
+            name: {type: string, maxLength: 200}
+            phone: {type: string, maxLength: 64}
+        shipping_address:
+          $ref: '#/components/schemas/CheckoutShippingAddress'
+    CheckoutShippingAddress:
+      type: object
+      additionalProperties: false
+      required: [country, address1, city, postal_code]
+      properties:
+        country: {type: string, pattern: '^[A-Z]{2}$'}
+        subdivision: {type: string, maxLength: 100}
+        address1: {type: string, minLength: 1, maxLength: 500}
+        address2: {type: string, maxLength: 500}
+        city: {type: string, minLength: 1, maxLength: 200}
+        postal_code: {type: string, minLength: 1, maxLength: 32}
+    CheckoutResult:
+      type: object
+      additionalProperties: false
+      required: [checkout_id, order_id, state, amount_minor, currency, order_version, payment]
+      properties:
+        checkout_id: {type: string, format: uuid}
+        order_id: {type: string, format: uuid}
+        state: {type: string}
+        amount_minor: {type: integer, format: int64, minimum: 1}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        order_version: {type: integer, format: int64, minimum: 1}
+        payment:
+          type: object
+          additionalProperties: false
+          required: [provider_ref, status]
+          properties:
+            provider_ref: {type: string}
+            status: {type: string}
+            next_action_kind: {type: string}
+            next_action_url: {type: string}
+    FakePaymentEvent:
+      type: object
+      additionalProperties: false
+      required: [event_id, tenant_id, order_id, order_version, provider_ref, status, amount_minor, currency]
+      properties:
+        event_id: {type: string, minLength: 1, maxLength: 128}
+        tenant_id: {type: string, format: uuid}
+        order_id: {type: string, format: uuid}
+        order_version: {type: integer, format: int64, minimum: 1}
+        provider_ref: {type: string, minLength: 1, maxLength: 200}
+        status: {type: string, enum: [authorized, captured, failed, canceled]}
+        amount_minor: {type: integer, format: int64, minimum: 1}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
     NotificationFailure:
       type: object
       additionalProperties: false
@@ -2622,6 +4060,51 @@ components:
           type: array
           maxItems: 500
           items: {$ref: '#/components/schemas/PublishedProduct'}
+    LoginChallenge:
+      type: object
+      required:
+        - csrf_token
+      properties:
+        csrf_token:
+          type: string
+          minLength: 1
+      additionalProperties: false
+    AdminLogin:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          minLength: 1
+          maxLength: 254
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+      additionalProperties: false
+    AdminSessionView:
+      type: object
+      required:
+        - user_id
+        - session_id
+        - expires_at
+        - csrf_token
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        expires_at:
+          type: string
+          format: date-time
+        csrf_token:
+          type: string
+          minLength: 1
+      additionalProperties: false
     CreateAdminSession:
       type: object
       required:
@@ -2874,6 +4357,214 @@ components:
         expires_at:
           type: string
           format: date-time
+      additionalProperties: false
+    CreateCMSDraft:
+      type: object
+      required: [locale, title, description]
+      properties:
+        locale: {type: string, minLength: 2, maxLength: 35}
+        title: {type: string, minLength: 1, maxLength: 300}
+        description: {type: string, maxLength: 2000}
+      additionalProperties: false
+    CMSDocument:
+      type: object
+      required: [title, description, blocks]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 300}
+        description: {type: string, maxLength: 2000}
+        blocks:
+          type: array
+          maxItems: 200
+          items: {$ref: '#/components/schemas/PublishedBlock'}
+      additionalProperties: false
+    SaveCMSPage:
+      type: object
+      required: [page_key, locale, path, document, media_ids]
+      properties:
+        page_key: {type: string, minLength: 1, maxLength: 128}
+        locale: {type: string, minLength: 2, maxLength: 35}
+        path: {type: string, minLength: 1, maxLength: 512, pattern: '^/(?:[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*)?$'}
+        document: {$ref: '#/components/schemas/CMSDocument'}
+        media_ids:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: {type: string, format: uuid}
+      additionalProperties: false
+    CMSDraftPage:
+      type: object
+      required: [id, page_key, locale, path, document, media_ids]
+      properties:
+        id: {type: string, format: uuid}
+        page_key: {type: string}
+        locale: {type: string}
+        path: {type: string}
+        document: {$ref: '#/components/schemas/CMSDocument'}
+        media_ids:
+          type: array
+          items: {type: string, format: uuid}
+      additionalProperties: false
+    CMSDraftPageList:
+      type: array
+      maxItems: 100
+      items: {$ref: '#/components/schemas/CMSDraftPage'}
+    CMSNavigationInput:
+      type: object
+      required: [navigation]
+      properties:
+        navigation:
+          type: array
+          maxItems: 50
+          items: {$ref: '#/components/schemas/PublishedNavigation'}
+      additionalProperties: false
+    CMSDraft:
+      type: object
+      required: [draft_id, site_id, revision, base_release_id, publication_revision, status, locale, title, description, navigation, pages, products]
+      properties:
+        draft_id: {type: string, format: uuid}
+        site_id: {type: string, format: uuid}
+        revision: {type: integer, format: int64, minimum: 1}
+        base_release_id: {type: [string, 'null'], format: uuid}
+        publication_revision: {type: integer, format: int64, minimum: 0}
+        status: {type: string, enum: [open, published, abandoned]}
+        locale: {type: string}
+        title: {type: string}
+        description: {type: string}
+        navigation:
+          type: array
+          items: {$ref: '#/components/schemas/PublishedNavigation'}
+        pages: {$ref: '#/components/schemas/CMSDraftPageList'}
+        products:
+          type: array
+          items: {$ref: '#/components/schemas/PublishedProduct'}
+      additionalProperties: false
+    CMSPublishInput:
+      type: object
+      required: [expected_release_id, expected_publication_revision, renderer_build_id]
+      properties:
+        expected_release_id: {type: [string, 'null'], format: uuid}
+        expected_publication_revision: {type: integer, format: int64, minimum: 0}
+        renderer_build_id: {type: string, minLength: 1, maxLength: 128}
+      additionalProperties: false
+    CMSRelease:
+      type: object
+      required: [release_id, release_no, publication_revision, restored_from, manifest_hash, created_at]
+      properties:
+        release_id: {type: string, format: uuid}
+        release_no: {type: integer, format: int64, minimum: 1}
+        publication_revision: {type: integer, format: int64, minimum: 0}
+        restored_from: {type: [string, 'null'], format: uuid}
+        manifest_hash: {type: string}
+        created_at: {type: string, format: date-time}
+      additionalProperties: false
+    CMSReleaseList:
+      type: array
+      items: {$ref: '#/components/schemas/CMSRelease'}
+    CMSPreviewInput:
+      type: object
+      required: [ttl_seconds]
+      properties:
+        ttl_seconds: {type: integer, minimum: 1, maximum: 300}
+      additionalProperties: false
+    CMSPreviewGrant:
+      type: object
+      required: [token, expires_at, revision]
+      properties:
+        token: {type: string}
+        expires_at: {type: string, format: date-time}
+        revision: {type: integer, format: int64, minimum: 1}
+      additionalProperties: false
+    CMSValidation:
+      type: object
+      required: [valid, revision]
+      properties:
+        valid: {type: boolean}
+        revision: {type: integer, format: int64, minimum: 1}
+      additionalProperties: false
+    CMSRestoreInput:
+      type: object
+      required: [expected_release_id]
+      properties:
+        expected_release_id: {type: [string, 'null'], format: uuid}
+      additionalProperties: false
+    CMSDeletePageInput:
+      type: object
+      required: [locale]
+      properties:
+        locale: {type: string, minLength: 2, maxLength: 35}
+      additionalProperties: false
+    CMSBatchPage:
+      type: object
+      required: [page_key, locale, path, document, media_ids]
+      properties:
+        id: {type: string, format: uuid}
+        page_key: {type: string, minLength: 1, maxLength: 128}
+        locale: {type: string, minLength: 2, maxLength: 35}
+        path: {type: string, minLength: 1, maxLength: 512, pattern: '^/(?:[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*)?$'}
+        document: {$ref: '#/components/schemas/CMSDocument'}
+        media_ids:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: {type: string, format: uuid}
+      additionalProperties: false
+    CMSBatchDeletePage:
+      type: object
+      required: [id, locale]
+      properties:
+        id: {type: string, format: uuid}
+        locale: {type: string, minLength: 2, maxLength: 35}
+      additionalProperties: false
+    CMSOperationSavePage:
+      type: object
+      required: [operation, payload]
+      properties:
+        operation: {type: string, const: save_page}
+        payload: {$ref: '#/components/schemas/CMSBatchPage'}
+      additionalProperties: false
+    CMSOperationDeletePage:
+      type: object
+      required: [operation, payload]
+      properties:
+        operation: {type: string, const: delete_page}
+        payload: {$ref: '#/components/schemas/CMSBatchDeletePage'}
+      additionalProperties: false
+    CMSOperationSetNavigation:
+      type: object
+      required: [operation, payload]
+      properties:
+        operation: {type: string, const: set_navigation}
+        payload: {$ref: '#/components/schemas/CMSNavigationInput'}
+      additionalProperties: false
+    CMSOperationSetMetadata:
+      type: object
+      required: [operation, payload]
+      properties:
+        operation: {type: string, const: set_metadata}
+        payload: {$ref: '#/components/schemas/CreateCMSDraft'}
+      additionalProperties: false
+    CMSOperation:
+      oneOf:
+        - $ref: '#/components/schemas/CMSOperationSavePage'
+        - $ref: '#/components/schemas/CMSOperationDeletePage'
+        - $ref: '#/components/schemas/CMSOperationSetNavigation'
+        - $ref: '#/components/schemas/CMSOperationSetMetadata'
+      discriminator:
+        propertyName: operation
+        mapping:
+          save_page: '#/components/schemas/CMSOperationSavePage'
+          delete_page: '#/components/schemas/CMSOperationDeletePage'
+          set_navigation: '#/components/schemas/CMSOperationSetNavigation'
+          set_metadata: '#/components/schemas/CMSOperationSetMetadata'
+    CMSOperationBatch:
+      type: object
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: '#/components/schemas/CMSOperation'}
       additionalProperties: false
     CreateDraft:
       type: object
@@ -3439,3 +5130,84 @@ components:
           type: object
           additionalProperties: true
           description: Immutable line tax decision snapshot
+    MinorAmount:
+      type: string
+      description: Signed integer minor units as a canonical decimal string (exact in JavaScript).
+      pattern: '^(0|-?[1-9][0-9]{0,18})$'
+      maxLength: 20
+    OrderState:
+      type: string
+      enum: [pending_payment, paid, partially_fulfilled, fulfilled, cancelled, partially_refunded, refunded]
+    OrderSummary:
+      type: object
+      additionalProperties: false
+      required: [id, order_number, state, currency, total_minor, customer_kind, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        order_number: {type: integer, format: int64, minimum: 1}
+        state: {$ref: '#/components/schemas/OrderState'}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        total_minor: {$ref: '#/components/schemas/MinorAmount'}
+        customer_kind: {type: string, enum: [customer, guest]}
+        created_at: {type: string, format: date-time}
+    OrderPage:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/OrderSummary'}
+        next_cursor: {type: string}
+    OrderLine:
+      type: object
+      additionalProperties: false
+      required: [line_id, sku_code, title, quantity, unit_price_minor, tax_minor, line_total_minor]
+      properties:
+        line_id: {type: string, format: uuid}
+        sku_code: {type: string}
+        title:
+          type: [string, 'null']
+          description: Always null; product titles are not frozen into the order snapshot.
+        quantity: {type: integer, format: int64, minimum: 1}
+        unit_price_minor: {$ref: '#/components/schemas/MinorAmount'}
+        tax_minor: {$ref: '#/components/schemas/MinorAmount'}
+        line_total_minor: {$ref: '#/components/schemas/MinorAmount'}
+    OrderAdjustment:
+      type: object
+      additionalProperties: false
+      required: [id, reason, amount_minor]
+      properties:
+        id: {type: string, format: uuid}
+        reason: {type: string}
+        amount_minor: {$ref: '#/components/schemas/MinorAmount'}
+    OrderShipping:
+      type: object
+      additionalProperties: false
+      required: [amount_minor, method]
+      properties:
+        amount_minor: {$ref: '#/components/schemas/MinorAmount'}
+        method:
+          type: [string, 'null']
+          description: Frozen shipping rate method; null if the snapshot lacks one.
+    OrderDetail:
+      type: object
+      additionalProperties: false
+      required: [id, order_number, state, version, currency, lines, adjustments, shipping, tax_total_minor, total_minor, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        order_number: {type: integer, format: int64, minimum: 1}
+        state: {$ref: '#/components/schemas/OrderState'}
+        version: {type: integer, format: int64, minimum: 1}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        lines:
+          type: array
+          items: {$ref: '#/components/schemas/OrderLine'}
+        adjustments:
+          type: array
+          items: {$ref: '#/components/schemas/OrderAdjustment'}
+        shipping: {$ref: '#/components/schemas/OrderShipping'}
+        tax_total_minor: {$ref: '#/components/schemas/MinorAmount'}
+        total_minor: {$ref: '#/components/schemas/MinorAmount'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}

@@ -5,10 +5,13 @@
       "name": "identity",
       "status": "implemented",
       "go_path": "internal/modules/identity",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "users",
-        "auth_sessions"
+        "auth_sessions",
+        "auth_account_attempts",
+        "auth_login_attempts",
+        "known_devices"
       ],
       "operations": [
         {
@@ -30,15 +33,34 @@
         {
           "operation_id": "revokeAdminSession",
           "status": "planned"
+        },
+        {
+          "operation_id": "getAdminLoginChallenge",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createStaffLoginSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "logoutCurrentStaffSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getAdminSession",
+          "status": "implemented"
         }
       ],
       "dependencies": [],
       "tests": [
         "tests/db_role_boundaries.sql",
-        "tests/db_role_matrix.sql"
+        "tests/db_role_matrix.sql",
+        "tests/db_identity_auth.sql",
+        "tests/db_identity_login.sql",
+        "tests/test_identity_login_contract.py"
       ],
       "scopes": [],
-      "note": "Global staff identity and sessions have no tenant_id. Module status describes the existing database model; all module Go paths and HTTP operations remain planned."
+      "note": "Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented. Four staff login/challenge/session/logout HTTP operations are implemented; the five admin-session management operations remain planned."
     },
     {
       "name": "tenant",
@@ -258,24 +280,69 @@
         "site_release_media",
         "site_drafts",
         "draft_pages",
-        "draft_operations"
+        "draft_operations",
+        "draft_page_media"
       ],
       "operations": [
         {
           "operation_id": "createSiteDraft",
-          "status": "planned"
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getSiteDraft",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "listDraftPages",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createDraftPage",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getDraftPage",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "updateDraftPage",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "deleteDraftPage",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "updateDraftNavigation",
+          "status": "implemented"
         },
         {
           "operation_id": "applyPageOperations",
-          "status": "planned"
+          "status": "implemented"
         },
         {
           "operation_id": "validateSiteDraft",
-          "status": "planned"
+          "status": "implemented"
         },
         {
           "operation_id": "publishSiteDraft",
-          "status": "planned"
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createSitePreviewToken",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getSiteReleaseHistory",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "restoreSiteRelease",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getSitePreview",
+          "status": "implemented"
         },
         {
           "operation_id": "getPublishedSite",
@@ -286,7 +353,9 @@
         "tenant",
         "site",
         "cms",
-        "media"
+        "media",
+        "catalog",
+        "pricing"
       ],
       "tests": [
         "internal/pagegraph/graph_test.go",
@@ -295,11 +364,15 @@
         "internal/modules/publish/contract/read_test.go",
         "internal/modules/publish/internal/service/read_test.go",
         "internal/modules/publish/handler_test.go",
-        "tests/db_storefront.sql"
+        "tests/db_storefront.sql",
+        "internal/modules/publish/write_handler_test.go",
+        "internal/modules/publish/write_test.go",
+        "internal/modules/publish/internal/service/write_test.go",
+        "tests/db_cms_publish.sql"
       ],
       "scopes": [
-        "site.draft.write",
-        "site.publish"
+        "cms:write",
+        "cms:publish"
       ]
     },
     {
@@ -503,13 +576,47 @@
       "name": "customer",
       "status": "implemented",
       "go_path": "internal/modules/customer",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "customers",
         "customer_credentials",
-        "customer_addresses"
+        "customer_addresses",
+        "customer_auth_tokens",
+        "customer_sessions",
+        "customer_guest_order_links",
+        "customer_auth_limits",
+        "customer_auth_global_limits"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "registerCustomer",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "verifyCustomerEmail",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getCustomerSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "createCustomerSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "deleteCustomerSession",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "requestCustomerPasswordReset",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "confirmCustomerPasswordReset",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [
         "tenant"
       ],
@@ -517,10 +624,15 @@
         "tests/db_customers.sql",
         "tests/db_role_matrix.sql",
         "scripts/check_pg_races.sh",
-        "scripts/check_pg_upgrade.sh"
+        "scripts/check_pg_upgrade.sh",
+        "tests/db_customer_auth.sql",
+        "tests/test_customer_auth_contract.py",
+        "internal/modules/customer/internal/auth/service_test.go",
+        "internal/modules/customer/customer_limits_pgx_test.go",
+        "internal/platform/httpapi/customerhttp/customer_test.go"
       ],
       "scopes": [],
-      "note": "Storefront customer identity is independent of employee users. Dedicated customer-auth credentials; HTTP and module Go path remain planned."
+      "note": "Tenant customer email proof, separate sessions and reset under app_customer_auth; global/IP durable quotas shared across tenants with tenant account quotas. Fake/local SMTP only. Guest orders retain immutable snapshots and verified customer-owned associations."
     },
     {
       "name": "b2b",
@@ -609,7 +721,8 @@
         "internal/platform/httpapi/carthttp/cart_test.go",
         "internal/modules/cart/internal/service/service_test.go",
         "internal/bootstrap/contract_test.go",
-        "internal/db/cart_integration_test.go"
+        "internal/db/cart_integration_test.go",
+        "internal/modules/cart/internal/store/intent_test.go"
       ],
       "scopes": [],
       "note": "Cart intent has immutable tenant/owner/currency, absolute SKU quantities and optimistic version. Prices/stock are live hints; no reservations, checkout or HTTP guest merge. Storefront authority uses guest capability hash or trusted customer resolver; staff auth is separate."
@@ -624,7 +737,16 @@
         "order_lines",
         "order_adjustments"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "listOrders",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getOrder",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [
         "tenant",
         "catalog",
@@ -641,10 +763,16 @@
         "internal/modules/orders/internal/service/snapshot_test.go",
         "scripts/check_pg_races.sh",
         "scripts/check_pg_upgrade.sh",
-        "tests/db_role_matrix.sql"
+        "tests/db_role_matrix.sql",
+        "tests/db_orders_guards.sql",
+        "internal/db/orders_guards_integration_test.go",
+        "internal/modules/orders/http_test.go",
+        "internal/db/orders_http_integration_test.go"
       ],
-      "scopes": [],
-      "note": "Tenant-bound immutable order snapshots and caller-transaction financial state transitions. Customer references use the integrated tenant/customer foreign key. Checkout orchestration and real payment adapters remain separate."
+      "scopes": [
+        "orders:read"
+      ],
+      "note": "Tenant-bound immutable order snapshots and caller-transaction financial state transitions. Customer references use the integrated tenant/customer foreign key. Admin read API (orders:read) serves sealed snapshots from a read-only snapshot transaction, money as decimal strings and no guest contact. Checkout orchestration and real payment adapters remain separate."
     },
     {
       "name": "payments",
@@ -669,6 +797,54 @@
         "internal/contracts/payment/v1"
       ],
       "note": "C-15a freezes the neutral Payment Port v1 and test-only Fake. Real payment storage, service and Stripe are deferred to C-19; no production payment capability exists."
+    },
+    {
+      "name": "checkout",
+      "status": "implemented",
+      "go_path": "internal/modules/checkout",
+      "go_status": "implemented",
+      "owns_tables": [
+        "checkout_sessions",
+        "checkout_attempts"
+      ],
+      "operations": [
+        {
+          "operation_id": "createCheckout",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "receiveFakePaymentEvent",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "orders",
+        "ledger",
+        "payments",
+        "pricing",
+        "tax",
+        "shipping",
+        "money",
+        "reliability",
+        "customer",
+        "cart"
+      ],
+      "tests": [
+        "tests/db_checkout.sql",
+        "internal/db/checkout_integration_test.go",
+        "internal/platform/httpapi/checkout/checkout_test.go",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh",
+        "internal/modules/checkout/internal/service/calculate_test.go",
+        "internal/db/checkout_failure_race_test.go",
+        "internal/db/checkout_cart_integration_test.go",
+        "internal/modules/checkout/internal/store/cart_test.go",
+        "internal/db/checkout_http_integration_test.go",
+        "internal/modules/checkout/internal/service/input_test.go"
+      ],
+      "scopes": [],
+      "note": "C-18a Fake-only checkout orchestration. Optional strict HTTP composition uses a default-deny trusted storefront resolver seam classified Storefront until real customer/guest middleware; URL/Host never authorize. Fake webhook is signed and mounted only in explicit test/development configuration. Cart contract consumption uses the real locked IntentReader in the caller transaction, discards price projections and restores prior actor GUCs. Trusted guest/customer resolver wiring remains absent and default deny; no production payment provider wiring."
     },
     {
       "name": "quotes",
@@ -756,10 +932,9 @@
       ],
       "scopes": [
         "quotes:read",
-        "quotes:write",
-        "quotes:convert"
+        "quotes:write"
       ],
-      "note": "Immutable quote lifecycle and single approved snapshot to order conversion. Buyer identity defaults denied; prepayment requires an injected checkout adoption port, whose production adapter is pending checkout integration. Test-only Fake validates the port."
+      "note": "C-17a contact collection and immutable quote lifecycle; buyer endpoints require an externally verified sealed customer actor, default denied. No customer authentication implementation or order/payment creation."
     },
     {
       "name": "notifications",
@@ -1136,7 +1311,92 @@
       ]
     },
     {
-      "file": "migrations/028_quote_conversion.sql",
+      "file": "migrations/028_identity_auth.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "users",
+        "tenants",
+        "tenant_memberships",
+        "auth_account_attempts",
+        "auth_login_attempts",
+        "known_devices",
+        "api_keys",
+        "buyer_roles"
+      ]
+    },
+    {
+      "file": "migrations/029_identity_login.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "auth_sessions"
+      ]
+    },
+    {
+      "file": "migrations/030_orders_admin_list_index.sql",
+      "owner": "orders",
+      "touches_tables": [
+        "orders"
+      ]
+    },
+    {
+      "file": "migrations/031_cms_publish.sql",
+      "owner": "publish",
+      "touches_tables": [
+        "sites",
+        "site_drafts",
+        "draft_pages",
+        "draft_operations",
+        "draft_page_media",
+        "pages",
+        "page_revisions",
+        "site_releases",
+        "site_release_routes",
+        "site_release_media",
+        "products",
+        "product_variants",
+        "product_listings",
+        "product_content_revisions",
+        "price_lists",
+        "price_entries",
+        "audit_events",
+        "media_assets"
+      ]
+    },
+    {
+      "file": "migrations/032_checkout.sql",
+      "owner": "checkout",
+      "touches_tables": [
+        "checkout_sessions",
+        "checkout_attempts"
+      ]
+    },
+    {
+      "file": "migrations/033_customer_auth.sql",
+      "owner": "customer",
+      "touches_tables": [
+        "customers",
+        "customer_credentials",
+        "customer_auth_tokens",
+        "customer_sessions",
+        "customer_guest_order_links",
+        "customer_auth_limits",
+        "customer_auth_global_limits",
+        "orders"
+      ]
+    },
+    {
+      "file": "migrations/034_orders_guards.sql",
+      "owner": "orders",
+      "touches_tables": [
+        "orders",
+        "order_adjustments",
+        "outbox_events",
+        "order_lines",
+        "inventory_reservations"
+      ]
+    },
+    {
+      "file": "migrations/pending/c18b-quote-conversion_quote_conversion.sql",
       "owner": "quotes",
       "touches_tables": [
         "quote_conversions",

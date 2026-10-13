@@ -1,7 +1,8 @@
 // API executable is the composition entry point: env, signals and bootstrap.
-// Dependencies: stdlib/bootstrap/quotes application; HTTP lives in the platform.
+// Dependencies: stdlib/bootstrap/quotes application; module handlers (including
+// staff login) are installed through bootstrap, HTTP lives in the platform.
 // Quotes deny by default until trusted staff/customer/host authentication is wired.
-// Invalid registration fails startup; this executable performs no business IO.
+// Invalid registration fails startup; this executable delegates business IO to modules.
 package main
 
 import (

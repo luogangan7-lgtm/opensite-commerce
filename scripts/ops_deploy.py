@@ -17,10 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # capability group it is granted. Passwords come from env/stdin, never source.
 LOGIN_NAMES = {'RUNTIME': 'opensite_runtime_login', 'AUTH': 'opensite_auth_login',
                'DOMAIN': 'opensite_domain_login', 'MEDIA': 'opensite_media_login',
-               'WORKER': 'opensite_queue_login', 'OUTBOX': 'opensite_outbox_login'}
+               'WORKER': 'opensite_queue_login', 'OUTBOX': 'opensite_outbox_login',
+               'CUSTOMER_AUTH': 'opensite_customer_auth_login'}
 CAPABILITY_GROUPS = {'RUNTIME': 'app_runtime', 'AUTH': 'app_auth',
                      'DOMAIN': 'app_domain_resolver', 'MEDIA': 'app_media_service',
-                     'WORKER': 'app_queue_worker', 'OUTBOX': 'app_outbox_worker'}
+                     'WORKER': 'app_queue_worker', 'OUTBOX': 'app_outbox_worker',
+                     'CUSTOMER_AUTH': 'app_customer_auth'}
 LOGIN_ROLES = {kind: (LOGIN_NAMES[kind], CAPABILITY_GROUPS[kind]) for kind in LOGIN_NAMES}
 SYSTEM_DATABASES = {'postgres', 'template0', 'template1'}
 
@@ -130,6 +132,8 @@ def install_migrations(env):
                     ['bash', str(ROOT / 'scripts/migrate.sh')],
                     ['/usr/local/bin/river-migrate', '--verify']):
         result = subprocess.run(command, env=env, cwd=ROOT, capture_output=True, text=True, timeout=300)
+        if result.returncode == 7 and command[-1].endswith('migrate.sh'):
+            raise DeployError('MIGRATION_REFUSED_PENDING: migrations/pending/ is not empty; land them with scripts/land_migration.sh before deploying')
         if result.returncode:
             raise DeployError('MIGRATION_FAILED: inspect source/checksum history with the migration gate')
 

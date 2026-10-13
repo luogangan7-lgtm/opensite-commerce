@@ -1,6 +1,12 @@
 -- Cart store SQL; depends on cart DDL plus public customer/catalog/price/stock reads.
 -- Caller owns one actor-scoped transaction, locks cart before quote/mutation/CAS.
 -- No inventory reservation; absolute quantity and deterministic batched quote reads.
+-- name: GetCartContext :one
+SELECT coalesce(current_setting('app.tenant_id',true),'')::text AS tenant_context,
+ coalesce(current_setting('app.cart_customer_id',true),'')::text AS customer_context,
+ coalesce(current_setting('app.cart_token_hash',true),'')::text AS token_context,
+ current_user::text AS runtime_role;
+
 -- name: SetCartContext :exec
 SELECT set_config('app.tenant_id',sqlc.arg(tenant_context)::text,true),
  set_config('app.cart_customer_id',sqlc.arg(customer_context)::text,true),
@@ -26,7 +32,7 @@ WHERE tenant_id=sqlc.arg(tenant_id) AND id=sqlc.arg(id) AND version=sqlc.arg(exp
 RETURNING *;
 
 -- name: ListCartLines :many
-SELECT cl.tenant_id,cl.cart_id,cl.sku_id,cl.quantity,v.product_id,v.sku,p.lifecycle_status
+SELECT cl.tenant_id,cl.cart_id,cl.sku_id,cl.quantity,v.product_id,v.sku,(p.lifecycle_status='ready' AND v.lifecycle_status='ready')::boolean AS active
 FROM app.cart_lines cl
 JOIN app.product_variants v ON (v.tenant_id,v.id)=(cl.tenant_id,cl.sku_id)
 JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
@@ -63,5 +69,5 @@ GROUP BY cl.sku_id ORDER BY cl.sku_id;
 SELECT v.id FROM app.product_variants v
 JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
 WHERE v.tenant_id=sqlc.arg(tenant_id) AND v.id=sqlc.arg(sku_id)
- AND p.lifecycle_status='ready'
+ AND p.lifecycle_status='ready' AND v.lifecycle_status='ready'
 FOR SHARE OF v,p;

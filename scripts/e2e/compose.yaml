@@ -1,0 +1,82 @@
+# Responsibility: CI public-read wiring atop the existing operations stack.
+# Dependencies: deploy/compose.yaml and its restricted domain LOGIN; caller: run.py.
+# Invariant: public requests use resolver-only credentials, never admin/runtime fallback.
+services:
+  api:
+    environment:
+      OSC_PUBLIC_DATABASE_URL: "host=postgres port=5432 dbname=${OPENSITE_DB} user=opensite_domain_login password=${OPENSITE_DOMAIN_DB_PASSWORD} sslmode=disable"
+  storefront:
+    image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
+    working_dir: /workspace
+    command: ["node", "web/storefront/dist/server/entry.mjs"]
+    environment:
+      HOST: 0.0.0.0
+      PORT: "4321"
+      OSC_READ_API_ORIGIN: http://api:8080
+    volumes:
+      - ../:/workspace:ro
+    ports:
+      - "127.0.0.1:4321:4321"
+    depends_on:
+      api:
+        condition: service_healthy
+  admin:
+    image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
+    working_dir: /workspace
+    command: ["node", "node_modules/vite/bin/vite.js", "preview", "web/admin", "--config", "scripts/e2e/admin.vite.config.ts", "--configLoader", "runner", "--host", "0.0.0.0", "--port", "4173", "--strictPort"]
+    environment:
+      CI: "true"
+      GITHUB_ACTIONS: "true"
+      E2E_ADMIN_PROXY_TARGET: http://api:8080
+      E2E_ADMIN_ORIGIN: ${OPENSITE_ADMIN_ORIGIN}
+    volumes:
+      - ../:/workspace:ro
+    ports:
+      - "127.0.0.1:4173:4173"
+    depends_on:
+      api:
+        condition: service_healthy
+  bootstrap:
+    # One-shot offline first-owner CLI; same Go image pin as deploy/Dockerfile.
+    image: golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
+    profiles: ["e2e-bootstrap"]
+    working_dir: /workspace
+    command: ["go", "run", "./cmd/bootstrap-admin", "--email", "${OPENSITE_E2E_OWNER_EMAIL}", "--tenant-name", "C24 E2E owner"]
+    environment:
+      GOTOOLCHAIN: local
+      CGO_ENABLED: "0"
+      GOCACHE: /tmp/gocache
+      GOMODCACHE: /tmp/gomod
+      OSC_BOOTSTRAP_DATABASE_URL: "host=postgres port=5432 dbname=${OPENSITE_DB} user=opensite_e2e_bootstrap password=${OPENSITE_E2E_BOOTSTRAP_PASSWORD} sslmode=disable"
+      OSC_BOOTSTRAP_PASSWORD: ${OPENSITE_E2E_OWNER_PASSWORD}
+    volumes:
+      - ../:/workspace:ro
+  browser:
+    image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
+    profiles: ["e2e"]
+    working_dir: /workspace
+    network_mode: host
+    ipc: host
+    # Linux runner loopback is shared only by this one-shot test client.
+    # Built application services retain the ordinary Compose network.
+    command: ["node", "node_modules/@playwright/test/cli.js", "test", "--config", "playwright.e2e.config.ts"]
+    environment:
+      CI: "true"
+      GITHUB_ACTIONS: "true"
+      GITHUB_RUN_ID: ${GITHUB_RUN_ID}
+      GITHUB_RUN_ATTEMPT: ${GITHUB_RUN_ATTEMPT}
+      OPENSITE_MVP_E2E: "1"
+      E2E_API_URL: http://127.0.0.1:8080
+      E2E_WORKER_URL: http://127.0.0.1:8081
+      E2E_STOREFRONT_URL: http://127.0.0.1:4321
+      E2E_ADMIN_URL: http://127.0.0.1:4173
+      E2E_TENANT_ID: c0900001-0000-4000-8000-000000000001
+      E2E_PRODUCT_SLUG: canvas-tote
+      E2E_CMS_SLUG: about
+      E2E_OWNER_EMAIL: ${OPENSITE_E2E_OWNER_EMAIL}
+      E2E_OWNER_PASSWORD: ${OPENSITE_E2E_OWNER_PASSWORD}
+      E2E_OWNER_TENANT_ID: ${E2E_OWNER_TENANT_ID:-}
+    volumes:
+      - ../:/workspace:ro
+      - ../test-results:/workspace/test-results
+      - ../playwright-report:/workspace/playwright-report

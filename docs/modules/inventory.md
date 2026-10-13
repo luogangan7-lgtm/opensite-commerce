@@ -19,12 +19,18 @@ ENABLE/FORCE RLS with the nullif tenant policy.
 
 - `app.inventory_reserve(sku uuid, quantity bigint, owner_type text, owner_id uuid,
   idempotency_key text, ttl_seconds integer DEFAULT 900)`;
-- `app.inventory_release_non_order(reservation_id uuid)`;
-- `app.inventory_commit_non_order(reservation_id uuid)` (C-15a: these refuse
-  `owner_type='order'` with 42501 `INVENTORY_ORDER_OWNED_RESERVATION`; order
+- `app.inventory_release_non_order(reservation_id uuid, owner_type text, owner_id uuid)`;
+- `app.inventory_commit_non_order(reservation_id uuid, owner_type text, owner_id uuid)` (C-15a: these refuse
+  case variants of `owner_type='order'` with 42501 `INVENTORY_ORDER_OWNED_RESERVATION`; order
   holds finish only via `orders_transition`. Raw `inventory_release/commit`
   are executable only by `app_orders_executor`);
 - `app.inventory_expire_due(batch integer DEFAULT 100)` (1–1000).
+
+Non-order terminal commands require the exact stored owner type (case-sensitive)
+and owner UUID as well as the tenant; a different checkout owner cannot release
+or commit another checkout hold. The old single-argument commands are removed.
+Callers must pass their authorized checkout identity, never trust a client-supplied
+reservation owner.
 
 Reserve/release/commit return the reservation row. Expiry returns the number
 transitioned by this call. TTL is positive integer seconds, not calendar months.
@@ -67,9 +73,18 @@ not-found, and 55000 `INVENTORY_INVALID_TRANSITION` /
 
 Acceptance: `tests/db_inventory.sql`; exact ACL/role matrix; and lock-synchronized
 last-unit, same-key, expiry/commit and first-initialization cases in
-`scripts/check_pg_races.sh`. The waiting-commit case witnesses a valid reservation
-blocked on stock, waits for the database clock to cross its expiry, then requires
-55000 with unchanged physical stock; the sweep skips the busy reservation.
+`scripts/check_pg_races.sh`. Gate readiness requires the exact granted advisory
+lock, including its two-int namespace. The waiting commit's SQL statement parks
+inside a materialized volatile barrier before evaluating its call; the driver
+places expiry after both its observed transaction and statement starts and before
+the current database clock. The driver verifies the actual stock holder blocks commit,
+requires the sweep to skip the busy reservation, and requires 55000 after that
+stock lock is released, with unchanged physical stock. This witnesses the wall
+clock guard against both transaction and statement clocks without a startup deadline.
+CI also exercises an explicit
+startup gap and rejects idle/sleeping sessions and incorrect advisory lock keys.
+The optional `inventory-race-soak` workflow repeats the actual inventory block
+50 times without retries and preserves every log and its SHA-bound receipt.
 Terminal-key replay is checked after release, commit and expiry.
 `sqlc.yaml` consumes this DDL and the generated data types in `internal/db`;
 `check_codegen.sh` verifies real sqlc/pgx generation and compilation. Tests discover migration history by glob/count; no

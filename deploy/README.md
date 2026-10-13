@@ -8,16 +8,25 @@ this stack.
 ## Start and migrate
 
 Copy `.env.example` to `.env`, restrict its permissions (`chmod 600 .env`) and
-replace all seven password placeholders with independent random values of at
-least 24 characters, and the independent 64-hex job signing key. Use simple `KEY=value` or single-quoted values, with no
+replace all eight password placeholders with independent random values of at
+least 24 characters, the independent 64-hex job signing key, and the staff
+login settings: `OPENSITE_ADMIN_ORIGIN` (the exact HTTPS origin of the admin
+UI, no path) and an independent 64-hex `OPENSITE_AUTH_SIGNING_KEY` (for example
+`openssl rand -hex 32`). Compose passes them to the API as `OSC_ADMIN_ORIGIN`
+and `OSC_AUTH_SIGNING_KEY_HEX`; staff login reuses the auth login DSN, and the
+API refuses to start if either value is missing or malformed. Customer authentication
+also requires `OPENSITE_CUSTOMER_AUTH_DB_PASSWORD`, a pinned HTTPS
+`OPENSITE_STOREFRONT_ORIGIN` and an independent `OPENSITE_CUSTOMER_CSRF_SECRET`
+containing 32–128 CSPRNG bytes encoded with unpadded base64url. Use simple `KEY=value` or single-quoted values, with no
 interpolation or multiline values. Never commit the file or print resolved
 Compose configuration. The helpers read `.env`; exported variables take
 precedence. Set `OPENSITE_ENV_FILE` to use another private file and
 `COMPOSE_PROJECT_NAME` to isolate a stack.
 
 ```sh
-docker compose --env-file .env -f deploy/compose.yaml up -d --build --wait api worker
+docker compose --env-file .env -f deploy/compose.yaml up -d --build --wait api worker mailpit
 curl --fail http://127.0.0.1:8080/healthz
+curl --fail http://127.0.0.1:8080/api/v1/auth/login
 curl --fail http://127.0.0.1:8080/metrics
 curl --fail http://127.0.0.1:8081/healthz
 curl --fail http://127.0.0.1:8081/metrics
@@ -29,9 +38,20 @@ installs the locked River history in its independently owned `queue` schema,
 applies frozen forward-only/checksum-checked application migrations, verifies
 River history, and provisions restricted login identities. API startup waits for successful
 migration and verifies its separately configured runtime, auth, domain and
-media pools. Auth/domain consumers remain pending their application wiring;
-configuration does not install an authenticator. The separate media identity
+media and customer-auth pools. Staff login (`/api/v1/auth/*`) is installed on the auth pool's
+DSN; the domain consumer remains pending its application wiring. The separate media identity
 uses the existing media capability rather than granting it to runtime.
+
+Customer login (`/api/v1/t/{tenant_id}/customer/*`) uses only
+`opensite_customer_auth_login` → `app_customer_auth`; it never receives staff
+auth or executor capabilities. Registration/reset proof goes to the pinned
+Mailpit development capture. Mailpit shares API loopback, listens for SMTP on
+`127.0.0.1:1025`, and disables SMTP relay. Its capture UI/API is published only
+on `127.0.0.1:${OPENSITE_MAIL_PORT:-8025}`. No SMTP port is published. This
+explicit local Compose setup enables the Sender; the application default remains
+disabled and refuses an enabled Sender in production. This is not a production
+mail deployment recipe. All challenge recipients must be `.test`, `.invalid`
+or `localhost`; never send a real customer address through this rehearsal.
 
 Run an explicit migration/provisioning step after changing migration files:
 
@@ -70,7 +90,7 @@ refuses deployment. Another database containing both the
 Plain databases are permitted. V1 database names must be lowercase ASCII
 identifiers (letters, numbers and underscores, maximum 63 characters).
 On a fresh Compose volume, the initdb hook places exact target-database SCRAM
-rules before the existing administrator rules. The six application LOGINs are
+rules before the existing administrator rules. The seven application LOGINs are
 refused connections to maintenance/plain databases and physical replication,
 over Unix sockets, IPv4 and IPv6. This leaves unrelated database ACLs intact.
 The hook runs only at initialization. For an existing volume, back up the
@@ -99,7 +119,8 @@ bash scripts/restore.sh work/backups/opensite-TIMESTAMP.dump
 
 The backup prints archive and manifest filenames. It creates private,
 timestamped `pg_dump -Fc` archives and SHA-256 manifests with counts and
-deterministic content hashes for every `app` and `queue` table, including
+deterministic content hashes for every `app` and `queue` table, including customer
+proof/session/credential tables and
 River migration history, plus the application migration ledger.
 Format 2 also records each application migration's version and SHA-256.
 Dump, table hashes and migration history share one exported REPEATABLE READ snapshot. Restrict access
@@ -144,16 +165,26 @@ bash scripts/ops_drill.sh --receipt-dir work/C23a/evidence
 
 The drill generates private temporary secrets and an unpredictable project
 name. It starts Compose, verifies real password logins and restricted grants,
-tests all six LOGINs over TCP4/TCP6/Unix with wrong passwords and other databases,
+tests all seven LOGINs over TCP4/TCP6/Unix with wrong passwords and other databases,
 and refuses direct credential grants, permissive RLS policies and LOGIN-owned objects before writes.
 It creates/removes its own second-database negative fixture, seeds nonempty
-database, queue and media witnesses, and checks API/worker metrics. After
+database, queue and media witnesses, and checks API/worker metrics. It performs
+real customer registration, rejects login before proof, consumes the verification
+link captured by local SMTP, logs in, and creates a customer-owned cart. It checks
+the actual cookie security flags and persisted customer/tenant/cart association.
+The loopback HTTP rehearsal carries those Secure cookie values explicitly;
+browser/TLS cookie admission remains a separate browser gate. Proof URLs are
+never fetched: their token exists only in the fragment, then a protected POST.
+Tokens, cookie values, email addresses and passwords are excluded from receipts
+and errors. After
 quiescing API and worker it backs
 up the database and media, verifies checksums, and prints `ROLLBACK_POINT`
 before destroying **only its own project's volumes**. It creates a fresh
 cluster, bootstraps capability roles, restores into a fresh empty database,
 compares every table and media bytes, and verifies API/worker health and grants
-again. It then submits a signed synthetic inventory-expiry job and requires
+again, and checks that the restored live session still identifies the same
+verified customer and owned cart after comparing all table content hashes.
+It then submits a signed synthetic inventory-expiry job and requires
 River completion after restart.
 Corrupted archive and populated-target probes must fail. A complete predecessor
 database is built from the immutable migration prefix and backed up. Disabling
@@ -165,10 +196,17 @@ or ordinary failure the drill removes its project, volumes and private files.
 On forced termination, use the printed project name to inspect and remove
 only that project's resources; never run a global Docker prune.
 
-The optional `local-ops-drill` workflow is manually dispatched because it
+Tests and drills run only in GitHub CI under the owner rule. The existing
+`mvp-e2e` workflow executes this compose recovery drill. The optional
+`local-ops-drill` workflow is manually dispatched because it
 builds images and performs a complete volume reset. Fast preflight, backup and
 restore safety tests remain in required `check_all.sh`. The manual workflow
 is first dispatchable after its workflow file reaches the default branch.
+
+Open acceptance dependency: **C-09d 合入后在演练中补验收真实下单关联**.
+This card does not wire checkout's production composition root or create a SQL
+order in place of the missing real flow. The receipt explicitly records the
+customer order-association gate as `NOT_RUN` until that follow-up.
 
 ## Rotate local passwords
 

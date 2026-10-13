@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "module": "checkout",
+  "note": "Address and cached start/final/payment attempt responses are derived personal-data copies. Money and state remain separate; this card does not implement scrubbing or alter checkout immutability.",
+  "structures": {"CheckoutAddressSnapshot": "Frozen destination/contact object; customer erase must account for this immutable copy.", "CheckoutAttemptResult": "Cached payment/cancel operation response, including any derived personal fields.", "CheckoutFinalResult": "Cached terminal checkout response; may contain derived contact/provider payload copy.", "CheckoutStartResult": "Cached checkout/payment creation response; may contain contact/provider payload copy.", "Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data."},
+  "tables": {
+    "checkout_sessions": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "checkout_sessions.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest checkout actor hash does not prove customer identity; use linked verified order ownership only."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "actor_kind": {"classification": "operational"},
+        "actor_id": {"classification": "operational"},
+        "request_key": {"classification": "operational"},
+        "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "cart_id": {"classification": "operational"},
+        "cart_version": {"classification": "operational"},
+        "order_id": {"classification": "operational"},
+        "address_snapshot": {"classification": "personal", "structure": "CheckoutAddressSnapshot", "erase": {"strategy": "scrub"}, "export": "include"},
+        "currency": {"classification": "financial_non_contact"},
+        "amount_minor": {"classification": "financial_non_contact"},
+        "items_net_minor": {"classification": "financial_non_contact"},
+        "tax_minor": {"classification": "financial_non_contact"},
+        "shipping_minor": {"classification": "financial_non_contact"},
+        "payable_version": {"classification": "financial_non_contact"},
+        "phase": {"classification": "operational"},
+        "provider_ref": {"classification": "operational"},
+        "start_result": {"classification": "personal", "structure": "CheckoutStartResult", "erase": {"strategy": "scrub"}, "export": "include"},
+        "final_result": {"classification": "personal", "structure": "CheckoutFinalResult", "erase": {"strategy": "scrub"}, "export": "include"},
+        "claim_kind": {"classification": "operational"},
+        "claim_key": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "updated_at": {"classification": "operational"}
+      }
+    },
+    "checkout_attempts": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "checkout_attempts.checkout_id -> checkout_sessions.id -> checkout_sessions.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest checkout inherits unverified contact policy."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "event_kind": {"classification": "operational"},
+        "event_key": {"classification": "operational"},
+        "checkout_id": {"classification": "operational"},
+        "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "result": {"classification": "personal", "structure": "CheckoutAttemptResult", "erase": {"strategy": "scrub"}, "export": "include"},
+        "created_at": {"classification": "operational"}
+      }
+    }
+  }
+}

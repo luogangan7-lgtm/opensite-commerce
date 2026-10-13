@@ -17,6 +17,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
 
 func reconcileRoutes(doc *openapi3.T, specs []httpapi.RouteSpec) error {
@@ -56,12 +57,12 @@ func scope(op *openapi3.Operation) string {
 	return s
 }
 
-func TestImplementedRouteContract(t *testing.T) {
+func TestUnconfiguredIdentityRouteContract(t *testing.T) {
 	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{publish.StorefrontRoute(nil)}, Quotes: quotes.NewApplication(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	router, ok := server.Handler.(*httpapi.Router)
+	router, ok := server.Handler.(interface{ RouteSpecs() []httpapi.RouteSpec })
 	if !ok {
 		t.Fatal("bootstrap must expose the registered RouteSpec router")
 	}
@@ -70,8 +71,65 @@ func TestImplementedRouteContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := reconcileRoutes(doc, router.RouteSpecs()); err == nil || !strings.Contains(err.Error(), "has no registered handler") {
+		t.Fatalf("unconfigured startup must fail the full implemented contract: %v", err)
+	}
+	// This mode registers health, catalog, media, cart and public storefront routes,
+	// but no login or optional checkout handlers.
+	// Remove exactly the optional login operations for this mode; every remaining
+	// operation stays under strict reconciliation. TestConfiguredIdentityRouteContract
+	// covers the full mode with real login registrations.
+	optional := map[string]bool{"getAdminLoginChallenge": true, "createStaffLoginSession": true,
+		"getAdminSession": true, "logoutCurrentStaffSession": true,
+		checkout.StartOperation: true, checkout.FakeOperation: true}
+	removed := 0
+	for _, item := range doc.Paths.Map() {
+		for method, op := range item.Operations() {
+			if optional[op.OperationID] {
+				if op.Extensions["x-opensite-status"] != "implemented" {
+					t.Fatalf("optional identity/checkout operation %s must be implemented", op.OperationID)
+				}
+				item.SetOperation(method, nil)
+				removed++
+			}
+		}
+	}
+	if removed != len(optional) {
+		t.Fatalf("optional identity/checkout contract incomplete: %d operations", removed)
+	}
 	if err := reconcileRoutes(doc, router.RouteSpecs()); err != nil {
 		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	server.Handler.ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("unconfigured health status %d", w.Code)
+	}
+	for _, route := range []struct{ method, path string }{
+		{"GET", "/api/v1/auth/login"}, {"POST", "/api/v1/auth/login"},
+		{"GET", "/api/v1/auth/session"}, {"POST", "/api/v1/auth/logout"},
+		{"POST", "/api/v1/t/10000000-0000-4000-8000-000000000001/checkout"}, {"POST", checkout.FakePattern},
+	} {
+		w := httptest.NewRecorder()
+		server.Handler.ServeHTTP(w, httptest.NewRequest(route.method, route.path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("unconfigured optional route %s %s served status %d", route.method, route.path, w.Code)
+		}
+	}
+}
+
+func TestCheckoutProductionFakeConfigurationStopsStartup(t *testing.T) {
+	if _, err := bootstrap.New(bootstrap.Config{Checkout: &checkout.Config{FakeEnabled: true, Environment: "production"}}); err == nil {
+		t.Fatal("production Fake configuration did not stop startup")
+	}
+	server, err := bootstrap.New(bootstrap.Config{Checkout: &checkout.Config{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/t/10000000-0000-4000-8000-000000000001/checkout", nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unconfigured storefront authentication: %d", response.Code)
 	}
 }
 
@@ -142,7 +200,10 @@ func TestDefaultCartWiringIsUnavailableAndSeparateFromStaff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := server.Handler.(*httpapi.Router)
+	router, ok := server.Handler.(interface{ RouteSpecs() []httpapi.RouteSpec })
+	if !ok {
+		t.Fatal("handler must expose its registered route snapshot")
+	}
 	ids := map[string]bool{}
 	for _, spec := range router.RouteSpecs() {
 		ids[spec.OperationID] = true
@@ -163,6 +224,36 @@ func TestDefaultCartWiringIsUnavailableAndSeparateFromStaff(t *testing.T) {
 	}
 	if w.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("cart failure cache policy missing")
+	}
+}
+
+// Both optional checkout and main cart wiring must intercept their own access
+// paths before staff authentication; composing either seam cannot replace the other.
+func TestCheckoutAndCartAuthenticationStaySeparate(t *testing.T) {
+	for _, tc := range []struct {
+		path, body string
+		status     int
+	}{
+		{"/api/v1/t/11111111-1111-4111-8111-111111111111/carts", `{"currency":"USD"}`, http.StatusServiceUnavailable},
+		{"/api/v1/t/11111111-1111-4111-8111-111111111111/checkout", `{}`, http.StatusUnauthorized},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			server, err := bootstrap.New(bootstrap.Config{
+				Authenticator: rejectStaffAuth{t: t}, Checkout: &checkout.Config{},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer staff")
+			req.Header.Set("Cookie", "__Host-osc_admin_session=staff")
+			server.Handler.ServeHTTP(response, req)
+			if response.Code != tc.status || response.Header().Get("Content-Type") != "application/problem+json" {
+				t.Fatalf("composed storefront access drift: %d %s", response.Code, response.Body.String())
+			}
+		})
 	}
 }
 

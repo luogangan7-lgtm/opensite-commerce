@@ -21,8 +21,7 @@ type Access string
 const (
 	Public     Access = "Public"
 	Storefront Access = "Storefront"
-	// BuyerCompany delegates verified customer session, company membership and
-	// scope admission to Authenticator; nil authenticators still deny it.
+	// BuyerCompany admits only a verified customer session and company scope.
 	BuyerCompany       Access = "BuyerCompany"
 	AuthenticatedSelf  Access = "AuthenticatedSelf"
 	AdminSession       Access = "AdminSession"
@@ -103,6 +102,7 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 	s.mux.Handle(spec.Method+" "+spec.Pattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
+		ctx = context.WithValue(ctx, authorizedActorKey{}, Actor{})
 		if spec.Access == Storefront || spec.Access == BuyerCompany {
 			w.Header().Set("Cache-Control", "no-store")
 		}
@@ -117,6 +117,10 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 				WriteProblem(w, r, apperrors.New(401, "unauthenticated", "Authentication is required"))
 				return
 			}
+			// An authenticator may return a context from a prior request. Neither
+			// identity nor tenant stamps survive admission to a different route.
+			ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
+			ctx = context.WithValue(ctx, authorizedActorKey{}, Actor{})
 			if strings.Contains(spec.Pattern, "{tenant_id}") {
 				tenant := r.PathValue("tenant_id")
 				if !tenanttx.ValidTenantID(tenant) {
@@ -124,6 +128,18 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 					return
 				}
 				ctx = context.WithValue(ctx, authorizedTenantKey{}, tenant)
+			}
+			if resolver, ok := s.auth.(ActorResolver); ok {
+				actor, err := resolver.ResolveActor(ctx, r, spec)
+				if err != nil {
+					WriteProblem(w, r, err)
+					return
+				}
+				if actor != (Actor{}) && !validActor(actor) {
+					WriteProblem(w, r, apperrors.New(401, "unauthenticated", "Authorized actor context is required"))
+					return
+				}
+				ctx = context.WithValue(ctx, authorizedActorKey{}, actor)
 			}
 		}
 		ctx = context.WithValue(ctx, requestIDKey{}, RequestID(r.Context()))

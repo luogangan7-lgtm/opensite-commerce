@@ -39,6 +39,15 @@ customer identity. This card implements no customer login or guest/customer merg
 
 Anonymous POST mints a cryptographically random 256-bit base64url capability,
 returned once as `cart_token`. Subsequent guest requests send `X-Cart-Token`.
+Anonymous POST admission uses bounded per-process token buckets: direct peer IP (IPv6 /64)
+burst 30, capability-hash burst 10, each refills one token per minute. Both must
+admit atomically; changing tenant, port or forwarding headers does not reset IP
+quota. `cart.Config.AnonymousCreateLimit` configures bursts, refill and maximum
+keys (default 10000); zero or invalid values keep safe defaults. Fully refilled
+idle buckets can be reclaimed; capacity exhaustion fails closed with 429.
+Customer creation and existing cart reads/writes use their existing authorization.
+This is a per-process admission limit; replicas need a shared quota before a
+fleet-wide limit can be claimed. No persistent cart is inserted after denial.
 Only SHA-256 bytes persist; no GET or line response exposes token or hash.
 Ownership and cross-tenant misses are indistinguishable 404s. Active tenant and
 active customer checks apply within the data transaction. Bootstrap with no
@@ -71,6 +80,10 @@ overflowing line instead includes `pricing_error` (`price_unavailable` or
 `id`, `currency`, `version` and `lines`; when not fully priced it includes
 `pricing_error` and omits `subtotal`. Missing money means unavailable, never zero.
 
+Positive quantity changes require both the product and its own variant lifecycle
+to be `ready`; draft or archived variants return 422 without changing intent.
+The `sellable` hint follows both lifecycle states. Zero quantity and DELETE still
+remove inactive variants so an existing cart can recover.
 Positive quantity changes require a fully priced projected cart; unavailable or
 overflowing projected money returns 422 and rolls back. PUT zero and DELETE can
 remove a bad line and return 200 even while other bad lines remain, so customers

@@ -54,6 +54,21 @@ func validKey(key string) bool {
 	}
 	return true
 }
+func validTaxCategory(category string) bool {
+	if len(category) < 1 || len(category) > 64 || !utf8.ValidString(category) {
+		return false
+	}
+	// Same contract as tax.Category: ^[a-z][a-z0-9_]{0,63}$.
+	if category[0] < 'a' || category[0] > 'z' {
+		return false
+	}
+	for _, c := range category {
+		if c != '_' && (c < 'a' || c > 'z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
+}
 func prepare(in contract.CreateInput) (prepared, error) {
 	return prepareWithSource(in, false)
 }
@@ -146,7 +161,7 @@ func prepareWithSource(in contract.CreateInput, negotiated bool) (prepared, erro
 			return invalid("price quantity mismatch")
 		}
 		a, s := l.Tax.Amounts, l.Tax.Snapshot
-		if l.Tax.ID != l.ID || s.Currency != in.Currency || a.Net < 0 || a.Tax < 0 || a.Gross < 0 || s.Rounding != "half_up" || strings.TrimSpace(s.Category) == "" || !validID(s.ZoneID) {
+		if l.Tax.ID != l.ID || s.Currency != in.Currency || a.Net < 0 || a.Tax < 0 || a.Gross < 0 || s.Rounding != "half_up" || !validTaxCategory(s.Category) || !validID(s.ZoneID) {
 			return invalid("tax result")
 		}
 		if s.Reason == "rate" {

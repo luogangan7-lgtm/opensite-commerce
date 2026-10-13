@@ -149,6 +149,7 @@ ORDERS_DB=""
 STOREFRONT_DB=""
 NOTIFICATIONS_DB=""
 QUOTES_DB=""
+CMS_DB=""
 CONVERSION_DB=""
 CATALOG_DB=""
 CART_DB=""
@@ -157,10 +158,14 @@ LIMITS_DB=""
 OPS_METRICS_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
+IDENTITY_DB=""
+LOGIN_DB=""
+CHECKOUT_DB=""
+CUSTOMER_AUTH_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$CONVERSION_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$CONVERSION_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -794,7 +799,7 @@ SELECT app.orders_create(:'oid','legacy-create',sha256('legacy'::bytea),NULL,
  '{"email":"legacy@example.invalid"}','USD',20,'{"currency":"USD","amount_minor":20,"service":"fixture"}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','orders-legacy','quantity',1,
  'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
- 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
+ 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('category','standard','net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
 SELECT app.orders_transition(:'oid','paid','legacy-pay',0);
 SELECT 'ORDERS_UPGRADE='||o.order_number||'|'||o.state||'|'||o.total_minor||'|'||s.on_hand||'|'||s.reserved||'|'||
  (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=:'t')||'|'||
@@ -812,6 +817,7 @@ for f in migrations/[0-9][0-9][0-9]_*.sql; do
 done
 river_db "$DB" --verify
 db "$DB" -f tests/db_orders.sql >/dev/null
+db "$DB" -f tests/db_orders_guards.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; ORDERS_DB=""
 # Cart additive upgrade: all predecessors, populated customers/catalog, then
@@ -974,6 +980,186 @@ admin -c "DROP DATABASE $NOTIFICATIONS_DB" >/dev/null; NOTIFICATIONS_DB=""
 pass 'notifications upgrade preserves original order outbox and fans out only newly inserted events'
 
 
+# C-02a: discover the identity upgrade by suffix. Seed only after ALL filename-
+# ordered predecessors; retain a full-row snapshot so ids, hashes and state are
+# independently compared, then apply every later module before the exact matrix.
+identity_files=(migrations/[0-9][0-9][0-9]_identity_auth.sql)
+[[ ${#identity_files[@]} -eq 1 && -f ${identity_files[0]} ]] || { echo 'FAIL: exactly one identity auth migration required'; exit 1; }
+IDENTITY_DB=upgrade_identity_$$
+DB=$IDENTITY_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${identity_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name,status) VALUES('identity-upgrade','suspended') RETURNING id AS t \gset
+INSERT INTO app.users(email,password_hash,status)
+ VALUES('identity-upgrade@example.test','legacy-preserved-password-hash','disabled') RETURNING id AS u \gset
+INSERT INTO app.tenant_memberships(tenant_id,user_id,role,status)
+ VALUES(:'t',:'u','viewer','suspended');
+INSERT INTO app.api_keys(tenant_id,issued_by,key_prefix,key_hash,scopes,expires_at,revoked_at)
+ VALUES(:'t',:'u','legacy-upgrade',sha256('identity-upgrade-key'::bytea),ARRAY['catalog:read'],
+        '2031-01-01T00:00:00Z','2030-01-01T00:00:00Z');
+CREATE TABLE public.identity_upgrade_expected(entity text PRIMARY KEY,payload jsonb NOT NULL);
+INSERT INTO public.identity_upgrade_expected
+ SELECT 'tenant',to_jsonb(t) FROM app.tenants t WHERE t.id=:'t'
+ UNION ALL SELECT 'user',to_jsonb(u) FROM app.users u WHERE u.id=:'u'
+ UNION ALL SELECT 'membership',to_jsonb(m) FROM app.tenant_memberships m WHERE m.tenant_id=:'t' AND m.user_id=:'u'
+ UNION ALL SELECT 'api_key',to_jsonb(k) FROM app.api_keys k WHERE k.tenant_id=:'t' AND k.issued_by=:'u';
+SQL
+apply_forward "$DB" "${identity_files[0]}"
+result=$(db "$DB" <<'SQL'
+WITH actual(entity,payload) AS (
+ SELECT 'tenant',to_jsonb(t) FROM app.tenants t WHERE t.name='identity-upgrade'
+ UNION ALL SELECT 'user',to_jsonb(u) FROM app.users u WHERE u.email_normalized='identity-upgrade@example.test'
+ UNION ALL SELECT 'membership',to_jsonb(m) FROM app.tenant_memberships m JOIN app.users u ON u.id=m.user_id WHERE u.email_normalized='identity-upgrade@example.test'
+ UNION ALL SELECT 'api_key',to_jsonb(k) FROM app.api_keys k WHERE k.key_prefix='legacy-upgrade'
+)
+SELECT 'IDENTITY_UPGRADE='||(SELECT count(*) FROM public.identity_upgrade_expected)||'|'||
+ (SELECT count(*) FROM actual)||'|'||
+ (SELECT count(*) FROM actual a JOIN public.identity_upgrade_expected e USING(entity,payload));
+SQL
+)
+if [[ $result == 'IDENTITY_UPGRADE=4|4|4' ]]; then pass 'identity upgrade preserves all legacy user/tenant/viewer/API-key ids, hashes and state'
+else bad "identity upgrade witness: $result"; fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${identity_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+
+# Execute-only bootstrap after a populated identity upgrade, with no prior owner.
+# Every call uses a real SET ROLE transaction, including the isolation rejection.
+# The deliberately duplicate email must leave no new tenant/user/owner behind.
+if out=$(db "$DB" -v VERBOSITY=verbose 2>&1 <<'SQL'
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('identity-upgrade@example.test','duplicate rollback',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SQL
+); then bad 'bootstrap accepted duplicate legacy email'
+elif [[ $out != *23505* ]]; then bad "bootstrap duplicate email failed for another reason: $out"
+elif [[ $(db "$DB" -c "SELECT (SELECT count(*) FROM app.users)||'|'||(SELECT count(*) FROM app.tenants)||'|'||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')") != '1|1|0' ]]; then bad 'bootstrap duplicate-email rollback left user/tenant/owner'
+else pass 'bootstrap duplicate-email rollback preserves legacy user and creates no tenant/owner'; fi
+result=$(db "$DB" <<'SQL'
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('upgraded-owner@example.test','upgraded first owner',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SELECT 'BOOTSTRAP_UPGRADE='||(SELECT count(*) FROM app.users)||'|'||
+ (SELECT count(*) FROM app.tenants)||'|'||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')||'|'||
+ EXISTS(SELECT FROM app.tenant_memberships m JOIN app.users u ON u.id=m.user_id JOIN app.tenants t ON t.id=m.tenant_id
+  WHERE m.role='owner' AND m.status='active' AND u.email_normalized='upgraded-owner@example.test'
+   AND u.status='active' AND t.name='upgraded first owner' AND t.status='active'
+   AND u.password_hash='$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+SQL
+)
+if [[ $result == *'BOOTSTRAP_UPGRADE=2|2|1|true'* ]]; then pass 'bootstrap creates first upgraded installation tenant/user/owner through app_admin_bootstrap'
+else bad "bootstrap upgraded first-owner witness: $result"; fi
+if out=$(db "$DB" -v VERBOSITY=verbose 2>&1 <<'SQL'
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('other-owner@example.test','another tenant',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SQL
+); then bad 'bootstrap created a second installation owner in another tenant'
+elif [[ $out != *55000* || $out != *BOOTSTRAP_OWNER_EXISTS* ]]; then bad "bootstrap repeated call failed for another reason: $out"
+else pass 'bootstrap rejects second owner globally across tenants'; fi
+if out=$(db "$DB" -v VERBOSITY=verbose 2>&1 <<'SQL'
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SET LOCAL ROLE app_admin_bootstrap;
+SELECT app.bootstrap_admin('rr-owner@example.test','repeatable-read tenant',
+ '$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+COMMIT;
+SQL
+); then bad 'bootstrap accepted REPEATABLE READ'
+elif [[ $out != *25000* || $out != *BOOTSTRAP_REQUIRES_READ_COMMITTED* ]]; then bad "bootstrap isolation rejection failed for another reason: $out"
+else pass 'bootstrap requires READ COMMITTED in a real app_admin_bootstrap transaction'; fi
+if [[ $(db "$DB" -c "SELECT (SELECT count(*) FROM app.users)||'|'||(SELECT count(*) FROM app.tenants)||'|'||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')") != '2|2|1' ]]; then
+ bad 'bootstrap rejected repeat/isolation calls left partial user/tenant/owner rows'
+fi
+db "$DB" -f tests/db_identity_auth.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"
+IDENTITY_DB=""
+
+# C-02b: start immediately before the logical session-activity migration, after
+# every predecessor (including identity-auth), then compare all legacy row fields.
+login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)
+[[ ${#login_files[@]} -eq 1 && -f ${login_files[0]} ]] || { echo 'FAIL: exactly one identity login migration required'; exit 1; }
+LOGIN_DB=upgrade_login_$$
+DB=$LOGIN_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${login_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.users(email,password_hash) VALUES('login-upgrade@example.test','fixture-only') RETURNING id AS u \gset
+INSERT INTO app.auth_sessions(user_id,token_hash,created_at,expires_at,revoked_at) VALUES
+ (:'u',sha256('legacy-live'::bytea),'2040-01-01Z','2040-01-02Z',NULL),
+ (:'u',sha256('legacy-expired'::bytea),'2020-01-01Z','2020-01-02Z',NULL),
+ (:'u',sha256('legacy-revoked'::bytea),'2040-01-01Z','2040-01-02Z','2040-01-01T00:01Z');
+CREATE TABLE public.login_upgrade_expected AS SELECT id,to_jsonb(s) AS payload FROM app.auth_sessions s;
+SQL
+apply_forward "$DB" "${login_files[0]}"
+result=$(db "$DB" <<'SQL'
+SELECT 'LOGIN_UPGRADE='||(SELECT count(*) FROM app.auth_sessions)||'|'||
+ (SELECT count(*) FROM app.auth_sessions s JOIN public.login_upgrade_expected e ON e.id=s.id
+  AND e.payload=to_jsonb(s)-'last_seen_at')||'|'||
+ (SELECT count(*) FROM app.auth_sessions WHERE last_seen_at=created_at)||'|'||
+ (SELECT a.attnotnull FROM pg_attribute a WHERE a.attrelid='app.auth_sessions'::regclass
+  AND a.attname='last_seen_at' AND NOT a.attisdropped)||'|'||
+ has_column_privilege('app_auth','app.auth_sessions','last_seen_at','UPDATE')||'|'||
+ has_column_privilege('app_runtime','app.auth_sessions','last_seen_at','UPDATE');
+SQL
+)
+if [[ $result == 'LOGIN_UPGRADE=3|3|3|true|true|false' ]]; then
+ pass 'login upgrade preserves old session ids/hashes/expiry/revocation, backfills original creation and restricts activity writes'
+else bad "login upgrade witness: $result"; fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${login_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" -f tests/db_identity_login.sql >/dev/null
+db "$DB" -f tests/db_identity_auth.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"
+LOGIN_DB=""
+
+# Quote conversion is additive: already-approved immutable rows survive unchanged.
+conversions=(migrations/[0-9][0-9][0-9]_quote_conversion.sql)
+[[ ${#conversions[@]} == 1 ]] || { echo 'FAIL: exactly one quote conversion migration required' >&2; exit 1; }
+CONVERSION_DB=quote_conversion_upgrade_$$
+admin -c "CREATE DATABASE $CONVERSION_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${conversions[0]} ]] || break
+ apply_forward "$CONVERSION_DB" "$f"
+done
+# Reuse only the predecessor-compatible fixture before the conversion assertions.
+# It builds actual Create/Send/Accept/Approve commands under runtime authority.
+{
+ awk '/^BEGIN;/{copy=1} /^DO \$conversion\$/{exit} copy' tests/db_quote_conversion.sql
+ echo "SELECT pg_temp.qc_quote(); COMMIT;"
+} | db "$CONVERSION_DB" >/dev/null
+witness_sql="SELECT encode(sha256(jsonb_build_object('id',id,'status',status,'version',version,'snapshot',snapshot,'total',total,'expires_at',expires_at)::text::bytea),'hex') FROM app.quotes;"
+before=$(db "$CONVERSION_DB" -c "$witness_sql")
+[[ -n $before ]] || bad 'quote conversion upgrade has no approved snapshot witness'
+apply_forward "$CONVERSION_DB" "${conversions[0]}"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${conversions[0]} ]] || continue
+ apply_forward "$CONVERSION_DB" "$f"
+done
+result=$(db "$CONVERSION_DB" -c "$witness_sql")
+[[ $result == "$before" ]] || bad 'quote conversion migration changed existing approved snapshot'
+if ! db "$CONVERSION_DB" < tests/db_quote_conversion.sql >/dev/null || ! db "$CONVERSION_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'quote conversion populated upgrade commands or exact role matrix'
+else pass 'quote conversion preserves approved snapshot; conversion/expiry/authority and grants after upgrade'; fi
+admin -c "DROP DATABASE $CONVERSION_DB" >/dev/null; CONVERSION_DB=""
+
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
 # Quotes takes over the existing005 inquiry table without rebuilding contacts.
@@ -1005,6 +1191,146 @@ if ! db "$QUOTES_DB" < tests/db_quotes.sql >/dev/null || ! db "$QUOTES_DB" < tes
  bad 'quotes lifecycle and exact role matrix after populated inquiry upgrade'
 else pass 'quotes forward ALTER preserves existing contact inquiry and runtime lifecycle/grants'; fi
 admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
+
+
+# Controlled CMS upgrade preserves populated legacy drafts/releases and adds
+# capability-fenced managed drafts without rewriting predecessor migrations.
+cms=(migrations/[0-9][0-9][0-9]_cms_publish.sql)
+[[ ${#cms[@]} == 1 ]] || { echo 'FAIL: exactly one CMS publish migration required' >&2; exit 1; }
+CMS_DB=cms_upgrade_$$
+admin -c "CREATE DATABASE $CMS_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${cms[0]} ]] || break
+ apply_forward "$CMS_DB" "$f"
+done
+db "$CMS_DB" < tests/fixtures/storefront_seed.sql >/dev/null
+before=$(db "$CMS_DB" -c "SELECT count(*)||'|'||encode(sha256(convert_to(jsonb_agg(jsonb_build_array(tenant_id,site_id,id,base_release_id,revision,status) ORDER BY id)::text,'UTF8')),'hex') FROM app.site_drafts;")
+if red=$(db "$CMS_DB" < tests/db_cms_publish.sql 2>&1); then bad 'CMS gates passed before controlled capability migration'
+elif [[ $red == *'function app.cms_create_draft'* && $red == *'does not exist'* ]]; then pass 'CMS pre-migration red: controlled function capability absent'
+else bad "CMS unexpected pre-migration red: $red"; fi
+apply_forward "$CMS_DB" "${cms[0]}"
+after=$(db "$CMS_DB" -c "SELECT count(*)||'|'||encode(sha256(convert_to(jsonb_agg(jsonb_build_array(tenant_id,site_id,id,base_release_id,revision,status) ORDER BY id)::text,'UTF8')),'hex') FROM app.site_drafts;")
+[[ $before == "$after" ]] || bad 'CMS upgrade changed legacy draft identities/revisions/status/base'
+result=$(db "$CMS_DB" -c "SELECT count(*) FROM app.site_drafts WHERE is_cms;")
+[[ $result == 0 ]] || bad 'CMS upgrade silently adopted unmanaged drafts'
+for f in migrations/[0-9][0-9][0-9]_*.sql; do [[ $f > ${cms[0]} ]] || continue; apply_forward "$CMS_DB" "$f"; done
+if ! db "$CMS_DB" < tests/db_cms_publish.sql >/dev/null || ! db "$CMS_DB" < tests/db_storefront.sql >/dev/null || ! db "$CMS_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'CMS populated upgrade controlled/CAS/freeze/role/public-read gate failed'
+else pass 'CMS upgrade preserves legacy state; controlled writes/immutable history and public role gates pass'; fi
+admin -c "DROP DATABASE $CMS_DB" >/dev/null; CMS_DB=""
+
+
+# Checkout installs after EVERY prior forward migration; numeric allocation is
+# deliberately irrelevant. Legacy paid orders and their outbox are not rewritten
+# (created + paid + notifications fan-out email = 3 events).
+checkout_files=(migrations/[0-9][0-9][0-9]_checkout.sql)
+[[ ${#checkout_files[@]} == 1 ]] || { echo 'FAIL: exactly one checkout migration required'; exit 1; }
+CHECKOUT_DB=upgrade_checkout_$$
+admin -c "DROP DATABASE IF EXISTS $CHECKOUT_DB" -c "CREATE DATABASE $CHECKOUT_DB" 2>/dev/null
+river_db "$CHECKOUT_DB"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${checkout_files[0]} ]] || break
+ apply_forward "$CHECKOUT_DB" "$f"
+done
+db "$CHECKOUT_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('checkout-legacy') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','checkout-legacy') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','checkout-legacy','default') RETURNING id AS sku \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_inventory_manager;
+SELECT app.inventory_adjust(:'sku',2,'legacy stock',uuidv7(),'inbound');
+RESET ROLE; SET ROLE app_runtime;
+SELECT uuidv7() AS oid \gset
+SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','checkout-legacy-stock',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','checkout-legacy-order',sha256('legacy'::bytea),NULL,'{"email":"legacy@example.invalid"}','USD',0,'{}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','checkout-legacy','quantity',1,'unit_price_minor',100,
+ 'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
+SELECT app.orders_transition(:'oid','paid','legacy-paid',0);
+SQL
+apply_forward "$CHECKOUT_DB" "${checkout_files[0]}"
+result=$(db "$CHECKOUT_DB" -c "SELECT o.state||'|'||o.version||'|'||o.total_minor||'|'||s.on_hand||'|'||s.reserved||'|'||(SELECT count(*) FROM app.outbox_events)||'|'||(SELECT count(*) FROM app.checkout_sessions)||'|'||(SELECT count(*) FROM app.checkout_attempts) FROM app.orders o JOIN app.stock_levels s USING(tenant_id);")
+[[ $result == 'paid|2|100|1|0|3|0|0' ]] || bad "checkout populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${checkout_files[0]} ]] || continue
+ apply_forward "$CHECKOUT_DB" "$f"
+done
+river_db "$CHECKOUT_DB" --verify
+db "$CHECKOUT_DB" -f tests/db_checkout.sql >/dev/null
+db "$CHECKOUT_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $CHECKOUT_DB"; CHECKOUT_DB=""
+pass 'checkout upgrade preserves paid legacy orders/inventory/outbox and installs permanent fenced receipts'
+# Customer auth upgrades every actual predecessor; old credentials and immutable
+# guest snapshots survive. Mailbox proof verifies legacy identity, never changes PHC.
+customer_auth=(migrations/[0-9][0-9][0-9]_customer_auth.sql)
+[[ ${#customer_auth[@]} == 1 ]] || { echo 'FAIL: exactly one customer auth migration required' >&2; exit 1; }
+CUSTOMER_AUTH_DB=customer_auth_upgrade_$$
+admin -c "CREATE DATABASE $CUSTOMER_AUTH_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${customer_auth[0]} ]] || break
+ apply_forward "$CUSTOMER_AUTH_DB" "$f"
+done
+db "$CUSTOMER_AUTH_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('customer-auth-legacy') RETURNING id AS t \gset
+INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','legacy-auth@example.invalid','Legacy') RETURNING id AS c \gset
+INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash) VALUES(:'t',:'c',
+ '$argon2id$v=19$m=19456,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU');
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_orders_executor;
+INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+VALUES(:'t',uuidv7(),1,'auth-upgrade',sha256('auth-upgrade'::bytea),'{"email":"legacy-auth@example.invalid","name":"Immutable"}','USD',0,0,0,'{}',0) RETURNING id AS oid \gset
+UPDATE app.orders SET sealed=true WHERE tenant_id=:'t' AND id=:'oid';
+RESET ROLE;
+CREATE TABLE public.customer_auth_upgrade_witness AS
+ SELECT to_jsonb(c) AS customer,to_jsonb(p) AS credential,to_jsonb(o) AS snapshot
+ FROM app.customers c JOIN app.customer_credentials p ON(p.tenant_id,p.customer_id)=(c.tenant_id,c.id)
+ JOIN app.orders o ON o.tenant_id=c.tenant_id WHERE c.id=:'c';
+SQL
+# An inbound membership must refuse the new role before any additive schema lands.
+admin -c 'GRANT app_customer_executor TO app_runtime' >/dev/null
+if output=$(apply_forward "$CUSTOMER_AUTH_DB" "${customer_auth[0]}" 2>&1); then
+ bad 'customer executor inbound membership unexpectedly accepted'
+else
+ [[ $output == *CUSTOMER_AUTH_EXECUTOR_UNSAFE* ]] || bad "customer executor membership wrong failure: $output"
+fi
+admin -c 'REVOKE app_customer_executor FROM app_runtime' >/dev/null
+result=$(db "$CUSTOMER_AUTH_DB" -c "SELECT 'AUTH_ATOMIC='||(to_regclass('app.customer_auth_tokens') IS NULL)||'|'||(NOT EXISTS(SELECT FROM pg_attribute WHERE attrelid='app.customers'::regclass AND attname='verified_at' AND NOT attisdropped));")
+[[ $result == 'AUTH_ATOMIC=true|true' ]] || bad "customer executor refused migration left partial schema: $result"
+apply_forward "$CUSTOMER_AUTH_DB" "${customer_auth[0]}"
+result=$(db "$CUSTOMER_AUTH_DB" <<'SQL'
+SELECT 'AUTH_UPGRADE='||(to_jsonb(c)-'verified_at'=w.customer)||'|'||(c.verified_at IS NULL)||'|'||(to_jsonb(p)=w.credential)||'|'||(to_jsonb(o)=w.snapshot)
+ FROM public.customer_auth_upgrade_witness w JOIN app.customers c ON c.id=(w.customer->>'id')::uuid
+ JOIN app.customer_credentials p ON(p.tenant_id,p.customer_id)=(c.tenant_id,c.id)
+ JOIN app.orders o ON o.id=(w.snapshot->>'id')::uuid;
+DO $proof$
+DECLARE t uuid; c uuid; legacy_phc text; candidate text; BEGIN
+ SELECT x.tenant_id,x.id,p.password_hash INTO STRICT t,c,legacy_phc FROM app.customers x
+ JOIN app.customer_credentials p ON(p.tenant_id,p.customer_id)=(x.tenant_id,x.id) WHERE x.email='legacy-auth@example.invalid';
+ candidate:=replace(legacy_phc,'YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU','ZWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU');
+ PERFORM set_config('app.tenant_id',t::text,true);
+ EXECUTE 'SET LOCAL ROLE app_customer_auth';
+ IF NOT app.customer_prepare_registration('legacy-auth@example.invalid',candidate,sha256('legacy-proof'::bytea),clock_timestamp()+interval '1 hour')
+ OR NOT app.customer_consume_verification(sha256('legacy-proof'::bytea)) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_UPGRADE_PROOF'; END IF;
+ IF (SELECT password_hash FROM app.customer_credentials WHERE tenant_id=t AND customer_id=c)<>legacy_phc
+ OR NOT EXISTS(SELECT FROM app.customer_guest_order_links WHERE tenant_id=t AND customer_id=c) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_UPGRADE_LEGACY_CHANGED'; END IF;
+ IF NOT app.customer_prepare_reset('legacy-auth@example.invalid',sha256('legacy-reset'::bytea),clock_timestamp()+interval '1 hour')
+ OR NOT app.customer_consume_reset(sha256('legacy-reset'::bytea),candidate) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_UPGRADE_RESET'; END IF;
+ EXECUTE 'RESET ROLE';
+ IF (SELECT to_jsonb(o) FROM app.orders o WHERE o.id=(SELECT (snapshot->>'id')::uuid FROM public.customer_auth_upgrade_witness))
+ IS DISTINCT FROM(SELECT snapshot FROM public.customer_auth_upgrade_witness) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_UPGRADE_ORDER_CHANGED'; END IF;
+END $proof$;
+SQL
+)
+[[ $result == *'AUTH_UPGRADE=true|true|true|true'* ]] || bad "customer populated upgrade preservation: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${customer_auth[0]} ]] || continue
+ apply_forward "$CUSTOMER_AUTH_DB" "$f"
+done
+river_db "$CUSTOMER_AUTH_DB" --verify
+db "$CUSTOMER_AUTH_DB" -f tests/db_customer_auth.sql >/dev/null
+db "$CUSTOMER_AUTH_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $CUSTOMER_AUTH_DB" >/dev/null; CUSTOMER_AUTH_DB=""
+pass 'customer auth forward upgrade preserves legacy PHC/guest snapshot, rejects unsafe role atomically, then verifies and resets explicitly'
+
 # Quote conversion is additive: already-approved immutable rows survive unchanged.
 conversions=(migrations/[0-9][0-9][0-9]_quote_conversion.sql)
 [[ ${#conversions[@]} == 1 ]] || { echo 'FAIL: exactly one quote conversion migration required' >&2; exit 1; }
@@ -1034,5 +1360,7 @@ if ! db "$CONVERSION_DB" < tests/db_quote_conversion.sql >/dev/null || ! db "$CO
  bad 'quote conversion populated upgrade commands or exact role matrix'
 else pass 'quote conversion preserves approved snapshot; conversion/expiry/authority and grants after upgrade'; fi
 admin -c "DROP DATABASE $CONVERSION_DB" >/dev/null; CONVERSION_DB=""
+
+# Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications and quotes upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login, CMS, checkout and customer auth upgrade gates'
