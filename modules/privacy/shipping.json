@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "module": "shipping",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {},
+  "tables": {
+    "shipping_zones": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "name": {"classification": "operational"}
+      }
+    },
+    "shipping_zone_destinations": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "zone_id": {"classification": "operational"},
+        "country_code": {"classification": "operational"},
+        "subdivision_code": {"classification": "operational"}
+      }
+    },
+    "shipping_profiles": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "name": {"classification": "operational"},
+        "currency": {"classification": "financial_non_contact"}
+      }
+    },
+    "shipping_rates": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "profile_id": {"classification": "operational"},
+        "zone_id": {"classification": "operational"},
+        "method": {"classification": "operational"},
+        "currency": {"classification": "financial_non_contact"},
+        "amount": {"classification": "financial_non_contact"},
+        "min_weight_g": {"classification": "operational"},
+        "max_weight_g": {"classification": "operational"},
+        "free_over_amount": {"classification": "financial_non_contact"}
+      }
+    }
+  }
+}
