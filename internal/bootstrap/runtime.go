@@ -18,6 +18,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -28,10 +29,16 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	defer cancel()
 	var runners []*pgxadapter.QueryRunner
 	var staff *identity.LoginModule
+	var tenantAuth *tenant.Module
 	closeRuntime := func() {
 		if staff != nil {
 			closing, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_ = staff.Close(closing)
+			cancel()
+		}
+		if tenantAuth != nil {
+			closing, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = tenantAuth.Close(closing)
 			cancel()
 		}
 		for _, runner := range runners {
@@ -131,7 +138,14 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			closeRuntime()
 			return Config{}, nil, errors.New("staff login startup failed")
 		}
+		tenantAuth, err = tenant.Open(startup, tenant.Config{DatabaseURL: authURL})
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, errors.New("tenant authorization startup failed")
+		}
+		staff.WithAuthorization(tenantAuth.Authorization())
 		config.Authenticator = staff.Authenticator()
+		config.Routes = append(config.Routes, tenantAuth.Routes()...)
 		config.Routes = append(config.Routes, staff.Routes()...)
 	}
 	return config, closeRuntime, nil

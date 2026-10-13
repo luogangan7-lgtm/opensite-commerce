@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
@@ -153,4 +154,16 @@ func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, s
 		return resolver.ResolveActor(ctx, r, spec)
 	}
 	return httpapi.Actor{}, nil
+}
+
+// ResolveTransactionAuthorization forwards only staff write admission. Storefront
+// commands retain their own capability checks and must never acquire staff scope.
+func (a routeAuthenticator) ResolveTransactionAuthorization(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
+	if spec.Access == httpapi.Storefront {
+		return nil, nil
+	}
+	if resolver, ok := a.staff.(httpapi.TransactionAuthorizationResolver); ok {
+		return resolver.ResolveTransactionAuthorization(ctx, r, spec)
+	}
+	return nil, nil
 }

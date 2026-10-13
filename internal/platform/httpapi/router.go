@@ -6,6 +6,7 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -101,6 +102,7 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
 		ctx = context.WithValue(ctx, authorizedActorKey{}, Actor{})
+		ctx = context.WithValue(ctx, transactionAuthorizationKey{}, (func(context.Context, *db.Queries) error)(nil))
 		if spec.Access == Storefront {
 			w.Header().Set("Cache-Control", "no-store")
 		}
@@ -119,6 +121,7 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 			// identity nor tenant stamps survive admission to a different route.
 			ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
 			ctx = context.WithValue(ctx, authorizedActorKey{}, Actor{})
+			ctx = context.WithValue(ctx, transactionAuthorizationKey{}, (func(context.Context, *db.Queries) error)(nil))
 			if strings.Contains(spec.Pattern, "{tenant_id}") {
 				tenant := r.PathValue("tenant_id")
 				if !tenanttx.ValidTenantID(tenant) {
@@ -138,6 +141,17 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 					return
 				}
 				ctx = context.WithValue(ctx, authorizedActorKey{}, actor)
+			}
+
+			if isWrite(spec.Method) && strings.Contains(spec.Pattern, "{tenant_id}") {
+				if resolver, ok := s.auth.(TransactionAuthorizationResolver); ok {
+					check, err := resolver.ResolveTransactionAuthorization(ctx, r, spec)
+					if err != nil {
+						WriteProblem(w, r, err)
+						return
+					}
+					ctx = context.WithValue(ctx, transactionAuthorizationKey{}, check)
+				}
 			}
 		}
 		ctx = context.WithValue(ctx, requestIDKey{}, RequestID(r.Context()))

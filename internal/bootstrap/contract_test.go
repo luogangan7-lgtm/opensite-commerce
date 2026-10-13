@@ -81,6 +81,7 @@ func TestUnconfiguredIdentityRouteContract(t *testing.T) {
 	// covers the full mode with real login registrations.
 	optional := map[string]bool{"getAdminLoginChallenge": true, "createStaffLoginSession": true,
 		"getAdminSession": true, "logoutCurrentStaffSession": true,
+		"createAPIKey": true, "listAPIKeys": true, "revokeAPIKey": true,
 		checkout.StartOperation: true, checkout.FakeOperation: true}
 	removed := 0
 	for _, item := range doc.Paths.Map() {

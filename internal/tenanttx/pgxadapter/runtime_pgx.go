@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
 type QueryRunner struct {
@@ -50,7 +51,12 @@ func (r *QueryRunner) RunAuthorizedTx(ctx context.Context, tenant string, fn fun
 	if r == nil || fn == nil {
 		return errors.New("runtime database is unavailable")
 	}
-	return r.runner.InTenant(ctx, tenant, fn)
+	return r.runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		if err := httpapi.RevalidateTransaction(ctx, db.New(tx)); err != nil {
+			return err
+		}
+		return fn(ctx, tx)
+	})
 }
 
 func (r *QueryRunner) RunAuthorizedTxSnapshot(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
@@ -84,5 +90,13 @@ func (r *QueryRunner) run(ctx context.Context, tenant string, snapshot bool, fn 
 	if snapshot {
 		in = r.runner.InTenantSnapshot
 	}
-	return in(ctx, tenant, func(_ context.Context, tx pgx.Tx) error { return fn(db.New(tx)) })
+	return in(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		q := db.New(tx)
+		if !snapshot {
+			if err := httpapi.RevalidateTransaction(ctx, q); err != nil {
+				return err
+			}
+		}
+		return fn(q)
+	})
 }

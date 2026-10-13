@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	contract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
@@ -82,7 +83,7 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 	if fallback == nil {
 		fallback = httpapi.DenyAuthenticator{}
 	}
-	return authFunc(func(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	return composedAuth{fallback: fallback, authenticate: authFunc(func(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
 		if spec.OperationID != StartOperation {
 			return fallback.Authenticate(ctx, r, spec)
 		}
@@ -104,7 +105,35 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 			return nil, notFound()
 		}
 		return context.WithValue(ctx, actorKey{}, actor), nil
-	})
+	})}
+}
+
+// Preserve the staff projection and transaction guard through this wrapper.
+type composedAuth struct {
+	fallback     httpapi.Authenticator
+	authenticate authFunc
+}
+
+func (a composedAuth) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	return a.authenticate(ctx, r, spec)
+}
+func (a composedAuth) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
+	if spec.OperationID == StartOperation {
+		return httpapi.Actor{}, nil
+	}
+	if resolver, ok := a.fallback.(httpapi.ActorResolver); ok {
+		return resolver.ResolveActor(ctx, r, spec)
+	}
+	return httpapi.Actor{}, nil
+}
+func (a composedAuth) ResolveTransactionAuthorization(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
+	if spec.OperationID == StartOperation {
+		return nil, nil
+	}
+	if resolver, ok := a.fallback.(httpapi.TransactionAuthorizationResolver); ok {
+		return resolver.ResolveTransactionAuthorization(ctx, r, spec)
+	}
+	return nil, nil
 }
 
 type authFunc func(context.Context, *http.Request, httpapi.RouteSpec) (context.Context, error)
