@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "mobile/button-ghost-md-default.png",
   "scope": "gallery",
-  "sourceFingerprint": "980929f29823c6c437a6c7d5205cd0673700342c24d56afd1504635dacd4a2b2",
+  "sourceFingerprint": "0c37a54df996d4b12ca632180c991adc6e81cf1e10c695875fc22bb94a5c3b9f",
   "pngSha256": "75670f8ca73f773b4fa74fb157c308153545eb679f40fe07dd63b5db3aabd0d3",
   "scopeSnapshots": [
     "desktop/badge-danger.png",
@@ -186,8 +186,8 @@
     "mobile/table-populated-hover.png",
     "mobile/table-populated.png"
   ],
-  "sourceSha": "423d4c069c68f82098ae1530d4aa8ae59aa8a68f",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38412793719",
+  "sourceSha": "b750aba422341b99d009d4bc2de60309b75a381c",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38430236809",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
