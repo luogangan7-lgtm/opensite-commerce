@@ -880,16 +880,37 @@ class GovernanceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_h2_maintenance_reference_red(self):
+        self.registry["modules"].append(module("identity"))
+        self.source("internal/modules/identity/module.go", "package identity\n")
+        # Exact-path exemption: siblings, nested and parent paths of the identity store stay red.
         for name in ("internal/modules/a/maintenance.go", "internal/bridge/maintenance.go",
-                     "internal/tenanttx/pgxadapter/maintenance.go"):
+                     "internal/tenanttx/pgxadapter/maintenance.go", "cmd/tool/main.go",
+                     "internal/modules/identity/internal/storex/maintenance.go",
+                     "internal/modules/identity/internal/store/nested/maintenance.go",
+                     "internal/modules/identity/maintenance.go"):
             with self.subTest(name=name):
-                self.source(name, 'package bridge\ntype runner struct{}\nfunc (runner) InMaintenance() {}\nvar Run = runner{}.InMaintenance\n')
+                package = Path(name).parent.name
+                self.source(name, f'package {package}\ntype runner struct{{}}\nfunc (runner) InMaintenance() {{}}\nvar Run = runner{{}}.InMaintenance\n')
                 self.assert_red("MODULE_MAINTENANCE_CALL")
                 (self.root / name).unlink()
 
+    def test_h2_private_maintenance_value_red(self):
+        self.source("internal/tenanttx/pgxadapter/exported.go",
+                    'package pgxadapter\ntype Runner struct{}\nfunc (Runner) inMaintenance() {}\nvar RunMaintenance = Runner.inMaintenance\n')
+        self.assert_red("MODULE_MAINTENANCE_CALL")
+
+    def test_h2_private_maintenance_call_green(self):
+        self.source("internal/tenanttx/pgxadapter/call.go",
+                    'package pgxadapter\ntype Runner struct{}\nfunc (Runner) inMaintenance() {}\nfunc (r Runner) Run() { r.inMaintenance() }\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_h2_maintenance_allowed_green(self):
-        for name in ("internal/modules/a/maintenance_test.go", "cmd/tool/main.go", "internal/ops/maintenance.go"):
-            self.source(name, ('package a' if name.endswith('_test.go') else 'package bridge') + '\ntype runner struct{}\nfunc (runner) InMaintenance() {}\nvar Run = runner{}.InMaintenance\n')
+        self.registry["modules"].append(module("identity"))
+        self.source("internal/modules/identity/module.go", "package identity\n")
+        for name in ("internal/modules/a/maintenance_test.go", "internal/ops/maintenance.go",
+                     "internal/modules/identity/internal/store/login.go"):
+            self.source(name, ('package a' if name.endswith('_test.go') else f'package {Path(name).parent.name}') + '\ntype runner struct{}\nfunc (runner) InMaintenance() {}\nvar Run = runner{}.InMaintenance\n')
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stderr)
 

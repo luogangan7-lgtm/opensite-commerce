@@ -289,6 +289,10 @@ def go_imports(text):
 def check_raw_connection(text, location, allow_raw=False):
     # All owned source (including tests and ignored tags) is checked before go list.
     tokens, imports = go_imports(text)
+    for alias, imported in imports:
+        # A dot import hides Conn/Connect origins even inside the adapter, so it is never exempt.
+        require(not (alias == "." and imported == "github.com/jackc/pgx/v5"),
+                "MODULE_RAW_CONNECTION", location + " (pgx dot import)")
     if allow_raw and Path(location).parent == Path("internal/tenanttx/pgxadapter"):
         return
     imported_paths = {path for _, path in imports}
@@ -315,7 +319,8 @@ def check_raw_connection(text, location, allow_raw=False):
                 aliases.add(alias or "pgx")
     for index in range(len(tokens) - 2):
         require(not (tokens[index] in aliases and tokens[index + 1] == "." and
-                     (tokens[index + 2] == "Conn" or tokens[index + 2].startswith("Connect")) and
+                     (tokens[index + 2] == "Conn" or (tokens[index + 2].startswith("Connect") and
+                                                      tokens[index + 2] != "ConnectTracer")) and
                      not (allow_raw and tokens[index + 2] in ("Conn", "Connect", "ConnectConfig"))),
                 "MODULE_RAW_CONNECTION", location)
 
@@ -326,7 +331,7 @@ def check_raw_connection(text, location, allow_raw=False):
 POOL_TYPES = {"github.com/jackc/pgx/v5/pgxpool": ("pgxpool", {"Pool", "Conn"}),
               "github.com/jackc/pgx/v5": ("pgx", {"Conn"}),
               "github.com/jackc/pgx/v5/pgconn": ("pgconn", {"PgConn"}),
-              "database/sql": ("sql", {"DB", "Conn"})}
+              "database/sql": ("sql", {"DB", "Conn", "Stmt"})}
 
 
 def pool_declarations(text):
@@ -495,14 +500,25 @@ def raw_connection_allowed(relative):
     return suffix is not None and relative.name.endswith(suffix)
 
 
+# Exact package directories (never prefixes) allowed to reach the unscoped maintenance runner.
+# internal/modules/identity/internal/store: staff login is pre-tenant global identity work
+# (global users/auth tables carry no tenant_id, as in migration 001), so it has no tenant
+# realm to enter; it uses the identity-only runner. Any sibling or nested path stays red.
+MAINTENANCE_ALLOWED_DIRS = (Path("internal/modules/identity/internal/store"),)
+
+
 def check_maintenance(text, relative):
-    # Taking a method value is just as powerful as calling it immediately.
-    if relative.name.endswith("_test.go") or relative.parts[:1] == ("cmd",) or relative.parts[:2] == ("internal", "ops"):
-        return
-    # Global identity login is the one business path with no tenant realm; it uses IdentityRunner.
-    if relative.parent.as_posix() == "internal/modules/identity/internal/store":
+    relative = Path(relative)
+    if relative.name.endswith("_test.go"):
         return
     tokens, _ = go_imports(text)
+    # The private entry point may only be called; a method value or alias would export it.
+    require(not any(tokens[i] == "." and tokens[i + 1] == "inMaintenance" and tokens[i + 2] != "("
+                    for i in range(len(tokens) - 2)),
+            "MODULE_MAINTENANCE_CALL", f"{relative} (inMaintenance used as a value)")
+    # Taking a method value is just as powerful as calling it immediately.
+    if relative.parent in MAINTENANCE_ALLOWED_DIRS or relative.parts[:2] == ("internal", "ops"):
+        return
     require(not any(tokens[i] == "." and tokens[i + 1] == "InMaintenance"
                     for i in range(len(tokens) - 1)),
             "MODULE_MAINTENANCE_CALL", str(relative))
