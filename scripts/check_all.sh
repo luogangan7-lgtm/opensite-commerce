@@ -27,4 +27,5 @@ python3 scripts/check_oapi_codegen.py
 for script in scripts/*.sh; do
  bash -n "$script"
 done
+bash scripts/check_frontend.sh
 echo 'PASS: offline checks (does not test PostgreSQL or production API)'
