@@ -37,6 +37,11 @@ STAFF_OPERATIONS = {
 }
 COOKIE = [{"adminSession": []}]
 COOKIE_OR_KEY = [{"adminSession": []}, {"ApiKeyBearer": []}]
+CUSTOMER_OPERATIONS = {
+    'registerCustomer', 'verifyCustomerEmail', 'getCustomerSession',
+    'createCustomerSession', 'deleteCustomerSession',
+    'requestCustomerPasswordReset', 'confirmCustomerPasswordReset',
+}
 # Buyer identity is supplied by the customer-auth seam; Public here describes
 # the platform router access class, never permission to bypass trusted actors.
 BUYER_QUOTES = {
@@ -240,8 +245,12 @@ def validate_contract(api):
                         signature.get("schema") == {"type": "string", "pattern": "^[0-9a-f]{64}$"},
                         "Fake signature parameter missing/incorrect")
             else:
-                require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite", "getAdminLoginChallenge", "createStaffLoginSession"} | BUYER_QUOTES.keys() and security == [] and
-                        "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
+                customer = ident in CUSTOMER_OPERATIONS
+                require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite", "getAdminLoginChallenge", "createStaffLoginSession"} | BUYER_QUOTES.keys() | CUSTOMER_OPERATIONS and security == [] and
+                        "x-required-scope" not in op and (tenant if customer else not tenant), f"public operation must be anonymous and scope-free: {ident}")
+                if customer:
+                    require(path.startswith('/api/v1/t/{tenant_id}/customer/') and op['x-opensite-status'] == 'implemented',
+                            'customer authentication route drift')
         elif access == "Storefront":
             if ident in {"createCheckout", "previewCheckout", "getCheckout"}:
                 expected = {"createCheckout": ("/api/v1/t/{tenant_id}/checkout", "post"),
@@ -249,7 +258,7 @@ def validate_contract(api):
                             "getCheckout": ("/api/v1/t/{tenant_id}/checkout/{checkout_id}", "get")}
                 require((path, method) == expected[ident] and tenant and
                         "x-required-scope" not in op and op["x-opensite-status"] == "implemented" and
-                        security == [{"GuestCapability": []}],
+                        security == ([{"StorefrontSession": []}, {"GuestCapability": []}] if ident == "createCheckout" else [{"GuestCapability": []}]),
                         "checkout requires the exact scope-free storefront resolver contract")
                 for name, location, credential_name in (("StorefrontSession", "cookie", "__Host-osc_customer_session"),
                                                          ("GuestCapability", "header", "X-Cart-Token")):
@@ -262,7 +271,8 @@ def validate_contract(api):
                         "X-CSRF-Token": {"type": "string", "minLength": 1, "maxLength": 512},
                         "X-Cart-ID": {"type": "string", "format": "uuid"},
                         "X-Cart-Token": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}}.items():
-                    require(header in headers and headers[header].get("required") is True and
+                    required = ident != "createCheckout" or header not in {"X-Cart-ID", "X-Cart-Token"}
+                    require(header in headers and headers[header].get("required") is required and
                             headers[header].get("schema") == schema,
                             f"checkout {header} admission contract missing/incorrect")
                 require(("Idempotency-Key" in headers and headers["Idempotency-Key"].get("required") is True) == (ident == "createCheckout"),
@@ -333,7 +343,7 @@ def validate_contract(api):
             continue
         for status, name in PROBLEM_RESPONSES.items():
             require(op["responses"].get(status) == {"$ref": "#/components/responses/" + name}, f"missing shared {status} mapping: {ident}")
-        if method in {"post", "put", "patch", "delete"} and access != "Storefront" and (access != "Public" or ident in {"createAdminSession", "createStaffLoginSession"}):
+        if method in {"post", "put", "patch", "delete"} and access != "Storefront" and (access != "Public" or ident in {"createAdminSession", "createStaffLoginSession"} | CUSTOMER_OPERATIONS):
             headers = {p["name"]: p for p in parameters if p["in"] == "header"}
             required = access != "AdminOrAPIKey"
             for header in ("Origin", "X-CSRF-Token"):
@@ -345,6 +355,15 @@ def validate_contract(api):
             require({"409", "422"} <= op["responses"].keys(), f"idempotency mappings missing: {ident}")
     require(QUOTE_OPERATIONS <= operations.keys(), "quote operation missing")
     require(CART_OPERATIONS <= operations.keys(), "cart operation missing")
+    require(CUSTOMER_OPERATIONS <= operations.keys(), "customer authentication operation missing")
+    customer_cookie = schemes.get("customerSession", {})
+    require((customer_cookie.get("type"), customer_cookie.get("in"), customer_cookie.get("name")) ==
+            ("apiKey", "cookie", "__Host-osc_customer_session"), "customer session cookie scheme drift")
+    for name in ("CustomerRegistrationInput", "CustomerCredentialsInput", "CustomerTokenInput",
+                 "CustomerResetRequest", "CustomerResetConfirm", "CustomerRegistrationReceipt",
+                 "CustomerResetReceipt", "CustomerSessionView", "CustomerSessionEnvelope"):
+        require(schemas.get(name, {}).get("additionalProperties") is False,
+                f"strict customer schema required: {name}")
     cart_token = schemes.get("CartToken", {})
     require((cart_token.get("type"), cart_token.get("in"), cart_token.get("name")) ==
             ("apiKey", "header", "X-Cart-Token"), "cart capability scheme drift")

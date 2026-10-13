@@ -25,6 +25,350 @@ tags:
   - name: Notifications
   - name: Orders
 paths:
+  /api/v1/t/{tenant_id}/customer/registrations:
+    post:
+      operationId: registerCustomer
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRegistrationInput'
+      responses:
+        '202':
+          description: Customer authentication result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerRegistrationReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/customer/verifications:
+    post:
+      operationId: verifyCustomerEmail
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerTokenInput'
+      responses:
+        '204':
+          description: Customer authentication result
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/customer/session:
+    get:
+      operationId: getCustomerSession
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Customer authentication result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerSessionEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      operationId: createCustomerSession
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCredentialsInput'
+      responses:
+        '200':
+          description: Customer authentication result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerSessionEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      operationId: deleteCustomerSession
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      responses:
+        '204':
+          description: Customer authentication result
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/customer/password-resets:
+    post:
+      operationId: requestCustomerPasswordReset
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerResetRequest'
+      responses:
+        '202':
+          description: Customer authentication result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResetReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/customer/password-resets/confirm:
+    post:
+      operationId: confirmCustomerPasswordReset
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Tenant customer authentication only. Staff cookies and keys never authenticate customers. GET session returns a signed anonymous challenge before login; writes require exact pinned Origin and signed anonymous or session CSRF. Only Fake or local test mail is enabled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string, format: uri}
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerResetConfirm'
+      responses:
+        '204':
+          description: Customer authentication result
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/t/{tenant_id}/checkout:
     post:
       tags: [Checkout]
@@ -33,19 +377,28 @@ paths:
       x-opensite-access: Storefront
       description: >-
         C-09d guest capability checkout. The capability must be verified independently of URL and Host,
-        with exact configured Origin, server proof and tenant/cart ownership. Customer sessions are reserved
-        for a later integration; missing resolver rejects. Storefront access carries no employee scope and
+        with exact configured Origin, server proof and tenant/cart ownership. The independently configured
+        customer-session admission remains an alternative; missing resolver rejects. Storefront access carries no employee scope and
         never falls back to staff authentication. Prices, buyer identity and tenant authorization are not input.
         quote_id is rejected in this increment; B2B conversion is deferred.
       security:
+        - StorefrontSession: []
         - GuestCapability: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/CheckoutOrigin'
         - $ref: '#/components/parameters/CheckoutCSRFToken'
-        - $ref: '#/components/parameters/CheckoutCartId'
-        - $ref: '#/components/parameters/CheckoutCartToken'
+        - name: X-Cart-ID
+          in: header
+          required: false
+          description: Required with GuestCapability; omitted for an authenticated customer session.
+          schema: {type: string, format: uuid}
+        - name: X-Cart-Token
+          in: header
+          required: false
+          description: Required with GuestCapability; must not accompany a customer session.
+          schema: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
       requestBody:
         required: true
         content:
@@ -3019,11 +3372,16 @@ paths:
 
 components:
   securitySchemes:
+    customerSession:
+      type: apiKey
+      in: cookie
+      name: __Host-osc_customer_session
+      description: Tenant customer session only; Secure, HttpOnly, SameSite=Lax, Path=/, no Domain.
     StorefrontSession:
       type: apiKey
       in: cookie
       name: __Host-osc_customer_session
-      description: Reserved for trusted customer middleware; C-18a does not implement it.
+      description: Verified by the independently configured customer-session admission path.
     GuestCapability:
       type: apiKey
       in: header
@@ -3367,6 +3725,78 @@ components:
               rate_id: {type: string, format: uuid}
               method: {type: string}
               amount_minor: {type: string, pattern: '^[0-9]+$'}
+    CustomerRegistrationInput:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 12
+          maxLength: 1024
+    CustomerCredentialsInput:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: {type: string, format: email, maxLength: 320}
+        password: {type: string, minLength: 1, maxLength: 1024}
+    CustomerTokenInput:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+    CustomerResetRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: {type: string, format: email, maxLength: 320}
+    CustomerResetConfirm:
+      type: object
+      additionalProperties: false
+      required: [token, password]
+      properties:
+        token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        password: {type: string, minLength: 12, maxLength: 1024}
+    CustomerRegistrationReceipt:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {type: string, enum: [verification_pending]}
+    CustomerResetReceipt:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {type: string, enum: [accepted]}
+    CustomerSessionView:
+      type: object
+      additionalProperties: false
+      required: [session_id, tenant_id, customer_id, email, expires_at, idle_expires_at]
+      properties:
+        session_id: {type: string, format: uuid}
+        tenant_id: {type: string, format: uuid}
+        customer_id: {type: string, format: uuid}
+        email: {type: string, format: email}
+        expires_at: {type: string, format: date-time}
+        idle_expires_at: {type: string, format: date-time}
+    CustomerSessionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [customer, csrf_token]
+      properties:
+        customer:
+          anyOf:
+            - $ref: '#/components/schemas/CustomerSessionView'
+            - {type: 'null'}
+        csrf_token: {type: string}
     CheckoutStart:
       type: object
       additionalProperties: false
