@@ -365,7 +365,7 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 			}
 			// Never capture unless every hold is live and locked now with a margin
 			// covering provider IO; otherwise void the intent and cancel the order.
-			e = s.config.Orders.LockLiveReservations(ctx, tx, tenantID, row.OrderID.String(), captureReservationMarginSeconds)
+			e = nil // PROBE A: old behaviour, capture without checking holds
 			if errors.Is(e, orders.ErrReservationInactive) {
 				row.Phase = "failing"
 				row, e = update(ctx, q, row)
