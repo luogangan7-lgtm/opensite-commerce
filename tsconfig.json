@@ -26,10 +26,7 @@
     "packages",
     "scripts/frontend",
     "tests/frontend",
-    "tests/e2e",
     "playwright.config.ts",
-    "playwright.e2e.config.ts",
-    "scripts/e2e",
     "web/storefront/src"
   ]
 }

@@ -19,6 +19,8 @@ jobs:
           bun-version: '1.3.12'
       - name: Install the existing frozen frontend dependencies
         run: bun install --frozen-lockfile
+      - name: Typecheck the separate real-stack acceptance suite
+        run: bun node_modules/typescript/bin/tsc --project tsconfig.e2e.json
       - name: Build and exercise the disposable full stack
         run: python3 scripts/e2e/run.py --receipt-dir work/C24a/ci
       - name: Reuse the real disposable backup volume-loss restore drill

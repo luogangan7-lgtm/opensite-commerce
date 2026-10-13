@@ -1,5 +1,5 @@
 /** Responsibility: run the separate real-stack browser gate with diagnostic artifacts.
- * Dependencies: pinned Playwright and guarded CI fixture; caller: CI e2e:test.
+ * Dependencies: pinned Playwright and guarded CI fixture; caller: mvp-e2e CI job.
  * Invariants: no local server spawning, no retries masking defects, no gallery or snapshots.
  */
 import { defineConfig } from '@playwright/test';
