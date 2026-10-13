@@ -139,7 +139,7 @@ class APIContractTests(unittest.TestCase):
                "validateSiteDraft", "publishSiteDraft", "createSitePreviewToken", "getSiteReleaseHistory",
                "restoreSiteRelease", "getSitePreview"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | cms)
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | cms | {"listNotificationFailures", "redriveNotification"})
         for name in cms - {"getSitePreview"}:
             _, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")

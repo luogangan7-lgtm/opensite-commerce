@@ -4,8 +4,8 @@ info:
   version: 0.7.0-draft
   description: >-
     Contract-first first-vertical-slice API. Declared operations are not all implemented in this increment. Tenant
-    business targets come from the URL path; credentials authorize them. Health, catalog, media, cart and the published-site
-    read operations are implemented; other operations are planned contracts.
+    business targets come from the URL path; credentials authorize them. Health, catalog, media, cart, notifications and
+    published-site read operations are implemented; other operations are planned contracts.
 servers:
   - url: /
 security:
@@ -19,6 +19,7 @@ tags:
   - name: Inquiry
   - name: Identity
   - name: Health
+  - name: Notifications
 paths:
   /api/v1/public/sites/current:
     get:
@@ -1946,6 +1947,80 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /api/v1/t/{tenant_id}/notifications/failures:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+    get:
+      tags: [Notifications]
+      operationId: listNotificationFailures
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: notifications:write
+      description: Bounded failure metadata only; no recipient, subject or body. Uncertain sends require operator investigation.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, format: int32, minimum: 1, maximum: 100, default: 25}
+      responses:
+        '200':
+          description: Failure metadata
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NotificationFailures'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+  /api/v1/t/{tenant_id}/notifications/{notification_id}/redrive:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/NotificationId'
+    post:
+      tags: [Notifications]
+      operationId: redriveNotification
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: notifications:write
+      description: Explicit idempotent redrive of a dead-letter notification. Same key replays its stable receipt; uncertain sends cannot be redriven. Receipt means queued, not email delivered.
+      parameters:
+        - $ref: '#/components/parameters/NotificationIdempotencyKey'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      responses:
+        '200':
+          description: Queued redrive receipt, replayed for the same key
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NotificationRedriveReceipt'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
 components:
   securitySchemes:
     adminSession:
@@ -1963,6 +2038,17 @@ components:
       description: 256-bit base64url guest cart capability. Trusted customer resolution is an optional server-only seam.
     ApiKeyBearer: {type: http, scheme: bearer, bearerFormat: API-Key}
   parameters:
+    NotificationId:
+      name: notification_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    NotificationIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Tenant-scoped notification redrive key; the same notification and key replay the stored receipt.
+      schema: {type: string, minLength: 1, maxLength: 128, pattern: '^[!-~]+$'}
     CartId:
       name: cart_id
       in: path
@@ -2121,6 +2207,11 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+    InternalServerError:
+      description: InternalServerError
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
     ServiceUnavailable:
       description: ServiceUnavailable
       content:
@@ -2187,6 +2278,38 @@ components:
         application/problem+json:
           schema: {$ref: '#/components/schemas/Problem'}
   schemas:
+    NotificationFailure:
+      type: object
+      additionalProperties: false
+      required: [id, event_id, template_key, status, attempts, generation, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        event_id: {type: string, format: uuid}
+        template_key: {type: string, enum: [order.paid, order.shipped, order.refund, quote.sent, quote.approved]}
+        status: {type: string, enum: [failed, dead_letter, uncertain]}
+        attempts: {type: integer, format: int32, minimum: 0, maximum: 2147483647}
+        generation: {type: integer, format: int32, minimum: 1, maximum: 2147483647}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        safe_error: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Z0-9_]+$'}
+    NotificationFailures:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/NotificationFailure'}
+    NotificationRedriveReceipt:
+      type: object
+      additionalProperties: false
+      required: [notification_id, token, status, generation]
+      properties:
+        notification_id: {type: string, format: uuid}
+        token: {type: string, format: uuid}
+        status: {type: string, enum: [pending]}
+        generation: {type: integer, format: int32, minimum: 2, maximum: 2147483647}
     CreateCart:
       type: object
       additionalProperties: false
