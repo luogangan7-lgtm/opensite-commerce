@@ -15,11 +15,12 @@ SELECT k.id,k.tenant_id,k.issued_by,k.key_hash,k.scopes FROM app.api_keys k
  AND (k.expires_at IS NULL OR isfinite(k.expires_at) AND k.expires_at>clock_timestamp());
 
 -- name: TenantListAPIKeys :many
+-- Bound custody reads to the newest 100 keys, including revocation metadata.
 SELECT k.id,k.key_prefix,k.scopes,k.issued_by,k.created_at,k.expires_at,k.revoked_at,k.last_used_at FROM app.api_keys k
  JOIN app.tenant_memberships m ON m.tenant_id=k.tenant_id AND m.user_id=sqlc.arg(user_id)::uuid
  JOIN app.users u ON u.id=m.user_id JOIN app.tenants t ON t.id=k.tenant_id
  WHERE k.tenant_id=sqlc.arg(tenant_id)::uuid AND m.status='active' AND m.role IN ('owner','admin') AND u.status='active' AND t.status='active'
- ORDER BY k.created_at DESC,k.id;
+ ORDER BY k.created_at DESC,k.id LIMIT 100;
 
 -- name: TenantGetAPIKeyView :one
 SELECT id,key_prefix,scopes,issued_by,created_at,expires_at,revoked_at,last_used_at FROM app.api_keys
