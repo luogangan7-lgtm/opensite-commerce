@@ -297,7 +297,10 @@ func TestQuotesPGBuyerCannotSeeDraftAndAcceptanceUsesDBClock(t *testing.T) {
 	}
 	// The DB clock, not a skewed API host clock, decides whether an approved quote is still valid.
 	future := q.NewWithClock(func() time.Time { return time.Now().Add(48 * time.Hour) })
-	if e := f.run(func(ctx context.Context, tx pgx.Tx) error { _, e := future.GetAcceptedQuote(ctx, tx, buyer, current.ID); return e }); e != nil {
+	if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+		_, e := future.GetAcceptedQuote(ctx, tx, buyer, current.ID)
+		return e
+	}); e != nil {
 		t.Fatalf("fast host clock rejected DB-valid quote: %v", e)
 	}
 	if e := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -315,7 +318,10 @@ func TestQuotesPGBuyerCannotSeeDraftAndAcceptanceUsesDBClock(t *testing.T) {
 		t.Fatal(e)
 	}
 	past := q.NewWithClock(func() time.Time { return time.Unix(0, 0) })
-	if e := f.run(func(ctx context.Context, tx pgx.Tx) error { _, e := past.GetAcceptedQuote(ctx, tx, buyer, current.ID); return e }); !errors.Is(e, c.ErrConflict) {
+	if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+		_, e := past.GetAcceptedQuote(ctx, tx, buyer, current.ID)
+		return e
+	}); !errors.Is(e, c.ErrConflict) {
 		t.Fatalf("slow host clock accepted DB-expired quote: %v", e)
 	}
 }
@@ -347,5 +353,108 @@ func TestQuotesPGHundredLineQuotesPersistAndReplay(t *testing.T) {
 		if len(first.Snapshot.Lines) != c.MaxQuoteLines || first.Snapshot.Subtotal != 20000 {
 			t.Fatalf("100-line snapshot %d %d", len(first.Snapshot.Lines), first.Snapshot.Subtotal)
 		}
+	}
+}
+func TestQuotesPGUnrelatedProfileZoneDoesNotShadow(t *testing.T) {
+	f := quotesDB(t)
+	staff := f.actor(t, "staff", f.staff, "")
+	// Another profile ships to a more specific California zone; the quote's
+	// profile only has the country-wide US zone (ADR-C13a profile-relevant zones).
+	other, ca := uuid.NewString(), uuid.NewString()
+	if e := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		for _, s := range []struct {
+			sql  string
+			args []any
+		}{
+			{`INSERT INTO app.shipping_zones(tenant_id,id,name) VALUES($1,$2,'California')`, []any{f.tenant, ca}},
+			{`INSERT INTO app.shipping_zone_destinations(tenant_id,zone_id,country_code,subdivision_code) VALUES($1,$2,'US','US-CA')`, []any{f.tenant, ca}},
+			{`INSERT INTO app.shipping_profiles(tenant_id,id,name,currency) VALUES($1,$2,'Freight','USD')`, []any{f.tenant, other}},
+			{`INSERT INTO app.shipping_rates(tenant_id,profile_id,zone_id,method,currency,amount) VALUES($1,$2,$3,'fixed','USD',999)`, []any{f.tenant, other, ca}},
+		} {
+			if _, e := tx.Exec(ctx, s.sql, s.args...); e != nil {
+				return e
+			}
+		}
+		return nil
+	}); e != nil {
+		t.Fatal(e)
+	}
+	in := f.input()
+	in.Destination = tax.Destination{Country: "US", Subdivision: "US-CA"}
+	var got c.Quote
+	if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+		var e error
+		got, e = q.New().Create(ctx, tx, staff, in, c.WriteOptions{IfMatch: "*", IdempotencyKey: uuid.NewString()})
+		return e
+	}); e != nil {
+		t.Fatalf("unrelated profile zone shadowed the quote profile: %v", e)
+	}
+	if got.Snapshot.ShippingAmount != 50 {
+		t.Fatalf("shipping %d, want profile rate 50", got.Snapshot.ShippingAmount)
+	}
+}
+
+// approveBetweenReads commits a concurrent approval just before the second
+// statement of the caller's READ COMMITTED transaction.
+type approveBetweenReads struct {
+	pgx.Tx
+	calls  int
+	before func()
+}
+
+func (h *approveBetweenReads) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	h.calls++
+	if h.calls == 2 {
+		h.before()
+	}
+	return h.Tx.QueryRow(ctx, sql, args...)
+}
+func TestQuotesPGAcceptedQuoteIsTheRowThatPassedChecks(t *testing.T) {
+	f := quotesDB(t)
+	m := q.New()
+	staff := f.actor(t, "staff", f.staff, "")
+	buyer := f.actor(t, "customer", f.buyer, f.company)
+	approver := f.actor(t, "customer", f.approver, f.company)
+	var current c.Quote
+	if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+		var e error
+		current, e = m.Create(ctx, tx, staff, f.input(), c.WriteOptions{IfMatch: "*", IdempotencyKey: uuid.NewString()})
+		return e
+	}); e != nil {
+		t.Fatal(e)
+	}
+	for _, step := range []struct {
+		actor  c.AuthorizedActor
+		action c.Action
+	}{{staff, c.Send}, {buyer, c.Accept}} {
+		if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+			out, e := m.Transition(ctx, tx, step.actor, current.ID, step.action, c.WriteOptions{IfMatch: current.ETag(), IdempotencyKey: uuid.NewString()})
+			current = out
+			return e
+		}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	pending := current
+	var got c.Quote
+	e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+		h := &approveBetweenReads{Tx: tx, before: func() {
+			if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+				_, e := m.Transition(ctx, tx, approver, pending.ID, c.Approve, c.WriteOptions{IfMatch: pending.ETag(), IdempotencyKey: uuid.NewString()})
+				return e
+			}); e != nil {
+				t.Errorf("concurrent approve: %v", e)
+			}
+		}}
+		var e error
+		got, e = m.GetAcceptedQuote(ctx, h, buyer, pending.ID)
+		return e
+	})
+	// Either refusal or the approved row is safe; a stale pending row is not.
+	if e == nil && (got.Status != "approved" || got.Version != pending.Version+1) {
+		t.Fatalf("returned stale %s v%d after checks passed", got.Status, got.Version)
+	}
+	if e != nil && !errors.Is(e, c.ErrConflict) {
+		t.Fatal(e)
 	}
 }

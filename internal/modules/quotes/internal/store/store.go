@@ -35,6 +35,15 @@ func Access(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, company, operat
 }
 func Get(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, quoteID string) (c.Quote, error) {
 	r, e := db.New(tx).GetQuote(ctx, db.GetQuoteParams{TenantID: id(a.TenantID()), QuoteID: id(quoteID), ActorKind: a.Kind(), ActorID: id(a.ID())})
+	return quote(r, e)
+}
+
+// GetAccepted returns the approved, DB-clock-unexpired row that passed the check; no row is ErrNotFound.
+func GetAccepted(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, quoteID string) (c.Quote, error) {
+	r, e := db.New(tx).GetAcceptedQuote(ctx, db.GetAcceptedQuoteParams{TenantID: id(a.TenantID()), QuoteID: id(quoteID), ActorKind: a.Kind(), ActorID: id(a.ID())})
+	return quote(r, e)
+}
+func quote(r db.AppQuote, e error) (c.Quote, error) {
 	if e != nil {
 		return c.Quote{}, MapError(e)
 	}
@@ -47,10 +56,6 @@ func Get(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, quoteID string) (c
 		accepted = r.AcceptedBy.String()
 	}
 	return c.Quote{ID: r.ID.String(), TenantID: r.TenantID.String(), SiteID: r.SiteID.String(), InquiryID: r.InquiryID.String(), CompanyID: r.BuyerCompanyID.String(), Status: r.Status, Version: r.Version, Currency: r.Currency, ExpiresAt: r.ExpiresAt.Time.UTC(), CreatedBy: r.CreatedBy.String(), AcceptedBy: accepted, Snapshot: snap}, nil
-}
-func ApprovedAndUnexpired(ctx context.Context, tx pgx.Tx, tenant, quoteID string) (bool, error) {
-	ok, e := db.New(tx).QuoteApprovedAndUnexpired(ctx, db.QuoteApprovedAndUnexpiredParams{TenantID: id(tenant), QuoteID: id(quoteID)})
-	return ok, MapError(e)
 }
 func Rules(ctx context.Context, tx pgx.Tx, tenant, profile string) (c.CalculationRules, error) {
 	r, e := db.New(tx).GetQuoteTaxRules(ctx, id(tenant))

@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
@@ -47,18 +48,23 @@ func Get(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, id string) (c.Quot
 	}
 	return q, nil
 }
+
 // GetAccepted returns an approved quote only while the DB clock says it is unexpired.
+// Get first gives the caller-visible not-found/authority result; the returned value
+// is the single row that passed status, expiry and authority in one statement.
 func GetAccepted(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, id string) (c.Quote, error) {
-	q, e := Get(ctx, tx, a, id)
-	if e != nil {
+	if _, e := Get(ctx, tx, a, id); e != nil {
 		return c.Quote{}, e
 	}
-	valid, e := store.ApprovedAndUnexpired(ctx, tx, a.TenantID(), id)
-	if e != nil {
-		return c.Quote{}, e
-	}
-	if !valid {
+	q, e := store.GetAccepted(ctx, tx, a, id)
+	if errors.Is(e, c.ErrNotFound) {
 		return c.Quote{}, c.ErrConflict
+	}
+	if e != nil {
+		return c.Quote{}, e
+	}
+	if a.Kind() == "customer" && q.CompanyID != a.CompanyID() {
+		return c.Quote{}, c.ErrNotFound
 	}
 	return q, nil
 }

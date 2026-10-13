@@ -19,10 +19,12 @@ SELECT q.* FROM app.quotes q WHERE q.tenant_id=sqlc.arg(tenant_id)::uuid AND q.i
  AND (sqlc.arg(actor_kind)::text<>'customer' OR q.status<>'draft')
  AND app.quote_actor_access(q.tenant_id,q.buyer_company_id,sqlc.arg(actor_kind)::text,sqlc.arg(actor_id)::uuid,'read');
 
--- name: QuoteApprovedAndUnexpired :one
--- The DB clock is the only expiry authority, matching guard_quote/transition_quote.
-SELECT (status='approved' AND expires_at>clock_timestamp())::boolean AS valid FROM app.quotes
-WHERE tenant_id=sqlc.arg(tenant_id)::uuid AND id=sqlc.arg(quote_id)::uuid;
+-- name: GetAcceptedQuote :one
+-- One statement decides authority, approval and DB-clock expiry and returns
+-- that same row version, so a concurrent commit cannot pair a stale row with a fresh check.
+SELECT q.* FROM app.quotes q WHERE q.tenant_id=sqlc.arg(tenant_id)::uuid AND q.id=sqlc.arg(quote_id)::uuid
+ AND q.status='approved' AND q.expires_at>clock_timestamp()
+ AND app.quote_actor_access(q.tenant_id,q.buyer_company_id,sqlc.arg(actor_kind)::text,sqlc.arg(actor_id)::uuid,'read');
 
 -- name: GetQuoteLines :many
 SELECT * FROM app.quote_lines WHERE tenant_id=sqlc.arg(tenant_id)::uuid AND quote_id=sqlc.arg(quote_id)::uuid ORDER BY line_no;
@@ -55,7 +57,9 @@ SELECT jsonb_build_object(
 -- name: GetQuoteShippingRules :one
 SELECT jsonb_build_object(
  'zones',coalesce((SELECT jsonb_agg(jsonb_build_object('ID',z.id,'Destinations',coalesce((SELECT jsonb_agg(jsonb_build_object('Country',d.country_code,'Subdivision',d.subdivision_code) ORDER BY d.country_code,d.subdivision_code)
- FROM app.shipping_zone_destinations d WHERE d.tenant_id=z.tenant_id AND d.zone_id=z.id),'[]'::jsonb)) ORDER BY z.id) FROM app.shipping_zones z WHERE z.tenant_id=p.tenant_id),'[]'::jsonb),
+ FROM app.shipping_zone_destinations d WHERE d.tenant_id=z.tenant_id AND d.zone_id=z.id),'[]'::jsonb)) ORDER BY z.id) FROM app.shipping_zones z WHERE z.tenant_id=p.tenant_id
+  -- ADR-C13a: only zones this profile offers, so another profile's narrower zone cannot shadow them.
+  AND EXISTS(SELECT FROM app.shipping_rates zr WHERE zr.tenant_id=z.tenant_id AND zr.profile_id=p.id AND zr.zone_id=z.id)),'[]'::jsonb),
  'rates',coalesce((SELECT jsonb_agg(jsonb_build_object('ID',r.id,'ProfileID',r.profile_id,'ZoneID',r.zone_id,'Method',r.method,'Currency',r.currency,'Amount',r.amount,'MinWeightG',coalesce(r.min_weight_g,0),'MaxWeightG',r.max_weight_g,'FreeOverAmount',r.free_over_amount) ORDER BY r.id)
  FROM app.shipping_rates r WHERE r.tenant_id=p.tenant_id AND r.profile_id=p.id),'[]'::jsonb))::jsonb AS rules
 FROM app.shipping_profiles p WHERE p.tenant_id=sqlc.arg(tenant_id)::uuid AND p.id=sqlc.arg(profile_id)::uuid;

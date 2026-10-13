@@ -5,13 +5,13 @@ package quotes_test
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"errors"
 	q "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/shipping"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tax"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )

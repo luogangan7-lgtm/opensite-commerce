@@ -55,6 +55,52 @@ func (q *Queries) CreateQuote(ctx context.Context, arg CreateQuoteParams) (pgtyp
 	return quote_id, err
 }
 
+const getAcceptedQuote = `-- name: GetAcceptedQuote :one
+SELECT q.tenant_id, q.id, q.site_id, q.inquiry_id, q.buyer_company_id, q.created_by, q.currency, q.subtotal, q.tax, q.shipping, q.total, q.snapshot, q.expires_at, q.status, q.version, q.accepted_by, q.created_at, q.updated_at FROM app.quotes q WHERE q.tenant_id=$1::uuid AND q.id=$2::uuid
+ AND q.status='approved' AND q.expires_at>clock_timestamp()
+ AND app.quote_actor_access(q.tenant_id,q.buyer_company_id,$3::text,$4::uuid,'read')
+`
+
+type GetAcceptedQuoteParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	QuoteID   pgtype.UUID `json:"quote_id"`
+	ActorKind string      `json:"actor_kind"`
+	ActorID   pgtype.UUID `json:"actor_id"`
+}
+
+// One statement decides authority, approval and DB-clock expiry and returns
+// that same row version, so a concurrent commit cannot pair a stale row with a fresh check.
+func (q *Queries) GetAcceptedQuote(ctx context.Context, arg GetAcceptedQuoteParams) (AppQuote, error) {
+	row := q.db.QueryRow(ctx, getAcceptedQuote,
+		arg.TenantID,
+		arg.QuoteID,
+		arg.ActorKind,
+		arg.ActorID,
+	)
+	var i AppQuote
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.SiteID,
+		&i.InquiryID,
+		&i.BuyerCompanyID,
+		&i.CreatedBy,
+		&i.Currency,
+		&i.Subtotal,
+		&i.Tax,
+		&i.Shipping,
+		&i.Total,
+		&i.Snapshot,
+		&i.ExpiresAt,
+		&i.Status,
+		&i.Version,
+		&i.AcceptedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getQuote = `-- name: GetQuote :one
 SELECT q.tenant_id, q.id, q.site_id, q.inquiry_id, q.buyer_company_id, q.created_by, q.currency, q.subtotal, q.tax, q.shipping, q.total, q.snapshot, q.expires_at, q.status, q.version, q.accepted_by, q.created_at, q.updated_at FROM app.quotes q WHERE q.tenant_id=$1::uuid AND q.id=$2::uuid
  AND ($3::text<>'customer' OR q.status<>'draft')
@@ -180,7 +226,9 @@ func (q *Queries) GetQuoteLines(ctx context.Context, arg GetQuoteLinesParams) ([
 const getQuoteShippingRules = `-- name: GetQuoteShippingRules :one
 SELECT jsonb_build_object(
  'zones',coalesce((SELECT jsonb_agg(jsonb_build_object('ID',z.id,'Destinations',coalesce((SELECT jsonb_agg(jsonb_build_object('Country',d.country_code,'Subdivision',d.subdivision_code) ORDER BY d.country_code,d.subdivision_code)
- FROM app.shipping_zone_destinations d WHERE d.tenant_id=z.tenant_id AND d.zone_id=z.id),'[]'::jsonb)) ORDER BY z.id) FROM app.shipping_zones z WHERE z.tenant_id=p.tenant_id),'[]'::jsonb),
+ FROM app.shipping_zone_destinations d WHERE d.tenant_id=z.tenant_id AND d.zone_id=z.id),'[]'::jsonb)) ORDER BY z.id) FROM app.shipping_zones z WHERE z.tenant_id=p.tenant_id
+  -- ADR-C13a: only zones this profile offers, so another profile's narrower zone cannot shadow them.
+  AND EXISTS(SELECT FROM app.shipping_rates zr WHERE zr.tenant_id=z.tenant_id AND zr.profile_id=p.id AND zr.zone_id=z.id)),'[]'::jsonb),
  'rates',coalesce((SELECT jsonb_agg(jsonb_build_object('ID',r.id,'ProfileID',r.profile_id,'ZoneID',r.zone_id,'Method',r.method,'Currency',r.currency,'Amount',r.amount,'MinWeightG',coalesce(r.min_weight_g,0),'MaxWeightG',r.max_weight_g,'FreeOverAmount',r.free_over_amount) ORDER BY r.id)
  FROM app.shipping_rates r WHERE r.tenant_id=p.tenant_id AND r.profile_id=p.id),'[]'::jsonb))::jsonb AS rules
 FROM app.shipping_profiles p WHERE p.tenant_id=$1::uuid AND p.id=$2::uuid
@@ -244,24 +292,6 @@ func (q *Queries) QuoteActorAccess(ctx context.Context, arg QuoteActorAccessPara
 	var allowed bool
 	err := row.Scan(&allowed)
 	return allowed, err
-}
-
-const quoteApprovedAndUnexpired = `-- name: QuoteApprovedAndUnexpired :one
-SELECT (status='approved' AND expires_at>clock_timestamp())::boolean AS valid FROM app.quotes
-WHERE tenant_id=$1::uuid AND id=$2::uuid
-`
-
-type QuoteApprovedAndUnexpiredParams struct {
-	TenantID pgtype.UUID `json:"tenant_id"`
-	QuoteID  pgtype.UUID `json:"quote_id"`
-}
-
-// The DB clock is the only expiry authority, matching guard_quote/transition_quote.
-func (q *Queries) QuoteApprovedAndUnexpired(ctx context.Context, arg QuoteApprovedAndUnexpiredParams) (bool, error) {
-	row := q.db.QueryRow(ctx, quoteApprovedAndUnexpired, arg.TenantID, arg.QuoteID)
-	var valid bool
-	err := row.Scan(&valid)
-	return valid, err
 }
 
 const quoteClaimIdempotency = `-- name: QuoteClaimIdempotency :one
