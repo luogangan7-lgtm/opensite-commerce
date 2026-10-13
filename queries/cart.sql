@@ -1,6 +1,12 @@
 -- Cart store SQL; depends on cart DDL plus public customer/catalog/price/stock reads.
 -- Caller owns one actor-scoped transaction, locks cart before quote/mutation/CAS.
 -- No inventory reservation; absolute quantity and deterministic batched quote reads.
+-- name: GetCartContext :one
+SELECT coalesce(current_setting('app.tenant_id',true),'')::text AS tenant_context,
+ coalesce(current_setting('app.cart_customer_id',true),'')::text AS customer_context,
+ coalesce(current_setting('app.cart_token_hash',true),'')::text AS token_context,
+ current_user::text AS runtime_role;
+
 -- name: SetCartContext :exec
 SELECT set_config('app.tenant_id',sqlc.arg(tenant_context)::text,true),
  set_config('app.cart_customer_id',sqlc.arg(customer_context)::text,true),

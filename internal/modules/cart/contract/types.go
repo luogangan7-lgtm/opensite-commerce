@@ -1,7 +1,7 @@
 // Package contract exposes cart intent and consumer-defined persistence ports.
-// It depends on pricing and the standard library; cart service, transport and
-// future checkout consume it. Actors are trusted, prices are never persisted,
-// and a strong ETag includes both intent version and current read projections.
+// It depends on pricing, the pgx transaction interface and the standard library;
+// cart service, transport and checkout consume it. Actors are trusted, prices are
+// never persisted, and a strong ETag covers intent and live read projections.
 package contract
 
 import (
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
 )
 
@@ -38,6 +39,20 @@ type AuthorizedActor struct {
 	CustomerID     string
 	GuestTokenHash []byte
 }
+
+// Intent is a frozen shopping decision, without price or inventory projections.
+// ReadIntent executes only inside the caller's already-authorized transaction;
+// callers own rollback on error and must not retain the transaction or the lock.
+type Intent struct {
+	ID, TenantID, Currency string
+	Version                int64
+	Lines                  []IntentLine
+}
+type IntentLine struct {
+	SKUID    string
+	Quantity int64
+}
+type IntentReader func(context.Context, pgx.Tx, AuthorizedActor, string) (Intent, error)
 
 type Line struct {
 	SKUID             string `json:"sku_id"`
