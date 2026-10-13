@@ -39,8 +39,7 @@ WHERE r.tenant_id=sqlc.arg(tenant_id)::uuid AND r.site_id=sqlc.arg(site_id)::uui
 -- refresh waits for an in-flight publish, then reads epoch, DB clock and generation.
 SELECT s.publication_revision,s.published_release_id::text AS release_id,now()::timestamptz AS at,
  coalesce((SELECT sv.serving_generation FROM app.storefront_serving sv WHERE sv.tenant_id=s.tenant_id AND sv.site_id=s.id),0)::bigint AS generation
-FROM app.sites s WHERE s.tenant_id=sqlc.arg(tenant_id)::uuid AND s.id=sqlc.arg(site_id)::uuid AND s.published_release_id IS NOT NULL
-FOR UPDATE OF s;
+FROM app.sites s WHERE s.tenant_id=sqlc.arg(tenant_id)::uuid AND s.id=sqlc.arg(site_id)::uuid AND s.published_release_id IS NOT NULL;
 
 -- name: ServingDue :many
 -- Refresh sweep for one tenant: published sites with no current serving row, a dirty row,
