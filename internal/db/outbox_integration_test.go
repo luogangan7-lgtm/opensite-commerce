@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func outboxPGFixture(t *testing.T) (context.Context, *pgxpool.Pool, outbox.PGStore, string, string) {
@@ -230,7 +230,7 @@ func TestPGAckCrashTakeoverDedupAndPreviousAttemptFence(t *testing.T) {
 func TestPGWorkerCannotWriteTablesOrClaimWithoutScope(t *testing.T) {
 	ctx, _, store, tenantID, _ := outboxPGFixture(t)
 	_, err := store.Pool.Exec(ctx, "UPDATE app.outbox_events SET attempts=0 WHERE tenant_id=$1::text::uuid", tenantID)
-	var pgErr *pgconn.PgError
+	var pgErr *pgxadapter.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
 		t.Fatalf("worker direct write not denied: %v", err)
 	}

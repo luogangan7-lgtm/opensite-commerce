@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 // Run executes fn in one tenant-scoped transaction opened by the platform
@@ -142,7 +142,7 @@ func (s *Store) Change(ctx context.Context, actor contract.AuthorizedActor, id, 
 // hidden maps an RLS/privilege denial on a cart write to the ownership-hiding
 // miss: the tenant or customer became inactive after the cart row was locked.
 func hidden(err error) error {
-	var pgerr *pgconn.PgError
+	var pgerr *pgxadapter.PgError
 	if errors.As(err, &pgerr) && (pgerr.Code == "42501" || pgerr.Code == "23503") {
 		return missing()
 	}

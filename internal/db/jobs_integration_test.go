@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 )
@@ -344,7 +344,7 @@ func TestJobsPGQueueRLSAndNoDDL(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = rawClient.InsertTx(f.ctx, tx, forged, nil)
-	var pgErr *pgconn.PgError
+	var pgErr *pgxadapter.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
 		t.Fatalf("foreign-tenant insert not denied by RLS: %v", err)
 	}
@@ -462,14 +462,14 @@ func TestJobsPGRestrictedLoginCannotEscalate(t *testing.T) {
 			}
 			for _, q := range []string{"SET ROLE app_river_migrator", "CREATE TABLE queue.c04b_login_ddl(id int)"} {
 				_, err := conn.Exec(f.ctx, q)
-				var pgerr *pgconn.PgError
+				var pgerr *pgxadapter.PgError
 				if !errors.As(err, &pgerr) || pgerr.Code != "42501" {
 					t.Fatalf("restricted login escalation accepted: %v", err)
 				}
 			}
 			if role == "app_runtime" {
 				_, err := conn.Exec(f.ctx, "SET ROLE app_queue_worker")
-				var pgerr *pgconn.PgError
+				var pgerr *pgxadapter.PgError
 				if !errors.As(err, &pgerr) || pgerr.Code != "42501" {
 					t.Fatalf("runtime login acquired worker: %v", err)
 				}
