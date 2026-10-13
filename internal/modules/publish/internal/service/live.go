@@ -87,5 +87,6 @@ func AttachSKUs(ctx context.Context, site contract.Site, live Live) (contract.Si
 		p.SKUs = append(p.SKUs, contract.SKU{SKUID: s.SKUID, SKUCode: s.Code, OptionValues: s.Options, PriceMinor: strconv.FormatInt(quote.Unit.Amount, 10), Currency: quote.Unit.Currency, Available: s.Available})
 	}
 	site.Products = products
+	site.TenantID = live.TenantID
 	return withinBudget(site)
 }

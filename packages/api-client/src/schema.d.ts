@@ -801,6 +801,8 @@ export interface components {
             available: boolean;
         };
         PublishedSite: {
+            /** @description Tenant resolved from the verified hostname; storefronts use it for tenant-scoped APIs such as /api/v1/t/{tenant_id}/carts. */
+            tenant_id: string;
             site_id: string;
             release_id: string;
             hostname: string;

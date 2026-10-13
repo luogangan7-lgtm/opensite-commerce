@@ -75,6 +75,7 @@ type SKU struct {
 	Available    bool          `json:"available"`
 }
 type Site struct {
+	TenantID    string       `json:"tenant_id"` // host-resolved tenant for tenant-scoped storefront APIs (carts)
 	SiteID      string       `json:"site_id"`
 	ReleaseID   string       `json:"release_id"`
 	Hostname    string       `json:"hostname"`

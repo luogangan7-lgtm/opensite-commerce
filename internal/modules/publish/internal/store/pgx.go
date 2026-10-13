@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/internal/service"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
@@ -21,6 +22,9 @@ import (
 // maxSKURows bounds live SKU transfer: 500 products x MaxSKUsPerProduct cannot fit the
 // 1 MiB response anyway, so more rows fail closed before projection.
 const maxSKURows = 5000
+
+// maxPriceRows: one winning row per SKU and currency, allowing four release currencies.
+const maxPriceRows = maxSKURows * 4
 
 // preBudget bounds the jsonb::text bytes summed before aggregation. jsonb::text only adds
 // one space after each ':' and ',' and never escapes more than Go's json.Marshal, and every
@@ -111,13 +115,15 @@ func readLive(ctx context.Context, tx pgx.Tx, host string) (live service.Live, e
 	if len(live.SKUs) > maxSKURows {
 		return live, contract.ErrUnavailable
 	}
-	// Quantity-1 tiers of in-window active audience=all lists: the anonymous default price.
-	rows, err = tx.Query(ctx, `SELECT l.id::text,l.currency::text,l.status,l.priority,l.starts_at,l.ends_at,l.audience,e.sku_id::text,e.min_quantity,e.unit_amount
+	// Only the winning anonymous default price per SKU and currency (pricing.Quote precedence:
+	// priority desc, then list id asc; UUID order equals lowercase text order), so the row
+	// cap scales with SKUs, not with how many lists a tenant keeps. Quote re-checks the row.
+	rows, err = tx.Query(ctx, `SELECT DISTINCT ON (e.sku_id,l.currency) l.id::text,l.currency::text,l.status,l.priority,l.starts_at,l.ends_at,l.audience,e.sku_id::text,e.min_quantity,e.unit_amount
    FROM app.price_entries e JOIN app.price_lists l ON (l.tenant_id,l.id)=(e.tenant_id,e.price_list_id)
    JOIN app.product_variants v ON (v.tenant_id,v.id)=(e.tenant_id,e.sku_id)
    WHERE e.tenant_id=$1::uuid AND e.min_quantity=1 AND l.status='active' AND l.audience='all'
     AND l.starts_at<=$2 AND (l.ends_at IS NULL OR $2<l.ends_at)
-   ORDER BY l.id,e.sku_id LIMIT $3`, live.TenantID, live.At, maxSKURows*4+1)
+   ORDER BY e.sku_id,l.currency,l.priority DESC,l.id LIMIT $3`, live.TenantID, live.At, maxPriceRows+1)
 	if err != nil {
 		return
 	}
@@ -127,16 +133,26 @@ func readLive(ctx context.Context, tx pgx.Tx, host string) (live service.Live, e
 	for rows.Next() {
 		var l pricing.PriceList
 		var e pricing.Entry
-		var ends *time.Time
-		if err = rows.Scan(&l.ID, &l.Currency, &l.Status, &l.Priority, &l.StartsAt, &ends, &l.Audience, &e.SKUID, &e.MinQuantity, &e.UnitAmount); err != nil {
+		var starts, ends pgtype.Timestamptz
+		if err = rows.Scan(&l.ID, &l.Currency, &l.Status, &l.Priority, &starts, &ends, &l.Audience, &e.SKUID, &e.MinQuantity, &e.UnitAmount); err != nil {
 			return
 		}
-		if count++; count > maxSKURows*4 {
+		// Infinite bounds are valid schema values: -infinity starts at the beginning of
+		// time and infinity never ends (the SQL window already excluded the other cases).
+		l.StartsAt = starts.Time
+		if starts.InfinityModifier == pgtype.NegativeInfinity {
+			l.StartsAt = time.Time{}
+		}
+		var endsAt *time.Time
+		if ends.Valid && ends.InfinityModifier == pgtype.Finite {
+			endsAt = &ends.Time
+		}
+		if count++; count > maxPriceRows {
 			return live, contract.ErrUnavailable
 		}
 		i, ok := index[l.ID]
 		if !ok {
-			l.TenantID, l.EndsAt = live.TenantID, ends
+			l.TenantID, l.EndsAt = live.TenantID, endsAt
 			i = len(live.PriceLists)
 			index[l.ID] = i
 			live.PriceLists = append(live.PriceLists, l)

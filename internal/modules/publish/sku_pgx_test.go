@@ -49,8 +49,10 @@ BEGIN
  WITH o AS (INSERT INTO app.product_options(tenant_id,product_id,id,code) VALUES(t,p,gen_random_uuid(),'size') RETURNING id),
   v AS (INSERT INTO app.product_option_values(tenant_id,product_id,option_id,id,value_code,label) SELECT t,p,o.id,gen_random_uuid(),'xl','ARCHIVED_ONLY' FROM o RETURNING option_id,id)
  INSERT INTO app.variant_option_values(tenant_id,product_id,variant_id,option_id,value_id) SELECT t,p,'%[5]s',v.option_id,v.id FROM v;
+ -- The winning list has infinite bounds: valid schema values that must not 503.
+ INSERT INTO app.price_lists(tenant_id,id,currency,status,starts_at,ends_at,priority,audience) VALUES
+  (t,lst,'USD','active','-infinity','infinity',0,'all');
  INSERT INTO app.price_lists(tenant_id,id,currency,status,starts_at,priority,audience) VALUES
-  (t,lst,'USD','active',now()-interval '1 day',0,'all'),
   (t,gen_random_uuid(),'USD','active',now()+interval '1 day',9,'all'),
   (t,gen_random_uuid(),'USD','draft',now()-interval '1 day',9,'all'),
   (t,gen_random_uuid(),'EUR','active',now()-interval '1 day',9,'all');
@@ -98,6 +100,9 @@ func testLiveSKUs(t *testing.T, ctx context.Context, admin pgxadapter.Runner, mo
 		return []contract.SKU{{SKUID: ready, SKUCode: code, OptionValues: []contract.OptionValue{{Name: "color", Value: value}}, PriceMinor: priceMinor, Currency: "USD", Available: available}}
 	}
 	site, raw := read(hostA)
+	if site.TenantID != tenantA {
+		t.Fatalf("host-resolved tenant id %q, want %q", site.TenantID, tenantA)
+	}
 	if !reflect.DeepEqual(site.Products[0].SKUs, want("OWN-READY", "OWN Red", "9007199254740993", true)) {
 		t.Fatalf("live SKUs (archived/unpriced/unlisted must be hidden): %+v", site.Products[0].SKUs)
 	}
@@ -115,7 +120,7 @@ func testLiveSKUs(t *testing.T, ctx context.Context, admin pgxadapter.Runner, mo
 		t.Fatalf("SKU DTO keys: %+v %v", dto, err)
 	}
 	other, rawOther := read(hostB)
-	if !reflect.DeepEqual(other.Products[0].SKUs, want("OTHER_TENANT_SKU-READY", "OTHER_TENANT_SKU Red", "4242", true)) || strings.Contains(rawOther, "OWN") {
+	if other.TenantID != tenantB || !reflect.DeepEqual(other.Products[0].SKUs, want("OTHER_TENANT_SKU-READY", "OTHER_TENANT_SKU Red", "4242", true)) || strings.Contains(rawOther, "OWN") {
 		t.Fatalf("other tenant SKUs: %+v", other.Products[0].SKUs)
 	}
 	// RLS alone (without the store's explicit filters) scopes the public role to its host.
@@ -171,6 +176,7 @@ func testLiveSKUs(t *testing.T, ctx context.Context, admin pgxadapter.Runner, mo
 	if site, _ = read(hostA); !site.Products[0].SKUs[0].Available {
 		t.Fatal("availability did not return after release")
 	}
+	testManyPriceLists(t, ctx, admin, module)
 	// Archiving the live product hides its SKUs while sealed product content remains.
 	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, "UPDATE app.products SET lifecycle_status='archived' WHERE tenant_id=$1 AND id=$2", tenantA, product)
@@ -180,5 +186,63 @@ func testLiveSKUs(t *testing.T, ctx context.Context, admin pgxadapter.Runner, mo
 	}
 	if site, _ = read(hostA); site.Products[0].Name != "Tote" || len(site.Products[0].SKUs) != 0 {
 		t.Fatalf("archived product SKUs served: %+v", site.Products[0])
+	}
+}
+
+// manySKUSQL args: tenant, host. 41 released products, 4,001 ready SKUs, five active
+// audience=all USD lists pricing every SKU: 20,005 candidate rows, one winner per SKU.
+const manySKUSQL = `DO $many$
+DECLARE t uuid := '%[1]s'; o uuid := gen_random_uuid(); s uuid := gen_random_uuid(); rel uuid := gen_random_uuid(); m jsonb;
+BEGIN
+ INSERT INTO app.tenants(id,name) VALUES(t,'SKU many '||t);
+ PERFORM set_config('app.tenant_id',t::text,true);
+ CREATE TEMP TABLE many_products ON COMMIT DROP AS SELECT n,gen_random_uuid() AS id FROM generate_series(1,41) n;
+ SELECT jsonb_agg(jsonb_build_object('id',id::text,'slug','p'||n,'name','P'||n,'description','','unit_amount','1','currency','USD') ORDER BY n) INTO m FROM many_products;
+ m := jsonb_build_object('version',1,'locale','en','title','Many','description','','navigation','[]'::jsonb,'products',m);
+ EXECUTE 'SET LOCAL ROLE app_runtime';
+ INSERT INTO app.organizations(tenant_id,id,display_name) VALUES(t,o,'Many');
+ INSERT INTO app.sites(tenant_id,id,organization_id,name,default_locale) VALUES(t,s,o,'Many','en');
+ INSERT INTO app.site_releases(tenant_id,site_id,id,release_no,renderer_build_id,manifest,manifest_hash)
+  VALUES(t,s,rel,1,'many',m,sha256(convert_to(m::text,'UTF8')));
+ EXECUTE 'RESET ROLE';
+ INSERT INTO app.products(tenant_id,id,product_code,lifecycle_status) SELECT t,id,'MANY-'||n,'ready' FROM many_products;
+ INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status)
+  SELECT t,p.id,'S'||g,'k'||g,'ready' FROM generate_series(1,4001) g JOIN many_products p ON p.n=1+(g-1)%%41;
+ INSERT INTO app.price_lists(tenant_id,currency,status,starts_at,priority,audience)
+  SELECT t,'USD','active',now()-interval '1 day',k,'all' FROM generate_series(1,5) k;
+ INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount)
+  SELECT t,l.id,v.id,1,l.priority FROM app.price_lists l CROSS JOIN app.product_variants v WHERE l.tenant_id=t AND v.tenant_id=t;
+ EXECUTE 'SET LOCAL ROLE app_domain_verifier';
+ INSERT INTO app.site_domains(tenant_id,site_id,hostname,status,verified_at) VALUES(t,s,'%[2]s','verified',now());
+ EXECUTE 'RESET ROLE';
+ EXECUTE 'SET LOCAL ROLE app_publisher';
+ PERFORM app.publish_release(t,s,rel,NULL);
+ EXECUTE 'RESET ROLE';
+END $many$`
+
+func testManyPriceLists(t *testing.T, ctx context.Context, admin pgxadapter.Runner, module *publish.Module) {
+	tenant := newUUID(t)
+	host := "sku-many-" + tenant[:8] + ".c09.test"
+	if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, fmt.Sprintf(manySKUSQL, tenant, host))
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	site, err := module.Current(ctx, host)
+	if err != nil {
+		t.Fatalf("5 lists x 4,001 SKUs made the storefront unavailable: %v", err)
+	}
+	total := 0
+	for _, p := range site.Products {
+		total += len(p.SKUs)
+		for _, s := range p.SKUs {
+			if s.PriceMinor != "5" {
+				t.Fatalf("highest-priority list must win: %+v", s)
+			}
+		}
+	}
+	if total != 4001 || site.TenantID != tenant {
+		t.Fatalf("served %d SKUs for tenant %q", total, site.TenantID)
 	}
 }

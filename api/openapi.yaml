@@ -2544,8 +2544,11 @@ components:
     PublishedSite:
       type: object
       additionalProperties: false
-      required: [site_id, release_id, hostname, locale, title, description, navigation, pages, products]
+      required: [tenant_id, site_id, release_id, hostname, locale, title, description, navigation, pages, products]
       properties:
+        tenant_id:
+          type: string
+          description: Tenant resolved from the verified hostname; storefronts use it for tenant-scoped APIs such as /api/v1/t/{tenant_id}/carts.
         site_id: {type: string}
         release_id: {type: string}
         hostname: {type: string}

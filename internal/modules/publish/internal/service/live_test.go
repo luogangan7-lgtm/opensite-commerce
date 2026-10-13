@@ -37,6 +37,9 @@ func TestAttachSKUs(t *testing.T) {
 	if fmt.Sprint(got.Products[0].SKUs) != fmt.Sprint(want) || got.Products[1].SKUs == nil || len(got.Products[1].SKUs) != 0 {
 		t.Fatalf("attached SKUs: %+v", got.Products)
 	}
+	if got.TenantID != "t" {
+		t.Fatalf("tenant id not exposed: %q", got.TenantID)
+	}
 	if site.Products[0].SKUs != nil {
 		t.Fatal("input site mutated")
 	}
