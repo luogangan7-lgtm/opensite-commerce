@@ -179,7 +179,7 @@ describe('cookie admin API', () => {
 describe('review follow-ups', () => {
   test('first-time bootstrap 401 is not reported as an expired session', async () => {
     let expired = 0;
-    const api = new AdminAPI({ fetch: (async () => json({}, 401)) as typeof fetch, onSessionExpired: () => expired++ });
+    const api = new AdminAPI({ fetch: (async () => json({}, 401)) as unknown as typeof fetch, onSessionExpired: () => expired++ });
     await expect(api.session()).rejects.toMatchObject({ status: 401 }); expect(expired).toBe(0);
   });
   test('retrying one logical upload replays the same per-step idempotency keys; blank MIME omits declared_mime', async () => {
