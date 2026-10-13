@@ -159,6 +159,7 @@ jobs:
           paths=(internal/platform/httpapi/generated internal/db packages/api-client/src/schema.d.ts)
           git add -N -- "${paths[@]}"
           git diff --binary -- "${paths[@]}" > generated.patch
+          printf 'diff --git a/scripts/check_all.sh b/internal/db/stolen.sql.go\nsimilarity index 100%%\nrename from scripts/check_all.sh\nrename to internal/db/stolen.sql.go\n' >> generated.patch
           if [ -s generated.patch ]; then echo "drift=1" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: steps.drift.outputs.drift == '1'
