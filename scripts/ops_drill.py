@@ -46,11 +46,21 @@ def healthy(url):
     raise OpsError('API liveness timed out')
 
 
+def staff_login_reachable(url):
+    # Compose must install staff login on the auth DSN; a 404 here is the
+    # silent-omission regression (PR #43 thread on cmd/api/main.go).
+    with urllib.request.urlopen(url + '/api/v1/auth/login', timeout=5) as response:
+        body = json.loads(response.read())
+        require(response.status == 200 and isinstance(body.get('csrf_token'), str) and body['csrf_token'],
+                'staff login challenge unavailable in compose deployment')
+
+
 def start_api():
     compose(['up', '-d', '--build', '--wait', '--wait-timeout', '120', 'api', 'worker'])
     url = live_url()
     healthy(url)
     healthy(live_url('worker','8081'))
+    staff_login_reachable(url)
     return url
 
 
@@ -286,6 +296,7 @@ def drill(receipt_dir):
         variables = {'POSTGRES_PASSWORD': secrets.token_urlsafe(32), 'OPENSITE_DB':'opensite',
                      'OPENSITE_API_PORT':'0', 'OPENSITE_WORKER_PORT':'0', 'COMPOSE_PROJECT_NAME':project,
                      'JOB_SIGNING_KEY':secrets.token_hex(32),'JOB_TENANTS':'',
+                     'OPENSITE_ADMIN_ORIGIN':'https://admin.drill.test','OPENSITE_AUTH_SIGNING_KEY':secrets.token_hex(32),
                      **{f'OPENSITE_{kind}_DB_PASSWORD':secrets.token_urlsafe(32) for kind in LOGIN_ROLES}}
         env_file.write_text(''.join(f'{key}={value}\n' for key,value in variables.items()))
         env_file.chmod(0o600)
@@ -296,7 +307,7 @@ def drill(receipt_dir):
             url = start_api()
             require(psql('SHOW server_version_num;').strip() == '180006', 'PG18.6 required')
             permissions()
-            print('PASS: compose PG18.6 → preflight/River/app migrations → restricted LOGINs → API/worker health', flush=True)
+            print('PASS: compose PG18.6 → preflight/River/app migrations → restricted LOGINs → API/worker health → staff login challenge', flush=True)
             steps.append('compose-and-login-boundaries')
             connection_boundaries()
             steps.append('six-logins-hba-tcp4-tcp6-unix-target-only-and-password-rejection')
