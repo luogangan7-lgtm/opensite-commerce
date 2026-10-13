@@ -243,7 +243,8 @@ func (s *Service) Current(ctx context.Context, tenant, token string) (c.Session,
 func (s *Service) validSession(session c.Session, tenant string) bool {
 	// The trusted repository has checked liveness using its database clock.
 	// Rechecking against this process's wall clock would contradict that proof.
-	return tenanttx.ValidTenantID(session.ID) && tenanttx.ValidTenantID(session.CustomerID) && session.TenantID == tenant && validEmail(session.Email) && !session.ExpiresAt.IsZero() && !session.IdleExpiresAt.IsZero() && !session.IdleExpiresAt.After(session.ExpiresAt)
+	now := s.cfg.Now()
+	return tenanttx.ValidTenantID(session.ID) && tenanttx.ValidTenantID(session.CustomerID) && session.TenantID == tenant && validEmail(session.Email) && !session.ExpiresAt.IsZero() && !session.IdleExpiresAt.IsZero() && !session.IdleExpiresAt.After(session.ExpiresAt) && session.ExpiresAt.After(now) && session.IdleExpiresAt.After(now)
 }
 func (s *Service) Logout(ctx context.Context, tenant, token string) error {
 	hash, ok := tokenHash(token)
