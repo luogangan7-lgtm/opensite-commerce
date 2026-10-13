@@ -33,8 +33,19 @@ export function filesAt(directory: string): string[] {
   });
 }
 export function sha256(path: string) { return createHash('sha256').update(readFileSync(path)).digest('hex'); }
+/** Stable identity of an input: migrations drop their (CI-renumbered, INF-MIG) numeric prefix and pending/ directory. */
+export function inputKey(path: string): string {
+  const pending = /^migrations\/pending\/([^/]+\.sql)$/.exec(path);
+  if (pending) return `migrations/${pending[1]}`;
+  const numbered = /^migrations\/\d+_([^/]+\.sql)$/.exec(path);
+  return numbered ? `migrations/${numbered[1]}` : path;
+}
+export function fingerprintOf(entries: [path: string, sha256: string][]): string {
+  const lines = entries.map(([path, hash]) => `${inputKey(path)}\0${hash}\n`).sort();
+  return createHash('sha256').update(lines.join('')).digest('hex');
+}
 export function sourceFingerprint(scope: Scope, root = process.cwd()) {
-  return createHash('sha256').update(scopeInputs(scope, root).map(path => `${path}\0${sha256(join(root, path))}\n`).join('')).digest('hex');
+  return fingerprintOf(scopeInputs(scope, root).map(path => [path, sha256(join(root, path))]));
 }
 export function fingerprints(root = process.cwd()): Record<Scope, string> {
   return Object.fromEntries(SCOPES.map(scope => [scope, sourceFingerprint(scope, root)])) as Record<Scope, string>;
