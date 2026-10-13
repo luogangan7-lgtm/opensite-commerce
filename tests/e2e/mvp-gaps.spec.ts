@@ -5,12 +5,12 @@
 import { test } from '@playwright/test';
 
 test('FIXME staff create SKU → media upload → publish', async () => {
-  test.fixme(true, 'Staff login is covered in admin.spec.ts; PR #45 CMS publish and PR #55 storefront SKUs are OPEN');
+  test.fixme(true, 'Staff login is covered in admin.spec.ts; CMS publish (#45) is merged but its private routes need the production staff authenticator (C-02c); PR #55 storefront SKUs is OPEN');
   throw new Error('Replace this gap with the complete real browser journey and persisted API assertions before removing FIXME');
 });
 
 test('FIXME authenticated admin catalog list and create', async () => {
-  test.fixme(true, 'Login works, but main wires the authenticator only for /api/v1/auth/*; private tenant routes still return 401 for a valid staff session (follow-up: authorize private routes with the staff session)');
+  test.fixme(true, 'Login works, but main wires the authenticator only for /api/v1/auth/*; private tenant routes still return 401 for a valid staff session (C-02c: authorize private routes with the staff session)');
   throw new Error('Replace this gap with real catalog list/create assertions as the logged-in owner before removing FIXME');
 });
 
