@@ -1,4 +1,4 @@
-// Package bootstrap wires catalog, media, cart, optional checkout, injected routes and operational telemetry.
+// Package bootstrap wires catalog, media, cart, customer, optional checkout, injected routes and operational telemetry.
 // Dependencies: module constructors, platform/httpapi and observability; caller: cmd/api.
 // It owns no business tables or pools. Registration errors refuse startup; request
 // contexts are bounded, route snapshots immutable and metric labels nonsensitive.
@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
+	cartcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
+	customercontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
@@ -21,6 +23,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
 	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
@@ -41,6 +44,9 @@ type Config struct {
 	CMS                      publish.CMSHTTPConfig
 	Notifications            notificationcontract.Service
 	Checkout                 *checkout.Config
+	Customer                 customercontract.Service
+	CustomerOrigin           string
+	CustomerSecret           []byte
 }
 
 func New(config Config) (server *http.Server, err error) {
@@ -54,14 +60,37 @@ func New(config Config) (server *http.Server, err error) {
 	if cartModule == nil {
 		cartModule = cart.New(nil, nil)
 	}
-	var authenticator httpapi.Authenticator = routeAuthenticator{cart: cartModule, staff: config.Authenticator}
+	customerHTTP := customerhttp.New(customerhttp.Config{Service: config.Customer, Origin: config.CustomerOrigin, Secret: config.CustomerSecret})
+	if config.Customer != nil {
+		cartModule = cartModule.WithActorResolver(func(ctx context.Context, _ *http.Request) (cartcontract.AuthorizedActor, error) {
+			actor, ok := customercontract.ActorFromContext(ctx)
+			if !ok {
+				return cartcontract.AuthorizedActor{}, nil
+			}
+			return cartcontract.AuthorizedActor{TenantID: actor.TenantID, CustomerID: actor.CustomerID}, nil
+		})
+	}
+	baseAuthenticator := routeAuthenticator{cart: cartModule, staff: config.Authenticator, customer: customerHTTP}
+	var authenticator httpapi.Authenticator = baseAuthenticator
 	var checkoutRoutes []httpapi.Route
 	if config.Checkout != nil {
-		handler, err := checkout.New(*config.Checkout)
+		checkoutConfig := *config.Checkout
+		var admissionCustomer *customerhttp.Handler
+		if checkoutConfig.Resolver == nil && config.Customer != nil {
+			if checkoutConfig.Origin == "" {
+				checkoutConfig.Origin = config.CustomerOrigin
+			}
+			if checkoutConfig.Origin != config.CustomerOrigin {
+				return nil, errors.New("customer checkout requires the configured customer origin")
+			}
+			checkoutConfig.Resolver = customerCheckoutResolver{}
+			admissionCustomer = customerHTTP
+		}
+		handler, err := checkout.New(checkoutConfig)
 		if err != nil {
 			return nil, err
 		}
-		authenticator = handler.Authenticator(authenticator)
+		authenticator = checkoutAdmission{next: handler.Authenticator(baseAuthenticator), actors: baseAuthenticator, customer: admissionCustomer, cart: cartModule}
 		checkoutRoutes = handler.Routes()
 	}
 	router := httpapi.New(authenticator, config.Logger)
@@ -77,6 +106,7 @@ func New(config Config) (server *http.Server, err error) {
 		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
 	}
 	routes = append(routes, notificationhttp.New(config.Notifications).Routes()...)
+	routes = append(routes, customerHTTP.Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {
 		if err := router.Register(route.Spec, route.Handler); err != nil {
@@ -129,12 +159,20 @@ func Run(ctx context.Context, config Config) error {
 // routeAuthenticator separates storefront capabilities from staff authentication.
 // A staff credential can never authorize a Storefront route by falling through.
 type routeAuthenticator struct {
-	cart  *cart.Module
-	staff httpapi.Authenticator
+	cart     *cart.Module
+	staff    httpapi.Authenticator
+	customer *customerhttp.Handler
 }
 
 func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
 	if spec.Access == httpapi.Storefront {
+		actor, err := a.customer.Resolve(ctx, r)
+		if err != nil {
+			return ctx, err
+		}
+		if actor.CustomerID != "" {
+			ctx = customercontract.WithActor(ctx, actor)
+		}
 		return a.cart.Authenticate(ctx, r, spec)
 	}
 	if a.staff == nil {
