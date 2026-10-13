@@ -8,7 +8,9 @@ The dependency direction is `design-tokens → ui → composition → page templ
 
 The catalog contains 70 real controlled state cases, including the native modal dialog. Its table rows describe the controls shown in the catalog. No merchant, customer or transaction fixtures are invented. Browser gates assert state coverage, actual input state, keyboard focus, modal semantics, focus wrapping/restoration, production exclusion and axe serious/critical violations. Visual snapshots include each case plus hover/focus states; focused cases include the outline outside the control border box.
 
-## Run the gates
+## CI gates
+
+All tests, checks, builds and container execution run only on GitHub CI (owner rule, 2026-10-13). These commands describe the CI gate, not local instructions:
 
 ```sh
 bun install --frozen-lockfile
@@ -22,10 +24,16 @@ Use the pinned official Playwright image from `playwright.config.ts` and `checks
 ## CI alone produces golden images
 
 1. Change the source, commit with `[visual-baseline-update]` in the commit message, and push the PR branch. This triggers the explicit `frontend-baselines` producer job in the same pinned container as comparisons. The ordinary `frontend` job keeps comparing the currently committed golds, so a source change remains red until the CI output is committed.
-2. Download `frontend-baselines-<run-id>` from the successful producer job. Verify its run/head SHA and image, then copy its `desktop/`, `mobile/` and `provenance.json` into `tests/frontend/baselines`. Inspect actual PNGs before committing them.
+2. Download `frontend-baselines-<run-id>` from the successful producer job. Verify its run/head SHA and artifact ZIP digest, then copy its `desktop/` and `mobile/` into `tests/frontend/baselines`, preserving the CI-produced `*.png.provenance.json` siblings. The initial schema-2 migration removes the legacy root `provenance.json`. Inspect actual PNGs before committing them.
 3. Commit the CI artifact, push, and require the ordinary `frontend` and existing `foundation` jobs to pass. The update script rejects local invocation. Local failure screenshots are diagnostic evidence only and must never be copied into golden paths.
 
-The provenance file records the producing run, source SHA, rendering inputs, source fingerprint and PNG hashes. The local consistency check does not establish CI authority. CI additionally downloads the actual producer artifact using a read-only Actions token, verifies GitHub's ZIP digest, and compares the committed metadata and every PNG byte against that artifact. Baseline artifacts retain 90 days; renew golds through the explicit CI producer before their artifact expires. Missing/expired artifacts fail closed.
+Every PNG has a separate schema-2 provenance record: snapshot identity, renderer scope, producing run/head SHA, pinned rendering inputs, dependency fingerprint and PNG hash. There is no mutable global index. `check-baselines` requires exactly one record per PNG and recomputes the scope's current inputs. `verify-baseline-artifact` groups records by their original run, verifies run/head SHA/repository/workflow/successful producer, checks GitHub's ZIP digest, and compares each committed PNG **and raw record bytes** to that run's artifact. Different runs may legitimately coexist. Duplicate/unsafe ZIP paths, forged runs, missing/expired artifacts and stale inputs fail closed.
+
+The writer automatically regenerates only affected scopes (`gallery`, `admin`, `storefront-published`, `storefront-commerce`) and preserves every other PNG/record byte. Scope roots are renderer/spec entries; TypeScript imports/reexports/literal dynamic imports, Astro scripts/frontmatter, CSS imports/assets and workspace exports are traced transitively. Unknown dynamic/local dependencies fail closed. Frozen dependencies, tokens and rendering configuration remain shared inputs. Non-importable published-read fixtures/backend inputs are conservatively included only for storefront scopes.
+
+The UI library and aggregate gallery currently share physical source/style files. Those dependencies really overlap, so they invalidate all consumers; this change does not claim independent golds for edits to that shared file. Independent admin versus storefront leaf inputs can merge without rewriting one another's records. A new renderer/snapshot family must extend the root/identity registry and its tests.
+
+Artifacts retain 90 days. Renew individual scopes through the explicit CI producer with `OPENSITE_BASELINE_SCOPES` (comma-separated scope names); automatically stale scopes cannot be excluded. A post-main bot PR is an optional future renewal mechanism, not a default acceptance path: silently replacing visuals on main could conceal a real shared-input change. Such a bot would still need pinned production, artifact verification, the ordinary visual gate and independent PR review; it must never auto-merge changed golds.
 
 This explicit push marker works while the new workflow is still in its first PR; `workflow_dispatch` would require the workflow to exist on the default branch. It gives no repository write or approval permission to the producer. Independent PR review remains a separate task.
 
