@@ -2,6 +2,7 @@
 // Dependencies: private service, public ports and Payment Fake; callers: Go gate.
 // Invariants: a PSP side effect is never repeated when journal commit fails;
 // mutable account/capture readers are not consulted after durable preparation.
+// Finalization locks the order/RMA before any journal or response persistence.
 package service
 
 import (
@@ -127,10 +128,14 @@ type ledgerFake struct {
 	calls  int
 	fail   bool
 	posted ledger.Transaction
+	record func(string)
 }
 
 func (l *ledgerFake) Post(_ context.Context, _ pgx.Tx, in ledger.Transaction) (string, error) {
 	l.calls++
+	if l.record != nil {
+		l.record("ledger")
+	}
 	if l.fail {
 		l.fail = false
 		return "", errors.New("injected journal failure")
@@ -145,6 +150,9 @@ type refundRepo struct {
 	prepared  contract.PreparedRefund
 	prepares  int
 	completes int
+	locks     int
+	lockErr   error
+	record    func(string)
 }
 
 func (r *refundRepo) Request(context.Context, pgx.Tx, string, contract.RequestInput) (contract.Return, error) {
@@ -173,6 +181,22 @@ func (r *refundRepo) Prepared(_ context.Context, _ pgx.Tx, _ string, in contract
 	}
 	return out, true, nil
 }
+
+// Extra fake method compiles before Repository gains the locking port. The
+// service must select it in its second transaction, after external PSP success.
+func (r *refundRepo) LockPrepared(ctx context.Context, tx pgx.Tx, tenant string, in contract.RefundInput) (contract.PreparedRefund, bool, error) {
+	r.locks++
+	if r.record != nil {
+		r.record("lock")
+	}
+	if r.lockErr != nil {
+		return contract.PreparedRefund{}, false, r.lockErr
+	}
+	if tenant != tenantID {
+		return contract.PreparedRefund{}, false, contract.ErrInvalid
+	}
+	return r.Prepared(ctx, tx, tenant, in)
+}
 func (r *refundRepo) Prepare(_ context.Context, _ pgx.Tx, _ string, in contract.RefundInput, capture contract.CapturedPayment, accounts contract.RefundAccounts) (contract.PreparedRefund, error) {
 	r.prepares++
 	r.pending = true
@@ -184,6 +208,9 @@ func (r *refundRepo) Complete(_ context.Context, _ pgx.Tx, _ string, in contract
 		return contract.Return{}, contract.ErrInvalid
 	}
 	r.completes++
+	if r.record != nil {
+		r.record("complete")
+	}
 	r.completed = true
 	out := in.Return
 	out.Status = "refunded"
@@ -244,6 +271,10 @@ func (r *concurrentlyCompletedRepo) Prepared(ctx context.Context, tx pgx.Tx, ten
 		r.completed = true
 	}
 	return r.refundRepo.Prepared(ctx, tx, tenant, in)
+}
+
+func (r *concurrentlyCompletedRepo) LockPrepared(ctx context.Context, tx pgx.Tx, tenant string, in contract.RefundInput) (contract.PreparedRefund, bool, error) {
+	return r.Prepared(ctx, tx, tenant, in)
 }
 
 func TestRefundCompletionConcurrentReceiptReplay(t *testing.T) {
