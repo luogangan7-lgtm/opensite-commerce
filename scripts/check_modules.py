@@ -239,14 +239,13 @@ def json_stream(text):
         yield value
 
 
-def check_raw_connection(text, location):
+def go_imports(text):
     # A small lexical rule, not a Go type checker: inspect import aliases and
-    # selector tokens while keeping comments and literals opaque. All owned
-    # source (including tests and ignored tags) is checked before go list.
+    # selector tokens while keeping comments and literals opaque.
     token_pattern = re.compile(r'''//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\W\d]\w*|[^\s]''', re.S)
     tokens = [match.group() for match in token_pattern.finditer(text)
               if not match.group().startswith(("//", "/*"))]
-    aliases = set()
+    imports = []
     for index, token in enumerate(tokens):
         if token != "import":
             continue
@@ -281,33 +280,86 @@ def check_raw_connection(text, location):
                 if not grouped:
                     break
                 continue
-            require(imported != "github.com/jackc/pgx/v5/pgxpool",
-                    "MODULE_RAW_POOL_IMPORT", location)
-            if imported == "github.com/jackc/pgx/v5":
-                # Dot imports hide the origin of Conn and connector functions.
-                require(alias != ".", "MODULE_RAW_CONNECTION", location + " (pgx dot import)")
-                if alias != "_":
-                    aliases.add(alias or "pgx")
+            imports.append((alias, imported))
             if not grouped:
                 break
+    return tokens, imports
+
+
+def check_raw_connection(text, location):
+    # All owned source (including tests and ignored tags) is checked before go list.
+    tokens, imports = go_imports(text)
+    aliases = set()
+    for alias, imported in imports:
+        require(imported != "github.com/jackc/pgx/v5/pgxpool",
+                "MODULE_RAW_POOL_IMPORT", location)
+        if imported == "github.com/jackc/pgx/v5":
+            # Dot imports hide the origin of Conn and connector functions.
+            require(alias != ".", "MODULE_RAW_CONNECTION", location + " (pgx dot import)")
+            if alias != "_":
+                aliases.add(alias or "pgx")
     for index in range(len(tokens) - 2):
         require(not (tokens[index] in aliases and tokens[index + 1] == "." and
                      tokens[index + 2] in ("Conn", "Connect", "ConnectConfig")),
                 "MODULE_RAW_CONNECTION", location)
 
 
-# Default deny: dedicated tenant and identity adapters open raw connections;
-# generated db integration tests may open a maintenance connection. Business
-# modules receive connections through adapters and never open them directly.
-RAW_CONNECTION_ALLOWED = {
-    Path("internal/tenanttx/pgxadapter"): "",
-    Path("internal/platform/identitydb/pgxadapter"): "",
-    Path("internal/db"): "_test.go",
-}
+# Even where a pool may be held (pgxadapter), it must stay unexported: an
+# exported type, alias, field, embedding, variable or function signature naming
+# pgxpool.Pool/Conn or pgx.Conn hands callers a way around tenanttx.Run.
+POOL_TYPES = {"github.com/jackc/pgx/v5/pgxpool": ("pgxpool", {"Pool", "Conn"}),
+              "github.com/jackc/pgx/v5": ("pgx", {"Conn"})}
+
+
+def check_pool_export(text, location):
+    tokens, imports = go_imports(text)
+    names = {}
+    for alias, imported in imports:
+        if imported in POOL_TYPES and alias not in ("_", "."):
+            default, types = POOL_TYPES[imported]
+            names[alias or default] = types
+
+    def exported(token):
+        return bool(re.fullmatch(r"[^\W\d_]\w*", token)) and token[0].isupper()
+
+    for index in range(len(tokens) - 2):
+        if not (tokens[index] in names and tokens[index + 1] == "." and
+                tokens[index + 2] in names[tokens[index]] and
+                (index == 0 or tokens[index - 1] != ".")):
+            continue
+        cursor = index - 1
+        while cursor >= 0 and tokens[cursor] in ("*", "=", "[", "]"):
+            cursor -= 1
+        previous = tokens[cursor] if cursor >= 0 else ""
+        leaked = exported(previous) and (cursor == 0 or tokens[cursor - 1] != ".")
+        leaked = leaked or (previous == "{" and cursor > 0 and tokens[cursor - 1] == "struct")
+        if previous in ("(", ")", ","):
+            # Signature position: the nearest func keyword names the function
+            # (a method name follows its receiver); literals have no name.
+            func = max((i for i in range(cursor) if tokens[i] == "func"), default=None)
+            if func is not None and "{" not in tokens[func:index] and "}" not in tokens[func:index]:
+                name_at = func + 1
+                if name_at < len(tokens) and tokens[name_at] == "(":
+                    depth = 0
+                    for name_at in range(func + 1, index):
+                        depth += {"(": 1, ")": -1}.get(tokens[name_at], 0)
+                        if depth == 0:
+                            break
+                    name_at += 1
+                leaked = leaked or exported(tokens[name_at])
+        require(not leaked, "MODULE_RAW_POOL_EXPORT",
+                f"{location}: exported identifier exposes {tokens[index]}.{tokens[index + 2]}")
+
+
+# Default deny: only the tenant-transaction adapter may hold a pgxpool or open
+# a raw pgx connection; the generated db package's integration tests open a
+# maintenance connection. Everything else gets connections via tenanttx.
+RAW_CONNECTION_ALLOWED = {Path("internal/tenanttx/pgxadapter"): "", Path("internal/db"): "_test.go"}
 # Only the httpapi chain may mount the oapi-codegen server; tests anywhere may
 # exercise it.
 GENERATED_SERVER = "internal/platform/httpapi/generated"
-GENERATED_SERVER_IMPORTERS = {Path("internal/platform/httpapi"), Path(GENERATED_SERVER)}
+GENERATED_SERVER_IMPORTERS = {Path("internal/platform/httpapi"), Path("internal/platform/httpapi/carthttp"),
+                              Path(GENERATED_SERVER)}
 
 
 def raw_connection_allowed(relative):
@@ -395,6 +447,8 @@ def check_go(registry, root):
             if (not allowed and relative_parts[:1] != ("vendor",)) or any(
                     resolved.is_relative_to(owned) for owned in owned_paths):
                 check_raw_connection(text, str(relative))
+            if relative_parts[:1] != ("vendor",):
+                check_pool_export(text, str(relative))
             require(not re.search(r'^\s*import\s*(?:\(\s*)?"C"', text, re.M),
                     "MODULE_NON_GO_SOURCE", str(source.relative_to(root)) + " (cgo)")
             for token in go_tokens.finditer(text):

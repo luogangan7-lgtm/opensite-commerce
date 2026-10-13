@@ -251,6 +251,40 @@ class GovernanceTests(unittest.TestCase):
         self.source("internal/modules/a/module.go", 'package a\nimport "github.com/jackc/pgx/v5/pgxpool"\nvar Pool *pgxpool.Pool\n')
         self.assert_red("MODULE_RAW_POOL_IMPORT")
 
+    def vendor_pgxpool(self):
+        self.source("vendor/github.com/jackc/pgx/v5/pgxpool/pool.go", "package pgxpool\ntype Pool struct{}\ntype Conn struct{}\n")
+        self.source("vendor/modules.txt", "# github.com/jackc/pgx/v5 v5.10.0\n## explicit; go 1.27.2\ngithub.com/jackc/pgx/v5/pgxpool\n")
+        with (self.root / "go.mod").open("a") as output:
+            output.write("\nrequire github.com/jackc/pgx/v5 v5.10.0\n")
+
+    def test_pool_reexport_from_adapter_red(self):
+        # PR #31 regression: the one package allowed to hold a pool re-exported it.
+        self.vendor_pgxpool()
+        header = 'package pgxadapter\nimport (\n\t"context"\n\n\t"github.com/jackc/pgx/v5/pgxpool"\n)\nvar _ context.Context\n'
+        for name, body in (
+                ("alias", "// Pool is the adapter's connection pool.\ntype Pool = pgxpool.Pool\n"),
+                ("defined", "type Pool pgxpool.Pool\n"),
+                ("factory", "func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) { return nil, nil }\n"),
+                ("method", "type Runner struct{ pool *pgxpool.Pool }\nfunc (r Runner) Raw() *pgxpool.Pool { return r.pool }\n"),
+                ("field", "type Runner struct{ Pool *pgxpool.Pool }\n"),
+                ("embedded", "type Runner struct{ *pgxpool.Pool }\n"),
+                ("var", "var Shared *pgxpool.Pool\n")):
+            with self.subTest(name=name):
+                self.source("internal/tenanttx/pgxadapter/pool.go", header + body)
+                self.assert_red("MODULE_RAW_POOL_EXPORT")
+
+    def test_unexported_pool_in_adapter_green(self):
+        self.vendor_pgxpool()
+        self.source("internal/tenanttx/pgxadapter/pgxadapter.go",
+                    'package pgxadapter\nimport "github.com/jackc/pgx/v5/pgxpool"\n'
+                    'type Runner struct{ pool *pgxpool.Pool }\n'
+                    'func open() (*pgxpool.Pool, error) { return nil, nil }\n'
+                    'func Open() (Runner, func(), error) { p, err := open(); return Runner{pool: p}, func() {}, err }\n'
+                    'func (r Runner) close() { f := func() *pgxpool.Pool { return r.pool }; _ = f }\n'
+                    '// type Pool = pgxpool.Pool\nconst Text = "type Pool = pgxpool.Pool"\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def vendor_pgx(self):
         # Real Go resolution, offline: no checkout go.mod or downloaded dependency.
         self.source("vendor/github.com/jackc/pgx/v5/pgx.go",
@@ -731,18 +765,17 @@ class GovernanceTests(unittest.TestCase):
         self.vendor_pgx_and_pool()
         self.source("internal/tenanttx/pgxadapter/adapter.go",
                     'package pgxadapter\nimport (\n\t"github.com/jackc/pgx/v5"\n\t"github.com/jackc/pgx/v5/pgxpool"\n)\n'
-                    'type Runner struct{ Pool *pgxpool.Pool }\nvar Connect = pgx.Connect\n')
+                    'type Runner struct{ pool *pgxpool.Pool }\nvar Connect = pgx.Connect\n')
         self.source("internal/db/db.go", 'package db\nimport "github.com/jackc/pgx/v5"\nvar Tx pgx.Tx\n')
         self.source("internal/db/db_test.go", 'package db\nimport "github.com/jackc/pgx/v5"\nvar Connect = pgx.Connect\n')
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_identity_connection_adapter_green(self):
+    def test_retired_identity_connection_adapter_red(self):
         self.vendor_pgx()
         self.source("internal/platform/identitydb/pgxadapter/adapter.go",
                     'package pgxadapter\nimport "github.com/jackc/pgx/v5"\nvar Open = pgx.ConnectConfig\n')
-        result = self.run_gate()
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_red("MODULE_RAW_CONNECTION")
 
     def test_identity_business_connection_still_red(self):
         self.vendor_pgx()

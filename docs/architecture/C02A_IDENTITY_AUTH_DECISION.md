@@ -14,4 +14,4 @@ CLI 密码只取重定向 stdin 或 `OSC_BOOTSTRAP_PASSWORD`；DSN 取 `OSC_BOOT
 
 验收：`db_identity_auth.sql`、精确 `db_role_matrix.sql`、advisory-lock 两连接 +2 竞态、应用全部前置迁移后的存量升级、真实专用 LOGIN 的 CLI 成功/已有 owner 拒绝/并发唯一、至少两项注错红→恢复绿，以及卡片要求的全量离线/Go/PG18 gate。测试按迁移逻辑后缀发现文件，集成可重编号。
 
-离线 bootstrap 与全局员工认证连接创建统一放在 `internal/platform/identitydb/pgxadapter`；该目录是治理检查中的窄边界例外，业务模块只能持有 Connection 接口，仍须先用生成查询验证专用 LOGIN 权限。没有放开模块内 pgx.ConnectConfig 或 pgxpool，也未引入三池接线。
+离线 bootstrap 与全局员工认证连接创建统一放在 `internal/tenanttx/pgxadapter`；这是唯一允许持有原始 pgx 连接的受控边界。业务调用方只通过 `IdentityRunner.InMaintenance(ctx, func(context.Context, pgx.Tx) error)` 的事务回调执行生成查询，并在写入前验证专用 LOGIN 权限；生命周期通过 `Close(ctx)` 结束，不导出 DBTX、Begin 或原始连接；不允许 `internal/platform/identitydb/pgxadapter` 例外或模块内 pgx.ConnectConfig / pgxpool。

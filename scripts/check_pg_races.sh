@@ -217,6 +217,24 @@ got=$(sql <<<"SELECT status||'|'||attempts||'|'||(lease_owner='$WA')||'|'||(leas
 echo "race late ACK transaction clock: $got (expected processing|1|true|true|true|true)"
 [[ $got == 'processing|1|true|true|true|true' ]] || fail=1
 
+# Upload expiry (media): the completing transaction waits on a row lock held
+# past expires_at. Expiry must be judged by clock_timestamp() AFTER the lock is
+# granted (second statement, mirroring queries/media.sql MediaUploadExpired);
+# now() (transaction start) or a same-statement projection is stale.
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('upload-expiry-race') RETURNING id;" | tail -1)
+U=$(sql <<<"INSERT INTO app.media_uploads(tenant_id,original_filename,expected_size,expires_at) VALUES('$T','x.png',1,clock_timestamp()+interval '3 seconds') RETURNING id;" | tail -1)
+gate_close 9
+tx up_holder app_media_service "$T" "SELECT 'held='||count(*) FROM (SELECT 1 FROM app.media_uploads WHERE tenant_id='$T' AND id='$U' FOR UPDATE) l; $(park 9)" &
+await up_holder advisory
+tx up_late app_media_service "$T" "SELECT 'locked='||count(*) FROM (SELECT 1 FROM app.media_uploads WHERE tenant_id='$T' AND id='$U' FOR UPDATE) l; SELECT 'expired='||(expires_at <= clock_timestamp()) FROM app.media_uploads WHERE tenant_id='$T' AND id='$U';" &
+await up_late "${ROWLOCK[@]}"
+for _ in $(seq 1 150); do
+  [[ $(sql <<<"SELECT clock_timestamp() > expires_at FROM app.media_uploads WHERE id='$U';") == t ]] && break
+  sleep 0.1
+done
+gate_open 9; wait
+expect up_holder ok; expect up_late ok; result up_late locked=1; result up_late expired=true
+
 # Same-key occupancy: the second UPSERT must wait for the uncommitted winner,
 # then return its committed in_progress record with acquired=false.
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('idempotency-race') RETURNING id;" | tail -1)
@@ -310,7 +328,7 @@ sql <<<"UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-inter
 gate_close 13
 tx inv_expire app_runtime "$T" "SELECT app.inventory_expire_due(1); $(park 13)" &
 await inv_expire advisory
-tx inv_commit app_runtime "$T" "SELECT app.inventory_commit('$RID');" &
+tx inv_commit app_inventory_executor "$T" "SELECT app.inventory_commit('$RID');" &
 await inv_commit "${ROWLOCK[@]}"
 gate_open 13; wait
 expect inv_expire ok; expect inv_commit INVENTORY_INVALID_TRANSITION; expect inv_commit 55000
@@ -326,7 +344,7 @@ await inv_stock advisory
 # Establish a future expiry AFTER the stock-holder is parked. Commit must be
 # observed waiting while still valid; the clock predicate is the expiry barrier.
 sql <<<"UPDATE app.inventory_reservations SET expires_at=clock_timestamp()+interval '3 seconds' WHERE tenant_id='$T' AND id='$RID';" >/dev/null
-tx inv_commit_wait app_runtime "$T" "SELECT app.inventory_commit('$RID');" &
+tx inv_commit_wait app_inventory_executor "$T" "SELECT app.inventory_commit('$RID');" &
 await inv_commit_wait "${ROWLOCK[@]}"
 VALID_WAIT=$(sql <<<"SELECT clock_timestamp()<r.expires_at AND a.xact_start<r.expires_at
  FROM app.inventory_reservations r JOIN pg_stat_activity a ON a.application_name='${RACE_PREFIX}inv_commit_wait'
@@ -551,25 +569,162 @@ done
 
 # Catalog optimistic locking: a stale transaction waits on the winner's row
 # lock, then rechecks version at READ COMMITTED and must update zero rows.
-# Gate 25 is distinct from prior module synchronization keys.
+# Gate 31 is distinct from prior module synchronization keys.
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('catalog-cas-race') RETURNING id;" | tail -1)
 P=$(sql <<<"INSERT INTO app.products(tenant_id,product_code) VALUES('$T','CAS-RACE') RETURNING id;" | tail -1)
 cas_first="WITH changed AS (UPDATE app.products SET product_code='CAS-FIRST',version=version+1 WHERE tenant_id='$T' AND id='$P' AND version=1 RETURNING id) SELECT 'C07_CAS_FIRST='||count(*) FROM changed;"
 cas_stale="WITH changed AS (UPDATE app.products SET product_code='CAS-STALE',version=version+1 WHERE tenant_id='$T' AND id='$P' AND version=1 RETURNING id) SELECT 'C07_CAS_STALE='||count(*) FROM changed;"
-gate_close 25
-tx catalog_cas_first app_runtime "$T" "$cas_first $(park 25)" &
+gate_close 31
+tx catalog_cas_first app_runtime "$T" "$cas_first $(park 31)" &
 await catalog_cas_first advisory
 tx catalog_cas_stale app_runtime "$T" "$cas_stale" &
 await catalog_cas_stale "${ROWLOCK[@]}"
-gate_open 25; wait
+gate_open 31; wait
 expect catalog_cas_first ok; expect catalog_cas_stale ok
 result catalog_cas_first 'C07_CAS_FIRST=1'; result catalog_cas_stale 'C07_CAS_STALE=0'
 got=$(sql <<<"SELECT version||'|'||product_code FROM app.products WHERE tenant_id='$T' AND id='$P';")
 echo "race catalog stale CAS: $got (expected 2|CAS-FIRST)"
 [[ $got == '2|CAS-FIRST' ]] || fail=1
 
+# Cart CAS: loser waits on the actual cart row while winner is parked on31.
+# The stale contender may not modify lines; the same transaction owns lock/CAS.
+read -r T C S <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('cart-cas-race') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES(:'t','cart-race','ready') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','cart-race','default') RETURNING id AS s \gset
+INSERT INTO app.carts(tenant_id,guest_token_hash,currency) VALUES(:'t',sha256('race-cart-guest'::bytea),'USD') RETURNING id AS c \gset
+INSERT INTO app.cart_lines VALUES(:'t',:'c',:'s',1);
+SELECT :'t'||' '||:'c'||' '||:'s';
+SQL
+)"
+ctx="SELECT set_config('app.cart_customer_id','',true),set_config('app.cart_token_hash',encode(sha256('race-cart-guest'::bytea),'hex'),true);"
+cas="UPDATE app.carts SET version=version+1 WHERE tenant_id='$T' AND id='$C' AND version=1 RETURNING id"
+gate_close 31
+tx cart_first app_runtime "$T" "$ctx SELECT version FROM app.carts WHERE tenant_id='$T' AND id='$C' FOR UPDATE; WITH bump AS ($cas), changed AS (UPDATE app.cart_lines SET quantity=4 WHERE tenant_id='$T' AND cart_id='$C' AND sku_id='$S' AND EXISTS(SELECT FROM bump) RETURNING sku_id) SELECT 'CART_CAS='||count(*) FROM changed; $(park 31)" &
+cart_first_pid=$!
+await cart_first advisory
+tx cart_second app_runtime "$T" "$ctx SELECT version FROM app.carts WHERE tenant_id='$T' AND id='$C' FOR UPDATE; WITH bump AS ($cas), changed AS (UPDATE app.cart_lines SET quantity=5 WHERE tenant_id='$T' AND cart_id='$C' AND sku_id='$S' AND EXISTS(SELECT FROM bump) RETURNING sku_id) SELECT 'CART_CAS='||count(*) FROM changed;" &
+cart_second_pid=$!
+await cart_second "${ROWLOCK[@]}"
+gate_open 31
+await cart_first gone; await cart_second gone
+wait "$cart_first_pid"; wait "$cart_second_pid"
+expect cart_first ok; expect cart_second ok
+result cart_first 'CART_CAS=1'; result cart_second 'CART_CAS=0'
+got=$(sql <<<"SELECT c.version||'|'||l.quantity FROM app.carts c JOIN app.cart_lines l ON (l.tenant_id,l.cart_id)=(c.tenant_id,c.id) WHERE c.tenant_id='$T' AND c.id='$C';")
+echo "race cart lock/CAS: $got (expected 2|4)"
+[[ $got == '2|4' ]] || fail=1
+
+# C-15a: both commands target one sealed order and its exact owned reservation.
+# Park the first after its transition, witness the contender's order-row wait,
+# then release. RC rejects the obsolete command; RR/Serializable serialize-fail.
+# Each level is exercised with both winners; stock, movements and outbox counts
+# are positive witnesses, including rollback of every losing side effect.
+for isolation in 'READ COMMITTED' 'REPEATABLE READ' SERIALIZABLE; do
+ for first_target in paid cancelled; do
+  read -r T SKU OID <<<"$(inventory_fixture)"
+  sql <<SQL >/dev/null
+SELECT set_config('app.tenant_id','$T',false);
+SET ROLE app_runtime;
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','orders-race-reserve',900)).id AS rid \gset
+SELECT app.orders_create('$OID','orders-race-create',sha256('race'::bytea),NULL,
+ '{"email":"race@example.invalid"}','USD',20,'{"amount_minor":20,"currency":"USD","service":"fixture"}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','race-sku','quantity',1,
+ 'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
+ 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
+SQL
+  if [[ $first_target == paid ]]; then second_target=cancelled; stock=0; race_gate=40
+  else second_target=paid; stock=1; race_gate=41; fi
+  gate_close "$race_gate"
+  tx orders_first app_runtime "$T" "SELECT app.orders_transition('$OID','$first_target','race-first',0); $(park "$race_gate")" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
+  await orders_first advisory
+  tx orders_second app_runtime "$T" "SELECT app.orders_transition('$OID','$second_target','race-second',0);" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
+  await orders_second "${ROWLOCK[@]}"
+  gate_open "$race_gate"; wait
+  expect orders_first ok
+  if [[ $isolation == 'READ COMMITTED' ]]; then expect orders_second ORDER_INVALID_TRANSITION; expect orders_second 55000
+  else expect orders_second 40001; fi
+  got=$(sql <<<"SELECT o.state||'|'||o.version||'|'||s.on_hand||'|'||s.reserved||'|'||
+   (SELECT count(*) FROM app.inventory_movements WHERE tenant_id='$T')||'|'||
+   (SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T' AND payload->>'order_id'='$OID')
+   FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id='$T' AND o.id='$OID';")
+  echo "orders pay/cancel $isolation first=$first_target: $got (expected $first_target|2|$stock|0|3|2)"
+  [[ $got == "$first_target|2|$stock|0|3|2" ]] || fail=1
+ done
+done
+
+# C-15a: a two-line order must lock EVERY reservation before its first stock
+# mutation. The first commit parks in a test-only movement trigger; another
+# connection proves the later reservation is already locked (NOWAIT 55P03).
+# A due sweep skips that held later reservation. Payment then notices expiry
+# and rolls all changes back; subsequent expiry+cancel preserve physical stock.
+read -r T SKU OID <<<"$(inventory_fixture 2)"
+sql <<SQL >/dev/null
+SELECT set_config('app.tenant_id','$T',false);
+SET ROLE app_runtime;
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','prelock-first',900)).id AS r1 \gset
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','prelock-second',900)).id AS r2 \gset
+SELECT app.orders_create('$OID','prelock-create',sha256('prelock'::bytea),NULL,
+ '{"email":"prelock@example.invalid"}','USD',0,'{}',
+ jsonb_build_array(
+  jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','prelock-sku','quantity',1,
+   'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
+   'reservation_id',:'r1','tax_snapshot','{}'::jsonb),
+  jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','prelock-sku','quantity',1,
+   'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
+   'reservation_id',:'r2','tax_snapshot','{}'::jsonb)), '[]');
+SQL
+read -r R_FIRST R_LATER <<<"$(sql <<<"SELECT id FROM app.inventory_reservations WHERE tenant_id='$T' AND owner_id='$OID' ORDER BY id;" | paste -sd' ' -)"
+sql <<SQL >/dev/null
+UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second'
+ WHERE tenant_id='$T' AND id='$R_LATER';
+CREATE FUNCTION public.c15a_prelock_$$() RETURNS trigger LANGUAGE plpgsql AS \$body\$
+BEGIN
+ PERFORM pg_advisory_xact_lock_shared($$,42);
+ RETURN NEW;
+END \$body\$;
+CREATE TRIGGER c15a_prelock_$$ BEFORE INSERT ON app.inventory_movements
+ FOR EACH ROW WHEN (NEW.kind='commit' AND NEW.reservation_id='$R_FIRST')
+ EXECUTE FUNCTION public.c15a_prelock_$$();
+SQL
+gate_close 42
+tx orders_prelock_pay app_runtime "$T" "SELECT app.orders_transition('$OID','paid','prelock-pay',0);" &
+await orders_prelock_pay advisory
+tx orders_prelock_probe postgres "$T" "DO \$proof\$ DECLARE locked boolean:=false; BEGIN
+ BEGIN PERFORM id FROM app.inventory_reservations WHERE tenant_id='$T' AND id='$R_LATER' FOR UPDATE NOWAIT;
+ EXCEPTION WHEN lock_not_available THEN locked:=true; END;
+ IF NOT locked THEN RAISE EXCEPTION 'ORDERS_PRELOCK_GATE reservation not locked before stock write'; END IF;
+ END \$proof\$;"
+expect orders_prelock_probe ok
+# In the intentionally broken overlay, NOWAIT succeeds. Do not start a sweep
+# that would deadlock: report the exact fault, then release the driver normally.
+if [[ ! -s "$ERRDIR/orders_prelock_probe" ]]; then
+ tx orders_prelock_sweep app_runtime "$T" "SELECT 'skipped='||app.inventory_expire_due(100);"
+ expect orders_prelock_sweep ok; result orders_prelock_sweep 'skipped=0'
+fi
+gate_open 42; wait
+expect orders_prelock_pay INVENTORY_RESERVATION_EXPIRED; expect orders_prelock_pay 55000
+sql <<SQL >/dev/null
+DROP TRIGGER c15a_prelock_$$ ON app.inventory_movements;
+DROP FUNCTION public.c15a_prelock_$$();
+SQL
+got=$(sql <<<"SELECT o.state||'|'||o.version||'|'||s.on_hand||'|'||s.reserved||'|'||
+ (SELECT count(*) FROM app.inventory_movements WHERE tenant_id='$T')||'|'||
+ (SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T' AND payload->>'order_id'='$OID')
+ FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id='$T' AND o.id='$OID';")
+echo "orders prelock/expiry rollback: $got (expected pending_payment|1|2|2|3|1)"
+[[ $got == 'pending_payment|1|2|2|3|1' ]] || fail=1
+tx orders_prelock_cancel app_runtime "$T" "SELECT app.inventory_expire_due(100); SELECT app.orders_transition('$OID','cancelled','prelock-cancel',0);"
+expect orders_prelock_cancel ok
+got=$(sql <<<"SELECT o.state||'|'||s.on_hand||'|'||s.reserved||'|'||
+ (SELECT count(*) FROM app.inventory_movements WHERE tenant_id='$T')||'|'||
+ (SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T' AND payload->>'order_id'='$OID')
+ FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id='$T' AND o.id='$OID';")
+echo "orders prelock expiry/cancel conservation: $got (expected cancelled|2|0|5|2)"
+[[ $got == 'cancelled|2|0|5|2' ]] || fail=1
+
 # C-02a: global auth has no tenant context. The first call owns the normalized
-# identifier lock, then parks at gate31; the second must block on the first's
+# identifier lock, then parks at gate70; the second must block on the first's
 # auth lock before the driver releases the gate. No sleep establishes ordering.
 auth_tx() {
  printf "SET application_name='${RACE_PREFIX}%s'; BEGIN; SET LOCAL ROLE app_auth; %s COMMIT;\n" \
@@ -579,8 +734,8 @@ IDENTIFIER="${RACE_PREFIX}auth@example.test"
 UPPER_IDENTIFIER=$(printf '%s' "$IDENTIFIER" | tr '[:lower:]' '[:upper:]')
 record_first="SELECT 'auth-count='||failure_count FROM app.auth_record_failure('  $UPPER_IDENTIFIER  ','192.0.2.18'::inet);"
 record_second="SELECT 'auth-count='||failure_count FROM app.auth_record_failure('$IDENTIFIER','192.0.2.18'::inet);"
-gate_close 31
-auth_tx auth_first "$record_first $(park 31)" &
+gate_close 70
+auth_tx auth_first "$record_first $(park 70)" &
 auth_first_pid=$!
 await auth_first advisory
 auth_tx auth_second "$record_second" &
@@ -588,7 +743,7 @@ auth_second_pid=$!
 await auth_second advisory
 blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}auth_first' AND second.application_name='${RACE_PREFIX}auth_second';")
 [[ $blocked == t ]] || { echo "FAIL: auth second did not block on first identifier lock: $blocked"; fail=1; }
-gate_open 31
+gate_open 70
 wait "$auth_first_pid" "$auth_second_pid"
 expect auth_first ok; expect auth_second ok
 result auth_first 'auth-count=1'; result auth_second 'auth-count=2'
@@ -605,8 +760,8 @@ INSERT INTO app.auth_account_attempts(identifier_normalized,failure_count,window
 INSERT INTO app.auth_login_attempts(identifier_normalized,ip,failure_count,window_started_at,cooldown_until,last_failed_at)
  VALUES('$PRUNE_IDENTIFIER','192.0.2.19',4,now()-interval '2 days',now()-interval '1 day',now()-interval '2 days');
 SQL
-gate_close 33
-tx prune_hold postgres "$T" "SELECT 1 FROM app.auth_account_attempts WHERE identifier_normalized='$PRUNE_IDENTIFIER' FOR UPDATE; SELECT 1 FROM app.auth_login_attempts WHERE identifier_normalized='$PRUNE_IDENTIFIER' FOR UPDATE; $(park 33)" &
+gate_close 72
+tx prune_hold postgres "$T" "SELECT 1 FROM app.auth_account_attempts WHERE identifier_normalized='$PRUNE_IDENTIFIER' FOR UPDATE; SELECT 1 FROM app.auth_login_attempts WHERE identifier_normalized='$PRUNE_IDENTIFIER' FOR UPDATE; $(park 72)" &
 prune_hold_pid=$!
 await prune_hold advisory
 auth_tx prune_waiter "SELECT 'renewed='||failure_count FROM app.auth_record_failure('$PRUNE_IDENTIFIER','192.0.2.19'::inet);" &
@@ -616,7 +771,7 @@ blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_sta
 [[ $blocked == t ]] || { echo "FAIL: auth renewal did not wait on held stale row: $blocked"; fail=1; }
 auth_tx prune_skip "SELECT 'pruned='||accounts_deleted||'|'||ips_deleted FROM app.auth_prune_attempts(1000);"
 expect prune_skip ok; result prune_skip 'pruned=0|0'
-gate_open 33
+gate_open 72
 wait "$prune_hold_pid" "$prune_waiter_pid"
 expect prune_hold ok; expect prune_waiter ok; result prune_waiter 'renewed=1'
 auth_tx prune_live "SELECT 'pruned='||accounts_deleted||'|'||ips_deleted FROM app.auth_prune_attempts(1000);"
@@ -638,6 +793,14 @@ else
  PSQL=(docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -At -U postgres -d "$BOOTSTRAP_DB" -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
 fi
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ # Queue authorization depends on River's schema in this fresh database too.
+ if [[ $f == *_queue_authorization.sql ]]; then
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+   DATABASE_URL="${bootstrap_base%/*}/$BOOTSTRAP_DB$bootstrap_query" ./scripts/migrate_river.sh
+  else
+   RIVER_DATABASE_NAME="$BOOTSTRAP_DB" ./scripts/migrate_river.sh
+  fi
+ fi
  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | sql >/dev/null
 done
 bootstrap_tx() {
@@ -646,8 +809,8 @@ bootstrap_tx() {
 }
 # Fixed, non-secret PHC-shaped fixture; never a real credential.
 BOOTSTRAP_PHC='$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-gate_close 32
-bootstrap_tx bootstrap_first "SELECT app.bootstrap_admin('first-owner@example.test','first owner','$BOOTSTRAP_PHC'); $(park 32)" &
+gate_close 71
+bootstrap_tx bootstrap_first "SELECT app.bootstrap_admin('first-owner@example.test','first owner','$BOOTSTRAP_PHC'); $(park 71)" &
 bootstrap_first_pid=$!
 await bootstrap_first advisory
 bootstrap_tx bootstrap_second "SELECT app.bootstrap_admin('second-owner@example.test','second owner','$BOOTSTRAP_PHC');" &
@@ -655,7 +818,7 @@ bootstrap_second_pid=$!
 await bootstrap_second advisory
 blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}bootstrap_first' AND second.application_name='${RACE_PREFIX}bootstrap_second';")
 [[ $blocked == t ]] || { echo "FAIL: bootstrap second did not block on first installation lock: $blocked"; fail=1; }
-gate_open 32
+gate_open 71
 wait "$bootstrap_first_pid" "$bootstrap_second_pid"
 expect bootstrap_first ok; expect bootstrap_second BOOTSTRAP_OWNER_EXISTS; expect bootstrap_second 55000
 got=$(sql <<<"SELECT 'BOOTSTRAP_RACE='||(SELECT count(*) FROM app.tenant_memberships WHERE role='owner')||'|'||(SELECT count(*) FROM app.users)||'|'||(SELECT count(*) FROM app.tenants);")
@@ -666,7 +829,7 @@ sql -c "DROP DATABASE $BOOTSTRAP_DB" >/dev/null
 BOOTSTRAP_DB=""
 
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/identity contract" >&2; exit 1; fi
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
@@ -675,6 +838,35 @@ echo 'PASS: tax INSERT/UPDATE exclusion races preserve non-overlapping windows'
 echo 'PASS: customer normalized email registrations commit once per tenant'
 echo 'PASS: ledger identical and conflicting posting races preserve one posted journal/two entries'
 echo 'PASS: catalog stale CAS waits for row lock, rechecks version and leaves winner unchanged'
+echo 'PASS: cart row-lock/CAS contender cannot overwrite winner line or version'
+echo 'PASS: orders pay/cancel and prelock/expiry races conserve inventory and events'
+# Focused native River/claim/fence gates cannot silently skip for missing PG.
+reliability_packages=(./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)
+if [[ -n "${DATABASE_URL:-}" ]]; then
+ JOBS_REQUIRE_PG=1 IDEMPOTENCY_REQUIRE_PG=1 OUTBOX_REQUIRE_PG=1 GOTOOLCHAIN=local \
+  go test -race -tags pgx -count=1 -timeout=120s -run '^(TestPG|TestJobsPG)' "${reliability_packages[@]}"
+else
+ # Compose has no host port. Test binaries run against its loopback database;
+ # the external/CI path above also runs the race detector.
+ (
+  compose=(docker compose -f deploy/compose.yaml)
+  arch="$("${compose[@]}" exec -T postgres uname -m)"
+  case "$arch" in aarch64|arm64) arch=arm64 ;; x86_64) arch=amd64 ;; *) echo 'Unsupported test architecture' >&2; exit 4 ;; esac
+  temp="$(mktemp -d "${TMPDIR:-/tmp}/opensite-reliability.XXXXXX")"
+  container_bin="/tmp/opensite-reliability-$(basename "$temp")"
+  cleanup_go() { "${compose[@]}" exec -T postgres rm -f "$container_bin" >/dev/null 2>&1 || true; rm -rf "$temp"; }
+  trap cleanup_go EXIT
+  for package in "${reliability_packages[@]}"; do
+   GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c -tags pgx -o "$temp/gate" "$package"
+   "${compose[@]}" cp "$temp/gate" "postgres:$container_bin"
+   "${compose[@]}" exec -T -e DATABASE_URL=postgresql://postgres@localhost/opensite?sslmode=disable \
+    -e JOBS_REQUIRE_PG=1 -e IDEMPOTENCY_REQUIRE_PG=1 -e OUTBOX_REQUIRE_PG=1 postgres \
+    sh -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec "$@"' sh "$container_bin" \
+    '-test.run=^(TestPG|TestJobsPG)' -test.count=1 -test.timeout=120s -test.v
+  done
+ )
+fi
+echo 'PASS: native River transaction/admission/restart and Go idempotency/outbox PG gates'
 echo 'PASS: auth concurrent normalized-identifier failures preserve account and account+IP counts'
 echo 'PASS: bootstrap concurrent first-owner creation commits one installation owner only'
 echo 'PASS: auth cleanup skips locked stale rows and preserves concurrent renewals'

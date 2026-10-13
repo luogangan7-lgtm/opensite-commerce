@@ -13,8 +13,10 @@ import (
 func TestRunAuthorizedRejectsUnstampedContext(t *testing.T) {
 	var runner *pgxadapter.QueryRunner
 	called := false
-	err := runner.RunAuthorized(context.Background(), "11111111-1111-1111-1111-111111111111", func(*db.Queries) error { called = true; return nil })
-	if err == nil || called {
-		t.Fatal("unstamped request reached database callback")
+	for _, run := range []func(context.Context, string, func(*db.Queries) error) error{runner.RunAuthorized, runner.RunAuthorizedSnapshot} {
+		err := run(context.Background(), "11111111-1111-1111-1111-111111111111", func(*db.Queries) error { called = true; return nil })
+		if err == nil || called {
+			t.Fatal("unstamped request reached database callback")
+		}
 	}
 }

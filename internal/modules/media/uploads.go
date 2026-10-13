@@ -11,7 +11,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -101,8 +100,9 @@ func verify(u db.AppMediaUpload, b []byte) (string, int, int, error) {
 	}
 	return inspect(b, declared(u))
 }
-func usable(u db.AppMediaUpload) error {
-	if !u.ExpiresAt.Valid || !time.Now().Before(u.ExpiresAt.Time) {
+func usable(u db.AppMediaUpload, expired bool) error {
+	// Infinity cannot be represented in the receipt (pgx drops it to year 1), so it is rejected.
+	if expired || !u.ExpiresAt.Valid || u.ExpiresAt.InfinityModifier != pgtype.Finite {
 		return conflict("Upload session has expired")
 	}
 	if u.Status != "reserved" && u.Status != "stored" {
@@ -122,7 +122,11 @@ func (s *Service) PutMediaUploadContent(ctx context.Context, r httpapi.PutMediaU
 		if e != nil {
 			return e
 		}
-		if e = usable(u); e != nil {
+		expired, e := q.MediaUploadExpired(ctx, db.MediaUploadExpiredParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
+		if e != nil {
+			return e
+		}
+		if e = usable(u, expired); e != nil {
 			return e
 		}
 		if _, _, _, e = verify(u, b); e != nil {
@@ -146,6 +150,10 @@ func (s *Service) CompleteMediaUpload(ctx context.Context, r httpapi.CompleteMed
 		if e != nil {
 			return e
 		}
+		expired, e := q.MediaUploadExpired(ctx, db.MediaUploadExpiredParams{TenantID: dbID(r.TenantId), ID: dbID(r.UploadId)})
+		if e != nil {
+			return e
+		}
 		if u.Status == "ready" {
 			if !u.MediaID.Valid {
 				return conflict("Completed asset was deleted")
@@ -153,7 +161,7 @@ func (s *Service) CompleteMediaUpload(ctx context.Context, r httpapi.CompleteMed
 			result = u
 			return nil
 		}
-		if e = usable(u); e != nil {
+		if e = usable(u, expired); e != nil {
 			return e
 		}
 		if u.Status != "stored" || !u.TemporaryKey.Valid {

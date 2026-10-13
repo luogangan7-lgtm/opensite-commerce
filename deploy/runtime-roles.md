@@ -17,6 +17,10 @@ with no outward memberships. Provision LOGIN credentials outside migrations.
 | `app_reliability_executor` | Own outbox/idempotency functions | No LOGIN or members; never provision credentials |
 | `app_inventory_manager` | Trusted inventory adjustments and reads | Private inventory manager LOGIN; tenant-scoped commands |
 | `app_inventory_executor` | Own inventory mutations | No LOGIN or members; never provision credentials |
+| `app_orders_executor` | Own order snapshot and transition functions | No LOGIN or members; never provision credentials |
+| `app_queue_worker` | River jobs and controlled inventory expiry | Dedicated private worker LOGIN; queue RLS |
+| `app_river_migrator` | Own upstream River schema and migration history | Separate privileged migration capability; no application LOGIN |
+| `app_outbox_tenant_broker` | Enumerate active Outbox tenant IDs | No LOGIN or members; IDs/status only |
 | `app_credential_writer` | Own bootstrap and bounded counter cleanup; minimum user hash/key issuance, scoped buyer-role seed and cleanup columns | No LOGIN or members; never provision credentials or grant this role |
 | `app_admin_bootstrap` | Execute first-owner bootstrap only | Dedicated offline bootstrap LOGIN only; no table/column privileges |
 
@@ -28,7 +32,8 @@ not combine credentials across the auth/runtime/domain or service pools.
 Global `auth_account_attempts`, `auth_login_attempts`, `known_devices` follow
 the `users`/`auth_sessions` identity model: no tenant key/RLS. Exact column ACLs
 permit only `app_auth` reads/inserts/counter or revocation updates; every other
-application role and PUBLIC has zero table/column access. `app_auth` also reads
+runtime/service role and PUBLIC has zero table/column access; the unreachable
+credential writer has only the stated cleanup columns and counter DELETE. `app_auth` also reads
 only tenant `id,status` for suspension checks. API keys remain tenant-bound.
 
 **No credentials or application LOGIN role is created by migrations.** A
@@ -86,5 +91,16 @@ cluster-wide, so a second OpenSite database on the same cluster would share
 their memberships and grants. Deployment preflight will refuse a cluster that
 already hosts another OpenSite database, and operators must `REVOKE CONNECT ON
 DATABASE ... FROM PUBLIC` so capability logins reach only their own database.
+
+### Reliability integration (INT-25)
+
+The River worker login may SET ROLE only to `app_queue_worker`; optional Outbox
+composition uses a separate login allowed only `app_outbox_worker`. Neither is
+permitted to SET ROLE to either DDL owner or `app_outbox_tenant_broker`.
+The broker is NOLOGIN/NOBYPASSRLS and has no memberships; its sole controlled
+function enumerates active Outbox tenant IDs using only tenant_id/status SELECT.
+It has no payload or table-wide privilege. Queue ownership remains isolated in
+`app_river_migrator`; the application and upstream migration histories are separate.
+`OUTBOX_ENABLED` defaults off and a missing Sender fails before any claim.
 
 Identity integration also grants the function owner only tenant-scoped buyer-role seed INSERT columns, so first-owner bootstrap composes with the customers tenant trigger. Bootstrap restores the caller tenant GUC. Counter functions sample database time and expose no clock parameter. The execute-only bounded retention function is available to app_auth; no authentication caller receives direct DELETE. A future hourly maintenance caller must drain small batches; scheduling is outside this migration.
