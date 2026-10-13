@@ -5,6 +5,7 @@ import unittest
 import os
 import io
 import re
+import secrets
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -15,6 +16,32 @@ spec.loader.exec_module(ops)
 class DeployTests(unittest.TestCase):
     def valid_passwords(self):
         return {kind: f'nonsecret_fixture_{kind}_123456789' for kind in ops.LOGIN_ROLES}
+
+    def test_customer_auth_login_has_only_its_capability(self):
+        self.assertIn('CUSTOMER_AUTH', ops.LOGIN_ROLES,
+                      'CUSTOMER_AUTH_DEPLOYMENT_RED: customer credential pool is not provisioned')
+        self.assertEqual(ops.LOGIN_NAMES['CUSTOMER_AUTH'], 'opensite_customer_auth_login')
+        self.assertEqual(ops.CAPABILITY_GROUPS['CUSTOMER_AUTH'], 'app_customer_auth')
+        sql = ops.provision_sql('opensite', {kind: secrets.token_urlsafe(32) for kind in ops.LOGIN_ROLES})
+        self.assertIn('GRANT app_customer_auth TO opensite_customer_auth_login;', sql)
+        self.assertNotIn('GRANT app_customer_auth TO opensite_runtime_login;', sql)
+        self.assertNotIn('GRANT app_auth TO opensite_customer_auth_login;', sql)
+        self.assertIn("'opensite_customer_auth_login'", ops.login_role_audit_sql('opensite'))
+
+    def test_missing_customer_auth_secret_refuses_before_writers(self):
+        env = {f'OPENSITE_{kind}_DB_PASSWORD': secrets.token_urlsafe(32) for kind in ops.LOGIN_ROLES}
+        env['POSTGRES_PASSWORD'] = secrets.token_urlsafe(32)
+        env['OPENSITE_CUSTOMER_AUTH_DB_PASSWORD'] = str()
+        with patch.dict(os.environ, env, clear=True), patch.object(ops, 'preflight'), \
+                patch.object(ops, 'audit_login_roles') as audit, \
+                patch.object(ops, 'install_migrations') as install, patch.object(ops, 'query') as query, \
+                patch('sys.stdout', io.StringIO()), patch('sys.stderr', io.StringIO()) as error:
+            self.assertEqual(ops.main(['install']), 1,
+                             'CUSTOMER_AUTH_SECRET_RED: absent secret silently deploys without customer auth')
+            self.assertIn('INVALID_ENV_SECRET', error.getvalue())
+            audit.assert_not_called()
+            install.assert_not_called()
+            query.assert_not_called()
 
     def test_river_install_precedes_application_and_verify_follows(self):
         calls = []

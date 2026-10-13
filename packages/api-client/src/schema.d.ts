@@ -1132,11 +1132,13 @@ export interface components {
         CustomerRegistrationInput: {
             /** Format: email */
             email: string;
+            /** @description Length is 12 to 1024 UTF-8 bytes after JSON decoding, not a Unicode character count. No Unicode normalization is applied. NUL, CR and LF are rejected. */
             password: string;
         };
         CustomerCredentialsInput: {
             /** Format: email */
             email: string;
+            /** @description Length is 1 to 1024 UTF-8 bytes after JSON decoding, not a Unicode character count. No Unicode normalization is applied. NUL, CR and LF are rejected. */
             password: string;
         };
         CustomerTokenInput: {
@@ -1148,6 +1150,7 @@ export interface components {
         };
         CustomerResetConfirm: {
             token: string;
+            /** @description Length is 12 to 1024 UTF-8 bytes after JSON decoding, not a Unicode character count. No Unicode normalization is applied. NUL, CR and LF are rejected. */
             password: string;
         };
         CustomerRegistrationReceipt: {
