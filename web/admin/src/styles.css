@@ -31,6 +31,8 @@ p { margin-block:var(--space-0) var(--space-4); }
 .admin-skip:focus { transform:none; }
 .admin-table-wrap { overflow-x:auto; }
 .admin-page .os-table,.admin-page dl { font-variant-numeric:tabular-nums; }
+/* Keep codes and exact amounts intact; the shared, keyboard-focusable region contains table scrolling. */
+.admin-page .os-table th,.admin-page .os-table td { white-space:nowrap; overflow-wrap:normal; }
 .admin-page dd { margin-inline-start:var(--space-0); margin-block-end:var(--space-4); overflow-wrap:anywhere; }
 .admin-page dt { font-weight:var(--font-weight-semibold); }
 

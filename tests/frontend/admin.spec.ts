@@ -7,6 +7,18 @@ const fixtureOrigin=process.env.OPENSITE_ADMIN_FIXTURE_ORIGIN??'http://127.0.0.1
 const snapshots=process.env.OPENSITE_ADMIN_NO_SNAPSHOTS!=='1';
 async function audit(page:Page,name?:string){await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));});expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);if(name&&snapshots)await expect(page).toHaveScreenshot(name,{fullPage:true});}
 async function signIn(page:Page){await page.getByLabel('Email').fill('staff@example.invalid');await page.getByLabel('Password',{exact:true}).fill(crypto.randomUUID());await page.getByRole('button',{name:'Sign in',exact:true}).click();}
+test('order table keeps identifiers and money readable inside a keyboard scroll region',async({page})=>{
+  await fixture(page);await page.goto(`${fixtureOrigin}/t/${tenant}/orders/44444444-4444-4444-8444-444444444444`);
+  const table=page.getByRole('table',{name:'Order lines'});await expect(table.getByRole('cell',{name:'USD 22.00',exact:true})).toBeVisible();
+  for(const cell of [table.getByRole('cell',{name:'SAMPLE-1',exact:true}),table.getByRole('cell',{name:'USD 22.00',exact:true}),table.getByRole('columnheader',{name:'Quantity',exact:true})]){
+    expect(await cell.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);return range.getClientRects().length;})).toBe(1);
+  }
+  const region=page.getByRole('region',{name:'Order lines'});await region.focus();await expect(region).toBeFocused();
+  if(await region.evaluate(el=>el.scrollWidth>el.clientWidth)){
+    await page.keyboard.press('ArrowRight');await expect.poll(()=>region.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);
+  }
+  await audit(page);
+});
 test('login page labels and route guard',async({page})=>{await fixture(page,{authenticated:false});await page.goto(`${origin}/t/${tenant}/products`);await expect(page.getByRole('heading',{name:'Sign in'})).toBeVisible();await expect(page.getByLabel('Email')).toBeVisible();await expect(page.getByLabel('Password',{exact:true})).toBeVisible();await expect(page).toHaveURL(/\/login/);await audit(page,'admin-login.png');});
 test('generic login failure and throttling never expose account details',async({page})=>{await fixture(page,{authenticated:false,loginStatus:401});await page.goto(`${origin}/login`);await signIn(page);await expect(page.getByRole('alert')).toHaveText('Unable to sign in. Check your credentials or try again later.');await expect(page.getByLabel('Password',{exact:true})).toHaveValue('');await expect(page.getByText('PRIVATE SERVER DETAIL')).toHaveCount(0);await audit(page);await page.unrouteAll({behavior:'wait'});await fixture(page,{authenticated:false,loginStatus:429});await page.reload();await signIn(page);await expect(page.getByRole('alert')).toContainText('temporarily limited');await audit(page);});
 test('product cursor paging and empty state',async({page})=>{await fixture(page);await page.goto(`${origin}/t/${tenant}/products`);await expect(page.getByRole('link',{name:'SAMPLE',exact:true})).toBeVisible();await audit(page,'admin-products.png');await page.getByRole('button',{name:'Next page',exact:true}).click();await expect(page.getByText('No products on this page')).toBeVisible();await page.getByRole('button',{name:'Previous page',exact:true}).click();await expect(page.getByRole('link',{name:'SAMPLE',exact:true})).toBeVisible();});
