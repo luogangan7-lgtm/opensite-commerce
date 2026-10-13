@@ -110,6 +110,16 @@ test('fails closed when dependency escapes the declared repository root', async 
   const root = fixture({ 'src/entry.ts': "import '../../outside.ts';" });
   expect(() => graphInputFiles(['src/entry.ts'], root)).toThrow();
 });
+test('fails closed on unsupported package-import aliases and undeclared bare aliases', async () => {
+  const { graphInputFiles } = await loadInputs();
+  const root = fixture({
+    'package.json': JSON.stringify({ imports: { '#theme': './src/theme.ts' } }),
+    'src/entry.ts': "import '#theme';", 'src/other.ts': "import '~/view';",
+    'src/theme.ts': 'export const color = 1;',
+  });
+  expect(() => graphInputFiles(['src/entry.ts'], root)).toThrow();
+  expect(() => graphInputFiles(['src/other.ts'], root)).toThrow();
+});
 
 test('keeps distinct renderer roots independent while including their shared CSS', async () => {
   const { graphInputFiles } = await loadInputs();

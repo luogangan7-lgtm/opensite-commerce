@@ -61,3 +61,7 @@ test('unknown snapshots and traversal cannot obtain an arbitrary input scope', (
   expect(() => api.scopeForSnapshot('desktop/unknown.png')).toThrow();
   expect(() => api.scopeForSnapshot('../desktop/admin-orders.png')).toThrow();
 });
+test('deleting a PNG and its record together cannot shrink the producer-observed scope inventory', () => {
+  const record = { ...golden(), scopeSnapshots: ['desktop/admin-orders.png', 'mobile/admin-orders.png'] };
+  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: record }, hashes)).toThrow(/inventory/);
+});

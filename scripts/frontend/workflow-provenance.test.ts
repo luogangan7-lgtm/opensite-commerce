@@ -25,3 +25,9 @@ test('rejects a producer that rewrites images after the authorized writer', () =
   const fault = source.replace('run: bun run visual:update', 'run: bun run visual:update\n      - run: echo forged > tests/frontend/baselines/desktop/gallery.png');
   expect(() => assertProducerWorkflow(path, fault)).toThrow(/after|final|upload/);
 });
+for (const modifier of ['if: false', 'env: {OPENSITE_BASELINE_UPDATE: "0"}', 'working-directory: other', 'shell: other']) {
+  test(`rejects a producer that changes the authorized writer with ${modifier}`, () => {
+    const fault = source.replace('run: bun run visual:update', `run: bun run visual:update\n        ${modifier}`);
+    expect(() => assertProducerWorkflow(path, fault)).toThrow(/writer/);
+  });
+}
