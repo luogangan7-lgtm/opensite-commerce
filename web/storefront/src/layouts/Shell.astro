@@ -10,6 +10,7 @@ import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
 import '../styles.css';
 import { copy } from '../lib/copy';
+import { commerceCopy } from '../lib/commerce-copy';
 import { safeHref } from '../lib/presentation';
 interface Props {
   title: string; description: string; canonical: string | undefined; siteTitle?: string; locale?: string;
@@ -17,7 +18,9 @@ interface Props {
 }
 const { title, description, canonical, siteTitle, locale = 'en', navigation = [], noindex = false, homeHref = '/' } = Astro.props;
 const ui = copy(locale);
-const links = navigation.map(link => ({ ...link, href: safeHref(link.href) })).filter(link => link.href);
+const purchaseUI = commerceCopy(locale);
+const links = [...navigation.filter(link => !['/cart', '/account'].includes(link.href)), { label: purchaseUI.cart, href: '/cart' }, { label: purchaseUI.account, href: '/account' }]
+  .map(link => ({ ...link, href: safeHref(link.href) })).filter(link => link.href);
 ---
 <!doctype html>
 <html lang={locale}>
