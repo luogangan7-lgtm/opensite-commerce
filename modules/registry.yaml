@@ -1146,7 +1146,8 @@
         "order_adjustments",
         "stock_levels",
         "inventory_reservations",
-        "outbox_events"
+        "outbox_events",
+        "notification_deliveries"
       ]
     }
   ]

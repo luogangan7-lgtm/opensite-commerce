@@ -128,6 +128,18 @@ DO $atomic$ BEGIN
  IF EXISTS(SELECT FROM app.quote_conversions WHERE quote_id=current_setting('qc.q2')::uuid) THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_FAILED_OUTBOX_BOUND'; END IF;
 END $atomic$;
+-- A dispatch failure must roll receipt, source and delivery back together.
+REVOKE INSERT(tenant_id,id,event_type,payload,delivery_target,dedup_key) ON app.outbox_events FROM app_notifications_executor;
+SET LOCAL ROLE app_runtime;
+SELECT pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''dispatch-key'',sha256(''dispatch''::bytea))',:'t',current_setting('qc.q2'),:'company',:'buyer',:'good_order'),'42501','notification dispatch atomic rollback');
+RESET ROLE;
+GRANT INSERT(tenant_id,id,event_type,payload,delivery_target,dedup_key) ON app.outbox_events TO app_notifications_executor;
+DO $notification_atomic$ BEGIN
+ IF EXISTS(SELECT FROM app.quote_conversions WHERE quote_id=current_setting('qc.q2')::uuid)
+ OR EXISTS(SELECT FROM app.outbox_events WHERE event_type='quote.converted' AND payload->>'quote_id'=current_setting('qc.q2'))
+ OR EXISTS(SELECT FROM app.notification_deliveries WHERE template_key='quote.converted' AND reference_id=current_setting('qc.q2')::uuid) THEN
+  RAISE EXCEPTION 'QUOTE_CONVERSION_FAILED_NOTIFICATION_BOUND'; END IF;
+END $notification_atomic$;
 -- Preflight must decide DB expiry before a caller invokes Capture; cancellation
 -- still releases an expired active hold without producing a paid event.
 UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second'

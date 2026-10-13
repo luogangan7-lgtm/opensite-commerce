@@ -41,14 +41,13 @@ idempotency key remain private domain fields. Amounts never pass through floatin
 point. The declared response schema validates the receipt before serialization;
 invalid domain output fails closed with a redacted 500. Responses use `no-store`.
 
-The focused gate is `go test -race -count=1 -timeout 60s
-./internal/platform/httpapi/quoteorders`. Tests cover default denial, tenant/company
+GitHub CI runs the HTTP tests with the default Go race suite. Tests cover default denial, tenant/company
 isolation, seller scope, strict admission, exact amounts above JavaScript's safe
 integer range, 128-byte key boundary, private-field exclusion and error mapping.
-Go-overlay probes disable tenant isolation, round money through float64 and admit
-an open request object; each must reach its corresponding assertion in RED, then
-the unchanged source must pass GREEN. Focused receipts are in `.work/c18b-http` and
-bind to file hashes; final frozen-SHA module/contract/full gates belong to root.
+CI mutation branches disable tenant isolation and round money through float64;
+each must reach its corresponding assertion in RED, while the unchanged source
+passes GREEN. Historical local receipts predate the owner's CI-only rule and do
+not certify the final SHA. Final module, contract and full gates run in GitHub CI.
 
 Real customer authentication, real checkout/provider actions and payment success
 are **NOT_RUN** by these HTTP tests. A conversion receipt is not payment proof.
@@ -64,6 +63,16 @@ and tenant/customer/idempotency key can have only one receipt. An absent receipt
 must produce a normal zero-row read, so the first conversion can continue in the
 same transaction. Authorized completed history can be replayed after quote expiry;
 current company membership is still checked on every replay.
+After an order leaves `pending_payment`, a same-key replay returns its durable
+current order state without invoking the payment port. Provider references are
+optional in this historical projection. Pending receipts alone may resume prepay.
+
+The `quote.converted` source event also freezes a notification envelope in the
+same transaction. Its recipient comes from the receipt's customer, and the
+notification-owned hook verifies the quote/order/version tuple before producing
+`notification.dispatch`. English and Traditional Chinese templates are included.
+This forward extension preserves the existing notification migration; rendering
+and envelope tests prove the handoff, while real customer delivery is NOT_RUN.
 
 Negotiated Orders input has explicit quote ID/version/line provenance. The regular
 price-list creator rejects this mode, and the quote creator does not invent a

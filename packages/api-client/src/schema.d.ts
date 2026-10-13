@@ -714,7 +714,7 @@ export interface components {
             /** Format: uuid */
             event_id: string;
             /** @enum {string} */
-            template_key: "order.paid" | "order.shipped" | "order.refund" | "quote.sent" | "quote.approved";
+            template_key: "order.paid" | "order.shipped" | "order.refund" | "quote.sent" | "quote.approved" | "quote.converted";
             /** @enum {string} */
             status: "failed" | "dead_letter" | "uncertain";
             /** Format: int32 */

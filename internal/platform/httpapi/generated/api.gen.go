@@ -241,11 +241,12 @@ func (e NotificationFailureStatus) Valid() bool {
 
 // Defines values for NotificationFailureTemplateKey.
 const (
-	OrderPaid     NotificationFailureTemplateKey = "order.paid"
-	OrderRefund   NotificationFailureTemplateKey = "order.refund"
-	OrderShipped  NotificationFailureTemplateKey = "order.shipped"
-	QuoteApproved NotificationFailureTemplateKey = "quote.approved"
-	QuoteSent     NotificationFailureTemplateKey = "quote.sent"
+	OrderPaid      NotificationFailureTemplateKey = "order.paid"
+	OrderRefund    NotificationFailureTemplateKey = "order.refund"
+	OrderShipped   NotificationFailureTemplateKey = "order.shipped"
+	QuoteApproved  NotificationFailureTemplateKey = "quote.approved"
+	QuoteConverted NotificationFailureTemplateKey = "quote.converted"
+	QuoteSent      NotificationFailureTemplateKey = "quote.sent"
 )
 
 // Valid indicates whether the value is a known member of the NotificationFailureTemplateKey enum.
@@ -258,6 +259,8 @@ func (e NotificationFailureTemplateKey) Valid() bool {
 	case OrderShipped:
 		return true
 	case QuoteApproved:
+		return true
+	case QuoteConverted:
 		return true
 	case QuoteSent:
 		return true

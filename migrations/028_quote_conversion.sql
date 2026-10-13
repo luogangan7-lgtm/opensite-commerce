@@ -2,6 +2,7 @@
 -- Dependencies: approved quotes027 and orders020 public commands; called by quotes.
 -- Invariants: one quote/order/key binding, fresh company authority, DB-clock expiry,
 -- exact negotiated snapshots, atomic outbox; never writes orders or inventory.
+-- Notifications owns conversion fanout using the immutable receipt's customer.
 CREATE TABLE app.quote_conversions (
  tenant_id uuid NOT NULL, quote_id uuid NOT NULL, buyer_company_id uuid NOT NULL,
  customer_id uuid NOT NULL, order_id uuid NOT NULL, quote_version bigint NOT NULL CHECK(quote_version>0),
@@ -186,3 +187,54 @@ DO $acl$ DECLARE r text; BEGIN
  END LOOP;
 END $acl$;
 GRANT EXECUTE ON FUNCTION app.orders_validate_payment_reservations(uuid) TO app_runtime;
+
+-- Forward integration: existing notification lifecycle commands remain unchanged.
+ALTER TABLE app.notification_deliveries DROP CONSTRAINT notification_deliveries_template_key_check;
+ALTER TABLE app.notification_deliveries ADD CONSTRAINT notification_deliveries_template_key_check
+ CHECK(template_key IN('order.paid','order.shipped','order.refund','quote.sent','quote.approved','quote.converted'));
+GRANT SELECT(tenant_id,quote_id,order_id,quote_version,customer_id)
+ ON app.quote_conversions TO app_notifications_executor;
+CREATE POLICY notifications_quote_conversions ON app.quote_conversions TO app_notifications_executor
+ USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
+
+-- Private notification-owned trigger: source, delivery and dispatch share one tx.
+-- Authority is the receipt/order tuple; payload contact fields never choose email.
+CREATE FUNCTION app.notification_quote_conversion_fanout() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
+DECLARE email text; ref uuid; nid uuid:=uuidv7(); dispatch uuid:=uuidv7(); BEGIN
+ IF NEW.delivery_target<>'quotes' OR NEW.event_type<>'quote.converted' THEN RETURN NEW; END IF;
+ SELECT c.email_normalized,r.quote_id INTO email,ref FROM app.quote_conversions r
+ JOIN app.orders o ON(o.tenant_id,o.id,o.customer_id)=(r.tenant_id,r.order_id,r.customer_id)
+ LEFT JOIN app.customers c ON(c.tenant_id,c.id)=(r.tenant_id,r.customer_id)
+ WHERE r.tenant_id=NEW.tenant_id AND r.quote_id::text=NEW.payload->>'quote_id'
+ AND r.order_id::text=NEW.payload->>'order_id' AND r.quote_version::text=NEW.payload->>'quote_version'
+ AND NEW.dedup_key='converted:'||r.quote_id::text;
+ IF NOT FOUND THEN RETURN NEW; END IF;
+ email:=lower(btrim(email));
+ -- An unavailable owner contact leaves a durable failure without external dispatch.
+ IF email IS NULL OR length(email)>254 OR email COLLATE "C" !~ '^[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+([.][A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+)*@[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$' THEN
+  INSERT INTO app.notification_deliveries(tenant_id,id,source_event_id,recipient,locale,template_key,reference_id,status,last_error)
+  VALUES(NEW.tenant_id,nid,NEW.id,'','en','quote.converted',ref,'dead_letter','NOTIFICATION_RECIPIENT_UNAVAILABLE')
+  ON CONFLICT(tenant_id,source_event_id,recipient,template_key) DO NOTHING;
+  RETURN NEW;
+ END IF;
+ INSERT INTO app.notification_deliveries(tenant_id,id,source_event_id,dispatch_event_id,recipient,locale,template_key,reference_id)
+ VALUES(NEW.tenant_id,nid,NEW.id,dispatch,email,'en','quote.converted',ref)
+ ON CONFLICT(tenant_id,source_event_id,recipient,template_key) DO NOTHING;
+ IF FOUND THEN
+  INSERT INTO app.outbox_events(tenant_id,id,event_type,payload,delivery_target,dedup_key)
+  VALUES(NEW.tenant_id,dispatch,'notification.dispatch',jsonb_build_object('notification_id',nid),'notifications.email',nid::text||':1');
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER notification_quote_conversion_source AFTER INSERT ON app.outbox_events
+ FOR EACH ROW EXECUTE FUNCTION app.notification_quote_conversion_fanout();
+GRANT CREATE ON SCHEMA app TO app_notifications_executor;
+ALTER FUNCTION app.notification_quote_conversion_fanout() OWNER TO app_notifications_executor;
+REVOKE CREATE ON SCHEMA app FROM app_notifications_executor;
+REVOKE ALL ON FUNCTION app.notification_quote_conversion_fanout() FROM PUBLIC;
+DO $acl$ DECLARE r text; BEGIN
+ FOR r IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') AND rolname<>'app_notifications_executor' LOOP
+  EXECUTE format('REVOKE ALL ON FUNCTION app.notification_quote_conversion_fanout() FROM %I',r);
+ END LOOP;
+END $acl$;
