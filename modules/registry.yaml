@@ -506,7 +506,8 @@
         "tests/db_inventory.sql",
         "scripts/check_pg_races.sh",
         "scripts/check_pg_upgrade.sh",
-        "tests/db_role_matrix.sql"
+        "tests/db_role_matrix.sql",
+        "tests/db_inventory_owner.sql"
       ],
       "scopes": [],
       "note": "PR14 is on main at a2f02ca. Owns its four SQL inventory tables; Go service path and HTTP operations remain planned."
@@ -1379,6 +1380,16 @@
         "outbox_events",
         "order_lines",
         "inventory_reservations"
+      ]
+    },
+    {
+      "file": "migrations/035_inventory_hold_owner.sql",
+      "owner": "inventory",
+      "touches_tables": [
+        "warehouses",
+        "stock_levels",
+        "inventory_reservations",
+        "inventory_movements"
       ]
     }
   ]
