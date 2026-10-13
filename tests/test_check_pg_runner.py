@@ -48,6 +48,75 @@ await_job timeout "$pid"; status=$?
 ''', helper.replace('SECONDS + 15', 'SECONDS + 0'))
 print('PASS: actual await_job waits, propagates child failure, and marks bounded timeout')
 
+# Execute the actual populated limits upgrade block. Its final full-schema
+# matrix must see every forward migration, while its old-data witness runs
+# before successor DDL. These mocks record submission; they never execute SQL.
+upgrade_source = (root / 'scripts/check_pg_upgrade.sh').read_text()
+limits_start = upgrade_source.index('# INT25: populate old delivery epochs')
+limits_block = upgrade_source[limits_start:upgrade_source.index('\n# C-15a:', limits_start)]
+limits_migrations = sorted((root / 'migrations').glob('[0-9][0-9][0-9]_reliability_limits.sql'))
+assert len(limits_migrations) == 1
+forward_files = sorted(path.relative_to(root).as_posix()
+                       for path in (root / 'migrations').glob('[0-9][0-9][0-9]_*.sql'))
+limits_file = limits_migrations[0].relative_to(root).as_posix()
+successors = [name for name in forward_files if name > limits_file]
+assert successors, 'limits matrix regression needs a real successor migration'
+with tempfile.TemporaryDirectory() as limits_tmp:
+    limits_log = Path(limits_tmp) / 'applied'
+    events_log = Path(limits_tmp) / 'events'
+    limits_log.touch(); events_log.touch()
+    mock = r'''set -euo pipefail
+shopt -s nullglob
+fail=0
+bad() { echo "FAIL: $*" >&2; fail=1; }
+pass() { echo "PASS: $*"; }
+admin() { :; }
+river_db() { [[ $2 == --verify ]]; }
+apply_forward() {
+ [[ -f $2 ]] || return 40
+ if [[ $2 > ${limits_files[0]} ]]; then
+  [[ -f "$LIMITS_MOCK_LOG.tested" ]] || { echo LIMITS_SUCCESSOR_BEFORE_WITNESS >&2; return 42; }
+ fi
+ printf '%s\n' "$2" >> "$LIMITS_MOCK_LOG"
+ printf 'APPLY %s\n' "$2" >> "$LIMITS_MOCK_EVENTS"
+}
+db() {
+ shift
+ if [[ ${1:-} == -f ]]; then
+  case "$2" in
+   tests/db_reliability_limits.sql)
+    [[ -f "$LIMITS_MOCK_LOG.witness" ]] || return 43
+    touch "$LIMITS_MOCK_LOG.tested"
+    echo LIMITS_TEST >> "$LIMITS_MOCK_EVENTS" ;;
+   tests/db_role_matrix.sql)
+    [[ "$(cat "$LIMITS_MOCK_LOG")" == "$(printf '%s\n' migrations/[0-9][0-9][0-9]_*.sql)" ]] || {
+     echo LIMITS_UPGRADE_MATRIX_MISSING_SUCCESSOR >&2; return 41;
+    }
+    echo MATRIX >> "$LIMITS_MOCK_EVENTS" ;;
+   *) echo UNEXPECTED_LIMITS_TEST >&2; return 44 ;;
+  esac
+ else
+  payload=$(cat)
+  if [[ $payload == *"'LIMITS_UPGRADE='"* ]]; then
+   touch "$LIMITS_MOCK_LOG.witness"
+   echo WITNESS >> "$LIMITS_MOCK_EVENTS"
+   echo 'LIMITS_UPGRADE=4|2|2|10'
+  fi
+ fi
+}
+'''
+    result = subprocess.run(['bash', '-c', mock + limits_block], cwd=root,
+                            env=dict(os.environ, LIMITS_MOCK_LOG=str(limits_log),
+                                     LIMITS_MOCK_EVENTS=str(events_log)),
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    assert limits_log.read_text().splitlines() == forward_files
+    events = events_log.read_text().splitlines()
+    assert events.index('WITNESS') < events.index('LIMITS_TEST')
+    assert all(events.index('LIMITS_TEST') < events.index('APPLY ' + name)
+               < events.index('MATRIX') for name in successors)
+print('PASS: actual limits upgrade witnesses old rows, then applies every successor before full matrix (NO SQL EXECUTED)')
+
 expected = [
     'db_security_audit.sql',
     'db_smoke.sql',

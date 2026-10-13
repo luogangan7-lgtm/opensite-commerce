@@ -744,6 +744,11 @@ SQL
 [[ $result == *'LIMITS_UPGRADE=4|2|2|10'* ]] || bad "limits populated upgrade: $result"
 river_db "$DB" --verify
 db "$DB" -f tests/db_reliability_limits.sql >/dev/null
+# The latest role matrix covers the full schema, including later modules.
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${limits_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; LIMITS_DB=""
 pass 'reliability limits upgrade preserves delivery identity, retires exhausted work, accepts live final ACK'
