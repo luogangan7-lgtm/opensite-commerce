@@ -121,6 +121,7 @@ expected = [
     'db_reliability_limits.sql',
     'db_cart.sql',
     'db_storefront.sql',
+    'db_storefront_serving.sql',
     'db_ops_metrics.sql',
     'db_notifications.sql',
     'db_quotes.sql',
