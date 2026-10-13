@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 )
 
@@ -166,6 +167,20 @@ func TestConnectionQueueCancellation(t *testing.T) {
 		t.Fatal("busy connection ignored deadline")
 	}
 	r.leave()
+}
+
+func TestConnectionQueueHasInternalOperationBound(t *testing.T) {
+	r, _, _ := loginFixture()
+	r.gate <- struct{}{}
+	defer r.leave()
+	started := time.Now()
+	err := r.run(context.Background(), func(context.Context, *db.Queries) error {
+		t.Fatal("blocked staff queue entered a transaction")
+		return nil
+	})
+	if !errors.Is(err, login.ErrDatabase) || time.Since(started) > 2500*time.Millisecond || r.runner.(*loginFakeRunner).calls != 0 {
+		t.Fatal("staff queue lacks an internal two-second operation bound")
+	}
 }
 func TestAuthConnectionErrorsRedacted(t *testing.T) {
 	for _, dsn := range []string{"postgres://user:private-sentinel@[invalid", "postgres://user:private-sentinel@127.0.0.1:1/missing?sslmode=disable"} {

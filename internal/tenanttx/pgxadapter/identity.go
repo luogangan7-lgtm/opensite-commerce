@@ -32,6 +32,12 @@ func OpenAuthorization(ctx context.Context, dsn string) (*IdentityRunner, error)
 	return openIdentity(ctx, dsn, 4, 2*time.Second)
 }
 
+// OpenStaffAuthentication keeps staff credential work serialized, with the same
+// bounded connection and transaction policy as tenant authority work.
+func OpenStaffAuthentication(ctx context.Context, dsn string) (*IdentityRunner, error) {
+	return openIdentity(ctx, dsn, 1, 2*time.Second)
+}
+
 func openIdentity(ctx context.Context, dsn string, maxConns int32, operationTimeout time.Duration) (*IdentityRunner, error) {
 	if operationTimeout > 0 {
 		var cancel context.CancelFunc
