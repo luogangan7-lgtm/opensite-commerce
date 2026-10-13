@@ -56,7 +56,16 @@ for invalid in ('SELECT * FROM app.missing_function($1);',
         raise AssertionError('static source check accepted an undeclared name')
 query_names = []
 query_text = []
-for qpath in (root/sql['queries']).rglob('*.sql'):
+query_sources = sql['queries'] if isinstance(sql['queries'], list) else [sql['queries']]
+query_paths = set()
+for source in query_sources:
+    directory = root/source
+    assert directory.is_dir(), f'query source directory missing: {source}'
+    query_paths.update(directory.glob('*.sql'))
+# sqlc does not scan a directory recursively: nested module queries need their
+# own configured source. An orphan query must fail before stale code compiles.
+assert query_paths == set((root/'queries').rglob('*.sql')), 'sqlc omits module query sources'
+for qpath in sorted(query_paths):
     q = qpath.read_text()
     query_text.append(q)
     query_names += re.findall(r'^-- name: (\w+) :(one|many|exec|execrows)',q,re.M)
