@@ -154,7 +154,7 @@ func (p *paymentFactFixture) witness(t *testing.T) paymentFactWitness {
 }
 
 func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
-	for _, name := range []string{"bad_signature", "tampered_bytes", "stale", "future", "unknown_account", "disabled_account", "live_account", "foreign_account", "payload_tenant", "wrong_amount", "wrong_currency", "wrong_ref", "wrong_version"} {
+	for _, name := range []string{"bad_signature", "tampered_bytes", "stale", "future", "unknown_account", "disabled_account", "foreign_account", "payload_tenant", "wrong_amount", "wrong_currency", "wrong_ref", "wrong_version"} {
 		t.Run(name, func(t *testing.T) {
 			p := newPaymentFactFixture(t)
 			before := p.witness(t)
@@ -171,16 +171,13 @@ func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
 				stamp = stamp.Add(time.Hour)
 			case "unknown_account":
 				body["account_id"] = "unknown_" + uuid.NewString()
-			case "disabled_account", "live_account", "foreign_account":
+			case "disabled_account", "foreign_account":
 				err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
 					if name == "disabled_account" {
 						_, err := tx.Exec(ctx, "UPDATE app.payment_provider_accounts SET enabled=false WHERE provider_account_id=$1", p.account)
 						return err
 					}
-					if name == "live_account" {
-						_, err := tx.Exec(ctx, "UPDATE app.payment_provider_accounts SET environment='live' WHERE provider_account_id=$1", p.account)
-						return err
-					}
+
 					var tenant string
 					if err := tx.QueryRow(ctx, "INSERT INTO app.tenants(name) VALUES('payment-foreign-account') RETURNING id::text").Scan(&tenant); err != nil {
 						return err

@@ -29,7 +29,7 @@ DECLARE
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals',
-  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts'];
+  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events'];
  role_name text;
  r record;
  t record;
@@ -75,7 +75,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='INSERT' THEN
@@ -85,6 +85,7 @@ BEGIN
       ELSE
        IF t.relname=ANY(ARRAY['checkout_sessions','checkout_attempts']) THEN expected_table := true; END IF;
        allowed_columns := CASE t.relname
+        WHEN 'payment_events' THEN ARRAY['tenant_id','id','provider_account_id','provider_ref','event_key','order_id','order_version','status','amount_minor','currency']
         WHEN 'checkout_sessions' THEN all_columns
         WHEN 'checkout_attempts' THEN all_columns
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
@@ -116,7 +117,8 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
-        WHEN 'checkout_sessions' THEN ARRAY['phase','provider_ref','start_result','final_result','claim_kind','claim_key','updated_at']
+        WHEN 'checkout_sessions' THEN ARRAY['phase','provider_ref','start_result','final_result','claim_kind','claim_key','updated_at','refunded_net_minor','refunded_tax_minor','refunded_shipping_minor']
+        WHEN 'payment_events' THEN ARRAY['applied','error_code']
         WHEN 'checkout_attempts' THEN ARRAY['result']
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
         WHEN 'carts' THEN ARRAY['version']

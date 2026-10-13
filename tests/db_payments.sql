@@ -12,6 +12,16 @@ INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id
 DO $payments$
 DECLARE t uuid:=current_setting('test.payments_t')::uuid; mapped uuid; observed timestamptz;
 BEGIN
+ BEGIN
+  INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment)
+  VALUES(t,'fake','c19-live-denied','live');
+  RAISE EXCEPTION 'PAYMENTS_GATE live account registered';
+ EXCEPTION WHEN check_violation THEN NULL; END;
+ IF EXISTS(SELECT FROM pg_roles WHERE rolname='app_payment_resolver' AND
+  (rolcanlogin OR rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication OR rolinherit))
+ OR EXISTS(SELECT FROM pg_auth_members WHERE member='app_payment_resolver'::regrole OR roleid='app_payment_resolver'::regrole) THEN
+  RAISE EXCEPTION 'PAYMENTS_GATE unsafe resolver authority';
+ END IF;
  SELECT tenant_id,at_time INTO mapped,observed FROM app.resolve_fake_payment_account('c19-sql-authority');
  IF mapped IS DISTINCT FROM t OR observed IS NULL OR abs(extract(epoch FROM clock_timestamp()-observed))>5 THEN
   RAISE EXCEPTION 'PAYMENTS_GATE mapping/database clock differs';
