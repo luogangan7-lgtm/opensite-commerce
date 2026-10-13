@@ -15,6 +15,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
@@ -56,7 +57,7 @@ func scope(op *openapi3.Operation) string {
 }
 
 func TestUnconfiguredIdentityRouteContract(t *testing.T) {
-	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{publish.StorefrontRoute(nil)}})
+	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{publish.StorefrontRoute(nil)}, Quotes: quotes.NewApplication(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}

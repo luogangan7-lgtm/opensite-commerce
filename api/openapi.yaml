@@ -19,6 +19,7 @@ tags:
   - name: Inquiry
   - name: Identity
   - name: Health
+  - name: Quotes
   - name: Notifications
 paths:
   /api/v1/public/sites/current:
@@ -977,32 +978,53 @@ paths:
         '429': {$ref: '#/components/responses/TooManyRequests'}
   /api/public/v1/inquiries:
     post:
-      tags: [Inquiry]
+      tags:
+        - Inquiry
       operationId: submitInquiry
-      x-opensite-status: planned
+      x-opensite-status: implemented
       x-opensite-access: Public
       security: []
-      description: Site determined from a verified Host mapping; must be rate-limited.
+      description: Contact collection only; site and tenant are resolved by a trusted
+        verified-host resolver. No body identity is trusted. Limited to five attempts
+        per remote IP per minute per process; forwarded headers are ignored. No customer
+        login is created.
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/CreateInquiry'}
+            schema:
+              $ref: '#/components/schemas/CreateInquiry'
       responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '202':
           description: Inquiry persisted; notifications asynchronous
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/InquiryReceipt'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
+              schema:
+                $ref: '#/components/schemas/InquiryReceipt'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /api/v1/t/{tenant_id}/products/{product_id}:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -1599,6 +1621,509 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /api/v1/t/{tenant_id}/quotes:
+    post:
+      tags:
+        - Quotes
+      operationId: createQuote
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: quotes:write
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuote'
+      description: Create an immutable quote draft; If-Match must be exactly *.
+      responses:
+        '201':
+          description: Current complete quote representation
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Strong quote version validator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/t/{tenant_id}/quotes/{quote_id}:
+    get:
+      tags:
+        - Quotes
+      operationId: getQuote
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: quotes:read
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/QuoteId'
+      responses:
+        '200':
+          description: Current complete quote representation
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Strong quote version validator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/t/{tenant_id}/quotes/{quote_id}/send:
+    post:
+      tags:
+        - Quotes
+      operationId: sendQuote
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: quotes:write
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteTransition'
+      responses:
+        '200':
+          description: Current complete quote representation
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Strong quote version validator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw:
+    post:
+      tags:
+        - Quotes
+      operationId: withdrawQuote
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: quotes:write
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteTransition'
+      responses:
+        '200':
+          description: Current complete quote representation
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Strong quote version validator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/t/{tenant_id}/quotes/{quote_id}/expire:
+    post:
+      tags:
+        - Quotes
+      operationId: expireQuote
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: quotes:write
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteTransition'
+      responses:
+        '200':
+          description: Current complete quote representation
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Strong quote version validator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/public/v1/quotes/{quote_id}:
+    get:
+      tags:
+        - Quotes
+      operationId: getBuyerQuote
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      x-opensite-trusted-buyer: required
+      description: Requires an externally verified customer actor bound to an active
+        company membership. The configured buyer resolver is checked inside this transport;
+        without a resolver the production endpoint returns 401. Admin sessions, body
+        IDs and quote possession never authenticate a customer.
+      parameters:
+        - $ref: '#/components/parameters/QuoteId'
+      responses:
+        '200':
+          description: Current complete quote representation
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Strong quote version validator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/public/v1/quotes/{quote_id}/accept:
+    post:
+      tags:
+        - Quotes
+      operationId: acceptQuote
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      x-opensite-trusted-buyer: required
+      description: Requires an externally verified customer actor bound to an active
+        company membership. The configured buyer resolver is checked inside this transport;
+        without a resolver the production endpoint returns 401. Admin sessions, body
+        IDs and quote possession never authenticate a customer.
+      parameters:
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteTransition'
+      responses:
+        '200':
+          description: Current complete quote representation
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Strong quote version validator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/public/v1/quotes/{quote_id}/approve:
+    post:
+      tags:
+        - Quotes
+      operationId: approveQuote
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      x-opensite-trusted-buyer: required
+      description: Requires an externally verified customer actor bound to an active
+        company membership. The configured buyer resolver is checked inside this transport;
+        without a resolver the production endpoint returns 401. Admin sessions, body
+        IDs and quote possession never authenticate a customer.
+      parameters:
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteTransition'
+      responses:
+        '200':
+          description: Current complete quote representation
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Strong quote version validator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/public/v1/quotes/{quote_id}/reject:
+    post:
+      tags:
+        - Quotes
+      operationId: rejectQuote
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      x-opensite-trusted-buyer: required
+      description: Requires an externally verified customer actor bound to an active
+        company membership. The configured buyer resolver is checked inside this transport;
+        without a resolver the production endpoint returns 401. Admin sessions, body
+        IDs and quote possession never authenticate a customer.
+      parameters:
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteTransition'
+      responses:
+        '200':
+          description: Current complete quote representation
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Strong quote version validator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /api/v1/t/{tenant_id}/notifications/failures:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -1855,6 +2380,13 @@ components:
       schema:
         type: string
         maxLength: 512
+    QuoteId:
+      name: quote_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   responses:
     BadRequest:
       description: BadRequest
@@ -1938,6 +2470,12 @@ components:
       content:
         application/problem+json:
           schema: {$ref: '#/components/schemas/Problem'}
+    InternalError:
+      description: Redacted internal failure
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
   schemas:
     NotificationFailure:
       type: object
@@ -2625,13 +3163,27 @@ components:
         release_no: {type: integer, minimum: 1}
     CreateInquiry:
       type: object
-      required: [buyer_email, message]
+      required:
+        - buyer_email
+        - message
       properties:
-        product_id: {type: string, format: uuid}
-        buyer_email: {type: string, format: email}
-        buyer_name: {type: string, maxLength: 200}
-        quantity: {type: number, exclusiveMinimum: 0}
-        message: {type: string, minLength: 1, maxLength: 10000}
+        product_id:
+          type: string
+          format: uuid
+        buyer_email:
+          type: string
+          format: email
+        buyer_name:
+          type: string
+          maxLength: 200
+        quantity:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+        message:
+          type: string
+          minLength: 1
+          maxLength: 10000
       additionalProperties: false
     InquiryReceipt:
       type: object
@@ -2746,3 +3298,255 @@ components:
           format: int32
           minimum: 0
       additionalProperties: false
+    QuoteTransition:
+      type: object
+      additionalProperties: false
+    QuoteDestination:
+      type: object
+      required:
+        - country
+        - subdivision
+      additionalProperties: false
+      properties:
+        country:
+          type: string
+          pattern: ^[A-Z]{2}$
+        subdivision:
+          type: string
+          maxLength: 100
+    QuoteLineInput:
+      type: object
+      required:
+        - description
+        - quantity
+        - unit_price
+        - tax_category
+      additionalProperties: false
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        variant_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        quantity:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000000
+        unit_price:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+        tax_category:
+          type: string
+          minLength: 1
+          maxLength: 100
+    CreateQuote:
+      type: object
+      required:
+        - site_id
+        - inquiry_id
+        - company_id
+        - currency
+        - expires_at
+        - lines
+        - destination
+        - shipping_profile_id
+        - weight_g
+      additionalProperties: false
+      properties:
+        site_id:
+          type: string
+          format: uuid
+        inquiry_id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        expires_at:
+          type: string
+          format: date-time
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/QuoteLineInput'
+        destination:
+          $ref: '#/components/schemas/QuoteDestination'
+        shipping_profile_id:
+          type: string
+          format: uuid
+        weight_g:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+    Quote:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - site_id
+        - inquiry_id
+        - company_id
+        - status
+        - version
+        - currency
+        - expires_at
+        - created_by
+        - snapshot
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        inquiry_id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - draft
+            - sent
+            - accepted_pending_approval
+            - approved
+            - rejected
+            - withdrawn
+            - expired
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        expires_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+        accepted_by:
+          type: string
+          format: uuid
+        snapshot:
+          $ref: '#/components/schemas/QuoteSnapshot'
+    QuoteSnapshot:
+      type: object
+      required:
+        - calculator
+        - currency
+        - lines
+        - tax
+        - shipping
+        - subtotal
+        - tax_amount
+        - shipping_amount
+        - total
+        - calculated_at
+        - destination
+        - shipping_profile_id
+        - weight_g
+      additionalProperties: false
+      properties:
+        calculator:
+          type: string
+        currency:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuoteLine'
+        tax:
+          type: object
+          additionalProperties: true
+          description: Immutable calculator tax result snapshot
+        shipping:
+          type: object
+          additionalProperties: true
+          description: Immutable calculator shipping result snapshot
+        subtotal:
+          type: integer
+          format: int64
+          minimum: 0
+        tax_amount:
+          type: integer
+          format: int64
+          minimum: 0
+        shipping_amount:
+          type: integer
+          format: int64
+          minimum: 0
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        calculated_at:
+          type: string
+          format: date-time
+        destination:
+          $ref: '#/components/schemas/QuoteDestination'
+        shipping_profile_id:
+          type: string
+          format: uuid
+        weight_g:
+          type: integer
+          format: int64
+          minimum: 0
+    QuoteLine:
+      type: object
+      required:
+        - line_no
+        - description
+        - quantity
+        - unit_price
+        - line_total
+        - snapshot
+      additionalProperties: false
+      properties:
+        line_no:
+          type: integer
+          format: int32
+          minimum: 1
+        product_id:
+          type: string
+          format: uuid
+        variant_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        quantity:
+          type: integer
+          format: int64
+        unit_price:
+          type: integer
+          format: int64
+        line_total:
+          type: integer
+          format: int64
+        snapshot:
+          type: object
+          additionalProperties: true
+          description: Immutable line tax decision snapshot
