@@ -5,6 +5,7 @@ Depends on stdlib + scripts.ops_backup/common; called by check_all. Never opens 
 Fault probes require corruption and occupied targets to fail before restore writes.
 """
 import hashlib
+from contextlib import nullcontext
 import io
 import importlib
 import json
@@ -22,11 +23,17 @@ common = importlib.import_module("ops_common")
 
 
 class BackupTests(unittest.TestCase):
+    def migration_history(self):
+        return {path.stem: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in sorted((backup.ROOT / "migrations").glob('[0-9][0-9][0-9]_*.sql'))}
+
     def manifest(self, archive):
-        return {"format": 1, "archive": archive.name,
+        history = self.migration_history()
+        return {"format": 2, "archive": archive.name,
+                "application_migrations": history,
                 "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
                 "tables": {"app.tenants": {"rows": 2, "sha256": "a" * 64},
-                           "public.schema_migrations": {"rows": 23, "sha256": "b" * 64},
+                           "public.schema_migrations": {"rows": len(history), "sha256": "b" * 64},
                            "queue.river_migration": {"rows": 7, "sha256": "c" * 64},
                            "queue.river_job": {"rows": 2, "sha256": "d" * 64}}}
 
@@ -36,6 +43,92 @@ class BackupTests(unittest.TestCase):
         manifest = root / "fixture.dump.manifest.json"
         manifest.write_text(json.dumps(self.manifest(archive)))
         return archive, manifest
+
+    def test_older_application_history_refuses_before_database_access(self):
+        with tempfile.TemporaryDirectory() as root:
+            archive, manifest = self.fixture(Path(root))
+            content = self.manifest(archive)
+            del content["application_migrations"][max(content["application_migrations"])]
+            content["tables"]["public.schema_migrations"]["rows"] -= 1
+            manifest.write_text(json.dumps(content))
+            with patch.object(backup, "psql") as psql, patch.object(backup, "pg_command") as pg:
+                with self.assertRaisesRegex(common.OpsError, "application migration history mismatch"):
+                    backup.restore(archive, manifest)
+                psql.assert_not_called()
+                pg.assert_not_called()
+
+    def test_drifted_application_checksum_refuses_before_database_access(self):
+        with tempfile.TemporaryDirectory() as root:
+            archive, manifest = self.fixture(Path(root))
+            content = self.manifest(archive)
+            content["application_migrations"][max(content["application_migrations"])] = "f" * 64
+            manifest.write_text(json.dumps(content))
+            with patch.object(backup, "psql") as psql:
+                with self.assertRaisesRegex(common.OpsError, "application migration history mismatch"):
+                    backup.restore(archive, manifest)
+                psql.assert_not_called()
+
+    def test_application_history_read_uses_exported_snapshot(self):
+        history = {"001_identity": "a" * 64}
+        with patch.object(backup, "psql", return_value=json.dumps(history)) as psql:
+            self.assertEqual(backup.application_history("opensite", "00000003-00000007-1"), history)
+            self.assertIn("SET TRANSACTION SNAPSHOT '00000003-00000007-1'", psql.call_args.args[0])
+            self.assertIn("public.schema_migrations", psql.call_args.args[0])
+
+    def test_changed_source_history_refuses_before_forward_runner(self):
+        with tempfile.TemporaryDirectory() as root:
+            archive, manifest = self.fixture(Path(root))
+            expected = self.manifest(archive)["application_migrations"]
+            changed = {**expected, "999_drift": "f" * 64}
+            with patch.object(backup, "cluster_preflight"), \
+                    patch.object(backup, "restore_provisioning_sql", return_value="PROVISION"), \
+                    patch.object(backup, "psql", side_effect=["t", "t", "", ""]), \
+                    patch.object(backup, "pg_command"), \
+                    patch.object(backup, "verify_river"), \
+                    patch.object(backup, "table_manifest", return_value=self.manifest(archive)["tables"]), \
+                    patch.object(backup, "source_migrations", create=True, side_effect=[expected, changed]), \
+                    patch.object(backup, "migrate") as migrate:
+                with self.assertRaisesRegex(common.OpsError, "application migration history mismatch"):
+                    backup.restore(archive, manifest)
+                migrate.assert_not_called()
+
+    def test_new_backup_can_record_older_history_but_restore_rejects_it(self):
+        with tempfile.TemporaryDirectory() as root:
+            source_history = {path.stem: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in sorted((backup.ROOT / "migrations").glob('[0-9][0-9][0-9]_*.sql'))}
+            source_history.pop(max(source_history))
+            tables = {"app.tenants": {"rows": 2, "sha256": "a" * 64},
+                      "public.schema_migrations": {"rows": len(source_history), "sha256": "b" * 64},
+                      "queue.river_migration": {"rows": 7, "sha256": "c" * 64},
+                      "queue.river_job": {"rows": 2, "sha256": "d" * 64}}
+            def dump(*args, **kwargs):
+                kwargs["stdout"].write(b"PGDMP offline archive")
+            with patch.object(backup, "cluster_preflight"), \
+                    patch.object(backup, "snapshot", return_value=nullcontext("00000003-00000007-1")), \
+                    patch.object(backup, "pg_command", side_effect=dump), \
+                    patch.object(backup, "table_manifest", return_value=tables), \
+                    patch.object(backup, "application_history", return_value=source_history) as history:
+                archive, manifest = backup.backup(root, "opensite")
+                history.assert_called_once_with("opensite", "00000003-00000007-1")
+            content = backup.read_manifest(archive, manifest)
+            self.assertEqual(content["format"], 2)
+            self.assertEqual(content["application_migrations"], source_history)
+            with patch.object(backup, "psql") as psql:
+                with self.assertRaisesRegex(common.OpsError, "application migration history mismatch"):
+                    backup.restore(archive, manifest)
+                psql.assert_not_called()
+
+    def test_legacy_manifest_is_rejected_before_database_access(self):
+        with tempfile.TemporaryDirectory() as root:
+            archive, manifest = self.fixture(Path(root))
+            content = self.manifest(archive)
+            content["format"] = 1
+            del content["application_migrations"]
+            manifest.write_text(json.dumps(content))
+            with patch.object(backup, "psql") as psql:
+                with self.assertRaisesRegex(common.OpsError, "format 2"):
+                    backup.restore(archive, manifest)
+                psql.assert_not_called()
 
     def test_corruption_rejected_before_database_access(self):
         with tempfile.TemporaryDirectory() as root:
@@ -113,7 +206,7 @@ class BackupTests(unittest.TestCase):
 
     def test_all_table_mismatch_is_a_hard_failure(self):
         expected = {"app.tenants": {"rows": 2, "sha256": "a" * 64},
-                    "public.schema_migrations": {"rows": 23, "sha256": "b" * 64}}
+                    "public.schema_migrations": {"rows": len(self.migration_history()), "sha256": "b" * 64}}
         for actual in ({**expected, "app.tenants": {"rows": 2, "sha256": "c" * 64}},
                        {"app.tenants": expected["app.tenants"]},
                        {**expected, "app.extra": {"rows": 0, "sha256": "d" * 64}}):
@@ -155,7 +248,7 @@ class BackupTests(unittest.TestCase):
 
     def test_live_manifest_refuses_omitted_queue_witness(self):
         tables = {"app.tenants": {"rows": 2, "sha256": "a" * 64},
-                  "public.schema_migrations": {"rows": 23, "sha256": "b" * 64}}
+                  "public.schema_migrations": {"rows": len(self.migration_history()), "sha256": "b" * 64}}
         output = "\n".join(json.dumps({"table": table, **receipt}) for table, receipt in tables.items())
         with patch.object(backup, "psql", return_value=output):
             with self.assertRaisesRegex(common.OpsError, "queue"):

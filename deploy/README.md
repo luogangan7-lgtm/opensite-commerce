@@ -84,13 +84,19 @@ The backup prints archive and manifest filenames. It creates private,
 timestamped `pg_dump -Fc` archives and SHA-256 manifests with counts and
 deterministic content hashes for every `app` and `queue` table, including
 River migration history, plus the application migration ledger.
-Dump and manifest share one exported REPEATABLE READ snapshot. Restrict access
+Format 2 also records each application migration's version and SHA-256.
+Dump, table hashes and migration history share one exported REPEATABLE READ snapshot. Restrict access
 to both files: archives contain all application data. `OPENSITE_BACKUP_DIR`
 or `--directory` changes the output location. This is a full backup, without
 WAL archiving, PITR or encryption-at-rest automation.
 
 Restore targets only the configured `OPENSITE_DB`, verifies the archive hash
-before touching PostgreSQL, and creates an absent database from `template0`.
+and exact application migration set/checksums before touching PostgreSQL,
+and creates an absent database from `template0`. Recovery uses the matching
+source version: it never upgrades an older archive during restore. Use the
+backup's original source checkout to recover older data, verify recovery there,
+then perform an explicit forward upgrade. Legacy format 1 manifests are refused
+because they lack the required version evidence.
 An existing target must have no application/public objects, extra extensions
 or other sessions. It never drops a populated database. The cluster must
 already contain the capability roles created by the application migrations.
@@ -127,7 +133,11 @@ cluster, bootstraps capability roles, restores into a fresh empty database,
 compares every table and media bytes, and verifies API/worker health and grants
 again. It then submits a signed synthetic inventory-expiry job and requires
 River completion after restart.
-Corrupted archive and populated-target probes must fail. `drill.json` records
+Corrupted archive and populated-target probes must fail. A complete predecessor
+database is built from the immutable migration prefix and backed up. Disabling
+the history guards reproduces an unwanted upgrade and content mismatch; with
+guards restored, the older archive is refused while the target remains absent.
+`drill.json` records
 the source SHA, hashes, counts, steps and explicit pending gates. On success
 or ordinary failure the drill removes its project, volumes and private files.
 On forced termination, use the printed project name to inspect and remove

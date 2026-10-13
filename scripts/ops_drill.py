@@ -18,6 +18,7 @@ import tempfile
 import time
 import urllib.request
 import uuid
+from unittest.mock import patch
 
 from ops_common import ROOT, OpsError, compose, compose_command, pg_command, psql, quote_ident
 from ops_deploy import DeployError, LOGIN_ROLES, preflight
@@ -113,6 +114,67 @@ def processed_witness(tenant):
         time.sleep(.2)  # bounded state polling; no concurrency ordering
 
 
+def previous_version_refusal(directory):
+    """Real predecessor archive: missing guards mutate the target; fixed guards refuse it.
+
+    Only called after deleting this drill's fresh empty database. Build the
+    complete predecessor from immutable migration files and the normal runner;
+    the transient prefix runner exists only inside this owned private directory.
+    """
+    files = sorted((ROOT / 'migrations').glob('[0-9][0-9][0-9]_*.sql'))
+    require(len(files) > 1 and files[-1].name.endswith('_ops_metrics.sql'),
+            'ops metrics must be the next contiguous forward migration')
+    prefix = directory / 'predecessor'
+    (prefix / 'migrations').mkdir(parents=True)
+    (prefix / 'scripts').mkdir()
+    shutil.copy2(ROOT / 'scripts/migrate.sh', prefix / 'scripts/migrate.sh')
+    for source in files[:-1]:
+        shutil.copy2(source, prefix / 'migrations' / source.name)
+    psql('CREATE DATABASE opensite TEMPLATE template0;', 'postgres')
+    compose(['run', '--rm', '--no-deps', '--entrypoint', '/bin/sh', 'migrate', '-c',
+             'export PGPASSWORD="$POSTGRES_PASSWORD"; '
+             'export DATABASE_URL="host=postgres user=postgres dbname=opensite"; '
+             'exec /usr/local/bin/river-migrate'])
+    runner = Path('/workspace') / prefix.relative_to(ROOT) / 'scripts/migrate.sh'
+    pg_command(['bash', '-c',
+                'export DATABASE_URL="host=127.0.0.1 user=postgres dbname=opensite"; '
+                'exec bash "$1"', 'ops-predecessor', str(runner)])
+    archive, manifest_path = backup(directory / 'predecessor-backup')
+    manifest = read_manifest(archive, manifest_path)
+    history = manifest['application_migrations']
+    require(history == {p.stem: digest(p) for p in files[:-1]},
+            'predecessor fixture history does not match immutable source prefix')
+    psql('DROP DATABASE opensite WITH (FORCE);', 'postgres')
+    # Deliberate local fault injection reproduces the reviewed bug: disabling
+    # both guards restores the older DB, commits a new migration, then fails.
+    with patch('ops_backup.require_matching_application_history', return_value=None):
+        try:
+            restore(archive, manifest_path)
+        except OpsError as error:
+            require('all-table manifest mismatch' in str(error),
+                    'missing history guards failed for an unrelated reason')
+        else:
+            raise OpsError('missing history guards did not expose the unsafe upgrade')
+    require(psql('SELECT count(*) FROM public.schema_migrations;').strip() == str(len(files)),
+            'fault probe did not commit the unwanted forward migration')
+    psql('DROP DATABASE opensite WITH (FORCE);', 'postgres')
+    try:
+        restore(archive, manifest_path)
+    except OpsError as error:
+        require('application migration history mismatch' in str(error),
+                'older archive refused for an unrelated reason')
+    else:
+        raise OpsError('older archive accepted by the current source version')
+    require(psql("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname='opensite');",
+                 'postgres').strip() == 'f', 'version refusal created a target database')
+    print('PASS: older archive with history guards disabled RED (unwanted upgrade); '
+          'restored guards GREEN (target remains absent)', flush=True)
+    return {'backup_last_migration': max(history), 'current_last_migration': files[-1].stem,
+            'archive_sha256': manifest['archive_sha256'],
+            'missing_guards': 'RED: forward migration committed before content mismatch',
+            'fixed_guards': 'GREEN: version mismatch before target database creation'}
+
+
 def drill(receipt_dir):
     receipt_dir.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
@@ -189,6 +251,8 @@ def drill(receipt_dir):
             compose(['run','--rm','migrate','install'])
             require(psql('SELECT count(*) FROM app.products;').strip() == '0', 'fresh cluster retained products')
             psql('DROP DATABASE opensite WITH (FORCE);', 'postgres')
+            version_refusal = previous_version_refusal(Path(temp))
+            steps.append('predecessor-archive-history-guards-red-green-before-target-creation')
             restored = restore(archive, manifest_path)
             require(digest(media_archive) == media_hash, 'blob archive digest mismatch')
             compose(['exec','-T','postgres','tar','-C','/media','-xf','-'], input=media_archive.read_bytes())
@@ -207,6 +271,7 @@ def drill(receipt_dir):
                        'project':project, 'pg':'18.6', 'tables_verified':len(restored['tables']),
                        'archive_sha256':manifest['archive_sha256'], 'media_archive_sha256':media_hash,
                        'blob_sha256':blob_hash, 'tables':restored['tables'], 'steps':steps,
+                       'restore_version_gate':version_refusal,
                        'seconds':round(time.monotonic()-started,2), 'exit_code':0,
                        'worker':'PASS: River restart and signed expiry job completed',
                        'outbox_metrics':'PASS: pending/DLQ aggregate witnesses',

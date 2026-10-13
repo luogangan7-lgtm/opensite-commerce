@@ -55,12 +55,52 @@ def restore_provisioning_sql(database):
         raise OpsError(str(error)) from None
 
 
-def table_manifest(database=None, snapshot_id=None):
+def snapshot_transaction(snapshot_id=None):
     prefix = "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\n"
     if snapshot_id:
         if not re.fullmatch(r"[0-9A-Fa-f]+-[0-9A-Fa-f]+-[0-9]+", snapshot_id):
             raise OpsError("invalid snapshot identifier")
         prefix += f"SET TRANSACTION SNAPSHOT '{snapshot_id}';\n"
+    return prefix
+
+
+def validate_application_history(history):
+    if not isinstance(history, dict) or not history:
+        raise OpsError("invalid application migration history")
+    for version, checksum in history.items():
+        if (not re.fullmatch(r"[0-9]{3}_[a-z][a-z0-9_]*", version)
+                or not isinstance(checksum, str) or not re.fullmatch(r"[0-9a-f]{64}", checksum)):
+            raise OpsError("invalid application migration history")
+    if [int(version[:3]) for version in sorted(history)] != list(range(1, len(history) + 1)):
+        raise OpsError("invalid application migration history numbering")
+    return dict(sorted(history.items()))
+
+
+def application_history(database=None, snapshot_id=None):
+    sql = snapshot_transaction(snapshot_id) + """
+SELECT coalesce(json_object_agg(version, checksum ORDER BY version), '{}'::json)
+FROM public.schema_migrations;
+COMMIT;
+"""
+    try:
+        history = json.loads(psql(sql, database))
+    except (ValueError, TypeError):
+        raise OpsError("invalid application migration history response") from None
+    return validate_application_history(history)
+
+
+def source_migrations():
+    return validate_application_history({path.stem: digest(path)
+        for path in sorted((ROOT / "migrations").glob('[0-9][0-9][0-9]_*.sql'))})
+
+
+def require_matching_application_history(history):
+    if history != source_migrations():
+        raise OpsError("application migration history mismatch: restore requires the exact backup source version and checksums")
+
+
+def table_manifest(database=None, snapshot_id=None):
+    prefix = snapshot_transaction(snapshot_id)
     # Hash canonical jsonb row representations; sorting hashes preserves duplicates
     # while excluding physical row order. No row content leaves the container.
     # ponytail: aggregation uses O(rows) server memory; stream sorted hashes if
@@ -116,11 +156,13 @@ def backup(directory=None, database=None):
                 pg_command(["pg_dump", "-h", "127.0.0.1", "-U", "postgres", "-d", name,
                             "-Fc", "--snapshot=" + snap], stdout=stream)
             tables = table_manifest(name, snap)
+            history = application_history(name, snap)
         if not archive.stat().st_size:
             raise OpsError("empty backup archive")
-        manifest = {"format": 1, "created_at": datetime.now(timezone.utc).isoformat(),
+        manifest = {"format": 2, "created_at": datetime.now(timezone.utc).isoformat(),
                     "database": name, "archive": archive.name,
-                    "archive_sha256": digest(archive), "tables": tables}
+                    "archive_sha256": digest(archive), "tables": tables,
+                    "application_migrations": history}
         fd = os.open(manifest_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         manifest_created = True
         with os.fdopen(fd, "w") as stream:
@@ -139,8 +181,9 @@ def backup(directory=None, database=None):
 def read_manifest(archive, manifest_path):
     try:
         manifest = json.loads(Path(manifest_path).read_text())
-        if manifest["format"] != 1 or manifest["archive"] != Path(archive).name:
-            raise OpsError("unsupported or mismatched backup manifest")
+        if manifest["format"] != 2 or manifest["archive"] != Path(archive).name:
+            raise OpsError("unsupported or mismatched backup manifest: format 2 application history required")
+        history = validate_application_history(manifest["application_migrations"])
         tables = manifest["tables"]
         if not isinstance(tables, dict) or "public.schema_migrations" not in tables:
             raise OpsError("manifest requires migration history")
@@ -155,6 +198,8 @@ def read_manifest(archive, manifest_path):
                     or receipt["rows"] < 0
                     or not re.fullmatch(r"[0-9a-f]{64}", receipt.get("sha256", ""))):
                 raise OpsError("invalid table receipt")
+        if tables["public.schema_migrations"]["rows"] != len(history):
+            raise OpsError("application migration history count mismatch")
         if digest(Path(archive)) != manifest["archive_sha256"]:
             raise OpsError("archive digest mismatch")
     except (OSError, ValueError, KeyError, TypeError):
@@ -172,6 +217,9 @@ def restore(archive, manifest_path=None, database=None):
     archive = Path(archive)
     manifest_path = Path(manifest_path or archive.with_suffix(".dump.manifest.json"))
     manifest = read_manifest(archive, manifest_path)
+    # Reject upgrade/downgrade/checksum drift before even inspecting the target.
+    # A restore never doubles as a forward upgrade of an older valid backup.
+    require_matching_application_history(manifest["application_migrations"])
     name = db_name(database)
     if name != db_name():
         raise OpsError("restore target must match assigned OPENSITE_DB")
@@ -192,6 +240,7 @@ def restore(archive, manifest_path=None, database=None):
     pg_command(["pg_restore", "-h", "127.0.0.1", "-U", "postgres", "-d", name,
                 "--exit-on-error", "--single-transaction"], input=archive.read_bytes())
     compare_tables(manifest["tables"], table_manifest(name))
+    require_matching_application_history(manifest["application_migrations"])
     migrate(name)
     verify_river(name)
     compare_tables(manifest["tables"], table_manifest(name))
