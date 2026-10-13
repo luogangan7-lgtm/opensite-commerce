@@ -17,27 +17,6 @@ type AppApiKey struct {
 	KeyPrefix string             `json:"key_prefix"`
 	KeyHash   []byte             `json:"key_hash"`
 	Scopes    []string           `json:"scopes"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
-	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-}
-
-type AppAttributeDefinition struct {
-	TenantID  pgtype.UUID `json:"tenant_id"`
-	ID        pgtype.UUID `json:"id"`
-	Code      string      `json:"code"`
-	ValueType string      `json:"value_type"`
-	Schema    []byte      `json:"schema"`
-}
-
-type AppAuditEvent struct {
-	TenantID       pgtype.UUID        `json:"tenant_id"`
-	ID             pgtype.UUID        `json:"id"`
-	ActorKind      string             `json:"actor_kind"`
-	ActorID        pgtype.UUID        `json:"actor_id"`
-	Operation      string             `json:"operation"`
-	ResourceType   string             `json:"resource_type"`
-	ResourceID     pgtype.UUID        `json:"resource_id"`
 	BeforeRevision pgtype.Int8        `json:"before_revision"`
 	AfterRevision  pgtype.Int8        `json:"after_revision"`
 	Payload        []byte             `json:"payload"`

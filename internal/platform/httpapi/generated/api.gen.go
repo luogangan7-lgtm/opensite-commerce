@@ -197,67 +197,6 @@ func (e ComponentNodeComponent) Valid() bool {
 		return true
 	default:
 		return false
-	}
-}
-
-// Defines values for ComponentSetPropsType.
-const (
-	ComponentSetPropsTypeComponentSetProps ComponentSetPropsType = "component.set_props"
-)
-
-// Valid indicates whether the value is a known member of the ComponentSetPropsType enum.
-func (e ComponentSetPropsType) Valid() bool {
-	switch e {
-	case ComponentSetPropsTypeComponentSetProps:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for DataBindingResolver.
-const (
-	DataBindingResolverCatalogCollectionProducts1 DataBindingResolver = "catalog.collection-products@1"
-	DataBindingResolverCatalogFeaturedProducts1   DataBindingResolver = "catalog.featured-products@1"
-	DataBindingResolverCompanyProfile1            DataBindingResolver = "company.profile@1"
-)
-
-// Valid indicates whether the value is a known member of the DataBindingResolver enum.
-func (e DataBindingResolver) Valid() bool {
-	switch e {
-	case DataBindingResolverCatalogCollectionProducts1:
-		return true
-	case DataBindingResolverCatalogFeaturedProducts1:
-		return true
-	case DataBindingResolverCompanyProfile1:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for DraftStatus.
-const (
-	DraftStatusAbandoned DraftStatus = "abandoned"
-	DraftStatusOpen      DraftStatus = "open"
-	DraftStatusPublished DraftStatus = "published"
-)
-
-// Valid indicates whether the value is a known member of the DraftStatus enum.
-func (e DraftStatus) Valid() bool {
-	switch e {
-	case DraftStatusAbandoned:
-		return true
-	case DraftStatusOpen:
-		return true
-	case DraftStatusPublished:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for FakePaymentEventStatus.
 const (
 	FakePaymentEventStatusAuthorized FakePaymentEventStatus = "authorized"
 	FakePaymentEventStatusCanceled   FakePaymentEventStatus = "canceled"

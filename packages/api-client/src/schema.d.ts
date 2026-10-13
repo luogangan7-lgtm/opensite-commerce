@@ -27,27 +27,6 @@ export interface paths {
             header?: never;
             path?: never;
             cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Explicit test/development configuration only; never mounted in production. The verifier authenticates exact raw bytes before a trusted event reaches checkout. Checkout rechecks persisted tenant/order, amount, currency, version and provider binding and deduplicates delivery inside a transaction. */
-        post: operations["receiveFakePaymentEvent"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/public/sites/current": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Current sealed public release for a verified DNS hostname. Version-1 public manifest seals product view models derived from catalog published listings and pinned content revisions. */
-        get: operations["getPublishedSite"];
-        put?: never;
         post?: never;
         delete?: never;
         options?: never;
