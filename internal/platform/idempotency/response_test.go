@@ -118,3 +118,12 @@ func TestLocalResponseEmptyRepresentation(t *testing.T) {
 		}
 	}
 }
+
+// net/http writes one "Name: value\r\n" line per value; empty values still cost.
+func TestValidateResponseCountsEveryHeaderLine(t *testing.T) {
+	values := make([]string, 20000)
+	_, err := validateResponse(Response{Status: 200, Header: http.Header{"X-Many": values}}, 1024)
+	if !errors.Is(err, ErrInvalidResponse) {
+		t.Fatalf("repeated empty header lines bypassed cap: %v", err)
+	}
+}

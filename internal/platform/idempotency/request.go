@@ -46,6 +46,13 @@ func validKey(key string) bool {
 // Query keys AND values are sorted; duplicate multiplicity is preserved. No map
 // or caller slice is mutated. JSON bodies are intentionally not interpreted.
 func Fingerprint(method, routeTemplate string, pathParams map[string]string, query url.Values, rawBody []byte) [32]byte {
+	return fingerprint(method, routeTemplate, pathParams, query, rawBody, nil)
+}
+
+// ifMatch is a semantic command input (optimistic-lock version). It is framed
+// after the body only when present, so header-free hashes stay unchanged.
+// Authentication/CSRF headers are deliberately never fingerprinted.
+func fingerprint(method, routeTemplate string, pathParams map[string]string, query url.Values, rawBody []byte, ifMatch []string) [32]byte {
 	h := sha256.New()
 	field(h, []byte("opensite-idempotency-v1"))
 	field(h, []byte(method))
@@ -68,6 +75,13 @@ func Fingerprint(method, routeTemplate string, pathParams map[string]string, que
 		}
 	}
 	field(h, rawBody)
+	if len(ifMatch) > 0 {
+		field(h, []byte("if-match"))
+		count(h, len(ifMatch))
+		for _, v := range ifMatch {
+			field(h, []byte(v))
+		}
+	}
 	var digest [32]byte
 	copy(digest[:], h.Sum(nil))
 	return digest
@@ -84,7 +98,7 @@ func FingerprintRequest(r *http.Request, routeTemplate string, pathParams map[st
 	if err != nil {
 		return [32]byte{}, apperrors.New(400, "invalid_request", "Invalid query encoding")
 	}
-	return Fingerprint(r.Method, routeTemplate, pathParams, query, rawBody), nil
+	return fingerprint(r.Method, routeTemplate, pathParams, query, rawBody, r.Header.Values("If-Match")), nil
 }
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))

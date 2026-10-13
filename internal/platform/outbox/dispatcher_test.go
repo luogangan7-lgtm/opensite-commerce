@@ -204,3 +204,30 @@ func TestValidationAndCancellationBeforeClaim(t *testing.T) {
 		t.Fatalf("%v %v", err, s.calls)
 	}
 }
+
+type ctxFailStore struct {
+	*fakeStore
+	failCtxErr error
+}
+
+func (s *ctxFailStore) Fail(ctx context.Context, l Lease, code string, retry int32) (bool, error) {
+	s.failCtxErr = ctx.Err()
+	return s.fakeStore.Fail(ctx, l, code, retry)
+}
+
+// A send that times out with the cycle context must still persist its retry
+// delay instead of handing Fail an already-canceled context (PR25 review).
+func TestFailPersistsAfterCycleDeadline(t *testing.T) {
+	s := &ctxFailStore{fakeStore: &fakeStore{queue: []Lease{fixture(1)}, failOK: true}}
+	d := dispatcher(s.fakeStore, func(ctx context.Context, _ Delivery) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	d.Store = s
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	result, _ := d.Dispatch(ctx, tenant, 1)
+	if s.failCtxErr != nil || result.Failed != 1 || s.retry != 2 {
+		t.Fatalf("failure not persisted: ctxErr=%v result=%+v retry=%d", s.failCtxErr, result, s.retry)
+	}
+}

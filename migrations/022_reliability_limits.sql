@@ -16,20 +16,22 @@ ALTER TABLE app.outbox_events ADD CONSTRAINT outbox_lease_shape CHECK (
 CREATE OR REPLACE FUNCTION app.idempotency_claim(p_tenant uuid,p_actor_kind text,p_actor_id uuid,p_operation text,
  p_key text,p_hash bytea,p_ttl interval,p_claim uuid) RETURNS app.idempotency_records
 LANGUAGE plpgsql SET search_path=pg_catalog,app,pg_temp AS $$
-DECLARE r app.idempotency_records; ttl_seconds numeric:=extract(epoch FROM p_ttl); BEGIN
+DECLARE r app.idempotency_records; ttl_seconds numeric:=extract(epoch FROM p_ttl); claimed_at timestamptz; BEGIN
  -- Interval comparison normalizes years differently from epoch extraction.
  -- Validate the exact elapsed seconds used below, including mixed components.
  IF p_ttl IS NULL OR NOT isfinite(p_ttl) OR ttl_seconds<=0 OR ttl_seconds>86400 THEN
   RAISE EXCEPTION 'IDEMPOTENCY_TTL_ARGUMENT' USING ERRCODE='22023';
  END IF;
  -- Interpret the bounded interval as elapsed seconds, including across DST.
+ -- One clock read: token rotation and the new expiry must agree.
+ claimed_at:=clock_timestamp();
  INSERT INTO app.idempotency_records AS existing(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token)
  VALUES(p_tenant,p_actor_kind,p_actor_id,p_operation,p_key,p_hash,
-  clock_timestamp()+make_interval(secs=>ttl_seconds),p_claim)
+  claimed_at+make_interval(secs=>ttl_seconds),p_claim)
  ON CONFLICT(tenant_id,actor_kind,actor_id,operation,idempotency_key) DO UPDATE SET
-  claim_token=CASE WHEN existing.state='in_progress' AND existing.expires_at<=clock_timestamp() AND existing.request_hash=EXCLUDED.request_hash
+  claim_token=CASE WHEN existing.state='in_progress' AND existing.expires_at<=claimed_at AND existing.request_hash=EXCLUDED.request_hash
                    THEN EXCLUDED.claim_token ELSE existing.claim_token END,
-  expires_at=CASE WHEN existing.state='in_progress' AND existing.expires_at<=clock_timestamp() AND existing.request_hash=EXCLUDED.request_hash
+  expires_at=CASE WHEN existing.state='in_progress' AND existing.expires_at<=claimed_at AND existing.request_hash=EXCLUDED.request_hash
                   THEN EXCLUDED.expires_at ELSE existing.expires_at END
  RETURNING existing.* INTO r;
  RETURN r;

@@ -63,7 +63,9 @@ func runContext(parent context.Context, getenv func(string) string, sender outbo
 		return err
 	}
 	defer cleanup()
-	if err := worker.Start(ctx); err != nil {
+	// River turns a canceled Start context into StopAndCancel. Detach it so a
+	// signal reaches running jobs only through Stop's 30s grace window below.
+	if err := worker.Start(context.WithoutCancel(ctx)); err != nil {
 		return errors.New("worker startup failed")
 	}
 	runnerDone := make(chan error, 1)

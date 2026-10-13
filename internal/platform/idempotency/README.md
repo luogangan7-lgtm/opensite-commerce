@@ -17,7 +17,8 @@ names. It preserves the key and requires 1..128 ASCII bytes in `0x21..0x7e`
 validate RawQuery themselves. Do not use URL.Query's error-discarding behavior.
 The versioned SHA256 fingerprint length-frames method, registered route template,
 sorted resolved path parameters, query keys and sorted values (retaining
-multiplicity), and the exact raw body bytes. Query ordering/encoding is
+multiplicity), the exact raw body bytes and, when present, the `If-Match`
+values (FingerprintRequest only; auth/CSRF headers are never included). Query ordering/encoding is
 canonicalized; JSON bodies are never parsed/re-encoded, so whitespace changes
 matter. Read the route's bounded raw body once and include it even when empty.
 

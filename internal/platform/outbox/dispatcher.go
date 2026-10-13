@@ -58,6 +58,9 @@ type Dispatcher struct {
 }
 type Result struct{ Claimed, Sent, Completed, Failed int }
 
+// failBudget bounds the detached transaction that records a failed send.
+const failBudget = 5 * time.Second
+
 // Dispatch performs at most maxEvents deliveries for a caller-authorized tenant.
 func (d Dispatcher) Dispatch(ctx context.Context, tenantID string, maxEvents int) (Result, error) {
 	var result Result
@@ -114,7 +117,11 @@ func (d Dispatcher) Dispatch(ctx context.Context, tenantID string, maxEvents int
 					retry *= 2
 				}
 			}
-			accepted, err := d.Store.Fail(ctx, l, "OUTBOX_SEND_FAILED", retry)
+			// The send may have ended because ctx expired; record the retry under a
+			// short detached budget. fail_outbox still fences on the lease.
+			failCtx, failCancel := context.WithTimeout(context.WithoutCancel(ctx), failBudget)
+			accepted, err := d.Store.Fail(failCtx, l, "OUTBOX_SEND_FAILED", retry)
+			failCancel()
 			if err != nil {
 				return result, err
 			}

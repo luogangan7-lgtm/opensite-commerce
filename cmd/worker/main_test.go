@@ -38,10 +38,36 @@ func TestStartupRejectsInvalidOutboxModeAndDefaultsDisabled(t *testing.T) {
 type testJobs struct {
 	started, stopped  bool
 	startErr, stopErr error
+	startCtx          context.Context
+	canceledAtStop    bool
 }
 
-func (w *testJobs) Start(context.Context) error { w.started = true; return w.startErr }
-func (w *testJobs) Stop(context.Context) error  { w.stopped = true; return w.stopErr }
+func (w *testJobs) Start(ctx context.Context) error {
+	w.started, w.startCtx = true, ctx
+	return w.startErr
+}
+func (w *testJobs) Stop(context.Context) error {
+	w.stopped = true
+	w.canceledAtStop = w.startCtx != nil && w.startCtx.Err() != nil
+	return w.stopErr
+}
+
+// River treats a canceled Start context as StopAndCancel; a signal must reach
+// running jobs only through Stop's grace window (PR25 review, main.go).
+func TestSignalDoesNotCancelJobsBeforeGracefulStop(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	jobs := &testJobs{}
+	factory := func(context.Context, func(string) string, outbox.Sender) (jobWorker, *outbox.Runner, func(), error) {
+		return jobs, nil, func() {}, nil
+	}
+	cancel()
+	if err := runContext(ctx, env(nil), nil, factory); err != nil {
+		t.Fatal(err)
+	}
+	if !jobs.stopped || jobs.canceledAtStop {
+		t.Fatalf("jobs context canceled before Stop: %+v", jobs)
+	}
+}
 
 type testSender func(context.Context, outbox.Delivery) error
 

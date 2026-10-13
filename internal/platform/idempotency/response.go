@@ -180,9 +180,9 @@ func validateResponse(response Response, maxBodyBytes int64) (Response, error) {
 		if _, duplicate := header[canonical]; duplicate {
 			return Response{}, ErrInvalidResponse
 		}
-		size += len(name)
 		for _, value := range values {
-			size += len(value)
+			// net/http serializes one "Name: value\r\n" line per value.
+			size += len(name) + len(value) + 4
 			if !utf8.ValidString(value) {
 				return Response{}, ErrInvalidResponse
 			}

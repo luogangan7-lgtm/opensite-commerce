@@ -105,5 +105,8 @@ SET LOCAL ROLE app_outbox_worker;
 SELECT pg_temp.assert_limits(NOT EXISTS(SELECT FROM app.outbox_active_tenants(NULL,1000) WHERE tenant_id=:'tb'),'TENANTS_DLQ_EXCLUDED');
 RESET ROLE;
 \endif
+-- One clock read per claim: token rotation and expiry must agree (PR25 review).
+SELECT pg_temp.assert_limits(regexp_count(prosrc,'clock_timestamp\(\)')=1,'TTL_SINGLE_CLOCK_READ')
+ FROM pg_proc WHERE oid='app.idempotency_claim(uuid,text,uuid,text,text,bytea,interval,uuid)'::regprocedure;
 ROLLBACK;
 \echo RELIABILITY_LIMITS_OK

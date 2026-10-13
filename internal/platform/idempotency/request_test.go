@@ -100,3 +100,23 @@ func TestFingerprintRequestRequiredInputs(t *testing.T) {
 		t.Fatal("empty body is not fingerprinted")
 	}
 }
+
+// If-Match selects the optimistic-lock version; reusing a key against another
+// version must not replay the earlier result.
+func TestFingerprintRequestIncludesIfMatch(t *testing.T) {
+	a := httptest.NewRequest("PATCH", "/x", nil)
+	b := httptest.NewRequest("PATCH", "/x", nil)
+	a.Header.Set("If-Match", `"1"`)
+	b.Header.Set("If-Match", `"3"`)
+	x, _ := FingerprintRequest(a, "/x", nil, nil)
+	y, _ := FingerprintRequest(b, "/x", nil, nil)
+	if x == y {
+		t.Fatal("If-Match not fingerprinted")
+	}
+	c := httptest.NewRequest("PATCH", "/x", nil)
+	c.Header.Set("Authorization", "Bearer other")
+	z, _ := FingerprintRequest(c, "/x", nil, nil)
+	if z != Fingerprint("PATCH", "/x", nil, nil, nil) {
+		t.Fatal("non-semantic header changed fingerprint")
+	}
+}
