@@ -20,6 +20,7 @@ export const RENDERING = {
 };
 export type BaselineRecord = {
   schema: 2; snapshot: string; scope: Scope; sourceFingerprint: string; pngSha256: string;
+  scopeSnapshots: string[];
   sourceSha: string; runUrl: string; image: string; playwright: string; font: string; rendering: typeof RENDERING;
 };
 export function filesAt(directory: string): string[] {
@@ -52,9 +53,9 @@ export function runId(runUrl: string): string {
   if (!match) throw new Error('Invalid baseline producer run URL');
   return match[1];
 }
-export function makeRecord(snapshot: string, fingerprint: string, png: string, sourceSha: string, runUrl: string): BaselineRecord {
+export function makeRecord(snapshot: string, fingerprint: string, png: string, sourceSha: string, runUrl: string, scopeSnapshots = [snapshot]): BaselineRecord {
   return { schema: 2, snapshot, scope: scopeForSnapshot(snapshot), sourceFingerprint: fingerprint, pngSha256: png,
-    sourceSha, runUrl, image: PLAYWRIGHT_IMAGE, playwright: '1.64.0', font: '@fontsource/inter@5.3.0', rendering: RENDERING };
+    scopeSnapshots, sourceSha, runUrl, image: PLAYWRIGHT_IMAGE, playwright: '1.64.0', font: '@fontsource/inter@5.3.0', rendering: RENDERING };
 }
 export function assertBaselineSet(pngs: Record<string, string>, records: Record<string, unknown>, inputs: Record<Scope, string>): BaselineRecord[] {
   const pngPaths = Object.keys(pngs).sort();
@@ -65,6 +66,8 @@ export function assertBaselineSet(pngs: Record<string, string>, records: Record<
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid PNG provenance record');
     const record = value as BaselineRecord;
     if (record.schema !== 2 || record.snapshot !== snapshot || record.scope !== scopeForSnapshot(snapshot)) throw new Error(`Invalid PNG scope or schema: ${snapshot}`);
+    const inventory = pngPaths.filter(path => scopeForSnapshot(path) === record.scope);
+    if (!Array.isArray(record.scopeSnapshots) || JSON.stringify(record.scopeSnapshots) !== JSON.stringify(inventory)) throw new Error(`Producer-observed scope inventory differs: ${snapshot}`);
     if (typeof record.sourceSha !== 'string' || !/^[0-9a-f]{40}$/.test(record.sourceSha)) throw new Error('Invalid producer SHA');
     runId(record.runUrl);
     if (record.image !== PLAYWRIGHT_IMAGE || record.playwright !== '1.64.0' || record.font !== '@fontsource/inter@5.3.0' ||
@@ -95,5 +98,9 @@ export function readRecords(root = process.cwd()): Record<string, unknown> {
   }));
 }
 export function checkedRecords(root = process.cwd()): BaselineRecord[] {
-  return assertBaselineSet(pngHashes(root), readRecords(root), fingerprints(root));
+  const records = assertBaselineSet(pngHashes(root), readRecords(root), fingerprints(root));
+  for (const scope of SCOPES) {
+    for (const viewport of ['desktop', 'mobile']) if (!records.some(record => record.scope === scope && record.snapshot.startsWith(`${viewport}/`))) throw new Error(`Missing ${viewport} scope inventory: ${scope}`);
+  }
+  return records;
 }

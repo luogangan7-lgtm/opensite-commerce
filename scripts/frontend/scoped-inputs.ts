@@ -5,11 +5,13 @@
  * Invariants: sorted repository-relative files, workspace metadata included, unknown local/dynamic dependencies fail closed.
  */
 import ts from 'typescript-parser';
+import { isBuiltin } from 'node:module';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export type RendererScope = 'gallery' | 'admin' | 'storefront-published' | 'storefront-commerce';
-type PackageMetadata = { name?: string; workspaces?: string[] | { packages?: string[] }; exports?: unknown; main?: string; module?: string; types?: string };
+type PackageMetadata = { name?: string; workspaces?: string[] | { packages?: string[] }; exports?: unknown; main?: string; module?: string; types?: string;
+  dependencies?: Record<string, string>; devDependencies?: Record<string, string>; peerDependencies?: Record<string, string>; optionalDependencies?: Record<string, string> };
 const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.astro', '.css', '.json', '.d.ts'];
 
 function metadata(path: string): PackageMetadata {
@@ -27,7 +29,9 @@ function filesIn(path: string): string[] {
 export function graphInputFiles(roots: string[], root: string): string[] {
   const repository = realpathSync(root);
   const found = new Set<string>();
+  const visited = new Set<string>();
   const packages = new Map<string, { directory: string; path: string; data: PackageMetadata }>();
+  const externals = new Map<string, Set<string>>();
   const repositoryPackage = join(repository, 'package.json');
   const contained = (path: string): string => {
     const local = relative(repository, path);
@@ -50,15 +54,21 @@ export function graphInputFiles(roots: string[], root: string): string[] {
     }
     return directories;
   };
+  const declareExternals = (path: string, data: PackageMetadata): void => {
+    externals.set(path, new Set(Object.keys({ ...data.dependencies, ...data.devDependencies, ...data.peerDependencies, ...data.optionalDependencies })));
+  };
   if (existsSync(repositoryPackage)) {
     record(repositoryPackage);
-    const workspace = metadata(repositoryPackage).workspaces;
+    const data = metadata(repositoryPackage);
+    declareExternals(repositoryPackage, data);
+    const workspace = data.workspaces;
     const patterns = Array.isArray(workspace) ? workspace : workspace?.packages ?? [];
     for (const directory of patterns.flatMap(workspaceDirectories)) {
       const path = join(directory, 'package.json');
       if (!existsSync(path)) continue;
       record(path);
       const data = metadata(path);
+      declareExternals(path, data);
       if (data.name) {
         if (packages.has(data.name)) throw new Error(`Duplicate workspace package: ${data.name}`);
         packages.set(data.name, { directory, path, data });
@@ -84,6 +94,40 @@ export function graphInputFiles(roots: string[], root: string): string[] {
     }
     return repository;
   };
+  const checkedConfigs = new Set<string>();
+  const rejectAliases = (directory: string): void => {
+    if (checkedConfigs.has(directory)) return;
+    checkedConfigs.add(directory);
+    const config = (path: string): void => {
+      if (checkedConfigs.has(path)) return;
+      checkedConfigs.add(path);
+      found.add(record(path));
+      const parsed = ts.parseConfigFileTextToJson(path, readFileSync(path, 'utf8'));
+      if (parsed.error) throw new Error(`Invalid dependency config: ${path}`);
+      const data = parsed.config as { compilerOptions?: { paths?: Record<string, unknown>; baseUrl?: unknown }; extends?: string | string[] };
+      if (data.compilerOptions?.baseUrl !== undefined || Object.keys(data.compilerOptions?.paths ?? {}).length) throw new Error(`Unsupported local alias config: ${path}`);
+      for (const parent of [data.extends].flat().filter((value): value is string => typeof value === 'string')) {
+        if (parent.startsWith('.') || isAbsolute(parent)) config(localFile(resolve(dirname(path), parent.endsWith('.json') ? parent : `${parent}.json`)));
+      }
+    };
+    for (const name of readdirSync(directory).filter(name => /^(?:tsconfig|jsconfig)(?:\.[^.]+)?\.json$/.test(name))) config(join(directory, name));
+    for (const name of readdirSync(directory).filter(name => /^vite\.config\.(?:[cm]?[jt]s)$/.test(name))) {
+      const path = join(directory, name);
+      found.add(record(path));
+      const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
+      const scan = (node: ts.Node): void => {
+        if (ts.isPropertyAssignment(node)) {
+          const name = ts.isComputedPropertyName(node.name) ? node.name.expression.getText(source) : node.name.getText(source);
+          if (['resolve', 'alias'].includes(name.replace(/^['"]|['"]$/g, ''))) throw new Error(`Unsupported Vite resolution config: ${path}`);
+        }
+        if (ts.isPropertyAccessExpression(node) && node.name.text === 'alias') throw new Error(`Unsupported Vite alias config: ${path}`);
+        if (ts.isElementAccessExpression(node) && ts.isStringLiteral(node.argumentExpression) && node.argumentExpression.text === 'alias') throw new Error(`Unsupported Vite alias config: ${path}`);
+        ts.forEachChild(node, scan);
+      };
+      scan(source);
+    }
+  };
+  rejectAliases(repository);
   const exportTargets = (value: unknown): string[] => {
     if (typeof value === 'string') return [value];
     if (Array.isArray(value)) return value.flatMap(exportTargets);
@@ -91,8 +135,10 @@ export function graphInputFiles(roots: string[], root: string): string[] {
     return [];
   };
   const dependency = (specifier: string, from: string, asset = false): void => {
+    if (!asset && specifier.startsWith('#')) throw new Error(`Unsupported package-import alias: ${specifier}`);
+    rejectAliases(packageRoot(from));
     const clean = specifier.replace(/[?#].*$/, '');
-    if (!clean || /^(?:data:|blob:|node:)/.test(clean)) return;
+    if (!clean || /^(?:data:|blob:)/.test(clean) || isBuiltin(clean) || clean === 'bun' || clean === 'bun:test') return;
     if (/^(?:https?:)?\/\//.test(clean)) throw new Error(`Untracked remote dependency: ${specifier}`);
     if (clean.startsWith('.')) { visit(localFile(resolve(dirname(from), clean))); return; }
     if (clean.startsWith('/')) {
@@ -108,6 +154,9 @@ export function graphInputFiles(roots: string[], root: string): string[] {
     // External libraries are bound by the common lockfile; local workspace packages are traced in source.
     if (!workspace) {
       if (clean.startsWith('@opensite/')) throw new Error(`Unresolved workspace dependency: ${clean}`);
+      const provider = [join(packageRoot(from), 'package.json'), repositoryPackage].find(path => externals.get(path)?.has(name));
+      if (!provider || clean.startsWith('node:')) throw new Error(`Undeclared bare dependency: ${clean}`);
+      found.add(record(provider));
       return;
     }
     found.add(record(repositoryPackage));
@@ -180,7 +229,8 @@ export function graphInputFiles(roots: string[], root: string): string[] {
   };
   const visit = (path: string): void => {
     const key = record(path);
-    if (found.has(key)) return;
+    if (visited.has(key)) return;
+    visited.add(key);
     found.add(key);
     const extension = extname(path);
     if (!['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.astro', '.css', '.html'].includes(extension)) return;

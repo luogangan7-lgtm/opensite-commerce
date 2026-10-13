@@ -18,6 +18,8 @@ const selected = SCOPES.filter(scope => {
   const pngs = Object.fromEntries(Object.entries(before).filter(([path]) => scopeForSnapshot(path) === scope));
   const subset = Object.fromEntries(Object.entries(records).filter(([path]) => scopeForSnapshot(path) === scope));
   if (legacy || requested.includes(scope) || Object.keys(pngs).length === 0) return true;
+  // An uploaded record claiming this run must have been rendered here, never prepopulated before the writer.
+  if (Object.values(subset).some(value => (value as { runUrl?: string })?.runUrl === `https://github.com/${REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`)) return true;
   try { assertBaselineSet(pngs, subset, inputs); return false; } catch { return true; }
 });
 if (selected.length === 0) {
@@ -34,13 +36,15 @@ for (const snapshot of new Set([...Object.keys(before), ...Object.keys(records)]
 console.log(`CI baseline generation scopes: ${selected.join(', ')}`);
 const result = Bun.spawnSync(['bun', 'x', '--no-install', 'playwright', 'test', ...selected.map(scope => SPECS[scope]), '--update-snapshots'], { stdout: 'inherit', stderr: 'inherit' });
 if (result.exitCode !== 0) process.exit(result.exitCode);
-for (const [snapshot, png] of Object.entries(pngHashes())) {
+const after = pngHashes();
+for (const [snapshot, png] of Object.entries(after)) {
   const scope = scopeForSnapshot(snapshot);
   if (!selected.includes(scope)) {
     if (before[snapshot] !== png) throw new Error(`Unselected PNG changed: ${snapshot}`);
     continue;
   }
-  const record = makeRecord(snapshot, inputs[scope], png, process.env.GITHUB_SHA!, `https://github.com/${REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`);
+  const inventory = Object.keys(after).filter(path => scopeForSnapshot(path) === scope).sort();
+  const record = makeRecord(snapshot, inputs[scope], png, process.env.GITHUB_SHA!, `https://github.com/${REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`, inventory);
   writeFileSync(`${BASELINES}/${recordPath(snapshot)}`, JSON.stringify(record, null, 2) + '\n');
 }
 if (legacy) rmSync(`${BASELINES}/provenance.json`);
@@ -50,5 +54,5 @@ for (const [snapshot, record] of Object.entries(records)) {
   if (!selected.includes(scopeForSnapshot(snapshot)) && (JSON.stringify(afterRecords[snapshot]) !== JSON.stringify(record) || sha256(`${BASELINES}/${recordPath(snapshot)}`) !== recordHashes[snapshot])) throw new Error(`Unselected provenance changed: ${snapshot}`);
 }
 // Raw bytes are never rewritten for unselected records; this read ensures they remain present.
-for (const scope of selected) if (!Object.keys(afterRecords).some(path => scopeForSnapshot(path) === scope)) throw new Error(`Selected scope produced no PNGs: ${scope}`);
+for (const scope of selected) for (const viewport of ['desktop', 'mobile']) if (!Object.keys(afterRecords).some(path => scopeForSnapshot(path) === scope && path.startsWith(`${viewport}/`))) throw new Error(`Selected scope produced no ${viewport} PNGs: ${scope}`);
 console.log(`PASS: regenerated ${selected.length} affected scopes, preserving all other CI records`);

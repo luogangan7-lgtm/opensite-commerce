@@ -10,7 +10,7 @@
   "scripts": {
     "tokens:generate": "bun packages/design-tokens/generate.ts",
     "tokens:check": "bun packages/design-tokens/generate.ts --check",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "./node_modules/typescript/bin/tsc --noEmit",
     "lint:styles": "bun scripts/frontend/lint-styles.ts",
     "contrast": "bun scripts/frontend/check-contrast.ts",
     "test:frontend": "bun test scripts/frontend",
