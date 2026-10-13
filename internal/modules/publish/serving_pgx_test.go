@@ -1,7 +1,7 @@
 //go:build pgx
 
 // Responsibility: storefront serving gates through the real publish/restore path and a
-// dedicated public login (ADR_STOREFRONT_SERVING G1, G2, G3, G4, G6, G7, G8, G9, G10).
+// dedicated public login (ADR_STOREFRONT_SERVING G1-G12).
 // Dependencies: disposable migrated PostgreSQL, CMS write harness (newCMSPG), pgxadapter.
 // Invariants: serving rows are built in the publish transaction; the public role reads
 // only the serving row; membership is fixed at publish.
@@ -51,6 +51,7 @@ func servingSeed(ids servingIDs, prefix string, price int64, stock int) []string
 		 INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) SELECT $1,l.id,'%s',1,3 FROM l`, ids.ready),
 		`SELECT set_config('app.tenant_id',$1::text,true)`,
 		fmt.Sprintf(`SELECT app.inventory_adjust('%s',%d,'serving fixture',uuidv7(),'inbound') WHERE $1::uuid IS NOT NULL`, ids.ready, stock),
+		fmt.Sprintf(`SELECT app.inventory_adjust('%s',2,'serving fixture',uuidv7(),'inbound') WHERE $1::uuid IS NOT NULL`, ids.archived),
 	}
 }
 
@@ -235,6 +236,38 @@ func TestStorefrontServingPG(t *testing.T) {
 		if site, _ := read(hostA); len(site.Products[0].SKUs) != 2 {
 			t.Fatalf("republish did not add the newly purchasable SKU: %+v", site.Products[0].SKUs)
 		}
+		// G12: two checkouts reserving overlapping member SKUs never wait on serving data.
+		// c1 flips READY's availability and stays open; c2 then flips ARCHIVED's and must
+		// complete while c1 is open (a shared serving-row lock would block or deadlock it).
+		rollback := errors.New("rollback")
+		c1Held, c1Done := make(chan struct{}), make(chan struct{})
+		c1 := make(chan error, 1)
+		go func() {
+			c1 <- a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve($1::uuid,7331,'checkout',gen_random_uuid(),'g12-c1-'||$2::text)`, ids.ready, a.tenant); err != nil {
+					return err
+				}
+				close(c1Held)
+				<-c1Done
+				return rollback
+			})
+		}()
+		<-c1Held
+		c2ctx, c2cancel := context.WithTimeout(ctx, 5*time.Second)
+		err = a.admin.InTenant(c2ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve($1::uuid,2,'checkout',gen_random_uuid(),'g12-c2-'||$2::text)`, ids.archived, a.tenant); err != nil {
+				return err
+			}
+			return rollback
+		})
+		c2cancel()
+		close(c1Done)
+		if !errors.Is(err, rollback) {
+			t.Fatalf("overlapping checkout waited on serving data or failed: %v", err)
+		}
+		if err := <-c1; !errors.Is(err, rollback) {
+			t.Fatal(err)
+		}
 		restored, err := a.exec(t, authctx, contract.Command{Operation: "restore_release", ReleaseID: r1.ReleaseID, ExpectedReleaseID: r2.ReleaseID, ExpectedPublicationRevision: 2})
 		if err != nil || restored.Release.PublicationRevision != 3 {
 			t.Fatal(restored, err)
@@ -242,7 +275,7 @@ func TestStorefrontServingPG(t *testing.T) {
 		if site, _ := read(hostA); site.ReleaseID != r1.ReleaseID || !reflect.DeepEqual(site.Products[0].SKUs, want("OWN", fmt.Sprint(int64(price)), true)) {
 			t.Fatalf("restore did not rebuild from r1's sealed membership: %+v", site)
 		}
-		// G11: mutations invalidate in their own transaction; the refresher rebuilds.
+		// G11: mutations append invalidations in their own transaction; the refresher rebuilds.
 		refresh := servingRefresher(t, a)
 		mutate := func(sql string, args ...any) {
 			t.Helper()
@@ -250,40 +283,38 @@ func TestStorefrontServingPG(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		dirty := func() bool {
-			return a.count(t, ctx, `SELECT (dirty AND valid_until<=now()+interval '30 seconds')::int FROM app.storefront_serving WHERE tenant_id=$1 AND site_id=$2`) == 1
+		pending := func() int {
+			return a.count(t, ctx, `SELECT count(*)::int FROM app.serving_invalidations WHERE tenant_id=$1 AND site_id=$2`)
 		}
+		sweep := func() {
+			t.Helper()
+			if _, err := refresh.Sweep(ctx); err != nil || pending() != 0 {
+				t.Fatalf("refresh sweep: %v pending=%d", err, pending())
+			}
+		}
+		sweep()
 		mutate(`UPDATE app.price_entries SET unit_amount=777 WHERE tenant_id=$1 AND sku_id=$2 AND min_quantity=1 AND unit_amount=$3`, a.tenant, ids.ready, int64(price))
-		if !dirty() {
-			t.Fatal("price change did not invalidate the serving row")
+		if pending() == 0 {
+			t.Fatal("price change did not append an invalidation")
 		}
-		if n, err := refresh.Sweep(ctx); err != nil || n != 1 {
-			t.Fatalf("refresh sweep: %d %v", n, err)
-		}
-		if site, _ := read(hostA); !reflect.DeepEqual(site.Products[0].SKUs, want("OWN", "777", true)) || dirty() {
+		sweep()
+		if site, _ := read(hostA); !reflect.DeepEqual(site.Products[0].SKUs, want("OWN", "777", true)) {
 			t.Fatalf("refresh did not serve the new price: %+v", site.Products[0].SKUs)
 		}
-		mutate(`SELECT set_config('app.tenant_id',$1::text,true), app.inventory_reserve($2::uuid,7331,'serving_test',gen_random_uuid(),'serving-'||$1::text)`, a.tenant, ids.ready)
-		if !dirty() {
-			t.Fatal("reservation did not invalidate the serving row")
+		// A reservation that keeps the SKU available appends nothing; one that sells out does.
+		mutate(`SELECT app.inventory_reserve($1::uuid,1,'serving_test',gen_random_uuid(),'serving-a-'||$2::text)`, ids.ready, a.tenant)
+		if pending() != 0 {
+			t.Fatal("availability-preserving reservation appended an invalidation")
 		}
-		if _, err := refresh.Sweep(ctx); err != nil {
-			t.Fatal(err)
+		mutate(`SELECT app.inventory_reserve($1::uuid,7330,'serving_test',gen_random_uuid(),'serving-b-'||$2::text)`, ids.ready, a.tenant)
+		if pending() == 0 {
+			t.Fatal("sell-out reservation did not append an invalidation")
 		}
+		sweep()
 		if site, _ := read(hostA); !reflect.DeepEqual(site.Products[0].SKUs, want("OWN", "777", false)) {
 			t.Fatalf("availability not refreshed: %+v", site.Products[0].SKUs)
 		}
-		mutate(`UPDATE app.product_variants SET lifecycle_status='archived' WHERE tenant_id=$1 AND id=$2`, a.tenant, ids.ready)
-		if !dirty() {
-			t.Fatal("archive did not invalidate the serving row")
-		}
-		if _, err := refresh.Sweep(ctx); err != nil {
-			t.Fatal(err)
-		}
-		if site, _ := read(hostA); len(site.Products[0].SKUs) != 0 {
-			t.Fatalf("archived member still served: %+v", site.Products[0].SKUs)
-		}
-		// G5: a refresh waits for an in-flight publication lock, then CAS-writes.
+		// G5: the refresher blocks on the publication lock BEFORE reading any input.
 		locked, release := make(chan struct{}), make(chan struct{})
 		holder := make(chan error, 1)
 		go func() {
@@ -300,18 +331,47 @@ func TestStorefrontServingPG(t *testing.T) {
 		mutate(`UPDATE app.price_lists SET priority=priority WHERE tenant_id=$1`, a.tenant)
 		swept := make(chan error, 1)
 		go func() { _, err := refresh.Sweep(ctx); swept <- err }()
-		select {
-		case err := <-swept:
-			t.Fatalf("refresh did not wait for the publication lock: %v", err)
-		case <-time.After(time.Second):
+		waiting := func(pattern string) int {
+			var n int
+			if err := a.admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, `SELECT count(*)::int FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE $1`, pattern).Scan(&n)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+		deadline := time.Now().Add(15 * time.Second)
+		for waiting("%FOR NO KEY UPDATE OF s%") == 0 {
+			if time.Now().After(deadline) {
+				close(release)
+				t.Fatalf("refresh is not waiting on the publication lock (waiting in put: %d)", waiting("%cms_serving_put%"))
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if n := waiting("%cms_serving_put%"); n != 0 {
+			t.Fatalf("refresh read inputs before the publication lock: %d waiting in put", n)
 		}
 		close(release)
 		if err := <-holder; err != nil {
 			t.Fatal(err)
 		}
-		if err := <-swept; err != nil || dirty() {
-			t.Fatalf("refresh after lock release: %v", err)
+		if err := <-swept; err != nil || pending() != 0 {
+			t.Fatalf("refresh after lock release: %v pending=%d", err, pending())
 		}
+		// Variant archive and product archive each append an invalidation (96-7).
+		mutate(`UPDATE app.product_variants SET lifecycle_status='archived' WHERE tenant_id=$1 AND id=$2`, a.tenant, ids.ready)
+		if pending() == 0 {
+			t.Fatal("variant archive did not append an invalidation")
+		}
+		sweep()
+		if site, _ := read(hostA); len(site.Products[0].SKUs) != 0 {
+			t.Fatalf("archived member still served: %+v", site.Products[0].SKUs)
+		}
+		mutate(`UPDATE app.products SET lifecycle_status='archived' WHERE tenant_id=$1 AND id=$2`, a.tenant, ids.product)
+		if pending() == 0 {
+			t.Fatal("product archive did not append an invalidation")
+		}
+		sweep()
 	})
 	// G8: the other tenant (same product/SKU UUIDs) serves only its own body.
 	withCMSContextFor(t, true, b.tenant, func(authctx context.Context) {

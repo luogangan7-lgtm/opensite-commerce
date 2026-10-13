@@ -40,15 +40,22 @@ WHERE r.tenant_id=sqlc.arg(tenant_id)::uuid AND r.site_id=sqlc.arg(site_id)::uui
 SELECT s.publication_revision,s.published_release_id::text AS release_id,now()::timestamptz AS at,
  coalesce((SELECT sv.serving_generation FROM app.storefront_serving sv WHERE sv.tenant_id=s.tenant_id AND sv.site_id=s.id),0)::bigint AS generation
 FROM app.sites s WHERE s.tenant_id=sqlc.arg(tenant_id)::uuid AND s.id=sqlc.arg(site_id)::uuid AND s.published_release_id IS NOT NULL
-FOR UPDATE OF s;
+FOR NO KEY UPDATE OF s;
+
+-- name: ServingFolded :many
+-- The folded set: invalidations visible before the build reads its inputs (ADR 2.6).
+SELECT seq FROM app.serving_invalidations
+WHERE tenant_id=sqlc.arg(tenant_id)::uuid AND site_id=sqlc.arg(site_id)::uuid ORDER BY seq LIMIT 10000;
 
 -- name: ServingDue :many
 -- Refresh sweep for one tenant: published sites with no current serving row, a dirty row,
--- or a row within 60 s of valid_until (backfill, invalidation and max-lifetime refresh).
+-- unfolded invalidations, or a row within 60 s of valid_until (backfill, invalidation and
+-- max-lifetime refresh).
 SELECT s.id::text AS site_id FROM app.sites s
 LEFT JOIN app.storefront_serving sv ON (sv.tenant_id,sv.site_id)=(s.tenant_id,s.id)
 WHERE s.tenant_id=sqlc.arg(tenant_id)::uuid AND s.published_release_id IS NOT NULL
- AND (sv.site_id IS NULL OR sv.publication_revision<>s.publication_revision OR sv.dirty OR sv.valid_until<now()+interval '60 seconds')
+ AND (sv.site_id IS NULL OR sv.publication_revision<>s.publication_revision OR sv.valid_until<now()+interval '60 seconds'
+  OR EXISTS(SELECT FROM app.serving_invalidations i WHERE (i.tenant_id,i.site_id)=(s.tenant_id,s.id)))
 ORDER BY s.id LIMIT sqlc.arg(row_limit)::integer;
 
 -- name: ServingLiveCandidates :many
@@ -94,4 +101,4 @@ SELECT app.cms_seal_skus(sqlc.arg(tenant_id)::uuid,sqlc.arg(site_id)::uuid,sqlc.
 -- name: PutServing :one
 SELECT app.cms_serving_put(sqlc.arg(tenant_id)::uuid,sqlc.arg(site_id)::uuid,sqlc.arg(release_id)::uuid,
  sqlc.arg(publication_revision)::bigint,sqlc.arg(expected_generation)::bigint,sqlc.arg(body)::bytea,
- sqlc.arg(fallback_body)::bytea,sqlc.narg(valid_until)::timestamptz)::bigint;
+ sqlc.arg(fallback_body)::bytea,sqlc.arg(valid_until)::timestamptz,sqlc.arg(folded)::bigint[])::bigint;

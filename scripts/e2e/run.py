@@ -170,6 +170,7 @@ def run(receipt_dir):
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
         variables = dict(credentials, COMPOSE_PROJECT_NAME=project, OPENSITE_DB="opensite",
                          OPENSITE_API_PORT="8080", OPENSITE_WORKER_PORT="8081", JOB_TENANTS=TENANT,
+                         OPENSITE_SERVING_REFRESH_TENANTS=TENANT,
                          # Staff login requires an HTTPS Origin; the admin preview proxy presents this
                          # exact value to the API (CI-only), see scripts/e2e/admin.vite.config.ts.
                          OPENSITE_ADMIN_ORIGIN="https://admin.e2e.test",

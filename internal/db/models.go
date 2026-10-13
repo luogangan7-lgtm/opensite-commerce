@@ -723,6 +723,14 @@ type AppQuoteLine struct {
 	Snapshot    []byte      `json:"snapshot"`
 }
 
+type AppServingInvalidation struct {
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	SiteID    pgtype.UUID        `json:"site_id"`
+	Seq       int64              `json:"seq"`
+	Reason    string             `json:"reason"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type AppShippingProfile struct {
 	TenantID pgtype.UUID `json:"tenant_id"`
 	ID       pgtype.UUID `json:"id"`
@@ -870,7 +878,7 @@ type AppStorefrontServing struct {
 	BodySha256          []byte             `json:"body_sha256"`
 	FallbackSha256      []byte             `json:"fallback_sha256"`
 	ValidUntil          pgtype.Timestamptz `json:"valid_until"`
-	Dirty               bool               `json:"dirty"`
+	BuiltThroughSeq     int64              `json:"built_through_seq"`
 	BuiltAt             pgtype.Timestamptz `json:"built_at"`
 }
 

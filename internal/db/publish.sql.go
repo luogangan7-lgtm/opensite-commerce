@@ -220,7 +220,7 @@ func (q *Queries) LoadCMSReleaseSnapshot(ctx context.Context, arg LoadCMSRelease
 const putServing = `-- name: PutServing :one
 SELECT app.cms_serving_put($1::uuid,$2::uuid,$3::uuid,
  $4::bigint,$5::bigint,$6::bytea,
- $7::bytea,$8::timestamptz)::bigint
+ $7::bytea,$8::timestamptz,$9::bigint[])::bigint
 `
 
 type PutServingParams struct {
@@ -232,6 +232,7 @@ type PutServingParams struct {
 	Body                []byte             `json:"body"`
 	FallbackBody        []byte             `json:"fallback_body"`
 	ValidUntil          pgtype.Timestamptz `json:"valid_until"`
+	Folded              []int64            `json:"folded"`
 }
 
 func (q *Queries) PutServing(ctx context.Context, arg PutServingParams) (int64, error) {
@@ -244,6 +245,7 @@ func (q *Queries) PutServing(ctx context.Context, arg PutServingParams) (int64, 
 		arg.Body,
 		arg.FallbackBody,
 		arg.ValidUntil,
+		arg.Folded,
 	)
 	var column_1 int64
 	err := row.Scan(&column_1)
@@ -313,7 +315,8 @@ const servingDue = `-- name: ServingDue :many
 SELECT s.id::text AS site_id FROM app.sites s
 LEFT JOIN app.storefront_serving sv ON (sv.tenant_id,sv.site_id)=(s.tenant_id,s.id)
 WHERE s.tenant_id=$1::uuid AND s.published_release_id IS NOT NULL
- AND (sv.site_id IS NULL OR sv.publication_revision<>s.publication_revision OR sv.dirty OR sv.valid_until<now()+interval '60 seconds')
+ AND (sv.site_id IS NULL OR sv.publication_revision<>s.publication_revision OR sv.valid_until<now()+interval '60 seconds'
+  OR EXISTS(SELECT FROM app.serving_invalidations i WHERE (i.tenant_id,i.site_id)=(s.tenant_id,s.id)))
 ORDER BY s.id LIMIT $2::integer
 `
 
@@ -323,7 +326,8 @@ type ServingDueParams struct {
 }
 
 // Refresh sweep for one tenant: published sites with no current serving row, a dirty row,
-// or a row within 60 s of valid_until (backfill, invalidation and max-lifetime refresh).
+// unfolded invalidations, or a row within 60 s of valid_until (backfill, invalidation and
+// max-lifetime refresh).
 func (q *Queries) ServingDue(ctx context.Context, arg ServingDueParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, servingDue, arg.TenantID, arg.RowLimit)
 	if err != nil {
@@ -337,6 +341,37 @@ func (q *Queries) ServingDue(ctx context.Context, arg ServingDueParams) ([]strin
 			return nil, err
 		}
 		items = append(items, site_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const servingFolded = `-- name: ServingFolded :many
+SELECT seq FROM app.serving_invalidations
+WHERE tenant_id=$1::uuid AND site_id=$2::uuid ORDER BY seq LIMIT 10000
+`
+
+type ServingFoldedParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	SiteID   pgtype.UUID `json:"site_id"`
+}
+
+// The folded set: invalidations visible before the build reads its inputs (ADR 2.6).
+func (q *Queries) ServingFolded(ctx context.Context, arg ServingFoldedParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, servingFolded, arg.TenantID, arg.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var seq int64
+		if err := rows.Scan(&seq); err != nil {
+			return nil, err
+		}
+		items = append(items, seq)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -466,7 +501,7 @@ const servingPublication = `-- name: ServingPublication :one
 SELECT s.publication_revision,s.published_release_id::text AS release_id,now()::timestamptz AS at,
  coalesce((SELECT sv.serving_generation FROM app.storefront_serving sv WHERE sv.tenant_id=s.tenant_id AND sv.site_id=s.id),0)::bigint AS generation
 FROM app.sites s WHERE s.tenant_id=$1::uuid AND s.id=$2::uuid AND s.published_release_id IS NOT NULL
-FOR UPDATE OF s
+FOR NO KEY UPDATE OF s
 `
 
 type ServingPublicationParams struct {

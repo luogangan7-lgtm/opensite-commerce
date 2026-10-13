@@ -31,6 +31,10 @@ func Open(ctx context.Context, dsn string) (*Store, func(), error) {
 	return &Store{runner: r}, close, nil
 }
 
+// afterServingLookup is a test-only seam (nil in production) between the serving lookup and
+// the legacy snapshot read inside the same read-only repeatable-read transaction.
+var afterServingLookup func()
+
 // Legacy is a sealed-release snapshot for a publication without a current serving row.
 type Legacy struct {
 	TenantID, SiteID, ReleaseID, Locale string
@@ -38,18 +42,24 @@ type Legacy struct {
 }
 
 // Serving reads, in ONE read-only repeatable-read snapshot, either the current serving
-// representation (body while now() < valid_until, else the fallback) or, when the current
+// representation (body while now() < valid_until and no invalidation is older than the 30 s
+// grace, else the fallback) or, when the current
 // publication has no serving row, the legacy snapshot whose tenant comes from the same
 // row as its content. Tenant and content can therefore never pair across hostname moves.
 func (s *Store) Serving(ctx context.Context, host string) (body []byte, legacy *Legacy, err error) {
 	err = s.runner.InPublicRead(ctx, host, func(ctx context.Context, tx pgx.Tx) error {
 		var found bool
 		if err := tx.QueryRow(ctx, `SELECT true,
-   CASE WHEN sv.valid_until IS NULL OR now()<sv.valid_until THEN sv.body ELSE sv.fallback_body END
+   CASE WHEN now()<sv.valid_until AND NOT EXISTS(SELECT FROM app.serving_invalidations i
+     WHERE (i.tenant_id,i.site_id)=(sv.tenant_id,sv.site_id) AND i.created_at<now()-interval '30 seconds')
+    THEN sv.body ELSE sv.fallback_body END
    FROM app.site_domains d JOIN app.sites s ON (s.tenant_id,s.id)=(d.tenant_id,d.site_id)
    LEFT JOIN app.storefront_serving sv ON (sv.tenant_id,sv.site_id,sv.publication_revision)=(s.tenant_id,s.id,s.publication_revision)
    WHERE d.normalized_hostname=$1 AND d.status='verified' AND d.verified_at IS NOT NULL AND s.published_release_id IS NOT NULL`, host).Scan(&found, &body); err != nil || body != nil {
 			return err
+		}
+		if afterServingLookup != nil {
+			afterServingLookup()
 		}
 		l, err := current(ctx, tx, host)
 		legacy = &l

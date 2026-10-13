@@ -196,6 +196,13 @@ a test Sender. Aggregate backlog/DLQ monitoring is live independently of
 sending. `JOB_TENANTS` is a trusted comma-separated UUID configuration for
 periodic expiry; empty disables periodic producers while queued signed jobs
 are still processed. Keep `JOB_SIGNING_KEY` stable across worker restarts.
+`OPENSITE_SERVING_REFRESH_TENANTS` is the trusted comma-separated tenant UUID list
+for the API's storefront serving refresher. It rebuilds served SKU prices and
+availability after price, stock and catalog changes, at least every 15 minutes, and
+backfills sites published before C-15b. List every tenant with a published
+storefront. An unlisted storefront falls back to "no purchasable SKUs" within
+30 s of a change or 15 min of publishing. The API logs a warning at startup when
+the runtime database is configured and the list is empty.
 Outside this Compose stack, an existing queue-only worker configuration remains
 supported with outbox disabled or unset: `/healthz` stays available, while
 `/metrics` returns 503 until an outbox metrics capability is configured. Supplied

@@ -17,6 +17,16 @@
         "option_values": {"classification": "operational", "structure": "SkuOptionValues"}
       }
     },
+    "serving_invalidations": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Append-only operational invalidation markers (site and reason code only); no personal or customer data."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "seq": {"classification": "operational"},
+        "reason": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
     "storefront_serving": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public storefront content derived from the sealed release has no verified customer identity FK; do not associate a customer by matching text."},
       "columns": {
@@ -30,7 +40,7 @@
         "body_sha256": {"classification": "operational", "structure": "Sha256Digest"},
         "fallback_sha256": {"classification": "operational", "structure": "Sha256Digest"},
         "valid_until": {"classification": "operational"},
-        "dirty": {"classification": "operational"},
+        "built_through_seq": {"classification": "operational"},
         "built_at": {"classification": "operational"}
       }
     },

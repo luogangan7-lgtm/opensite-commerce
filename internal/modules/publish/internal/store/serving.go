@@ -21,6 +21,10 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
 )
 
+// afterServingLock is a test-only seam (nil in production): it runs after the publication
+// lock and folded-set read, before any build input is read.
+var afterServingLock func()
+
 type servingMode int
 
 const (
@@ -42,6 +46,18 @@ func buildServing(ctx context.Context, q *db.Queries, tenant, site, release stri
 	}
 	if pub.ReleaseID != release {
 		return contract.ErrConflict
+	}
+	// The folded set is read after the publication lock and before any input: an
+	// invalidation committed later is not deleted and keeps the row dirty (ADR 2.6).
+	folded, err := q.ServingFolded(ctx, db.ServingFoldedParams{TenantID: cmsID(tenant), SiteID: cmsID(site)})
+	if err != nil {
+		return err
+	}
+	if folded == nil {
+		folded = []int64{}
+	}
+	if afterServingLock != nil {
+		afterServingLock()
 	}
 	view, err := projectSealed(ctx, q, tenant, site, release)
 	if err != nil {
@@ -130,7 +146,7 @@ func buildServing(ctx context.Context, q *db.Queries, tenant, site, release stri
 	}
 	until := pgtype.Timestamptz{Time: *out.ValidUntil, Valid: true}
 	_, err = q.PutServing(ctx, db.PutServingParams{TenantID: cmsID(tenant), SiteID: cmsID(site), ReleaseID: cmsID(release),
-		PublicationRevision: pub.PublicationRevision, ExpectedGeneration: pub.Generation, Body: out.Body, FallbackBody: out.Fallback, ValidUntil: until})
+		PublicationRevision: pub.PublicationRevision, ExpectedGeneration: pub.Generation, Body: out.Body, FallbackBody: out.Fallback, ValidUntil: until, Folded: folded})
 	return err
 }
 

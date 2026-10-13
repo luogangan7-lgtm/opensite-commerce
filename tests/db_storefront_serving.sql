@@ -22,38 +22,54 @@ DO $runtime$
 DECLARE t uuid:=current_setting('test.tenant')::uuid; s uuid:=current_setting('test.site')::uuid; r uuid:=current_setting('test.release')::uuid;
  skus jsonb:=jsonb_build_array(jsonb_build_object('product_id',current_setting('test.product'),'sku_id',current_setting('test.sku'),'sku_code','SKU-1','option_values','[]'::jsonb));
  pub bigint; gen bigint;
+ body bytea:=convert_to(jsonb_build_object('tenant_id',current_setting('test.tenant'),'site_id',current_setting('test.site'),'release_id',current_setting('test.release'),'v',1)::text||chr(10),'UTF8');
+ fallback bytea:=convert_to(jsonb_build_object('tenant_id',current_setting('test.tenant'),'site_id',current_setting('test.site'),'release_id',current_setting('test.release'),'v',0)::text||chr(10),'UTF8');
+ forged bytea:=convert_to(jsonb_build_object('tenant_id',current_setting('test.other'),'site_id',current_setting('test.site'),'release_id',current_setting('test.release'))::text,'UTF8');
 BEGIN
+ -- Members must be real variants with their real code and product.
+ BEGIN PERFORM app.cms_seal_skus(t,s,r,jsonb_build_array(jsonb_build_object('product_id',current_setting('test.product'),'sku_id',current_setting('test.sku'),'sku_code','FORGED','option_values','[]'::jsonb)));
+  RAISE EXCEPTION 'SERVING_SEAL_FORGED_CODE'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
  IF app.cms_seal_skus(t,s,r,skus)<>1 THEN RAISE EXCEPTION 'SERVING_SEAL_COUNT'; END IF;
  -- Write-once: a second seal (even empty) and any UPDATE/DELETE are rejected.
  BEGIN PERFORM app.cms_seal_skus(t,s,r,'[]'); RAISE EXCEPTION 'SERVING_SEAL_TWICE'; EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
  BEGIN UPDATE app.site_release_skus SET sku_code='X'; RAISE EXCEPTION 'SERVING_SKUS_MUTABLE'; EXCEPTION WHEN insufficient_privilege OR object_not_in_prerequisite_state THEN NULL; END;
  BEGIN INSERT INTO app.storefront_serving(tenant_id,site_id,release_id,publication_revision,serving_generation,body,fallback_body,body_sha256,built_at)
   VALUES(t,s,r,1,1,'{}','{}',sha256('{}'),now()); RAISE EXCEPTION 'SERVING_DIRECT_WRITE'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ BEGIN INSERT INTO app.serving_invalidations(tenant_id,site_id,reason) VALUES(t,s,'product'); RAISE EXCEPTION 'SERVING_DIRECT_LOG'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ BEGIN DELETE FROM app.serving_invalidations; RAISE EXCEPTION 'SERVING_DIRECT_PRUNE'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  SELECT publication_revision INTO pub FROM app.sites WHERE tenant_id=t AND id=s;
- BEGIN PERFORM app.cms_serving_put(t,s,r,pub,0,'\x7b7d','\x7b7d',now()+interval '16 minutes'); RAISE EXCEPTION 'SERVING_LIFETIME_UNBOUNDED'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
- gen:=app.cms_serving_put(t,s,r,pub,0,convert_to('{"a":1}'||chr(10),'UTF8'),convert_to('{"a":0}'||chr(10),'UTF8'),now()+interval '10 minutes');
+ BEGIN PERFORM app.cms_serving_put(t,s,r,pub,0,body,fallback,now()+interval '16 minutes','{}'); RAISE EXCEPTION 'SERVING_LIFETIME_UNBOUNDED'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
+ -- P2-5: a body naming another tenant is rejected.
+ BEGIN PERFORM app.cms_serving_put(t,s,r,pub,0,forged,fallback,now()+interval '10 minutes','{}'); RAISE EXCEPTION 'SERVING_FORGED_BODY'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
+ gen:=app.cms_serving_put(t,s,r,pub,0,body,fallback,now()+interval '10 minutes','{}');
  IF gen<>1 THEN RAISE EXCEPTION 'SERVING_FIRST_GENERATION'; END IF;
  -- G5: stale generation or stale publication can never overwrite the newer row.
- BEGIN PERFORM app.cms_serving_put(t,s,r,pub,0,'\x7b7d','\x7b7d',NULL); RAISE EXCEPTION 'SERVING_STALE_GENERATION'; EXCEPTION WHEN serialization_failure THEN NULL; END;
- BEGIN PERFORM app.cms_serving_put(t,s,r,pub-1,1,'\x7b7d','\x7b7d',NULL); RAISE EXCEPTION 'SERVING_STALE_PUBLICATION'; EXCEPTION WHEN serialization_failure THEN NULL; END;
- BEGIN PERFORM app.cms_serving_put(current_setting('test.other')::uuid,s,r,pub,1,'\x7b7d','\x7b7d',NULL); RAISE EXCEPTION 'SERVING_CROSS_TENANT'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
- IF (SELECT convert_from(body,'UTF8') FROM app.storefront_serving WHERE tenant_id=t AND site_id=s)<>'{"a":1}'||chr(10)
+ BEGIN PERFORM app.cms_serving_put(t,s,r,pub,0,body,fallback,now()+interval '1 minute','{}'); RAISE EXCEPTION 'SERVING_STALE_GENERATION'; EXCEPTION WHEN serialization_failure THEN NULL; END;
+ BEGIN PERFORM app.cms_serving_put(t,s,r,pub-1,1,body,fallback,now()+interval '1 minute','{}'); RAISE EXCEPTION 'SERVING_STALE_PUBLICATION'; EXCEPTION WHEN serialization_failure THEN NULL; END;
+ BEGIN PERFORM app.cms_serving_put(current_setting('test.other')::uuid,s,r,pub,1,body,fallback,now()+interval '1 minute','{}'); RAISE EXCEPTION 'SERVING_CROSS_TENANT'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ IF (SELECT sv.body FROM app.storefront_serving sv WHERE sv.tenant_id=t AND sv.site_id=s)<>body
   OR (SELECT serving_generation FROM app.storefront_serving WHERE tenant_id=t AND site_id=s)<>1
-  OR (SELECT fallback_sha256<>sha256(fallback_body) OR body_sha256<>sha256(body) OR dirty FROM app.storefront_serving WHERE tenant_id=t AND site_id=s) THEN RAISE EXCEPTION 'SERVING_OVERWRITTEN'; END IF;
+  OR (SELECT sv.fallback_sha256<>sha256(sv.fallback_body) OR sv.body_sha256<>sha256(sv.body) FROM app.storefront_serving sv WHERE sv.tenant_id=t AND sv.site_id=s) THEN RAISE EXCEPTION 'SERVING_OVERWRITTEN'; END IF;
 END $runtime$;
 RESET ROLE;
--- G11: a mutation of a member SKU invalidates the row in the same transaction (dirty,
--- lifetime bounded by the 30 s grace); an unrelated tenant's row is untouched.
+-- G11: a mutation of a member SKU appends one invalidation in the same transaction and
+-- leaves the serving row untouched (no shared-row lock on the writer).
 UPDATE app.product_variants SET lifecycle_status='archived' WHERE tenant_id=:'tenant' AND id=:'sku';
 DO $invalidate$ BEGIN
- IF NOT (SELECT dirty AND valid_until<=now()+interval '30 seconds' FROM app.storefront_serving WHERE tenant_id=current_setting('test.tenant')::uuid) THEN
+ IF (SELECT count(*) FROM app.serving_invalidations WHERE tenant_id=current_setting('test.tenant')::uuid AND reason='variant')<>1
+  OR (SELECT serving_generation FROM app.storefront_serving WHERE tenant_id=current_setting('test.tenant')::uuid)<>1 THEN
   RAISE EXCEPTION 'SERVING_NOT_INVALIDATED'; END IF;
 END $invalidate$;
+-- Age it past the 30 s grace: the public role sees that an old invalidation exists (its
+-- read then serves the fallback), but not its reason or sequence.
+UPDATE app.serving_invalidations SET created_at=now()-interval '31 seconds' WHERE tenant_id=:'tenant';
 SELECT set_config('app.tenant_id','',true),set_config('app.public_hostname','serving-a.example',true);
 SET LOCAL ROLE app_domain_resolver;
 DO $public$
 BEGIN
  IF (SELECT count(*) FROM app.storefront_serving)<>1 THEN RAISE EXCEPTION 'SERVING_PUBLIC_ROW'; END IF;
+ IF (SELECT count(*) FROM app.serving_invalidations WHERE created_at<now()-interval '30 seconds')<>1 THEN RAISE EXCEPTION 'SERVING_PUBLIC_INVALIDATION'; END IF;
+ BEGIN PERFORM reason FROM app.serving_invalidations; RAISE EXCEPTION 'SERVING_PUBLIC_REASON'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  -- G4: no live catalog, pricing, inventory or membership data for the anonymous role.
  BEGIN PERFORM id FROM app.product_variants; RAISE EXCEPTION 'SERVING_PUBLIC_VARIANTS'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN PERFORM id FROM app.products; RAISE EXCEPTION 'SERVING_PUBLIC_PRODUCTS'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
@@ -64,7 +80,7 @@ BEGIN
  BEGIN PERFORM sku_code FROM app.site_release_skus; RAISE EXCEPTION 'SERVING_PUBLIC_MEMBERSHIP'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN PERFORM serving_generation FROM app.storefront_serving; RAISE EXCEPTION 'SERVING_PUBLIC_GENERATION'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  PERFORM set_config('app.public_hostname','unknown.example',true);
- IF (SELECT count(*) FROM app.storefront_serving)<>0 THEN RAISE EXCEPTION 'SERVING_PUBLIC_HOST_SCOPE'; END IF;
+ IF (SELECT count(*) FROM app.storefront_serving)<>0 OR (SELECT count(*) FROM app.serving_invalidations)<>0 THEN RAISE EXCEPTION 'SERVING_PUBLIC_HOST_SCOPE'; END IF;
 END $public$;
 RESET ROLE;
 -- A newer publication makes the old serving row invisible to the public role.

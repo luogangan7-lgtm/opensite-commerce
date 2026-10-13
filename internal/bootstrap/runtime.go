@@ -86,7 +86,11 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		// Storefront serving refresh (ADR_STOREFRONT_SERVING 2.6): deployment-authorized
 		// tenants only; without it serving rows degrade to their fallback, never to stale.
-		if list := os.Getenv("OPENSITE_SERVING_REFRESH_TENANTS"); list != "" {
+		list := os.Getenv("OPENSITE_SERVING_REFRESH_TENANTS")
+		if list == "" && config.Logger != nil {
+			config.Logger.Warn("OPENSITE_SERVING_REFRESH_TENANTS is empty: storefront serving rows are not refreshed and fall back to no purchasable SKUs")
+		}
+		if list != "" {
 			refresher, err := publish.NewRefresher(publish.RefreshConfig{Run: runner.RunTrustedTx, Tenants: strings.Split(list, ","), Logger: config.Logger})
 			if err != nil {
 				closeRuntime()
