@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "module": "tenant",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {"Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data."},
+  "tables": {
+    "tenants": {
+      "subject": {"tenant_key": null, "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "id": {"classification": "operational"},
+        "name": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "settlement_currency": {"classification": "financial_non_contact"}
+      }
+    },
+    "tenant_memberships": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "user_id": {"classification": "operational"},
+        "role": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "api_keys": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "issued_by": {"classification": "operational"},
+        "key_prefix": {"classification": "operational"},
+        "key_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "scopes": {"classification": "operational"},
+        "expires_at": {"classification": "operational"},
+        "revoked_at": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    }
+  }
+}
