@@ -252,24 +252,30 @@ def validate_contract(api):
                     require(path.startswith('/api/v1/t/{tenant_id}/customer/') and op['x-opensite-status'] == 'implemented',
                             'customer authentication route drift')
         elif access == "Storefront":
-            if ident == "createCheckout":
-                require((path, method) == ("/api/v1/t/{tenant_id}/checkout", "post") and tenant and
+            if ident in {"createCheckout", "previewCheckout", "getCheckout"}:
+                expected = {"createCheckout": ("/api/v1/t/{tenant_id}/checkout", "post"),
+                            "previewCheckout": ("/api/v1/t/{tenant_id}/checkout/preview", "post"),
+                            "getCheckout": ("/api/v1/t/{tenant_id}/checkout/{checkout_id}", "get")}
+                require((path, method) == expected[ident] and tenant and
                         "x-required-scope" not in op and op["x-opensite-status"] == "implemented" and
-                        security == [{"StorefrontSession": []}, {"GuestCapability": []}],
+                        security == ([{"StorefrontSession": []}, {"GuestCapability": []}] if ident == "createCheckout" else [{"GuestCapability": []}]),
                         "checkout requires the exact scope-free storefront resolver contract")
-                for name, cookie_name in (("StorefrontSession", "__Host-osc_customer_session"),
-                                          ("GuestCapability", "__Host-osc_guest_capability")):
+                for name, location, credential_name in (("StorefrontSession", "cookie", "__Host-osc_customer_session"),
+                                                         ("GuestCapability", "header", "X-Cart-Token")):
                     scheme = schemes.get(name, {})
                     require((scheme.get("type"), scheme.get("in"), scheme.get("name")) ==
-                            ("apiKey", "cookie", cookie_name), "storefront credential scheme drift")
+                            ("apiKey", location, credential_name), "storefront credential scheme drift")
                 headers = {p["name"]: p for p in parameters if p["in"] == "header"}
                 for header, schema in {
                         "Origin": {"type": "string", "format": "uri"},
-                        "X-CSRF-Token": {"type": "string", "minLength": 1, "maxLength": 512}}.items():
-                    require(header in headers and headers[header].get("required") is True and
+                        "X-CSRF-Token": {"type": "string", "minLength": 1, "maxLength": 512},
+                        "X-Cart-ID": {"type": "string", "format": "uuid"},
+                        "X-Cart-Token": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}}.items():
+                    required = ident != "createCheckout" or header not in {"X-Cart-ID", "X-Cart-Token"}
+                    require(header in headers and headers[header].get("required") is required and
                             headers[header].get("schema") == schema,
                             f"checkout {header} admission contract missing/incorrect")
-                require("Idempotency-Key" in headers and headers["Idempotency-Key"].get("required") is True,
+                require(("Idempotency-Key" in headers and headers["Idempotency-Key"].get("required") is True) == (ident == "createCheckout"),
                         "checkout idempotency header required")
             else:
                 require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and

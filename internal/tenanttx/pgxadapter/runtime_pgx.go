@@ -53,6 +53,15 @@ func (r *QueryRunner) RunAuthorizedTx(ctx context.Context, tenant string, fn fun
 	return r.runner.InTenant(ctx, tenant, fn)
 }
 
+// RunCapabilityTx is composed only behind an independently verified payment
+// event. It does not admit a URL tenant or an unverified HTTP body by itself.
+func (r *QueryRunner) RunCapabilityTx(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+	if r == nil || fn == nil {
+		return errors.New("runtime database is unavailable")
+	}
+	return r.runner.InTenant(ctx, tenant, fn)
+}
+
 func (r *QueryRunner) RunAuthorizedTxSnapshot(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
 	if err := authorizedTenant(ctx, tenant); err != nil {
 		return err
@@ -60,8 +69,8 @@ func (r *QueryRunner) RunAuthorizedTxSnapshot(ctx context.Context, tenant string
 	return r.RunCapabilitySnapshot(ctx, tenant, fn)
 }
 
-// RunCapabilitySnapshot is only composed behind the CMS module's verified
-// signed-preview capability. It always uses a read-only snapshot and tenant
+// RunCapabilitySnapshot is composed only behind independently verified CMS or
+// storefront guest capabilities. It always uses a read-only snapshot and tenant
 // RLS; route parameters alone must never authorize calling this port.
 func (r *QueryRunner) RunCapabilitySnapshot(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
 	if r == nil || fn == nil {

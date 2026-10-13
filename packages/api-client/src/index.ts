@@ -14,3 +14,5 @@ export async function readPublishedSite(origin:string,hostname:string):Promise<P
   if(!response.ok||!data) throw new Error('Published site read failed');
   return data;
 }
+export { createCommerceClient } from './commerce';
+export type { components as APIComponents } from './schema';

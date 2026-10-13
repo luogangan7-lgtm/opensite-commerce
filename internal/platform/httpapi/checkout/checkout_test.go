@@ -113,6 +113,8 @@ func request(r http.Handler, path, content string, headers map[string]string) *h
 	q.Header.Set("Content-Type", "application/json")
 	q.Header.Set("Origin", origin)
 	q.Header.Set("X-CSRF-Token", "fixture-session-csrf")
+	q.Header.Set("X-Cart-ID", cart)
+	q.Header.Set("X-Cart-Token", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	q.Header.Set("Idempotency-Key", "fixture-command-1")
 	for k, v := range headers {
 		if v == "" {
@@ -207,8 +209,8 @@ func TestCheckoutActorAndStrictAdmission(t *testing.T) {
 		{"missing key", body, map[string]string{"Idempotency-Key": ""}, 400},
 		{"forged buyer identity", strings.TrimSuffix(body, "}") + `,"buyer_id":"` + cart + `"}`, nil, 400},
 		{"body idempotency", strings.TrimSuffix(body, "}") + `,"idempotency_key":"body-key"}`, nil, 400},
-		{"bad origin", body, map[string]string{"Origin": "https://forged.example.invalid"}, 403},
-		{"missing csrf", body, map[string]string{"X-CSRF-Token": ""}, 403},
+		{"bad origin", body, map[string]string{"Origin": "https://forged.example.invalid"}, 404},
+		{"missing csrf", body, map[string]string{"X-CSRF-Token": ""}, 404},
 		{"unbound csrf", body, map[string]string{"X-CSRF-Token": "other-material"}, 403},
 		{"quote unsupported", strings.TrimSuffix(body, "}") + `,"quote_id":"` + cart + `"}`, nil, 422},
 	}
@@ -399,17 +401,19 @@ func TestFakeWebhookStrictJSONAndProofOnly(t *testing.T) {
 func TestDuplicateSecurityHeadersRejected(t *testing.T) {
 	s := &service{}
 	r := router(t, checkout.Config{Service: s, Resolver: resolver{actor: actor(t, tenant, "guest")}, Origin: origin})
-	for _, header := range []string{"Origin", "X-CSRF-Token", "Idempotency-Key"} {
+	for _, header := range []string{"Origin", "X-CSRF-Token", "Idempotency-Key", "X-Cart-ID", "X-Cart-Token"} {
 		q := httptest.NewRequest("POST", "/api/v1/t/"+tenant+"/checkout", strings.NewReader(body))
 		q.Header.Set("Content-Type", "application/json")
 		q.Header.Set("Origin", origin)
 		q.Header.Set("X-CSRF-Token", "fixture-session-csrf")
+		q.Header.Set("X-Cart-ID", cart)
+		q.Header.Set("X-Cart-Token", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 		q.Header.Set("Idempotency-Key", "fixture-command-1")
 		q.Header.Add(header, q.Header.Get(header))
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, q)
-		status := 403
-		if header == "Idempotency-Key" {
+		status := 404
+		if header == "Idempotency-Key" || header == "X-Cart-ID" || header == "X-Cart-Token" {
 			status = 400
 		}
 		checkProblem(t, w, status)

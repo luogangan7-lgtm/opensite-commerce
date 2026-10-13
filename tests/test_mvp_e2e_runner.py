@@ -57,11 +57,11 @@ class BrowserReceiptTests(unittest.TestCase):
 
     def test_forged_pass_totals_without_executed_assertions_are_rejected(self):
         with self.assertRaises(RuntimeError):
-            self.verify({'stats': {'expected': 20, 'skipped': 4, 'unexpected': 0, 'flaky': 0},
+            self.verify({'stats': {'expected': 24, 'skipped': 6, 'unexpected': 0, 'flaky': 0},
                          'suites': []})
 
     def test_arbitrary_skipped_assertion_cannot_become_a_declared_gap(self):
-        report = {'stats': {'expected': 20, 'skipped': 4, 'unexpected': 0, 'flaky': 0},
+        report = {'stats': {'expected': 24, 'skipped': 6, 'unexpected': 0, 'flaky': 0},
                   'suites': [{'specs': [{'title': 'real API denies anonymous catalog reads and creation before data access',
                                          'file': 'admin.spec.ts', 'tests': [{'projectName': 'desktop',
                                          'expectedStatus': 'skipped', 'annotations': [{'type': 'fixme'}],

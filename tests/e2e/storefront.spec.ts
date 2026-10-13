@@ -68,6 +68,77 @@ test('published navigation and keyboard skip follow real CMS/product routes', as
   await expect(page).toHaveURL(`${fixture.storefront}/products`);
 });
 
+test('real guest browse → cart quantity → checkout → Fake capture → order receipt', async ({ page, request, context }, info) => {
+  const site = await publishedSite(request);
+  const skuId = 'c2400008-0000-4000-8000-000000000001';
+  expect(site.products.find(product => product.id === fixture.productId)).toMatchObject({
+    skus: [{ sku_id: skuId, available: true, price_minor: '2400', currency: 'USD' }],
+  });
+  const purchaseCalls: string[] = [];
+  page.on('request', outgoing => {
+    if (outgoing.url().includes('/purchase/api/')) purchaseCalls.push(outgoing.url());
+  });
+
+  await page.goto(`${fixture.storefront}/products`);
+  await page.getByRole('link', { name: fixture.productName, exact: true }).click();
+  await expect(page).toHaveURL(`${fixture.storefront}/products/${fixture.productSlug}`);
+  await expect(page.locator('[data-purchase-ready="true"]')).toBeVisible();
+  const purchaseContext = await page.request.get(`${fixture.storefront}/purchase/api/context`);
+  expect(purchaseContext.status()).toBe(200);
+  expect(await purchaseContext.json()).toMatchObject({ enabled: true, fixture: false, actor: 'guest' });
+  await expect(page.getByRole('button', { name: 'Add to cart', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Add to cart', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Item added to cart.');
+  await page.getByRole('link', { name: 'View cart', exact: true }).click();
+  await expect(page).toHaveURL(`${fixture.storefront}/cart`);
+  await expect(page.locator(`[data-cart-line="${skuId}"]`)).toBeVisible();
+  await page.getByLabel('Quantity', { exact: true }).fill('2');
+  await page.getByRole('button', { name: 'Update quantity', exact: true }).click();
+  await expect(page.getByRole('main')).toContainText('$48.00');
+  await audit(page, info);
+
+  await page.getByRole('link', { name: 'Continue to checkout', exact: true }).click();
+  await expect(page).toHaveURL(`${fixture.storefront}/checkout`);
+  await page.getByLabel('Email', { exact: true }).fill('c24-buyer@example.test');
+  await page.getByLabel('Country code', { exact: true }).fill('US');
+  await page.getByLabel('Address line 1', { exact: true }).fill('1 Test Way');
+  await page.getByLabel('City', { exact: true }).fill('Test City');
+  await page.getByLabel('Postal code', { exact: true }).fill('10001');
+  await page.getByRole('button', { name: 'Review totals', exact: true }).click();
+  await expect(page.getByRole('main')).toContainText('$57.80');
+  await audit(page, info);
+
+  const checkoutResponse = page.waitForResponse(response => response.url() === `${fixture.storefront}/purchase/api/checkout` && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Start test checkout', exact: true }).click();
+  const started = await checkoutResponse;
+  expect(started.status()).toBe(201);
+  const checkout = await started.json() as { checkout_id: string; order_id: string; payment: { status: string } };
+  expect(checkout.checkout_id).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(checkout.order_id).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(checkout.payment.status).not.toBe('captured');
+  await expect(page.getByRole('link', { name: 'View order confirmation', exact: true })).toHaveCount(0);
+  const paymentResponse = page.waitForResponse(response => response.url() === `${fixture.storefront}/purchase/api/payment` && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Fake payment: capture', exact: true }).click();
+  const payment = await paymentResponse;
+  expect(payment.status()).toBe(200);
+  expect(await payment.json()).toMatchObject({ order_id: checkout.order_id, payment: { status: 'captured' } });
+  await page.getByRole('link', { name: 'View order confirmation', exact: true }).click();
+  await expect(page).toHaveURL(`${fixture.storefront}/order-complete`);
+  await expect(page.locator('[data-completion-ready="true"][data-payment-status="captured"]')).toBeVisible();
+  await expect(page.getByRole('main')).toContainText(checkout.order_id);
+  await expect(page.getByRole('main')).toContainText('$57.80');
+  await audit(page, info);
+
+  const session = (await context.cookies(fixture.storefront)).find(cookie => cookie.name === '__Host-osc_storefront_cart');
+  expect(session).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax', path: '/' });
+  const browserStorage = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage }, cookie: document.cookie }));
+  for (const exposed of [browserStorage, page.url(), await page.content(), ...purchaseCalls]) {
+    expect(exposed).not.toContain(session!.value);
+    expect(exposed).not.toMatch(/cart_token|X-Cart-Token|X-Fixture-Session/i);
+    expect(exposed).not.toContain('127.0.0.1:4176');
+  }
+});
+
 test('missing and unpublished CMS/product routes render accessible real 404', async ({ page, request }, info) => {
   await publishedSite(request);
   for (const path of ['/c24-missing-page', '/products/c24-missing-product', '/products/unpublished-sample']) {

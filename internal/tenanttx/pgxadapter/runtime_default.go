@@ -30,6 +30,9 @@ func (r *QueryRunner) RunAuthorizedTxSnapshot(ctx context.Context, tenant string
 func (*QueryRunner) RunCapabilitySnapshot(context.Context, string, func(context.Context, pgx.Tx) error) error {
 	return errors.New("runtime database is unavailable")
 }
+func (*QueryRunner) RunCapabilityTx(context.Context, string, func(context.Context, pgx.Tx) error) error {
+	return errors.New("runtime database is unavailable")
+}
 func (r *QueryRunner) RunAuthorizedSnapshot(ctx context.Context, tenant string, fn func(*db.Queries) error) error {
 	return r.RunAuthorized(ctx, tenant, fn)
 }

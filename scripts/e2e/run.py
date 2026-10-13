@@ -6,7 +6,9 @@ called only by mvp-e2e.yml. Guard precedes imports/IO, credentials stay private,
 all waits are bounded and finally destroys only this invocation's own project.
 """
 import argparse
+import base64
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
@@ -30,6 +32,7 @@ ACTIVE_TESTS = {
     "published navigation and keyboard skip follow real CMS/product routes",
     "missing and unpublished CMS/product routes render accessible real 404",
     "public host resolution denies pending disabled unpublished and unknown domains",
+    "real guest browse → cart quantity → checkout → Fake capture → order receipt",
     "real admin login rejects malformed and unknown credentials without a session",
     "real guarded catalog route sends anonymous visitors to login without private reads",
     "real bootstrapped owner logs in, holds a session and signs out",
@@ -39,12 +42,15 @@ GAP_TESTS = {
     "FIXME staff create SKU → media upload → publish",
     "FIXME authenticated admin catalog list and create",
     "FIXME admin orders list and detail on the real orders read API",
-    "FIXME guest storefront buy → cart → checkout → Fakepay",
 }
 
 
 class CIOnlyError(RuntimeError):
     """Fail before any project import, filesystem write or subprocess."""
+
+
+class WitnessFailure(RuntimeError):
+    """A fixed, non-secret assertion code for the disposable preview witness."""
 
 
 def require_ci(environ=None):
@@ -96,7 +102,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 22, "skipped": 8, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 24, "skipped": 6, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -125,7 +131,7 @@ def run(receipt_dir):
     saved = dict(os.environ)
     receipt = {"schema": 1, "sha": os.environ.get("GITHUB_SHA"), "run_id": os.environ["GITHUB_RUN_ID"],
                "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"], "project": project,
-               "status": "RUNNING", "steps": [], "browser_exit": None, "cleanup": "NOT_RUN",
+               "status": "RUNNING", "stage": "initializing", "steps": [], "browser_exit": None, "cleanup": "NOT_RUN",
                "owner_bootstrap": {"status": "NOT_RUN", "available": (ROOT / "cmd/bootstrap-admin").is_dir()},
                "seed_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                for path in [ROOT / "tests/fixtures/storefront_seed.sql", ROOT / "scripts/e2e/seed.sql"]}}
@@ -163,8 +169,14 @@ def run(receipt_dir):
     # No inherited .env, target database/project/credentials or external URL.
     with tempfile.TemporaryDirectory(prefix="opensite-e2e-") as private:
         env_file = Path(private) / ".env"
+        def isolated_key():
+            return base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")
+
         credentials = {"POSTGRES_PASSWORD": secrets.token_hex(32), "JOB_SIGNING_KEY": secrets.token_hex(32),
                        "OPENSITE_AUTH_SIGNING_KEY": secrets.token_hex(32),
+                       "OSC_COMMERCE_COOKIE_KEY": isolated_key(),
+                       "OPENSITE_STOREFRONT_KEY": isolated_key(),
+                       "OPENSITE_FAKE_WEBHOOK_KEY": isolated_key(),
                        "OPENSITE_E2E_OWNER_PASSWORD": secrets.token_hex(32),
                        "OPENSITE_E2E_BOOTSTRAP_PASSWORD": secrets.token_hex(32),
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
@@ -182,6 +194,70 @@ def run(receipt_dir):
         clean_env = {key: value for key, value in saved.items()
                      if key in {"PATH", "HOME", "TMPDIR", "LANG", "CI", "GITHUB_ACTIONS", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"}}
         clean_env["OSC_STOREFRONT_ALLOWED_HOSTS"] = "127.0.0.1,localhost"
+
+        def preview_readonly_witness():
+            """Exercise the real checkout preview and compare durable PG rows exactly."""
+            sku = "c2400008-0000-4000-8000-000000000001"
+            api = f"http://127.0.0.1:8080/api/v1/t/{TENANT}"
+
+            def request_json(path, method, payload, headers=None):
+                request = urllib.request.Request(
+                    api + path, data=json.dumps(payload, separators=(",", ":")).encode(),
+                    method=method, headers={"Accept": "application/json", "Content-Type": "application/json", **(headers or {})})
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    data = response.read(1_048_577)
+                    if len(data) > 1_048_576:
+                        raise WitnessFailure("response_too_large")
+                    return response.status, response.headers, json.loads(data)
+
+            receipt["stage"] = "preview.cart_create"
+            status, headers, created = request_json("/carts", "POST", {"currency": "USD"})
+            cart_id = created.get("cart", {}).get("id")
+            token = created.get("cart_token")
+            if (status != 201 or not re.fullmatch(r"[0-9a-f-]{36}", str(cart_id))
+                    or not re.fullmatch(r"[A-Za-z0-9_-]{43}", str(token))):
+                raise WitnessFailure("cart_create_unexpected")
+            receipt["stage"] = "preview.cart_line"
+            status, _, _ = request_json(f"/carts/{cart_id}/lines/{sku}", "PUT", {"quantity": 1},
+                                         {"X-Cart-Token": token, "If-Match": headers.get("ETag", "")})
+            if status != 200:
+                raise WitnessFailure("cart_line_unexpected")
+
+            snapshot_sql = f"""
+SELECT jsonb_build_object(
+ 'checkout_sessions',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM app.checkout_sessions x WHERE x.tenant_id='{TENANT}'),
+ 'orders',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM app.orders x WHERE x.tenant_id='{TENANT}'),
+ 'reservations',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM app.inventory_reservations x WHERE x.tenant_id='{TENANT}'),
+ 'movements',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM app.inventory_movements x WHERE x.tenant_id='{TENANT}'),
+ 'stock',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.warehouse_id,x.sku_id),'[]'::jsonb) FROM app.stock_levels x WHERE x.tenant_id='{TENANT}')
+)::text;
+"""
+            receipt["stage"] = "preview.pg_before"
+            before = ops_common.psql(snapshot_sql).strip()
+            baseline = json.loads(before)
+            tote_stock = [row for row in baseline["stock"] if row["sku_id"] == sku]
+            if (any(baseline[name] for name in ("checkout_sessions", "orders", "reservations"))
+                    or len(tote_stock) != 1 or tote_stock[0]["on_hand"] != 20 or tote_stock[0]["reserved"] != 0):
+                raise WitnessFailure("pg_baseline_unexpected")
+            origin = "https://shop.e2e.test"
+            key = base64.urlsafe_b64decode(credentials["OPENSITE_STOREFRONT_KEY"] + "==")
+            proof = base64.urlsafe_b64encode(hmac.new(key, f"checkout:{TENANT}:{token}:{origin}".encode(), hashlib.sha256).digest()).decode().rstrip("=")
+            receipt["stage"] = "preview.request"
+            status, _, preview = request_json("/checkout/preview", "POST", {
+                "cart_id": cart_id, "shipping_address": {"country": "US", "postal_code": "10001"}},
+                {"X-Cart-Token": token, "X-Cart-ID": cart_id, "Origin": origin, "X-CSRF-Token": proof})
+            if status != 200 or any(preview.get(field) != amount for field, amount in {
+                    "subtotal_minor": "2400", "tax_minor": "240", "shipping_minor": "500", "total_minor": "3140",
+                    "currency": "USD"}.items()):
+                raise WitnessFailure("amounts_unexpected")
+            receipt["stage"] = "preview.pg_after"
+            after = ops_common.psql(snapshot_sql).strip()
+            if before != after:
+                raise WitnessFailure("pg_rows_changed")
+            return {"status": "PASS", "subtotal_minor": "2400", "total_minor": "3140",
+                    "pg_snapshot_sha256": hashlib.sha256(before.encode()).hexdigest(),
+                    "pg_row_counts": {name: len(rows) for name, rows in baseline.items()}}
+
         try:
             command(["git", "rev-parse", "HEAD"], "source-head", timeout=10, env=clean_env)
             actual_sha = (receipt_dir / "source-head.log").read_text().strip()
@@ -225,21 +301,68 @@ def run(receipt_dir):
             receipt["owner_bootstrap"]["status"] = "PASS"
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
             persist()
+            receipt["stage"] = "frontends.start"
             command(compose_command(["up", "-d", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
+            receipt["stage"] = "frontends.readiness"
             wait_http("http://127.0.0.1:4321/", 200, b"Made for everyday use")
             wait_http("http://127.0.0.1:4173/", 200, b"<div id=\"root\"")
+            receipt["preview_readonly"] = preview_readonly_witness()
             receipt["steps"].append("real-ssr-and-admin-positive-readiness")
             persist()
+            receipt["stage"] = "browser"
             result = ROOT / "test-results/e2e/results.json"
             result.unlink(missing_ok=True)  # only this CI harness's own stale result
             receipt["browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "browser"]), "browser", timeout=900, check=False)
             if receipt["browser_exit"] != 0:
                 raise RuntimeError("MVP E2E browser assertions failed")
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
+            receipt["purchase_postconditions"] = json.loads(ops_common.psql("""
+DO $verify$
+DECLARE t uuid := 'c0900001-0000-4000-8000-000000000001';
+        sku uuid := 'c2400008-0000-4000-8000-000000000001';
+BEGIN
+ IF (SELECT count(*) FROM app.checkout_sessions WHERE tenant_id=t AND phase='paid'
+     AND amount_minor=5780 AND items_net_minor=4800 AND tax_minor=480 AND shipping_minor=500)<>2
+ OR (SELECT count(*) FROM app.orders WHERE tenant_id=t AND state='paid' AND sealed
+     AND total_minor=5780 AND items_net_minor=4800 AND tax_minor=480 AND shipping_minor=500)<>2
+ OR (SELECT count(*) FROM app.order_lines l JOIN app.orders o ON (o.tenant_id,o.id)=(l.tenant_id,l.order_id)
+     WHERE l.tenant_id=t AND o.state='paid' AND l.sku_id=sku AND l.quantity=2 AND l.line_total_minor=5280)<>2
+ OR (SELECT count(*) FROM app.inventory_reservations WHERE tenant_id=t AND sku_id=sku AND state='committed' AND quantity=2)<>2
+ OR EXISTS(SELECT FROM app.inventory_reservations WHERE tenant_id=t AND sku_id=sku AND state='active')
+ OR (SELECT count(*) FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku AND on_hand=16 AND reserved=0)<>1
+ OR (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=t AND sku_id=sku AND kind='commit' AND quantity=2)<>2
+ OR (SELECT count(*) FROM app.ledger_transactions j JOIN app.orders o
+     ON j.tenant_id=o.tenant_id AND j.source_type='order' AND j.source_id=o.id::text
+     WHERE j.tenant_id=t AND j.status='posted' AND o.state='paid')<>2
+ OR EXISTS(SELECT FROM app.ledger_transactions j JOIN app.orders o
+     ON j.tenant_id=o.tenant_id AND j.source_type='order' AND j.source_id=o.id::text
+     LEFT JOIN app.ledger_entries e ON (e.tenant_id,e.transaction_id)=(j.tenant_id,j.id)
+     WHERE j.tenant_id=t AND o.state='paid'
+     GROUP BY j.id HAVING count(e.line_no)<2 OR sum(e.amount) FILTER(WHERE e.side='debit')
+                       IS DISTINCT FROM sum(e.amount) FILTER(WHERE e.side='credit')) THEN
+   RAISE EXCEPTION 'C09D_REAL_PURCHASE_POSTCONDITION_FAILED';
+ END IF;
+END $verify$;
+SELECT json_build_object(
+ 'paid_orders',(SELECT count(*) FROM app.orders WHERE tenant_id='c0900001-0000-4000-8000-000000000001' AND state='paid'),
+ 'posted_journals',(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id='c0900001-0000-4000-8000-000000000001' AND status='posted'),
+ 'tote_on_hand',(SELECT on_hand FROM app.stock_levels WHERE tenant_id='c0900001-0000-4000-8000-000000000001'
+                AND sku_id='c2400008-0000-4000-8000-000000000001')
+)::text;
+""").strip())
             receipt["status"] = "PASS"
-            receipt["steps"].append("browser-and-accessibility-assertions")
-        except BaseException:
+            receipt["steps"].append("browser-accessibility-and-real-pg-purchase-postconditions")
+        except BaseException as error:
             receipt["status"] = "FAIL"
+            failure = {"stage": receipt["stage"], "kind": "interrupted" if isinstance(error, KeyboardInterrupt)
+                       else "http_status" if isinstance(error, urllib.error.HTTPError)
+                       else "assertion" if isinstance(error, WitnessFailure) else "runner_error"}
+            if isinstance(error, urllib.error.HTTPError):
+                failure["http_status"] = error.code
+            elif isinstance(error, WitnessFailure):
+                failure["assertion"] = str(error)
+            receipt["failure"] = failure
+            print("FAIL_STAGE: " + json.dumps(failure, sort_keys=True), file=sys.stderr, flush=True)
             raise
         finally:
             # Collect bounded/sanitized logs before removing only OUR stack.

@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "desktop/button-danger-md-disabled.png",
   "scope": "gallery",
-  "sourceFingerprint": "980929f29823c6c437a6c7d5205cd0673700342c24d56afd1504635dacd4a2b2",
+  "sourceFingerprint": "9e28801c8b986670998fd4de242a93a1e7b52648e9d000ccccb24dda745a983d",
   "pngSha256": "43042b3ab60d57cf0897e6ec3d1f1eb3bcb5e26d14ad0df96c3aef2573c86c7d",
   "scopeSnapshots": [
     "desktop/badge-danger.png",
@@ -186,8 +186,8 @@
     "mobile/table-populated-hover.png",
     "mobile/table-populated.png"
   ],
-  "sourceSha": "423d4c069c68f82098ae1530d4aa8ae59aa8a68f",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38412793719",
+  "sourceSha": "45b2cc52fe57002dc423d4fd83a2cce697300c9d",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38417566164",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",

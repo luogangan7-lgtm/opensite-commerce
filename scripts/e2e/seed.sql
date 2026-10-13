@@ -1,4 +1,4 @@
--- Responsibility: additive disposable C-24 SKU, pricing, tax and shipping witnesses.
+-- Responsibility: additive disposable C-24 SKU, pricing, tax, shipping, stock and ledger witnesses.
 -- Dependencies: all migrations and tests/fixtures/storefront_seed.sql; caller: CI run.py.
 -- Invariant: fixed fixture ownership and values are checked; reruns never repair drift.
 \set ON_ERROR_STOP on
@@ -36,6 +36,25 @@ INSERT INTO app.shipping_profiles(tenant_id,id,name,currency) VALUES
  ('c0900001-0000-4000-8000-000000000001','c2400014-0000-4000-8000-000000000001','C24 sample shipping','USD') ON CONFLICT DO NOTHING;
 INSERT INTO app.shipping_rates(tenant_id,id,profile_id,zone_id,method,currency,amount) VALUES
  ('c0900001-0000-4000-8000-000000000001','c2400015-0000-4000-8000-000000000001','c2400014-0000-4000-8000-000000000001','c2400013-0000-4000-8000-000000000001','fixed','USD',500) ON CONFLICT DO NOTHING;
+UPDATE app.tenants SET settlement_currency='USD'
+ WHERE id='c0900001-0000-4000-8000-000000000001' AND settlement_currency IS NULL;
+INSERT INTO app.ledger_accounts(tenant_id,code,currency,account_type) VALUES
+ ('c0900001-0000-4000-8000-000000000001','cash','USD','asset'),
+ ('c0900001-0000-4000-8000-000000000001','accounts_receivable','USD','asset'),
+ ('c0900001-0000-4000-8000-000000000001','revenue','USD','revenue'),
+ ('c0900001-0000-4000-8000-000000000001','tax_payable','USD','liability'),
+ ('c0900001-0000-4000-8000-000000000001','shipping_revenue','USD','revenue') ON CONFLICT DO NOTHING;
+SELECT set_config('app.tenant_id','c0900001-0000-4000-8000-000000000001',true);
+SET LOCAL ROLE app_inventory_manager;
+DO $stock$
+BEGIN
+ IF NOT EXISTS(SELECT FROM app.stock_levels WHERE tenant_id='c0900001-0000-4000-8000-000000000001'
+     AND sku_id='c2400008-0000-4000-8000-000000000001') THEN
+  PERFORM app.inventory_adjust('c2400008-0000-4000-8000-000000000001',20,
+   'C24 E2E initial tote stock','c2400016-0000-4000-8000-000000000001','inbound');
+ END IF;
+END $stock$;
+RESET ROLE;
 DO $verify$
 DECLARE t uuid := 'c0900001-0000-4000-8000-000000000001'; n integer;
 BEGIN
@@ -63,7 +82,16 @@ BEGIN
   OR NOT EXISTS(SELECT FROM app.shipping_profiles WHERE tenant_id=t AND id='c2400014-0000-4000-8000-000000000001' AND name='C24 sample shipping' AND currency='USD')
   OR NOT EXISTS(SELECT FROM app.shipping_rates WHERE tenant_id=t AND id='c2400015-0000-4000-8000-000000000001'
    AND profile_id='c2400014-0000-4000-8000-000000000001' AND zone_id='c2400013-0000-4000-8000-000000000001'
-   AND method='fixed' AND currency='USD' AND amount=500 AND min_weight_g IS NULL AND max_weight_g IS NULL AND free_over_amount IS NULL) THEN
+   AND method='fixed' AND currency='USD' AND amount=500 AND min_weight_g IS NULL AND max_weight_g IS NULL AND free_over_amount IS NULL)
+  OR NOT EXISTS(SELECT FROM app.tenants WHERE id=t AND settlement_currency='USD')
+  OR (SELECT count(*) FROM app.ledger_accounts WHERE tenant_id=t AND status='active' AND currency='USD'
+   AND (code,account_type) IN (('cash','asset'),('accounts_receivable','asset'),('revenue','revenue'),
+    ('tax_payable','liability'),('shipping_revenue','revenue')))<>5
+  OR NOT EXISTS(SELECT FROM app.stock_levels WHERE tenant_id=t
+   AND sku_id='c2400008-0000-4000-8000-000000000001' AND on_hand=20 AND reserved=0)
+  OR (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=t
+   AND sku_id='c2400008-0000-4000-8000-000000000001' AND kind='inbound' AND quantity=20
+   AND owner_id='c2400016-0000-4000-8000-000000000001')<>1 THEN
   RAISE EXCEPTION 'C24_CONFIG_DRIFT';
  END IF;
 END $verify$;

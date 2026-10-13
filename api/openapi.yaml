@@ -6,7 +6,7 @@ info:
     Contract-first first-vertical-slice API. Declared operations are not all implemented in this increment. Tenant
     business targets come from the URL path; credentials authorize them. Health, catalog, media, cart, notifications,
     published-site read and staff login operations are implemented; other operations are planned contracts. Checkout composition is opt-in;
-    its trusted storefront resolver is deferred and Fake callback transport is restricted to explicit test/development mode.
+    its guest capability resolver is configured independently of staff authentication, and Fake callback transport is restricted to explicit test/development mode.
 servers:
   - url: /
 security:
@@ -376,9 +376,9 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: Storefront
       description: >-
-        C-18a trusted storefront resolver seam. Guest capability or customer session must be verified
-        independently of URL and Host, with exact Origin and session-bound CSRF. This increment has no
-        production resolver; missing resolver rejects. Storefront access carries no employee scope and
+        C-09d guest capability checkout. The capability must be verified independently of URL and Host,
+        with exact configured Origin, server proof and tenant/cart ownership. The independently configured
+        customer-session admission remains an alternative; missing resolver rejects. Storefront access carries no employee scope and
         never falls back to staff authentication. Prices, buyer identity and tenant authorization are not input.
         quote_id is rejected in this increment; B2B conversion is deferred.
       security:
@@ -389,6 +389,16 @@ paths:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/CheckoutOrigin'
         - $ref: '#/components/parameters/CheckoutCSRFToken'
+        - name: X-Cart-ID
+          in: header
+          required: false
+          description: Required with GuestCapability; omitted for an authenticated customer session.
+          schema: {type: string, format: uuid}
+        - name: X-Cart-Token
+          in: header
+          required: false
+          description: Required with GuestCapability; must not accompany a customer session.
+          schema: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
       requestBody:
         required: true
         content:
@@ -397,6 +407,83 @@ paths:
       responses:
         '201':
           description: Stable checkout and provider-neutral payment intent; replay returns the same IDs.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CheckoutResult'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/t/{tenant_id}/checkout/preview:
+    post:
+      tags: [Checkout]
+      operationId: previewCheckout
+      x-opensite-status: implemented
+      x-opensite-access: Storefront
+      description: Read-only live cart pricing, tax and one applicable shipping method. No reservation or order write.
+      security:
+        - GuestCapability: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CheckoutOrigin'
+        - $ref: '#/components/parameters/CheckoutCSRFToken'
+        - $ref: '#/components/parameters/CheckoutCartId'
+        - $ref: '#/components/parameters/CheckoutCartToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CheckoutPreviewInput'}
+      responses:
+        '200':
+          description: Read-only live calculation.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CheckoutPreview'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/t/{tenant_id}/checkout/{checkout_id}:
+    get:
+      tags: [Checkout]
+      operationId: getCheckout
+      x-opensite-status: implemented
+      x-opensite-access: Storefront
+      description: Read the saved checkout result only for the verified guest actor and cart.
+      security:
+        - GuestCapability: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: checkout_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - $ref: '#/components/parameters/CheckoutOrigin'
+        - $ref: '#/components/parameters/CheckoutCSRFToken'
+        - $ref: '#/components/parameters/CheckoutCartId'
+        - $ref: '#/components/parameters/CheckoutCartToken'
+      responses:
+        '200':
+          description: Actor-bound durable checkout result.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/CheckoutResult'}
@@ -3294,12 +3381,12 @@ components:
       type: apiKey
       in: cookie
       name: __Host-osc_customer_session
-      description: Reserved for trusted customer middleware; C-18a does not implement it.
+      description: Verified by the independently configured customer-session admission path.
     GuestCapability:
       type: apiKey
-      in: cookie
-      name: __Host-osc_guest_capability
-      description: Reserved for a verified opaque guest capability; never an admin cookie.
+      in: header
+      name: X-Cart-Token
+      description: Opaque cart capability bound to a server-side storefront proof, origin, tenant and cart ownership.
     FakeWebhookSignature:
       type: apiKey
       in: header
@@ -3375,6 +3462,16 @@ components:
       required: true
       description: Verified by the trusted resolver against the customer session or guest capability.
       schema: {type: string, minLength: 1, maxLength: 512}
+    CheckoutCartId:
+      name: X-Cart-ID
+      in: header
+      required: true
+      schema: {type: string, format: uuid}
+    CheckoutCartToken:
+      name: X-Cart-Token
+      in: header
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
     TenantId:
       name: tenant_id
       in: path
@@ -3594,6 +3691,40 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    CheckoutPreviewInput:
+      type: object
+      additionalProperties: false
+      required: [cart_id, shipping_address]
+      properties:
+        cart_id: {type: string, format: uuid}
+        shipping_address:
+          type: object
+          additionalProperties: false
+          required: [country, postal_code]
+          properties:
+            country: {type: string, pattern: '^[A-Z]{2}$'}
+            region: {type: string, maxLength: 100}
+            postal_code: {type: string, minLength: 1, maxLength: 32}
+    CheckoutPreview:
+      type: object
+      additionalProperties: false
+      required: [subtotal_minor, tax_minor, shipping_minor, total_minor, currency, shipping_options]
+      properties:
+        subtotal_minor: {type: string, pattern: '^[0-9]+$'}
+        tax_minor: {type: string, pattern: '^[0-9]+$'}
+        shipping_minor: {type: string, pattern: '^[0-9]+$'}
+        total_minor: {type: string, pattern: '^[0-9]+$'}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        shipping_options:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [rate_id, method, amount_minor]
+            properties:
+              rate_id: {type: string, format: uuid}
+              method: {type: string}
+              amount_minor: {type: string, pattern: '^[0-9]+$'}
     CustomerRegistrationInput:
       type: object
       additionalProperties: false

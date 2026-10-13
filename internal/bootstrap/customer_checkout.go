@@ -6,6 +6,7 @@ package bootstrap
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
@@ -17,10 +18,25 @@ import (
 )
 
 type checkoutAdmission struct {
-	next     httpapi.Authenticator
-	actors   httpapi.ActorResolver
-	customer *customerhttp.Handler
-	cart     *cart.Module
+	next       httpapi.Authenticator
+	actors     httpapi.ActorResolver
+	customer   *customerhttp.Handler
+	cart       *cart.Module
+	guestStart bool
+}
+
+type customerCheckoutProofKey struct{}
+
+func hasCustomerSessionCookie(r *http.Request) bool {
+	for _, header := range r.Header.Values("Cookie") {
+		for _, part := range strings.Split(header, ";") {
+			name, _, _ := strings.Cut(strings.TrimSpace(part), "=")
+			if name == customerhttp.SessionCookie {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a checkoutAdmission) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
@@ -32,6 +48,9 @@ func (a checkoutAdmission) Authenticate(ctx context.Context, r *http.Request, sp
 			return nil, err
 		}
 		if actor.CustomerID == "" {
+			if a.guestStart && !hasCustomerSessionCookie(r) {
+				return a.next.Authenticate(ctx, r, spec)
+			}
 			return nil, checkoutCustomerRequired()
 		}
 		ctx = customercontract.WithActor(ctx, actor)
@@ -41,6 +60,7 @@ func (a checkoutAdmission) Authenticate(ctx context.Context, r *http.Request, sp
 		if err != nil {
 			return nil, err
 		}
+		ctx = context.WithValue(ctx, customerCheckoutProofKey{}, true)
 	}
 	return a.next.Authenticate(ctx, r, spec)
 }
@@ -52,6 +72,21 @@ func (a checkoutAdmission) ResolveActor(ctx context.Context, r *http.Request, sp
 }
 
 type customerCheckoutResolver struct{}
+
+// This resolver is installed only when the runtime explicitly supplied the
+// concrete guest capability resolver and customer sessions are configured.
+// The customer branch requires the private proof from checkoutAdmission.
+type customerGuestCheckoutResolver struct{ guest *checkouthttp.GuestResolver }
+
+func (r customerGuestCheckoutResolver) Resolve(ctx context.Context, request *http.Request) (checkoutcontract.AuthorizedActor, error) {
+	if admitted, _ := ctx.Value(customerCheckoutProofKey{}).(bool); admitted && request.Method == http.MethodPost && request.URL.Path == "/api/v1/t/"+request.PathValue("tenant_id")+"/checkout" {
+		return (customerCheckoutResolver{}).Resolve(ctx, request)
+	}
+	if hasCustomerSessionCookie(request) {
+		return checkoutcontract.AuthorizedActor{}, apperrors.New(http.StatusNotFound, "not_found", "Checkout resource not found")
+	}
+	return r.guest.Resolve(ctx, request)
+}
 
 func (customerCheckoutResolver) Resolve(ctx context.Context, _ *http.Request) (checkoutcontract.AuthorizedActor, error) {
 	actor, ok := customercontract.ActorFromContext(ctx)
