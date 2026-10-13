@@ -1032,7 +1032,7 @@
       ]
     },
     {
-      "file": "migrations/027_orders_admin_list_index.sql",
+      "file": "migrations/028_orders_admin_list_index.sql",
       "owner": "orders",
       "touches_tables": [
         "orders"
