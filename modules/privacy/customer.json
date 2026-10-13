@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "module": "customer",
+  "note": "Email normalization preserves generated and mailbox-token copies, all explicitly contact. Geographic country codes use the ISO vocabulary; free-form address components remain contact fields. UUIDs are relational metadata retained for referential/financial integrity, not an instruction to export identifiers. Customer authentication is separate from staff: mailbox proof/session tokens and PHC credentials are hashes only, global/IP limiter stores opaque admission digests without tenant ownership. Verified guest-order links are the identity-authority path for guest records after mailbox proof.",
+  "structures": {"Argon2idPHC": "Argon2id PHC password hash envelope (parameters, salt and digest), never plaintext credentials; not exportable.", "CustomerAuthAdmissionDigest": "Opaque 32-byte keyed account or IP-prefix admission hash; global counter key is a fixed digest sentinel. No raw email/IP is stored in limit tables.", "Sha256Digest": "Opaque 32-byte SHA-256 capability digest; raw verification/reset/session tokens are never persisted."},
+  "tables": {
+    "customers": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "customers.id"},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "email": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "email_normalized": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "display_name": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "verified_at": {"classification": "operational"}
+      }
+    },
+    "customer_credentials": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "customer_credentials.customer_id -> customers.id"},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "password_hash": {"classification": "secret_hash", "export": "exclude", "structure": "Argon2idPHC"},
+        "updated_at": {"classification": "operational"}
+      }
+    },
+    "customer_addresses": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "customer_addresses.customer_id -> customers.id"},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "recipient": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "address_line1": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "address_line2": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "city": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "subdivision": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "postal_code": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "country_code": {"classification": "operational", "note": "ISO alpha-2 reference code, not free-form address text; retained geography alone has no direct identifying contact."}
+      }
+    },
+    "customer_auth_tokens": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "customer_auth_tokens.customer_id -> customers.id"},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "purpose": {"classification": "operational"},
+        "email_normalized": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "pending_password_hash": {"classification": "secret_hash", "structure": "Argon2idPHC", "export": "exclude"},
+        "credential_version": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "expires_at": {"classification": "operational"},
+        "consumed_at": {"classification": "operational"}
+      }
+    },
+    "customer_sessions": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "customer_sessions.customer_id -> customers.id"},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "credential_version": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "expires_at": {"classification": "operational"},
+        "idle_expires_at": {"classification": "operational"},
+        "last_seen_at": {"classification": "operational"},
+        "revoked_at": {"classification": "operational"}
+      }
+    },
+    "customer_guest_order_links": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "customer_guest_order_links.customer_id -> customers.id"},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "order_id": {"classification": "operational"},
+        "linked_at": {"classification": "operational"}
+      }
+    },
+    "customer_auth_limits": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Keyed account admission digest may refer to an unknown identifier; counters are anti-abuse infrastructure, not proof of customer ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "kind": {"classification": "operational"},
+        "key_hash": {"classification": "secret_hash", "structure": "CustomerAuthAdmissionDigest", "export": "exclude"},
+        "window_start": {"classification": "operational"},
+        "attempts": {"classification": "operational"},
+        "failures": {"classification": "operational"},
+        "cooldown_until": {"classification": "operational"}
+      }
+    },
+    "customer_auth_global_limits": {
+      "subject": {"tenant_key": null, "null_subject_policy": "Cross-tenant global and IP-prefix admission digests are shared anti-abuse infrastructure; no raw IP or email, no registered-customer relationship or tenant authority."},
+      "columns": {
+        "kind": {"classification": "operational"},
+        "key_hash": {"classification": "secret_hash", "structure": "CustomerAuthAdmissionDigest", "export": "exclude"},
+        "window_start": {"classification": "operational"},
+        "attempts": {"classification": "operational"},
+        "failures": {"classification": "operational"},
+        "cooldown_until": {"classification": "operational"}
+      }
+    }
+  }
+}

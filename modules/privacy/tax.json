@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "module": "tax",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {},
+  "tables": {
+    "tax_zones": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "name": {"classification": "operational"}
+      }
+    },
+    "tax_zone_locations": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "zone_id": {"classification": "operational"},
+        "country_code": {"classification": "operational"},
+        "subdivision": {"classification": "operational"}
+      }
+    },
+    "tax_categories": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "code": {"classification": "operational"},
+        "name": {"classification": "operational"},
+        "is_exempt": {"classification": "operational"}
+      }
+    },
+    "tax_rates": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "zone_id": {"classification": "operational"},
+        "category_code": {"classification": "operational"},
+        "rate_bp": {"classification": "financial_non_contact"},
+        "valid_from": {"classification": "operational"},
+        "valid_until": {"classification": "operational"}
+      }
+    },
+    "tax_settings": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "prices_include_tax": {"classification": "financial_non_contact"}
+      }
+    }
+  }
+}
