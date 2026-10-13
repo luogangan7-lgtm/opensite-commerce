@@ -13,6 +13,7 @@ python3 scripts/check_modules.py
 python3 tests/test_modules.py
 python3 tests/test_module_sql.py
 python3 tests/test_migration_runner.py
+python3 tests/test_pending_migrations.py
 python3 tests/test_check_pg_runner.py
 python3 tests/test_reliability_contract_static.py
 python3 tests/test_sqlc_contract_static.py
