@@ -73,9 +73,18 @@
         "api_keys"
       ],
       "operations": [
-        {"operation_id": "createAPIKey", "status": "implemented"},
-        {"operation_id": "listAPIKeys", "status": "implemented"},
-        {"operation_id": "revokeAPIKey", "status": "implemented"}
+        {
+          "operation_id": "createAPIKey",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "listAPIKeys",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "revokeAPIKey",
+          "status": "implemented"
+        }
       ],
       "dependencies": [
         "identity"
@@ -85,7 +94,9 @@
         "tests/db_isolation.sql",
         "tests/db_connection_reuse.sql"
       ],
-      "scopes": ["apikeys:write"],
+      "scopes": [
+        "apikeys:write"
+      ],
       "note": "Tenant owns membership and API key storage and management HTTP; identity consumes its authorization port through the public identity contract injected by bootstrap. Key management requires an admin session; one-time secrets are never retained for response replay."
     },
     {
@@ -1317,6 +1328,17 @@
       "touches_tables": [
         "checkout_sessions",
         "checkout_attempts"
+      ]
+    },
+    {
+      "file": "migrations/033_tenant_auth.sql",
+      "owner": "tenant",
+      "touches_tables": [
+        "users",
+        "tenants",
+        "tenant_memberships",
+        "api_keys",
+        "auth_sessions"
       ]
     }
   ]
