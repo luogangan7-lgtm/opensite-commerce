@@ -184,6 +184,73 @@ END $fulfillment$;
 -- the final unit conserves every original financial component without drift.
 RESET ROLE;
 SELECT set_config('app.tenant_id',:'t',true);
+-- Each active RMA state gets its own order: another RMA cannot accidentally
+-- supply the fence. Old financial event receipts still replay, and the legacy
+-- event path remains available before an RMA exists.
+SET LOCAL ROLE app_runtime;
+DO $active_rma$
+DECLARE
+ t uuid:=current_setting('test.fulfillment_t')::uuid;sku uuid:=current_setting('test.fulfillment_sku')::uuid;
+ oid uuid;lid uuid;rid uuid;sid uuid;res app.inventory_reservations;ord app.orders;
+ shipment jsonb;rma jsonb;gate_i int;gate_name text;expected_status text;before_stock bigint;
+BEGIN
+ FOR gate_i IN 1..3 LOOP
+  gate_name:=CASE gate_i WHEN 1 THEN 'cancel-received' WHEN 2 THEN 'physical-requested' ELSE 'physical-received' END;
+  oid:=uuidv7();lid:=uuidv7();
+  res:=app.inventory_reserve(sku,2,'order',oid,'active-rma-reserve-'||gate_i,900);
+  ord:=app.orders_create(oid,'active-rma-order-'||gate_i,sha256(('active-rma'||gate_i)::bytea),NULL,
+   '{"email":"active-rma@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
+   jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
+    'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
+    'reservation_id',res.id,'tax_snapshot','{}'::jsonb)),'[]');
+  ord:=app.orders_transition(oid,'paid','active-rma-paid-'||gate_i,0);
+  -- Positive witness: the pre-existing trusted financial event is preserved.
+  ord:=app.orders_transition(oid,'partially_refunded','active-rma-prior-'||gate_i,10);
+  IF ord.refunded_minor<>10 OR ord.state<>'partially_refunded' THEN
+   RAISE EXCEPTION 'FULFILLMENT_GATE no-RMA legacy financial event rejected'; END IF;
+  IF gate_i>1 THEN
+   shipment:=app.fulfillment_create_shipment(oid,ord.version,'active-rma-shipment-'||gate_i,'manual','RMA',
+    jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
+   sid:=(shipment->'lines'->0->>'id')::uuid;
+   SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+  END IF;
+  SELECT on_hand INTO before_stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
+  IF gate_i=1 THEN
+   rma:=app.returns_create(oid,ord.version,'active-rma-create-'||gate_i,'unshipped_cancel','cancel paid remainder',
+    jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
+  ELSE
+   rma:=app.returns_create(oid,ord.version,'active-rma-create-'||gate_i,'shipment_return','return shipped unit',
+    jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',1)));
+  END IF;
+  rid:=(rma->>'id')::uuid;
+  SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+  IF gate_i=3 THEN
+   rma:=app.returns_receive(rid,ord.version,'active-rma-receive-'||gate_i,true);
+   SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+  END IF;
+  expected_status:=CASE gate_i WHEN 2 THEN 'requested' ELSE 'received' END;
+  IF rma->>'status'<>expected_status OR (gate_i<>2 AND
+   ((rma->>'restocked')::boolean IS DISTINCT FROM true OR
+    (SELECT on_hand FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku)<>before_stock+1)) THEN
+   RAISE EXCEPTION 'FULFILLMENT_GATE active RMA % fixture failed',gate_name; END IF;
+  -- The old receipt predates the RMA; replay must not be rejected or add money.
+  IF app.orders_transition(oid,'partially_refunded','active-rma-prior-'||gate_i,10) IS DISTINCT FROM ord THEN
+   RAISE EXCEPTION 'FULFILLMENT_GATE active RMA % prior event replay drifted',gate_name; END IF;
+  BEGIN
+   PERFORM app.orders_transition(oid,'refunded','active-rma-new-'||gate_i,ord.total_minor-ord.refunded_minor);
+   RAISE EXCEPTION 'FULFILLMENT_GATE active RMA % accepted direct refund',gate_name;
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+   IF SQLERRM<>'FULFILLMENT_PENDING_REFUND_COMMAND_REQUIRED' THEN RAISE; END IF;
+  END;
+  IF (SELECT row(o.*) FROM app.orders o WHERE tenant_id=t AND id=oid) IS DISTINCT FROM row(ord.*)
+   OR (SELECT status FROM app.returns WHERE tenant_id=t AND id=rid)<>expected_status
+   OR EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND delivery_target='orders.events'
+    AND dedup_key='transition:'||oid::text||':active-rma-new-'||gate_i) THEN
+   RAISE EXCEPTION 'FULFILLMENT_GATE active RMA % denied event changed state',gate_name; END IF;
+  RAISE NOTICE 'PASS: active RMA % financial event fence, prior replay and no-RMA legacy path',gate_name;
+ END LOOP;
+END $active_rma$;
+RESET ROLE;
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
  VALUES(:'t',:'product','fulfillment-sku-2','second') RETURNING id AS sku2 \gset
 SELECT set_config('test.fulfillment_sku2',:'sku2',true);

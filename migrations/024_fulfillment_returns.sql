@@ -596,7 +596,7 @@ BEGIN
   END IF;
   RETURN o;
  END IF;
- IF p_target IN('partially_refunded','refunded') AND EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND order_id=p_id AND status='refund_pending') THEN
+ IF p_target IN('partially_refunded','refunded') AND EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND order_id=p_id AND status IN('requested','received','refund_pending')) THEN
   RAISE EXCEPTION 'FULFILLMENT_PENDING_REFUND_COMMAND_REQUIRED' USING ERRCODE='55000'; END IF;
  IF p_target='fulfilled' AND EXISTS(SELECT FROM app.order_lines ol_check WHERE ol_check.tenant_id=t AND ol_check.order_id=p_id AND
   coalesce((SELECT sum(quantity) FROM app.shipment_lines WHERE tenant_id=t AND order_line_id=ol_check.id),0)<>ol_check.quantity) THEN
