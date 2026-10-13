@@ -312,6 +312,46 @@ func TestStorefrontServingPG(t *testing.T) {
 		if err := <-swept; err != nil || dirty() {
 			t.Fatalf("refresh after lock release: %v", err)
 		}
+		// REVIEW PROBE 96-4: an invalidation committed after the refresh read its inputs
+		// (but before cms_serving_put) must not be lost: the row must end dirty or serve the new price.
+		mutate(`UPDATE app.product_variants SET lifecycle_status='ready' WHERE tenant_id=$1 AND id=$2`, a.tenant, ids.ready)
+		if _, err := refresh.Sweep(ctx); err != nil {
+			t.Fatal(err)
+		}
+		mutate(`UPDATE app.price_lists SET priority=priority WHERE tenant_id=$1`, a.tenant) // make the row due
+		held, commit := make(chan struct{}), make(chan struct{})
+		racer := make(chan error, 1)
+		go func() {
+			racer <- a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				if _, err := tx.Exec(ctx, `SELECT 1 FROM app.storefront_serving WHERE tenant_id=$1 AND site_id=$2 FOR UPDATE`, a.tenant, a.site); err != nil {
+					return err
+				}
+				close(held)
+				<-commit
+				_, err := tx.Exec(ctx, `UPDATE app.price_entries SET unit_amount=555 WHERE tenant_id=$1 AND sku_id=$2 AND unit_amount=777`, a.tenant, ids.ready)
+				return err
+			})
+		}()
+		<-held
+		raced := make(chan error, 1)
+		go func() { _, err := refresh.Sweep(ctx); raced <- err }()
+		waited := false
+		for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline) && !waited; time.Sleep(50 * time.Millisecond) {
+			waited = a.count(t, ctx, `SELECT count(*)::int FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%cms_serving_put%' AND $1::text<>'' AND $2::text<>''`) > 0
+		}
+		if !waited {
+			t.Fatal("probe: refresh never blocked in cms_serving_put")
+		}
+		close(commit)
+		if err := <-racer; err != nil {
+			t.Fatal(err)
+		}
+		if err := <-raced; err != nil {
+			t.Fatalf("probe sweep: %v", err)
+		}
+		if site, _ := read(hostA); len(site.Products[0].SKUs) == 1 && site.Products[0].SKUs[0].PriceMinor == "777" && !dirty() {
+			t.Fatalf("PROBE 96-4 LOST INVALIDATION: price changed to 555 in a committed tx, but the row is clean and serves %s until valid_until", site.Products[0].SKUs[0].PriceMinor)
+		}
 	})
 	// G8: the other tenant (same product/SKU UUIDs) serves only its own body.
 	withCMSContextFor(t, true, b.tenant, func(authctx context.Context) {
