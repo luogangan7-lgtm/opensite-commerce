@@ -130,6 +130,7 @@ expected = [
     'db_cms_publish.sql',
     'db_checkout.sql',
     'db_customer_auth.sql',
+    'db_data_rights.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
 races = (root / 'scripts/check_pg_races.sh').read_text()

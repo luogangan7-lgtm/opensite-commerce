@@ -1,0 +1,59 @@
+// Tests private export storage and capability derivation, independently of DB.
+package service
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+const tenant = "11111111-1111-4111-8111-111111111111"
+const request = "22222222-2222-4222-8222-222222222222"
+
+func TestPrivateArtifactAndBounds(t *testing.T) {
+	root := t.TempDir()
+	s := Service{root: root, key: []byte("01234567890123456789012345678901")}
+	if err := s.write(tenant, request, []byte(`{"ok":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := s.path(tenant, request)
+	f, _ := os.Stat(path)
+	if f.Mode().Perm() != 0600 {
+		t.Fatal("public artifact")
+	}
+	d, _ := os.Stat(filepath.Dir(path))
+	if d.Mode().Perm() != 0700 {
+		t.Fatal("public directory")
+	}
+	if _, err := s.path("../bad", request); err == nil {
+		t.Fatal("path traversal")
+	}
+	if err := s.write(tenant, request, make([]byte, MaxBytes+1)); err == nil {
+		t.Fatal("unbounded")
+	}
+	bytes, err := s.read(tenant, request)
+	if err != nil || string(bytes) != `{"ok":true}` {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "secret")
+	os.WriteFile(outside, []byte("secret"), 0600)
+	os.Remove(path)
+	os.Symlink(outside, path)
+	if _, err := s.read(tenant, request); err == nil {
+		t.Fatal("symlink accepted")
+	}
+}
+func TestTokenBoundToAllScope(t *testing.T) {
+	s := Service{key: []byte("01234567890123456789012345678901")}
+	e := time.Unix(1800000000, 0)
+	a := s.token(tenant, request, e)
+	for _, b := range []string{s.token(request, request, e), s.token(tenant, tenant, e), s.token(tenant, request, e.Add(time.Second))} {
+		if a == b {
+			t.Fatal("token scope omitted")
+		}
+	}
+	if len(a) < 40 {
+		t.Fatal("weak token")
+	}
+}

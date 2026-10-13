@@ -13,16 +13,20 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights"
+	rights "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/jobs"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/outbox"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
+	"github.com/riverqueue/river"
 )
 
 func main() {
@@ -156,6 +160,13 @@ func runContext(parent context.Context, getenv func(string) string, sender outbo
 }
 
 func composeWorkers(ctx context.Context, getenv func(string) string, sender outbox.Sender) (jobWorker, *outbox.Runner, func(), error) {
+	if getenv("PRIVACY_WORKER_DATABASE_URL") != "" {
+		root := getenv("OPENSITE_MEDIA_ROOT")
+		legacy := getenv("OPENSITE_PRIVACY_ROOT")
+		if !filepath.IsAbs(root) || (legacy != "" && filepath.Clean(legacy) != filepath.Clean(root)) {
+			return nil, nil, nil, errors.New("privacy root must equal the configured media root")
+		}
+	}
 	url, err := workerDSN(getenv, "WORKER_DATABASE_URL", "WORKER", "opensite_queue_login")
 	if err != nil {
 		return nil, nil, nil, err
@@ -190,7 +201,26 @@ func composeWorkers(ctx context.Context, getenv func(string) string, sender outb
 			tenants = append(tenants, strings.TrimSpace(tenant))
 		}
 	}
-	worker, err := jobs.NewWorker(pool, signer, jobs.WorkerConfig{Tenants: tenants})
+	cfg := jobs.WorkerConfig{Tenants: tenants}
+	if privacyURL := getenv("PRIVACY_WORKER_DATABASE_URL"); privacyURL != "" {
+		// Separate approved runtime login: queue credentials cannot read PII. Only
+		// the signed export worker calls this runner with validated internal IDs.
+		privacyRunner, closePrivacy, openErr := pgxadapter.Open(startupCtx, privacyURL)
+		if openErr != nil {
+			return nil, nil, nil, errors.New("privacy worker database unavailable")
+		}
+		cleanup = func() { closePrivacy(); pool.Close() }
+		tokenKey, keyErr := hex.DecodeString(getenv("PRIVACY_TOKEN_KEY"))
+		if keyErr != nil {
+			return nil, nil, nil, errors.New("invalid privacy token key")
+		}
+		exports, exportErr := datarights.New(rights.Config{Run: privacyRunner.InTenant, Root: getenv("OPENSITE_MEDIA_ROOT"), TokenKey: tokenKey})
+		if exportErr != nil {
+			return nil, nil, nil, errors.New("privacy worker configuration unavailable")
+		}
+		cfg.ExportService = permanentExports{exports}
+	}
+	worker, err := jobs.NewWorker(pool, signer, cfg)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -211,7 +241,8 @@ func composeWorkers(ctx context.Context, getenv func(string) string, sender outb
 	if err != nil {
 		return nil, nil, nil, errors.New("outbox database capability unavailable")
 	}
-	cleanup = func() { outboxPool.Close(); pool.Close() }
+	priorCleanup := cleanup
+	cleanup = func() { outboxPool.Close(); priorCleanup() }
 	var runner *outbox.Runner
 	if getenv("OUTBOX_ENABLED") == "true" {
 		store, destination := dispatchComponents(outboxPool, sender)
@@ -219,6 +250,19 @@ func composeWorkers(ctx context.Context, getenv func(string) string, sender outb
 	}
 	success = true
 	return &observedWorker{jobWorker: worker, source: outboxMetrics{query: outboxPool}}, runner, cleanup, nil
+}
+
+// permanentExports cancels export jobs no retry can change: invalid or over
+// limit, missing, or expired/consumed/revoked/erased requests. Busy and
+// unavailable failures keep River's retry path.
+type permanentExports struct{ jobs.ExportBuilder }
+
+func (p permanentExports) BuildExport(ctx context.Context, tenant, request string) error {
+	err := p.ExportBuilder.BuildExport(ctx, tenant, request)
+	if errors.Is(err, rights.ErrInvalid) || errors.Is(err, rights.ErrConflict) || errors.Is(err, rights.ErrNotFound) {
+		return river.JobCancel(err)
+	}
+	return err
 }
 
 // stopConcurrently starts both stops at once so a slow monitor drain cannot

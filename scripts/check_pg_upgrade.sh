@@ -150,6 +150,7 @@ STOREFRONT_DB=""
 NOTIFICATIONS_DB=""
 QUOTES_DB=""
 CMS_DB=""
+DATA_RIGHTS_DB=""
 CATALOG_DB=""
 CART_DB=""
 QUEUE_DB=""
@@ -164,7 +165,7 @@ CUSTOMER_AUTH_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$DATA_RIGHTS_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -979,6 +980,73 @@ admin -c "DROP DATABASE $NOTIFICATIONS_DB" >/dev/null; NOTIFICATIONS_DB=""
 pass 'notifications upgrade preserves original order outbox and fans out only newly inserted events'
 
 
+# C-22a data rights upgrade BEGIN: select by logical suffix and apply every
+# predecessor before seeding. Existing customer/address/order rows are hashed
+# before/after the forward migration; privacy and whole-schema authority gates
+# run after every successor. The throwaway DB joins the normal EXIT cleanup.
+data_rights_files=(migrations/[0-9][0-9][0-9]_data_rights.sql)
+[[ ${#data_rights_files[@]} == 1 && -f ${data_rights_files[0]} ]] || { echo 'FAIL: exactly one data rights migration required' >&2; exit 1; }
+DATA_RIGHTS_DB=data_rights_upgrade_$$; DB=$DATA_RIGHTS_DB
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${data_rights_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('data-rights-existing') RETURNING id AS t \gset
+INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','legacy-privacy@example.invalid','Synthetic legacy') RETURNING id AS customer \gset
+-- Pre-existing addresses in the newly reserved erasure namespace stay valid
+-- legacy rows; the reservation must not fail the upgrade or rewrite them.
+INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','legacy-domain@erased.invalid','Synthetic legacy domain');
+INSERT INTO app.customer_addresses(tenant_id,customer_id,recipient,address_line1,city,country_code)
+ VALUES(:'t',:'customer','Synthetic legacy','Synthetic address','Synthetic city','US');
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','privacy-legacy') RETURNING id AS product \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'product','privacy-legacy-sku','default') RETURNING id AS sku \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_inventory_manager;
+SELECT app.inventory_adjust(:'sku',2,'synthetic privacy upgrade',uuidv7(),'inbound');
+RESET ROLE;
+SET ROLE app_runtime;
+SELECT uuidv7() AS oid \gset
+SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','privacy-legacy-reserve',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','privacy-legacy-create',sha256('legacy'::bytea),:'customer',NULL,'USD',20,
+ '{"currency":"USD","amount_minor":20,"recipient":"Synthetic legacy"}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','privacy-legacy-sku','quantity',1,
+ 'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
+ 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('category','standard','net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
+SQL
+privacy_existing_witness() {
+ db "$1" <<'SQL'
+SELECT id AS t FROM app.tenants WHERE name='data-rights-existing' \gset
+SELECT encode(sha256(jsonb_build_object(
+ 'customers',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM app.customers c WHERE tenant_id=:'t'),
+ 'addresses',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM app.customer_addresses a WHERE tenant_id=:'t'),
+ 'orders',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM app.orders o WHERE tenant_id=:'t'),
+ 'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM app.order_lines l WHERE tenant_id=:'t'))::text::bytea),'hex')||'|'||
+ (SELECT count(*) FROM app.customers WHERE tenant_id=:'t')||'|'||
+ (SELECT count(*) FROM app.customer_addresses WHERE tenant_id=:'t')||'|'||
+ (SELECT count(*) FROM app.orders WHERE tenant_id=:'t')||'|'||
+ (SELECT count(*) FROM app.order_lines WHERE tenant_id=:'t');
+SQL
+}
+privacy_before=$(privacy_existing_witness "$DB")
+[[ $privacy_before == *'|2|1|1|1' ]] || bad "privacy predecessor fixture is incomplete: $privacy_before"
+apply_forward "$DB" "${data_rights_files[0]}"
+privacy_after=$(privacy_existing_witness "$DB")
+[[ $privacy_before == "$privacy_after" ]] || bad 'data rights migration changed populated customer/address/order/line rows'
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${data_rights_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+river_db "$DB" --verify
+if ! db "$DB" < tests/db_data_rights.sql >/dev/null || ! db "$DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'data rights controlled functions or exact authority after populated upgrade'
+else
+ pass 'data rights upgrade preserves customer/address/order/line bytes; privacy and exact authority pass'
+fi
+admin -c "DROP DATABASE $DB" >/dev/null; DATA_RIGHTS_DB=""
+# C-22a data rights upgrade END
+
 # C-02a: discover the identity upgrade by suffix. Seed only after ALL filename-
 # ordered predecessors; retain a full-row snapshot so ids, hashes and state are
 # independently compared, then apply every later module before the exact matrix.
@@ -1128,6 +1196,7 @@ db "$DB" -f tests/db_identity_auth.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 LOGIN_DB=""
+
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1

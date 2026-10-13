@@ -30,12 +30,13 @@ const (
 )
 
 type RouteSpec struct {
-	OperationID string
-	Method      string
-	Pattern     string
-	Access      Access
-	Scope       string
-	MaxBodySize int64
+	OperationID     string
+	Method          string
+	Pattern         string
+	Access          Access
+	Scope           string
+	MaxBodySize     int64
+	MaxResponseSize int64
 }
 
 type Route struct {
@@ -142,6 +143,9 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 		}
 		ctx = context.WithValue(ctx, requestIDKey{}, RequestID(r.Context()))
 		ctx = context.WithValue(ctx, bodyLimitKey{}, spec.MaxBodySize)
+		if buffered, ok := w.(*bufferedResponse); ok && spec.MaxResponseSize > 0 {
+			buffered.limit = spec.MaxResponseSize
+		}
 		handler.ServeHTTP(w, r.WithContext(ctx))
 	}))
 	s.operations[spec.OperationID] = spec
@@ -171,6 +175,9 @@ func validateRoute(s RouteSpec) error {
 	}
 	if !strings.HasPrefix(s.Pattern, "/") || strings.ContainsAny(s.Pattern, " ?#\t\n\r") {
 		return fail("path pattern required")
+	}
+	if s.MaxResponseSize < 0 || s.MaxResponseSize > 10<<20 {
+		return fail("invalid response limit")
 	}
 	if s.MaxBodySize < 0 {
 		return fail("negative body size")

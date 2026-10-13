@@ -3155,6 +3155,230 @@ paths:
         '422': {$ref: '#/components/responses/UnprocessableEntity'}
         '428': {$ref: '#/components/responses/PreconditionRequired'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+  /api/v1/t/{tenant_id}/customers/{customer_id}/data-exports:
+    post:
+      operationId: requestCustomerDataExport
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: customers:privacy
+      parameters:
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: "#/components/parameters/TenantId"
+        - {name: customer_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        '202':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DataExportRequest"}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/t/{tenant_id}/customers/{customer_id}/data-exports/{request_id}:
+    get:
+      operationId: getCustomerDataExport
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: customers:privacy
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {name: customer_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: request_id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DataExportStatus"}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/t/{tenant_id}/customers/{customer_id}/data-exports/{request_id}/download:
+    get:
+      operationId: downloadCustomerDataExport
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: customers:privacy
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {name: customer_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: request_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: token, in: query, required: true, schema: {type: string, minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]{43}$"}}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/t/{tenant_id}/customers/{customer_id}/data-erasure:
+    post:
+      operationId: eraseCustomerData
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: customers:privacy
+      parameters:
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: "#/components/parameters/TenantId"
+        - {name: customer_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DataErasureResult"}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/t/{tenant_id}/catalog/csv/preflight:
+    post:
+      operationId: preflightCatalogCSV
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:import
+      parameters:
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogCSVReport"}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/t/{tenant_id}/catalog/csv/import:
+    post:
+      operationId: importCatalogCSV
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:import
+      parameters:
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogCSVReport"}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/t/{tenant_id}/catalog/csv/export:
+    get:
+      operationId: exportCatalogCSV
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:export
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        '200':
+          description: Success
+          content:
+            text/csv:
+              schema: {type: string, format: binary}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/orders:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -4775,6 +4999,52 @@ components:
           format: int32
           minimum: 0
       additionalProperties: false
+    DataExportRequest:
+      type: object
+      additionalProperties: false
+      required: [request_id, status]
+      properties:
+        request_id: {type: string, format: uuid}
+        status: {type: string}
+    DataExportStatus:
+      type: object
+      additionalProperties: false
+      required: [request_id, status, expires_at]
+      properties:
+        request_id: {type: string, format: uuid}
+        status: {type: string}
+        expires_at: {type: string, format: date-time}
+        download_url: {type: string}
+        download_expires_at: {type: string, format: date-time}
+    DataErasureResult:
+      type: object
+      additionalProperties: false
+      required: [counts]
+      properties:
+        counts:
+          type: object
+          additionalProperties: {type: integer}
+        revoked_exports:
+          type: array
+          items: {type: string, format: uuid}
+    CatalogCSVReport:
+      type: object
+      additionalProperties: false
+      required: [rows, imported, errors]
+      properties:
+        rows: {type: integer}
+        imported: {type: integer}
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [row, field, code, message]
+            properties:
+              row: {type: integer}
+              field: {type: string}
+              code: {type: string}
+              message: {type: string}
     QuoteTransition:
       type: object
       additionalProperties: false
