@@ -57,12 +57,12 @@ func (r *fakeRepo) Credential(_ context.Context, tenant, email string) (c.Creden
 	}
 	return r.credential, nil
 }
-func (r *fakeRepo) PrepareRegistration(_ context.Context, tenant, email, hash string, token [32]byte, expires time.Time) error {
+func (r *fakeRepo) PrepareRegistration(_ context.Context, tenant, email, hash string, token [32]byte, ttl time.Duration) error {
 	if tenant != tenantA || email != buyerEmail {
 		return c.ErrInvalidInput
 	}
 	r.preparedHash = hash
-	r.registration[token] = challenge{hash: hash, expires: expires}
+	r.registration[token] = challenge{hash: hash, expires: r.now.Add(ttl)}
 	return nil
 }
 func (r *fakeRepo) ConsumeVerification(_ context.Context, tenant string, token [32]byte) error {
@@ -77,11 +77,11 @@ func (r *fakeRepo) ConsumeVerification(_ context.Context, tenant string, token [
 	r.credential = c.Credential{CustomerID: buyerID, Email: buyerEmail, Hash: ch.hash, Verified: true, Active: true}
 	return nil
 }
-func (r *fakeRepo) PrepareReset(_ context.Context, tenant, email string, token [32]byte, expires time.Time) error {
+func (r *fakeRepo) PrepareReset(_ context.Context, tenant, email string, token [32]byte, ttl time.Duration) error {
 	if tenant != tenantA || email != buyerEmail || !r.credential.Verified || !r.credential.Active {
 		return nil
 	}
-	r.reset[token] = challenge{expires: expires}
+	r.reset[token] = challenge{expires: r.now.Add(ttl)}
 	return nil
 }
 func (r *fakeRepo) ConsumeReset(_ context.Context, tenant string, token [32]byte, hash string) error {
@@ -97,7 +97,7 @@ func (r *fakeRepo) ConsumeReset(_ context.Context, tenant string, token [32]byte
 	r.sessions = make(map[[32]byte]c.Session)
 	return nil
 }
-func (r *fakeRepo) SaveSession(_ context.Context, tenant, customer, expectedHash string, old *[32]byte, next [32]byte, absolute, idle time.Time) (c.Session, error) {
+func (r *fakeRepo) SaveSession(_ context.Context, tenant, customer, expectedHash string, old *[32]byte, next [32]byte, absolute, idle time.Duration) (c.Session, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if tenant != tenantA || customer != buyerID || expectedHash != r.credential.Hash {
@@ -110,7 +110,7 @@ func (r *fakeRepo) SaveSession(_ context.Context, tenant, customer, expectedHash
 		}
 		delete(r.sessions, *old)
 	}
-	s := c.Session{ID: buyerID, TenantID: tenant, CustomerID: customer, Email: buyerEmail, ExpiresAt: absolute, IdleExpiresAt: idle}
+	s := c.Session{ID: buyerID, TenantID: tenant, CustomerID: customer, Email: buyerEmail, ExpiresAt: r.now.Add(absolute), IdleExpiresAt: r.now.Add(idle)}
 	r.sessions[next] = s
 	return s, nil
 }
@@ -614,6 +614,38 @@ func TestCustomerAuthEmailAllowsLocalMailerDomain(t *testing.T) {
 		t.Run(tc.address, func(t *testing.T) {
 			if got := validEmail(tc.address); got != tc.valid {
 				t.Fatalf("CUSTOMER_AUTH_LOCAL_RECIPIENT_RED: validEmail=%v want %v", got, tc.valid)
+			}
+		})
+	}
+}
+
+func TestCustomerAuthLengthBoundsCountUTF8Bytes(t *testing.T) {
+	accent := string(rune(0x00e9))
+	emoji := string(rune(0x1f600))
+	for _, tc := range []struct {
+		name    string
+		unit    string
+		count   int
+		minimum int
+		valid   bool
+	}{
+		{"accent-below-register-minimum", accent, 5, 12, false},
+		{"accent-at-register-minimum", accent, 6, 12, true},
+		{"accent-at-maximum", accent, 512, 12, true},
+		{"accent-above-maximum", accent, 513, 12, false},
+		{"emoji-at-register-minimum", emoji, 3, 12, true},
+		{"emoji-at-maximum", emoji, 256, 12, true},
+		{"emoji-above-maximum", emoji, 257, 12, false},
+		{"accent-login-minimum", accent, 1, 1, true},
+		{"emoji-login-minimum", emoji, 1, 1, true},
+		{"empty-login-input", accent, 0, 1, false},
+		{"login-maximum", emoji, 256, 1, true},
+		{"login-above-maximum", emoji, 257, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			encoded := strings.Repeat(tc.unit, tc.count)
+			if got := validPassword(encoded, tc.minimum); got != tc.valid {
+				t.Fatalf("CUSTOMER_AUTH_UTF8_BYTE_BOUNDS: %d bytes with minimum %d: got %v want %v", len(encoded), tc.minimum, got, tc.valid)
 			}
 		})
 	}

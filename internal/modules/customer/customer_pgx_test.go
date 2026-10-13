@@ -21,7 +21,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	customer "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
@@ -228,7 +227,7 @@ func TestCustomerPGMailboxLifecycleTenantRotationAndReset(t *testing.T) {
 	rollbackHash := sha256.Sum256(customerPGBytes(t, 32))
 	rollbackMarker := errors.New("customer fixture rollback")
 	err = f.runtime.InTenant(f.ctx, f.tenant, func(q *db.Queries) error {
-		prepared, err := q.PrepareCustomerReset(f.ctx, db.PrepareCustomerResetParams{Email: f.email, TokenHash: rollbackHash[:], ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}})
+		prepared, err := q.PrepareCustomerReset(f.ctx, db.PrepareCustomerResetParams{Email: f.email, TokenHash: rollbackHash[:], ChallengeUs: int64(time.Hour / time.Microsecond)})
 		if err != nil {
 			return err
 		}
@@ -469,6 +468,25 @@ func TestCustomerPGDeadlinesUseDatabaseClockDespiteApplicationSkew(t *testing.T)
 				}
 			})
 		}
+	}
+}
+
+func TestCustomerPGEqualIdleAndAbsoluteDeadlinesShareOneDatabaseInstant(t *testing.T) {
+	f := customerPG(t)
+	password := customerPGCredential(t)
+	if err := f.service.Register(f.ctx, f.tenant, f.email, password, f.ip); err != nil {
+		t.Fatal("CUSTOMER_PG_EQUAL_DEADLINE_REGISTER_FAILED")
+	}
+	if err := f.service.Verify(f.ctx, f.tenant, f.mailbox.latest(t, f.tenant, "register")); err != nil {
+		t.Fatal("CUSTOMER_PG_EQUAL_DEADLINE_VERIFY_FAILED")
+	}
+	service, err := customer.NewPostgres(f.runtime.InTenant, customer.Config{Mailer: f.mailbox, Secret: customerPGBytes(t, 32), SessionTTL: time.Minute, IdleTTL: time.Minute})
+	if err != nil {
+		t.Fatal("CUSTOMER_PG_EQUAL_DEADLINE_SERVICE_FAILED")
+	}
+	session, err := service.Login(f.ctx, f.tenant, f.email, password, f.ip, noPreviousCustomerToken)
+	if err != nil || !session.ExpiresAt.Equal(session.IdleExpiresAt) {
+		t.Fatal("CUSTOMER_PG_EQUAL_DEADLINE_RED: equal lifetimes must use one database instant")
 	}
 }
 

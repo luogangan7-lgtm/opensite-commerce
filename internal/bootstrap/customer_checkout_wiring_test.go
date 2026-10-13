@@ -62,6 +62,11 @@ func TestCustomerInvalidCookieUsesGuestCheckoutCapability(t *testing.T) {
 			if mode == "unavailable" {
 				port.failure = customercontract.ErrUnavailable
 			} else {
+				if mode == "other_tenant" {
+					session := port.sessions[checkoutWiringTenant]
+					session.TenantID = checkoutWiringOtherTenant
+					port.sessions[checkoutWiringOtherTenant] = session
+				}
 				delete(port.sessions, checkoutWiringTenant)
 			}
 			// The anonymous session challenge is the guest's CSRF proof. The
@@ -104,6 +109,45 @@ func TestCustomerInvalidCookieUsesGuestCheckoutCapability(t *testing.T) {
 			digest := sha256.Sum256([]byte(guest))
 			if w.Code != 201 || service.calls != 1 || service.actor.Kind() != "guest" || service.actor.ID() != hex.EncodeToString(digest[:]) || !cleared {
 				t.Fatalf("CUSTOMER_GUEST_CHECKOUT_RED: status=%d start=%d clear=%v", w.Code, service.calls, cleared)
+			}
+		})
+	}
+}
+
+func TestCustomerGuestFallbackRequiresIndependentCSRFAndCartToken(t *testing.T) {
+	handler, port, service, stale := checkoutWiringFixture(t)
+	delete(port.sessions, checkoutWiringTenant)
+	challenge := httptest.NewRecorder()
+	handler.ServeHTTP(challenge, httptest.NewRequest(http.MethodGet, checkoutWiringOrigin+"/api/v1/t/"+checkoutWiringTenant+"/customer/session", nil))
+	var envelope struct {
+		CSRF string `json:"csrf_token"`
+	}
+	if challenge.Code != 200 || json.Unmarshal(challenge.Body.Bytes(), &envelope) != nil || envelope.CSRF == "" {
+		t.Fatal("guest challenge unavailable")
+	}
+	for _, tc := range []struct {
+		name   string
+		status int
+		mutate func(*http.Request)
+	}{
+		{"bad_csrf", 403, func(r *http.Request) { r.Header.Set("X-CSRF-Token", "invalid") }},
+		{"missing_challenge", 403, func(r *http.Request) { r.Header.Del("Cookie"); r.AddCookie(stale) }},
+		{"missing_cart_token", 401, func(r *http.Request) { r.Header.Del("X-Cart-Token") }},
+		{"invalid_cart_token", 404, func(r *http.Request) { r.Header.Set("X-Cart-Token", "invalid") }},
+		{"duplicate_cart_token", 404, func(r *http.Request) { r.Header.Add("X-Cart-Token", stale.Value) }},
+		{"foreign_origin", 403, func(r *http.Request) { r.Header.Set("Origin", "https://foreign.example.test") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := checkoutWiringRequest(checkoutWiringTenant, envelope.CSRF, stale)
+			r.Header.Set("X-Cart-Token", stale.Value)
+			for _, cookie := range challenge.Result().Cookies() {
+				r.AddCookie(cookie)
+			}
+			tc.mutate(r)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != tc.status || service.calls != 0 {
+				t.Fatalf("guest fallback admitted without independent proof: status=%d want=%d start=%d", w.Code, tc.status, service.calls)
 			}
 		})
 	}
@@ -201,21 +245,21 @@ func TestCustomerCheckoutAdmissionFailsClosedBeforeDomain(t *testing.T) {
 			r.Header.Set("X-Customer-ID", checkoutWiringCustomer)
 			r.Body = io.NopCloser(strings.NewReader(`{"customer_id":"` + checkoutWiringCustomer + `","tenant_id":"` + checkoutWiringTenant + `"}`))
 		}, false},
-		{"guest_header_without_customer", 401, func(r *http.Request, p *checkoutWiringCustomerPort) {
+		{"guest_header_without_customer", 403, func(r *http.Request, p *checkoutWiringCustomerPort) {
 			r.Header.Del("Cookie")
 			r.Header.Set("X-Cart-Token", p.wiringCustomer.token)
 		}, false},
-		{"bad_csrf", 403, func(r *http.Request, _ *checkoutWiringCustomerPort) { r.Header.Set("X-CSRF-Token", "invalid") }, false},
-		{"missing_csrf", 403, func(r *http.Request, _ *checkoutWiringCustomerPort) { r.Header.Del("X-CSRF-Token") }, false},
+		{"bad_csrf", 403, func(r *http.Request, _ *checkoutWiringCustomerPort) { r.Header.Set("X-CSRF-Token", "invalid") }, true},
+		{"missing_csrf", 403, func(r *http.Request, _ *checkoutWiringCustomerPort) { r.Header.Del("X-CSRF-Token") }, true},
 		{"duplicate_csrf", 403, func(r *http.Request, _ *checkoutWiringCustomerPort) {
 			r.Header.Add("X-CSRF-Token", r.Header.Get("X-CSRF-Token"))
-		}, false},
+		}, true},
 		{"foreign_origin", 403, func(r *http.Request, _ *checkoutWiringCustomerPort) {
 			r.Header.Set("Origin", "https://foreign.example.test")
 		}, false},
 		{"missing_origin", 403, func(r *http.Request, _ *checkoutWiringCustomerPort) { r.Header.Del("Origin") }, false},
 		{"duplicate_origin", 403, func(r *http.Request, _ *checkoutWiringCustomerPort) { r.Header.Add("Origin", checkoutWiringOrigin) }, false},
-		{"revoked_session", 404, func(_ *http.Request, p *checkoutWiringCustomerPort) { delete(p.sessions, checkoutWiringTenant) }, true},
+		{"revoked_session", 401, func(_ *http.Request, p *checkoutWiringCustomerPort) { delete(p.sessions, checkoutWiringTenant) }, true},
 		{"customer_with_guest_header", 404, func(r *http.Request, p *checkoutWiringCustomerPort) {
 			r.Header.Set("X-Cart-Token", p.wiringCustomer.token)
 		}, true},
@@ -271,24 +315,26 @@ func TestCustomerCheckoutCompositionPreservesExplicitResolver(t *testing.T) {
 func TestCustomerCheckoutTenantBoundCSRFAndSessionLookup(t *testing.T) {
 	handler, port, service, cookie := checkoutWiringFixture(t)
 	csrf := checkoutWiringCSRF(t, handler, cookie, checkoutWiringTenant)
+	// Keep the target session live to isolate tenant-bound CSRF from invalid
+	// bearer fallback. The original tenant's MAC still cannot admit this write.
+	session := port.sessions[checkoutWiringTenant]
+	session.TenantID = checkoutWiringOtherTenant
+	port.sessions[checkoutWiringOtherTenant] = session
 	port.calls = 0
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, checkoutWiringRequest(checkoutWiringOtherTenant, csrf, cookie))
-	if w.Code != 403 || port.calls != 0 || service.calls != 0 {
+	if w.Code != 403 || port.calls != 1 || service.calls != 0 {
 		t.Fatalf("CUSTOMER_CHECKOUT_TENANT_MAC_RED: status=%d current=%d start=%d", w.Code, port.calls, service.calls)
 	}
 	// Mint a valid target-tenant MAC through the real public route while this
 	// controlled fixture session is live, then revoke its target-tenant mapping.
-	// This isolates the 404 lookup branch; replaying the original tenant MAC is 403.
-	session := port.sessions[checkoutWiringTenant]
-	session.TenantID = checkoutWiringOtherTenant
-	port.sessions[checkoutWiringOtherTenant] = session
+	// Without a guest capability an invalid bearer grants no checkout access.
 	otherCSRF := checkoutWiringCSRF(t, handler, cookie, checkoutWiringOtherTenant)
 	delete(port.sessions, checkoutWiringOtherTenant)
 	port.calls = 0
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, checkoutWiringRequest(checkoutWiringOtherTenant, otherCSRF, cookie))
-	if w.Code != 404 || port.calls != 1 || port.tenant != checkoutWiringOtherTenant || service.calls != 0 {
+	if w.Code != 401 || port.calls != 1 || port.tenant != checkoutWiringOtherTenant || service.calls != 0 {
 		t.Fatalf("CUSTOMER_CHECKOUT_TENANT_LOOKUP_RED: status=%d current=%d start=%d", w.Code, port.calls, service.calls)
 	}
 }

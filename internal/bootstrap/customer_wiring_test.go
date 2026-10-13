@@ -69,6 +69,7 @@ func TestCustomerInvalidCookieFallsBackToGuestCart(t *testing.T) {
 			}
 			r := httptest.NewRequest(http.MethodPost, origin+"/api/v1/t/"+tenant+"/carts", strings.NewReader(`{"currency":"USD"}`))
 			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("Origin", origin)
 			r.AddCookie(&http.Cookie{Name: customerhttp.SessionCookie, Value: token})
 			w := httptest.NewRecorder()
 			server.Handler.ServeHTTP(w, r)

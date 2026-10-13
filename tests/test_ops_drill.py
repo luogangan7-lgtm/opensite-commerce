@@ -1,6 +1,8 @@
 """Drill metric witnesses must detect wrong counts, duplicates and invalid age."""
 import io
+from email.message import Message
 from pathlib import Path
+import secrets
 import sys
 import unittest
 from unittest.mock import patch
@@ -152,6 +154,83 @@ class CustomerAuthComposeTests(unittest.TestCase):
         self.assertIsInstance(generated[0], ast.Call)
         self.assertEqual(ast.unparse(generated[0].func), 'secrets.token_urlsafe')
         self.assertEqual(ast.literal_eval(generated[0].args[0]), 32)
+
+
+class CustomerRecoveryWitnessTests(unittest.TestCase):
+    """Local proof/session witnesses must fail on a foreign or unsafe artifact."""
+    tenant = 'c0500001-0000-4000-8000-000000000001'
+    origin = 'https://store.drill.test'
+
+    def message(self):
+        token = secrets.token_urlsafe(32)
+        recipient = 'buyer-' + secrets.token_hex(8) + '@drill.test'
+        link = self.origin + '/customer/verify#tenant=' + self.tenant + '&token=' + token
+        message = {'To': [{'Name': '', 'Address': recipient}],
+                   'Text': 'Verify your email address using this single-use link:\n' + link}
+        return message, recipient, token
+
+    def test_only_pinned_origin_fragment_proof_is_accepted(self):
+        message, recipient, token = self.message()
+        with patch.dict(ops_drill.os.environ, OPENSITE_STOREFRONT_ORIGIN=self.origin):
+            self.assertEqual(ops_drill.proof_from_message(message, recipient, self.tenant), token)
+            for mutation in (
+                {'To': [{'Address': 'foreign@drill.test'}]},
+                {'To': message['To'] + [{'Address': 'other@drill.test'}]},
+                {'Text': message['Text'].replace(self.origin, 'https://foreign.test')},
+                {'Text': message['Text'].replace('/customer/verify#', '/customer/verify?')},
+                {'Text': message['Text'] + '&tenant=' + self.tenant},
+                {'Text': message['Text'].replace(token, 'malformed')},
+            ):
+                with self.subTest(mutation=tuple(mutation)):
+                    with self.assertRaises(ops_drill.OpsError):
+                        ops_drill.proof_from_message(dict(message, **mutation), recipient, self.tenant)
+
+    def test_cookie_wire_flags_and_clearing(self):
+        value = secrets.token_urlsafe(32)
+        header = (ops_drill.CUSTOMER_SESSION + '=' + value
+                  + '; Path=/; Secure; HttpOnly; SameSite=Lax')
+        cookies = {}
+        headers = Message()
+        headers.add_header('Set-Cookie', header)
+        ops_drill.witness_cookies(headers, cookies)
+        self.assertEqual(cookies, {ops_drill.CUSTOMER_SESSION: value})
+        for unsafe in (header.replace('; Secure', ''), header.replace('; HttpOnly', ''),
+                       header.replace('Path=/', 'Path=/api'), header + '; Domain=localhost',
+                       header.replace('SameSite=Lax', 'SameSite=None')):
+            headers = Message()
+            headers.add_header('Set-Cookie', unsafe)
+            with self.assertRaises(ops_drill.OpsError):
+                ops_drill.witness_cookies(headers, {})
+        headers = Message()
+        headers.add_header('Set-Cookie', header + '; Max-Age=0')
+        ops_drill.witness_cookies(headers, cookies)
+        self.assertEqual(cookies, {})
+
+    def test_loopback_only_transport_refuses_before_request(self):
+        for url in ('https://external.test', 'http://localhost:8025',
+                    'http://127.0.0.1:8025/unexpected', 'http://user@127.0.0.1:8025'):
+            with self.subTest(url=url), patch.object(ops_drill.urllib.request, 'urlopen') as request:
+                with self.assertRaises(ops_drill.OpsError):
+                    ops_drill.witness_json(url, '/api/v1/messages')
+                request.assert_not_called()
+
+    def test_restore_checks_live_customer_and_cart_before_db_witness(self):
+        witness = {'tenant': self.tenant,
+                   'customer': 'c0500002-0000-4000-8000-000000000001',
+                   'session': 'c0500003-0000-4000-8000-000000000001',
+                   'cart': 'c0500004-0000-4000-8000-000000000001', 'cookies': {}}
+        for mismatch in ('session', 'cart'):
+            current = {'customer': {'customer_id': witness['customer'], 'session_id': witness['session']}}
+            view = {'id': witness['cart']}
+            if mismatch == 'session':
+                current['customer']['session_id'] = witness['customer']
+            else:
+                view['id'] = witness['customer']
+            with patch.object(ops_drill, 'witness_json', side_effect=[(current, {}), (view, {})]), \
+                    patch.object(ops_drill, 'psql') as database:
+                with self.assertRaises(ops_drill.OpsError):
+                    ops_drill.restored_customer_witness('http://127.0.0.1:8080', witness)
+                database.assert_not_called()
 
 
 if __name__ == '__main__':
