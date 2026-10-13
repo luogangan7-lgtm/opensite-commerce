@@ -57,12 +57,12 @@ func (r *fakeRepo) Credential(_ context.Context, tenant, email string) (c.Creden
 	}
 	return r.credential, nil
 }
-func (r *fakeRepo) PrepareRegistration(_ context.Context, tenant, email, hash string, token [32]byte, expires time.Time) error {
+func (r *fakeRepo) PrepareRegistration(_ context.Context, tenant, email, hash string, token [32]byte, ttl time.Duration) error {
 	if tenant != tenantA || email != buyerEmail {
 		return c.ErrInvalidInput
 	}
 	r.preparedHash = hash
-	r.registration[token] = challenge{hash: hash, expires: expires}
+	r.registration[token] = challenge{hash: hash, expires: r.now.Add(ttl)}
 	return nil
 }
 func (r *fakeRepo) ConsumeVerification(_ context.Context, tenant string, token [32]byte) error {
@@ -77,11 +77,11 @@ func (r *fakeRepo) ConsumeVerification(_ context.Context, tenant string, token [
 	r.credential = c.Credential{CustomerID: buyerID, Email: buyerEmail, Hash: ch.hash, Verified: true, Active: true}
 	return nil
 }
-func (r *fakeRepo) PrepareReset(_ context.Context, tenant, email string, token [32]byte, expires time.Time) error {
+func (r *fakeRepo) PrepareReset(_ context.Context, tenant, email string, token [32]byte, ttl time.Duration) error {
 	if tenant != tenantA || email != buyerEmail || !r.credential.Verified || !r.credential.Active {
 		return nil
 	}
-	r.reset[token] = challenge{expires: expires}
+	r.reset[token] = challenge{expires: r.now.Add(ttl)}
 	return nil
 }
 func (r *fakeRepo) ConsumeReset(_ context.Context, tenant string, token [32]byte, hash string) error {
@@ -97,7 +97,7 @@ func (r *fakeRepo) ConsumeReset(_ context.Context, tenant string, token [32]byte
 	r.sessions = make(map[[32]byte]c.Session)
 	return nil
 }
-func (r *fakeRepo) SaveSession(_ context.Context, tenant, customer, expectedHash string, old *[32]byte, next [32]byte, absolute, idle time.Time) (c.Session, error) {
+func (r *fakeRepo) SaveSession(_ context.Context, tenant, customer, expectedHash string, old *[32]byte, next [32]byte, absolute, idle time.Duration) (c.Session, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if tenant != tenantA || customer != buyerID || expectedHash != r.credential.Hash {
@@ -110,7 +110,7 @@ func (r *fakeRepo) SaveSession(_ context.Context, tenant, customer, expectedHash
 		}
 		delete(r.sessions, *old)
 	}
-	s := c.Session{ID: buyerID, TenantID: tenant, CustomerID: customer, Email: buyerEmail, ExpiresAt: absolute, IdleExpiresAt: idle}
+	s := c.Session{ID: buyerID, TenantID: tenant, CustomerID: customer, Email: buyerEmail, ExpiresAt: r.now.Add(absolute), IdleExpiresAt: r.now.Add(idle)}
 	r.sessions[next] = s
 	return s, nil
 }
@@ -522,10 +522,14 @@ func TestCustomerAuthKDFDeadlineRetainsCapacityUntilCompletion(t *testing.T) {
 	s.cfg.HashTimeout = 10 * time.Millisecond
 	entered := make(chan struct{}, 2)
 	release := make(chan struct{})
-	defer close(release)
+	completed := make(chan struct{}, 2)
+	var releaseOnce sync.Once
+	releaseWorker := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseWorker()
 	s.deriveKey = func(_, _ []byte, _, _ uint32, _ uint8, _ uint32) []byte {
 		entered <- struct{}{}
 		<-release
+		completed <- struct{}{}
 		return make([]byte, 32)
 	}
 	password := opaque(t)
@@ -558,8 +562,145 @@ func TestCustomerAuthKDFDeadlineRetainsCapacityUntilCompletion(t *testing.T) {
 		t.Fatal("new background KDF escaped concurrency bound")
 	default:
 	}
+	// The timed-out request already returned, but its non-preemptible worker
+	// still owns a slot. Release it and cross both completion barriers before
+	// asserting that the finished worker caused no late persistence writes.
+	releaseWorker()
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("released KDF worker did not complete")
+	}
+	select {
+	case s.hashSlots <- struct{}{}:
+		<-s.hashSlots
+	case <-time.After(time.Second):
+		t.Fatal("completed KDF worker did not release its actual slot")
+	}
 	if len(r.sessions) != 0 || r.failures != 0 {
 		t.Fatal("deadline performed late repository mutation")
+	}
+}
+
+func TestCustomerAuthDatabaseLiveSessionIgnoresApplicationClockSkew(t *testing.T) {
+	for _, skew := range []time.Duration{-24 * time.Hour, 24 * time.Hour} {
+		t.Run(skew.String(), func(t *testing.T) {
+			s, r, _, _ := fixture(t)
+			enabled(t, r)
+			token := opaque(t)
+			hash := hashToken(t, token)
+			r.sessions[hash] = c.Session{ID: buyerID, TenantID: tenantA, CustomerID: buyerID, Email: buyerEmail, ExpiresAt: r.now.Add(time.Hour), IdleExpiresAt: r.now.Add(30 * time.Minute)}
+			s.cfg.Now = func() time.Time { return r.now.Add(skew) }
+			if session, err := s.Current(context.Background(), tenantA, token); err != nil || session.CustomerID != buyerID {
+				t.Fatalf("CUSTOMER_AUTH_APP_CLOCK_SESSION_RED: DB-live session rejected for %v skew: %v", skew, err)
+			}
+		})
+	}
+}
+
+// A successful repository call with malformed data is a dependency failure,
+// not evidence that the presented bearer was invalid or should be discarded.
+type anomalousSessionRepository struct {
+	c.Repository
+	session c.Session
+}
+
+func (r anomalousSessionRepository) Session(context.Context, string, [32]byte, time.Duration) (c.Session, error) {
+	return r.session, nil
+}
+func (r anomalousSessionRepository) SaveSession(context.Context, string, string, string, *[32]byte, [32]byte, time.Duration, time.Duration) (c.Session, error) {
+	return r.session, nil
+}
+
+func TestCustomerAuthSuccessfulRepositoryAnomalyIsUnavailable(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		mutate    func(*c.Session)
+		loginOnly bool
+	}{
+		{"malformed_email", func(s *c.Session) { s.Email = "buyer@intranet" }, false},
+		{"wrong_tenant", func(s *c.Session) { s.TenantID = tenantB }, false},
+		{"malformed_id", func(s *c.Session) { s.ID = "invalid" }, false},
+		{"missing_deadline", func(s *c.Session) { s.ExpiresAt = time.Time{} }, false},
+		{"inconsistent_deadlines", func(s *c.Session) { s.IdleExpiresAt = s.ExpiresAt.Add(time.Minute) }, false},
+		{"wrong_customer", func(s *c.Session) { s.CustomerID = tenantB }, true},
+	} {
+		for _, operation := range []string{"current", "login"} {
+			if tc.loginOnly && operation != "login" {
+				continue
+			}
+			t.Run(tc.name+"/"+operation, func(t *testing.T) {
+				s, r, _, _ := fixture(t)
+				enabled(t, r)
+				session := c.Session{ID: buyerID, TenantID: tenantA, CustomerID: buyerID, Email: buyerEmail, ExpiresAt: r.now.Add(time.Hour), IdleExpiresAt: r.now.Add(30 * time.Minute)}
+				tc.mutate(&session)
+				s.cfg.Repo = anomalousSessionRepository{Repository: r, session: session}
+				var actual c.Session
+				var err error
+				if operation == "current" {
+					actual, err = s.Current(context.Background(), tenantA, opaque(t))
+				} else {
+					credential := opaque(t)
+					actual, err = s.Login(context.Background(), tenantA, buyerEmail, credential, testIP, noPreviousToken)
+				}
+				if !errors.Is(err, c.ErrUnavailable) || actual != (c.Session{}) {
+					t.Fatalf("CUSTOMER_SESSION_ANOMALY_RED: dependency anomaly became invalid bearer or identity: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestCustomerAuthEmailAllowsLocalMailerDomain(t *testing.T) {
+	for _, tc := range []struct {
+		address string
+		valid   bool
+	}{
+		{"buyer@localhost", true},
+		{"buyer@example.test", true},
+		{"buyer@example.invalid", true},
+		{"buyer@", false},
+		{"buyer", false},
+		{"Buyer <buyer@localhost>", false},
+		{"buyer@localhost\r\nBcc: hidden@example.test", false},
+	} {
+		t.Run(tc.address, func(t *testing.T) {
+			if got := validEmail(tc.address); got != tc.valid {
+				t.Fatalf("CUSTOMER_AUTH_LOCAL_RECIPIENT_RED: validEmail=%v want %v", got, tc.valid)
+			}
+		})
+	}
+}
+
+func TestCustomerAuthLengthBoundsCountUTF8Bytes(t *testing.T) {
+	accent := string(rune(0x00e9))
+	emoji := string(rune(0x1f600))
+	for _, tc := range []struct {
+		name    string
+		unit    string
+		count   int
+		minimum int
+		valid   bool
+	}{
+		{"accent-below-register-minimum", accent, 5, 12, false},
+		{"accent-at-register-minimum", accent, 6, 12, true},
+		{"accent-at-maximum", accent, 512, 12, true},
+		{"accent-above-maximum", accent, 513, 12, false},
+		{"emoji-at-register-minimum", emoji, 3, 12, true},
+		{"emoji-at-maximum", emoji, 256, 12, true},
+		{"emoji-above-maximum", emoji, 257, 12, false},
+		{"accent-login-minimum", accent, 1, 1, true},
+		{"emoji-login-minimum", emoji, 1, 1, true},
+		{"empty-login-input", accent, 0, 1, false},
+		{"login-maximum", emoji, 256, 1, true},
+		{"login-above-maximum", emoji, 257, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			encoded := strings.Repeat(tc.unit, tc.count)
+			if got := validPassword(encoded, tc.minimum); got != tc.valid {
+				t.Fatalf("CUSTOMER_AUTH_UTF8_BYTE_BOUNDS: %d bytes with minimum %d: got %v want %v", len(encoded), tc.minimum, got, tc.valid)
+			}
+		})
 	}
 }
 

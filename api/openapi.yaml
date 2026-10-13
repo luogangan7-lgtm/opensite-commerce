@@ -3605,15 +3605,26 @@ components:
           maxLength: 254
         password:
           type: string
-          minLength: 12
-          maxLength: 1024
+          description: >-
+            Length is 12 to 1024 UTF-8 bytes after JSON decoding, not a Unicode
+            character count. No Unicode normalization is applied. NUL, CR and LF
+            are rejected.
+          x-opensite-min-utf8-bytes: 12
+          x-opensite-max-utf8-bytes: 1024
     CustomerCredentialsInput:
       type: object
       additionalProperties: false
       required: [email, password]
       properties:
         email: {type: string, format: email, maxLength: 320}
-        password: {type: string, minLength: 1, maxLength: 1024}
+        password:
+          type: string
+          description: >-
+            Length is 1 to 1024 UTF-8 bytes after JSON decoding, not a Unicode
+            character count. No Unicode normalization is applied. NUL, CR and LF
+            are rejected.
+          x-opensite-min-utf8-bytes: 1
+          x-opensite-max-utf8-bytes: 1024
     CustomerTokenInput:
       type: object
       additionalProperties: false
@@ -3632,7 +3643,14 @@ components:
       required: [token, password]
       properties:
         token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
-        password: {type: string, minLength: 12, maxLength: 1024}
+        password:
+          type: string
+          description: >-
+            Length is 12 to 1024 UTF-8 bytes after JSON decoding, not a Unicode
+            character count. No Unicode normalization is applied. NUL, CR and LF
+            are rejected.
+          x-opensite-min-utf8-bytes: 12
+          x-opensite-max-utf8-bytes: 1024
     CustomerRegistrationReceipt:
       type: object
       additionalProperties: false

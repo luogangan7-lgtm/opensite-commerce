@@ -5,9 +5,11 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/hex"
 	"net/http"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
+	cartcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	customercontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
@@ -32,9 +34,15 @@ func (a checkoutAdmission) Authenticate(ctx context.Context, r *http.Request, sp
 			return nil, err
 		}
 		if actor.CustomerID == "" {
-			return nil, checkoutCustomerRequired()
+			if len(r.Header.Values("X-Cart-Token")) == 0 {
+				return nil, checkoutCustomerRequired()
+			}
+			if err := a.customer.AdmitGuest(r); err != nil {
+				return nil, err
+			}
+		} else {
+			ctx = customercontract.WithActor(ctx, actor)
 		}
-		ctx = customercontract.WithActor(ctx, actor)
 		// Reuse cart's customer/tenant admission and mixed guest-token rejection;
 		// this performs no second customer session lookup or cart business call.
 		ctx, err = a.cart.Authenticate(ctx, r, spec)
@@ -54,11 +62,15 @@ func (a checkoutAdmission) ResolveActor(ctx context.Context, r *http.Request, sp
 type customerCheckoutResolver struct{}
 
 func (customerCheckoutResolver) Resolve(ctx context.Context, _ *http.Request) (checkoutcontract.AuthorizedActor, error) {
-	actor, ok := customercontract.ActorFromContext(ctx)
-	if !ok || actor.CustomerID == "" {
+	actor, ok := cartcontract.Actor(ctx)
+	if !ok {
 		return checkoutcontract.AuthorizedActor{}, checkoutCustomerRequired()
 	}
-	resolved, err := checkoutcontract.NewAuthorizedActor(actor.TenantID, "customer", actor.CustomerID)
+	kind, id := "customer", actor.CustomerID
+	if id == "" && len(actor.GuestTokenHash) == 32 {
+		kind, id = "guest", hex.EncodeToString(actor.GuestTokenHash)
+	}
+	resolved, err := checkoutcontract.NewAuthorizedActor(actor.TenantID, kind, id)
 	if err != nil {
 		return checkoutcontract.AuthorizedActor{}, checkoutCustomerRequired()
 	}

@@ -26,13 +26,71 @@ import (
 type wiringCustomer struct {
 	session c.Session
 	token   string
+	failure error
 }
 
 func (w wiringCustomer) Current(_ context.Context, tenant, token string) (c.Session, error) {
+	if w.failure != nil {
+		return c.Session{}, w.failure
+	}
 	if tenant != w.session.TenantID || token != w.token {
 		return c.Session{}, c.ErrUnauthorized
 	}
 	return w.session, nil
+}
+
+func TestCustomerInvalidCookieFallsBackToGuestCart(t *testing.T) {
+	const tenant = "11111111-1111-4111-8111-111111111111"
+	const other = "33333333-3333-4333-8333-333333333333"
+	const origin = "https://shop.example.test"
+	for _, tc := range []struct {
+		name, sessionTenant string
+		failure             error
+		status              int
+	}{
+		{"expired", tenant, c.ErrUnauthorized, 500},
+		{"other_tenant", other, nil, 500},
+		{"unavailable", tenant, c.ErrUnavailable, 503},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			secret, raw := make([]byte, 32), make([]byte, 32)
+			if _, err := rand.Read(secret); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := rand.Read(raw); err != nil {
+				t.Fatal(err)
+			}
+			token := base64.RawURLEncoding.EncodeToString(raw)
+			port := wiringCustomer{token: token, failure: tc.failure, session: c.Session{TenantID: tc.sessionTenant, CustomerID: other}}
+			repo := &wiringCart{}
+			server, err := bootstrap.New(bootstrap.Config{Customer: port, CustomerOrigin: origin, CustomerSecret: secret, Cart: cart.New(repo, nil), Authenticator: rejectStaffAuth{t: t}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := httptest.NewRequest(http.MethodPost, origin+"/api/v1/t/"+tenant+"/carts", strings.NewReader(`{"currency":"USD"}`))
+			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("Origin", origin)
+			r.AddCookie(&http.Cookie{Name: customerhttp.SessionCookie, Value: token})
+			w := httptest.NewRecorder()
+			server.Handler.ServeHTTP(w, r)
+			if w.Code != tc.status {
+				t.Fatalf("CUSTOMER_GUEST_FALLBACK_RED: status=%d want=%d", w.Code, tc.status)
+			}
+			cleared := false
+			for _, cookie := range w.Result().Cookies() {
+				if cookie.Name == customerhttp.SessionCookie && cookie.MaxAge < 0 {
+					cleared = true
+				}
+			}
+			if tc.failure == c.ErrUnavailable {
+				if repo.calls != 0 || cleared {
+					t.Fatal("outage became guest or cleared bearer")
+				}
+			} else if repo.calls != 1 || repo.actor.CustomerID != "" || repo.contextActor.CustomerID != "" || !cleared {
+				t.Fatal("CUSTOMER_GUEST_FALLBACK_RED: invalid cookie blocked guest cart or leaked customer")
+			}
+		})
+	}
 }
 func (w wiringCustomer) Register(context.Context, string, string, string, netip.Addr) error {
 	return c.ErrUnavailable
