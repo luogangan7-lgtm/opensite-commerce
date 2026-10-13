@@ -12,14 +12,24 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED = ('internal/platform/httpapi/generated', 'internal/db', 'packages/api-client/src/schema.d.ts')
 
-job = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']['generated-patch']
+workflow = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())
+job = workflow['jobs']['generated-patch']
 assert job['permissions'] == {'contents': 'read'}, 'untrusted PR code: read-only token only'
-assert 'pull_request' in job['if']
+assert job['if'] == "github.event_name == 'pull_request'", 'job must run on (and only on) pull_request'
+# Workflow-level trigger/env/defaults apply to this job too (PyYAML reads the `on` key as True).
+outer = json.dumps({key: value for key, value in workflow.items() if key != 'jobs'}, default=str)
+assert 'pull_request_target' not in outer and 'secrets.' not in outer and 'workflow_run' not in outer, outer
 text = json.dumps(job)  # no line folding, unlike yaml.safe_dump
 for forbidden in ('secrets.', 'git push', 'git commit', 'pull_request_target', 'contents: write'):
     assert forbidden not in text, forbidden
 checkout = next(s for s in job['steps'] if s.get('uses', '').startswith('actions/checkout@'))
 assert checkout.get('with', {}).get('persist-credentials') is False
+# The patch must apply to the contributor's branch, not the synthetic merge commit.
+assert checkout['with'].get('ref') == '${{ github.event.pull_request.head.sha }}'
+regenerate = next(s['run'] for s in job['steps'] if 'sqlc generate' in s.get('run', ''))
+# sqlc never deletes outputs of removed/renamed query files: clear generator-owned outputs first.
+clean = 'rm -f internal/db/db.go internal/db/models.go internal/db/*.sql.go'
+assert clean in regenerate and regenerate.index(clean) < regenerate.index('sqlc generate'), regenerate
 upload = next(s for s in job['steps'] if s.get('uses', '').startswith('actions/upload-artifact@'))
 assert upload['with']['name'] == 'generated-patch' and upload['with']['path'] == 'generated.patch'
 assert 'sha256sum -c' in text and 'oapi-codegen' in text and 'sqlc generate' in text and 'openapi-typescript' in text
@@ -27,9 +37,9 @@ assert all(path in text for path in GENERATED)
 assert 'apply_generated_patch.sh' in text and 'generated-patch' in text
 
 FAKE_GH = '''#!/usr/bin/env bash
-# fake: gh run download <id> -n generated-patch -D <dir>
-[[ "$1 $2 $4 $5" == "run download -n generated-patch" && $3 == 4242 && $6 == -D ]] || exit 9
-cp "$FAKE_PATCH" "$7/generated.patch"
+# fake: gh run download <id> -R <base repo> -n generated-patch -D <dir> (base repo also from a fork clone)
+[[ "$1 $2 $3 $4 $5 $6 $7 $8" == "run download 4242 -R luogangan7-lgtm/opensite-commerce -n generated-patch -D" ]] || exit 9
+cp "$FAKE_PATCH" "$9/generated.patch"
 '''
 
 
