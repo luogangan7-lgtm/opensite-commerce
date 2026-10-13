@@ -115,8 +115,12 @@ func runRefundConservation(t *testing.T, quantity, unit, taxBasisPoints, shippin
 	taxMinor := (quantity*unit*taxBasisPoints + 5000) / 10000
 	total := quantity*unit + taxMinor + shippingMinor - discount
 	if legacy > 0 {
+		target := orderscontract.PartiallyRefunded
+		if legacy == total {
+			target = orderscontract.Refunded
+		}
 		err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-			_, err := orders.New().Transition(ctx, tx, f.tenant, orderscontract.TransitionInput{OrderID: f.order.ID, Target: orderscontract.PartiallyRefunded, EventKey: "legacy-credit", RefundMinor: legacy})
+			_, err := orders.New().Transition(ctx, tx, f.tenant, orderscontract.TransitionInput{OrderID: f.order.ID, Target: target, EventKey: "legacy-credit", RefundMinor: legacy})
 			return err
 		})
 		if err != nil {
@@ -163,6 +167,12 @@ func runRefundConservation(t *testing.T, quantity, unit, taxBasisPoints, shippin
 		}
 		if !physical && rmas[i].RefundMinor == 0 && rmas[i].Status != "completed" {
 			t.Fatalf("zero cancellation stranded: %+v", rmas[i])
+		}
+		if legacy == total {
+			_, refunded, state := conservationOrder(t, f)
+			if refunded != total || state != "refunded" {
+				t.Fatalf("zero cancellation changed fully refunded order: amount=%d state=%s", refunded, state)
+			}
 		}
 	}
 	if frozenSum+legacy != total {
@@ -247,6 +257,7 @@ func runRefundConservation(t *testing.T, quantity, unit, taxBasisPoints, shippin
 func TestRefundConservationLegacyCredit(t *testing.T) {
 	t.Run("full190", func(t *testing.T) { runRefundConservation(t, 2, 100, 0, 0, 0, 10, []int64{2}, []int{0}, false) })
 	t.Run("split95and95", func(t *testing.T) { runRefundConservation(t, 2, 100, 0, 0, 0, 10, []int64{1, 1}, []int{1, 0}, false) })
+	t.Run("fullyCreditedCancelCompletesZero", func(t *testing.T) { runRefundConservation(t, 2, 100, 0, 0, 0, 200, []int64{2}, []int{0}, false) })
 }
 
 func TestRefundConservationZeroReceiveAfterRefunded(t *testing.T) {
@@ -271,6 +282,11 @@ func TestRefundConservationSeeded150Orders(t *testing.T) {
 			remaining -= chunk
 		}
 		sequence, physical := rng.Perm(len(chunks)), rng.Intn(2) == 0
+		// Exercise full legacy credit only for unshipped cancellation: a fully
+		// refunded order cannot start a new shipment, but still owns paid stock.
+		if !physical && rng.Intn(4) == 0 {
+			legacy = total
+		}
 		t.Run(fmt.Sprintf("seed%d-case%03d", seed, i), func(t *testing.T) {
 			t.Logf("qty=%d unit=%d tax=%d shipping=%d discount=%d legacy=%d chunks=%v sequence=%v physical=%t", quantity, unit, taxMinor, shippingMinor, discount, legacy, chunks, sequence, physical)
 			runRefundConservation(t, quantity, unit, taxBasisPoints, shippingMinor, discount, legacy, chunks, sequence, physical)
