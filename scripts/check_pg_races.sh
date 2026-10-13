@@ -809,7 +809,8 @@ done
 
 # Checkout durable claim competes before provider IO. Both winner directions
 # are synchronized by gates 70/71, with a witnessed contender row-lock wait.
-# Then only the committed claimant applies Orders/Ledger side effects. The Go
+# Then only the committed claimant applies Orders/Ledger side effects. Outbox:
+# order.created + terminal event, plus the notifications fan-out email for paid. The Go
 # pgx E2E repeats this protocol through the actual Fake provider/service.
 for first_phase in confirming cancelling; do
  read -r T SKU OID <<<"$(inventory_fixture)"
@@ -830,8 +831,8 @@ INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,r
  VALUES('$T','$CID','guest',repeat('a',64),'checkout-race',sha256('start'::bytea),uuidv7(),1,'$OID','USD',130,100,10,20,1,'{}');
 UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake-race',start_result='{}' WHERE tenant_id='$T' AND id='$CID';
 SQL
- if [[ $first_phase == confirming ]]; then second_phase=cancelling; first_kind=payment; second_kind=cancel; final=paid; stock=0; journals=1; race_gate=70
- else second_phase=confirming; first_kind=cancel; second_kind=payment; final=cancelled; stock=1; journals=0; race_gate=71; fi
+ if [[ $first_phase == confirming ]]; then second_phase=cancelling; first_kind=payment; second_kind=cancel; final=paid; stock=0; journals=1; outbox=3; race_gate=70
+ else second_phase=confirming; first_kind=cancel; second_kind=payment; final=cancelled; stock=1; journals=0; outbox=2; race_gate=71; fi
  claim_first="WITH changed AS (UPDATE app.checkout_sessions SET phase='$first_phase',claim_kind='$first_kind',claim_key='race-first' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_FIRST='||count(*) FROM changed;"
  claim_second="WITH changed AS (UPDATE app.checkout_sessions SET phase='$second_phase',claim_kind='$second_kind',claim_key='race-second' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_SECOND='||count(*) FROM changed;"
  gate_close "$race_gate"
@@ -850,8 +851,8 @@ SQL
  tx checkout_finish app_runtime "$T" "$finish UPDATE app.checkout_sessions SET phase='$final',final_result='{}' WHERE tenant_id='$T' AND id='$CID';"
  expect checkout_finish ok
  got=$(sql <<<"SELECT c.phase||'|'||o.state||'|'||s.on_hand||'|'||s.reserved||'|'||(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id='$T')||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T')||'|'||(SELECT count(*) FROM app.inventory_movements WHERE tenant_id='$T') FROM app.checkout_sessions c JOIN app.orders o ON(o.tenant_id,o.id)=(c.tenant_id,c.order_id) JOIN app.stock_levels s ON s.tenant_id=c.tenant_id WHERE c.tenant_id='$T' AND c.id='$CID';")
- echo "checkout claim $first_phase wins: $got (expected $final|$final|$stock|0|$journals|2|3)"
- [[ $got == "$final|$final|$stock|0|$journals|2|3" ]] || fail=1
+ echo "checkout claim $first_phase wins: $got (expected $final|$final|$stock|0|$journals|$outbox|3)"
+ [[ $got == "$final|$final|$stock|0|$journals|$outbox|3" ]] || fail=1
 done
 
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/checkout contract" >&2; exit 1; fi

@@ -1006,7 +1006,8 @@ if ! db "$QUOTES_DB" < tests/db_quotes.sql >/dev/null || ! db "$QUOTES_DB" < tes
 else pass 'quotes forward ALTER preserves existing contact inquiry and runtime lifecycle/grants'; fi
 admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
 # Checkout installs after EVERY prior forward migration; numeric allocation is
-# deliberately irrelevant. Legacy paid orders and their outbox are not rewritten.
+# deliberately irrelevant. Legacy paid orders and their outbox are not rewritten
+# (created + paid + notifications fan-out email = 3 events).
 checkout_files=(migrations/[0-9][0-9][0-9]_checkout.sql)
 [[ ${#checkout_files[@]} == 1 ]] || { echo 'FAIL: exactly one checkout migration required'; exit 1; }
 CHECKOUT_DB=upgrade_checkout_$$
@@ -1033,7 +1034,7 @@ SELECT app.orders_transition(:'oid','paid','legacy-paid',0);
 SQL
 apply_forward "$CHECKOUT_DB" "${checkout_files[0]}"
 result=$(db "$CHECKOUT_DB" -c "SELECT o.state||'|'||o.version||'|'||o.total_minor||'|'||s.on_hand||'|'||s.reserved||'|'||(SELECT count(*) FROM app.outbox_events)||'|'||(SELECT count(*) FROM app.checkout_sessions)||'|'||(SELECT count(*) FROM app.checkout_attempts) FROM app.orders o JOIN app.stock_levels s USING(tenant_id);")
-[[ $result == 'paid|2|100|1|0|2|0|0' ]] || bad "checkout populated upgrade witness: $result"
+[[ $result == 'paid|2|100|1|0|3|0|0' ]] || bad "checkout populated upgrade witness: $result"
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${checkout_files[0]} ]] || continue
  apply_forward "$CHECKOUT_DB" "$f"
