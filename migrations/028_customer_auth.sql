@@ -84,7 +84,7 @@ DO $tables$ DECLARE tab text; role_name text; BEGIN
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    EXECUTE format('REVOKE ALL ON app.%I FROM %I',tab,role_name);
   END LOOP;
-  EXECUTE format('CREATE POLICY customer_scope ON app.%I TO app_customer_auth,app_customer_executor USING(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',tab);
+  EXECUTE format('CREATE POLICY tenant_scope ON app.%I TO app_customer_auth,app_customer_executor USING(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',tab);
  END LOOP;
 END $tables$;
 CREATE POLICY customer_executor_scope ON app.customers TO app_customer_executor

@@ -29,6 +29,18 @@ the customer lock, fencing a reset during password verification. Account,
 IPv4/IP64 and tenant-global durable admission return 429 + Retry-After without
 sleeping in request handlers.
 
+Reset requests use the same preparation and mail transport path for every
+syntactically valid address, including unknown, disabled and unverified accounts.
+Those ineligible accounts receive an unusable challenge: no reset token is
+persisted, and token exchange returns the same invalid-token response. Transport
+failure therefore cannot reveal whether an account exists. This behavior remains
+restricted to the permitted development recipients above.
+
+Durable admission serializes the three budgets in tenant-global, IP, account
+order. Retention and pruning of expired opaque admission keys need a maintenance
+follow-up before enabling real public email traffic; this card does not add an
+unbounded in-request cleanup operation.
+
 GET session without a cookie issues a five-minute signed CSRF challenge. Every
 write requires the exact configured Origin and signed CSRF bound to origin,
 tenant and session/challenge. Cookies survive until the absolute deadline; the
