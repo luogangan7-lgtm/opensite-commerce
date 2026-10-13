@@ -16,7 +16,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
-type PGStore struct{ Pool *pgxadapter.QueuePool }
+type PGStore struct{ Pool pgxadapter.QueueDB }
 
 func (s PGStore) Claim(ctx context.Context, tenantID, workerID string, limit, seconds int32) ([]Lease, error) {
 	var leases []Lease
