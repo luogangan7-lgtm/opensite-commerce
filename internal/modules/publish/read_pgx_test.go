@@ -7,6 +7,7 @@ package publish_test
 
 import (
 	"context"
+	"encoding/json"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -220,7 +221,7 @@ func TestPublicPublishedReadPG(t *testing.T) {
 	for _, nav := range []string{`[]`, `[{"label":"About","href":"/about"}]`} {
 		tenant, host := newUUID(t), "large-"+newUUID(t)[:8]+".c09.test"
 		if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, fmt.Sprintf(largeSiteSQL, tenant, host, nav, 1, 7, "en"))
+			_, err := tx.Exec(ctx, fmt.Sprintf(largeSiteSQL, tenant, host, nav, 1, 7, "en", 9000))
 			return err
 		}); err != nil {
 			t.Fatal(err)
@@ -245,21 +246,30 @@ func TestPublicPublishedReadPG(t *testing.T) {
 			t.Fatalf("mutable default_locale changed sealed release read: %+v %v", after.Locale, err)
 		}
 	}
-	// Review thread rtzAC: an over-budget snapshot (two ~630 KB pages) is rejected by the
+	// Review thread rtzAC: an over-budget snapshot (four ~630 KB pages, > 2 MiB pre-bound) is rejected by the
 	// store before pages are aggregated or transferred; rtvb1: lowercase locale is canonical.
 	for _, tc := range []struct {
-		pages, blocks int
-		locale        string
-		oversized     bool
-	}{{2, 70, "en", true}, {1, 7, "en-us", false}} {
+		pages, blocks, text int
+		locale              string
+		oversized           bool
+	}{{4, 70, 9000, "en", true}, {1, 7, 9000, "en-us", false},
+		// ruH5Z: 100x200 blocks of 20 chars is ~1.03 MB compact JSON (served) but ~1.1 MB as
+		// jsonb::text; 22 chars is ~1.07 MB compact, so Project's exact check rejects it.
+		{100, 200, 20, "en", false}, {100, 200, 22, "en", true}} {
 		tenant, host := newUUID(t), "budget-"+newUUID(t)[:8]+".c09.test"
 		if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, fmt.Sprintf(largeSiteSQL, tenant, host, `[]`, tc.pages, tc.blocks, tc.locale))
+			_, err := tx.Exec(ctx, fmt.Sprintf(largeSiteSQL, tenant, host, `[]`, tc.pages, tc.blocks, tc.locale, tc.text))
 			return err
 		}); err != nil {
 			t.Fatal(err)
 		}
 		_, _, _, _, pages, err := rawStore.Current(ctx, host)
+		if tc.oversized && tc.text == 22 {
+			if _, err := module.Current(ctx, host); !errors.Is(err, contract.ErrUnavailable) {
+				t.Errorf("compact response just over 1 MiB served: %v", err)
+			}
+			continue
+		}
 		if tc.oversized {
 			if !errors.Is(err, contract.ErrUnavailable) || len(pages) != 0 {
 				t.Errorf("over-budget snapshot not rejected before aggregation: err=%v pages=%d bytes", err, len(pages))
@@ -269,8 +279,11 @@ func TestPublicPublishedReadPG(t *testing.T) {
 			}
 			continue
 		}
-		if got, err := module.Current(ctx, host); err != nil || got.Locale != "en-US" || len(got.Pages) != tc.pages {
-			t.Errorf("lowercase locale release: %+v %v", got.Locale, err)
+		got, err := module.Current(ctx, host)
+		if err != nil || got.Locale != map[string]string{"en": "en", "en-us": "en-US"}[tc.locale] || len(got.Pages) != tc.pages {
+			t.Errorf("valid release (%d pages, %d-char blocks, %s) not served: %+v %v", tc.pages, tc.text, tc.locale, got.Locale, err)
+		} else if encoded, _ := json.Marshal(got); tc.pages == 100 && len(encoded) < 1_000_000 {
+			t.Errorf("near-limit fixture too small: %d bytes", len(encoded))
 		}
 	}
 	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -296,7 +309,7 @@ func newUUID(t *testing.T) string {
 }
 
 // largeSiteSQL publishes one sealed release. Args: tenant uuid, verified host,
-// navigation JSON, page count, 9,000-character paragraphs per page, release locale.
+// navigation JSON, page count, paragraphs per page, release locale, paragraph length.
 // The first page is /about (7 blocks is about 63 KB); others are /about-<n>.
 const largeSiteSQL = `DO $large$
 DECLARE t uuid := '%[1]s'; o uuid := gen_random_uuid(); s uuid := gen_random_uuid();
@@ -316,7 +329,7 @@ BEGIN
   INSERT INTO app.pages(tenant_id,site_id,id,page_key) VALUES(t,s,pg,'about'||i);
   INSERT INTO app.page_revisions(tenant_id,site_id,page_id,locale,revision,document) VALUES(t,s,pg,'%[6]s',1,
    jsonb_build_object('title','About','description','','blocks',
-    (SELECT jsonb_agg(jsonb_build_object('kind','paragraph','text',repeat('x',9000))) FROM generate_series(1,%[5]d))));
+    (SELECT jsonb_agg(jsonb_build_object('kind','paragraph','text',repeat('x',%[7]d))) FROM generate_series(1,%[5]d))));
   INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,page_id,page_revision)
    VALUES(t,s,rel,'%[6]s',CASE WHEN i=1 THEN '/about' ELSE '/about-'||i END,pg,1);
  END LOOP;

@@ -170,3 +170,27 @@ func TestProjectionLocaleCaseInsensitive(t *testing.T) {
 		}
 	}
 }
+
+// Review ruH5Z: PostgreSQL hands over spaced jsonb text; only the compact response is
+// budgeted, so a spaced input over 1 MiB whose compact response fits must be served.
+func TestProjectionSpacedInputUnderCompactBudget(t *testing.T) {
+	pages := make([]contract.Page, 100)
+	for i := range pages {
+		pages[i] = contract.Page{Path: fmt.Sprintf("/p%d", i), Title: "Page", Blocks: make([]contract.Block, 200)}
+		for j := range pages[i].Blocks {
+			pages[i].Blocks[j] = contract.Block{Kind: "paragraph", Text: strings.Repeat("x", 20)}
+		}
+	}
+	spaced, err := json.MarshalIndent(pages, "", " ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := []byte(`{"version":1,"locale":"en","title":"Shop","description":"","navigation":[],"products":[]}`)
+	got, err := Project("s", "r", "shop.example", "en", manifest, spaced)
+	if err != nil {
+		t.Fatalf("spaced %d-byte input with compact response under budget rejected: %v", len(spaced), err)
+	}
+	if compact, _ := json.Marshal(got); len(spaced) <= 1<<20 || len(compact)+1 > 1<<20 {
+		t.Fatalf("fixture must be spaced>1MiB, compact<=1MiB: %d %d", len(spaced), len(compact))
+	}
+}

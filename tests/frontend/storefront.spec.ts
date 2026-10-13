@@ -127,3 +127,13 @@ test('storefront maximum-size published prices wrap instead of overflowing', asy
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
 });
+
+test('storefront long published headings wrap instead of overflowing', async ({ page }) => {
+  // Review ruH5c: heading blocks (10,000 chars) and product names (300) can be one long token.
+  const token = 'x'.repeat(300);
+  for (const [path, selector] of [['/', 'main h2'], ['/products', '.product-list h2 a']] as const) {
+    await page.goto(`${origin}${path}`);
+    await page.locator(selector).first().evaluate((element, text) => { element.textContent = text; }, token);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+});

@@ -36,7 +36,9 @@ export async function preparePublishedPage(
   const description = product?.description ?? (isList ? site?.description : page?.description) ?? '';
   context.response.status = status ?? 200;
   context.response.headers.set('Cache-Control', 'no-store');
-  return { site, status, ui, isList, product, page, title, description, canonical };
+  // Link the site name home only when the release actually pins a root page.
+  const homeHref = site?.pages.some(item => item.path === '/') ? '/' : undefined;
+  return { site, status, ui, isList, product, page, title, description, canonical, homeHref };
 }
 
 export type PublishedPageView = Awaited<ReturnType<typeof preparePublishedPage>>;

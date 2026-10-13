@@ -14,8 +14,12 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
-// responseBudget mirrors service.Project's 1 MiB serialized-response limit.
-const responseBudget = 1 << 20
+// preBudget bounds the jsonb::text bytes summed before aggregation. jsonb::text only adds
+// one space after each ':' and ',' and never escapes more than Go's json.Marshal, and every
+// separator follows at least one value byte plus key quotes, so jsonb::text <= 1.5x the
+// compact encoding. Twice service.Project's exact 1 MiB limit therefore never rejects a
+// response Project would accept, while still capping aggregation/transfer at 2 MiB.
+const preBudget = 2 << 20
 
 type Store struct{ runner pgxadapter.Runner }
 
@@ -28,9 +32,9 @@ func Open(ctx context.Context, dsn string) (*Store, func(), error) {
 }
 func (s *Store) Current(ctx context.Context, host string) (siteID, releaseID, locale string, manifest, pages []byte, err error) {
 	err = s.runner.InPublicRead(ctx, host, func(ctx context.Context, tx pgx.Tx) error {
-		// The lateral budget sums raw manifest+pinned document bytes (so also bounds any
-		// single page) BEFORE jsonb_agg; over budget, the CASE never runs the aggregate and
-		// pages is NULL. service.Project still enforces the exact serialized 1 MiB limit.
+		// The lateral budget sums manifest+pinned document jsonb::text bytes (so also bounds
+		// any single page) BEFORE jsonb_agg; over preBudget the CASE never runs the aggregate
+		// and pages is NULL. service.Project still enforces the exact compact 1 MiB limit.
 		return tx.QueryRow(ctx, `SELECT s.id::text,r.id::text,r.manifest->>'locale',r.manifest,
    CASE WHEN b.bytes<=$2 THEN coalesce((SELECT jsonb_agg(p.document ORDER BY p.path) FROM (
      SELECT rr.path,jsonb_build_object('path',rr.path,'title',pr.document->'title','description',pr.document->'description','blocks',pr.document->'blocks') AS document
@@ -46,7 +50,7 @@ func (s *Store) Current(ctx context.Context, host string) (siteID, releaseID, lo
        WHERE (rr.tenant_id,rr.site_id,rr.release_id)=(r.tenant_id,r.site_id,r.id) AND lower(rr.locale)=lower(r.manifest->>'locale')
        ORDER BY rr.path LIMIT 101) pr) b
    WHERE d.normalized_hostname=$1 AND d.status='verified' AND d.verified_at IS NOT NULL AND r.sealed
-   AND octet_length(r.manifest::text)<=$2`, host, responseBudget).Scan(&siteID, &releaseID, &locale, &manifest, &pages)
+   AND octet_length(r.manifest::text)<=$2`, host, preBudget).Scan(&siteID, &releaseID, &locale, &manifest, &pages)
 	})
 	if err == nil && pages == nil {
 		err = contract.ErrUnavailable // snapshot exceeds the response budget; nothing aggregated

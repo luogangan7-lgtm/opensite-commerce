@@ -50,3 +50,16 @@ CREATE POLICY public_pinned_revision ON app.page_revisions FOR SELECT TO app_dom
      OR jsonb_typeof(b->'text') IS DISTINCT FROM 'string' OR b->>'kind' NOT IN ('heading','paragraph')) ELSE false END
   AND EXISTS (SELECT FROM app.site_release_routes rr
    WHERE (rr.tenant_id,rr.site_id,rr.page_id,rr.locale,rr.page_revision)=(page_revisions.tenant_id,page_revisions.site_id,page_revisions.page_id,page_revisions.locale,page_revisions.revision)));
+-- Locale labels are case-insensitive BCP 47 tags, but 005/006 keys are case-sensitive.
+-- One release may pin at most one route per path across case variants, so public reads
+-- can match the manifest locale case-insensitively. Existing collisions stop the
+-- migration instead of letting it pick one; they need an explicit owner decision.
+DO $locale_case$
+BEGIN
+ IF EXISTS (SELECT FROM app.site_release_routes
+  GROUP BY tenant_id,site_id,release_id,lower(locale),path HAVING count(*)>1) THEN
+  RAISE EXCEPTION 'STOREFRONT_ROUTE_LOCALE_CASE_COLLISION';
+ END IF;
+END $locale_case$;
+CREATE UNIQUE INDEX site_release_routes_locale_ci_key
+ ON app.site_release_routes (tenant_id,site_id,release_id,lower(locale),path);

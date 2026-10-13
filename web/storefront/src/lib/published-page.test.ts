@@ -158,4 +158,18 @@ describe('published page prepares the route response before rendering', () => {
       }
     } finally { upstream.stop(true); }
   });
+  test('site-name home link exists only when the release pins a root page', async () => {
+    // Review ruH5W: a release without "/" must not render a guaranteed-404 header link.
+    let pages = site.pages;
+    const upstream = Bun.serve({ port: 0, fetch() { return Response.json({ ...site, pages }); } });
+    try {
+      for (const [withRoot, expected] of [[true, '/'], [false, undefined]] as const) {
+        pages = withRoot ? site.pages : site.pages.filter(page => page.path !== '/');
+        const response = { status: 200, statusText: 'OK', headers: new Headers() };
+        const view = await preparePublishedPage(requestContext(new URL('https://shop.example.test/products'), response), '/products', upstream.url.origin);
+        expect(response.status).toBe(200);
+        expect(view.homeHref).toBe(expected);
+      }
+    } finally { upstream.stop(true); }
+  });
 });

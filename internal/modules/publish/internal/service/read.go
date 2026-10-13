@@ -55,7 +55,9 @@ func canonicalLocale(v string) (string, bool) {
 }
 
 func decode(raw []byte, v any) error {
-	if len(raw) > 1<<20 {
+	// Inputs arrive as spaced jsonb text (<= 1.5x compact, see store.preBudget); the exact
+	// 1 MiB limit applies to the compact response below, so inputs get the 2 MiB bound.
+	if len(raw) > 2<<20 {
 		return contract.ErrUnavailable
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))

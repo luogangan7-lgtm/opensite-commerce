@@ -13,7 +13,7 @@ nav { display: flex; flex-wrap: wrap; gap: var(--space-5); padding-block: var(--
 nav a[aria-current="page"] { font-weight: var(--font-weight-semibold); }
 main { padding-block: var(--space-12); min-block-size: var(--layout-sidebar); }
 h1 { font-size: var(--font-size-2xl); line-height: var(--line-height-heading); margin-block: var(--space-0) var(--space-6); overflow-wrap: anywhere; }
-h2 { font-size: var(--font-size-xl); line-height: var(--line-height-heading); margin-block: var(--space-8) var(--space-3); }
+h2 { font-size: var(--font-size-xl); line-height: var(--line-height-heading); margin-block: var(--space-8) var(--space-3); overflow-wrap: anywhere; }
 p { margin-block: var(--space-0) var(--space-5); overflow-wrap: anywhere; }
 .published-copy, .page-description, .error-page { max-inline-size: var(--layout-prose); }
 .published-copy { padding-block-end: var(--space-8); }
