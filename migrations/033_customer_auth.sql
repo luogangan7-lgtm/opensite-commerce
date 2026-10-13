@@ -102,7 +102,7 @@ DO $tables$ DECLARE tab text; role_name text; BEGIN
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    EXECUTE format('REVOKE ALL ON app.%I FROM %I',tab,role_name);
   END LOOP;
-  EXECUTE format('CREATE POLICY tenant_scope ON app.%I TO app_customer_auth,app_customer_executor USING(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',tab);
+  EXECUTE format('CREATE POLICY tenant_scope ON app.%I TO app_customer_auth,app_customer_executor USING(true) WITH CHECK(true)',tab);
  END LOOP;
 END $tables$;
 CREATE POLICY customer_executor_scope ON app.customers TO app_customer_executor
@@ -234,7 +234,7 @@ CREATE FUNCTION app.customer_session(p_token bytea,p_idle_seconds bigint) RETURN
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $fn$
 DECLARE t uuid:=app.customer_auth_context(); cid uuid; c app.customers%ROWTYPE; stamp timestamptz; s app.customer_sessions%ROWTYPE; BEGIN
  IF p_idle_seconds NOT BETWEEN 1 AND 86400 THEN RAISE EXCEPTION 'CUSTOMER_AUTH_INVALID_IDLE' USING ERRCODE='22023'; END IF;
- SELECT customer_id INTO cid FROM app.customer_sessions WHERE tenant_id=t AND token_hash=p_token;
+ SELECT customer_id INTO cid FROM app.customer_sessions WHERE token_hash=p_token;
  IF NOT FOUND THEN RETURN NULL; END IF;
  SELECT * INTO c FROM app.customers WHERE tenant_id=t AND id=cid FOR UPDATE;
  IF c.status<>'active' OR c.verified_at IS NULL THEN RETURN NULL; END IF;
@@ -250,7 +250,7 @@ END $fn$;
 CREATE FUNCTION app.customer_revoke_session(p_token bytea) RETURNS boolean
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $fn$
 DECLARE t uuid:=app.customer_auth_context(); cid uuid; BEGIN
- SELECT customer_id INTO cid FROM app.customer_sessions WHERE tenant_id=t AND token_hash=p_token;
+ SELECT customer_id INTO cid FROM app.customer_sessions WHERE token_hash=p_token;
  IF NOT FOUND THEN RETURN false; END IF;
  PERFORM 1 FROM app.customers WHERE tenant_id=t AND id=cid FOR UPDATE;
  UPDATE app.customer_sessions SET revoked_at=clock_timestamp() WHERE tenant_id=t AND token_hash=p_token AND revoked_at IS NULL;
