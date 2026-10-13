@@ -111,6 +111,9 @@ func buildWorker(driver *riverpgxv5.Driver, signer *Signer, service Expirer, cfg
 	tuning.Schema, tuning.Workers = "queue", workers
 	tuning.ErrorHandler = admissionErrors{}
 	tuning.Queues = map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 1}}
+	if cfg.ExportService != nil {
+		tuning.Queues[CustomerDataExportQueue] = river.QueueConfig{MaxWorkers: 1}
+	}
 	tuning.ReindexerIndexNames = []string{} // worker has no DDL/REINDEX rights.
 	tuning.PeriodicJobs = nil
 	seen := map[string]bool{}

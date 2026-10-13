@@ -46,6 +46,13 @@ func (h *Handler) Routes() []httpapi.Route {
 			next := routes[i].Handler
 			routes[i].Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Cache-Control", "no-store")
+				// ServeMux routes HEAD to GET patterns; a metadata probe must not
+				// consume the single-use download capability.
+				if r.Method != http.MethodGet {
+					w.Header().Set("Allow", http.MethodGet)
+					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					return
+				}
 				next.ServeHTTP(w, r)
 			})
 		}

@@ -9,6 +9,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+
+	"github.com/riverqueue/river"
 )
 
 const CustomerDataExportKind = "customer_data_export"
@@ -20,6 +22,14 @@ type CustomerDataExportArgs struct {
 }
 
 func (CustomerDataExportArgs) Kind() string { return CustomerDataExportKind }
+
+// CustomerDataExportQueue is polled only by workers with the privacy service,
+// so a rolling/mixed deployment cannot cancel exports as unknown kinds.
+const CustomerDataExportQueue = "privacy_exports"
+
+func (CustomerDataExportArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{Queue: CustomerDataExportQueue}
+}
 func (s *Signer) customerExportProof(a CustomerDataExportArgs) []byte {
 	h := hmac.New(sha256.New, s.key)
 	fmt.Fprintf(h, "opensite-job-v1\x00%s\x00%s\x00%s", CustomerDataExportKind, a.TenantID, a.RequestID)

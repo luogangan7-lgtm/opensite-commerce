@@ -23,12 +23,20 @@ type csvTestTx struct {
 	writes int
 	fail   error
 	row    func(string, []any) pgx.Row
+	locked []string // advisory lock keys, recorded before any row query
+	order  []string
 }
 
 func (tx *csvTestTx) QueryRow(_ context.Context, q string, args ...any) pgx.Row {
+	tx.order = append(tx.order, "query")
 	return tx.row(q, args)
 }
-func (tx *csvTestTx) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
+func (tx *csvTestTx) Exec(_ context.Context, q string, args ...any) (pgconn.CommandTag, error) {
+	if strings.Contains(q, "pg_advisory_xact_lock") {
+		tx.order = append(tx.order, "lock")
+		tx.locked = append(tx.locked, args[1].([]string)...)
+		return pgconn.NewCommandTag("SELECT 1"), nil
+	}
 	tx.writes++
 	if tx.fail != nil {
 		return pgconn.CommandTag{}, tx.fail
@@ -65,6 +73,28 @@ func TestCSVImportLateDatabaseConflictNoWrites(t *testing.T) {
 	report, err := NewCSV().Import(context.Background(), tx, strings.NewReader("product_code,title,sku,locale\nP1,Good,S1,en\nP2,Good,S2,en\n"))
 	if !errors.Is(err, contract.ErrCSVInvalid) || tx.writes != 0 || len(report.Errors) != 1 || report.Errors[0].Row != 3 {
 		t.Fatalf("%+v %v writes%d", report, err, tx.writes)
+	}
+}
+
+// Concurrent imports serialize on product code and SKU keys before row locks or
+// inserts, so a new product/SKU cannot hit 23505 or a deadlock (threads T4/T7).
+func TestCSVImportLocksKeysBeforeRows(t *testing.T) {
+	tx := &csvTestTx{row: csvNewRows}
+	if _, err := NewCSV().Import(context.Background(), tx, strings.NewReader("product_code,title,sku,locale\nP2,Good,S1,en\nP1,Good,S2,en\n")); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"p:p2": true, "s:s1": true, "p:p1": true, "s:s2": true}
+	got := map[string]bool{}
+	for _, k := range tx.locked {
+		got[strings.ToLower(k)] = true
+	}
+	if len(got) != len(want) || tx.order[1] != "lock" {
+		t.Fatalf("locks=%v order=%v", tx.locked, tx.order)
+	}
+	for k := range want {
+		if !got[k] {
+			t.Fatalf("missing lock %s in %v", k, tx.locked)
+		}
 	}
 }
 func TestCSVImportSQLFailureReturned(t *testing.T) {

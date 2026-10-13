@@ -44,6 +44,21 @@ func (csvStore) preflight(ctx context.Context, tx pgx.Tx, input io.Reader) ([]cs
 	if err != nil {
 		return nil, report, "", err
 	}
+	// Serialize concurrent imports on every product code and SKU before any row
+	// lock or insert, in one global order: new products/SKUs created by another
+	// batch are then visible as existing rows instead of failing 23505 or
+	// deadlocking on uncommitted unique-index entries.
+	// ponytail: CSV-only advisory locks; catalog API writers can still race a new code.
+	keys := make([]string, 0, 2*len(rows))
+	for _, row := range rows {
+		keys = append(keys, "p:"+row.ProductCode)
+		if row.SKU != "" {
+			keys = append(keys, "s:"+row.SKU)
+		}
+	}
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('catalog-csv:'||$1||':'||k,0)) FROM (SELECT DISTINCT k FROM unnest($2::text[]) k ORDER BY k) ordered`, tenant, keys); err != nil {
+		return nil, report, tenant, err
+	}
 	// Stable lock order prevents opposite-order imports from deadlocking each other.
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].ProductCode == rows[j].ProductCode {

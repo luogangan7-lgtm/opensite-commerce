@@ -120,3 +120,20 @@ func TestPrivacyHTTPReadOnlyStatusAndBoundedDownload(t *testing.T) {
 		t.Fatalf("overflow leaked: %d %d", rr.Code, rr.Body.Len())
 	}
 }
+
+// HEAD matches GET patterns in ServeMux; it must not reach Download (thread T6).
+func TestPrivacyHTTPHeadDoesNotConsumeDownload(t *testing.T) {
+	svc := &service{body: []byte("{}")}
+	router := makeRouter(t, auth{scope: "customers:privacy"}, svc, subject, io.Discard)
+	uri := path + "/" + requestID + "/download?token=" + strings.Repeat("a", 43)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, httptest.NewRequest("HEAD", uri, nil))
+	if rr.Code != 405 || svc.calls != 0 {
+		t.Fatalf("HEAD status=%d calls=%d", rr.Code, svc.calls)
+	}
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, httptest.NewRequest("GET", uri, nil))
+	if rr.Code != 200 || svc.calls != 1 {
+		t.Fatalf("GET after HEAD status=%d calls=%d", rr.Code, svc.calls)
+	}
+}

@@ -126,14 +126,16 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 				return Config{}, nil, err
 			}
 		}
-		if config.Privacy.Responses == nil && config.Media.Root != "" {
-			store, err := idempotency.NewLocalResponseStore(filepath.Join(config.Media.Root, "command-responses"), 1<<20)
-			if err != nil {
-				closeRuntime()
-				return Config{}, nil, err
-			}
-			config.Privacy.Responses = store
+	}
+	// CSV import and privacy commands share one replay store; the media-root
+	// fallback must not depend on privacy being configured (shipped compose).
+	if config.CatalogCSV.Responses == nil && config.Media.Root != "" {
+		store, err := idempotency.NewLocalResponseStore(filepath.Join(config.Media.Root, "command-responses"), 1<<20)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, err
 		}
+		config.Privacy.Responses, config.CatalogCSV.Responses = store, store
 	}
 	return config, closeRuntime, nil
 }

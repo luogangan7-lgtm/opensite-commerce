@@ -61,3 +61,12 @@ func TestPrivacyWorkerAdmissionAndDuplicate(t *testing.T) {
 		t.Fatal("unconfigured worker admitted")
 	}
 }
+
+// Exports must not land on the default queue that privacy-less workers poll
+// and cancel as unknown kinds during a rolling deploy (thread T2).
+func TestCustomerExportUsesDedicatedQueue(t *testing.T) {
+	var args river.JobArgsWithInsertOpts = CustomerDataExportArgs{}
+	if q := args.InsertOpts().Queue; q == "" || q == river.QueueDefault {
+		t.Fatalf("export queue=%q", q)
+	}
+}

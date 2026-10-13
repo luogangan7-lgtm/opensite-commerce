@@ -26,6 +26,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/outbox"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
+	"github.com/riverqueue/river"
 )
 
 func main() {
@@ -212,10 +213,11 @@ func composeWorkers(ctx context.Context, getenv func(string) string, sender outb
 		if keyErr != nil {
 			return nil, nil, nil, errors.New("invalid privacy token key")
 		}
-		cfg.ExportService, err = datarights.New(rights.Config{Run: privacyRunner.InTenant, Root: getenv("OPENSITE_MEDIA_ROOT"), TokenKey: tokenKey})
-		if err != nil {
+		exports, exportErr := datarights.New(rights.Config{Run: privacyRunner.InTenant, Root: getenv("OPENSITE_MEDIA_ROOT"), TokenKey: tokenKey})
+		if exportErr != nil {
 			return nil, nil, nil, errors.New("privacy worker configuration unavailable")
 		}
+		cfg.ExportService = permanentExports{exports}
 	}
 	worker, err := jobs.NewWorker(pool, signer, cfg)
 	if err != nil {
@@ -247,4 +249,17 @@ func composeWorkers(ctx context.Context, getenv func(string) string, sender outb
 	}
 	success = true
 	return &observedWorker{jobWorker: worker, source: outboxMetrics{query: outboxPool}}, runner, cleanup, nil
+}
+
+// permanentExports cancels export jobs no retry can change: invalid or over
+// limit, missing, or expired/consumed/revoked/erased requests. Busy and
+// unavailable failures keep River's retry path.
+type permanentExports struct{ jobs.ExportBuilder }
+
+func (p permanentExports) BuildExport(ctx context.Context, tenant, request string) error {
+	err := p.ExportBuilder.BuildExport(ctx, tenant, request)
+	if errors.Is(err, rights.ErrInvalid) || errors.Is(err, rights.ErrConflict) || errors.Is(err, rights.ErrNotFound) {
+		return river.JobCancel(err)
+	}
+	return err
 }

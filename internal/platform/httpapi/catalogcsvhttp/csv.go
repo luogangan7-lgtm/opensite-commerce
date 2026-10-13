@@ -108,24 +108,23 @@ func (h *Handler) ImportCatalogCSV(ctx context.Context, r httpapi.ImportCatalogC
 		return nil, csvError(contract.ErrCSVLimit)
 	}
 	response, err := httpapi.Command(ctx, h.config.CommandConfig, tenant, "importCatalogCSV", base+"/import", map[string]string{"tenant_id": tenant}, func(ctx context.Context, tx pgx.Tx, _ httpapi.Subject) (idempotency.Response, error) {
-		report, err := h.config.Service.Import(ctx, tx, bytes.NewReader(raw))
-		if errors.Is(err, contract.ErrCSVInvalid) {
-			view, convertErr := reportView(report)
-			if convertErr != nil {
-				return idempotency.Response{}, convertErr
-			}
-			return httpapi.JSONResponse(200, view)
-		}
-		if err != nil {
-			return idempotency.Response{}, csvError(err)
-		}
-		view, err := reportView(report)
-		if err != nil {
-			return idempotency.Response{}, err
-		}
-		return httpapi.JSONResponse(200, view)
+		return importResponse(h.config.Service.Import(ctx, tx, bytes.NewReader(raw)))
 	})
 	return commandResponse{response}, err
+}
+
+// importResponse stores row diagnostics as a 200 report. Structural failures
+// (bad header, encoding, empty file) carry no row errors and must stay 422,
+// matching preflight, rather than replaying an empty "successful" report.
+func importResponse(report contract.CSVReport, err error) (idempotency.Response, error) {
+	if err != nil && !(errors.Is(err, contract.ErrCSVInvalid) && len(report.Errors) > 0) {
+		return idempotency.Response{}, csvError(err)
+	}
+	view, err := reportView(report)
+	if err != nil {
+		return idempotency.Response{}, err
+	}
+	return httpapi.JSONResponse(200, view)
 }
 func (h *Handler) ExportCatalogCSV(ctx context.Context, r httpapi.ExportCatalogCSVRequestObject) (httpapi.ExportCatalogCSVResponseObject, error) {
 	tenant := r.TenantId.String()
