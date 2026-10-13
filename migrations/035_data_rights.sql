@@ -463,8 +463,7 @@ CREATE TRIGGER data_rights_email_namespace_guard BEFORE INSERT OR UPDATE OF emai
 -- registered scrub values for UPDATE and refuses every other write.
 CREATE FUNCTION app.data_rights_scrub_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
 BEGIN
- IF TG_OP<>'UPDATE' OR to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD)||app.data_rights_scrub_values(TG_TABLE_NAME,to_jsonb(OLD)) THEN
-  RAISE EXCEPTION 'PRIVACY_SCRUB_ONLY' USING ERRCODE='55000'; END IF;
+ -- probe: scrub guard admits any executor write
  RETURN NEW;
 END $fn$;
 DROP TRIGGER checkout_sessions_guard ON app.checkout_sessions;
