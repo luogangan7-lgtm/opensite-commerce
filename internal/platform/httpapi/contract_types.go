@@ -1,5 +1,5 @@
 // Responsibility: expose the platform typed API contract port to business services.
-// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish strict services and platform quote transport.
+// Dependency: pinned generated OpenAPI types; callers: catalog/media/publish/orders strict services and platform quote transport.
 // Invariant: generated server mounting stays in StrictRoutes or platform transports behind Router admission.
 // Type aliases preserve compiler-checked oneOf/nullable/responses without copies.
 package httpapi
@@ -124,6 +124,23 @@ type WithdrawQuoteResponseObject = generated.WithdrawQuoteResponseObject
 // Neither helper supplies authority or registers routes.
 var NewStrictHandlerWithOptions = generated.NewStrictHandlerWithOptions
 var GetSwagger = generated.GetSwagger
+
+type GetOrder200JSONResponse = generated.GetOrder200JSONResponse
+type GetOrder200ResponseHeaders = generated.GetOrder200ResponseHeaders
+type GetOrderRequestObject = generated.GetOrderRequestObject
+type GetOrderResponseObject = generated.GetOrderResponseObject
+type ListOrders200JSONResponse = generated.ListOrders200JSONResponse
+type ListOrders200ResponseHeaders = generated.ListOrders200ResponseHeaders
+type ListOrdersRequestObject = generated.ListOrdersRequestObject
+type ListOrdersResponseObject = generated.ListOrdersResponseObject
+type OrderAdjustment = generated.OrderAdjustment
+type OrderDetail = generated.OrderDetail
+type OrderLine = generated.OrderLine
+type OrderPage = generated.OrderPage
+type OrderShipping = generated.OrderShipping
+type OrderState = generated.OrderState
+type OrderSummary = generated.OrderSummary
+type OrderSummaryCustomerKind = generated.OrderSummaryCustomerKind
 
 // Fulfillment/Returns ports preserve compiler-checked strict contract types.
 type CreateShipment = generated.CreateShipment

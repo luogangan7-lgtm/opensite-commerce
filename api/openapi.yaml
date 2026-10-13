@@ -21,6 +21,7 @@ tags:
   - name: Health
   - name: Quotes
   - name: Notifications
+  - name: Orders
   - name: Fulfillment
   - name: Returns
 paths:
@@ -2200,6 +2201,134 @@ paths:
         '422': {$ref: '#/components/responses/UnprocessableEntity'}
         '428': {$ref: '#/components/responses/PreconditionRequired'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+  /api/v1/t/{tenant_id}/orders:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: orders:read
+      description: Sealed order snapshots, newest first by (created_at, id), in a read-only
+        snapshot transaction. Guest contact PII is never returned; customer_kind only says
+        whether the buyer was a tenant customer or a guest. A malformed cursor, or one issued
+        for a different state filter, is a 400. The cursor is opaque and not authenticated;
+        it only positions the page within the caller's own tenant and cannot reveal other rows.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque, unauthenticated next_cursor from the prior page with the same state filter; positions only within the caller's tenant.
+          schema: {type: string, maxLength: 512}
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/OrderState'
+      responses:
+        '200':
+          description: One page of order summaries; no-store.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/orders/{order_id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - name: order_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: orders:read
+      description: One sealed order snapshot. Missing, unsealed and other-tenant orders are
+        all 404. Line titles are not part of the immutable snapshot, so title is always null;
+        shipping.method is the frozen rate method (fixed, by_weight, free_over_amount), not a
+        carrier. Guest contact (including email) is not exposed by this operation.
+      responses:
+        '200':
+          description: Order snapshot; no-store.
+          headers:
+            ETag:
+              required: true
+              schema:
+                type: string
+              description: Strong validator, the quoted order version.
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /api/v1/t/{tenant_id}/orders/{order_id}/shipments:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -3814,6 +3943,87 @@ components:
           type: object
           additionalProperties: true
           description: Immutable line tax decision snapshot
+    MinorAmount:
+      type: string
+      description: Signed integer minor units as a canonical decimal string (exact in JavaScript).
+      pattern: '^(0|-?[1-9][0-9]{0,18})$'
+      maxLength: 20
+    OrderState:
+      type: string
+      enum: [pending_payment, paid, partially_fulfilled, fulfilled, cancelled, partially_refunded, refunded]
+    OrderSummary:
+      type: object
+      additionalProperties: false
+      required: [id, order_number, state, currency, total_minor, customer_kind, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        order_number: {type: integer, format: int64, minimum: 1}
+        state: {$ref: '#/components/schemas/OrderState'}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        total_minor: {$ref: '#/components/schemas/MinorAmount'}
+        customer_kind: {type: string, enum: [customer, guest]}
+        created_at: {type: string, format: date-time}
+    OrderPage:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/OrderSummary'}
+        next_cursor: {type: string}
+    OrderLine:
+      type: object
+      additionalProperties: false
+      required: [line_id, sku_code, title, quantity, unit_price_minor, tax_minor, line_total_minor]
+      properties:
+        line_id: {type: string, format: uuid}
+        sku_code: {type: string}
+        title:
+          type: [string, 'null']
+          description: Always null; product titles are not frozen into the order snapshot.
+        quantity: {type: integer, format: int64, minimum: 1}
+        unit_price_minor: {$ref: '#/components/schemas/MinorAmount'}
+        tax_minor: {$ref: '#/components/schemas/MinorAmount'}
+        line_total_minor: {$ref: '#/components/schemas/MinorAmount'}
+    OrderAdjustment:
+      type: object
+      additionalProperties: false
+      required: [id, reason, amount_minor]
+      properties:
+        id: {type: string, format: uuid}
+        reason: {type: string}
+        amount_minor: {$ref: '#/components/schemas/MinorAmount'}
+    OrderShipping:
+      type: object
+      additionalProperties: false
+      required: [amount_minor, method]
+      properties:
+        amount_minor: {$ref: '#/components/schemas/MinorAmount'}
+        method:
+          type: [string, 'null']
+          description: Frozen shipping rate method; null if the snapshot lacks one.
+    OrderDetail:
+      type: object
+      additionalProperties: false
+      required: [id, order_number, state, version, currency, lines, adjustments, shipping, tax_total_minor, total_minor, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        order_number: {type: integer, format: int64, minimum: 1}
+        state: {$ref: '#/components/schemas/OrderState'}
+        version: {type: integer, format: int64, minimum: 1}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        lines:
+          type: array
+          items: {$ref: '#/components/schemas/OrderLine'}
+        adjustments:
+          type: array
+          items: {$ref: '#/components/schemas/OrderAdjustment'}
+        shipping: {$ref: '#/components/schemas/OrderShipping'}
+        tax_total_minor: {$ref: '#/components/schemas/MinorAmount'}
+        total_minor: {$ref: '#/components/schemas/MinorAmount'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
     CreateShipment:
       type: object
       additionalProperties: false

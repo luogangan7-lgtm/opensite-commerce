@@ -38,6 +38,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		runners = append(runners, runner)
 		config.Catalog.Run = runner.RunAuthorized
+		config.Orders.Read = runner.RunAuthorizedSnapshot
 		config.Fulfillment.Run = runner.RunAuthorizedTx
 		config.Returns.Run = runner.RunAuthorizedTx
 		if config.Cart == nil {
