@@ -183,8 +183,7 @@ CREATE TRIGGER storefront_serving_invalidate AFTER INSERT OR UPDATE OR DELETE ON
  FOR EACH ROW EXECUTE FUNCTION app.cms_serving_invalidate();
 CREATE TRIGGER storefront_serving_invalidate AFTER UPDATE OF lifecycle_status OR DELETE ON app.product_variants
  FOR EACH ROW EXECUTE FUNCTION app.cms_serving_invalidate();
-CREATE TRIGGER storefront_serving_invalidate AFTER UPDATE OF lifecycle_status ON app.products
- FOR EACH ROW EXECUTE FUNCTION app.cms_serving_invalidate();
+-- REVIEW PROBE 96-r7: products trigger removed
 CREATE TRIGGER storefront_serving_invalidate AFTER INSERT OR UPDATE OF on_hand,reserved OR DELETE ON app.stock_levels
  FOR EACH ROW EXECUTE FUNCTION app.cms_serving_invalidate();
 
