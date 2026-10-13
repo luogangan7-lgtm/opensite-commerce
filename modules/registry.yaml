@@ -1318,8 +1318,10 @@
       ]
     },
     {
-      "file": "migrations/033_orders_guards.sql",
+      "file": "migrations/034_orders_guards.sql",
       "owner": "orders",
+        "order_adjustments",
+        "outbox_events",
       "touches_tables": [
         "orders",
         "order_lines",

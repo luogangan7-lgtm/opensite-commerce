@@ -10,8 +10,10 @@ BEGIN
  IF p_id IS NULL OR p_key IS NULL OR btrim(p_key)='' OR length(p_key)>128 OR p_hash IS NULL OR octet_length(p_hash)<>32 THEN
   RAISE EXCEPTION 'ORDER_INVALID_ARGUMENT' USING ERRCODE='22023';
  END IF;
- -- Same creation lock as orders_create: held through reservation and sealing.
- PERFORM pg_advisory_xact_lock(hashtextextended('orders-number:'||t::text,0));
+ -- Key-scoped lock: same-key retries serialize through reservation and sealing, while
+ -- unrelated orders keep reserving concurrently. The tenant-wide number lock stays inside
+ -- orders_create, taken after stock locks as in explicit-reservation callers (one lock order).
+ PERFORM pg_advisory_xact_lock(hashtextextended('orders-key:'||t::text||':'||p_key,0));
  SELECT * INTO o FROM app.orders WHERE tenant_id=t AND creation_key=p_key;
  IF FOUND THEN
   IF o.id<>p_id OR o.request_hash<>p_hash THEN
@@ -34,7 +36,7 @@ CREATE FUNCTION app.inventory_finish_non_order(p_id uuid,p_target text,p_owner_t
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
 DECLARE t uuid:=app.inventory_context(); r app.inventory_reservations;
 BEGIN
- IF p_owner_type IS NULL OR btrim(p_owner_type)='' OR length(p_owner_type)>64 OR p_owner_id IS NULL THEN
+ IF p_id IS NULL OR p_owner_type IS NULL OR btrim(p_owner_type)='' OR length(p_owner_type)>64 OR p_owner_id IS NULL THEN
   RAISE EXCEPTION 'INVENTORY_INVALID_ARGUMENT' USING ERRCODE='22023';
  END IF;
  SELECT * INTO r FROM app.inventory_reservations WHERE tenant_id=t AND id=p_id FOR UPDATE;
@@ -95,7 +97,8 @@ BEGIN
    OR l.line_net_minor IS NULL OR l.line_net_minor<0 OR l.line_tax_minor IS NULL OR l.line_tax_minor<0
    OR l.line_total_minor IS NULL OR l.line_total_minor<>l.line_net_minor+l.line_tax_minor
    OR l.tax_snapshot IS NULL OR jsonb_typeof(l.tax_snapshot)<>'object'
-   OR coalesce(l.tax_snapshot->>'category','') COLLATE "C" !~ '^[a-z0-9_]{1,64}$' THEN
+   OR jsonb_typeof(l.tax_snapshot->'category') IS DISTINCT FROM 'string'
+   OR (l.tax_snapshot->>'category') COLLATE "C" !~ '^[a-z][a-z0-9_]{0,63}$' THEN
    RAISE EXCEPTION 'ORDER_INVALID_LINE' USING ERRCODE='22023';
   END IF;
   SELECT * INTO r FROM app.inventory_reservations WHERE tenant_id=t AND id=l.reservation_id FOR UPDATE;

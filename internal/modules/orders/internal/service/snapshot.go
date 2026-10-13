@@ -57,6 +57,10 @@ func validTaxCategory(category string) bool {
 	if len(category) < 1 || len(category) > 64 || !utf8.ValidString(category) {
 		return false
 	}
+	// Same contract as tax.Category: ^[a-z][a-z0-9_]{0,63}$.
+	if category[0] < 'a' || category[0] > 'z' {
+		return false
+	}
 	for _, c := range category {
 		if c != '_' && (c < 'a' || c > 'z') && (c < '0' || c > '9') {
 			return false

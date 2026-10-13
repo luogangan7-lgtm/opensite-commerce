@@ -249,7 +249,7 @@ func TestReservationLocksCanonicalOrder(t *testing.T) {
 }
 
 func TestTaxCategoryTrustBoundary(t *testing.T) {
-	for _, category := range []string{"Standard", "bad-code", "bad code", "é", strings.Repeat("a", 65), string([]byte{0xff})} {
+	for _, category := range []string{"Standard", "_standard", "1standard", "bad-code", "bad code", "é", strings.Repeat("a", 65), string([]byte{0xff})} {
 		t.Run(fmt.Sprintf("%x", category), func(t *testing.T) {
 			in := input()
 			in.Lines[0].Tax.Snapshot.Category = category

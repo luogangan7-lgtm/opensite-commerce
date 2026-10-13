@@ -55,7 +55,7 @@ BEGIN
   END LOOP;
  END LOOP;
  -- Invalid tax categories fail before reservation lookup and leave no snapshot.
- FOREACH kind IN ARRAY ARRAY['', 'Standard', 'bad-code', 'é', repeat('a',65)] LOOP
+ FOREACH kind IN ARRAY ARRAY['', 'Standard', '_standard', '1standard', 'bad-code', 'é', repeat('a',65)] LOOP
   BEGIN
    PERFORM app.orders_create(uuidv7(),'h2c-tax-'||kind,sha256(convert_to(kind,'UTF8')),NULL,
     '{"email":"gate@example.test"}'::jsonb,'USD',0,'{}'::jsonb,
@@ -67,6 +67,35 @@ BEGIN
    IF SQLERRM<>'ORDER_INVALID_LINE' THEN RAISE; END IF;
   END;
  END LOOP;
+ -- A category must be a JSON string, not a scalar that ->> coerces to text.
+ BEGIN
+  PERFORM app.orders_create(uuidv7(),'h2c-tax-json',sha256('json'::bytea),NULL,
+   '{"email":"gate@example.test"}'::jsonb,'USD',0,'{}'::jsonb,
+   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',current_setting('test.h2c_sku')::uuid,'sku','H2C','quantity',1,
+    'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',uuidv7(),
+    'tax_snapshot','{"category":true}'::jsonb)),'[]');
+  RAISE EXCEPTION 'H2C_TAX_GATE non-string category accepted';
+ EXCEPTION WHEN invalid_parameter_value THEN
+  IF SQLERRM<>'ORDER_INVALID_LINE' THEN RAISE; END IF;
+ END;
+ -- A null reservation id is malformed input, not a missing reservation.
+ FOREACH command IN ARRAY ARRAY['inventory_release_non_order','inventory_commit_non_order'] LOOP
+  BEGIN
+   EXECUTE format('SELECT app.%I(NULL::uuid,$1,$2)',command) USING 'checkout',owner_a;
+   RAISE EXCEPTION 'H2C_NULL_GATE null reservation accepted %',command;
+  EXCEPTION WHEN invalid_parameter_value THEN
+   IF SQLERRM<>'INVENTORY_INVALID_ARGUMENT' THEN RAISE; END IF;
+  END;
+ END LOOP;
+ -- One lock order: the preflight takes only a creation-key lock, never the tenant
+ -- number lock (held later by orders_create after stock locks).
+ PERFORM app.orders_check_creation(uuidv7(),'h2c-lock-key',sha256('lock'::bytea));
+ IF NOT EXISTS(SELECT FROM pg_locks WHERE locktype='advisory' AND pid=pg_backend_pid() AND granted
+    AND ((classid::bigint<<32)|objid::bigint)=hashtextextended('orders-key:'||current_setting('app.tenant_id')||':h2c-lock-key',0))
+ OR EXISTS(SELECT FROM pg_locks WHERE locktype='advisory' AND pid=pg_backend_pid()
+    AND ((classid::bigint<<32)|objid::bigint)=hashtextextended('orders-number:'||current_setting('app.tenant_id'),0)) THEN
+  RAISE EXCEPTION 'H2C_LOCK_GATE preflight must hold the key lock and not the tenant number lock';
+ END IF;
  IF to_regprocedure('app.inventory_release_non_order(uuid)') IS NOT NULL
  OR to_regprocedure('app.inventory_commit_non_order(uuid)') IS NOT NULL THEN
   RAISE EXCEPTION 'H2C_OWNER_GATE unbound legacy command remains'; END IF;
