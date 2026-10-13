@@ -995,17 +995,17 @@ BEGIN
  IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names))<>5 THEN
   RAISE EXCEPTION 'TENANT_AUTH_ROUTINES_INCOMPLETE'; END IF;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names) LOOP
-  IF f.proowner<>'app_credential_writer'::regrole OR f.prosecdef IS DISTINCT FROM (f.proname<>'auth_role_scopes')
-   OR cardinality(f.proconfig)<>(CASE WHEN f.proname IN ('auth_create_api_key','auth_revoke_api_key','auth_touch_api_key') THEN 2 ELSE 1 END)
-   OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
-   OR cardinality(f.proconfig)=2 AND f.proconfig[2]<>'app.tenant_id='
-   OR f.oid<>to_regprocedure(CASE f.proname
+  IF f.proowner IS DISTINCT FROM 'app_credential_writer'::regrole OR f.prosecdef IS DISTINCT FROM (f.proname<>'auth_role_scopes')
+   OR cardinality(f.proconfig) IS DISTINCT FROM (CASE WHEN f.proname IN ('auth_create_api_key','auth_revoke_api_key','auth_touch_api_key') THEN 2 ELSE 1 END)
+   OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR cardinality(f.proconfig)=2 AND f.proconfig[2] IS DISTINCT FROM 'app.tenant_id='
+   OR f.oid IS DISTINCT FROM to_regprocedure(CASE f.proname
     WHEN 'auth_role_scopes' THEN 'app.auth_role_scopes(text)'
     WHEN 'auth_create_api_key' THEN 'app.auth_create_api_key(uuid,uuid,uuid,text,bytea,text[],timestamptz)'
     WHEN 'auth_revoke_api_key' THEN 'app.auth_revoke_api_key(uuid,uuid,uuid)'
     WHEN 'auth_touch_api_key' THEN 'app.auth_touch_api_key(uuid)'
     WHEN 'auth_revalidate_tenant' THEN 'app.auth_revalidate_tenant(uuid,uuid,text,uuid,text)' END)
-   OR f.prorettype<>(CASE f.proname WHEN 'auth_role_scopes' THEN 'text[]'::regtype WHEN 'auth_create_api_key' THEN 'uuid'::regtype ELSE 'boolean'::regtype END)
+   OR f.prorettype IS DISTINCT FROM (CASE f.proname WHEN 'auth_role_scopes' THEN 'text[]'::regtype WHEN 'auth_create_api_key' THEN 'uuid'::regtype ELSE 'boolean'::regtype END)
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
    RAISE EXCEPTION 'TENANT_AUTH_UNSAFE_ROUTINE %',f.proname; END IF;
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
