@@ -22,8 +22,8 @@ type authRunner interface {
 	Close(context.Context) error
 }
 
-// LoginRepository owns one dedicated connection. Waiting for it observes the
-// caller's deadline so authentication cannot create an unbounded lock queue.
+// LoginRepository owns one dedicated connection. Waiting and SQL execution
+// share an internal two-second budget, shortened by any caller deadline.
 type LoginRepository struct {
 	runner authRunner
 	gate   chan struct{}
@@ -36,7 +36,7 @@ func OpenLogin(ctx context.Context, dsn string, idleTimeout time.Duration) (*Log
 	if idleTimeout < time.Second {
 		return nil, login.ErrDatabase
 	}
-	runner, err := identityadapter.OpenIdentity(ctx, dsn)
+	runner, err := identityadapter.OpenStaffAuthentication(ctx, dsn)
 	if err != nil {
 		return nil, login.ErrDatabase
 	}
@@ -60,6 +60,8 @@ func OpenLogin(ctx context.Context, dsn string, idleTimeout time.Duration) (*Log
 // run holds the deadline-aware connection gate through callback and commit.
 // Only sqlc queries constructed from the current transaction reach callers.
 func (r *LoginRepository) run(ctx context.Context, fn func(context.Context, *db.Queries) error) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
 	if err := r.enter(ctx); err != nil {
 		return err
 	}

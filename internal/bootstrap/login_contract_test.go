@@ -16,6 +16,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/testfixture"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
@@ -33,7 +34,8 @@ func TestConfiguredIdentityRouteContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := bootstrap.New(bootstrap.Config{Routes: append(handler.Routes(), publish.StorefrontRoute(nil)), Authenticator: handler, Quotes: quotes.NewApplication(nil),
+	routes := append(handler.Routes(), new(tenant.Module).Routes()...)
+	server, err := bootstrap.New(bootstrap.Config{Routes: append(routes, publish.StorefrontRoute(nil)), Authenticator: handler, Quotes: quotes.NewApplication(nil),
 		Checkout: &checkout.Config{FakeEnabled: true, Environment: "test", Verifier: verifier}})
 	if err != nil {
 		t.Fatal(err)

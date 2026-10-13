@@ -22,7 +22,7 @@ import (
 // identity setting requires the full set. Errors name variables, never values.
 func staffLoginEnvironment(authDSN string) (enabled bool, origin, keyHex, proxies string, err error) {
 	origin, keyHex, proxies = os.Getenv("OSC_ADMIN_ORIGIN"), os.Getenv("OSC_AUTH_SIGNING_KEY_HEX"), os.Getenv("OSC_AUTH_TRUSTED_PROXIES")
-	if authDSN == "" && origin == "" && keyHex == "" && proxies == "" {
+	if authDSN == "" && origin == "" && keyHex == "" && proxies == "" && os.Getenv("OSC_AUTH_SESSION_IDLE") == "" {
 		return false, "", "", "", nil
 	}
 	var missing []string
@@ -54,7 +54,7 @@ func StaffLogin(ctx context.Context, databaseURL, origin, keyHex string, trusted
 	if len(trustedConfig) == 1 {
 		proxyConfig = trustedConfig[0]
 	}
-	if databaseURL == "" && origin == "" && keyHex == "" && proxyConfig == "" {
+	if databaseURL == "" && origin == "" && keyHex == "" && proxyConfig == "" && os.Getenv("OSC_AUTH_SESSION_IDLE") == "" {
 		return nil, nil
 	}
 	cfg, err := staffLoginConfig(databaseURL, origin, keyHex, proxyConfig)
@@ -74,6 +74,15 @@ func staffLoginConfig(databaseURL, origin, keyHex, proxyConfig string) (identity
 		return identity.LoginConfig{}, invalid
 	}
 	cfg := identity.LoginConfig{Origin: origin, SigningKey: key}
+	// The disposable browser witness uses the existing one-minute minimum;
+	// deployments retain the default unless this explicit bound is configured.
+	if raw := os.Getenv("OSC_AUTH_SESSION_IDLE"); raw != "" {
+		idle, err := time.ParseDuration(raw)
+		if err != nil || idle < time.Minute || idle > 12*time.Hour {
+			return identity.LoginConfig{}, errors.New("OSC_AUTH_SESSION_IDLE is invalid")
+		}
+		cfg.IdleTimeout = idle
+	}
 	if proxyConfig == "" {
 		return cfg, nil
 	}

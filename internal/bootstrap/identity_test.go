@@ -6,7 +6,31 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestStaffSessionIdleConfiguration(t *testing.T) {
+	for _, tc := range []struct {
+		raw     string
+		want    time.Duration
+		invalid bool
+	}{
+		{"", 0, false}, {"1m", time.Minute, false}, {"30m", 30 * time.Minute, false},
+		{"59s", 0, true}, {"13h", 0, true}, {"invalid-private-value", 0, true},
+	} {
+		t.Run(tc.raw, func(t *testing.T) {
+			t.Setenv("OSC_AUTH_SESSION_IDLE", tc.raw)
+			cfg, err := staffLoginConfig("secret-dsn", "https://admin.example.test", strings.Repeat("1", 64), "")
+			if tc.invalid {
+				if err == nil || !strings.Contains(err.Error(), "OSC_AUTH_SESSION_IDLE") || strings.Contains(err.Error(), tc.raw) {
+					t.Fatal("invalid idle timeout must fail closed with variable name only")
+				}
+			} else if err != nil || cfg.IdleTimeout != tc.want {
+				t.Fatalf("STAFF_IDLE_CONFIG_RED: timeout=%s want=%s err=%v", cfg.IdleTimeout, tc.want, err)
+			}
+		})
+	}
+}
 
 func TestStaffLoginConfiguration(t *testing.T) {
 	m, e := StaffLogin(context.Background(), "", "", "")

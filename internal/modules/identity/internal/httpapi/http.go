@@ -5,7 +5,6 @@
 package httpapi
 
 import (
-	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -16,6 +15,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
@@ -28,10 +28,11 @@ const (
 )
 
 type Handler struct {
-	service *login.Service
-	origin  string
-	idle    time.Duration
-	trusted []netip.Prefix
+	service       *login.Service
+	origin        string
+	idle          time.Duration
+	trusted       []netip.Prefix
+	authorization contract.AuthorizationRepository
 }
 
 func New(s *login.Service, origin string, idle time.Duration, trusted ...netip.Prefix) *Handler {
@@ -44,27 +45,6 @@ func (h *Handler) Routes() []platform.Route {
 		{Spec: platform.RouteSpec{OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.AuthenticatedSelf}, Handler: http.HandlerFunc(h.session)},
 		{Spec: platform.RouteSpec{OperationID: "logoutCurrentStaffSession", Method: "POST", Pattern: "/api/v1/auth/logout", Access: platform.AuthenticatedSelf}, Handler: http.HandlerFunc(h.logout)},
 	}
-}
-func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platform.RouteSpec) (context.Context, error) {
-	if h.service == nil || spec.Access != platform.AuthenticatedSelf || spec.Scope != "" || !((spec.OperationID == "getAdminSession" && spec.Method == "GET" && spec.Pattern == "/api/v1/auth/session") || (spec.OperationID == "logoutCurrentStaffSession" && spec.Method == "POST" && spec.Pattern == "/api/v1/auth/logout")) {
-		return nil, apperrors.New(401, "unauthenticated", "Authentication is required")
-	}
-	token, ok := cookieValue(r, SessionCookie)
-	if !ok || token == "" {
-		return nil, apperrors.New(401, "unauthenticated", "Authentication is required")
-	}
-	// Stateless Origin/CSRF first: a rejected unsafe request must not refresh
-	// last_seen_at (LoginLookupSession) and keep a victim session alive.
-	if r.Method != "GET" && r.Method != "HEAD" {
-		if !h.sameOrigin(r) || !h.service.VerifySessionCSRF(token, oneHeader(r, "X-CSRF-Token")) {
-			return nil, apperrors.New(403, "csrf_invalid", "Request authenticity could not be verified")
-		}
-	}
-	actor, _, err := h.service.Authenticate(ctx, token)
-	if err != nil {
-		return nil, mapError(err)
-	}
-	return login.WithActor(ctx, actor), nil
 }
 func (h *Handler) sameOrigin(r *http.Request) bool { return oneHeader(r, "Origin") == h.origin }
 func oneHeader(r *http.Request, name string) string {

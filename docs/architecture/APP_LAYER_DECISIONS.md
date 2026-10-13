@@ -100,6 +100,18 @@ queries/<module>/*.sql
 - **API keys.** Public key id + 256-bit secret. Look up by id, hash the secret, compare in constant time, then check expired/revoked and that the issuer is still an active member **of the key's tenant**. A key is bound to its owning tenant (`api_keys.tenant_id`): the request must target that tenant (`key.tenant_id == route tenant_id`), or it is rejected before any membership or scope evaluation.
   - Effective scopes = RoleScopes ∩ KeyScopes ∩ ResourcePolicy.
   - The secret is shown once and only rotated, never retrievable. Do not store plaintext to replay a create response.
+  - **C-02c management contract.** Tenant owns `tenant_memberships` and `api_keys`, their private store and the
+    management handlers. Tenant depends on the public identity contract; bootstrap injects its authorization port
+    into identity transport. Identity never imports tenant implementation or writes tenant-owned tables.
+    `POST`/`GET /api/v1/t/{tenant_id}/api-keys` and
+    `DELETE /api/v1/t/{tenant_id}/api-keys/{key_id}` all require `AdminSession` and `apikeys:write`.
+    POST and DELETE require exact Origin plus session-bound CSRF; API keys cannot manage other keys.
+    Create accepts only `scopes` and optional future `expires_at`; issuer and tenant are derived from verified
+    authorization. Unknown scopes fail closed. Creation returns `{key, api_key}` once with `Cache-Control: no-store`;
+    list returns `{items}` containing metadata only, never plaintext or hashes. DELETE returns 204 for an existing
+    tenant-owned key, including repeated revocation, and 404 for missing or cross-tenant keys.
+    There is no `Idempotency-Key` create replay: reproducing the secret would require forbidden plaintext retention.
+    If the response is lost, revoke the visible metadata entry and create a replacement.
 - **Pools.** Separate DB logins:
   - Auth pool (inherits `app_auth`): users, sessions, memberships, keys.
   - Runtime pool (inherits `app_runtime`): authorized tenant work.
@@ -132,6 +144,22 @@ queries/<module>/*.sql
 
 - **Pipeline.** RouteSpec match → resolve session/key → validate user/key → parse tenant from the URL → tenant status → membership + scope → `AuthorizedActor` (private fields; handlers cannot construct it) → `RunAuthorized(ctx, actor, fn)` over tenanttx (`SET LOCAL app.tenant_id`) → sqlc/domain → commit or rollback. The URL tenant is a target, not a credential.
 - **Roles.** Role→scope mapping lives in Go code to start: owner, admin, catalog_editor, content_editor, viewer. It must match `tenant_memberships.role` and the OpenAPI `x-required-scope`. No custom roles, OPA or ABAC yet.
+  C-02c uses these existing schema roles; no `staff` role is added. The finite scope inventory is checked against
+  every OpenAPI `x-required-scope` by CI. Unknown roles or scopes deny access by default.
+
+  | Role | Allowed scopes |
+  | --- | --- |
+  | owner, admin | `apikeys:write`, `catalog:read`, `catalog:write`, `cms:publish`, `cms:write`, `media:write`, `notifications:write`, `orders:read`, `quotes:read`, `quotes:write`, `organization.create`, `site.create` |
+  | catalog_editor | `catalog:read`, `catalog:write`, `media:write` |
+  | content_editor | `catalog:read`, `cms:write`, `cms:publish`, `media:write` |
+  | viewer | `catalog:read` |
+
+  A key's stored scopes cannot expand its issuer's current role. Membership, tenant status, credential expiry and
+  revocation are checked on each request; business writes recheck them inside the transaction before mutation.
+  **Acceptance gate:** CI runs `tests/test_identity_login_contract.py` with exact scope and DTO checks plus injected
+  bearer-management, missing-CSRF, unknown-scope, secret-leak and replay faults. Runtime acceptance additionally
+  requires HTTP and real PostgreSQL witnesses for cross-tenant keys, issuer loss, role downgrade, revocation and
+  write-time fencing; the static contract gate alone does not prove those properties.
 - **Three guards.** Default-deny RouteSpec; domain commands re-verify resource ownership; PostgreSQL FORCE RLS as the backstop. A CI rule forbids business modules from touching a raw `pgxpool.Pool`.
 - **Storefront.** It never reads the admin session. Tenant and site come from a verified hostname via `app_domain_resolver`; an arbitrary Host header is never trusted.
 - **Rejected:** `X-Tenant-ID`; a single tenant stored on the session; manual `Authorize()` calls in handlers.

@@ -35,7 +35,8 @@ sql:
       - "migrations/032_checkout.sql"
       - "migrations/033_customer_auth.sql"
       - "migrations/034_orders_guards.sql"
-    queries: ["queries", "queries/reliability", "queries/identity"]
+      - "migrations/pending/c02c-tenant-auth_tenant_auth.sql"
+    queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant"]
     gen:
       go:
         package: "db"

@@ -143,7 +143,8 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual({name for name, (_, _, op) in ops.items()
                           if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | cms |
                          {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
-                          "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession"} | contract.CUSTOMER_OPERATIONS)
+                          "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession",
+                          "createAPIKey", "listAPIKeys", "revokeAPIKey"} | contract.CUSTOMER_OPERATIONS)
         for name in orders:
             path, method, operation = ops[name]
             self.assertTrue(path.startswith("/api/v1/t/{tenant_id}/orders"))
