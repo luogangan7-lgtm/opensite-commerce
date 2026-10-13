@@ -9,12 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/internal/service"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type Transaction func(context.Context, string, func(context.Context, pgx.Tx) error) error
@@ -44,7 +44,7 @@ func cmsError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.ErrNotFound
 	}
-	var pe *pgconn.PgError
+	var pe *pgxadapter.PgError
 	if errors.As(err, &pe) {
 		switch pe.Code {
 		case "P0002":

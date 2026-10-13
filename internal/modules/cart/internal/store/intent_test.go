@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 const intentTenant = "10000000-0000-4000-8000-000000000001"
@@ -76,16 +76,16 @@ func (tx *intentTx) QueryRow(_ context.Context, query string, _ ...any) pgx.Row 
 		panic("unexpected cart intent query: " + query)
 	}
 }
-func (tx *intentTx) Exec(_ context.Context, query string, args ...any) (pgconn.CommandTag, error) {
+func (tx *intentTx) Exec(_ context.Context, query string, args ...any) (pgxadapter.CommandTag, error) {
 	if !strings.Contains(query, "name: SetCartContext") {
 		panic("unexpected write in cart intent")
 	}
 	tx.contexts = append(tx.contexts, append([]any(nil), args...))
 	tx.calls = append(tx.calls, "set")
 	if len(tx.contexts) > 1 && tx.errorRestore != nil {
-		return pgconn.CommandTag{}, tx.errorRestore
+		return pgxadapter.CommandTag{}, tx.errorRestore
 	}
-	return pgconn.NewCommandTag("SELECT 1"), nil
+	return pgxadapter.NewCommandTag("SELECT 1"), nil
 }
 func (tx *intentTx) Query(_ context.Context, query string, _ ...any) (pgx.Rows, error) {
 	if !strings.Contains(query, "name: ListCartLines") {

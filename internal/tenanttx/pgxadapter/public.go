@@ -16,7 +16,7 @@ func OpenPublic(ctx context.Context, dsn string) (Runner, func(), error) {
 	if err != nil {
 		return Runner{}, nil, err
 	}
-	err = r.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = r.inMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var safe bool
 		err := tx.QueryRow(ctx, `SELECT NOT (r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication)
    AND r.rolcanlogin AND r.rolinherit AND current_user=session_user
