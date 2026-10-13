@@ -69,15 +69,17 @@ timeout is 90 seconds. Login applies its own five-second `HashTimeout` context
 by default across admission and repository work. These are request bounds, not
 throughput guarantees.
 
-`cmd/api` installs these routes only when all three environment variables are
-present: `OSC_AUTH_DATABASE_URL` (a dedicated LOGIN inheriting only `app_auth`),
-`OSC_ADMIN_ORIGIN` (an exact HTTPS origin with no path), and
+`bootstrap.FromEnvironment` (called by `cmd/api`) installs these routes on the
+same auth DSN it already derives for the auth capability
+(`OPENSITE_AUTH_DATABASE_URL`, or `OPENSITE_AUTH_DB_PASSWORD` for the
+`opensite_auth_login` LOGIN inheriting only `app_auth`), plus
+`OSC_ADMIN_ORIGIN` (an exact HTTPS origin with no path) and
 `OSC_AUTH_SIGNING_KEY_HEX` (32 random bytes encoded as hex). Supply credentials
 through secret management; partial configuration and excessive DB privileges
-fail startup. No credentials are created by this card. Missing configuration
-leaves the module uninstalled and private admission denied. A nonempty proxy
-setting without the three required credentials is partial configuration and also
-fails startup.
+fail startup and name the missing variables. A deployment that configures the
+auth capability (as Compose does) therefore cannot start without login routes.
+Only when no identity setting exists at all (for example the storefront e2e
+API) is the module uninstalled and private admission denied.
 
 Ordinary/known-device hashing defaults to two/one slots. Per-IP admission is 30
 requests per minute; ordinary/reserved global buckets together default to 300.

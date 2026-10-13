@@ -62,3 +62,40 @@ func TestStaffLoginTrustedProxyConfiguration(t *testing.T) {
 		t.Fatal("proxy-only partial configuration enabled")
 	}
 }
+
+// Compose supplies the auth capability; identity config must then be complete,
+// so a missing origin/key fails startup loudly instead of omitting login routes.
+func TestStaffLoginEnvironmentFailsLoudlyWhenIncomplete(t *testing.T) {
+	key := strings.Repeat("1", 64)
+	set := func(origin, keyHex, proxies string) {
+		t.Setenv("OSC_ADMIN_ORIGIN", origin)
+		t.Setenv("OSC_AUTH_SIGNING_KEY_HEX", keyHex)
+		t.Setenv("OSC_AUTH_TRUSTED_PROXIES", proxies)
+	}
+	set("", "", "")
+	if enabled, _, _, _, err := staffLoginEnvironment(""); enabled || err != nil {
+		t.Fatal("no identity configuration must leave staff login disabled without error")
+	}
+	for _, tc := range []struct {
+		dsn, origin, key, want string
+	}{
+		{"secret-dsn", "", "", "OSC_ADMIN_ORIGIN, OSC_AUTH_SIGNING_KEY_HEX"},
+		{"secret-dsn", "https://admin.example.test", "", "OSC_AUTH_SIGNING_KEY_HEX"},
+		{"", "https://admin.example.test", key, "OPENSITE_AUTH_DATABASE_URL or OPENSITE_AUTH_DB_PASSWORD"},
+	} {
+		set(tc.origin, tc.key, "")
+		enabled, _, _, _, err := staffLoginEnvironment(tc.dsn)
+		if enabled || err == nil || !strings.Contains(err.Error(), tc.want) || strings.Contains(err.Error(), "secret-dsn") {
+			t.Fatalf("incomplete identity configuration accepted or unclear: %v", err)
+		}
+	}
+	set("https://admin.example.test", "not-hex", "")
+	if enabled, _, _, _, err := staffLoginEnvironment("secret-dsn"); enabled || err == nil {
+		t.Fatal("malformed signing key accepted")
+	}
+	set("https://admin.example.test", key, "192.0.2.0/24")
+	enabled, origin, keyHex, proxies, err := staffLoginEnvironment("secret-dsn")
+	if !enabled || err != nil || origin != "https://admin.example.test" || keyHex != key || proxies != "192.0.2.0/24" {
+		t.Fatal("complete identity configuration not enabled")
+	}
+}

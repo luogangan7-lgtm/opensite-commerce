@@ -16,6 +16,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/catalogcsvhttp"
@@ -35,6 +36,7 @@ type Config struct {
 	Routes                   []httpapi.Route
 	Catalog                  catalog.Config
 	Media                    media.Config
+	Orders                   orders.HTTPConfig
 	Cart                     *cart.Module
 	Quotes                   quoteshttp.QuotesService
 	QuotesBuyerAuthenticator httpapi.Authenticator
@@ -58,6 +60,7 @@ func New(config Config) (server *http.Server, err error) {
 	routes := []httpapi.Route{health}
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)
+	routes = append(routes, orders.NewHTTP(config.Orders).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
 	if config.Quotes != nil {
 		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)

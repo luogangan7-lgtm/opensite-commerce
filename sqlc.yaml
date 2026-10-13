@@ -30,7 +30,8 @@ sql:
       - "migrations/027_quotes.sql"
       - "migrations/028_identity_auth.sql"
       - "migrations/029_identity_login.sql"
-      - "migrations/030_data_rights.sql"
+      - "migrations/030_orders_admin_list_index.sql"
+      - "migrations/031_data_rights.sql"
     queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:
