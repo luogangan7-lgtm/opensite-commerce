@@ -75,6 +75,8 @@ jobs:
           python3 tests/test_inventory_race_sync.py
           ./scripts/check_pg_races.sh
           ./scripts/check_pg_upgrade.sh
+      - name: Privacy column registry and persisted canary coverage
+        run: python3 scripts/privacy_registry.py --database --fixture
       - name: Catalog/media real HTTP gates with isolated role logins
         env:
           OPENSITE_DISPOSABLE_PG: '1'
