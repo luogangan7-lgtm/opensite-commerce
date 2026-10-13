@@ -214,15 +214,17 @@ func avifDimensions(b []byte) (int, int) {
 	}
 	primary := uint32(0)
 	var iloc, iinf, iprp []byte
-	pict := false
+	pict, seenPitm := false, false
 	for _, x := range children {
 		switch x.kind {
 		case "hdlr":
 			pict = len(x.data) >= 12 && string(x.data[8:12]) == "pict"
 		case "pitm":
-			if primary != 0 {
+			// Presence, not the ID, marks a declaration: pitm naming item 0 still counts.
+			if seenPitm {
 				return 0, 0
 			}
+			seenPitm = true
 			if len(x.data) == 6 && x.data[0] == 0 {
 				primary = uint32(binary.BigEndian.Uint16(x.data[4:6]))
 			} else if len(x.data) == 8 && x.data[0] == 1 {
@@ -276,7 +278,8 @@ func avifPrimaryProperties(b []byte, primary uint32) (int, int) {
 				return 0, 0
 			}
 		case "ipma":
-			if ipma != nil {
+			// ItemPropertiesBox syntax: the property container precedes its associations.
+			if ipma != nil || !seenIpco {
 				return 0, 0
 			}
 			ipma = x.data

@@ -177,6 +177,15 @@ func TestAVIFIpmaOrderingWidthAndContainerUniqueness(t *testing.T) {
 			}
 		})
 	}
+	t.Run("ipma before ipco", func(t *testing.T) {
+		input := avifWithIPRP(t, func(makeBox func(string, []byte) []byte) []byte {
+			out := makeBox("ipma", []byte{0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 4, 1, 2, 0x83, 4})
+			return append(out, makeBox("ipco", props)...)
+		})
+		if _, _, _, err := inspect(input, "image/avif"); err == nil {
+			t.Fatal("association box accepted before the property container")
+		}
+	})
 	t.Run("empty first ipco then second ipco", func(t *testing.T) {
 		input := avifWithIPRP(t, func(makeBox func(string, []byte) []byte) []byte {
 			out := makeBox("ipco", nil)
@@ -187,4 +196,30 @@ func TestAVIFIpmaOrderingWidthAndContainerUniqueness(t *testing.T) {
 			t.Fatal("second property container accepted after an empty first one")
 		}
 	})
+}
+
+// A pitm that names item 0 is still a declaration; a second pitm must be rejected.
+func TestAVIFSecondPrimaryItemBoxAfterZeroID(t *testing.T) {
+	b, err := os.ReadFile("testdata/tiny.avif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pos := bytes.Index(b, []byte("pitm")) - 4
+	size := int(binary.BigEndian.Uint32(b[pos:]))
+	zero := bytes.Clone(b[pos : pos+size])
+	binary.BigEndian.PutUint16(zero[len(zero)-2:], 0)
+	if size != 14 {
+		t.Fatal("fixture pitm layout changed")
+	}
+	out := append(bytes.Clone(b[:pos]), zero...)
+	out = append(out, b[pos:pos+size]...)
+	out = append(out, b[pos+size:]...)
+	meta := bytes.Index(out, []byte("meta")) - 4
+	binary.BigEndian.PutUint32(out[meta:], uint32(int(binary.BigEndian.Uint32(out[meta:]))+size))
+	iloc := bytes.Index(out, []byte("iloc")) - 4
+	offset := iloc + int(binary.BigEndian.Uint32(out[iloc:])) - 8
+	binary.BigEndian.PutUint32(out[offset:], uint32(int(binary.BigEndian.Uint32(out[offset:]))+size))
+	if _, _, _, err := inspect(out, "image/avif"); err == nil {
+		t.Fatal("second pitm accepted after a zero-ID first pitm")
+	}
 }
