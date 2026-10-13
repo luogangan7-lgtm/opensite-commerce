@@ -154,7 +154,7 @@ func TestC02cCustomerSessionCannotAuthorizeStaffRoutes(t *testing.T) {
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw)
 	port := wiringCustomer{token: token, session: c.Session{ID: customer, TenantID: tenant, CustomerID: customer, Email: "buyer@example.test", ExpiresAt: time.Now().Add(time.Hour), IdleExpiresAt: time.Now().Add(time.Hour)}}
-	for _, access := range []httpapi.Access{httpapi.AdminSession, httpapi.AdminOrAPIKey} {
+	for _, access := range []httpapi.Access{httpapi.AdminSession, httpapi.AdminOrAPIKey, httpapi.APIKey} {
 		t.Run(string(access), func(t *testing.T) {
 			called := false
 			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "customerStaffBoundaryProbe", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/customer-staff-probe", Access: access, Scope: "catalog:read"}, Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
