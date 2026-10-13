@@ -25,7 +25,8 @@ sql:
       - "migrations/022_reliability_limits.sql"
       - "migrations/023_cart.sql"
       - "migrations/024_identity_auth.sql"
-    queries: "queries"
+      - "migrations/025_identity_login.sql"
+    queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:
         package: "db"

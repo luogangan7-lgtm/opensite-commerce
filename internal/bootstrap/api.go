@@ -1,7 +1,7 @@
-// Package bootstrap statically wires the API using platform/httpapi only.
-// cmd/api calls it; it owns no business handlers, database pool or migrations.
-// Generated business HTTP adapters stay in platform/httpapi and consume public ports.
-// Registration errors stop construction, so invalid routes cannot be served.
+// Package bootstrap statically wires catalog, media, cart and injected API routes.
+// Dependencies: module constructors and platform/httpapi; caller: cmd/api.
+// It owns no business handlers, database pool or migrations. Construction errors
+// stop startup; requests retain bounded contexts and immutable route snapshots.
 package bootstrap
 
 import (
@@ -52,7 +52,19 @@ func New(config Config) (server *http.Server, err error) {
 			return nil, err
 		}
 	}
-	return &http.Server{Addr: config.Address, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}, nil
+	// Socket deadlines do not cancel database queries or lock waits. Preserve
+	// the router's registration snapshot through the request deadline wrapper.
+	handler := deadlineHandler{Router: router}
+	return &http.Server{Addr: config.Address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second}, nil
+}
+
+// Embedding exposes the router's immutable RouteSpecs snapshot for contract gates.
+type deadlineHandler struct{ *httpapi.Router }
+
+func (h deadlineHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
+	defer cancel()
+	h.Router.ServeHTTP(w, r.WithContext(ctx))
 }
 
 func Run(ctx context.Context, config Config) error {

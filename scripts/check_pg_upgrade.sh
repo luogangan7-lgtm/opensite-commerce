@@ -153,10 +153,11 @@ LIMITS_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
 IDENTITY_DB=""
+LOGIN_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$IDENTITY_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$IDENTITY_DB" "$LOGIN_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -957,6 +958,50 @@ db "$DB" -f tests/db_identity_auth.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 IDENTITY_DB=""
+
+# C-02b: start immediately before the logical session-activity migration, after
+# every predecessor (including identity-auth), then compare all legacy row fields.
+login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)
+[[ ${#login_files[@]} -eq 1 && -f ${login_files[0]} ]] || { echo 'FAIL: exactly one identity login migration required'; exit 1; }
+LOGIN_DB=upgrade_login_$$
+DB=$LOGIN_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${login_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.users(email,password_hash) VALUES('login-upgrade@example.test','fixture-only') RETURNING id AS u \gset
+INSERT INTO app.auth_sessions(user_id,token_hash,created_at,expires_at,revoked_at) VALUES
+ (:'u',sha256('legacy-live'::bytea),'2040-01-01Z','2040-01-02Z',NULL),
+ (:'u',sha256('legacy-expired'::bytea),'2020-01-01Z','2020-01-02Z',NULL),
+ (:'u',sha256('legacy-revoked'::bytea),'2040-01-01Z','2040-01-02Z','2040-01-01T00:01Z');
+CREATE TABLE public.login_upgrade_expected AS SELECT id,to_jsonb(s) AS payload FROM app.auth_sessions s;
+SQL
+apply_forward "$DB" "${login_files[0]}"
+result=$(db "$DB" <<'SQL'
+SELECT 'LOGIN_UPGRADE='||(SELECT count(*) FROM app.auth_sessions)||'|'||
+ (SELECT count(*) FROM app.auth_sessions s JOIN public.login_upgrade_expected e ON e.id=s.id
+  AND e.payload=to_jsonb(s)-'last_seen_at')||'|'||
+ (SELECT count(*) FROM app.auth_sessions WHERE last_seen_at=created_at)||'|'||
+ (SELECT a.attnotnull FROM pg_attribute a WHERE a.attrelid='app.auth_sessions'::regclass
+  AND a.attname='last_seen_at' AND NOT a.attisdropped)||'|'||
+ has_column_privilege('app_auth','app.auth_sessions','last_seen_at','UPDATE')||'|'||
+ has_column_privilege('app_runtime','app.auth_sessions','last_seen_at','UPDATE');
+SQL
+)
+if [[ $result == 'LOGIN_UPGRADE=3|3|3|true|true|false' ]]; then
+ pass 'login upgrade preserves old session ids/hashes/expiry/revocation, backfills original creation and restricts activity writes'
+else bad "login upgrade witness: $result"; fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${login_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" -f tests/db_identity_login.sql >/dev/null
+db "$DB" -f tests/db_identity_auth.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"
+LOGIN_DB=""
 
 [[ $fail -eq 0 ]] || exit 1
 echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits and cart upgrade gates'

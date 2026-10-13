@@ -1,18 +1,44 @@
 // Bootstrap contract tests use httptest only. They guard startup refusal and
-// operational health without creating pools, business routes or listeners.
+// operational health and request deadlines without database pools or listeners.
 package bootstrap_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
+
+type deadlineAuth struct{ t *testing.T }
+
+func (a deadlineAuth) Authenticate(ctx context.Context, _ *http.Request, _ httpapi.RouteSpec) (context.Context, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok || time.Until(deadline) > 75*time.Second {
+		a.t.Fatal("authentication has no bounded request context")
+	}
+	return ctx, nil
+}
+
+func TestRequestDeadlineIncludesAuthenticationAndHandler(t *testing.T) {
+	s, err := bootstrap.New(bootstrap.Config{Authenticator: deadlineAuth{t}, Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "deadlineProbe", Method: "GET", Pattern: "/deadline", Access: httpapi.AdminSession}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deadline, ok := r.Context().Deadline()
+		if !ok || time.Until(deadline) > 75*time.Second {
+			t.Fatal("handler has no bounded request context")
+		}
+		w.WriteHeader(204)
+	})}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/deadline", nil))
+}
 
 func TestStartupRejectsInvalidRoute(t *testing.T) {
 	s, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "private", Method: "GET", Pattern: "/t/{tenant_id}/items", Access: httpapi.APIKey}, Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("invalid handler reached") })}}})

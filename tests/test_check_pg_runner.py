@@ -73,6 +73,7 @@ expected = [
     'db_reliability_limits.sql',
     'db_cart.sql',
     'db_identity_auth.sql',
+    'db_identity_login.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
 races = (root / 'scripts/check_pg_races.sh').read_text()
@@ -93,7 +94,7 @@ def identity_runner_contract(races, upgrade):
     assert 'for f in migrations/[0-9][0-9][0-9]_*.sql; do' in boot, 'bootstrap must migrate all modules'
     assert 'if [[ $f == *_queue_authorization.sql ]]' in boot and './scripts/migrate_river.sh' in boot, 'bootstrap must install River before queue authorization'
     assert 'pg_blocking_pids(second.pid)' in boot, 'bootstrap contender must block on owner lock'
-    identity = upgrade[upgrade.index('# C-02a: discover'):]
+    identity = upgrade[upgrade.index('# C-02a: discover'):upgrade.index('# C-02b: start')]
     assert 'identity_files=(migrations/[0-9][0-9][0-9]_identity_auth.sql)' in identity
     assert '[[ $f < ${identity_files[0]} ]] || break' in identity, 'all predecessors must be applied'
     assert '[[ $f > ${identity_files[0]} ]] || continue' in identity, 'all successors must be applied'
@@ -101,6 +102,34 @@ def identity_runner_contract(races, upgrade):
     assert 'IDENTITY_UPGRADE=4|4|4' in identity, 'legacy whole-row witnesses must remain exact'
 
 identity_runner_contract(races, upgrade)
+def login_runner_contract(races, upgrade):
+    rotation = races[races.index('# C-02b: execute'):]
+    assert "source = Path('queries/identity/login.sql').read_text()" in rotation
+    assert "query('LoginRotateOldSession'" in rotation and "query('LoginInsertSession'" in rotation
+    assert 'RETURNING s.id AS rotated' in rotation and '\\gset' in rotation, 'zero-row rotation must abort before successor INSERT'
+    assert 'pg_blocking_pids(second.pid)' in rotation, 'login rotation requires an observed blocker'
+    assert "expect login_rotate_second 'no rows returned for'" in rotation
+    assert 'LOGIN_ROTATION_RACE=1|1|1|0' in rotation, 'exactly one successor must remain'
+    login = upgrade[upgrade.index('# C-02b: start'):]
+    assert 'login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)' in login
+    assert '[[ $f < ${login_files[0]} ]] || break' in login
+    assert '[[ $f > ${login_files[0]} ]] || continue' in login
+    assert login.count('apply_forward "$DB" "$f"') == 2, 'login must retain River-aware predecessor/successor application'
+    assert 'LOGIN_UPGRADE=3|3|3|true|true|false' in login
+
+login_runner_contract(races, upgrade)
+for bad_races, bad_upgrade in [
+    (races.replace('RETURNING s.id AS rotated', 'REMOVED'), upgrade),
+    (races.replace('LOGIN_ROTATION_RACE=1|1|1|0', 'LOGIN_ROTATION_RACE=1|2|1|1'), upgrade),
+    (races, upgrade.replace('apply_forward "$DB" "$f"', 'true')),
+    (races, upgrade.replace('[[ $f < ${login_files[0]} ]] || break', 'true')),
+]:
+    try:
+        login_runner_contract(bad_races, bad_upgrade)
+    except (AssertionError, ValueError):
+        pass
+    else:
+        raise AssertionError('login runner mutation escaped the guard')
 # Mutation witnesses: the guard must turn red when synchronization, the clock
 # boundary, predecessor discovery or the bootstrap case is removed.
 for bad_races, bad_upgrade in [
@@ -230,7 +259,8 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('QUEUE_CROSS_TENANT_READ', 'db_queue.sql'),
                          ('RELIABILITY_LIMITS_GATE', 'db_reliability_limits.sql'),
                          ('CART_EXPECTED_REFUSAL', 'db_cart.sql'),
-                         ('IDENTITY_GATE', 'db_identity_auth.sql')]:
+                         ('IDENTITY_GATE', 'db_identity_auth.sql'),
+                         ('LOGIN_GATE', 'db_identity_login.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
         assert failed.returncode == 31, (failed.stdout, failed.stderr)

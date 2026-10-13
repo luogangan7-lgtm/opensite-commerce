@@ -104,3 +104,10 @@ It has no payload or table-wide privilege. Queue ownership remains isolated in
 `OUTBOX_ENABLED` defaults off and a missing Sender fails before any claim.
 
 Identity integration also grants the function owner only tenant-scoped buyer-role seed INSERT columns, so first-owner bootstrap composes with the customers tenant trigger. Bootstrap restores the caller tenant GUC. Counter functions sample database time and expose no clock parameter. The execute-only bounded retention function is available to app_auth; no authentication caller receives direct DELETE. A future hourly maintenance caller must drain small batches; scheduling is outside this migration.
+
+### Staff login session activity
+
+The login migration adds `auth_sessions.last_seen_at` and grants `app_auth`
+only that additional UPDATE column, preserving the existing revocation update
+and dedicated LOGIN boundary. Existing session activity is backfilled from
+`created_at`; no runtime credential access or tenant/RLS authority is added.
