@@ -22,7 +22,13 @@ the customers migration. A nonexistent or foreign-tenant customer is rejected;
 guest orders keep `customer_id` null. This reference proves tenant ownership,
 while customer identity/authentication remains the trusted caller's obligation.
 
-Create first locks every explicit reservation row (`orders_lock_reservations`,
+Create first serializes its creation key and compares the caller-assigned order ID
+and canonical request hash, before locking or reserving inventory. Identical
+replays return the stored order even after payment; conflicting reuse consistently
+returns `ErrKeyReused`. Tax category snapshots must be 1–64 ASCII lowercase
+letters, digits or underscores and valid UTF-8 before sealing.
+
+Create then locks every explicit reservation row (`orders_lock_reservations`,
 by id, only holds owned by this order), then automatic reservations acquire SKU
 locks in canonical SKU/line order while preserving the input snapshot order.
 Reservation rows before stock is the same global order used by transition and
@@ -64,7 +70,10 @@ reservation owner denial, stock/outbox conservation and transaction rollback.
 Customer integration tests also seed real customer rows and check the registered
 buyer branch, foreign/nonexistent customer rejection, and rollback of any
 reservation created by a rejected command.
-`tests/db_orders.sql` and race gates independently enforce database boundaries.
+`tests/db_orders.sql`, `tests/db_orders_guards.sql` and race gates independently
+enforce database boundaries. The H-2-C creation guard integration test runs
+replay/conflicting reuse in a read-only transaction so attempts to reserve or
+lock inventory before key validation fail visibly.
 
 No checkout orchestration, Stripe integration, fulfillment command transport,
 customer authentication, exchange or pricing/tax/shipping recalculation is
