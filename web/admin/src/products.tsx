@@ -273,6 +273,8 @@ function MediaSection({ api, productId, archived }: { api: CatalogAPI; productId
   const [error, setError] = useState<unknown>();
   const [linked, setLinked] = useState(false);
   const controller = useRef(new AbortController());
+  // Stable per selected file until acknowledged, so a lost response is replayed, not duplicated.
+  const uploadKey = useRef('');
   useEffect(() => { controller.current = new AbortController(); return () => controller.current.abort(); }, []);
   async function uploadFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -281,7 +283,8 @@ function MediaSection({ api, productId, archived }: { api: CatalogAPI; productId
     if (invalid) { setError(new APIError(422, 'invalid_input', invalid)); return; }
     setBusy(true); setError(undefined); setUpload(undefined); setLinked(false);
     try {
-      const value = await api.uploadMedia(file, { signal: controller.current.signal });
+      const value = await api.uploadMedia(file, { signal: controller.current.signal, idempotencyKey: uploadKey.current ||= crypto.randomUUID() });
+      uploadKey.current = '';
       if (!controller.current.signal.aborted) { setUpload(value); setMediaId(value.media_id ?? ''); }
     } catch (value) { if (!controller.current.signal.aborted) setError(value); }
     finally { if (!controller.current.signal.aborted) setBusy(false); }
@@ -303,7 +306,7 @@ function MediaSection({ api, productId, archived }: { api: CatalogAPI; productId
   return <section className="admin-panel" aria-labelledby="media-heading"><h2 id="media-heading">Product media</h2>
     <p className="admin-muted">Upload a file, then attach its media ID. Stored or processing media is not proof that processing has finished.</p>
     <form className="admin-form" onSubmit={uploadFile} aria-busy={busy}>
-      <FormField id="media-file" label="Media file" help="JPEG, PNG, WebP or AVIF, up to 10 MiB. Upload includes a checksum verification."><TextInput type="file" accept="image/jpeg,image/png,image/webp,image/avif" required disabled={busy || archived} onChange={event => { setFile(event.target.files?.[0]); setUpload(undefined); setMediaId(''); setLinked(false); }} /></FormField>
+      <FormField id="media-file" label="Media file" help="JPEG, PNG, WebP or AVIF, up to 10 MiB. Upload includes a checksum verification."><TextInput type="file" accept="image/jpeg,image/png,image/webp,image/avif" required disabled={busy || archived} onChange={event => { uploadKey.current = ''; setFile(event.target.files?.[0]); setUpload(undefined); setMediaId(''); setLinked(false); }} /></FormField>
       <Button type="submit" loading={busy} disabled={!file || archived}>Upload media</Button>
     </form>
     {upload && <p role="status">Upload session: <Badge tone={upload.status === 'failed' ? 'danger' : upload.status === 'ready' ? 'success' : 'info'}>{upload.status}</Badge> {upload.media_id ? `Media ID: ${upload.media_id}` : 'No media ID is available yet.'}</p>}
