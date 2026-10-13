@@ -1188,7 +1188,7 @@ SELECT (app.inventory_reserve(:'sku',2,'order',:'oid','race-reserve',900)).id AS
 SELECT app.orders_create(:'oid','race-create',sha256('race'::bytea),NULL,'{"email":"race@example.invalid"}',
  'USD',2,'{"currency":"USD","amount_minor":2,"service":"fixture"}',
  jsonb_build_array(jsonb_build_object('id',:'lid','sku_id',:'sku','sku','race','quantity',2,
- 'unit_price_minor',5,'line_net_minor',10,'line_tax_minor',2,'line_total_minor',12,'reservation_id',:'rid','tax_snapshot','{}'::jsonb)),'[]');
+ 'unit_price_minor',5,'line_net_minor',10,'line_tax_minor',2,'line_total_minor',12,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
 SELECT app.orders_transition(:'oid','paid','race-paid',0);
 RESET ROLE;
 SELECT concat_ws(' ',:'t',:'oid',:'lid',:'sku');

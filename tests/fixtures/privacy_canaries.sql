@@ -205,7 +205,7 @@ BEGIN
   sha256('privacy-fulfillment-order'::bytea),customer,NULL,'USD',0,'{}'::jsonb,
   jsonb_build_array(jsonb_build_object('id',fulfillment_line,'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',2,'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
-   'reservation_id',reservation.id,'tax_snapshot','{}'::jsonb)),'[]'::jsonb);
+   'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]'::jsonb);
  registered := app.orders_transition(fulfillment_order,'paid','privacy-fulfillment-payment');
  shipment_receipt := app.fulfillment_create_shipment(fulfillment_order,registered.version,
   'privacy-shipment',{{canary:shipments.carrier}},{{canary:shipments.tracking_number}},

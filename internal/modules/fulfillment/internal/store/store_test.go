@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func TestMapErrorIdempotencyConstraint(t *testing.T) {
@@ -25,7 +25,7 @@ func TestMapErrorIdempotencyConstraint(t *testing.T) {
 		{"unknown unique", "app", "shipments", "", contract.ErrConflict},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			err := fmt.Errorf("controlled command: %w", &pgconn.PgError{Code: "23505", SchemaName: tt.schema, TableName: tt.table, ConstraintName: tt.constraint})
+			err := fmt.Errorf("controlled command: %w", &pgxadapter.PgError{Code: "23505", SchemaName: tt.schema, TableName: tt.table, ConstraintName: tt.constraint})
 			if got := MapError(err); !errors.Is(got, tt.want) {
 				t.Fatalf("unique constraint %s classified as %v; want %v", tt.constraint, got, tt.want)
 			}

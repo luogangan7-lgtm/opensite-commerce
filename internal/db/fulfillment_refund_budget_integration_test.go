@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type budgetSession struct {
@@ -298,7 +298,7 @@ func TestRefundBudgetConcurrentFreezeFencesLegacy(t *testing.T) {
 	if err := budgetDone(t, f, first); err != nil || amount != 7 {
 		t.Fatalf("first freeze: amount=%d err=%v", amount, err)
 	}
-	var pgerr *pgconn.PgError
+	var pgerr *pgxadapter.PgError
 	if err := budgetDone(t, f, second); !errors.As(err, &pgerr) || pgerr.Code != "55000" || pgerr.Message != "FULFILLMENT_PENDING_REFUND_COMMAND_REQUIRED" {
 		t.Fatalf("legacy ignored frozen RMA: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestRefundBudgetRepeatableReadLegacyRetriesAfterCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	unblock()
-	var pgerr *pgconn.PgError
+	var pgerr *pgxadapter.PgError
 	if err := budgetDone(t, f, stale); !errors.As(err, &pgerr) || pgerr.Code != "40001" {
 		t.Fatalf("stale RR budget write must serialize/retry: %v", err)
 	}

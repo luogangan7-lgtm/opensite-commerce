@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
@@ -594,7 +593,7 @@ func TestCartSnapshotReadOnlyAndStable(t *testing.T) {
 	}
 	rejected := cartRequest(handler(read), "GET", f.path(created.Cart.ID), "", "", "")
 	wantStatus(t, rejected, 500)
-	var pgerr *pgconn.PgError
+	var pgerr *pgxadapter.PgError
 	if !errors.As(writeError, &pgerr) || pgerr.Code != "25006" {
 		t.Fatalf("snapshot allowed write: %v", writeError)
 	}

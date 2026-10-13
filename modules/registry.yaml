@@ -1471,6 +1471,7 @@
         "returns",
         "return_lines",
         "orders",
+        "order_lines",
         "inventory_movements",
         "stock_levels",
         "idempotency_records"

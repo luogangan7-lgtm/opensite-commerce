@@ -54,7 +54,7 @@ BEGIN
   '{"email":"fulfillment@example.invalid"}','USD',40,'{"amount_minor":40,"currency":"USD","service":"fixture"}',
   jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',4,
    'unit_price_minor',100,'line_net_minor',400,'line_tax_minor',40,'line_total_minor',440,
-   'reservation_id',reservation.id,'tax_snapshot','{}'::jsonb)),'[]');
+   'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
  ord:=app.orders_transition(oid,'paid','fulfillment-pay',0);
  SELECT on_hand INTO stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
  IF stock<>16 OR (SELECT state FROM app.inventory_reservations WHERE tenant_id=t AND id=reservation.id)<>'committed' THEN
@@ -225,7 +225,7 @@ BEGIN
    '{"email":"active-rma@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
    jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
     'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
-    'reservation_id',res.id,'tax_snapshot','{}'::jsonb)),'[]');
+    'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
   ord:=app.orders_transition(oid,'paid','active-rma-paid-'||gate_i,0);
   -- Positive witness: the pre-existing trusted financial event is preserved.
   ord:=app.orders_transition(oid,'partially_refunded','active-rma-prior-'||gate_i,10);
@@ -293,7 +293,7 @@ BEGIN
    '{"email":"legacy@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
    jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
     'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
-    'reservation_id',res.id,'tax_snapshot','{}'::jsonb)),'[]');
+    'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
   ord:=app.orders_transition(oid,'paid','legacy-paid-'||case_i,0);
   ord:=app.orders_transition(oid,'partially_refunded','legacy-credit-'||case_i,10);
   FOR part_i IN 1..parts LOOP
@@ -342,7 +342,7 @@ BEGIN
   res:=app.inventory_reserve(sku,1,'order',oid,'cross-line-reserve-'||i,900);
   lines:=lines||jsonb_build_array(jsonb_build_object('id',lids[i],'sku_id',sku,'sku','fulfillment-sku',
    'quantity',1,'unit_price_minor',caps[i],'line_net_minor',caps[i],'line_tax_minor',0,
-   'line_total_minor',caps[i],'reservation_id',res.id,'tax_snapshot','{}'::jsonb));
+   'line_total_minor',caps[i],'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb));
  END LOOP;
  ord:=app.orders_create(oid,'cross-line-order',sha256('cross-line'::bytea),NULL,
   '{"email":"cross-line@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',lines,'[]');
@@ -410,7 +410,7 @@ BEGIN
   '{"email":"zero@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
   jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
    'unit_price_minor',1,'line_net_minor',2,'line_tax_minor',0,'line_total_minor',2,
-   'reservation_id',res.id,'tax_snapshot','{}'::jsonb)),
+   'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb)),
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','discount','amount_minor',-1,'reason','zero fixture')));
  ord:=app.orders_transition(oid,'paid','zero-paid',0);
  shipment:=app.fulfillment_create_shipment(oid,ord.version,'zero-shipment','manual','ZERO',
@@ -476,20 +476,20 @@ BEGIN
    expected:=ARRAY[5,3,1];
    res:=app.inventory_reserve(sku,9,'order',oid,'tiny-reserve',900);
    lines:=jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',9,
-    'unit_price_minor',1,'line_net_minor',9,'line_tax_minor',3,'line_total_minor',12,'reservation_id',res.id,'tax_snapshot','{}'::jsonb));
+    'unit_price_minor',1,'line_net_minor',9,'line_tax_minor',3,'line_total_minor',12,'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb));
   ELSE
    expected:=CASE case_i WHEN 2 THEN ARRAY[25,8,5] ELSE ARRAY[0,0,4] END;
    IF case_i=2 THEN
     res:=app.inventory_reserve(sku,2,'order',oid,'allocation-reserve-2a',900);
     res2:=app.inventory_reserve(sku2,2,'order',oid,'allocation-reserve-2b',900);
     lines:=jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
-     'unit_price_minor',5,'line_net_minor',10,'line_tax_minor',3,'line_total_minor',13,'reservation_id',res.id,'tax_snapshot','{}'::jsonb),
+     'unit_price_minor',5,'line_net_minor',10,'line_tax_minor',3,'line_total_minor',13,'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb),
      jsonb_build_object('id',other_lid,'sku_id',sku2,'sku','fulfillment-sku-2','quantity',2,
-     'unit_price_minor',9,'line_net_minor',18,'line_tax_minor',5,'line_total_minor',23,'reservation_id',res2.id,'tax_snapshot','{}'::jsonb));
+     'unit_price_minor',9,'line_net_minor',18,'line_tax_minor',5,'line_total_minor',23,'reservation_id',res2.id,'tax_snapshot','{"category":"standard"}'::jsonb));
    ELSE
     res:=app.inventory_reserve(sku,4,'order',oid,'allocation-reserve-3',900);
     lines:=jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',4,
-     'unit_price_minor',0,'line_net_minor',0,'line_tax_minor',0,'line_total_minor',0,'reservation_id',res.id,'tax_snapshot','{}'::jsonb));
+     'unit_price_minor',0,'line_net_minor',0,'line_tax_minor',0,'line_total_minor',0,'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb));
    END IF;
   END IF;
   ord:=app.orders_create(oid,'allocation-order-'||case_i,sha256(('allocation'||case_i)::bytea),NULL,
@@ -632,7 +632,7 @@ BEGIN
    '{"email":"budget@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
    jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','budget','quantity',2,
     'unit_price_minor',10,'line_net_minor',20,'line_tax_minor',0,'line_total_minor',20,
-    'reservation_id',reservation.id,'tax_snapshot','{}'::jsonb)),'[]');
+    'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
   ord:=app.orders_transition(oid,'paid','budget-paid',0);
   IF phase IN('reserve','lock','complete') THEN
    r:=app.returns_create(oid,ord.version,'budget-return','unshipped_cancel','budget test',
