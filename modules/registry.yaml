@@ -1397,7 +1397,7 @@
       ]
     },
     {
-      "file": "migrations/035_tenant_auth.sql",
+      "file": "migrations/pending/c02c-tenant-auth_tenant_auth.sql",
       "owner": "tenant",
       "touches_tables": [
         "users",

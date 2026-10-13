@@ -1,3 +1,4 @@
+-- stable-id: c02c-tenant-auth
 -- Responsibility: tenant-bound API-key custody and transaction-time authority.
 -- Dependencies: identity users/sessions and tenant memberships; app_auth calls
 -- key capabilities, app_runtime calls the boolean write-authority capability.
