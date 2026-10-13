@@ -358,6 +358,45 @@ func TestStorefrontServingPG(t *testing.T) {
 		if err := <-swept; err != nil || pending() != 0 {
 			t.Fatalf("refresh after lock release: %v pending=%d", err, pending())
 		}
+		// REVIEW SCENARIO 96-4 (rerun): a price change committed while the refresh is blocked in
+		// cms_serving_put must not be lost: the row keeps a pending invalidation or serves 555.
+		mutate(`UPDATE app.price_lists SET priority=priority WHERE tenant_id=$1`, a.tenant)
+		held, commit := make(chan struct{}), make(chan struct{})
+		racer := make(chan error, 1)
+		go func() {
+			racer <- a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				if _, err := tx.Exec(ctx, `SELECT 1 FROM app.storefront_serving WHERE tenant_id=$1 AND site_id=$2 FOR UPDATE`, a.tenant, a.site); err != nil {
+					return err
+				}
+				close(held)
+				<-commit
+				_, err := tx.Exec(ctx, `UPDATE app.price_entries SET unit_amount=555 WHERE tenant_id=$1 AND sku_id=$2 AND unit_amount=777`, a.tenant, ids.ready)
+				return err
+			})
+		}()
+		<-held
+		raced := make(chan error, 1)
+		go func() { _, err := refresh.Sweep(ctx); raced <- err }()
+		for deadline := time.Now().Add(15 * time.Second); waiting("%cms_serving_put%") == 0; time.Sleep(50 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				close(commit)
+				t.Fatal("scenario 96-4: refresh never blocked in cms_serving_put")
+			}
+		}
+		close(commit)
+		if err := <-racer; err != nil {
+			t.Fatal(err)
+		}
+		if err := <-raced; err != nil {
+			t.Fatalf("scenario 96-4 sweep: %v", err)
+		}
+		if site, _ := read(hostA); len(site.Products[0].SKUs) == 1 && site.Products[0].SKUs[0].PriceMinor == "777" && pending() == 0 {
+			t.Fatal("SCENARIO 96-4 LOST INVALIDATION: committed price 555 but row is clean and serves 777")
+		}
+		sweep()
+		if site, _ := read(hostA); len(site.Products[0].SKUs) != 1 || site.Products[0].SKUs[0].PriceMinor != "555" {
+			t.Fatalf("scenario 96-4: next sweep did not serve 555: %+v", site.Products[0].SKUs)
+		}
 		// Variant archive and product archive each append an invalidation (96-7).
 		mutate(`UPDATE app.product_variants SET lifecycle_status='archived' WHERE tenant_id=$1 AND id=$2`, a.tenant, ids.ready)
 		if pending() == 0 {
@@ -465,5 +504,74 @@ func TestStorefrontLegacyHostMovePG(t *testing.T) {
 	}
 	if third, err := public.Current(ctx, host); err != nil || third.TenantID != t2 || third.SiteID != second.SiteID {
 		t.Fatalf("served backfill: %+v %v", third, err)
+	}
+}
+
+// REVIEW SCENARIO 96-5 (rerun): two checkouts reserving overlapping member SKUs in opposite
+// interleaving must both commit (no deadlock on serving data).
+func TestReviewScenarioServingCheckoutDeadlockPG(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	ids := servingIDs{product: newUUID(t), ready: "00000000-0000-4000-8000-" + strings.ReplaceAll(newUUID(t), "-", "")[:12], archived: newUUID(t), unpriced: newUUID(t)}
+	a := newCMSPG(t, ctx, servingSeed(ids, "DL", 500, 10)...)
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if err := a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, sql, args...); return err }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec(`UPDATE app.product_variants SET lifecycle_status='ready' WHERE tenant_id=$1 AND id=$2`, a.tenant, ids.archived)
+	exec(`SELECT app.inventory_adjust($2::uuid,10,'probe',uuidv7(),'inbound') WHERE $1::uuid IS NOT NULL`, a.tenant, ids.archived)
+	withCMSContextFor(t, true, a.tenant, func(authctx context.Context) {
+		if _, err := publishHome(t, authctx, a, 0, ""); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if n := a.count(t, ctx, `SELECT count(*)::int FROM app.site_release_skus WHERE tenant_id=$1 AND site_id=$2`); n != 2 {
+		t.Fatalf("scenario fixture: %d members", n)
+	}
+	// Each reservation must flip availability so the trigger fires: reserve everything.
+	reserve := func(ctx context.Context, tx pgx.Tx, sku, key string) error {
+		_, err := tx.Exec(ctx, `SELECT app.inventory_reserve($1::uuid,(SELECT sum(on_hand-reserved) FROM app.stock_levels WHERE sku_id=$1::uuid),'serving_test',gen_random_uuid(),$2)`, sku, key)
+		return err
+	}
+	firstHeld, firstGo := make(chan struct{}), make(chan struct{})
+	first, second := make(chan error, 1), make(chan error, 1)
+	go func() {
+		first <- a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			if err := reserve(ctx, tx, ids.ready, "scn-a1"); err != nil {
+				return err
+			}
+			close(firstHeld)
+			<-firstGo
+			_, err := tx.Exec(ctx, `SELECT app.inventory_adjust($1::uuid,1,'scenario',uuidv7(),'inbound')`, ids.archived)
+			return err
+		})
+	}()
+	<-firstHeld
+	go func() {
+		second <- a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			return reserve(ctx, tx, ids.archived, "scn-b1")
+		})
+	}()
+	var secondErr error
+	secondDone := false
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		select {
+		case secondErr = <-second:
+			secondDone = true
+		default:
+		}
+		if secondDone {
+			break
+		}
+	}
+	close(firstGo)
+	firstErr := <-first
+	if !secondDone {
+		secondErr = <-second
+	}
+	if firstErr != nil || secondErr != nil || !secondDone {
+		t.Fatalf("SCENARIO 96-5: checkout1=%v checkout2=%v (checkout2 completed while checkout1 open: %v)", firstErr, secondErr, secondDone)
 	}
 }
