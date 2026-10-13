@@ -183,8 +183,16 @@ func (Service) GetPayable(ctx context.Context, tx pgx.Tx, tenantID, orderID stri
 	canonicalID := uuid.UUID(row.ID.Bytes).String()
 	return contract.Payable{OrderID: canonicalID, Amount: amount, IntentKey: fmt.Sprintf("payable:v1:%s:%s:%s", canonicalTenant, canonicalID, strconv.FormatInt(row.Version, 10)), Version: row.Version}, nil
 }
-func (s Service) ValidateReservations(ctx context.Context, tx pgx.Tx, tenantID, orderID string) error {
-	return s.LockLiveReservations(ctx, tx, tenantID, orderID, 0)
+func (Service) ValidateReservations(ctx context.Context, tx pgx.Tx, tenantID, orderID string) error {
+	if !validID(orderID) {
+		return contract.ErrInvalid
+	}
+	q, err := store.Tenant(ctx, tx, tenantID)
+	if err != nil {
+		return err
+	}
+	id, _ := store.UUID(orderID)
+	return store.MapError(q.ValidatePaymentReservations(ctx, id))
 }
 
 func (Service) LockLiveReservations(ctx context.Context, tx pgx.Tx, tenantID, orderID string, minRemainingSeconds int32) error {
