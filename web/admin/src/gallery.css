@@ -9,7 +9,7 @@ html { scroll-padding-block-start: var(--space-6); }
 .gallery-navigation a:hover { text-decoration: underline; }
 .gallery { flex: 999 1 var(--layout-column-min); min-inline-size: var(--space-0); }
 .gallery-header { margin-block-end: var(--space-10); }
-.gallery-header h1 { margin-block: var(--space-0) var(--space-3); font-size: var(--font-size-2xl); line-height: var(--line-height-heading); font-weight: var(--font-weight-semibold); }
+.gallery-header h1 { color: var(--color-muted); margin-block: var(--space-0) var(--space-3); font-size: var(--font-size-2xl); line-height: var(--line-height-heading); font-weight: var(--font-weight-semibold); }
 .gallery-header p { max-inline-size: var(--layout-prose); margin: var(--space-0); color: var(--color-muted); }
 .gallery-section { margin-block-end: var(--space-10); scroll-margin-block-start: var(--space-6); }
 .gallery-section h2 { margin-block: var(--space-0) var(--space-4); font-size: var(--font-size-xl); line-height: var(--line-height-heading); font-weight: var(--font-weight-semibold); }
