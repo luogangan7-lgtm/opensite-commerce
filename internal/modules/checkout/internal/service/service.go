@@ -149,7 +149,7 @@ func (s *Service) Get(ctx context.Context, actor contract.AuthorizedActor, check
 		if err != nil {
 			return err
 		}
-		row, err := q.GetCheckoutByID(ctx, db.GetCheckoutByIDParams{TenantID: store.UUID(actor.TenantID()), ID: store.UUID(checkoutID)})
+		row, err := q.GetCheckoutByIDSnapshot(ctx, db.GetCheckoutByIDSnapshotParams{TenantID: store.UUID(actor.TenantID()), ID: store.UUID(checkoutID)})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return contract.ErrNotFound
 		}
