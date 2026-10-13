@@ -138,3 +138,109 @@ func TestStartupJobsErrorStopsBeforeDispatcher(t *testing.T) {
 		t.Fatalf("startup error=%v cleaned=%v stopped=%v", err, cleaned, jobs.stopped)
 	}
 }
+
+type budgetJobs struct{ stopped chan struct{} }
+
+func (w *budgetJobs) Start(context.Context) error { return nil }
+func (w *budgetJobs) Stop(context.Context) error  { close(w.stopped); return nil }
+
+type budgetStore struct {
+	startupStore
+	completed chan string
+	seen      map[string]bool
+}
+
+func (s *budgetStore) Claim(ctx context.Context, tenant, worker string, limit, seconds int32) ([]outbox.Lease, error) {
+	if s.seen[tenant] {
+		return nil, nil
+	}
+	s.seen[tenant] = true
+	return s.startupStore.Claim(ctx, tenant, worker, limit, seconds)
+}
+
+func (s *budgetStore) Complete(ctx context.Context, l outbox.Lease) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	s.ack++
+	s.completed <- l.Delivery.TenantID
+	return true, nil
+}
+
+func TestExhaustedCycleKeepsJobsAliveAndDeliversLaterTenant(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	first, later := "11111111-1111-4111-8111-111111111111", "44444444-4444-4444-8444-444444444444"
+	jobs := &budgetJobs{stopped: make(chan struct{})}
+	store := &budgetStore{completed: make(chan string, 2), seen: make(map[string]bool)}
+	var cycleDone <-chan struct{}
+	sender := testSender(func(send context.Context, d outbox.Delivery) error {
+		if d.TenantID == first {
+			select {
+			case <-cycleDone:
+			case <-send.Done():
+				return send.Err()
+			}
+			if err := send.Err(); err != nil {
+				return err
+			}
+		}
+		select {
+		case <-jobs.stopped:
+			return errors.New("jobs stopped during healthy dispatch")
+		default:
+		}
+		return nil
+	})
+	factory := func(_ context.Context, _ func(string) string, s outbox.Sender) (jobWorker, *outbox.Runner, func(), error) {
+		r := &outbox.Runner{Source: testSource(func(cycle context.Context, after string, _ int32) ([]string, error) {
+			cycleDone = cycle.Done()
+			if after == "" {
+				return []string{first, later}, nil
+			}
+			if after == later {
+				return nil, nil
+			}
+			if after != first {
+				return nil, errors.New("cursor skipped later tenant")
+			}
+			return []string{later}, nil
+		}), Dispatcher: outbox.Dispatcher{Store: store, Sender: s, Config: outbox.Config{WorkerID: "22222222-2222-4222-8222-222222222222", LeaseSeconds: 60, BaseRetrySeconds: 2, MaxRetrySeconds: 8}}, TenantBatchSize: 2, EventsPerTenant: 10, PollInterval: time.Millisecond, CycleTimeout: 20 * time.Millisecond}
+		return jobs, r, func() {}, nil
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- runContext(ctx, env(map[string]string{"OUTBOX_ENABLED": "true", "OUTBOX_DATABASE_URL": "test-only"}), sender, factory)
+	}()
+	for _, want := range []string{first, later} {
+		select {
+		case got := <-store.completed:
+			if got != want {
+				t.Fatalf("delivery=%s want=%s", got, want)
+			}
+		case err := <-done:
+			t.Fatalf("budget shut down jobs before delivery: %v", err)
+		case <-time.After(time.Second):
+			t.Fatal("later tenant starved")
+		}
+	}
+	select {
+	case <-jobs.stopped:
+		t.Fatal("jobs stopped on cycle budget")
+	default:
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker failed to stop")
+	}
+	select {
+	case <-jobs.stopped:
+	default:
+		t.Fatal("jobs missing graceful stop")
+	}
+}

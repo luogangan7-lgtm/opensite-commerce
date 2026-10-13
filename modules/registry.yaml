@@ -675,6 +675,43 @@
         "internal/contracts/payment/v1"
       ],
       "note": "C-15a freezes the neutral Payment Port v1 and test-only Fake. Real payment storage, service and Stripe are deferred to C-19; no production payment capability exists."
+    },
+    {
+      "name": "notifications",
+      "status": "implemented",
+      "go_path": "internal/modules/notifications",
+      "go_status": "implemented",
+      "owns_tables": [
+        "notification_deliveries",
+        "notification_redrive_requests"
+      ],
+      "operations": [
+        {
+          "operation_id": "listNotificationFailures",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "redriveNotification",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "reliability",
+        "orders",
+        "customer"
+      ],
+      "tests": [
+        "tests/db_notifications.sql",
+        "tests/test_notifications_contract_static.py",
+        "tests/test_notifications_api.py",
+        "internal/platform/httpapi/notificationhttp/notifications_test.go",
+        "internal/modules/notifications/internal/service/render_test.go"
+      ],
+      "scopes": [
+        "notifications:write"
+      ],
+      "note": "Admin failure metadata and explicit idempotent dead-letter redrive. No recipient/body in public DTOs, uncertain SMTP acceptance cannot redrive; queue receipt is not email delivery. Uses lease-fenced outbox capability and stdlib fake/SMTP adapters; quotes event SQL is optional until integration."
     }
   ],
   "migrations": [
@@ -969,6 +1006,15 @@
       "file": "migrations/025_ops_metrics.sql",
       "owner": "platform-security",
       "touches_tables": [
+        "outbox_events"
+      ]
+    },
+    {
+      "file": "migrations/026_notifications.sql",
+      "owner": "notifications",
+      "touches_tables": [
+        "notification_deliveries",
+        "notification_redrive_requests",
         "outbox_events"
       ]
     }
