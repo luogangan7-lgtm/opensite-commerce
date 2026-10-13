@@ -1,12 +1,15 @@
 // Responsibility: anonymous strict generated Read Context HTTP transport.
 // Dependencies: publish public contract and platform strict transport; caller: cmd/api bootstrap.
-// Invariants: exactly one validated host, bounded read deadline, no forwarded-host trust.
+// Invariants: exactly one validated host, bounded read deadline, no forwarded-host trust;
+// 200 bodies are the stored serving bytes, never re-encoded.
 package publish
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
@@ -30,14 +33,29 @@ func StorefrontRoute(reader contract.Reader) httpapi.Route {
 			httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_request", "Exactly one host is required"))
 			return
 		}
-		if _, err := contract.NormalizeHost(query.Get("host")); err != nil {
+		host, err := contract.NormalizeHost(query.Get("host"))
+		if err != nil {
 			httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_request", "Invalid DNS hostname"))
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		strict.ServeHTTP(w, r.WithContext(ctx))
+		// 200 bodies are the stored serving bytes, written as-is (no re-encoding); errors
+		// keep the strict transport's problem responses.
+		if reader == nil {
+			strict.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+		body, err := reader.Serve(ctx, host)
+		if err != nil {
+			strict.ServeHTTP(w, r.WithContext(context.WithValue(ctx, serveErrKey{}, err)))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("ETag", fmt.Sprintf(`"%x"`, sha256.Sum256(body)))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
 	})}
 }
 func (s *storefrontHandler) GetPublishedSite(ctx context.Context, req httpapi.GetPublishedSiteRequestObject) (httpapi.GetPublishedSiteResponseObject, error) {
@@ -49,7 +67,11 @@ func (s *storefrontHandler) GetPublishedSite(ctx context.Context, req httpapi.Ge
 	if s.reader == nil {
 		return httpapi.GetPublishedSite503ApplicationProblemPlusJSONResponse(problem), nil
 	}
-	site, err := s.reader.Current(ctx, host)
+	err, _ = ctx.Value(serveErrKey{}).(error)
+	var body []byte
+	if err == nil {
+		body, err = s.reader.Serve(ctx, host)
+	}
 	if errors.Is(err, contract.ErrNotFound) {
 		problem.Title = "Not Found"
 		problem.Status = 404
@@ -59,14 +81,12 @@ func (s *storefrontHandler) GetPublishedSite(ctx context.Context, req httpapi.Ge
 	if err != nil {
 		return httpapi.GetPublishedSite503ApplicationProblemPlusJSONResponse(problem), nil
 	}
-	// Both DTOs are schema-owned values; conversion keeps serialization on the strict boundary.
-	raw, err := json.Marshal(site)
-	if err != nil {
-		return nil, err
-	}
 	var dto httpapi.PublishedSite
-	if err = json.Unmarshal(raw, &dto); err != nil {
+	if err = json.Unmarshal(body, &dto); err != nil {
 		return nil, err
 	}
 	return httpapi.GetPublishedSite200JSONResponse(dto), nil
 }
+
+// serveErrKey carries the read error into the strict transport so problem bodies stay generated.
+type serveErrKey struct{}

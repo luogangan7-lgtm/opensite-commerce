@@ -9,7 +9,7 @@ import ErrorPage from './ErrorPage.astro';
 import ProductSummary from './ProductSummary';
 import ProductPurchase from './ProductPurchase';
 import type { PurchaseContext } from '../lib/commerce-contract';
-import { formatAmount } from '../lib/presentation';
+import { lowestSellablePrice } from '../lib/presentation';
 import type { PublishedPageView } from '../lib/published-page';
 interface Props { view: PublishedPageView; purchaseContext?: PurchaseContext }
 const { site, status, ui, isList, product, page, title, description, canonical, homeHref } = Astro.props.view;
@@ -25,11 +25,11 @@ const { purchaseContext } = Astro.props;
       {site.products.length ? <ul class="product-list">
         {site.products.map(item => <li>
           <div><h2><a href={`/products/${encodeURIComponent(item.slug)}`}>{item.name}</a></h2><p>{item.description}</p></div>
-          <p class="product-price">{formatAmount(item.unit_amount, item.currency, site.locale)}</p>
+          <p class="product-price">{lowestSellablePrice(item.skus, site.locale) ?? ui.priceUnavailable}</p>
         </li>)}
       </ul> : <EmptyState title={ui.emptyProducts} description={ui.emptyDescription} />}
     </> : product ? <>
-      <ProductSummary description={product.description} amount={product.unit_amount} currency={product.currency} locale={site.locale} />
+      <ProductSummary description={product.description} price={lowestSellablePrice(product.skus, site.locale) ?? ui.priceUnavailable} />
       {purchaseContext && <ProductPurchase context={purchaseContext} product_id={product.id} locale={site.locale} client:load />}
       <a class="back-link" href="/products">{ui.backProducts}</a>
     </> : page && <article class="published-copy">
