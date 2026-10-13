@@ -72,6 +72,7 @@ expected = [
     'db_queue.sql',
     'db_reliability_limits.sql',
     'db_cart.sql',
+    'db_storefront.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
 for name in expected:
@@ -190,4 +191,11 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
         assert failed.returncode == 31, (failed.stdout, failed.stderr)
         assert f'RUN tests/{name}' in failed.stdout
         assert 'PASS: module ownership' not in failed.stdout
+# check_pg_upgrade.sh: bad() only sets fail=1, so every bad() call must precede the
+# final `[[ $fail -eq 0 ]] || exit 1`, and that check must precede the overall PASS line.
+upgrade_lines = (root / 'scripts' / 'check_pg_upgrade.sh').read_text().splitlines()
+last_bad = max(i for i, line in enumerate(upgrade_lines) if re.search(r'(^|[|&;{ ])bad ', line))
+final_check = max(i for i, line in enumerate(upgrade_lines) if line.strip() == '[[ $fail -eq 0 ]] || exit 1')
+final_pass = max(i for i, line in enumerate(upgrade_lines) if line.startswith("echo 'PASS: security"))
+assert last_bad < final_check < final_pass, ('upgrade failures after the final exit check', last_bad + 1, final_check + 1, final_pass + 1)
 print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, preserves River ordering and propagates failures (mock go/psql; NO SQL executed)')

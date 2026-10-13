@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "packageManager": "bun@1.3.12",
-  "workspaces": ["web/*", "packages/*"],
+  "workspaces": [
+    "web/*",
+    "packages/*"
+  ],
   "scripts": {
     "tokens:generate": "bun packages/design-tokens/generate.ts",
     "tokens:check": "bun packages/design-tokens/generate.ts --check",
@@ -15,7 +18,10 @@
     "build:gallery": "vite build --config web/admin/vite.config.ts web/admin --mode gallery --outDir dist-gallery",
     "visual:test": "playwright test",
     "visual:update": "bun scripts/frontend/update-baselines.ts",
-    "frontend:check": "bash scripts/check_frontend.sh"
+    "frontend:check": "bash scripts/check_frontend.sh",
+    "build:storefront": "bun run --filter @opensite/storefront build",
+    "start:storefront": "bash scripts/start_storefront_ssr.sh",
+    "check:storefront": "bun run --filter @opensite/storefront check"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

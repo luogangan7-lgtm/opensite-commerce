@@ -14,6 +14,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
@@ -55,7 +56,7 @@ func scope(op *openapi3.Operation) string {
 }
 
 func TestImplementedRouteContract(t *testing.T) {
-	server, err := bootstrap.New(bootstrap.Config{})
+	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{publish.StorefrontRoute(nil)}})
 	if err != nil {
 		t.Fatal(err)
 	}
