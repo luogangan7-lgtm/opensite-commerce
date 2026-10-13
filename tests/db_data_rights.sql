@@ -83,7 +83,33 @@ BEGIN
   VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','privacy-unowned-guest') RETURNING id INTO source;
  SELECT id INTO source FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=source;
  PERFORM set_config('test.privacy_unowned_notification',source::text,true);
+ PERFORM set_config('test.privacy_unowned_order',oid::text,true);
 END $notification_seed$;
+-- Quote approval mail is owned by quotes.accepted_by. One quote is approved
+-- before erasure; a second accepted quote is approved only after erasure.
+DO $quote_seed$
+DECLARE t uuid:=current_setting('app.tenant_id')::uuid; c uuid:=current_setting('test.privacy_customer')::uuid;
+ site uuid:=current_setting('test.privacy_site')::uuid; u uuid; a uuid; co uuid; i uuid; q uuid; n integer;
+BEGIN
+ INSERT INTO app.users(email,password_hash) VALUES(uuidv7()::text||'@staff.invalid','fixture') RETURNING id INTO u;
+ INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES(t,u,'admin');
+ INSERT INTO app.customers(tenant_id,email) VALUES(t,'privacy-approver@example.invalid') RETURNING id INTO a;
+ INSERT INTO app.buyer_companies(tenant_id,name) VALUES(t,'Privacy buyer') RETURNING id INTO co;
+ INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code) VALUES(t,co,c,'purchaser'),(t,co,a,'approver');
+ INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message) VALUES(t,site,'privacy-desk@example.invalid','privacy quote') RETURNING id INTO i;
+ EXECUTE 'SET LOCAL ROLE app_runtime';
+ FOR n IN 1..2 LOOP
+  q:=app.create_quote(t,site,i,co,u,'USD',100,0,0,100,'{}',clock_timestamp()+interval '1 hour','[{"line_no":1,"description":"privacy","quantity":1,"unit_price":100,"line_total":100,"snapshot":{}}]');
+  PERFORM app.transition_quote(t,q,1,'send','staff',u);
+  PERFORM app.transition_quote(t,q,2,'accept','customer',c);
+  IF n=1 THEN PERFORM app.transition_quote(t,q,3,'approve','customer',a);PERFORM set_config('test.privacy_quote',q::text,true);
+  ELSE PERFORM set_config('test.privacy_pending_quote',q::text,true); END IF;
+ END LOOP;
+ EXECUTE 'RESET ROLE';
+ PERFORM set_config('test.privacy_approver',a::text,true);
+ IF NOT EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND template_key='quote.approved' AND reference_id=current_setting('test.privacy_quote')::uuid AND recipient='privacy@example.invalid' AND status='pending') THEN
+  RAISE EXCEPTION 'PRIVACY_QUOTE fixture approval recipient'; END IF;
+END $quote_seed$;
 SELECT set_config('app.tenant_id',:'t',true),set_config('test.privacy_customer',:'c',true),set_config('test.privacy_foreign',:'foreign_c',true);
 SET LOCAL ROLE app_runtime;
 DO $gate$
@@ -138,7 +164,35 @@ BEGIN
  SELECT * INTO nd FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=source;
  IF nd.status<>'dead_letter' OR nd.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR nd.recipient<>'erased-'||nd.id::text||'@invalid.test' THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION future fanout'; END IF;
  IF EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND id=nd.dispatch_event_id AND status<>'dead_letter') THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION future dispatch'; END IF;
+ -- Quote approval notifications: scrubbed, dead-lettered, and a post-erasure
+ -- approval of a quote the customer accepted cannot revive the contact.
+ IF NOT EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND reference_id=current_setting('test.privacy_quote')::uuid AND template_key='quote.approved')
+ OR EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND reference_id=current_setting('test.privacy_quote')::uuid AND template_key='quote.approved' AND (recipient<>'erased-'||id::text||'@invalid.test' OR status<>'dead_letter' OR last_error IS DISTINCT FROM 'PRIVACY_ERASED'))
+ OR EXISTS(SELECT FROM app.outbox_events e JOIN app.notification_deliveries d ON d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id) WHERE d.tenant_id=t AND d.reference_id=current_setting('test.privacy_quote')::uuid AND (e.status<>'dead_letter' OR e.last_error IS DISTINCT FROM 'PRIVACY_ERASED')) THEN
+  RAISE EXCEPTION 'PRIVACY_QUOTE approval notification residue'; END IF;
+ EXECUTE 'SET LOCAL ROLE app_runtime';
+ PERFORM app.transition_quote(t,current_setting('test.privacy_pending_quote')::uuid,3,'approve','customer',current_setting('test.privacy_approver')::uuid);
+ EXECUTE 'RESET ROLE';
+ SELECT * INTO nd FROM app.notification_deliveries WHERE tenant_id=t AND template_key='quote.approved' AND reference_id=current_setting('test.privacy_pending_quote')::uuid;
+ IF nd.id IS NULL OR nd.status<>'dead_letter' OR nd.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR nd.recipient<>'erased-'||nd.id::text||'@invalid.test'
+ OR EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND id=nd.dispatch_event_id AND status<>'dead_letter') THEN RAISE EXCEPTION 'PRIVACY_QUOTE post-erasure approval revived contact'; END IF;
 END $notification_privacy$;
+-- No leftover PII anywhere: every row of every non-system table (all modules,
+-- including notifications/outbox/DLQ and quotes) is searched for the erased
+-- customer's email, name and address. Only the deliberately unowned guest
+-- order and its notification may still carry the same email.
+DO $no_leftover_pii$
+DECLARE r record; hits bigint; found text:='';
+BEGIN
+ FOR r IN SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE c.relkind IN('r','p') AND n.nspname NOT IN('pg_catalog','information_schema') AND NOT starts_with(n.nspname,'pg_') LOOP
+  EXECUTE format('SELECT count(*) FROM %I.%I x WHERE x::text ILIKE ANY($1) AND coalesce(to_jsonb(x)->>''id'','''')<>ALL($2)',r.nspname,r.relname)
+   INTO hits USING ARRAY['%privacy@example.invalid%','%Secret Person%','%Private street%','%Private city%'],
+   ARRAY[current_setting('test.privacy_unowned_order'),current_setting('test.privacy_unowned_notification')];
+  IF hits>0 THEN found:=found||format(' %s.%s=%s',r.nspname,r.relname,hits); END IF;
+ END LOOP;
+ IF found<>'' THEN RAISE EXCEPTION 'PRIVACY_GATE leftover PII:%',found; END IF;
+END $no_leftover_pii$;
 SELECT set_config('app.outbox_worker',current_setting('test.privacy_send_worker'),true),set_config('app.outbox_attempt','1',true);
 SET LOCAL ROLE app_outbox_worker;
 DO $notification_fence$
