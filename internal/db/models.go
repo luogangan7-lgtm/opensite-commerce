@@ -210,6 +210,15 @@ type AppDraftPage struct {
 	Document []byte      `json:"document"`
 }
 
+type AppDraftPageMedium struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	SiteID   pgtype.UUID `json:"site_id"`
+	DraftID  pgtype.UUID `json:"draft_id"`
+	PageID   pgtype.UUID `json:"page_id"`
+	Locale   string      `json:"locale"`
+	MediaID  pgtype.UUID `json:"media_id"`
+}
+
 type AppIdempotencyRecord struct {
 	TenantID              pgtype.UUID        `json:"tenant_id"`
 	ActorKind             string             `json:"actor_kind"`
@@ -476,6 +485,7 @@ type AppPageRevision struct {
 	Revision  int64              `json:"revision"`
 	Document  []byte             `json:"document"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	MediaIds  []pgtype.UUID      `json:"media_ids"`
 }
 
 type AppPriceEntry struct {
@@ -656,13 +666,14 @@ type AppShippingZoneDestination struct {
 }
 
 type AppSite struct {
-	TenantID           pgtype.UUID        `json:"tenant_id"`
-	ID                 pgtype.UUID        `json:"id"`
-	OrganizationID     pgtype.UUID        `json:"organization_id"`
-	Name               string             `json:"name"`
-	DefaultLocale      string             `json:"default_locale"`
-	PublishedReleaseID pgtype.UUID        `json:"published_release_id"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	TenantID            pgtype.UUID        `json:"tenant_id"`
+	ID                  pgtype.UUID        `json:"id"`
+	OrganizationID      pgtype.UUID        `json:"organization_id"`
+	Name                string             `json:"name"`
+	DefaultLocale       string             `json:"default_locale"`
+	PublishedReleaseID  pgtype.UUID        `json:"published_release_id"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	PublicationRevision int64              `json:"publication_revision"`
 }
 
 type AppSiteDomain struct {
@@ -685,6 +696,11 @@ type AppSiteDraft struct {
 	Revision      int64              `json:"revision"`
 	Status        string             `json:"status"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	IsCms         bool               `json:"is_cms"`
+	Locale        string             `json:"locale"`
+	Title         string             `json:"title"`
+	Description   string             `json:"description"`
+	Navigation    []byte             `json:"navigation"`
 }
 
 type AppSiteLocale struct {

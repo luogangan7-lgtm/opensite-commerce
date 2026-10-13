@@ -26,6 +26,87 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for CMSDraftStatus.
+const (
+	CMSDraftStatusAbandoned CMSDraftStatus = "abandoned"
+	CMSDraftStatusOpen      CMSDraftStatus = "open"
+	CMSDraftStatusPublished CMSDraftStatus = "published"
+)
+
+// Valid indicates whether the value is a known member of the CMSDraftStatus enum.
+func (e CMSDraftStatus) Valid() bool {
+	switch e {
+	case CMSDraftStatusAbandoned:
+		return true
+	case CMSDraftStatusOpen:
+		return true
+	case CMSDraftStatusPublished:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CMSOperationDeletePageOperation.
+const (
+	DeletePage CMSOperationDeletePageOperation = "delete_page"
+)
+
+// Valid indicates whether the value is a known member of the CMSOperationDeletePageOperation enum.
+func (e CMSOperationDeletePageOperation) Valid() bool {
+	switch e {
+	case DeletePage:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CMSOperationSavePageOperation.
+const (
+	SavePage CMSOperationSavePageOperation = "save_page"
+)
+
+// Valid indicates whether the value is a known member of the CMSOperationSavePageOperation enum.
+func (e CMSOperationSavePageOperation) Valid() bool {
+	switch e {
+	case SavePage:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CMSOperationSetMetadataOperation.
+const (
+	SetMetadata CMSOperationSetMetadataOperation = "set_metadata"
+)
+
+// Valid indicates whether the value is a known member of the CMSOperationSetMetadataOperation enum.
+func (e CMSOperationSetMetadataOperation) Valid() bool {
+	switch e {
+	case SetMetadata:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CMSOperationSetNavigationOperation.
+const (
+	SetNavigation CMSOperationSetNavigationOperation = "set_navigation"
+)
+
+// Valid indicates whether the value is a known member of the CMSOperationSetNavigationOperation enum.
+func (e CMSOperationSetNavigationOperation) Valid() bool {
+	switch e {
+	case SetNavigation:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CartPricingError.
 const (
 	CartPricingErrorAmountOverflow   CartPricingError = "amount_overflow"
@@ -591,6 +672,160 @@ type AdminSessionView struct {
 	UserId    openapi_types.UUID `json:"user_id"`
 }
 
+// CMSBatchDeletePage defines model for CMSBatchDeletePage.
+type CMSBatchDeletePage struct {
+	Id     openapi_types.UUID `json:"id"`
+	Locale string             `json:"locale"`
+}
+
+// CMSBatchPage defines model for CMSBatchPage.
+type CMSBatchPage struct {
+	Document CMSDocument          `json:"document"`
+	Id       *openapi_types.UUID  `json:"id,omitempty"`
+	Locale   string               `json:"locale"`
+	MediaIds []openapi_types.UUID `json:"media_ids"`
+	PageKey  string               `json:"page_key"`
+	Path     string               `json:"path"`
+}
+
+// CMSDeletePageInput defines model for CMSDeletePageInput.
+type CMSDeletePageInput struct {
+	Locale string `json:"locale"`
+}
+
+// CMSDocument defines model for CMSDocument.
+type CMSDocument struct {
+	Blocks      []PublishedBlock `json:"blocks"`
+	Description string           `json:"description"`
+	Title       string           `json:"title"`
+}
+
+// CMSDraft defines model for CMSDraft.
+type CMSDraft struct {
+	BaseReleaseId       nullable.Nullable[openapi_types.UUID] `json:"base_release_id"`
+	Description         string                                `json:"description"`
+	DraftId             openapi_types.UUID                    `json:"draft_id"`
+	Locale              string                                `json:"locale"`
+	Navigation          []PublishedNavigation                 `json:"navigation"`
+	Pages               CMSDraftPageList                      `json:"pages"`
+	Products            []PublishedProduct                    `json:"products"`
+	PublicationRevision int64                                 `json:"publication_revision"`
+	Revision            int64                                 `json:"revision"`
+	SiteId              openapi_types.UUID                    `json:"site_id"`
+	Status              CMSDraftStatus                        `json:"status"`
+	Title               string                                `json:"title"`
+}
+
+// CMSDraftStatus defines model for CMSDraft.Status.
+type CMSDraftStatus string
+
+// CMSDraftPage defines model for CMSDraftPage.
+type CMSDraftPage struct {
+	Document CMSDocument          `json:"document"`
+	Id       openapi_types.UUID   `json:"id"`
+	Locale   string               `json:"locale"`
+	MediaIds []openapi_types.UUID `json:"media_ids"`
+	PageKey  string               `json:"page_key"`
+	Path     string               `json:"path"`
+}
+
+// CMSDraftPageList defines model for CMSDraftPageList.
+type CMSDraftPageList = []CMSDraftPage
+
+// CMSNavigationInput defines model for CMSNavigationInput.
+type CMSNavigationInput struct {
+	Navigation []PublishedNavigation `json:"navigation"`
+}
+
+// CMSOperation defines model for CMSOperation.
+type CMSOperation struct {
+	union json.RawMessage
+}
+
+// CMSOperationBatch defines model for CMSOperationBatch.
+type CMSOperationBatch struct {
+	Operations []CMSOperation `json:"operations"`
+}
+
+// CMSOperationDeletePage defines model for CMSOperationDeletePage.
+type CMSOperationDeletePage struct {
+	Operation CMSOperationDeletePageOperation `json:"operation"`
+	Payload   CMSBatchDeletePage              `json:"payload"`
+}
+
+// CMSOperationDeletePageOperation defines model for CMSOperationDeletePage.Operation.
+type CMSOperationDeletePageOperation string
+
+// CMSOperationSavePage defines model for CMSOperationSavePage.
+type CMSOperationSavePage struct {
+	Operation CMSOperationSavePageOperation `json:"operation"`
+	Payload   CMSBatchPage                  `json:"payload"`
+}
+
+// CMSOperationSavePageOperation defines model for CMSOperationSavePage.Operation.
+type CMSOperationSavePageOperation string
+
+// CMSOperationSetMetadata defines model for CMSOperationSetMetadata.
+type CMSOperationSetMetadata struct {
+	Operation CMSOperationSetMetadataOperation `json:"operation"`
+	Payload   CreateCMSDraft                   `json:"payload"`
+}
+
+// CMSOperationSetMetadataOperation defines model for CMSOperationSetMetadata.Operation.
+type CMSOperationSetMetadataOperation string
+
+// CMSOperationSetNavigation defines model for CMSOperationSetNavigation.
+type CMSOperationSetNavigation struct {
+	Operation CMSOperationSetNavigationOperation `json:"operation"`
+	Payload   CMSNavigationInput                 `json:"payload"`
+}
+
+// CMSOperationSetNavigationOperation defines model for CMSOperationSetNavigation.Operation.
+type CMSOperationSetNavigationOperation string
+
+// CMSPreviewGrant defines model for CMSPreviewGrant.
+type CMSPreviewGrant struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Revision  int64     `json:"revision"`
+	Token     string    `json:"token"`
+}
+
+// CMSPreviewInput defines model for CMSPreviewInput.
+type CMSPreviewInput struct {
+	TtlSeconds int `json:"ttl_seconds"`
+}
+
+// CMSPublishInput defines model for CMSPublishInput.
+type CMSPublishInput struct {
+	ExpectedPublicationRevision int64                                 `json:"expected_publication_revision"`
+	ExpectedReleaseId           nullable.Nullable[openapi_types.UUID] `json:"expected_release_id"`
+	RendererBuildId             string                                `json:"renderer_build_id"`
+}
+
+// CMSRelease defines model for CMSRelease.
+type CMSRelease struct {
+	CreatedAt           time.Time                             `json:"created_at"`
+	ManifestHash        string                                `json:"manifest_hash"`
+	PublicationRevision int64                                 `json:"publication_revision"`
+	ReleaseId           openapi_types.UUID                    `json:"release_id"`
+	ReleaseNo           int64                                 `json:"release_no"`
+	RestoredFrom        nullable.Nullable[openapi_types.UUID] `json:"restored_from"`
+}
+
+// CMSReleaseList defines model for CMSReleaseList.
+type CMSReleaseList = []CMSRelease
+
+// CMSRestoreInput defines model for CMSRestoreInput.
+type CMSRestoreInput struct {
+	ExpectedReleaseId nullable.Nullable[openapi_types.UUID] `json:"expected_release_id"`
+}
+
+// CMSValidation defines model for CMSValidation.
+type CMSValidation struct {
+	Revision int64 `json:"revision"`
+	Valid    bool  `json:"valid"`
+}
+
 // Cart defines model for Cart.
 type Cart struct {
 	Currency string             `json:"currency"`
@@ -695,6 +930,13 @@ type ComponentSetPropsType string
 type CreateAdminSession struct {
 	Identifier string  `json:"identifier"`
 	Password   *string `json:"password,omitempty"`
+}
+
+// CreateCMSDraft defines model for CreateCMSDraft.
+type CreateCMSDraft struct {
+	Description string `json:"description"`
+	Locale      string `json:"locale"`
+	Title       string `json:"title"`
 }
 
 // CreateCart defines model for CreateCart.
@@ -1152,6 +1394,15 @@ type QuoteSnapshot struct {
 
 // QuoteTransition defines model for QuoteTransition.
 type QuoteTransition = map[string]interface{}
+
+// SaveCMSPage defines model for SaveCMSPage.
+type SaveCMSPage struct {
+	Document CMSDocument          `json:"document"`
+	Locale   string               `json:"locale"`
+	MediaIds []openapi_types.UUID `json:"media_ids"`
+	PageKey  string               `json:"page_key"`
+	Path     string               `json:"path"`
+}
 
 // SetCartLine defines model for SetCartLine.
 type SetCartLine struct {
@@ -1706,8 +1957,78 @@ type CreateSiteDraftParams struct {
 	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
 }
 
+// UpdateDraftNavigationParams defines parameters for UpdateDraftNavigation.
+type UpdateDraftNavigationParams struct {
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+	IfMatch        IfMatch        `json:"If-Match"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin *OriginIfCookie `json:"Origin,omitempty"`
+
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+}
+
 // ApplyPageOperationsParams defines parameters for ApplyPageOperations.
 type ApplyPageOperationsParams struct {
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+	IfMatch        IfMatch        `json:"If-Match"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin *OriginIfCookie `json:"Origin,omitempty"`
+
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+}
+
+// CreateDraftPageParams defines parameters for CreateDraftPage.
+type CreateDraftPageParams struct {
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+	IfMatch        IfMatch        `json:"If-Match"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin *OriginIfCookie `json:"Origin,omitempty"`
+
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+}
+
+// DeleteDraftPageParams defines parameters for DeleteDraftPage.
+type DeleteDraftPageParams struct {
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+	IfMatch        IfMatch        `json:"If-Match"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin *OriginIfCookie `json:"Origin,omitempty"`
+
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+}
+
+// UpdateDraftPageParams defines parameters for UpdateDraftPage.
+type UpdateDraftPageParams struct {
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+	IfMatch        IfMatch        `json:"If-Match"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin *OriginIfCookie `json:"Origin,omitempty"`
+
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+}
+
+// GetSitePreviewParams defines parameters for GetSitePreview.
+type GetSitePreviewParams struct {
+	Authorization string `json:"Authorization"`
+}
+
+// CreateSitePreviewTokenParams defines parameters for CreateSitePreviewToken.
+type CreateSitePreviewTokenParams struct {
 	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 	IfMatch        IfMatch        `json:"If-Match"`
@@ -1734,6 +2055,23 @@ type PublishSiteDraftParams struct {
 
 // ValidateSiteDraftParams defines parameters for ValidateSiteDraft.
 type ValidateSiteDraftParams struct {
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+	IfMatch        IfMatch        `json:"If-Match"`
+
+	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
+	Origin *OriginIfCookie `json:"Origin,omitempty"`
+
+	// XCSRFToken Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls.
+	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
+}
+
+// RestoreSiteReleaseParams defines parameters for RestoreSiteRelease.
+type RestoreSiteReleaseParams struct {
+	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+	IfMatch        IfMatch        `json:"If-Match"`
+
 	// Origin Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks.
 	Origin *OriginIfCookie `json:"Origin,omitempty"`
 
@@ -1802,10 +2140,31 @@ type WithdrawQuoteJSONRequestBody = QuoteTransition
 type CreateSiteJSONRequestBody = CreateSite
 
 // CreateSiteDraftJSONRequestBody defines body for CreateSiteDraft for application/json ContentType.
-type CreateSiteDraftJSONRequestBody = CreateDraft
+type CreateSiteDraftJSONRequestBody = CreateCMSDraft
+
+// UpdateDraftNavigationJSONRequestBody defines body for UpdateDraftNavigation for application/json ContentType.
+type UpdateDraftNavigationJSONRequestBody = CMSNavigationInput
 
 // ApplyPageOperationsJSONRequestBody defines body for ApplyPageOperations for application/json ContentType.
-type ApplyPageOperationsJSONRequestBody = OperationBatch
+type ApplyPageOperationsJSONRequestBody = CMSOperationBatch
+
+// CreateDraftPageJSONRequestBody defines body for CreateDraftPage for application/json ContentType.
+type CreateDraftPageJSONRequestBody = SaveCMSPage
+
+// DeleteDraftPageJSONRequestBody defines body for DeleteDraftPage for application/json ContentType.
+type DeleteDraftPageJSONRequestBody = CMSDeletePageInput
+
+// UpdateDraftPageJSONRequestBody defines body for UpdateDraftPage for application/json ContentType.
+type UpdateDraftPageJSONRequestBody = SaveCMSPage
+
+// CreateSitePreviewTokenJSONRequestBody defines body for CreateSitePreviewToken for application/json ContentType.
+type CreateSitePreviewTokenJSONRequestBody = CMSPreviewInput
+
+// PublishSiteDraftJSONRequestBody defines body for PublishSiteDraft for application/json ContentType.
+type PublishSiteDraftJSONRequestBody = CMSPublishInput
+
+// RestoreSiteReleaseJSONRequestBody defines body for RestoreSiteRelease for application/json ContentType.
+type RestoreSiteReleaseJSONRequestBody = CMSRestoreInput
 
 // Getter for additional properties for Problem. Returns the specified
 // element and whether it was found
@@ -1925,6 +2284,179 @@ func (a Problem) MarshalJSON() ([]byte, error) {
 		}
 	}
 	return json.Marshal(object)
+}
+
+// AsCMSOperationSavePage returns the union data inside the CMSOperation as a CMSOperationSavePage
+func (t CMSOperation) AsCMSOperationSavePage() (CMSOperationSavePage, error) {
+	var body CMSOperationSavePage
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCMSOperationSavePage overwrites any union data inside the CMSOperation as the provided CMSOperationSavePage
+func (t *CMSOperation) FromCMSOperationSavePage(v CMSOperationSavePage) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"operation":"save_page"}`))
+	t.union = b
+	return err
+}
+
+// MergeCMSOperationSavePage performs a merge with any union data inside the CMSOperation, using the provided CMSOperationSavePage
+func (t *CMSOperation) MergeCMSOperationSavePage(v CMSOperationSavePage) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"operation":"save_page"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCMSOperationDeletePage returns the union data inside the CMSOperation as a CMSOperationDeletePage
+func (t CMSOperation) AsCMSOperationDeletePage() (CMSOperationDeletePage, error) {
+	var body CMSOperationDeletePage
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCMSOperationDeletePage overwrites any union data inside the CMSOperation as the provided CMSOperationDeletePage
+func (t *CMSOperation) FromCMSOperationDeletePage(v CMSOperationDeletePage) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"operation":"delete_page"}`))
+	t.union = b
+	return err
+}
+
+// MergeCMSOperationDeletePage performs a merge with any union data inside the CMSOperation, using the provided CMSOperationDeletePage
+func (t *CMSOperation) MergeCMSOperationDeletePage(v CMSOperationDeletePage) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"operation":"delete_page"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCMSOperationSetNavigation returns the union data inside the CMSOperation as a CMSOperationSetNavigation
+func (t CMSOperation) AsCMSOperationSetNavigation() (CMSOperationSetNavigation, error) {
+	var body CMSOperationSetNavigation
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCMSOperationSetNavigation overwrites any union data inside the CMSOperation as the provided CMSOperationSetNavigation
+func (t *CMSOperation) FromCMSOperationSetNavigation(v CMSOperationSetNavigation) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"operation":"set_navigation"}`))
+	t.union = b
+	return err
+}
+
+// MergeCMSOperationSetNavigation performs a merge with any union data inside the CMSOperation, using the provided CMSOperationSetNavigation
+func (t *CMSOperation) MergeCMSOperationSetNavigation(v CMSOperationSetNavigation) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"operation":"set_navigation"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCMSOperationSetMetadata returns the union data inside the CMSOperation as a CMSOperationSetMetadata
+func (t CMSOperation) AsCMSOperationSetMetadata() (CMSOperationSetMetadata, error) {
+	var body CMSOperationSetMetadata
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCMSOperationSetMetadata overwrites any union data inside the CMSOperation as the provided CMSOperationSetMetadata
+func (t *CMSOperation) FromCMSOperationSetMetadata(v CMSOperationSetMetadata) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"operation":"set_metadata"}`))
+	t.union = b
+	return err
+}
+
+// MergeCMSOperationSetMetadata performs a merge with any union data inside the CMSOperation, using the provided CMSOperationSetMetadata
+func (t *CMSOperation) MergeCMSOperationSetMetadata(v CMSOperationSetMetadata) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"operation":"set_metadata"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t CMSOperation) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"operation"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t CMSOperation) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "delete_page":
+		return t.AsCMSOperationDeletePage()
+	case "save_page":
+		return t.AsCMSOperationSavePage()
+	case "set_metadata":
+		return t.AsCMSOperationSetMetadata()
+	case "set_navigation":
+		return t.AsCMSOperationSetNavigation()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t CMSOperation) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *CMSOperation) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
 }
 
 // AsComponentAdd returns the union data inside the PageOperation as a ComponentAdd
@@ -2203,16 +2735,49 @@ type ServerInterface interface {
 	CreateSite(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateSiteParams)
 
 	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts)
-	CreateSiteDraft(w http.ResponseWriter, r *http.Request, tenantId TenantId, siteId SiteId, params CreateSiteDraftParams)
+	CreateSiteDraft(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, params CreateSiteDraftParams)
+
+	// (GET /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id})
+	GetSiteDraft(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID)
+
+	// (PUT /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/navigation)
+	UpdateDraftNavigation(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params UpdateDraftNavigationParams)
 
 	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations)
-	ApplyPageOperations(w http.ResponseWriter, r *http.Request, tenantId TenantId, siteId SiteId, draftId DraftId, params ApplyPageOperationsParams)
+	ApplyPageOperations(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params ApplyPageOperationsParams)
+
+	// (GET /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages)
+	ListDraftPages(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID)
+
+	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages)
+	CreateDraftPage(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params CreateDraftPageParams)
+
+	// (DELETE /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id})
+	DeleteDraftPage(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, pageId openapi_types.UUID, params DeleteDraftPageParams)
+
+	// (GET /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id})
+	GetDraftPage(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, pageId openapi_types.UUID)
+
+	// (PUT /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id})
+	UpdateDraftPage(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, pageId openapi_types.UUID, params UpdateDraftPageParams)
+
+	// (GET /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview)
+	GetSitePreview(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params GetSitePreviewParams)
+
+	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview-tokens)
+	CreateSitePreviewToken(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params CreateSitePreviewTokenParams)
 
 	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/publish)
-	PublishSiteDraft(w http.ResponseWriter, r *http.Request, tenantId TenantId, siteId SiteId, draftId DraftId, params PublishSiteDraftParams)
+	PublishSiteDraft(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params PublishSiteDraftParams)
 
 	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/validate)
-	ValidateSiteDraft(w http.ResponseWriter, r *http.Request, tenantId TenantId, siteId SiteId, draftId DraftId, params ValidateSiteDraftParams)
+	ValidateSiteDraft(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params ValidateSiteDraftParams)
+
+	// (GET /api/v1/t/{tenant_id}/sites/{site_id}/releases)
+	GetSiteReleaseHistory(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID)
+
+	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/releases/{release_id}/restore)
+	RestoreSiteRelease(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, releaseId openapi_types.UUID, params RestoreSiteReleaseParams)
 
 	// (GET /healthz)
 	Health(w http.ResponseWriter, r *http.Request)
@@ -5605,7 +6170,7 @@ func (siw *ServerInterfaceWrapper) CreateSiteDraft(w http.ResponseWriter, r *htt
 	_ = err
 
 	// ------------- Path parameter "tenant_id" -------------
-	var tenantId TenantId
+	var tenantId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -5614,7 +6179,7 @@ func (siw *ServerInterfaceWrapper) CreateSiteDraft(w http.ResponseWriter, r *htt
 	}
 
 	// ------------- Path parameter "site_id" -------------
-	var siteId SiteId
+	var siteId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -5699,14 +6264,14 @@ func (siw *ServerInterfaceWrapper) CreateSiteDraft(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// ApplyPageOperations operation middleware
-func (siw *ServerInterfaceWrapper) ApplyPageOperations(w http.ResponseWriter, r *http.Request) {
+// GetSiteDraft operation middleware
+func (siw *ServerInterfaceWrapper) GetSiteDraft(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
 
 	// ------------- Path parameter "tenant_id" -------------
-	var tenantId TenantId
+	var tenantId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -5715,7 +6280,7 @@ func (siw *ServerInterfaceWrapper) ApplyPageOperations(w http.ResponseWriter, r 
 	}
 
 	// ------------- Path parameter "site_id" -------------
-	var siteId SiteId
+	var siteId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -5724,7 +6289,184 @@ func (siw *ServerInterfaceWrapper) ApplyPageOperations(w http.ResponseWriter, r 
 	}
 
 	// ------------- Path parameter "draft_id" -------------
-	var draftId DraftId
+	var draftId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "draft_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSiteDraft(w, r, tenantId, siteId, draftId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateDraftNavigation operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDraftNavigation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "draft_id" -------------
+	var draftId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "draft_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateDraftNavigationParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDraftNavigation(w, r, tenantId, siteId, draftId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyPageOperations operation middleware
+func (siw *ServerInterfaceWrapper) ApplyPageOperations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "draft_id" -------------
+	var draftId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -5832,14 +6574,14 @@ func (siw *ServerInterfaceWrapper) ApplyPageOperations(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
-// PublishSiteDraft operation middleware
-func (siw *ServerInterfaceWrapper) PublishSiteDraft(w http.ResponseWriter, r *http.Request) {
+// ListDraftPages operation middleware
+func (siw *ServerInterfaceWrapper) ListDraftPages(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
 
 	// ------------- Path parameter "tenant_id" -------------
-	var tenantId TenantId
+	var tenantId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -5848,7 +6590,7 @@ func (siw *ServerInterfaceWrapper) PublishSiteDraft(w http.ResponseWriter, r *ht
 	}
 
 	// ------------- Path parameter "site_id" -------------
-	var siteId SiteId
+	var siteId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -5857,7 +6599,726 @@ func (siw *ServerInterfaceWrapper) PublishSiteDraft(w http.ResponseWriter, r *ht
 	}
 
 	// ------------- Path parameter "draft_id" -------------
-	var draftId DraftId
+	var draftId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "draft_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDraftPages(w, r, tenantId, siteId, draftId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDraftPage operation middleware
+func (siw *ServerInterfaceWrapper) CreateDraftPage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "draft_id" -------------
+	var draftId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "draft_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateDraftPageParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDraftPage(w, r, tenantId, siteId, draftId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteDraftPage operation middleware
+func (siw *ServerInterfaceWrapper) DeleteDraftPage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "draft_id" -------------
+	var draftId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "draft_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "page_id" -------------
+	var pageId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteDraftPageParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteDraftPage(w, r, tenantId, siteId, draftId, pageId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDraftPage operation middleware
+func (siw *ServerInterfaceWrapper) GetDraftPage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "draft_id" -------------
+	var draftId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "draft_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "page_id" -------------
+	var pageId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDraftPage(w, r, tenantId, siteId, draftId, pageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateDraftPage operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDraftPage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "draft_id" -------------
+	var draftId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "draft_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "page_id" -------------
+	var pageId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateDraftPageParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDraftPage(w, r, tenantId, siteId, draftId, pageId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSitePreview operation middleware
+func (siw *ServerInterfaceWrapper) GetSitePreview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "draft_id" -------------
+	var draftId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "draft_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSitePreviewParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Authorization" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Authorization")]; found {
+		var Authorization string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Authorization", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Authorization", valueList[0], &Authorization, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Authorization", Err: err})
+			return
+		}
+
+		params.Authorization = Authorization
+
+	} else {
+		err := fmt.Errorf("Header parameter Authorization is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Authorization", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSitePreview(w, r, tenantId, siteId, draftId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSitePreviewToken operation middleware
+func (siw *ServerInterfaceWrapper) CreateSitePreviewToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "draft_id" -------------
+	var draftId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "draft_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateSitePreviewTokenParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSitePreviewToken(w, r, tenantId, siteId, draftId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishSiteDraft operation middleware
+func (siw *ServerInterfaceWrapper) PublishSiteDraft(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "draft_id" -------------
+	var draftId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -5972,7 +7433,7 @@ func (siw *ServerInterfaceWrapper) ValidateSiteDraft(w http.ResponseWriter, r *h
 	_ = err
 
 	// ------------- Path parameter "tenant_id" -------------
-	var tenantId TenantId
+	var tenantId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -5981,7 +7442,7 @@ func (siw *ServerInterfaceWrapper) ValidateSiteDraft(w http.ResponseWriter, r *h
 	}
 
 	// ------------- Path parameter "site_id" -------------
-	var siteId SiteId
+	var siteId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -5990,7 +7451,7 @@ func (siw *ServerInterfaceWrapper) ValidateSiteDraft(w http.ResponseWriter, r *h
 	}
 
 	// ------------- Path parameter "draft_id" -------------
-	var draftId DraftId
+	var draftId openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "draft_id", r.PathValue("draft_id"), &draftId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
 	if err != nil {
@@ -6002,6 +7463,52 @@ func (siw *ServerInterfaceWrapper) ValidateSiteDraft(w http.ResponseWriter, r *h
 	var params ValidateSiteDraftParams
 
 	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
 
 	// ------------- Optional header parameter "Origin" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
@@ -6043,6 +7550,174 @@ func (siw *ServerInterfaceWrapper) ValidateSiteDraft(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ValidateSiteDraft(w, r, tenantId, siteId, draftId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSiteReleaseHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetSiteReleaseHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSiteReleaseHistory(w, r, tenantId, siteId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreSiteRelease operation middleware
+func (siw *ServerInterfaceWrapper) RestoreSiteRelease(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "site_id" -------------
+	var siteId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "site_id", r.PathValue("site_id"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "site_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "release_id" -------------
+	var releaseId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "release_id", r.PathValue("release_id"), &releaseId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "release_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RestoreSiteReleaseParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	// ------------- Optional header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin OriginIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = &Origin
+
+	}
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFTokenIfCookie
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreSiteRelease(w, r, tenantId, siteId, releaseId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6207,9 +7882,20 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/t/{tenant_id}/media/uploads/{upload_id}/content", wrapper.PutMediaUploadContent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/media/uploads/{upload_id}/complete", wrapper.CompleteMediaUpload)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts", wrapper.CreateSiteDraft)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}", wrapper.GetSiteDraft)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages", wrapper.ListDraftPages)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages", wrapper.CreateDraftPage)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id}", wrapper.DeleteDraftPage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id}", wrapper.GetDraftPage)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id}", wrapper.UpdateDraftPage)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/navigation", wrapper.UpdateDraftNavigation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations", wrapper.ApplyPageOperations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/validate", wrapper.ValidateSiteDraft)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/publish", wrapper.PublishSiteDraft)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview-tokens", wrapper.CreateSitePreviewToken)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/releases", wrapper.GetSiteReleaseHistory)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/releases/{release_id}/restore", wrapper.RestoreSiteRelease)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview", wrapper.GetSitePreview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/public/v1/inquiries", wrapper.SubmitInquiry)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/t/{tenant_id}/products/{product_id}", wrapper.ArchiveProduct)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/products/{product_id}", wrapper.GetProduct)
@@ -15679,8 +17365,8 @@ func (response CreateSite429ApplicationProblemPlusJSONResponse) VisitCreateSiteR
 }
 
 type CreateSiteDraftRequestObject struct {
-	TenantId TenantId `json:"tenant_id"`
-	SiteId   SiteId   `json:"site_id"`
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
 	Params   CreateSiteDraftParams
 	Body     *CreateSiteDraftJSONRequestBody
 }
@@ -15689,16 +17375,42 @@ type CreateSiteDraftResponseObject interface {
 	VisitCreateSiteDraftResponse(w http.ResponseWriter) error
 }
 
-type CreateSiteDraft201JSONResponse Draft
+type CreateSiteDraft201ResponseHeaders struct {
+	ETag *string
+}
+
+type CreateSiteDraft201JSONResponse struct {
+	Body    CMSDraft
+	Headers CreateSiteDraft201ResponseHeaders
+}
 
 func (response CreateSiteDraft201JSONResponse) VisitCreateSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSiteDraft400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSiteDraft400ApplicationProblemPlusJSONResponse) VisitCreateSiteDraftResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
 		return err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15731,6 +17443,20 @@ func (response CreateSiteDraft403ApplicationProblemPlusJSONResponse) VisitCreate
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSiteDraft404ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateSiteDraft404ApplicationProblemPlusJSONResponse) VisitCreateSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15847,10 +17573,470 @@ func (response CreateSiteDraft429ApplicationProblemPlusJSONResponse) VisitCreate
 	return err
 }
 
+type CreateSiteDraft503ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateSiteDraft503ApplicationProblemPlusJSONResponse) VisitCreateSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraftRequestObject struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
+}
+
+type GetSiteDraftResponseObject interface {
+	VisitGetSiteDraftResponse(w http.ResponseWriter) error
+}
+
+type GetSiteDraft200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetSiteDraft200JSONResponse struct {
+	Body    CMSDraft
+	Headers GetSiteDraft200ResponseHeaders
+}
+
+func (response GetSiteDraft200JSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteDraft400ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteDraft401ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteDraft403ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetSiteDraft404ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteDraft409ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteDraft412ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteDraft413ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteDraft415ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteDraft422ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteDraft428ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteDraft429ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteDraft503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetSiteDraft503ApplicationProblemPlusJSONResponse) VisitGetSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigationRequestObject struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
+	Params   UpdateDraftNavigationParams
+	Body     *UpdateDraftNavigationJSONRequestBody
+}
+
+type UpdateDraftNavigationResponseObject interface {
+	VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error
+}
+
+type UpdateDraftNavigation200ResponseHeaders struct {
+	ETag *string
+}
+
+type UpdateDraftNavigation200JSONResponse struct {
+	Body    CMSDraft
+	Headers UpdateDraftNavigation200ResponseHeaders
+}
+
+func (response UpdateDraftNavigation200JSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftNavigation400ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftNavigation401ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftNavigation403ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation404ApplicationProblemPlusJSONResponse Problem
+
+func (response UpdateDraftNavigation404ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftNavigation409ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftNavigation412ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftNavigation413ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftNavigation415ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftNavigation422ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftNavigation428ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftNavigation429ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftNavigation503ApplicationProblemPlusJSONResponse Problem
+
+func (response UpdateDraftNavigation503ApplicationProblemPlusJSONResponse) VisitUpdateDraftNavigationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ApplyPageOperationsRequestObject struct {
-	TenantId TenantId `json:"tenant_id"`
-	SiteId   SiteId   `json:"site_id"`
-	DraftId  DraftId  `json:"draft_id"`
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
 	Params   ApplyPageOperationsParams
 	Body     *ApplyPageOperationsJSONRequestBody
 }
@@ -15864,7 +18050,7 @@ type ApplyPageOperations200ResponseHeaders struct {
 }
 
 type ApplyPageOperations200JSONResponse struct {
-	Body    Draft
+	Body    CMSDraft
 	Headers ApplyPageOperations200ResponseHeaders
 }
 
@@ -15879,6 +18065,22 @@ func (response ApplyPageOperations200JSONResponse) VisitApplyPageOperationsRespo
 		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
 	}
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyPageOperations400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ApplyPageOperations400ApplicationProblemPlusJSONResponse) VisitApplyPageOperationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15911,6 +18113,20 @@ func (response ApplyPageOperations403ApplicationProblemPlusJSONResponse) VisitAp
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyPageOperations404ApplicationProblemPlusJSONResponse Problem
+
+func (response ApplyPageOperations404ApplicationProblemPlusJSONResponse) VisitApplyPageOperationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16027,27 +18243,1642 @@ func (response ApplyPageOperations429ApplicationProblemPlusJSONResponse) VisitAp
 	return err
 }
 
+type ApplyPageOperations503ApplicationProblemPlusJSONResponse Problem
+
+func (response ApplyPageOperations503ApplicationProblemPlusJSONResponse) VisitApplyPageOperationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPagesRequestObject struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
+}
+
+type ListDraftPagesResponseObject interface {
+	VisitListDraftPagesResponse(w http.ResponseWriter) error
+}
+
+type ListDraftPages200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListDraftPages200JSONResponse struct {
+	Body    CMSDraftPageList
+	Headers ListDraftPages200ResponseHeaders
+}
+
+func (response ListDraftPages200JSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListDraftPages400ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ListDraftPages401ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response ListDraftPages403ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages404ApplicationProblemPlusJSONResponse Problem
+
+func (response ListDraftPages404ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response ListDraftPages409ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response ListDraftPages412ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response ListDraftPages413ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response ListDraftPages415ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response ListDraftPages422ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response ListDraftPages428ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response ListDraftPages429ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDraftPages503ApplicationProblemPlusJSONResponse Problem
+
+func (response ListDraftPages503ApplicationProblemPlusJSONResponse) VisitListDraftPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPageRequestObject struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
+	Params   CreateDraftPageParams
+	Body     *CreateDraftPageJSONRequestBody
+}
+
+type CreateDraftPageResponseObject interface {
+	VisitCreateDraftPageResponse(w http.ResponseWriter) error
+}
+
+type CreateDraftPage201ResponseHeaders struct {
+	ETag *string
+}
+
+type CreateDraftPage201JSONResponse struct {
+	Body    CMSDraftPage
+	Headers CreateDraftPage201ResponseHeaders
+}
+
+func (response CreateDraftPage201JSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDraftPage400ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDraftPage401ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDraftPage403ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage404ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateDraftPage404ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDraftPage409ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDraftPage412ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDraftPage413ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDraftPage415ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDraftPage422ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDraftPage428ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDraftPage429ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDraftPage503ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateDraftPage503ApplicationProblemPlusJSONResponse) VisitCreateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPageRequestObject struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
+	PageId   openapi_types.UUID `json:"page_id"`
+	Params   DeleteDraftPageParams
+	Body     *DeleteDraftPageJSONRequestBody
+}
+
+type DeleteDraftPageResponseObject interface {
+	VisitDeleteDraftPageResponse(w http.ResponseWriter) error
+}
+
+type DeleteDraftPage200ResponseHeaders struct {
+	ETag *string
+}
+
+type DeleteDraftPage200JSONResponse struct {
+	Body    CMSDraft
+	Headers DeleteDraftPage200ResponseHeaders
+}
+
+func (response DeleteDraftPage200JSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDraftPage400ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDraftPage401ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDraftPage403ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage404ApplicationProblemPlusJSONResponse Problem
+
+func (response DeleteDraftPage404ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDraftPage409ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDraftPage412ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDraftPage413ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDraftPage415ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDraftPage422ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDraftPage428ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDraftPage429ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDraftPage503ApplicationProblemPlusJSONResponse Problem
+
+func (response DeleteDraftPage503ApplicationProblemPlusJSONResponse) VisitDeleteDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPageRequestObject struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
+	PageId   openapi_types.UUID `json:"page_id"`
+}
+
+type GetDraftPageResponseObject interface {
+	VisitGetDraftPageResponse(w http.ResponseWriter) error
+}
+
+type GetDraftPage200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetDraftPage200JSONResponse struct {
+	Body    CMSDraftPage
+	Headers GetDraftPage200ResponseHeaders
+}
+
+func (response GetDraftPage200JSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetDraftPage400ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetDraftPage401ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetDraftPage403ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetDraftPage404ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetDraftPage409ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetDraftPage412ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetDraftPage413ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetDraftPage415ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetDraftPage422ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetDraftPage428ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetDraftPage429ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDraftPage503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetDraftPage503ApplicationProblemPlusJSONResponse) VisitGetDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPageRequestObject struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
+	PageId   openapi_types.UUID `json:"page_id"`
+	Params   UpdateDraftPageParams
+	Body     *UpdateDraftPageJSONRequestBody
+}
+
+type UpdateDraftPageResponseObject interface {
+	VisitUpdateDraftPageResponse(w http.ResponseWriter) error
+}
+
+type UpdateDraftPage200ResponseHeaders struct {
+	ETag *string
+}
+
+type UpdateDraftPage200JSONResponse struct {
+	Body    CMSDraftPage
+	Headers UpdateDraftPage200ResponseHeaders
+}
+
+func (response UpdateDraftPage200JSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftPage400ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftPage401ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftPage403ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage404ApplicationProblemPlusJSONResponse Problem
+
+func (response UpdateDraftPage404ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftPage409ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftPage412ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftPage413ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftPage415ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftPage422ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftPage428ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDraftPage429ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDraftPage503ApplicationProblemPlusJSONResponse Problem
+
+func (response UpdateDraftPage503ApplicationProblemPlusJSONResponse) VisitUpdateDraftPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreviewRequestObject struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
+	Params   GetSitePreviewParams
+}
+
+type GetSitePreviewResponseObject interface {
+	VisitGetSitePreviewResponse(w http.ResponseWriter) error
+}
+
+type GetSitePreview200ResponseHeaders struct {
+	CacheControl *string
+	ETag         *string
+	XRobotsTag   *string
+}
+
+type GetSitePreview200JSONResponse struct {
+	Body    PublishedSite
+	Headers GetSitePreview200ResponseHeaders
+}
+
+func (response GetSitePreview200JSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	if response.Headers.XRobotsTag != nil {
+		w.Header().Set("X-Robots-Tag", fmt.Sprint(*response.Headers.XRobotsTag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetSitePreview400ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetSitePreview401ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetSitePreview403ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetSitePreview404ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetSitePreview409ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetSitePreview412ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetSitePreview413ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetSitePreview415ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetSitePreview422ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetSitePreview428ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetSitePreview429ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSitePreview503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetSitePreview503ApplicationProblemPlusJSONResponse) VisitGetSitePreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewTokenRequestObject struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
+	Params   CreateSitePreviewTokenParams
+	Body     *CreateSitePreviewTokenJSONRequestBody
+}
+
+type CreateSitePreviewTokenResponseObject interface {
+	VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error
+}
+
+type CreateSitePreviewToken201ResponseHeaders struct {
+	ETag *string
+}
+
+type CreateSitePreviewToken201JSONResponse struct {
+	Body    CMSPreviewGrant
+	Headers CreateSitePreviewToken201ResponseHeaders
+}
+
+func (response CreateSitePreviewToken201JSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSitePreviewToken400ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSitePreviewToken401ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSitePreviewToken403ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken404ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateSitePreviewToken404ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSitePreviewToken409ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSitePreviewToken412ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSitePreviewToken413ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSitePreviewToken415ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSitePreviewToken422ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSitePreviewToken428ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSitePreviewToken429ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSitePreviewToken503ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateSitePreviewToken503ApplicationProblemPlusJSONResponse) VisitCreateSitePreviewTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PublishSiteDraftRequestObject struct {
-	TenantId TenantId `json:"tenant_id"`
-	SiteId   SiteId   `json:"site_id"`
-	DraftId  DraftId  `json:"draft_id"`
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
 	Params   PublishSiteDraftParams
+	Body     *PublishSiteDraftJSONRequestBody
 }
 
 type PublishSiteDraftResponseObject interface {
 	VisitPublishSiteDraftResponse(w http.ResponseWriter) error
 }
 
-type PublishSiteDraft201JSONResponse PublishedRelease
+type PublishSiteDraft201ResponseHeaders struct {
+	ETag *string
+}
+
+type PublishSiteDraft201JSONResponse struct {
+	Body    CMSRelease
+	Headers PublishSiteDraft201ResponseHeaders
+}
 
 func (response PublishSiteDraft201JSONResponse) VisitPublishSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishSiteDraft400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response PublishSiteDraft400ApplicationProblemPlusJSONResponse) VisitPublishSiteDraftResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
 		return err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16080,6 +19911,20 @@ func (response PublishSiteDraft403ApplicationProblemPlusJSONResponse) VisitPubli
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishSiteDraft404ApplicationProblemPlusJSONResponse Problem
+
+func (response PublishSiteDraft404ApplicationProblemPlusJSONResponse) VisitPublishSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16196,10 +20041,24 @@ func (response PublishSiteDraft429ApplicationProblemPlusJSONResponse) VisitPubli
 	return err
 }
 
+type PublishSiteDraft503ApplicationProblemPlusJSONResponse Problem
+
+func (response PublishSiteDraft503ApplicationProblemPlusJSONResponse) VisitPublishSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ValidateSiteDraftRequestObject struct {
-	TenantId TenantId `json:"tenant_id"`
-	SiteId   SiteId   `json:"site_id"`
-	DraftId  DraftId  `json:"draft_id"`
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+	DraftId  openapi_types.UUID `json:"draft_id"`
 	Params   ValidateSiteDraftParams
 }
 
@@ -16207,16 +20066,42 @@ type ValidateSiteDraftResponseObject interface {
 	VisitValidateSiteDraftResponse(w http.ResponseWriter) error
 }
 
-type ValidateSiteDraft200JSONResponse ValidationResult
+type ValidateSiteDraft200ResponseHeaders struct {
+	ETag *string
+}
+
+type ValidateSiteDraft200JSONResponse struct {
+	Body    CMSValidation
+	Headers ValidateSiteDraft200ResponseHeaders
+}
 
 func (response ValidateSiteDraft200JSONResponse) VisitValidateSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ValidateSiteDraft400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ValidateSiteDraft400ApplicationProblemPlusJSONResponse) VisitValidateSiteDraftResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
 		return err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16249,6 +20134,20 @@ func (response ValidateSiteDraft403ApplicationProblemPlusJSONResponse) VisitVali
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ValidateSiteDraft404ApplicationProblemPlusJSONResponse Problem
+
+func (response ValidateSiteDraft404ApplicationProblemPlusJSONResponse) VisitValidateSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16361,6 +20260,465 @@ func (response ValidateSiteDraft429ApplicationProblemPlusJSONResponse) VisitVali
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ValidateSiteDraft503ApplicationProblemPlusJSONResponse Problem
+
+func (response ValidateSiteDraft503ApplicationProblemPlusJSONResponse) VisitValidateSiteDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistoryRequestObject struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+	SiteId   openapi_types.UUID `json:"site_id"`
+}
+
+type GetSiteReleaseHistoryResponseObject interface {
+	VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error
+}
+
+type GetSiteReleaseHistory200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetSiteReleaseHistory200JSONResponse struct {
+	Body    CMSReleaseList
+	Headers GetSiteReleaseHistory200ResponseHeaders
+}
+
+func (response GetSiteReleaseHistory200JSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteReleaseHistory400ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteReleaseHistory401ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteReleaseHistory403ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetSiteReleaseHistory404ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteReleaseHistory409ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteReleaseHistory412ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteReleaseHistory413ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteReleaseHistory415ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteReleaseHistory422ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteReleaseHistory428ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetSiteReleaseHistory429ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSiteReleaseHistory503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetSiteReleaseHistory503ApplicationProblemPlusJSONResponse) VisitGetSiteReleaseHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteReleaseRequestObject struct {
+	TenantId  openapi_types.UUID `json:"tenant_id"`
+	SiteId    openapi_types.UUID `json:"site_id"`
+	ReleaseId openapi_types.UUID `json:"release_id"`
+	Params    RestoreSiteReleaseParams
+	Body      *RestoreSiteReleaseJSONRequestBody
+}
+
+type RestoreSiteReleaseResponseObject interface {
+	VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error
+}
+
+type RestoreSiteRelease201ResponseHeaders struct {
+	ETag *string
+}
+
+type RestoreSiteRelease201JSONResponse struct {
+	Body    CMSRelease
+	Headers RestoreSiteRelease201ResponseHeaders
+}
+
+func (response RestoreSiteRelease201JSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RestoreSiteRelease400ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response RestoreSiteRelease401ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response RestoreSiteRelease403ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease404ApplicationProblemPlusJSONResponse Problem
+
+func (response RestoreSiteRelease404ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response RestoreSiteRelease409ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response RestoreSiteRelease412ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response RestoreSiteRelease413ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response RestoreSiteRelease415ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response RestoreSiteRelease422ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response RestoreSiteRelease428ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response RestoreSiteRelease429ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreSiteRelease503ApplicationProblemPlusJSONResponse Problem
+
+func (response RestoreSiteRelease503ApplicationProblemPlusJSONResponse) VisitRestoreSiteReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16521,14 +20879,47 @@ type StrictServerInterface interface {
 	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts)
 	CreateSiteDraft(ctx context.Context, request CreateSiteDraftRequestObject) (CreateSiteDraftResponseObject, error)
 
+	// (GET /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id})
+	GetSiteDraft(ctx context.Context, request GetSiteDraftRequestObject) (GetSiteDraftResponseObject, error)
+
+	// (PUT /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/navigation)
+	UpdateDraftNavigation(ctx context.Context, request UpdateDraftNavigationRequestObject) (UpdateDraftNavigationResponseObject, error)
+
 	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations)
 	ApplyPageOperations(ctx context.Context, request ApplyPageOperationsRequestObject) (ApplyPageOperationsResponseObject, error)
+
+	// (GET /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages)
+	ListDraftPages(ctx context.Context, request ListDraftPagesRequestObject) (ListDraftPagesResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages)
+	CreateDraftPage(ctx context.Context, request CreateDraftPageRequestObject) (CreateDraftPageResponseObject, error)
+
+	// (DELETE /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id})
+	DeleteDraftPage(ctx context.Context, request DeleteDraftPageRequestObject) (DeleteDraftPageResponseObject, error)
+
+	// (GET /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id})
+	GetDraftPage(ctx context.Context, request GetDraftPageRequestObject) (GetDraftPageResponseObject, error)
+
+	// (PUT /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id})
+	UpdateDraftPage(ctx context.Context, request UpdateDraftPageRequestObject) (UpdateDraftPageResponseObject, error)
+
+	// (GET /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview)
+	GetSitePreview(ctx context.Context, request GetSitePreviewRequestObject) (GetSitePreviewResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview-tokens)
+	CreateSitePreviewToken(ctx context.Context, request CreateSitePreviewTokenRequestObject) (CreateSitePreviewTokenResponseObject, error)
 
 	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/publish)
 	PublishSiteDraft(ctx context.Context, request PublishSiteDraftRequestObject) (PublishSiteDraftResponseObject, error)
 
 	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/validate)
 	ValidateSiteDraft(ctx context.Context, request ValidateSiteDraftRequestObject) (ValidateSiteDraftResponseObject, error)
+
+	// (GET /api/v1/t/{tenant_id}/sites/{site_id}/releases)
+	GetSiteReleaseHistory(ctx context.Context, request GetSiteReleaseHistoryRequestObject) (GetSiteReleaseHistoryResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/sites/{site_id}/releases/{release_id}/restore)
+	RestoreSiteRelease(ctx context.Context, request RestoreSiteReleaseRequestObject) (RestoreSiteReleaseResponseObject, error)
 
 	// (GET /healthz)
 	Health(ctx context.Context, request HealthRequestObject) (HealthResponseObject, error)
@@ -17932,7 +22323,7 @@ func (sh *strictHandler) CreateSite(w http.ResponseWriter, r *http.Request, tena
 }
 
 // CreateSiteDraft operation middleware
-func (sh *strictHandler) CreateSiteDraft(w http.ResponseWriter, r *http.Request, tenantId TenantId, siteId SiteId, params CreateSiteDraftParams) {
+func (sh *strictHandler) CreateSiteDraft(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, params CreateSiteDraftParams) {
 	var request CreateSiteDraftRequestObject
 
 	request.TenantId = tenantId
@@ -17966,8 +22357,72 @@ func (sh *strictHandler) CreateSiteDraft(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// GetSiteDraft operation middleware
+func (sh *strictHandler) GetSiteDraft(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID) {
+	var request GetSiteDraftRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+	request.DraftId = draftId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSiteDraft(ctx, request.(GetSiteDraftRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSiteDraft")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSiteDraftResponseObject); ok {
+		if err := validResponse.VisitGetSiteDraftResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDraftNavigation operation middleware
+func (sh *strictHandler) UpdateDraftNavigation(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params UpdateDraftNavigationParams) {
+	var request UpdateDraftNavigationRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+	request.DraftId = draftId
+	request.Params = params
+
+	var body UpdateDraftNavigationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDraftNavigation(ctx, request.(UpdateDraftNavigationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDraftNavigation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDraftNavigationResponseObject); ok {
+		if err := validResponse.VisitUpdateDraftNavigationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ApplyPageOperations operation middleware
-func (sh *strictHandler) ApplyPageOperations(w http.ResponseWriter, r *http.Request, tenantId TenantId, siteId SiteId, draftId DraftId, params ApplyPageOperationsParams) {
+func (sh *strictHandler) ApplyPageOperations(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params ApplyPageOperationsParams) {
 	var request ApplyPageOperationsRequestObject
 
 	request.TenantId = tenantId
@@ -18002,14 +22457,253 @@ func (sh *strictHandler) ApplyPageOperations(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// ListDraftPages operation middleware
+func (sh *strictHandler) ListDraftPages(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID) {
+	var request ListDraftPagesRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+	request.DraftId = draftId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDraftPages(ctx, request.(ListDraftPagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDraftPages")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDraftPagesResponseObject); ok {
+		if err := validResponse.VisitListDraftPagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDraftPage operation middleware
+func (sh *strictHandler) CreateDraftPage(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params CreateDraftPageParams) {
+	var request CreateDraftPageRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+	request.DraftId = draftId
+	request.Params = params
+
+	var body CreateDraftPageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDraftPage(ctx, request.(CreateDraftPageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDraftPage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDraftPageResponseObject); ok {
+		if err := validResponse.VisitCreateDraftPageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteDraftPage operation middleware
+func (sh *strictHandler) DeleteDraftPage(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, pageId openapi_types.UUID, params DeleteDraftPageParams) {
+	var request DeleteDraftPageRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+	request.DraftId = draftId
+	request.PageId = pageId
+	request.Params = params
+
+	var body DeleteDraftPageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteDraftPage(ctx, request.(DeleteDraftPageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteDraftPage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteDraftPageResponseObject); ok {
+		if err := validResponse.VisitDeleteDraftPageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDraftPage operation middleware
+func (sh *strictHandler) GetDraftPage(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, pageId openapi_types.UUID) {
+	var request GetDraftPageRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+	request.DraftId = draftId
+	request.PageId = pageId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDraftPage(ctx, request.(GetDraftPageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDraftPage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDraftPageResponseObject); ok {
+		if err := validResponse.VisitGetDraftPageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDraftPage operation middleware
+func (sh *strictHandler) UpdateDraftPage(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, pageId openapi_types.UUID, params UpdateDraftPageParams) {
+	var request UpdateDraftPageRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+	request.DraftId = draftId
+	request.PageId = pageId
+	request.Params = params
+
+	var body UpdateDraftPageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDraftPage(ctx, request.(UpdateDraftPageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDraftPage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDraftPageResponseObject); ok {
+		if err := validResponse.VisitUpdateDraftPageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSitePreview operation middleware
+func (sh *strictHandler) GetSitePreview(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params GetSitePreviewParams) {
+	var request GetSitePreviewRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+	request.DraftId = draftId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSitePreview(ctx, request.(GetSitePreviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSitePreview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSitePreviewResponseObject); ok {
+		if err := validResponse.VisitGetSitePreviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSitePreviewToken operation middleware
+func (sh *strictHandler) CreateSitePreviewToken(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params CreateSitePreviewTokenParams) {
+	var request CreateSitePreviewTokenRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+	request.DraftId = draftId
+	request.Params = params
+
+	var body CreateSitePreviewTokenJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSitePreviewToken(ctx, request.(CreateSitePreviewTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSitePreviewToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSitePreviewTokenResponseObject); ok {
+		if err := validResponse.VisitCreateSitePreviewTokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PublishSiteDraft operation middleware
-func (sh *strictHandler) PublishSiteDraft(w http.ResponseWriter, r *http.Request, tenantId TenantId, siteId SiteId, draftId DraftId, params PublishSiteDraftParams) {
+func (sh *strictHandler) PublishSiteDraft(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params PublishSiteDraftParams) {
 	var request PublishSiteDraftRequestObject
 
 	request.TenantId = tenantId
 	request.SiteId = siteId
 	request.DraftId = draftId
 	request.Params = params
+
+	var body PublishSiteDraftJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.PublishSiteDraft(ctx, request.(PublishSiteDraftRequestObject))
@@ -18032,7 +22726,7 @@ func (sh *strictHandler) PublishSiteDraft(w http.ResponseWriter, r *http.Request
 }
 
 // ValidateSiteDraft operation middleware
-func (sh *strictHandler) ValidateSiteDraft(w http.ResponseWriter, r *http.Request, tenantId TenantId, siteId SiteId, draftId DraftId, params ValidateSiteDraftParams) {
+func (sh *strictHandler) ValidateSiteDraft(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, draftId openapi_types.UUID, params ValidateSiteDraftParams) {
 	var request ValidateSiteDraftRequestObject
 
 	request.TenantId = tenantId
@@ -18053,6 +22747,69 @@ func (sh *strictHandler) ValidateSiteDraft(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ValidateSiteDraftResponseObject); ok {
 		if err := validResponse.VisitValidateSiteDraftResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSiteReleaseHistory operation middleware
+func (sh *strictHandler) GetSiteReleaseHistory(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID) {
+	var request GetSiteReleaseHistoryRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSiteReleaseHistory(ctx, request.(GetSiteReleaseHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSiteReleaseHistory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSiteReleaseHistoryResponseObject); ok {
+		if err := validResponse.VisitGetSiteReleaseHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RestoreSiteRelease operation middleware
+func (sh *strictHandler) RestoreSiteRelease(w http.ResponseWriter, r *http.Request, tenantId openapi_types.UUID, siteId openapi_types.UUID, releaseId openapi_types.UUID, params RestoreSiteReleaseParams) {
+	var request RestoreSiteReleaseRequestObject
+
+	request.TenantId = tenantId
+	request.SiteId = siteId
+	request.ReleaseId = releaseId
+	request.Params = params
+
+	var body RestoreSiteReleaseJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestoreSiteRelease(ctx, request.(RestoreSiteReleaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestoreSiteRelease")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestoreSiteReleaseResponseObject); ok {
+		if err := validResponse.VisitRestoreSiteReleaseResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -18089,197 +22846,220 @@ func (sh *strictHandler) Health(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"pQrflOvSF35wtQs/XX76fwMA",
+	"7L37c9s4si/+r+Cr71ad5CwlP+LM7Ni1tcdJJju+m4c3TuZsnalcDUy2JIxJgAOAtjW+vn/7LbxIkCIl",
+	"UpYUJ8tfEksi8WigP91o9ONuELIkZRSoFIPju0GKOU5AAtefXl58eP2RXQFVHyIQISepJIwOjgcXZEoh",
+	"Qj+9PX2JLllGIyQZkjNAYcY5UIkECEEYDRDjSMwYl8OYXEOEMGV0nrBMoARL4ATH6BImjAOK2ZTQEfpE",
+	"hWk7YtllDEORXSZEIiIQZRLhMIRUQjQaBAOiBjIDHAEfBAOKExgcD/41VKMemmEHAw6/Z4RDNDiWPINg",
+	"IMIZJFjNJyH0DdCpnA2OD4KBnKfqbSE5odPB/X1QTP5s8pKxKwKLRPhgG3eTHRpKaKKo15FU76ObGVCE",
+	"MzkDKkmIJaFTdEPkDOEoIfTCvHuip+eGiyaMo9Pzs+EVzNElYA4chTiORdt5d5gn5vIsUk/qdlMsZ0Wr",
+	"IeZyTKKlhJwwnmA5OB5kmX6yvot8HzWNHnNZN3p860Z/9CzwJ6M+plhK4KrB//3L6fB/8PCP/eEP4+Hn",
+	"u6Nn93+qH0rGBeOLS/k+xb9ngC6xgO+OMh6jkAOWEI2x3COR2tWCcTThLNG7POWEccRBpIwKyBfl9wz4",
+	"3KOe6axhPs8PDutG+IrjSfOCROrXh6/IWQRJyiTQcP4PmNewd8hSiFAKHD3BoWQ8QCwFjqVm6SuYP7U7",
+	"GAnJ1H5VgwEh0QyLGXqyv//9mENM8CWJiZw/HaGPMzC/hewauDBQobCAhDh2bx+jBOSMRQFSk0YSkjTG",
+	"EgJFaBYr9NDfFyCFnsBoOkJZGjMcjUkUIEefp0HRPPkDIqSXBmEFVDNAlyyaoyeQpHJu/lZjA4GwQPrL",
+	"pwESDDEKaq6IQyYUdIWcCYEiMpmAxjg1rIyHIBQ64dIPej4jdIET08SfkVB/OjLhiVQczZI0BkVTxCGN",
+	"8dzQhXEyJRTH+f46QcK1czMjMVSfMm0SgYQkcYwIRSlnUw5CIA4y41Sgo/0f0JNzzi5jSFDIIkC/kmIP",
+	"jAkdu1d+fep19+fFSaEnahECS1DGNf2eFh0dHi7r6ArmY0POX5+O0I/Xug23s5DEVwoc5YwIZCACRRDG",
+	"mIOZgVq+o8PDRhD0tvVQ7eul+F9w4sHhX4KVOHk2eYtlOGuEsLPJ0DywrNPFZt8oqfdyhuMY6BSaJI0V",
+	"t4Xw1MIShe49w40Tcg3DhNBMAoLblPD5CbqAMOOAfpIyfU/jud6RF0TCX9/gW3SO5eyve5qslKFXLMGE",
+	"5sQNzVjyCY7HPzEhh0yEY937OBR88iAR+xYighuhLlG/Phzq3jFJJlrsMtrYF/Ue2nSXy5H2I1BM5VAY",
+	"wPXHgThEnFxrRjzRLK/ZsvSIWjmDUAo+zEMOkEMgqdwBq/hC+P8b/t/Pf66XvO81Xi0S4G0mJIJbHMp4",
+	"rnTCcKanEUGkJgmR0ZIs3J3YjY9jwZyyZECzYI2Uw9A8VehgjWSwo2q33pwsmVkLNVGtVjiD8MoqeHrW",
+	"pfm10xVHVdXQQrNAmCvOVyKs0FUMH2ti7JmhmkGI1UTpQIRzPIUL8gfkDFbRhVI8hbFQD/jNRjDBWSwH",
+	"x4f7gdpmJMmSwfHB/r7eZPZT3h2hEqbATX+cRVnYrCil5veHM/M/MyahsZvf1a8P78Qu7Fm0uHvsT4jd",
+	"KAlwObeqUxwDP0EUroEjXNnk5SHaw8kGBkmWEEKQjdDhKmvu4Sp7eAcGbuvo/BHzKUgk9QPo06ezVwUL",
+	"ffrw5kSdCCLFlTh2ipYdiEEtxakJJJfAxYykmtc1qI/QKVX8qnE6UWB3CTGjU3NgJsKigOm3YQnNjw+f",
+	"/SetKDdSONejH9jNz5iTnMo1/Vyb3x/a0X0wcBqyNle8wNEHA4TqU8ioBKr/xGkaW4m5lxrV9M+/CaaF",
+	"UdHdnzhMBseD/3+vMInsmV/FnlVoTaflfeP1qs6XjE5iEu50BK7PABEaxlmkdmKDcj9SY3zN+CWJIqC7",
+	"HKSRKYEWQ4HjsoJfglyk2Z8uCdUTYbwwimh+QhFQogxASienEjjF8Y+cM77L2XyACIdKOSF2BGiCSZxx",
+	"8Ed1Afwa+M7HVte9UUpfK/PULoeS96kVhLlCl4+MvVFIu9vVMidXfdKH2xAgskpjlBAjXWOSEKn31DmH",
+	"kNGIqHdfYxLDTinmTpFKi82HoTcXRAvD+5BD525pqZmxNECRhTNlPMmHTwTSpKVTO2rT4C4H+vol+uHo",
+	"+fcIHAcohiAhfKL4GpMYX8Y73YQ1vSt9hLG3mM7tDhU7JRCWYPa95Qm7wz5Rdf5gXJnNdjmeU+/Uw6jb",
+	"PkoAEHqNYxKdoEscOcuHp4ypQ4+SFkKdljIiZoq4diopZyEIob75kUoi57uc0c9q1DjnYGWHYbwkmgtz",
+	"mB2vyNKUcQmRto181BrP7gbs9Z+b+7QZBinda6SVO9uM6uVUnUm1AUt9wpEBAxyfc5YClwTE4HiCYwHB",
+	"IPW+uhtAgklcsSwcPj9aYYQLBikW4obxqGqU2D88Wm3AKxTNX+wAvAY/52+wy98g1LrcqXfk7jjB4vag",
+	"pMhGWMJQkgQGNZPTFjsQnd4hUQtFORgQMbb3cp4R8pKxGDAdaNJcs6s2w/3FNRoMaBbHg89Vwur+vdmX",
+	"plUayCqKvzSNdCS8vqxYxQEvzRBO9bP3wUAZMsey4aKz4WrP3V66M7hWJ8oIZo0z+dl8xeYWxU5bNvjS",
+	"rqyS30y/aKs0t1UUf0OE7Ehu24/+m0hIRLfR5wPCnOP5wmzy1leN/GcCN105tLTmK5ZmHdb0zC5tWDQT",
+	"wNs9WyGSezEoG3pKbLdiE7x8e/FCaW2vIAYJypLXkZgt5xizEMdQAe9nz0uccbhqvrpp29KyyawxjYiF",
+	"WWJBcil+vL145R5tD8LrzT7I70HKTLayuwTfnpmHtTm1xGjBIKPk9wzsA5JnoKXrFJRG0vl2LDD2nZrr",
+	"7cabgr0nfzv+BQ//OB3+j7my//OTvx3vlb95+p9P//anlfs/H3VO4cCZm/L19InYsGeKvX9G06wrDm5k",
+	"Zy/f1K+8zdlhZJcxC6/a4/N5dhkTMYPohXqvvI8OF/ZRVYEsK3T7+/sLUw4GkshFSlmDf2v9zTRS7j1w",
+	"c20iIMeTztTDApQnA6j/l/H5omK0QJoFSuS+HN3QY+Eniq/JFLtuui3zu+Ld+8XFVbwl2qChmoniHa1C",
+	"3Afu9mWNfWfvdWpHo56xd7QcronTlnLaESq/Oxp4V0f7i1dHwaDdqwd1r7pLjjYLJiSWmZ43UNXgLwOW",
+	"Ah3YaaipDoIBvsQ0YhT8A0gNqyxnBs8nyL+FsbMMFjZxAyXzIXtAWs9n3oZze8Rb8mXs94iF8qbkbh0P",
+	"OanaKDdbqDybknMlVm3Lnv6Lq5QL008BLOvI081BWjHS5/srjhtepw3Ee+88lfTGJIonEkKxPXImOE3V",
+	"8qnftDYxTvV2byRp3pyneAcDga/bv3mBr/P3QI4TkDjCErd6FeRb97h526d6q/fLpLZLOH9nbvlyty71",
+	"G6PwfjI4/mXlNluc2X3Q/iWPkF1eq06l05s5Ee8/V3bJC+cw1mHn51QTXZjzvU/rCnMmhLqPKxjA63sV",
+	"A6x9VGQ+C4WMCn2Q9til9nShr45a0KF6jG2c4aBoddVU8424gYkWvP3waW5ugt4e3sQcfRx6wDS1/S/X",
+	"2zc00XclwbKJqZaUoQesaVVgPmDC50qng5u/c9z5uLiOpesBCnVugFtx3NOPVYxaebfLqbCO+iFlPBb6",
+	"elPYk6qZw7MWjmmlcXvtNI3SqC3rjBJuUwiVnX1DB6O8vXUPvBxoBBz4+DIjcWRf7+pn7dOvbkTBinnX",
+	"DaOB9h9Mqzu420kwJRMQcqziDOpPAps63K5euhLrmscpW4N5ORhf47Hyk+uyUyqrXFpcb0SN59Ryx1Xq",
+	"lu6flq981zOQfa3umKd/1cN6ECuvx3ot2KaBEMUVdccRPwD09WV+3UVkZRrmuVVAj/lqYkNsuNxvXWSX",
+	"kklskItMqj+nnISETsfGe+Tz/QIK6DvEUB/rK2Fon+9qo8/a2yQINX1U/CMkSpiQ6GB/fx8Zb4dQoot/",
+	"fBI6WEldQHJIOQig0jodEGn8nA7QW/IiDydCl5mK6dG+pq02PubyDaGLB/+ak3+ZbAtzUE25UM5JFsdz",
+	"pF6A6AS55VC/soRIG+PpbGf6sXHmOc8EA5ywjMqxCiibxOym1oSWr3LtNnVy/YfDw2fPvj/cf/bdX54f",
+	"ff/9d/slOV8LtCqKrXH7t2t3tf5gbtPdTis6dXtEzXhmFCjK5JIdft/AOXpZ1+GejBI5NgtgR1N8MmsV",
+	"E2GNkjpYksi5AYbx7xk2njjrMV6+A4qGNr22/nQ23XaJApvdPFXKt8GaFfyqgx8US3qcd4ISRkFiG04p",
+	"INbCxnAymhCII+OTtUE2zrdQhWLPDn2KHR4cfX/0l2ffHX3vEWqYf/uXOpK1WwsFdi3oLyDO/QoXvWxs",
+	"AEMrbwCPvTa7A6suFi6oIqdDUMdh3tQWMQfTubXtNSHE5/ug/KPPYQs/lndx3c9mLyz8UkGXBthzAu40",
+	"6uxcxKfazi46vmd92VfJ2VdY4hf2UeWV5J5o4aBCWeR0xpU39RyoHHd4gbNUeBu6oKSImWwT5ukvUTGp",
+	"YtALg7JNu77r1L7cGtKWo6QO7+m4cCWPiA6zzN+rG7osnDq1ESknyQhHq919ShO3D+ezC7wt+nnZ3n/L",
+	"rmFHm7/zhltnW9VvoC+3cbrw4wO3WMFH3TZborbAbnbbOxbB7iHT6Rwh4zBS5BrGeM4y+V8Hg8B8KSBU",
+	"wym+mAFn5hOWOGbTkb3UHk45iexjSYrpXP0wITH810GDurIMM5dwkGeKWHmxXGl7CdCa4bjOly7VBchz",
+	"N/hdgEMDoaqb/QvLga+AndVVhFvnbfK0Nq09wDOe6LCNCQFe9QE73N+e/38wuOFEgsqAYd0dF07a+bBW",
+	"RAVU7qW6zb6zt9y6TqMb8bJb6ga0hDaYd6WLb03zR1wa77OgpaWtCoWu8eYh79g38L5xIGdUjXvedSjZ",
+	"HPg4j6rJh2G+qdke5gUTjl3dhrUuyELgafXZg/xIvOL84BIxtMFn/zwOt2GcCXINb70Dbd6CyQ9XtEEz",
+	"FUy8sPo+bYqZNG+F93yKKfljHZt4RIRKw9JI1xWUimGK47aLUpllqevmyTnvys5SWi9hyKLq0Dpf6ZXa",
+	"ah6oNjx1BRGjm7XdaetY8CMQktB8byxTTfUMXnnPrxviZRBh3PXyoJVpXw9SGYGtz0EX56FgoAL3U2U9",
+	"tNpw2zF2caO9ATKdyfF0y2aw3G/WI3fg76iSHb7kh2AoXt4b9bTxZtO88y9I541vs+iMa5WFw/2VysKa",
+	"eMU8pFwrdKnagB1JUJ1QM7FMQpPO5NIp5aJxQpJ611+1YHVEef58JVHEDB8+/66KKfvDH/Bw8vnuu6N6",
+	"XFGJkcaXcwmi851/hab50EuN5uNqJqVN2tLZLUov3jWOM3igr3R9UJK4yh4qclQTweJIm0kRraPB2ldW",
+	"XaRqyYO59GIPN5zitKT6qh5rJ+qHwHab6YMjFevG4xtyOtsXcVJvbLFpQ3nJGmQtOxPAMuMQDV3cQsnu",
+	"E7I4Nsahyu8tzD8L3i12EIEbau381ziAtPbxKTw1VlxfPTRkpe76ejG+pG7+9tzzwWQtdKahznMtZuAs",
+	"JDoP4jWs3p26wSUjfEPolVWfdW6GjouVZ7NstWQsBn8ZEkwU/aY669tcC0hpzjPXJALmsD6cldndowvj",
+	"csx4BLzUf36D2l6++Fk5WYNsLuc03V5gdhXslkc5vyWU8dP8TrU2waqdNUrUsyijROqcwNjLVRxBSBIc",
+	"IzMI9MSkbyMU/S98jS90k09HRjf1VTAPx5/s/5/h3345GP7wWekFn+/2g4O/3D+t1Qv8TKKvbYapbuRU",
+	"3SapFGvcnNf6L6yV2eIaaGsDwBSo52ndcci1sNYWO/AECj+I9jlPbcBybd7TOkw1yZw0E+NoHINqSSs/",
+	"IXCJCa1lYJcL29mWc4BWPD1KsZ6S+aBPHlB85jDJqLniZ1JdelCZf8Bpytl1Q/hhlkYdl7oOUvPFr0zC",
+	"CzfM92hp9St5RLzR1HF3Dad0vYzI9dZWR+eaDldGxlXpox9cNZsPJg2wJxo7zOlB3HRYx03VVMnrxcKm",
+	"YHS92r3uwL+bermYw9mFDeQbzaNGHdV3HbilInh2Ern1XgHBafRbJuQaKQSsg5aWiaum5AvZ9tDLAQtG",
+	"WwbC2oeD8rgap/3KqEodp5zTqv1qVolcc2W7jvDchaNx+/k5P+DqzLSoGVsT/BqB9dZa1moMF+5hiyzQ",
+	"7i39pBo6vh1rv9i1dvT6b3YXpyu8jDv6EZeWyFGu6KJk4HQ2TZ8PvFVaJGKZMN1Ed7GxOiZdIRS6mMUf",
+	"sOrLvUSXb+2rLL84WRR1+Ha9XeiudyshAvGNKiKibhlPkDVcIP2s8cjVbvec/QFUnXSYrSMSAUeC4lTM",
+	"mE5A3RzgpX06jXtm91FXL5ft6nkUKi6aPcfThT59qtUsbOMOWyevVSeN0MBMliSYz+swksKtHId5AaIV",
+	"oq5RNyxj4M5EuSnNs7jnXpv95LABcSzB1vE50TsRkYneaG6LoRiHVwIxCqP2IU2lgeeDaSaPEwsVfXOc",
+	"4rnNlGHPTCnmkuA4no8nWTwhsTma+X+HmIZg/y6eNqcqMAqJ/bNOmS1tiu0HGq6jLYSZkCwBPr4iNPKJ",
+	"5n4YBIOpTnD+eX1d46EKwhpyfk207yA7PYlZEX8lkq6MSNygz8HaumDJ+aCFGr7S40Dh7ZpJyyiLYKmX",
+	"5NJblpLbqTlV+W+7q03/u4Oa8XPGZEuPZd3z2FPWrPV5tWZWebXoNbBEaKJs61Q0ZffyVTQ7jdy9t+cl",
+	"vOol7U0e1Dojrno19zddzB+jp90+dYw/g/ug5cN65K2fLgb7uZzTvH6bmnoWVR+VBk0wyo+pS6wnubnm",
+	"+Q8/eIh5tF9rqm1KH1a4ka6s6uNvVecoalW03KjS6MmznrPROlKv9SFgAuE8jGG8aJDSSdSMdSHSQVA8",
+	"nJEmy2jVIWqr57ZSZzWTKB3hlsuZXd1fdfT5e8TXXaUyUtW7r1JHS+i99ZPHkqSJGzp0VPKCdptMVa+c",
+	"AY6Msp9ijqccp7OGS49buYbPaWVSVgXTjS2d2tq5gWZ6aRaz324m320wiPElxJ0dtKrnbd1IYAa7lA5r",
+	"bNdHl2XWJVaslLxgTA45xFiquoov314gU8u0qJtEQehYZjwFUZhQMI1MGRHEWSatMYWDUBV2osplr175",
+	"hchYt/X3jvaVDNh7vq+AaK9ImqmUEH+/uF/2jLKxqa20kbgAm3aycxLehSSv6wcJdHDYbdg4FkkadImO",
+	"+a9rnAWftfCgFFdZTaKPN2pzphkPZ1gXLtE5Pk6QAEBTkDkRlaOoLiNpC1KHoPepjd7WhZcRz2IQrRN9",
+	"FE1fZS2yfIo4m1Zhb78Me+Vd+acWoe5lP4mSl8Sz72u9JGr9eNTQPHdSf4P6HZaO8Ho1lu5bL2HUmq5Y",
+	"frqlTeUariWAlwg473Pp3NbyO+6IyjMmZKOhYicZrpelg/XyXXfromVW3I0kxfYnUNNHOR5pmee9XNS2",
+	"XJHJhiLFRRn2vDDmNXAyIRAht7Inpv7whDMqBcoEICINSJXqHJ+en4m8aNgeTsne9cGe3LvLx3C/F2Iu",
+	"xWhrMqyYbR2z6A/5bt1CQuwS1Ha04fvVyyrrxDMwJYQZHc50dhbJwqu85h0OteJjNBc9XlHUkA0VInoE",
+	"9zKXrCN5fX/rNbb8xVX2Xrfws2qgqiLWJ57ybqVqJGpRIdqGF2j/Pis5CfV9/gLj9Fd29RsNgmXSqdGH",
+	"z78A7BpMkGeMeaD/+8JFW3l1yuQrCcVit63axv5ydc32vVaoxbXrqvrecnJYljZv101qndgzHIaQKsvL",
+	"5bxd8FnHWDVr12nb+hr8us3yY91C2DpVWbCXiq0C3S7cw7Uuac4CaB0k8xV1V4fGVxLH6jfnNql21m86",
+	"/ZUK7iJyFnF8U2SqbSjr4AvalTPcXaK5epHYHBBXZ39siJHz9q+3Zo3M96ocZtkpBjSjktdv/MOG2Kvs",
+	"MiJeiETpiLg6n5Hpr9xM48TW8HJZVUVGO0BQttzQedCY5q45O+LiCw8I5W7Rus/Kyy5UKgVzkyST+pSs",
+	"poMkvtViW+iqtK7FmuUo3EpaDs8rWt75SObWqKo31rq5lJxaWrFLEcC7qfPbwZYj+x+caU+5AIVYwpTx",
+	"eR3Xrhj6itV/UGLQB+yTdrujNPfGTXGxkp0a4hjjMIu7+53Y12pvGcoKyaaD6teMeK+7LBErvaqWQ1BB",
+	"Bc8fCoQ6ayzDIvfs0oyPSzfd2pH4S9PjLu1S4tsNkEnhdQsKqS2/NnHWneHy1APt7xCL6dY72SpKlpxr",
+	"81UpTXxxn7ipBRWu3UAuAs0mHzmmgrTSwhYaUFVTVHmDnRX86strPtrymhcgWyebLu8FX2eouDpfChZn",
+	"EpB75AT9AZwhU0rIpD1XDKasNl20jdXsXGSYrZvqJrJ3rHvObjStd8/U4cV8r10OpPmInbfdMoa8baKQ",
+	"pQHcn3QUQturx0UHwWrwQVtfojYORF3New2Ta5vDY7uTWzNlR82cYoaj9dIMbtGatdoTqh0zOP8BHSCj",
+	"Zmre0Fcqc/O3KXNi7hJCRQc6zSkfuEDiz10yG5TsMnVcUhQE+aDVspq7TiGqFv2WPo5eGrlVVhVtpF6W",
+	"rK2qunctKmJnUU+CdTLhfA1+i1vP1tPRJGCRYifuk+4GpIMLZcukQXa/uGJCW/Pys/1szctPLQiEGSdy",
+	"fqG6NGM8Tck/YP4CMDfelJf6r9duWU7Pz4b/MOH8+p3BsX2iWO+ZlKkrOPLRxXaXtbnD598NL4lEl1jA",
+	"d0cZj5EOOEEh5uqf1PqzjNBHnmkHLRdgYe6kM9WMKlOBKTJLpm7tFLryIaPxHAnAiXaDUZ0p90PgTok4",
+	"HvxrqEY2/GijxR1t9bzVuHEl220lc4giGQToJylTlV82QBc40Vnc/voG3wboHMvZX/e0aw5l6BVLMFHX",
+	"s/p6MSKh2mtI96Dv0EfoExV4Aihk7IrAEGdyBlTa59QqgpAC2eVEJvnIe06mhOouMBJmoMNLltEI/fT2",
+	"9CX61/DlxYfXZoIn6u59eAVzZJapaDNiOj7QNa1eyUlmRlOQbDz+iQk5ZCIc67GPba+L5LvX9z8TVlML",
+	"iFHJcSiHE8KFRPrf4bVijhDHQxGra9nT87MRemXztaEiyj2PZsQqvixJY0iASp3ABckZEcqjj+vvRsg6",
+	"L1xmglAQAplMxwKFLIHCk+HThzfaGfAEhRx0MmAcC6TIzzj5A9QzyQj9BDhWDoM2T1SAtDIQ6H0aID8D",
+	"gQhQruUOBZGAFEIjcyePJxMUM7VmlSl5UzlBTM6AV59IY0ypYgBLPTHKvRKOVQIDqt3CXrIkAR6qP7im",
+	"ogdxx4P90fej/aGRHFoqAMUpGRwPno0ORof2gKeZX7tm6HmEykPD3AW5xFtMyPpVVXuyyKCFFAeeIE0D",
+	"NX1zzeRcKI1DyeUcYSQtbzunkqFiCPcMH6F3DF2yaI5MrmY5Vwxv3xmhNyQh6mXJ0ETf9tucIijVezxh",
+	"EtDZuf6UEKoOjupPq1edKBeVG8wj5cmi0cEux5QqBUx3nSOOWTgikJUUo4GXhvwsUpCQXSZEulS+BnxB",
+	"yBcsmtvgIOliotLUFbjb+82mQDBw3648quvjvozxVhq7gl96uQ73DzfWeSVbl+69YuwzTygiCyL0di5x",
+	"B8JiTsMZZ5RlOvjnaH+/qdd8GnsvcPTB0NK8crD6lU805+HIvPRs9UuvGb8kUQTUvHG0+o13TL5WgGte",
+	"+GH1Cy8ZncTEKBBHB4erXzjnupAocflm7HQOWkzn3JSL/cjYG4V95r3nbWgnsjRlXEKkQ0Y+2oiso8PD",
+	"Ni9b5lIm3x81w5p3/9Jtrh/crtYvt6DsR8beYjq3G0VvrudtNtcZlcApjn/knPGSNjQ4/kVpS3gqlPrk",
+	"eO5zMLgdKuxUyDZU7gJCDI6NS0w4KP3o1PaBh++6hwq+6qRMYu9O/6+84EwKnxqYtVTRGg/cmoHH88If",
+	"L0crHCozu1EGJFOPWycwe5WPElBBrcpEPEIfZ+p7OiHTTMlbnTo7B2ANeTMIr7SYFSQCI2olx1SoXXKC",
+	"lAcEyyTCxUvGOVmr4EoWAI1SRrQvocw4Feho/2CEdD0Bp7mIwMD82Suh5YUmBkqZsL87hzVPM0I4n/Ai",
+	"Gv8d5As1EePWY7MwggQuGoMKi0fMfdFZNLj/vICn+xvDUzO0Ghi1aTr1YsUgwRKjXOdxEFiVVo/rx494",
+	"WqOlSs7o1L5uNQF0bc76+l6iGGj18HDfo3OPzl8NOmtWEg8G59ITVskcajwcHBeKVhsI3zOOZM0acw/l",
+	"raH8VJPygUAerHz0bPJWJ4Br82gEScqkutHVx93P29H2q9exrfT9Xj718qmXT718WiWfjDNzL6A2IaAM",
+	"LXsJ1UuoXkL1EqqXUBuRUCbGphdQGxBQHzQpe/nUy6dePvXyqZdPreXT9cGe2sh72t1h6NC58X5GOQPp",
+	"i2+N+U7K6IRmiN0U8D5ChfAy3Op+Mu4c5sVMAA+QqqRhovspc7fohcBSl9yYULGI+WosfsVmMdgi0Pkd",
+	"qY5rMc/QwdHgRM9HOacIxDiaYTFTSWt2iTA9YDwmwCiz/l3FAeuXz/f+bax1BmnCg1PfgeoC4kkDNFi/",
+	"GjXoeiVTF7VSnCjKXldpnAkkZozLYawcL708EymHofEWUc5UKMESOMHxCL3Ake9mFKCIaKob/6CMXlGF",
+	"EYrrBZrhazD5s3ECSkNEjnL64RvGr0bozHOBupyj8w/D/cNFIKgp3t5VBzSTbqPXqSkbl7ptqXQ102ml",
+	"1R1sBezMaKI6vHsHN84bUZ8ULPC51CtO+5ez/CfnnKdRURcXu3j/blRWAy9ADl8av7yFzdrkn3eCjLvi",
+	"Se6ueFJyVzyx7oonha/iCJ0pV+nISDNG9TBrXRdb6Jg9nP/bw3kH7F6qy+WAvVxD2zMBlxbQ1Qmrzn5w",
+	"za4MyNqnS0pYGAPmiGiXUcVu2h3QU7xUtG/IUnCus9EI/Vj1y63xytUywTB4/uICZL/SQ/5CkF1CzaMa",
+	"X88KsbimY9QBp14q0grUBFfahoLe4tvh6RT+uh+gdZyte1zqcenxqZkrUOvO/uWcAFdAl5bNue+/OmEa",
+	"RVBDmj5trY9J6F3daXMR9GpsjWpsjxS73msSLSDXIzNruRoDPXr06FE5pHbiIzsu7cdaRR6r8gyxqwVf",
+	"a9D6uGDGysMwTHwHbUAJ+6VjF+xCtQidAK/Fjb+DLJWn36K1qtTPEuu8Z4frDVM9zz8KjUFblhr5VR/a",
+	"y4YpYWqcF/apklVKWRmwVbBz/Vof7E0IpTn7aMXBN1gk6p6P0KmNmzLKg68zaD69lbVsrnWDSrX4LXJ7",
+	"pacafj/NaWPsdqF7+AS9xOEMhjpokcWIsqEOzl921OkPHT2E1F6GPeug+G3HeFKKQwpWuVVow2QVPHLW",
+	"8JEhRwM/5DgwNnLVirGce14VRsEfIVu51IRUqruwCQcxQyzFv2eewZQzcyGumhBZ4t+a4QSGSj4jFnt3",
+	"aJIlKpw4no/QSz+uV6EYvnG3TjqaWNtiTSUQE0icmjVApvqQaLKnX6hwXg0t655yvLNLsMEjURnuLC5t",
+	"yxhfQPmXNML/TOCmyQKPfb8acwA2e1rftgwjuCah28xiG3i/3/G818uHXj48BvlQo3iybIk73ssZmAK/",
+	"8dw/OPk2J+vMgCfSesXFWJQOjkSVhxAp0EhZoHJJVDZZWf7VaqxqvFG6GEuUWG7hNz+XUcIa/BddKjQJ",
+	"7OlQC4CdYn8rC9dF2bZ14uS0nixE20C4HrF6xOqIWLs5RC/FM1Gk9qk9Sp8aDJvG7BLHGsr2cvCIEuLd",
+	"VJEotkW4XHZKnW3NWMdKrlpNNnN3KC7gZCeeWk16k2f/Yrzm0kChVyOQ9JDQQ8LXBwk2EEE9XHIeqIWG",
+	"4gYcK+8t8y6yCVN13StchCG8eneR18kaoZ+Ni/bwwL2VYEomIExjIq89eU3gBiUsgligCDjJ62/ZHFRF",
+	"mikUEyEJnZrjbUryPFGgQwxMbQoxQjYFav4Ttmdvps7TeUIsOyU7lxH6EYczN6j/EOhXVS3vV31yVtbF",
+	"wKS3IrRwVXP5vE1MBNYhD8dGK1TPztEToxw+1fUNEZvYr20fQk8H8jbzgfzq1Sr6FRGrti0Ud9JPHesf",
+	"Xcbe4YEp+WTSZ7uGizm5dXM5ug0xzCgDROjwhtCI3QQIZxEBGsJfVfox3ZEerAhQOGMCqLp6TTlhakMj",
+	"tWNMCZlA9Uf1o+jsFcLu+xNleP3HpzxixBRGsw0TgVhCpE5y9WtejelXm/yqe7kv84iuW+IbPuA2ZaJB",
+	"IpVrBC5ouIQOjge/Z6ZUs00Qp/b5oGoF8P0wSjWbjlZlh91m8pXy7GqEoE2JCpHjCcuw+QbXsl9xgV7F",
+	"+lKcg8dsAuhvor8JadvADtaO+eeObJEL5wWGyDnGgH5Gc1haYo94kZHY1knfmDmipmLkErMEBxsdh7kG",
+	"/yL8zzQyQsX1jzZEK70+IRonkctQ6vKSpnmJXX0Zpv1jFdsL3fxYmlybWtoRKXRQg4LsPB+etkebLmZY",
+	"qPMB3BrxXYn90khClNM5JKk0IulsMtTxdU0m6ZeYy86WCJMns118X5HKdbvO3XoiO7Ynm56jouuGgD2s",
+	"gjzdYceGi7olNS5USSYkugR0BanS6kIOsuIbWTo5qS+aBaa68ZCD44Fnp1lM87s0NNAGBQ4xjYaVPZbH",
+	"CY6WCu0+cLAXbI/vGHkBXF3dfFoqhupkzkVeqvjhcmfvTv23NGfj37Xo8LNN+3KE8TwBbiVePQ8f13ii",
+	"r1hzryoaGXGmPD5NilyTXdheY6lWbSjJFczFCCm3R2ODUtUDMh13yFVY0dEIWZhQGOLuQUUeSax7stCn",
+	"Ndw9Qq+BSsbnaKZk5Aj9Nyfq7racm9qJqhOtK3hZpnVAjDmN1LuA7UKGrSfttuWM1kucXuL0EuebkDh3",
+	"frUDY8DcnQTa05Xl9u5M4e+l8QO9TGotk0woVl7I7HGIpourrLMM65C+pRd3vbjrxV0v7r6IuFN1Avtj",
+	"1ENEll94899HXm3eGOnTcceJw3op2UvJXkr2UrL7oVCXJtszpUXNtdia+P+5CBCpu2zSS2tqtXYWMtXk",
+	"j21dYM8mLpyhQ2R48dJW76wsKXZ8a1UullsjMMwDKK862/sj9Hj5aLz/nJOAnnajZ5/yCnzPT8/PTMHR",
+	"NhkeHQMOdbKKwbGp3nx8w42vTyvs3Lszf+hfXJ7WhwDqaswyzLocfO1Avlb43VJpwpU4+NL0UrhlamdJ",
+	"Tq6xBFPOs3DSQF6RQpvjwK9baDwbJ4wned3REPNo1GNrj609tq6DrTkA7Apa6wxMF5IDTpQn1vmnj9qJ",
+	"+w0Lcfz64sTZXLJEbQTF9D8fLFpdzjPpgbLFm29ONWahBDkUmlZleM5Ltl8SirVT8MKBfbVmXBPQ9mJu",
+	"7GIhkF6B7UG2B9mVIHun/1u8A6672DQj/2o1yLoA2MwQvgeKHij+3YFim7c/eirV1HJlOCrVft9zd2aN",
+	"npIvlClcxbmZB1ECEkdY4iLVHIeQpASoDJDILlVNG31Hx6L5CH2iIXCJdRg/jYqbNIN6jCN15SYkmerh",
+	"1NdLeOcN+LUbbqvIp5gkRJZSztqINBXoFBTKEaHy2eEgUIFQJMmSwfHB/r4Og7Kfcq2JUAlT4FuOgqqd",
+	"cM3x+XVlSVZcJPWXNj00fw1FZy50en5beuZhFz4O4X2OEltF+hK6Phzx28L4nf9R/84hUgHK2z3A+3St",
+	"WEjLUPXjrQJDIhFxSqpEdoQq2hijCHA0jEFK4Mify0hnFVeuHohDGqvgaBXDJaQ+9esDaCpPUFaRMyGm",
+	"yj5wCa4XnXlGP4wSwFSg3zPIIAq0GQESTGIUgYobbUifrBvxp9tZPS/T6pGo6tsRWpZcluB1ouufmvr5",
+	"FrDrGNg1VuoG40X4+hXMe9nWy7Zetj1C2dYooBh33Fp7rrgw8fv6qTx8XwSIwg0IiSaEK0+pOXpi8lBG",
+	"YywDRKKngUmOy5W80CG9dbktRsh4JipkUy5752dnKm7Xr/Gjs3BZr8TxFaG2qI5QEuZmBnJms6GZWqM3",
+	"WAUeuzS69jWkc4roKOQROkUJjtWJQns7csF4oH5nFBAxRXtMCpKITCZgEpVIdc01IbEEHqjhYXS0v2/d",
+	"xnQL6kubdtOU0ZCl6qLRCSK2sl3KTC1Nk4EjxVPQmRBsWg2TJfw/hC53V/KzpMaKfg04RkzPmbObhrp1",
+	"782CbuLk1eGgFSxUC9AECVSou08LROFWji3d8swpOvNHQY9CpPjEP/HIp6lZRzoblz4Iaudr+h00ZNV4",
+	"fnBY45pXTzk9sFJDy6SuXpML/cp2z6S6o3Ncn6r5PbV7jk0cQ2dJgrlO3pn7Q27Tz7GX8r2Uf7Ruh05S",
+	"WwDdpog2QvdYScftHDtNB3t3+v+lIdYKFESdkB+ht0QInYMpo/YJJY20/Bla8WT60Z78KrGT9uZXPt9I",
+	"EhlbF38lu1IdKjDRWE2SJDPnQtdVgAQzb2j5apJr0SyOT5CKGEgJnY4SkDMWueRVE87+AIq48UDRvzyZ",
+	"kFt1Urycj2+ATGcyQBMOMGbXwMcmf9VTc47U+Uw4AV7VP56Y4AN1j63Pmk9Vd+oNm+rJ1AfS0t5K3do4",
+	"bL2BBttG+Vc6x3YtzpfWcUfQvsqF3fmpBza/GJP5jrPu7b0Hey9KelHyhUSJU3NTLGeFluvEx1LOzO9n",
+	"skw/uZCJbomUmmJqCxxtyt++IYOVAFNI3OvRPz9ItcelPT0E+hc/+6yWe96rI3PaNfXc1FGQqPgyMMIi",
+	"dH3mMtIGyTWknnrvNdyHA1QJsuOggMW+6zZU1Gfq/XeuaFXAu7dZHgDyrmBVA8Av4M4Sc55LBevp+4sm",
+	"onP3UFe0UZaFC/JHO9QwtpbtJiI1E2kyePTuTD0YPFp3ppcmGfVWlUOb8Prhhobl8YyWDXvlxaPFjvWW",
+	"Urc9CvYo2KPgAgquugp1utPenf1rlRv4KQ9n5Pprg78HJbPqncZ7fOnxZSm+BPUHL1UVIgeKbZ+Iej2g",
+	"59OeT7d0GlotQC0XuqOTFqYLgPApjb6+s9OXzyxWJtuOc4v18NrDaw+vWzhmmfDb7YZBVFC51qD1htAr",
+	"+9zXF967ebBdIMeXMWt5ffeg24NuH7DcKbNBPeBeY04wXXFT+LN76Gu/KbQTUXPqcaTHkV55eyxn4yXX",
+	"ipZn+2tFjxY71r9K3faQ2UNmD5kbOu869Wvvzv7V8rLxKwPF/rKxR50edb7EZWMBFNs+VPXaQc+nPZ8+",
+	"hgPV6octy7a5mfzGNY1t3Ux2Oqn1WNxjcY/Fj+WkpqOSTSDi0mhC6sWw63dQxPFEnuQ15/ICYroUXTxH",
+	"/9kU/PdP9fp2K82tA5XdETkH16CzgNiq4cwQeMdmM6/Thhp0thSJ3T7lom7lMP2lYfXmdVcqMQ+yH/SR",
+	"870s+DpSrdkka55E+KdB4W0KBAP0LeXB3p3+v5JFZeG8vX0k1z1YzX1remQPXT109dD16KHLmBXaI9ce",
+	"3KaEg6/blhHsR/37DkGs11yXY/BHjqlJd7hrU0IvAnoR0IuAb0973RNAo2YJcAE06vG/x/8e/3v87/H/",
+	"W8R/ldYu4vimWQb8t32ilwO9HOjlQC8Hejnw9csB1eqmsqvWXWFekDVExbfoo39Bdn/TWPRZQVYiwWai",
+	"jVQtFiIJjuM5ymiaXcZEzPocpn0O053lMFWPrs5dqp4Se3fqP/1ZO1XUIVdNpuq8mQelqq7Pgm0H9LAk",
+	"2Ksx9JWabg+kWMLLtxeGGDsG03K/FZ337UVR9gFxEFks61XcDeisvQdej+g788B7kZE4Ar5dD7ykpZ66",
+	"AP97d/r/Vd4XPoBu7UDc40OPDz0+bBkfgm9A26tv2QHZlqqprMTPPYqvbQn/b0Op3iaZg0GayabQGC0F",
+	"3hXU3L7S3sE4/aj1+7cXBdnOqCLxjo3avQzvZXgvwx+tjr+X85/oZdS6NqXTNI3nKgPX+4KYvYhqLyBy",
+	"sr0wE+olVC+hegnVSyjzhCqhvjxrombfc/3YDnBCddSU17DHix4verzorVJfTBU1F3o5TvVqaGvHDnyt",
+	"7kGL0pa7vwZtKqvZC5VeqPRC5REooXt36r9ViSNf6e97CF4LBzXtFNl6Y3WPwj0Kf5uqfZNTiY+ZOznG",
+	"93ze83nP5/0R/ksc4eubtgrmtn0pesV0q7aBXlr10qqXVv82tgEO1wRuvCuqamzYlEJkcpailLPfIFS/",
+	"jNALwBw4kgrEEBEowVQH4s5PkMRJChwixDgyqaQi85xAmAOKgBKI0CVMmPqEJb7EApChzgi9g2vg+lMq",
+	"hXuPUPR7BnyOCgxdzJJqXbvP7ZTqZbhBl0JonVoud855zaIrwbdvgE7lbHB8tP/Dd8EgIdR9cbhfK8q2",
+	"V1vWBeY1xfStxtaXOJzB8CWjkrO43HPIqJCD4wFlQyEZhzoNoAU2B4N/DT+wSybFcOHZogtCI7gNEGUT",
+	"FsfspqavHuN7jH88GC8gzLga8fEvn1sjvubXsAXU9yeP7bm0W1k3NDKldxl8eBiqFbX6JNMfyTqciyzh",
+	"OlwUHGyh+7/zhioQ/cmsl9r9yewLn8yMit+LqXXFlD0j7TJdwjckoAzxvpSA+gAxYNFbDXvZ1Mumjcsm",
+	"J1keIp1s4j3oxdO64ulnS8FvXj5t73bJkjBPd9kLil5Q9ILiyx1iuNHaxKrkO1a7+4kIdWG0ZYcp21kf",
+	"9dSjRI8SvcvUhm4XHNTt3dm/7LfmvvQbVoqL6W5HLf5gSOiJid5u00naafL1dpte0PaC9lu228wAx3L2",
+	"R6Oq/ZP+fVG3Plr08To3S6C8uEyr8yWODrbdB/s5VHq4G2BFpgsQQg/ql88KWU9T8g+YG1cz/d1n9RK/",
+	"doIg4/HgeLA3uC8GeOcEVSlZ9X2Qf++KiHtf6X3rf+FW1PvqjKoVmZe+isDt2Pw7Sx7vG5vc3/vmHZNk",
+	"YiG29MN7rqHw/vP9/xsA",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
