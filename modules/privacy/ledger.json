@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "module": "ledger",
+  "note": "Amounts, currencies and immutable accounting identifiers are financial_non_contact/operational; no direct contact strings are accepted by the ledger contract.",
+  "structures": {},
+  "tables": {
+    "ledger_accounts": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "currency": {"classification": "financial_non_contact"},
+        "code": {"classification": "operational"},
+        "account_type": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "ledger_transactions": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "currency": {"classification": "financial_non_contact"},
+        "source_type": {"classification": "operational"},
+        "source_id": {"classification": "operational"},
+        "event": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "revision": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "posted_at": {"classification": "operational"}
+      }
+    },
+    "ledger_entries": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "transaction_id": {"classification": "operational"},
+        "line_no": {"classification": "operational"},
+        "account_id": {"classification": "operational"},
+        "currency": {"classification": "financial_non_contact"},
+        "side": {"classification": "financial_non_contact"},
+        "amount": {"classification": "financial_non_contact"}
+      }
+    }
+  }
+}

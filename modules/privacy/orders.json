@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "module": "orders",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {"OrderGuestContact": "Unverified guest contact object, including email and optional contact/address keys.", "OrderLineTaxSnapshot": "Frozen per-line tax basis/rate snapshot; arbitrary appended contact keys must not survive erase.", "OrderShippingSnapshot": "Frozen shipping rule/address-related object; arbitrary personal keys are conservatively covered.", "Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data."},
+  "tables": {
+    "orders": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "orders.customer_id -> customers.id", "null_subject_policy": "Guest email is unverified contact; do not associate it with a registered customer solely by matching email."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "order_number": {"classification": "financial_non_contact"},
+        "creation_key": {"classification": "operational"},
+        "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "customer_id": {"classification": "operational"},
+        "guest_contact": {"classification": "contact", "structure": "OrderGuestContact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "currency": {"classification": "financial_non_contact"},
+        "items_net_minor": {"classification": "financial_non_contact"},
+        "tax_minor": {"classification": "financial_non_contact"},
+        "shipping_minor": {"classification": "financial_non_contact"},
+        "shipping_snapshot": {"classification": "personal", "structure": "OrderShippingSnapshot", "erase": {"strategy": "scrub"}, "export": "include"},
+        "adjustment_minor": {"classification": "financial_non_contact"},
+        "total_minor": {"classification": "financial_non_contact"},
+        "refunded_minor": {"classification": "financial_non_contact"},
+        "state": {"classification": "operational"},
+        "version": {"classification": "operational"},
+        "sealed": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "updated_at": {"classification": "operational"}
+      }
+    },
+    "order_lines": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "order_lines.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest order inherits unverified guest contact policy."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "order_id": {"classification": "operational"},
+        "sku_id": {"classification": "operational"},
+        "sku": {"classification": "operational"},
+        "quantity": {"classification": "operational"},
+        "unit_price_minor": {"classification": "financial_non_contact"},
+        "line_net_minor": {"classification": "financial_non_contact"},
+        "line_tax_minor": {"classification": "financial_non_contact"},
+        "line_total_minor": {"classification": "financial_non_contact"},
+        "reservation_id": {"classification": "operational"},
+        "tax_snapshot": {"classification": "personal", "structure": "OrderLineTaxSnapshot", "erase": {"strategy": "scrub"}, "export": "include"}
+      }
+    },
+    "order_adjustments": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "order_adjustments.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest order inherits unverified guest contact policy."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "order_id": {"classification": "operational"},
+        "kind": {"classification": "financial_non_contact"},
+        "amount_minor": {"classification": "financial_non_contact"},
+        "reason": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"}
+      }
+    }
+  }
+}
