@@ -35,6 +35,7 @@ DECLARE
  reservation app.inventory_reservations;
  registered app.orders;
  account_identifier text;
+ synthetic_phc text;
 BEGIN
  -- Fixed IDs intentionally fail on a second load instead of silently reusing
  -- stale rows. The registry runner supplies a fresh database or transaction.
@@ -96,9 +97,21 @@ BEGIN
 
  INSERT INTO app.customers(tenant_id,id,email,display_name)
  VALUES(t,customer,{{canary:customers.email}}||'.'||{{canary:customers.email_normalized}}||'.'||
-  {{canary:notification_deliveries.recipient}}||'@canary.invalid',
+  {{canary:notification_deliveries.recipient}}||'.'||{{canary:customer_auth_tokens.email_normalized}}||'@canary.invalid',
   {{canary:customers.display_name}}),
  (t,approver,'privacy-fixture-approver@canary.invalid','Fixture approver');
+ -- Valid PHC syntax with random, unknown material, never a reusable credential.
+ -- Mailbox proof goes through the real command; the normalized token-email copy
+ -- carries its own canary from the source email. No mail or login is performed.
+ synthetic_phc :=
+  '$argon2id$v=19$m=19456,t=2,p=1$'||
+  left(encode(sha256(uuidv7()::text::bytea),'base64'),22)||'$'||
+  left(encode(sha256(uuidv7()::text::bytea),'base64'),43);
+ PERFORM app.customer_prepare_registration((SELECT email FROM app.customers WHERE tenant_id=t AND id=customer),
+  synthetic_phc,sha256('privacy-verification-fixture'::bytea),clock_timestamp()+interval '1 hour');
+ IF NOT app.customer_consume_verification(sha256('privacy-verification-fixture'::bytea)) THEN
+  RAISE EXCEPTION 'PRIVACY_CUSTOMER_VERIFICATION_WITNESS_MISSING';
+ END IF;
  INSERT INTO app.customer_addresses(tenant_id,customer_id,recipient,address_line1,address_line2,
   city,subdivision,postal_code,country_code)
  VALUES(t,customer,{{canary:customer_addresses.recipient}},{{canary:customer_addresses.address_line1}},

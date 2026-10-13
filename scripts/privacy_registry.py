@@ -201,11 +201,22 @@ def psql(root, sql):
     # Never print a DSN, subprocess arguments, real cell values or raw DB errors.
     require(os.environ.get("DATABASE_URL"), "PRIVACY_DATABASE_UNAVAILABLE", "DATABASE_URL is required")
     try:
-        result = subprocess.run(["psql", os.environ["DATABASE_URL"], "-X", "-qAt", "-v", "ON_ERROR_STOP=1"],
+        result = subprocess.run(["psql", os.environ["DATABASE_URL"], "-X", "-qAt", "-v", "ON_ERROR_STOP=1",
+                                 "-v", "VERBOSITY=verbose"],
                                 input=sql, cwd=root, text=True, capture_output=True, timeout=90)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise ValueError("PRIVACY_DATABASE_UNAVAILABLE: psql failed or timed out") from error
-    require(result.returncode == 0, "PRIVACY_DATABASE_ERROR", "query/fixture failed (no credentials or values logged)")
+    if result.returncode != 0:
+        # Only fixed-format SQLSTATE and fixture line numbers survive redaction;
+        # constraint detail, SQL source, DSN and stored values never do.
+        state = re.search(r"ERROR:\s+([0-9A-Z]{5}):", result.stderr)
+        lines = re.findall(r"PL/pgSQL function inline_code_block line ([0-9]+) at", result.stderr)
+        detail = "query/fixture failed"
+        if state:
+            detail += " SQLSTATE=" + state[1]
+        if lines:
+            detail += " fixture_line=" + lines[-1]
+        raise ValueError("PRIVACY_DATABASE_ERROR: " + detail + " (credentials and values redacted)")
     return result.stdout
 
 
