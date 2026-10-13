@@ -97,6 +97,9 @@ func (w *cmsFakeWriter) Execute(ctx context.Context, c contract.Command) (contra
 	if w.err != nil {
 		return contract.Result{}, w.err
 	}
+	if c.Operation == "list_releases" {
+		return contract.Result{Releases: []contract.Release{}, PublicationRevision: 3}, nil
+	}
 	revision := w.revision
 	if revision == 0 {
 		revision = 2
@@ -395,5 +398,33 @@ func TestCMSHTTPUpdateRequiresExistingDraftPage(t *testing.T) {
 	w := cmsRequest(router, "PUT", cmsDraftPath+"/pages/"+cmsPage, cmsPageBody, "update-membership", `"1"`)
 	if w.Code != 200 || writer.last.Operation != "update_page" || writer.last.PageID != cmsPage {
 		t.Fatalf("update must retain draft membership semantics: status=%d operation=%s page=%s", w.Code, writer.last.Operation, writer.last.PageID)
+	}
+}
+
+// Entity decoding is not idempotent: the HTTP edge must hand the Writer the
+// original payload so the real Writer sanitizes exactly once.
+func TestCMSHTTPSanitizesOnce(t *testing.T) {
+	writer := &cmsFakeWriter{}
+	router, _ := cmsRouter(t, &cmsAuth{}, writer)
+	body := strings.Replace(cmsPageBody, `"Welcome"`, `"<p>&amp;copy; &amp;lt;b&amp;gt;</p>"`, 1)
+	if w := cmsRequest(router, "POST", cmsDraftPath+"/pages", body, "once", `"1"`); w.Code != 201 {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body)
+	}
+	// Second (Writer-side) pass over what the handler forwarded.
+	stored, err := validateCommand(writer.last)
+	if err != nil {
+		t.Fatal("writer rejected forwarded payload:", err)
+	}
+	var page service.SavePage
+	if err = json.Unmarshal(stored.Payload, &page); err != nil || page.Document.Blocks[0].Text != "&copy; &lt;b&gt;" {
+		t.Fatalf("text sanitized twice: %s %v", stored.Payload, err)
+	}
+}
+
+func TestCMSHTTPReleaseHistoryETag(t *testing.T) {
+	router, _ := cmsRouter(t, &cmsAuth{}, &cmsFakeWriter{})
+	w := cmsRequest(router, "GET", cmsBase+"/releases", "", "", "")
+	if w.Code != 200 || w.Header().Get("ETag") != `"3"` {
+		t.Fatalf("status=%d etag=%q", w.Code, w.Header().Get("ETag"))
 	}
 }

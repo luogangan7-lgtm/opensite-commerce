@@ -151,7 +151,7 @@ LANGUAGE sql STABLE SET search_path=pg_catalog,app,pg_temp AS $$
    WHERE pe.tenant_id=p_tenant AND pe.sku_id=sku.id AND pe.min_quantity=1 AND pl.audience='all' AND pl.status='active'
     AND pl.starts_at<=statement_timestamp() AND (pl.ends_at IS NULL OR statement_timestamp()<pl.ends_at)
    ORDER BY pl.priority DESC,pl.id ASC LIMIT 1) price ON true
-  WHERE l.tenant_id=p_tenant AND l.site_id=p_site AND l.locale=p_locale AND l.status='published' AND p.lifecycle_status='ready'
+  WHERE l.tenant_id=p_tenant AND l.site_id=p_site AND lower(l.locale)=lower(p_locale) AND l.status='published' AND p.lifecycle_status='ready'
   ORDER BY l.slug LIMIT 501
  ) eligible
 $$;
@@ -186,7 +186,7 @@ DECLARE s app.sites; d uuid:=uuidv7(); route record; cloned_page uuid; BEGIN
  PERFORM app.cms_context(p_tenant,p_kind,p_actor);
  SELECT * INTO s FROM app.sites WHERE tenant_id=p_tenant AND id=p_site FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'CMS_SITE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
- IF p_locale IS NULL OR p_locale<>s.default_locale OR p_title IS NULL OR length(p_title) NOT BETWEEN 1 AND 300 OR btrim(p_title)='' OR p_title~'[<>]'
+ IF p_locale IS NULL OR lower(p_locale)<>lower(s.default_locale) OR p_title IS NULL OR length(p_title) NOT BETWEEN 1 AND 300 OR btrim(p_title)='' OR p_title~'[<>]'
   OR p_description IS NULL OR length(p_description)>2000 OR p_description~'[<>]' THEN RAISE EXCEPTION 'CMS_METADATA_SHAPE' USING ERRCODE='22023'; END IF;
  INSERT INTO app.site_drafts(tenant_id,site_id,id,base_release_id,is_cms,locale,title,description,navigation)
  VALUES(p_tenant,p_site,d,s.published_release_id,true,p_locale,p_title,p_description,
@@ -195,20 +195,20 @@ DECLARE s app.sites; d uuid:=uuidv7(); route record; cloned_page uuid; BEGIN
  -- editable pages instead of silently discarding routes/navigation targets.
  FOR route IN SELECT rr.page_id,rr.locale,rr.path,pr.document FROM app.site_release_routes rr
   JOIN app.page_revisions pr ON (pr.tenant_id,pr.site_id,pr.page_id,pr.locale,pr.revision)=(rr.tenant_id,rr.site_id,rr.page_id,rr.locale,rr.page_revision)
-  WHERE rr.tenant_id=p_tenant AND rr.site_id=p_site AND rr.release_id=s.published_release_id AND rr.locale=p_locale
+  WHERE rr.tenant_id=p_tenant AND rr.site_id=p_site AND rr.release_id=s.published_release_id AND lower(rr.locale)=lower(p_locale)
   ORDER BY rr.page_id,rr.locale,length(rr.path),rr.path LOOP
   cloned_page:=route.page_id;
-  IF EXISTS(SELECT FROM app.draft_pages WHERE tenant_id=p_tenant AND site_id=p_site AND draft_id=d AND page_id=cloned_page AND locale=route.locale) THEN
+  IF EXISTS(SELECT FROM app.draft_pages WHERE tenant_id=p_tenant AND site_id=p_site AND draft_id=d AND page_id=cloned_page AND locale=p_locale) THEN
    cloned_page:=uuidv7();
    INSERT INTO app.pages(tenant_id,site_id,id,page_key) VALUES(p_tenant,p_site,cloned_page,'cms-alias-'||cloned_page::text);
   END IF;
   INSERT INTO app.draft_pages(tenant_id,site_id,draft_id,page_id,locale,path,document)
-   VALUES(p_tenant,p_site,d,cloned_page,route.locale,route.path,route.document);
+   VALUES(p_tenant,p_site,d,cloned_page,p_locale,route.path,route.document);
  END LOOP;
  -- Each cloned page gets only its own sealed revision's pins (never the
  -- page x release cross product, which grows N*M and breaks the 1 MiB read).
  INSERT INTO app.draft_page_media SELECT DISTINCT p_tenant,p_site,d,dp.page_id,dp.locale,pin.media_id FROM app.draft_pages dp
- JOIN app.site_release_routes rr ON (rr.tenant_id,rr.site_id,rr.release_id,rr.locale,rr.path)=(p_tenant,p_site,s.published_release_id,dp.locale,dp.path)
+ JOIN app.site_release_routes rr ON (rr.tenant_id,rr.site_id,rr.release_id,lower(rr.locale),rr.path)=(p_tenant,p_site,s.published_release_id,lower(dp.locale),dp.path)
  JOIN app.page_revisions pr ON (pr.tenant_id,pr.site_id,pr.page_id,pr.locale,pr.revision)=(rr.tenant_id,rr.site_id,rr.page_id,rr.locale,rr.page_revision)
  CROSS JOIN LATERAL unnest(pr.media_ids) pin(media_id) WHERE dp.tenant_id=p_tenant AND dp.site_id=p_site AND dp.draft_id=d;
  -- Pre-CMS releases have release-level pins only: keep each exactly once, on
@@ -256,7 +256,15 @@ BEGIN
     RAISE EXCEPTION 'CMS_PAGE_NOT_FOUND' USING ERRCODE='P0002';
    END IF;
    IF body->>'id' IS NULL THEN
-    INSERT INTO app.pages(tenant_id,site_id,id,page_key) VALUES(p_tenant,p_site,p,body->>'page_key');
+    -- A page_key is a site-wide identity: reattach it when its page left this
+    -- draft (deleted/unpublished); a key already in the draft stays a conflict.
+    SELECT id INTO p FROM app.pages WHERE tenant_id=p_tenant AND site_id=p_site AND page_key=body->>'page_key';
+    IF NOT FOUND THEN
+     p:=uuidv7();
+     INSERT INTO app.pages(tenant_id,site_id,id,page_key) VALUES(p_tenant,p_site,p,body->>'page_key');
+    ELSIF EXISTS(SELECT FROM app.draft_pages WHERE tenant_id=p_tenant AND site_id=p_site AND draft_id=p_draft AND page_id=p) THEN
+     RAISE EXCEPTION 'CMS_PAGE_KEY_EXISTS' USING ERRCODE='23505';
+    END IF;
    ELSIF NOT EXISTS(SELECT FROM app.pages WHERE tenant_id=p_tenant AND site_id=p_site AND id=p AND page_key=body->>'page_key') THEN RAISE EXCEPTION 'CMS_PAGE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
    INSERT INTO app.draft_pages(tenant_id,site_id,draft_id,page_id,locale,path,document)
    VALUES(p_tenant,p_site,p_draft,p,d.locale,body->>'path',body->'document')
@@ -314,7 +322,7 @@ DECLARE s app.sites; d app.site_drafts; r uuid:=uuidv7(); no bigint; manifest js
  IF NOT FOUND THEN RAISE EXCEPTION 'CMS_DRAFT_NOT_FOUND' USING ERRCODE='P0002'; END IF;
  IF d.status<>'open' THEN RAISE EXCEPTION 'CMS_DRAFT_CLOSED' USING ERRCODE='55000'; END IF;
  IF p_expected IS NULL OR p_expected<>d.revision OR d.base_release_id IS DISTINCT FROM p_expected_release THEN RAISE EXCEPTION 'CMS_DRAFT_STALE' USING ERRCODE='40001'; END IF;
- IF p_renderer IS NULL OR length(p_renderer) NOT BETWEEN 1 AND 300 OR d.locale<>s.default_locale THEN RAISE EXCEPTION 'CMS_PUBLISH_ARGUMENT' USING ERRCODE='22023'; END IF;
+ IF p_renderer IS NULL OR length(p_renderer) NOT BETWEEN 1 AND 300 OR lower(d.locale)<>lower(s.default_locale) THEN RAISE EXCEPTION 'CMS_PUBLISH_ARGUMENT' USING ERRCODE='22023'; END IF;
  IF NOT EXISTS(SELECT FROM app.draft_pages WHERE tenant_id=p_tenant AND site_id=p_site AND draft_id=p_draft AND path='/' AND locale=d.locale) THEN RAISE EXCEPTION 'CMS_HOME_REQUIRED' USING ERRCODE='22023'; END IF;
  products:=app.cms_products(p_tenant,p_site,d.locale);
  IF jsonb_array_length(products)>500 THEN RAISE EXCEPTION 'CMS_PRODUCT_BOUNDS' USING ERRCODE='22023'; END IF;
@@ -354,14 +362,14 @@ DECLARE s app.sites; d app.site_drafts; r uuid:=uuidv7(); no bigint; manifest js
 END $$;
 CREATE FUNCTION app.cms_restore(p_tenant uuid,p_site uuid,p_kind text,p_actor uuid,p_expected_release uuid,p_epoch bigint,p_target uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
-DECLARE s app.sites; r app.site_releases; item jsonb; page record; currency text; route_count integer; projection jsonb; BEGIN
+DECLARE s app.sites; r app.site_releases; item jsonb; page record; route_count integer; projection jsonb; BEGIN
  PERFORM app.cms_context(p_tenant,p_kind,p_actor);
  SELECT * INTO s FROM app.sites WHERE tenant_id=p_tenant AND id=p_site FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'CMS_SITE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
  IF p_epoch IS NULL OR s.publication_revision<>p_epoch OR s.published_release_id IS DISTINCT FROM p_expected_release THEN RAISE EXCEPTION 'CMS_PUBLICATION_STALE' USING ERRCODE='40001'; END IF;
  SELECT * INTO r FROM app.site_releases WHERE tenant_id=p_tenant AND site_id=p_site AND id=p_target AND sealed FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'CMS_RELEASE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
- IF r.manifest->>'version' IS DISTINCT FROM '1' OR r.manifest->>'locale' IS DISTINCT FROM s.default_locale
+ IF r.manifest->>'version' IS DISTINCT FROM '1' OR lower(r.manifest->>'locale') IS DISTINCT FROM lower(s.default_locale)
   OR jsonb_typeof(r.manifest)<>'object' OR r.manifest - ARRAY['version','locale','title','description','navigation','products']<>'{}'::jsonb
   OR jsonb_typeof(r.manifest->'version') IS DISTINCT FROM 'number' OR jsonb_typeof(r.manifest->'locale') IS DISTINCT FROM 'string'
   OR jsonb_typeof(r.manifest->'title') IS DISTINCT FROM 'string' OR length(r.manifest->>'title') NOT BETWEEN 1 AND 300 OR btrim(r.manifest->>'title')=''
@@ -374,17 +382,15 @@ DECLARE s app.sites; r app.site_releases; item jsonb; page record; currency text
    OR EXISTS(SELECT FROM unnest(ARRAY['id','slug','name','description','unit_amount','currency']) key WHERE jsonb_typeof(item->key) IS DISTINCT FROM 'string')
    OR (item->>'id') !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
    OR (item->>'slug') !~ '^[a-zA-Z0-9_-]+$' OR length(item->>'slug')>502 OR length(item->>'name') NOT BETWEEN 1 AND 300 OR btrim(item->>'name')=''
-   OR length(item->>'description')>10000 OR (item->>'unit_amount') !~ '^(0|[1-9][0-9]{0,37})$' OR (item->>'currency') !~ '^[A-Z]{3}$'
-   OR (currency IS NOT NULL AND currency<>item->>'currency') THEN RAISE EXCEPTION 'CMS_RELEASE_PRODUCTS' USING ERRCODE='22023'; END IF;
-  currency:=item->>'currency';
+   OR length(item->>'description')>10000 OR (item->>'unit_amount') !~ '^(0|[1-9][0-9]{0,37})$' OR (item->>'currency') !~ '^[A-Z]{3}$' THEN RAISE EXCEPTION 'CMS_RELEASE_PRODUCTS' USING ERRCODE='22023'; END IF;
  END LOOP;
  IF EXISTS(SELECT FROM jsonb_array_elements(r.manifest->'products') p GROUP BY p->>'id' HAVING count(*)>1)
   OR EXISTS(SELECT FROM jsonb_array_elements(r.manifest->'products') p GROUP BY p->>'slug' HAVING count(*)>1) THEN RAISE EXCEPTION 'CMS_RELEASE_PRODUCTS' USING ERRCODE='22023'; END IF;
- SELECT count(*) INTO route_count FROM app.site_release_routes WHERE tenant_id=p_tenant AND site_id=p_site AND release_id=p_target AND locale=s.default_locale;
- IF route_count NOT BETWEEN 1 AND 100 OR NOT EXISTS(SELECT FROM app.site_release_routes WHERE tenant_id=p_tenant AND site_id=p_site AND release_id=p_target AND locale=s.default_locale AND path='/') THEN RAISE EXCEPTION 'CMS_RELEASE_ROUTES' USING ERRCODE='22023'; END IF;
+ SELECT count(*) INTO route_count FROM app.site_release_routes WHERE tenant_id=p_tenant AND site_id=p_site AND release_id=p_target AND lower(locale)=lower(s.default_locale);
+ IF route_count NOT BETWEEN 1 AND 100 OR NOT EXISTS(SELECT FROM app.site_release_routes WHERE tenant_id=p_tenant AND site_id=p_site AND release_id=p_target AND lower(locale)=lower(s.default_locale) AND path='/') THEN RAISE EXCEPTION 'CMS_RELEASE_ROUTES' USING ERRCODE='22023'; END IF;
  FOR page IN SELECT rr.path,pr.document FROM app.site_release_routes rr JOIN app.page_revisions pr
   ON (pr.tenant_id,pr.site_id,pr.page_id,pr.locale,pr.revision)=(rr.tenant_id,rr.site_id,rr.page_id,rr.locale,rr.page_revision)
-  WHERE rr.tenant_id=p_tenant AND rr.site_id=p_site AND rr.release_id=p_target AND rr.locale=s.default_locale LOOP
+  WHERE rr.tenant_id=p_tenant AND rr.site_id=p_site AND rr.release_id=p_target AND lower(rr.locale)=lower(s.default_locale) LOOP
   IF length(page.path)>512 OR page.path !~ '^/([a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*)?$' OR page.path IN ('/404','/502','/products') OR page.path LIKE '/products/%' THEN RAISE EXCEPTION 'CMS_RELEASE_ROUTES' USING ERRCODE='22023'; END IF;
   PERFORM app.cms_validate_document(page.document);
  END LOOP;
@@ -392,12 +398,12 @@ DECLARE s app.sites; r app.site_releases; item jsonb; page record; currency text
   IF jsonb_typeof(item)<>'object' OR item - ARRAY['label','href']<>'{}'::jsonb OR jsonb_typeof(item->'label') IS DISTINCT FROM 'string'
    OR length(item->>'label') NOT BETWEEN 1 AND 200 OR btrim(item->>'label')='' OR jsonb_typeof(item->'href') IS DISTINCT FROM 'string'
    OR length(item->>'href')>512 OR (item->>'href') !~ '^/([a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*)?$'
-   OR (item->>'href'<>'/products' AND NOT EXISTS(SELECT FROM app.site_release_routes rr WHERE rr.tenant_id=p_tenant AND rr.site_id=p_site AND rr.release_id=p_target AND rr.locale=s.default_locale AND rr.path=item->>'href')
+   OR (item->>'href'<>'/products' AND NOT EXISTS(SELECT FROM app.site_release_routes rr WHERE rr.tenant_id=p_tenant AND rr.site_id=p_site AND rr.release_id=p_target AND lower(rr.locale)=lower(s.default_locale) AND rr.path=item->>'href')
     AND NOT EXISTS(SELECT FROM jsonb_array_elements(r.manifest->'products') product WHERE '/products/'||(product->>'slug')=item->>'href')) THEN RAISE EXCEPTION 'CMS_RELEASE_NAVIGATION' USING ERRCODE='22023'; END IF;
  END LOOP;
  SELECT jsonb_build_object('manifest',r.manifest,'pages',jsonb_agg(jsonb_build_object('path',rr.path,'document',pr.document))) INTO projection
   FROM app.site_release_routes rr JOIN app.page_revisions pr ON (pr.tenant_id,pr.site_id,pr.page_id,pr.locale,pr.revision)=(rr.tenant_id,rr.site_id,rr.page_id,rr.locale,rr.page_revision)
-  WHERE rr.tenant_id=p_tenant AND rr.site_id=p_site AND rr.release_id=p_target AND rr.locale=s.default_locale;
+  WHERE rr.tenant_id=p_tenant AND rr.site_id=p_site AND rr.release_id=p_target AND lower(rr.locale)=lower(s.default_locale);
  IF octet_length(convert_to(projection::text,'UTF8'))>1040000 THEN RAISE EXCEPTION 'CMS_RELEASE_BOUNDS' USING ERRCODE='22023'; END IF;
  PERFORM app.publish_release(p_tenant,p_site,p_target,p_expected_release);
  INSERT INTO app.audit_events(tenant_id,actor_kind,actor_id,operation,resource_type,resource_id,before_revision,after_revision,payload)
@@ -410,7 +416,7 @@ DECLARE result jsonb; BEGIN
  PERFORM app.cms_context(p_tenant,NULL,NULL,true);
  IF NOT EXISTS(SELECT FROM app.sites WHERE tenant_id=p_tenant AND id=p_site) THEN RAISE EXCEPTION 'CMS_SITE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
  SELECT coalesce(jsonb_agg(jsonb_build_object('release_id',r.id,'release_no',r.release_no,'created_at',r.created_at,'publication_revision',s.publication_revision,'restored_from',r.restored_from,'manifest_hash',encode(r.manifest_hash,'hex')) ORDER BY r.release_no DESC),'[]') INTO result
- FROM app.site_releases r JOIN app.sites s ON (s.tenant_id,s.id)=(r.tenant_id,r.site_id) WHERE r.tenant_id=p_tenant AND r.site_id=p_site AND r.sealed;
+ FROM (SELECT * FROM app.site_releases WHERE tenant_id=p_tenant AND site_id=p_site AND sealed ORDER BY release_no DESC LIMIT 100) r JOIN app.sites s ON (s.tenant_id,s.id)=(r.tenant_id,r.site_id);
  RETURN jsonb_build_object('site_id',p_site,'publication_revision',(SELECT publication_revision FROM app.sites WHERE tenant_id=p_tenant AND id=p_site),'releases',result);
 END $$;
 -- The function owner remains unreachable (010 role attributes/membership gate).

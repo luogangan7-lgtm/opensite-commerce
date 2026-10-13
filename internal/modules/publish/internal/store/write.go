@@ -182,6 +182,7 @@ func (s *WriteStore) Execute(ctx context.Context, c contract.Command, actor http
 			}
 			if c.Operation == "list_releases" {
 				result.Releases = h.Releases
+				result.PublicationRevision = h.PublicationRevision
 			} else {
 				for i := range h.Releases {
 					if h.Releases[i].ReleaseID == c.ReleaseID {

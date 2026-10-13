@@ -193,6 +193,9 @@ func cmsEncode(status int, v any) (idempotency.Response, error) {
 func cmsResultETag(response *idempotency.Response, result contract.Result) {
 	if result.Draft != nil {
 		response.Header.Set("ETag", strconv.Quote(strconv.FormatInt(result.Draft.Revision, 10)))
+	} else if result.Releases != nil {
+		// History is versioned by the site publication epoch (restore's If-Match).
+		response.Header.Set("ETag", strconv.Quote(strconv.FormatInt(result.PublicationRevision, 10)))
 	}
 }
 
@@ -213,10 +216,10 @@ func (s *CMSHandler) execute(ctx context.Context, operation string, c contract.C
 	if s.config.Writer == nil {
 		return cmsResponse{}, cmsError(contract.ErrUnavailable)
 	}
-	var validationError error
-	c, validationError = validateCommand(c)
-	if validationError != nil {
-		return cmsResponse{}, cmsError(validationError)
+	// Admission only: the Writer normalizes the original payload exactly once
+	// (HTML entity decoding is not idempotent, so a second pass would reinterpret text).
+	if _, err := validateCommand(c); err != nil {
+		return cmsResponse{}, cmsError(err)
 	}
 	if !mutation {
 		result, err := s.config.Writer.Execute(ctx, c)

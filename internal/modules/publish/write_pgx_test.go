@@ -536,3 +536,74 @@ func TestCMSPublishValidatesSealedSnapshotPG(t *testing.T) {
 		}
 	})
 }
+
+// Review regressions: legacy locale casing, mixed-currency restore, page_key
+// recreation and bounded release history, through the real facade and SQL.
+func TestCMSReviewRegressionsPG(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	f := newCMSPG(t, ctx,
+		`UPDATE app.sites SET default_locale='en-us' WHERE tenant_id=$1 AND id=$2`,
+		`INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES($1,'usd','ready'),($1,'eur','ready')`,
+		`INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status) SELECT tenant_id,id,product_code,'default','ready' FROM app.products WHERE tenant_id=$1`,
+		`INSERT INTO app.price_lists(tenant_id,currency,status,starts_at,priority) VALUES($1,'USD','active','2026-01-01Z',1),($1,'EUR','active','2026-01-01Z',1)`,
+		`INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) SELECT $1,l.id,v.id,1,100 FROM app.price_lists l JOIN app.product_variants v ON v.tenant_id=l.tenant_id AND lower(v.sku)=lower(l.currency) WHERE l.tenant_id=$1`,
+		`INSERT INTO app.product_content_revisions(tenant_id,product_id,locale,revision,title,seo) SELECT $1,id,'en-us',1,upper(product_code),'{}' FROM app.products WHERE tenant_id=$1`,
+		`INSERT INTO app.product_listings(tenant_id,site_id,product_id,locale,slug,status,published_content_revision) SELECT $1,$2,id,'en-us',product_code,'published',1 FROM app.products WHERE tenant_id=$1`)
+	withCMSContextFor(t, true, f.tenant, func(authctx context.Context) {
+		must := func(c contract.Command) contract.Result {
+			t.Helper()
+			r, err := f.exec(t, authctx, c)
+			if err != nil {
+				t.Fatalf("%s: %v", c.Operation, err)
+			}
+			return r
+		}
+		page := func(key, path string, id string) json.RawMessage {
+			v := map[string]any{"page_key": key, "locale": "en-US", "path": path, "document": map[string]any{"title": key, "description": "", "blocks": []any{}}, "media_ids": []string{}}
+			if id != "" {
+				v["id"] = id
+			}
+			b, _ := json.Marshal(v)
+			return b
+		}
+		// Legacy en-us site: create/edit/publish with canonical en-US input.
+		d := must(contract.Command{Operation: "create_draft", Payload: []byte(`{"locale":"en-us","title":"Case","description":""}`)}).Draft
+		if len(d.Products) != 2 {
+			t.Fatalf("case-insensitive listings %d", len(d.Products))
+		}
+		must(contract.Command{Operation: "save_page", DraftID: d.DraftID, ExpectedRevision: 1, Payload: page("home", "/", "")})
+		guide := must(contract.Command{Operation: "save_page", DraftID: d.DraftID, ExpectedRevision: 2, Payload: page("guide", "/guide", "")}).Page
+		del, _ := json.Marshal(map[string]string{"id": guide.ID, "locale": "en-US"})
+		must(contract.Command{Operation: "delete_page", DraftID: d.DraftID, ExpectedRevision: 3, Payload: del})
+		again := must(contract.Command{Operation: "save_page", DraftID: d.DraftID, ExpectedRevision: 4, Payload: page("guide", "/guide", "")}).Page
+		if again.ID != guide.ID {
+			t.Fatal("recreated page_key did not reattach its identity", again.ID, guide.ID)
+		}
+		if _, err := f.exec(t, authctx, contract.Command{Operation: "save_page", DraftID: d.DraftID, ExpectedRevision: 5, Payload: page("guide", "/other", "")}); !errors.Is(err, contract.ErrConflict) {
+			t.Fatal("duplicate page_key in one draft", err)
+		}
+		r1 := must(contract.Command{Operation: "publish_draft", DraftID: d.DraftID, ExpectedRevision: 5, Payload: []byte(`{"renderer_build_id":"r1"}`)}).Release
+		clone := must(contract.Command{Operation: "create_draft", Payload: []byte(`{"locale":"en-US","title":"Case 2","description":""}`)}).Draft
+		if len(clone.Pages) != 2 {
+			t.Fatalf("clone pages %d", len(clone.Pages))
+		}
+		r2 := must(contract.Command{Operation: "publish_draft", DraftID: clone.DraftID, ExpectedRevision: 1, ExpectedReleaseID: r1.ReleaseID, ExpectedPublicationRevision: 1, Payload: []byte(`{"renderer_build_id":"r2"}`)}).Release
+		// R1 seals USD and EUR products; restoring it must not add a rule publish lacks.
+		restored := must(contract.Command{Operation: "restore_release", ReleaseID: r1.ReleaseID, ExpectedReleaseID: r2.ReleaseID, ExpectedPublicationRevision: 2}).Release
+		if restored.PublicationRevision != 3 {
+			t.Fatal(restored)
+		}
+		// History stays bounded to the 100 most recent releases.
+		current, epoch := r1.ReleaseID, int64(3)
+		for i := 0; i < 100; i++ {
+			c := must(contract.Command{Operation: "create_draft", Payload: []byte(`{"locale":"en-US","title":"Many","description":""}`)}).Draft
+			current = must(contract.Command{Operation: "publish_draft", DraftID: c.DraftID, ExpectedRevision: 1, ExpectedReleaseID: current, ExpectedPublicationRevision: epoch, Payload: []byte(`{"renderer_build_id":"many"}`)}).Release.ReleaseID
+			epoch++
+		}
+		history := must(contract.Command{Operation: "list_releases"})
+		if len(history.Releases) != 100 || history.Releases[0].ReleaseID != current || history.PublicationRevision != epoch {
+			t.Fatalf("history %d first=%s epoch=%d", len(history.Releases), history.Releases[0].ReleaseID, history.PublicationRevision)
+		}
+	})
+}

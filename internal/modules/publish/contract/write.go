@@ -63,6 +63,8 @@ type Result struct {
 	Release    *Release    `json:"release,omitempty"`
 	Releases   []Release   `json:"releases,omitempty"`
 	Validation *Validation `json:"validation,omitempty"`
+	// PublicationRevision is the site epoch read with Releases (history ETag).
+	PublicationRevision int64 `json:"publication_revision,omitempty"`
 }
 type Command struct {
 	Operation                                                       string
