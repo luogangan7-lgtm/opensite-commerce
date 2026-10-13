@@ -8,6 +8,7 @@ all waits are bounded and finally destroys only this invocation's own project.
 import argparse
 import base64
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
@@ -189,6 +190,65 @@ def run(receipt_dir):
         clean_env = {key: value for key, value in saved.items()
                      if key in {"PATH", "HOME", "TMPDIR", "LANG", "CI", "GITHUB_ACTIONS", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"}}
         clean_env["OSC_STOREFRONT_ALLOWED_HOSTS"] = "127.0.0.1,localhost"
+
+        def preview_readonly_witness():
+            """Exercise the real checkout preview and compare durable PG rows exactly."""
+            sku = "c2400008-0000-4000-8000-000000000001"
+            api = f"http://127.0.0.1:8080/api/v1/t/{TENANT}"
+
+            def request_json(path, method, payload, headers=None):
+                request = urllib.request.Request(
+                    api + path, data=json.dumps(payload, separators=(",", ":")).encode(),
+                    method=method, headers={"Accept": "application/json", "Content-Type": "application/json", **(headers or {})})
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    data = response.read(1_048_577)
+                    if len(data) > 1_048_576:
+                        raise RuntimeError("MVP E2E preview response exceeded the bound")
+                    return response.status, response.headers, json.loads(data)
+
+            status, headers, created = request_json("/carts", "POST", {"currency": "USD"})
+            cart_id = created.get("cart", {}).get("id")
+            token = created.get("cart_token")
+            if (status != 201 or not re.fullmatch(r"[0-9a-f-]{36}", str(cart_id))
+                    or not re.fullmatch(r"[A-Za-z0-9_-]{43}", str(token))):
+                raise RuntimeError("MVP E2E preview witness could not create a guest cart")
+            status, _, _ = request_json(f"/carts/{cart_id}/lines/{sku}", "PUT", {"quantity": 1},
+                                         {"X-Cart-Token": token, "If-Match": headers.get("ETag", "")})
+            if status != 200:
+                raise RuntimeError("MVP E2E preview witness could not set its cart line")
+
+            snapshot_sql = f"""
+SELECT jsonb_build_object(
+ 'checkout_sessions',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM app.checkout_sessions x WHERE x.tenant_id='{TENANT}'),
+ 'orders',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM app.orders x WHERE x.tenant_id='{TENANT}'),
+ 'reservations',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM app.inventory_reservations x WHERE x.tenant_id='{TENANT}'),
+ 'movements',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM app.inventory_movements x WHERE x.tenant_id='{TENANT}'),
+ 'stock',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.warehouse_id,x.sku_id),'[]'::jsonb) FROM app.stock_levels x WHERE x.tenant_id='{TENANT}')
+)::text;
+"""
+            before = ops_common.psql(snapshot_sql).strip()
+            baseline = json.loads(before)
+            tote_stock = [row for row in baseline["stock"] if row["sku_id"] == sku]
+            if (any(baseline[name] for name in ("checkout_sessions", "orders", "reservations"))
+                    or len(tote_stock) != 1 or tote_stock[0]["on_hand"] != 20 or tote_stock[0]["reserved"] != 0):
+                raise RuntimeError("MVP E2E preview witness has an unexpected durable baseline")
+            origin = "https://shop.e2e.test"
+            key = base64.urlsafe_b64decode(credentials["OPENSITE_STOREFRONT_KEY"] + "==")
+            proof = base64.urlsafe_b64encode(hmac.new(key, f"checkout:{TENANT}:{token}:{origin}".encode(), hashlib.sha256).digest()).decode().rstrip("=")
+            status, _, preview = request_json("/checkout/preview", "POST", {
+                "cart_id": cart_id, "shipping_address": {"country": "US", "postal_code": "10001"}},
+                {"X-Cart-Token": token, "X-Cart-ID": cart_id, "Origin": origin, "X-CSRF-Token": proof})
+            if status != 200 or any(preview.get(field) != amount for field, amount in {
+                    "subtotal_minor": "2400", "tax_minor": "240", "shipping_minor": "500", "total_minor": "3140",
+                    "currency": "USD"}.items()):
+                raise RuntimeError("MVP E2E preview witness returned unexpected exact minor amounts")
+            after = ops_common.psql(snapshot_sql).strip()
+            if before != after:
+                raise RuntimeError("MVP E2E preview mutated checkout, order, reservation, movement or stock rows")
+            return {"status": "PASS", "subtotal_minor": "2400", "total_minor": "3140",
+                    "pg_snapshot_sha256": hashlib.sha256(before.encode()).hexdigest(),
+                    "pg_row_counts": {name: len(rows) for name, rows in baseline.items()}}
+
         try:
             command(["git", "rev-parse", "HEAD"], "source-head", timeout=10, env=clean_env)
             actual_sha = (receipt_dir / "source-head.log").read_text().strip()
@@ -235,6 +295,7 @@ def run(receipt_dir):
             command(compose_command(["up", "-d", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
             wait_http("http://127.0.0.1:4321/", 200, b"Made for everyday use")
             wait_http("http://127.0.0.1:4173/", 200, b"<div id=\"root\"")
+            receipt["preview_readonly"] = preview_readonly_witness()
             receipt["steps"].append("real-ssr-and-admin-positive-readiness")
             persist()
             result = ROOT / "test-results/e2e/results.json"
