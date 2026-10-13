@@ -159,7 +159,7 @@ DECLARE row_new jsonb; row_old jsonb; doc jsonb; t uuid; key uuid; why text; BEG
  doc:=coalesce(row_new,row_old);
  t:=doc->>'tenant_id';
  IF TG_TABLE_NAME='stock_levels' THEN
-  IF ((row_old->>'on_hand')::bigint>(row_old->>'reserved')::bigint) IS NOT DISTINCT FROM ((row_new->>'on_hand')::bigint>(row_new->>'reserved')::bigint) THEN
+  IF NOT (coalesce((row_old->>'on_hand')::bigint>(row_old->>'reserved')::bigint,false) AND NOT coalesce((row_new->>'on_hand')::bigint>(row_new->>'reserved')::bigint,false)) THEN -- REVIEW PROBE 96-r9: sell-out only, restock ignored
    RETURN NULL; -- no public availability change
   END IF;
  END IF;
