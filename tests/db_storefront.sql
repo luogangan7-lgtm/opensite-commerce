@@ -27,21 +27,6 @@ INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,pag
  VALUES (:'tenant',:'site',:'release','en','/about',:'page',1),
  (:'tenant',:'site',:'release','en','/private',:'page',3),
  (:'tenant',:'site',:'release','en','/raw',:'page',4);
--- Review ruL9x: route locales are unique case-insensitively per release/path, so
--- en/EN partitions can never be pinned (and later sealed) side by side.
-INSERT INTO app.page_revisions(tenant_id,site_id,page_id,locale,revision,document) VALUES
- (:'tenant',:'site',:'page','EN',1,'{"title":"CASE_ALIAS","description":"","blocks":[]}');
-INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,page_id,page_revision)
- VALUES (:'tenant',:'site',:'draft_release','en','/about',:'page',1);
-SELECT set_config('test.t',:'tenant',true),set_config('test.s',:'site',true),
- set_config('test.r',:'draft_release',true),set_config('test.p',:'page',true);
-DO $collision$
-BEGIN
- INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,page_id,page_revision)
-  VALUES (current_setting('test.t')::uuid,current_setting('test.s')::uuid,current_setting('test.r')::uuid,'EN','/about',current_setting('test.p')::uuid,1);
- RAISE EXCEPTION 'STOREFRONT_LOCALE_CASE_COLLISION';
-EXCEPTION WHEN unique_violation THEN NULL;
-END $collision$;
 SELECT app.seal_release(:'tenant',:'site',:'old_release');
 SELECT app.publish_release(:'tenant',:'site',:'release',NULL);
 INSERT INTO app.site_releases(tenant_id,site_id,release_no,renderer_build_id,manifest,manifest_hash) VALUES
@@ -74,5 +59,20 @@ BEGIN
  BEGIN UPDATE app.sites SET published_release_id=NULL; RAISE EXCEPTION 'STOREFRONT_PUBLIC_WRITE'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $test$;
 RESET ROLE;
+-- Review ruL9x: route locales are unique case-insensitively per release/path, so
+-- en/EN partitions can never be pinned (and later sealed) side by side.
+INSERT INTO app.page_revisions(tenant_id,site_id,page_id,locale,revision,document) VALUES
+ (:'tenant',:'site',:'page','EN',1,'{"title":"CASE_ALIAS","description":"","blocks":[]}');
+INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,page_id,page_revision)
+ VALUES (:'tenant',:'site',:'draft_release','en','/about',:'page',1);
+SELECT set_config('test.t',:'tenant',true),set_config('test.s',:'site',true),
+ set_config('test.r',:'draft_release',true),set_config('test.p',:'page',true);
+DO $collision$
+BEGIN
+ INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,page_id,page_revision)
+  VALUES (current_setting('test.t')::uuid,current_setting('test.s')::uuid,current_setting('test.r')::uuid,'EN','/about',current_setting('test.p')::uuid,1);
+ RAISE EXCEPTION 'STOREFRONT_LOCALE_CASE_COLLISION';
+EXCEPTION WHEN unique_violation THEN NULL;
+END $collision$;
 ROLLBACK;
 SELECT 'PASS: storefront current sealed host-scoped pinned revision public role' AS result;
