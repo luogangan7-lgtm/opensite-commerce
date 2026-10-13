@@ -97,7 +97,8 @@ func c02cHTTPRandom(t *testing.T, size int) []byte {
 	return value
 }
 
-func TestC02cProductionHTTPPostgres(t *testing.T) {
+func c02cHTTPPGFixture(t *testing.T) (context.Context, *pgxadapter.IdentityRunner, string, string, string) {
+	t.Helper()
 	source := os.Getenv("DATABASE_URL")
 	if source == "" {
 		pgxtest.Skip(t, "NOT_RUN: disposable PostgreSQL DATABASE_URL required")
@@ -163,6 +164,14 @@ func TestC02cProductionHTTPPostgres(t *testing.T) {
 		t.Fatal("HTTP fixture maintenance unavailable")
 	}
 	t.Cleanup(func() { _ = admin.Close(context.Background()) })
+	authURL, runtimeURL := *u, *u
+	authURL.User = url.UserPassword(authRole, authCredential)
+	runtimeURL.User = url.UserPassword(runtimeRole, runtimeCredential)
+	return ctx, admin, fixtureDSN, authURL.String(), runtimeURL.String()
+}
+
+func TestC02cProductionHTTPPostgres(t *testing.T) {
+	ctx, admin, _, authDSN, runtimeDSN := c02cHTTPPGFixture(t)
 	execFixture := func(sql string, args ...any) {
 		t.Helper()
 		if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, sql, args...); return err }); err != nil {
@@ -192,22 +201,19 @@ func TestC02cProductionHTTPPostgres(t *testing.T) {
 	}); err != nil {
 		t.Fatal("HTTP fixture authority seed failed")
 	}
-	authURL, runtimeURL := *u, *u
-	authURL.User = url.UserPassword(authRole, authCredential)
-	runtimeURL.User = url.UserPassword(runtimeRole, runtimeCredential)
 	cfg := identity.LoginConfig{Origin: c02cHTTPOrigin, SigningKey: c02cHTTPRandom(t, 32)}
-	staff, err := identity.OpenLogin(ctx, authURL.String(), cfg)
+	staff, err := identity.OpenLogin(ctx, authDSN, cfg)
 	if err != nil {
 		t.Fatal("HTTP fixture staff module unavailable")
 	}
 	t.Cleanup(func() { _ = staff.Close(context.Background()) })
-	keys, err := tenant.Open(ctx, tenant.Config{DatabaseURL: authURL.String()})
+	keys, err := tenant.Open(ctx, tenant.Config{DatabaseURL: authDSN})
 	if err != nil {
 		t.Fatal("HTTP fixture tenant module unavailable")
 	}
 	t.Cleanup(func() { _ = keys.Close(context.Background()) })
 	staff.WithAuthorization(keys.Authorization())
-	runtime, err := pgxadapter.OpenQueryRunner(ctx, runtimeURL.String())
+	runtime, err := pgxadapter.OpenQueryRunner(ctx, runtimeDSN)
 	if err != nil {
 		t.Fatal("HTTP fixture runtime unavailable")
 	}
