@@ -122,7 +122,8 @@ class APIContractTests(unittest.TestCase):
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
         orders = {"listOrders", "getOrder"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | orders)
+                          if op["x-opensite-status"] == "implemented"},
+                         expected | cart | orders | {"listNotificationFailures", "redriveNotification"})
         for name in orders:
             path, method, operation = ops[name]
             self.assertTrue(path.startswith("/api/v1/t/{tenant_id}/orders"))
