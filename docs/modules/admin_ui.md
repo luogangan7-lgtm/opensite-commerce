@@ -33,8 +33,14 @@ exponent. The production build displays **暂不可用** and makes no order read
 Development/gallery pages and Playwright fixtures show the exact label
 **CONTRACT FIXTURE (orders read API pending PR)**. The fixture is isolated by the
 test runner's intercepted requests; no fixture data is bundled into production.
-Once the backend PR is supplied, enable production reads and rerun acceptance
-against that implementation. Shipping/refund action buttons are absent while
+PR #47 (`ec09fa8`) defines the pending read projection: line titles are null
+(the snapshot retains only `sku_code`), so lines display the SKU. Shipping method
+means the rate rule (`fixed`, `by_weight`, `free_over_amount`), not a carrier;
+a missing method is shown as **Not recorded**. The published nullable string
+fields remain accepted. Adjustments use signed `amount_minor` with no `kind`;
+the projection contains no guest email. Final pages omit `next_cursor`.
+After PR #47 merges and the owner requests connection, enable production reads
+and rerun acceptance against that implementation. Shipping/refund action buttons are absent while
 the corresponding APIs are pending.
 
 ## Acceptance

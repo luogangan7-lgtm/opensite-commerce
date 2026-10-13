@@ -1,7 +1,8 @@
 /**
  * Responsibility: owner-specified, read-only orders contract and admin views.
  * Dependencies: AdminAPI transport, React Router, shared UI; callers: admin routes.
- * Invariants: minor amounts stay exact strings/BigInt; no fulfillment/refund writes;
+ * Invariants: PR47 snapshots identify lines by SKU, never inferred product titles;
+ * minor amounts stay exact strings/BigInt; no fulfillment/refund writes;
  * contract fixture is visibly labelled and does not establish backend authorization.
  */
 import { useEffect, useState } from 'react';
@@ -13,12 +14,14 @@ export const ORDER_STATES = ['pending_payment', 'paid', 'partially_fulfilled', '
 export type OrderState = typeof ORDER_STATES[number];
 export const ORDERS_FIXTURE_LABEL = 'CONTRACT FIXTURE (orders read API pending PR)';
 export interface OrderSummary { id: string; order_number: string; state: OrderState; currency: string; total_minor: string; customer_kind: 'customer' | 'guest'; created_at: string }
-export interface OrderPage { items: OrderSummary[]; next_cursor?: string | null }
-export interface OrderDetail { id: string; order_number: string; state: OrderState; version: number; currency: string; lines: {line_id: string; sku_code: string; title: string; quantity: number; unit_price_minor: string; tax_minor: string; line_total_minor: string}[]; adjustments: {id: string; reason: string; amount_minor: string}[]; shipping: {amount_minor: string; method: string}; tax_total_minor: string; total_minor: string; created_at: string; updated_at: string }
+export interface OrderPage { items: OrderSummary[]; next_cursor?: string }
+export interface OrderDetail { id: string; order_number: string; state: OrderState; version: number; currency: string; lines: {line_id: string; sku_code: string; title: string | null; quantity: number; unit_price_minor: string; tax_minor: string; line_total_minor: string}[]; adjustments: {id: string; reason: string; amount_minor: string}[]; shipping: {amount_minor: string; method: string | null}; tax_total_minor: string; total_minor: string; created_at: string; updated_at: string }
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function invalid(): never { throw new Error('Invalid orders response. Retry or contact support.'); }
 function object(value: unknown): Record<string, unknown> { if (!value || typeof value !== 'object' || Array.isArray(value)) return invalid(); return value as Record<string, unknown>; }
 function text(value: unknown): string { if (typeof value !== 'string' || value.length === 0) return invalid(); return value; }
+// PR47 allows string|null here; method denotes a rate rule, not a carrier.
+function nullableText(value: unknown): string | null { if (value === null || typeof value === 'string') return value; return invalid(); }
 function uuid(value: unknown): string { const v = text(value); if (!uuidPattern.test(v)) return invalid(); return v; }
 function minor(value: unknown): string { const v = text(value); if (!/^(0|[1-9]\d*|-[1-9]\d*)$/.test(v)) return invalid(); return v; }
 function positive(value: unknown): number { if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) return invalid(); return value; }
@@ -30,13 +33,13 @@ function base(value: unknown) { const v = object(value); return {id: uuid(v.id),
 export function parseOrderPage(value: unknown): OrderPage {
   const v = object(value);
   const items = array(v.items, row => { const r = object(row); if (r.customer_kind !== 'customer' && r.customer_kind !== 'guest') return invalid(); return {...base(r), customer_kind: r.customer_kind as OrderSummary['customer_kind']}; });
-  if (v.next_cursor !== undefined && v.next_cursor !== null && typeof v.next_cursor !== 'string') return invalid();
-  return {items, next_cursor: v.next_cursor as string | null | undefined};
+  if (v.next_cursor !== undefined && typeof v.next_cursor !== 'string') return invalid();
+  return {items, ...(v.next_cursor === undefined ? {} : {next_cursor: v.next_cursor as string})};
 }
 export function parseOrderDetail(value: unknown): OrderDetail {
   const v = object(value), shipping = object(v.shipping);
-  return {...base(v), version: positive(v.version), updated_at: date(v.updated_at), tax_total_minor: minor(v.tax_total_minor), shipping: {amount_minor: minor(shipping.amount_minor), method: text(shipping.method)},
-    lines: array(v.lines, value => { const r = object(value); return {line_id: uuid(r.line_id), sku_code: text(r.sku_code), title: text(r.title), quantity: positive(r.quantity), unit_price_minor: minor(r.unit_price_minor), tax_minor: minor(r.tax_minor), line_total_minor: minor(r.line_total_minor)}; }),
+  return {...base(v), version: positive(v.version), updated_at: date(v.updated_at), tax_total_minor: minor(v.tax_total_minor), shipping: {amount_minor: minor(shipping.amount_minor), method: nullableText(shipping.method)},
+    lines: array(v.lines, value => { const r = object(value); return {line_id: uuid(r.line_id), sku_code: text(r.sku_code), title: nullableText(r.title), quantity: positive(r.quantity), unit_price_minor: minor(r.unit_price_minor), tax_minor: minor(r.tax_minor), line_total_minor: minor(r.line_total_minor)}; }),
     adjustments: array(v.adjustments, value => { const r = object(value); return {id: uuid(r.id), reason: text(r.reason), amount_minor: minor(r.amount_minor)}; })};
 }
 /** Intl supplies the currency exponent; only BigInt touches monetary digits. */
@@ -92,8 +95,8 @@ export function OrderDetailPage({api, tenantId, fixture = false}: PageProps) {
   return <section className="admin-page" aria-labelledby="order-title"><Link to=".." relative="path">Back to orders</Link><h1 id="order-title">{order ? `Order ${order.order_number}` : 'Order details'}</h1>{fixture && <p className="admin-muted">{ORDERS_FIXTURE_LABEL}</p>}
     {loading ? <p role="status">Loading order…</p> : error ? <OrderError message={error} retry={() => setRetry(n => n + 1)} /> : !order ? <EmptyState headingLevel={2} title="Order unavailable" /> : <>
       <p><Badge tone="neutral">{order.state.replaceAll('_', ' ')}</Badge> · Version {order.version}</p>
-      <Card><DataTable caption="Order lines" columns={[{key: 'sku', label: 'SKU'}, {key: 'title', label: 'Item'}, {key: 'quantity', label: 'Quantity'}, {key: 'unit', label: 'Unit price'}, {key: 'tax', label: 'Tax'}, {key: 'total', label: 'Line total'}]} rows={order.lines.map(line => ({id: line.line_id, sku: line.sku_code, title: line.title, quantity: line.quantity, unit: formatMoney(line.unit_price_minor, order.currency), tax: formatMoney(line.tax_minor, order.currency), total: formatMoney(line.line_total_minor, order.currency)}))} /></Card>
-      <Card><h2>Totals</h2><dl className="admin-stack"><dt>Shipping ({order.shipping.method})</dt><dd>{formatMoney(order.shipping.amount_minor, order.currency)}</dd>{order.adjustments.map(a => <div key={a.id}><dt>{a.reason}</dt><dd>{formatMoney(a.amount_minor, order.currency)}</dd></div>)}<dt>Tax total</dt><dd>{formatMoney(order.tax_total_minor, order.currency)}</dd><dt>Order total</dt><dd>{formatMoney(order.total_minor, order.currency)}</dd></dl></Card>
+      <Card><DataTable caption="Order lines" columns={[{key: 'sku', label: 'SKU'}, {key: 'quantity', label: 'Quantity'}, {key: 'unit', label: 'Unit price'}, {key: 'tax', label: 'Tax'}, {key: 'total', label: 'Line total'}]} rows={order.lines.map(line => ({id: line.line_id, sku: line.sku_code, quantity: line.quantity, unit: formatMoney(line.unit_price_minor, order.currency), tax: formatMoney(line.tax_minor, order.currency), total: formatMoney(line.line_total_minor, order.currency)}))} /></Card>
+      <Card><h2>Totals</h2><dl className="admin-stack"><dt>Shipping rule ({order.shipping.method || 'Not recorded'})</dt><dd>{formatMoney(order.shipping.amount_minor, order.currency)}</dd>{order.adjustments.map(a => <div key={a.id}><dt>{a.reason}</dt><dd>{formatMoney(a.amount_minor, order.currency)}</dd></div>)}<dt>Tax total</dt><dd>{formatMoney(order.tax_total_minor, order.currency)}</dd><dt>Order total</dt><dd>{formatMoney(order.total_minor, order.currency)}</dd></dl></Card>
       <p className="admin-muted">Created <time dateTime={order.created_at}>{order.created_at}</time> · Updated <time dateTime={order.updated_at}>{order.updated_at}</time></p>
     </>}
   </section>;

@@ -4,7 +4,31 @@ import { formatMoney, parseOrderPage, parseOrderDetail } from './orders';
 const id = '11111111-1111-4111-8111-111111111111';
 const time = '2026-10-13T00:00:00Z';
 const summary = { id, order_number: 'ORD-1', state: 'paid', currency: 'USD', total_minor: '900719925474099301', customer_kind: 'guest', created_at: time };
-const detail = { id, order_number: 'ORD-1', state: 'paid', version: 1, currency: 'USD', lines: [{ line_id: id, sku_code: 'SKU-1', title: 'Item', quantity: 2, unit_price_minor: '10', tax_minor: '1', line_total_minor: '20' }], adjustments: [{ id, reason: 'discount', amount_minor: '-3' }], shipping: { amount_minor: '2', method: 'courier' }, tax_total_minor: '1', total_minor: '20', created_at: time, updated_at: time };
+const detail = { id, order_number: 'ORD-1', state: 'paid', version: 1, currency: 'USD', lines: [{ line_id: id, sku_code: 'SKU-1', title: null, quantity: 2, unit_price_minor: '10', tax_minor: '1', line_total_minor: '20' }], adjustments: [{ id, reason: 'discount', amount_minor: '-3' }], shipping: { amount_minor: '2', method: 'by_weight' }, tax_total_minor: '1', total_minor: '20', created_at: time, updated_at: time };
+test('PR47 projection accepts null snapshot titles and nullable shipping rules', () => {
+  for (const method of [null, 'fixed', 'by_weight', 'free_over_amount', '', 'future_rule']) {
+    const parsed = parseOrderDetail({...detail, shipping: {...detail.shipping, method}});
+    expect(parsed.lines[0].title).toBeNull();
+    expect(parsed.lines[0].sku_code).toBe('SKU-1');
+    expect(parsed.shipping.method).toBe(method);
+  }
+  // The published schema also permits a title string; current snapshots return null.
+  expect(parseOrderDetail({...detail, lines: [{...detail.lines[0], title: 'Future title'}]}).lines[0].title).toBe('Future title');
+  for (const value of [undefined, 1, {}]) {
+    expect(() => parseOrderDetail({...detail, lines: [{...detail.lines[0], title: value}]})).toThrow();
+    expect(() => parseOrderDetail({...detail, shipping: {...detail.shipping, method: value}})).toThrow();
+  }
+});
+test('PR47 final page omits cursor and adjustments depend only on signed amounts', () => {
+  expect(parseOrderPage({items: []}).next_cursor).toBeUndefined();
+  expect(() => parseOrderPage({items: [], next_cursor: null})).toThrow();
+  const parsed = parseOrderDetail({...detail, guest_email: 'private@example.invalid', adjustments: [
+    {id, reason: 'discount', amount_minor: '-3'}, {id, reason: 'surcharge', amount_minor: '3'},
+  ]});
+  expect(parsed.adjustments.map(a => formatMoney(a.amount_minor, 'USD'))).toEqual(['USD -0.03', 'USD 0.03']);
+  expect(parsed).not.toHaveProperty('guest_email');
+  expect(parsed.adjustments[0]).not.toHaveProperty('kind');
+});
 test('CONTRACT FIXTURE (orders read API pending PR): exact signed and currency exponent money', () => {
   expect(formatMoney('900719925474099301', 'USD')).toBe('USD 9,007,199,254,740,993.01');
   expect(formatMoney('-900719925474099301', 'USD')).toBe('USD -9,007,199,254,740,993.01');
