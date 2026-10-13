@@ -1,4 +1,4 @@
-// Package bootstrap wires catalog, media, cart, injected routes and operational telemetry.
+// Package bootstrap wires catalog, media, cart, fulfillment/returns, injected routes and operational telemetry.
 // Dependencies: module constructors, platform/httpapi and observability; caller: cmd/api.
 // It owns no business tables or pools. Registration errors refuse startup; request
 // contexts are bounded, route snapshots immutable and metric labels nonsensitive.
@@ -16,8 +16,8 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
@@ -26,14 +26,14 @@ import (
 )
 
 type Config struct {
-	Fulfillment fulfillment.HTTPConfig
-	Returns returns.HTTPConfig
 	Address                  string
 	Logger                   *slog.Logger
 	Authenticator            httpapi.Authenticator
 	Routes                   []httpapi.Route
 	Catalog                  catalog.Config
 	Media                    media.Config
+	Fulfillment              fulfillment.HTTPConfig
+	Returns                  returns.HTTPConfig
 	Cart                     *cart.Module
 	Quotes                   quoteshttp.QuotesService
 	QuotesBuyerAuthenticator httpapi.Authenticator

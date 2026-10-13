@@ -17576,7 +17576,6 @@ const (
 	CreateReturnKindUnshippedCancel CreateReturnKind = "unshipped_cancel"
 )
 
-// Valid indicates whether the value is a known member of the CreateReturnKind enum.
 
 func (e CreateReturnKind) Valid() bool {
 	switch e {
@@ -17589,14 +17588,12 @@ func (e CreateReturnKind) Valid() bool {
 	}
 }
 
-// Defines values for DataBindingResolver.
 
 const (
 	ReturnRecordKindShipmentReturn  ReturnRecordKind = "shipment_return"
 	ReturnRecordKindUnshippedCancel ReturnRecordKind = "unshipped_cancel"
 )
 
-// Valid indicates whether the value is a known member of the ReturnRecordKind enum.
 
 func (e ReturnRecordKind) Valid() bool {
 	switch e {
@@ -17609,7 +17606,6 @@ func (e ReturnRecordKind) Valid() bool {
 	}
 }
 
-// Defines values for SiteStatus.
 
 type CreateReturn struct {
 	Kind   CreateReturnKind `json:"kind"`
@@ -17617,11 +17613,9 @@ type CreateReturn struct {
 	Reason string           `json:"reason"`
 }
 
-// CreateReturnKind defines model for CreateReturn.Kind.
 
 type CreateReturnKind string
 
-// CreateShipment defines model for CreateShipment.
 
 type CreateShipment struct {
 	Carrier        string             `json:"carrier"`
@@ -17629,17 +17623,14 @@ type CreateShipment struct {
 	TrackingNumber string             `json:"tracking_number"`
 }
 
-// CreateSite defines model for CreateSite.
 
 type ReceiveReturn struct {
 	Restock bool `json:"restock"`
 }
 
-// RefundReturn defines model for RefundReturn.
 
 type RefundReturn = map[string]interface{}
 
-// ReturnQuantity defines model for ReturnQuantity.
 
 type ReturnQuantity struct {
 	OrderLineId    openapi_types.UUID  `json:"order_line_id"`
@@ -17647,7 +17638,6 @@ type ReturnQuantity struct {
 	ShipmentLineId *openapi_types.UUID `json:"shipment_line_id,omitempty"`
 }
 
-// ReturnRecord defines model for ReturnRecord.
 
 type ReturnRecord struct {
 	Id           openapi_types.UUID `json:"id"`
@@ -17660,11 +17650,9 @@ type ReturnRecord struct {
 	Status       string             `json:"status"`
 }
 
-// ReturnRecordKind defines model for ReturnRecord.Kind.
 
 type ReturnRecordKind string
 
-// ReturnRecordLine defines model for ReturnRecordLine.
 
 type ReturnRecordLine struct {
 	Id             openapi_types.UUID  `json:"id"`
@@ -17673,14 +17661,12 @@ type ReturnRecordLine struct {
 	ShipmentLineId *openapi_types.UUID `json:"shipment_line_id,omitempty"`
 }
 
-// SetCartLine defines model for SetCartLine.
 
 type ShipmentQuantity struct {
 	OrderLineId openapi_types.UUID `json:"order_line_id"`
 	Quantity    int64              `json:"quantity"`
 }
 
-// ShipmentRecord defines model for ShipmentRecord.
 
 type ShipmentRecord struct {
 	Id           openapi_types.UUID   `json:"id"`
@@ -17690,7 +17676,6 @@ type ShipmentRecord struct {
 	Status       string               `json:"status"`
 }
 
-// ShipmentRecordLine defines model for ShipmentRecordLine.
 
 type ShipmentRecordLine struct {
 	Id          openapi_types.UUID `json:"id"`
@@ -17698,15 +17683,12 @@ type ShipmentRecordLine struct {
 	Quantity    int64              `json:"quantity"`
 }
 
-// Site defines model for Site.
 
 type OrderId = openapi_types.UUID
 
-// Origin defines model for Origin.
 
 type ReturnId = openapi_types.UUID
 
-// SessionId defines model for SessionId.
 
 type CreateReturnParams struct {
 	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
@@ -17720,7 +17702,6 @@ type CreateReturnParams struct {
 	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
 }
 
-// CreateShipmentParams defines parameters for CreateShipment.
 
 type CreateShipmentParams struct {
 	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
@@ -17734,7 +17715,6 @@ type CreateShipmentParams struct {
 	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
 }
 
-// CreateOrganizationParams defines parameters for CreateOrganization.
 
 type ReceiveReturnParams struct {
 	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
@@ -17748,7 +17728,6 @@ type ReceiveReturnParams struct {
 	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
 }
 
-// RefundReturnParams defines parameters for RefundReturn.
 
 type RefundReturnParams struct {
 	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
@@ -17762,23 +17741,18 @@ type RefundReturnParams struct {
 	XCSRFToken *CSRFTokenIfCookie `json:"X-CSRF-Token,omitempty"`
 }
 
-// CreateSiteParams defines parameters for CreateSite.
 
 type CreateReturnJSONRequestBody = CreateReturn
 
-// CreateShipmentJSONRequestBody defines body for CreateShipment for application/json ContentType.
 
 type CreateShipmentJSONRequestBody = CreateShipment
 
-// CreateOrganizationJSONRequestBody defines body for CreateOrganization for application/json ContentType.
 
 type ReceiveReturnJSONRequestBody = ReceiveReturn
 
-// RefundReturnJSONRequestBody defines body for RefundReturn for application/json ContentType.
 
 type RefundReturnJSONRequestBody = RefundReturn
 
-// CreateSiteJSONRequestBody defines body for CreateSite for application/json ContentType.
 
 func (siw *ServerInterfaceWrapper) CreateReturn(w http.ResponseWriter, r *http.Request) {
 
@@ -17903,7 +17877,6 @@ func (siw *ServerInterfaceWrapper) CreateReturn(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
-// CreateShipment operation middleware
 
 func (siw *ServerInterfaceWrapper) CreateShipment(w http.ResponseWriter, r *http.Request) {
 
@@ -18028,7 +18001,6 @@ func (siw *ServerInterfaceWrapper) CreateShipment(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
-// CreateOrganization operation middleware
 
 func (siw *ServerInterfaceWrapper) ReceiveReturn(w http.ResponseWriter, r *http.Request) {
 
@@ -18153,7 +18125,6 @@ func (siw *ServerInterfaceWrapper) ReceiveReturn(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
-// RefundReturn operation middleware
 
 func (siw *ServerInterfaceWrapper) RefundReturn(w http.ResponseWriter, r *http.Request) {
 
@@ -18278,7 +18249,6 @@ func (siw *ServerInterfaceWrapper) RefundReturn(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
-// CreateSite operation middleware
 
 type CreateReturnRequestObject struct {
 	TenantId TenantId `json:"tenant_id"`
@@ -19102,7 +19072,6 @@ func (sh *strictHandler) CreateReturn(w http.ResponseWriter, r *http.Request, te
 	}
 }
 
-// CreateShipment operation middleware
 
 func (sh *strictHandler) CreateShipment(w http.ResponseWriter, r *http.Request, tenantId TenantId, orderId OrderId, params CreateShipmentParams) {
 	var request CreateShipmentRequestObject
@@ -19138,7 +19107,6 @@ func (sh *strictHandler) CreateShipment(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
-// CreateOrganization operation middleware
 
 func (sh *strictHandler) ReceiveReturn(w http.ResponseWriter, r *http.Request, tenantId TenantId, returnId ReturnId, params ReceiveReturnParams) {
 	var request ReceiveReturnRequestObject
@@ -19174,7 +19142,6 @@ func (sh *strictHandler) ReceiveReturn(w http.ResponseWriter, r *http.Request, t
 	}
 }
 
-// RefundReturn operation middleware
 
 func (sh *strictHandler) RefundReturn(w http.ResponseWriter, r *http.Request, tenantId TenantId, returnId ReturnId, params RefundReturnParams) {
 	var request RefundReturnRequestObject
@@ -19210,4 +19177,4 @@ func (sh *strictHandler) RefundReturn(w http.ResponseWriter, r *http.Request, te
 	}
 }
 
-// CreateSite operation middleware
+

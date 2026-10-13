@@ -2637,6 +2637,20 @@ components:
       schema:
         type: string
         format: uuid
+    OrderId:
+      name: order_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ReturnId:
+      name: return_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   responses:
     BadRequest:
       description: BadRequest
