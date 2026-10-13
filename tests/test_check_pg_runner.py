@@ -128,6 +128,7 @@ expected = [
     'db_identity_login.sql',
     'db_cms_publish.sql',
     'db_checkout.sql',
+    'db_customer_auth.sql',
     'db_fulfillment_returns.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
@@ -165,9 +166,7 @@ def login_runner_contract(races, upgrade):
     assert 'pg_blocking_pids(second.pid)' in rotation, 'login rotation requires an observed blocker'
     assert "expect login_rotate_second 'no rows returned for'" in rotation
     assert 'LOGIN_ROTATION_RACE=1|1|1|0' in rotation, 'exactly one successor must remain'
-    # Later modules also apply their own predecessors/successors. Audit only the
-    # login case through its cleanup, retaining both exact loops and mutations.
-    login = upgrade[upgrade.index('# C-02b: start'):].split('\nLOGIN_DB=""', 1)[0]
+    login = upgrade[upgrade.index('# C-02b: start'):]
     assert 'login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)' in login
     assert '[[ $f < ${login_files[0]} ]] || break' in login
     assert '[[ $f > ${login_files[0]} ]] || continue' in login
@@ -322,6 +321,7 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('LOGIN_GATE', 'db_identity_login.sql'),
                          ('CMS_EXPECTED_REFUSAL', 'db_cms_publish.sql'),
                          ('checkout SQL PASS', 'db_checkout.sql'),
+                         ('CUSTOMER_AUTH_GLOBAL_SCHEMA_MISSING', 'db_customer_auth.sql'),
                          ('FULFILLMENT_GATE', 'db_fulfillment_returns.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
