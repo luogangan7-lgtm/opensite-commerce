@@ -148,6 +148,7 @@ LEDGER_DB=""
 ORDERS_DB=""
 QUOTES_DB=""
 CATALOG_DB=""
+CART_DB=""
 QUEUE_DB=""
 LIMITS_DB=""
 INVENTORY_DB=""
@@ -155,7 +156,7 @@ PRICING_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUOTES_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUOTES_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -808,6 +809,50 @@ river_db "$DB" --verify
 db "$DB" -f tests/db_orders.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; ORDERS_DB=""
+# Cart additive upgrade: all predecessors, populated customers/catalog, then
+# the logical *_cart suffix. Number reservations can be reconciled without drift.
+cart=(migrations/[0-9][0-9][0-9]_cart.sql)
+[[ ${#cart[@]} == 1 && -f ${cart[0]} ]] || { echo 'FAIL: exactly one cart migration required' >&2; exit 1; }
+CART_DB=cart_upgrade_$$
+admin -c "CREATE DATABASE $CART_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${cart[0]} ]] || break
+ apply_forward "$CART_DB" "$f"
+done
+db "$CART_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('cart-existing-tenant') RETURNING id AS t \gset
+INSERT INTO app.customers(tenant_id,email) VALUES(:'t','cart-upgrade@example.test');
+INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES(:'t','cart-existing-product','ready') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','cart-existing-sku','default');
+SQL
+{ echo 'BEGIN;'; cat "${cart[0]}"; echo 'COMMIT;'; } | db "$CART_DB" >/dev/null
+result=$(db "$CART_DB" <<'SQL'
+SELECT t.id AS t,c.id AS customer,v.id AS sku FROM app.tenants t
+JOIN app.customers c ON c.tenant_id=t.id JOIN app.product_variants v ON v.tenant_id=t.id
+WHERE t.name='cart-existing-tenant' \gset
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true),set_config('app.cart_customer_id',:'customer',true),set_config('app.cart_token_hash','',true);
+SET LOCAL ROLE app_runtime;
+INSERT INTO app.carts(tenant_id,customer_id,currency) VALUES(:'t',:'customer','USD') RETURNING id AS cart \gset
+INSERT INTO app.cart_lines VALUES(:'t',:'cart',:'sku',2);
+UPDATE app.carts SET version=version+1 WHERE id=:'cart' AND version=1;
+SELECT 'CART_UPGRADE='||(SELECT version FROM app.carts WHERE id=:'cart')||'|'||
+ (SELECT quantity FROM app.cart_lines WHERE cart_id=:'cart')||'|'||
+ (SELECT count(*) FROM app.product_variants WHERE sku='cart-existing-sku')||'|'||
+ (SELECT count(*) FROM app.customers WHERE email='cart-upgrade@example.test');
+COMMIT;
+SQL
+)
+[[ $result == *'CART_UPGRADE=2|2|1|1'* ]] || bad "cart populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${cart[0]} ]] || continue
+ apply_forward "$CART_DB" "$f"
+done
+if ! db "$CART_DB" < tests/db_cart.sql >/dev/null || ! db "$CART_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'cart owner/constraints/role matrix after populated upgrade'
+else pass 'cart upgrade preserves prior customers/catalog; owner/CAS and exact privilege gate pass'; fi
+admin -c "DROP DATABASE $CART_DB" >/dev/null; CART_DB=""
+
 # Quotes takes over the existing005 inquiry table without rebuilding contacts.
 # Filename order applies every predecessor, including any integrator renumbering.
 quotes=(migrations/[0-9][0-9][0-9]_quotes.sql)
@@ -840,4 +885,4 @@ admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
 
 
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits and quotes upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart and quotes upgrade gates'

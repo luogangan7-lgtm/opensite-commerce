@@ -26,6 +26,42 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for CartPricingError.
+const (
+	CartPricingErrorAmountOverflow   CartPricingError = "amount_overflow"
+	CartPricingErrorPriceUnavailable CartPricingError = "price_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the CartPricingError enum.
+func (e CartPricingError) Valid() bool {
+	switch e {
+	case CartPricingErrorAmountOverflow:
+		return true
+	case CartPricingErrorPriceUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CartLinePricingError.
+const (
+	CartLinePricingErrorAmountOverflow   CartLinePricingError = "amount_overflow"
+	CartLinePricingErrorPriceUnavailable CartLinePricingError = "price_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the CartLinePricingError enum.
+func (e CartLinePricingError) Valid() bool {
+	switch e {
+	case CartLinePricingErrorAmountOverflow:
+		return true
+	case CartLinePricingErrorPriceUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ComponentAddType.
 const (
 	ComponentAddTypeComponentAdd ComponentAddType = "component.add"
@@ -409,6 +445,42 @@ type AdminSessionList struct {
 	Sessions []AdminSession `json:"sessions"`
 }
 
+// Cart defines model for Cart.
+type Cart struct {
+	Currency string             `json:"currency"`
+	Id       openapi_types.UUID `json:"id"`
+
+	// Lines At most 1000 distinct SKUs, so the representation fits the 1 MiB response buffer.
+	Lines []CartLine `json:"lines"`
+
+	// PricingError Cart is not fully priced; subtotal is omitted.
+	PricingError *CartPricingError `json:"pricing_error,omitempty"`
+	Subtotal     *int64            `json:"subtotal,omitempty"`
+	Version      int64             `json:"version"`
+}
+
+// CartPricingError Cart is not fully priced; subtotal is omitted.
+type CartPricingError string
+
+// CartLine defines model for CartLine.
+type CartLine struct {
+	AvailableQuantity int64               `json:"available_quantity"`
+	LineAmount        *int64              `json:"line_amount,omitempty"`
+	MinQuantity       *int64              `json:"min_quantity,omitempty"`
+	PriceListId       *openapi_types.UUID `json:"price_list_id,omitempty"`
+
+	// PricingError Quote is unavailable; monetary and selected price fields are omitted.
+	PricingError *CartLinePricingError `json:"pricing_error,omitempty"`
+	Priority     *int32                `json:"priority,omitempty"`
+	Quantity     int64                 `json:"quantity"`
+	Sellable     bool                  `json:"sellable"`
+	SkuId        openapi_types.UUID    `json:"sku_id"`
+	UnitAmount   *int64                `json:"unit_amount,omitempty"`
+}
+
+// CartLinePricingError Quote is unavailable; monetary and selected price fields are omitted.
+type CartLinePricingError string
+
 // ComponentAdd defines model for ComponentAdd.
 type ComponentAdd struct {
 	Arguments struct {
@@ -479,6 +551,11 @@ type CreateAdminSession struct {
 	Password   *string `json:"password,omitempty"`
 }
 
+// CreateCart defines model for CreateCart.
+type CreateCart struct {
+	Currency string `json:"currency"`
+}
+
 // CreateDraft defines model for CreateDraft.
 type CreateDraft struct {
 	BaseReleaseId nullable.Nullable[openapi_types.UUID] `json:"base_release_id,omitempty"`
@@ -536,6 +613,12 @@ type CreateUpload struct {
 type CreateVariant struct {
 	OptionValueIds []openapi_types.UUID `json:"option_value_ids"`
 	Sku            string               `json:"sku"`
+}
+
+// CreatedCart defines model for CreatedCart.
+type CreatedCart struct {
+	Cart      Cart    `json:"cart"`
+	CartToken *string `json:"cart_token,omitempty"`
 }
 
 // CurrentActor defines model for CurrentActor.
@@ -727,6 +810,12 @@ type QuoteSnapshot struct {
 // QuoteTransition defines model for QuoteTransition.
 type QuoteTransition = map[string]interface{}
 
+// SetCartLine defines model for SetCartLine.
+type SetCartLine struct {
+	// Quantity Absolute quantity; zero deletes the line.
+	Quantity int64 `json:"quantity"`
+}
+
 // Site defines model for Site.
 type Site struct {
 	DefaultLocale      string                                `json:"default_locale"`
@@ -804,6 +893,12 @@ type CSRFToken = string
 // CSRFTokenIfCookie defines model for CSRFTokenIfCookie.
 type CSRFTokenIfCookie = string
 
+// CartId defines model for CartId.
+type CartId = openapi_types.UUID
+
+// CartToken defines model for CartToken.
+type CartToken = string
+
 // Cursor defines model for Cursor.
 type Cursor = string
 
@@ -840,6 +935,9 @@ type SessionId = openapi_types.UUID
 // SiteId defines model for SiteId.
 type SiteId = openapi_types.UUID
 
+// SkuId defines model for SkuId.
+type SkuId = openapi_types.UUID
+
 // TenantId defines model for TenantId.
 type TenantId = openapi_types.UUID
 
@@ -872,6 +970,9 @@ type PreconditionFailed = Problem
 
 // PreconditionRequired defines model for PreconditionRequired.
 type PreconditionRequired = Problem
+
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = Problem
 
 // TooManyRequests defines model for TooManyRequests.
 type TooManyRequests = Problem
@@ -934,6 +1035,28 @@ type RevokeAdminSessionParams struct {
 
 	// XCSRFToken Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted.
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CreateCartParams defines parameters for CreateCart.
+type CreateCartParams struct {
+	XCartToken *CartToken `json:"X-Cart-Token,omitempty"`
+}
+
+// GetCartParams defines parameters for GetCart.
+type GetCartParams struct {
+	XCartToken *CartToken `json:"X-Cart-Token,omitempty"`
+}
+
+// DeleteCartLineParams defines parameters for DeleteCartLine.
+type DeleteCartLineParams struct {
+	XCartToken *CartToken `json:"X-Cart-Token,omitempty"`
+	IfMatch    IfMatch    `json:"If-Match"`
+}
+
+// SetCartLineParams defines parameters for SetCartLine.
+type SetCartLineParams struct {
+	XCartToken *CartToken `json:"X-Cart-Token,omitempty"`
+	IfMatch    IfMatch    `json:"If-Match"`
 }
 
 // CreateMediaUploadParams defines parameters for CreateMediaUpload.
@@ -1225,6 +1348,12 @@ type RejectQuoteJSONRequestBody = QuoteTransition
 
 // CreateAdminSessionJSONRequestBody defines body for CreateAdminSession for application/json ContentType.
 type CreateAdminSessionJSONRequestBody = CreateAdminSession
+
+// CreateCartJSONRequestBody defines body for CreateCart for application/json ContentType.
+type CreateCartJSONRequestBody = CreateCart
+
+// SetCartLineJSONRequestBody defines body for SetCartLine for application/json ContentType.
+type SetCartLineJSONRequestBody = SetCartLine
 
 // CreateMediaUploadJSONRequestBody defines body for CreateMediaUpload for application/json ContentType.
 type CreateMediaUploadJSONRequestBody = CreateUpload
@@ -1557,6 +1686,18 @@ type ServerInterface interface {
 
 	// (GET /api/v1/auth/current-actor)
 	GetCurrentActor(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/v1/t/{tenant_id}/carts)
+	CreateCart(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateCartParams)
+
+	// (GET /api/v1/t/{tenant_id}/carts/{cart_id})
+	GetCart(w http.ResponseWriter, r *http.Request, tenantId TenantId, cartId CartId, params GetCartParams)
+
+	// (DELETE /api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id})
+	DeleteCartLine(w http.ResponseWriter, r *http.Request, tenantId TenantId, cartId CartId, skuId SkuId, params DeleteCartLineParams)
+
+	// (PUT /api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id})
+	SetCartLine(w http.ResponseWriter, r *http.Request, tenantId TenantId, cartId CartId, skuId SkuId, params SetCartLineParams)
 
 	// (POST /api/v1/t/{tenant_id}/media/uploads)
 	CreateMediaUpload(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateMediaUploadParams)
@@ -2152,6 +2293,297 @@ func (siw *ServerInterfaceWrapper) GetCurrentActor(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCurrentActor(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCart operation middleware
+func (siw *ServerInterfaceWrapper) CreateCart(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateCartParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Cart-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Cart-Token")]; found {
+		var XCartToken CartToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Cart-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Cart-Token", valueList[0], &XCartToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Cart-Token", Err: err})
+			return
+		}
+
+		params.XCartToken = &XCartToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCart(w, r, tenantId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCart operation middleware
+func (siw *ServerInterfaceWrapper) GetCart(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "cart_id" -------------
+	var cartId CartId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cart_id", r.PathValue("cart_id"), &cartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cart_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCartParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Cart-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Cart-Token")]; found {
+		var XCartToken CartToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Cart-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Cart-Token", valueList[0], &XCartToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Cart-Token", Err: err})
+			return
+		}
+
+		params.XCartToken = &XCartToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCart(w, r, tenantId, cartId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCartLine operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCartLine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "cart_id" -------------
+	var cartId CartId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cart_id", r.PathValue("cart_id"), &cartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cart_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sku_id" -------------
+	var skuId SkuId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sku_id", r.PathValue("sku_id"), &skuId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sku_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteCartLineParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Cart-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Cart-Token")]; found {
+		var XCartToken CartToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Cart-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Cart-Token", valueList[0], &XCartToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Cart-Token", Err: err})
+			return
+		}
+
+		params.XCartToken = &XCartToken
+
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCartLine(w, r, tenantId, cartId, skuId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetCartLine operation middleware
+func (siw *ServerInterfaceWrapper) SetCartLine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "cart_id" -------------
+	var cartId CartId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cart_id", r.PathValue("cart_id"), &cartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cart_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sku_id" -------------
+	var skuId SkuId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sku_id", r.PathValue("sku_id"), &skuId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sku_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SetCartLineParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Cart-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Cart-Token")]; found {
+		var XCartToken CartToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Cart-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Cart-Token", valueList[0], &XCartToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Cart-Token", Err: err})
+			return
+		}
+
+		params.XCartToken = &XCartToken
+
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetCartLine(w, r, tenantId, cartId, skuId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4884,6 +5316,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/t/{tenant_id}/products/{product_id}/variants/{variant_id}", wrapper.UpdateVariant)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/products/{product_id}/media", wrapper.LinkProductMedia)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/t/{tenant_id}/media/{media_id}", wrapper.DeleteMedia)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/carts", wrapper.CreateCart)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/carts/{cart_id}", wrapper.GetCart)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}", wrapper.DeleteCartLine)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}", wrapper.SetCartLine)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/quotes", wrapper.CreateQuote)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/quotes/{quote_id}", wrapper.GetQuote)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/quotes/{quote_id}/send", wrapper.SendQuote)
@@ -4914,6 +5350,8 @@ type PreconditionFailedApplicationProblemPlusJSONResponse Problem
 type PreconditionRequiredApplicationProblemPlusJSONResponse Problem
 
 type ProblemApplicationProblemPlusJSONResponse Problem
+
+type ServiceUnavailableApplicationProblemPlusJSONResponse Problem
 
 type TooManyRequestsApplicationProblemPlusJSONResponse Problem
 
@@ -6871,6 +7309,913 @@ func (response GetCurrentActor429ApplicationProblemPlusJSONResponse) VisitGetCur
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCartRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	Params   CreateCartParams
+	Body     *CreateCartJSONRequestBody
+}
+
+type CreateCartResponseObject interface {
+	VisitCreateCartResponse(w http.ResponseWriter) error
+}
+
+type CreateCart201ResponseHeaders struct {
+	CacheControl string
+	ETag         string
+}
+
+type CreateCart201JSONResponse struct {
+	Body    CreatedCart
+	Headers CreateCart201ResponseHeaders
+}
+
+func (response CreateCart201JSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart400ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart401ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart403ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart404ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart409ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart412ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart413ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart415ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart422ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart428ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart429ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCart503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCart503ApplicationProblemPlusJSONResponse) VisitCreateCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCartRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	CartId   CartId   `json:"cart_id"`
+	Params   GetCartParams
+}
+
+type GetCartResponseObject interface {
+	VisitGetCartResponse(w http.ResponseWriter) error
+}
+
+type GetCart200ResponseHeaders struct {
+	CacheControl string
+	ETag         string
+}
+
+type GetCart200JSONResponse struct {
+	Body    Cart
+	Headers GetCart200ResponseHeaders
+}
+
+func (response GetCart200JSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart400ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart401ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart403ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart404ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart409ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart412ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart413ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart415ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart422ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart428ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart429ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCart503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response GetCart503ApplicationProblemPlusJSONResponse) VisitGetCartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLineRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	CartId   CartId   `json:"cart_id"`
+	SkuId    SkuId    `json:"sku_id"`
+	Params   DeleteCartLineParams
+}
+
+type DeleteCartLineResponseObject interface {
+	VisitDeleteCartLineResponse(w http.ResponseWriter) error
+}
+
+type DeleteCartLine200ResponseHeaders struct {
+	CacheControl string
+	ETag         string
+}
+
+type DeleteCartLine200JSONResponse struct {
+	Body    Cart
+	Headers DeleteCartLine200ResponseHeaders
+}
+
+func (response DeleteCartLine200JSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine400ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine401ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine403ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine404ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine409ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine412ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine413ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine415ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine422ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine428ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine429ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCartLine503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCartLine503ApplicationProblemPlusJSONResponse) VisitDeleteCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLineRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	CartId   CartId   `json:"cart_id"`
+	SkuId    SkuId    `json:"sku_id"`
+	Params   SetCartLineParams
+	Body     *SetCartLineJSONRequestBody
+}
+
+type SetCartLineResponseObject interface {
+	VisitSetCartLineResponse(w http.ResponseWriter) error
+}
+
+type SetCartLine200ResponseHeaders struct {
+	CacheControl string
+	ETag         string
+}
+
+type SetCartLine200JSONResponse struct {
+	Body    Cart
+	Headers SetCartLine200ResponseHeaders
+}
+
+func (response SetCartLine200JSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine400ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine401ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine403ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine404ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine409ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine412ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine413ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine415ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine422ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine428ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine429ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCartLine503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response SetCartLine503ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -12239,6 +13584,18 @@ type StrictServerInterface interface {
 	// (GET /api/v1/auth/current-actor)
 	GetCurrentActor(ctx context.Context, request GetCurrentActorRequestObject) (GetCurrentActorResponseObject, error)
 
+	// (POST /api/v1/t/{tenant_id}/carts)
+	CreateCart(ctx context.Context, request CreateCartRequestObject) (CreateCartResponseObject, error)
+
+	// (GET /api/v1/t/{tenant_id}/carts/{cart_id})
+	GetCart(ctx context.Context, request GetCartRequestObject) (GetCartResponseObject, error)
+
+	// (DELETE /api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id})
+	DeleteCartLine(ctx context.Context, request DeleteCartLineRequestObject) (DeleteCartLineResponseObject, error)
+
+	// (PUT /api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id})
+	SetCartLine(ctx context.Context, request SetCartLineRequestObject) (SetCartLineResponseObject, error)
+
 	// (POST /api/v1/t/{tenant_id}/media/uploads)
 	CreateMediaUpload(ctx context.Context, request CreateMediaUploadRequestObject) (CreateMediaUploadResponseObject, error)
 
@@ -12646,6 +14003,133 @@ func (sh *strictHandler) GetCurrentActor(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCurrentActorResponseObject); ok {
 		if err := validResponse.VisitGetCurrentActorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCart operation middleware
+func (sh *strictHandler) CreateCart(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateCartParams) {
+	var request CreateCartRequestObject
+
+	request.TenantId = tenantId
+	request.Params = params
+
+	var body CreateCartJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCart(ctx, request.(CreateCartRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCart")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateCartResponseObject); ok {
+		if err := validResponse.VisitCreateCartResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCart operation middleware
+func (sh *strictHandler) GetCart(w http.ResponseWriter, r *http.Request, tenantId TenantId, cartId CartId, params GetCartParams) {
+	var request GetCartRequestObject
+
+	request.TenantId = tenantId
+	request.CartId = cartId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCart(ctx, request.(GetCartRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCart")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCartResponseObject); ok {
+		if err := validResponse.VisitGetCartResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCartLine operation middleware
+func (sh *strictHandler) DeleteCartLine(w http.ResponseWriter, r *http.Request, tenantId TenantId, cartId CartId, skuId SkuId, params DeleteCartLineParams) {
+	var request DeleteCartLineRequestObject
+
+	request.TenantId = tenantId
+	request.CartId = cartId
+	request.SkuId = skuId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCartLine(ctx, request.(DeleteCartLineRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCartLine")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCartLineResponseObject); ok {
+		if err := validResponse.VisitDeleteCartLineResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetCartLine operation middleware
+func (sh *strictHandler) SetCartLine(w http.ResponseWriter, r *http.Request, tenantId TenantId, cartId CartId, skuId SkuId, params SetCartLineParams) {
+	var request SetCartLineRequestObject
+
+	request.TenantId = tenantId
+	request.CartId = cartId
+	request.SkuId = skuId
+	request.Params = params
+
+	var body SetCartLineJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetCartLine(ctx, request.(SetCartLineRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetCartLine")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetCartLineResponseObject); ok {
+		if err := validResponse.VisitSetCartLineResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -13507,121 +14991,140 @@ func (sh *strictHandler) Health(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"X4XglmD2nWVP4Rsblbq/vP//AQA=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

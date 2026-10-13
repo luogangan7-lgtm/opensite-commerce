@@ -10,13 +10,39 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
-// QueuePool is River's native driver type, exposed only for infrastructure
-// composition. It must never be handed to a business module or request handler.
-type QueuePool = pgxpool.Pool
+// QueueDB is the minimal connection surface queue code needs. Any pgx pool
+// satisfies it, but the pool type itself never leaves this package.
+type QueueDB interface {
+	Begin(context.Context) (pgx.Tx, error)
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+// QueuePool opaquely owns one pooled connection set. It must never be handed to
+// a business module or request handler; River gets its driver from RiverDriver.
+type QueuePool struct{ pool *pgxpool.Pool }
+
+func (p *QueuePool) Close()                                    { p.pool.Close() }
+func (p *QueuePool) Begin(ctx context.Context) (pgx.Tx, error) { return p.pool.Begin(ctx) }
+func (p *QueuePool) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	return p.pool.Exec(ctx, sql, args...)
+}
+func (p *QueuePool) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return p.pool.Query(ctx, sql, args...)
+}
+func (p *QueuePool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return p.pool.QueryRow(ctx, sql, args...)
+}
+
+// RiverDriver builds River's native driver over this pool.
+func (p *QueuePool) RiverDriver() *riverpgxv5.Driver { return riverpgxv5.New(p.pool) }
 
 func queuePoolConfig(dsn, role string) (*pgxpool.Config, error) {
 	switch role {
@@ -51,7 +77,7 @@ func OpenQueuePool(ctx context.Context, dsn, role string) (*QueuePool, error) {
 		pool.Close()
 		return nil, errors.New("queue connection capability unavailable")
 	}
-	return pool, nil
+	return &QueuePool{pool}, nil
 }
 
 // OpenMigrationPool is exclusively the River installer bootstrap connection:
@@ -71,13 +97,13 @@ func OpenMigrationPool(ctx context.Context, dsn string) (*QueuePool, error) {
 		pool.Close()
 		return nil, errors.New("installer connection unavailable")
 	}
-	return pool, nil
+	return &QueuePool{pool}, nil
 }
 
 // InQueueTenant uses the same checked transaction contract as Runner.InTenant.
 // Tenant comes from trusted worker configuration or authenticated admission.
-func InQueueTenant(ctx context.Context, pool *QueuePool, tenant string, fn func(context.Context, pgx.Tx) error) error {
-	if pool == nil {
+func InQueueTenant(ctx context.Context, pool QueueDB, tenant string, fn func(context.Context, pgx.Tx) error) error {
+	if q, ok := pool.(*QueuePool); pool == nil || ok && q == nil {
 		return errors.New("queue pool is nil")
 	}
 	return tenanttx.Run(ctx, tenant, pool.Begin,

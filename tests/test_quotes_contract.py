@@ -15,19 +15,16 @@ BUYER={"getBuyerQuote":("get","/api/public/v1/quotes/{quote_id}"),"acceptQuote":
 class QuotesContractTests(unittest.TestCase):
     def fixture(self, name):
         api=gate.load_api(ROOT/'api/openapi.yaml')
-        op=copy.deepcopy(gate.operation_inventory(api)['submitInquiry'][2])
+        # Mutate one implemented operation while preserving the complete contract.
+        # Planned/incomplete synthetic inventories mask the security assertion
+        # behind the mandatory operation-status/presence gates.
+        op=copy.deepcopy(gate.operation_inventory(api)[name][2])
         method,path=BUYER[name]
-        op.update(operationId=name,security=[],**{'x-opensite-access':'Public','x-opensite-status':'planned','x-opensite-trusted-buyer':'required'})
+        op.update(operationId=name,security=[],**{'x-opensite-access':'Public','x-opensite-status':'implemented','x-opensite-trusted-buyer':'required'})
         op['parameters']=[{'name':'quote_id','in':'path','required':True,'schema':{'type':'string','format':'uuid'}}]
         if method=='get':op.pop('requestBody',None)
         else:op['parameters'] += [{'$ref':'#/components/parameters/IfMatch'},{'$ref':'#/components/parameters/IdempotencyKey'}]
         api['paths'][path]={method:op}
-        # Remove other buyer operations so each synthetic policy case is independent.
-        for p in list(api['paths']):
-            for m in list(api['paths'][p]):
-                value=api['paths'][p][m]
-                if m in gate.HTTP_METHODS and value.get('operationId') in BUYER and value.get('operationId') != name:del api['paths'][p][m]
-            if not api['paths'][p]:del api['paths'][p]
         return api,op
     def test_trusted_buyer_contract_accepted(self):
         for name in BUYER:

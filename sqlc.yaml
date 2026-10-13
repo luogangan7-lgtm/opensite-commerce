@@ -23,7 +23,8 @@ sql:
       - "migrations/020_orders.sql"
       - "migrations/021_queue_authorization.sql"
       - "migrations/022_reliability_limits.sql"
-      - "migrations/023_quotes.sql"
+      - "migrations/023_cart.sql"
+      - "migrations/024_quotes.sql"
     queries: "queries"
     gen:
       go:

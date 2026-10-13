@@ -251,7 +251,7 @@ func (f *jobsPG) state(id int64, want string, timeout time.Duration) {
 
 func (f *jobsPG) start() *river.Client[pgx.Tx] {
 	f.t.Helper()
-	c, err := jobs.NewWorkerWithService(f.worker, f.signer, jobs.ControlledInventory{Pool: f.worker}, jobs.WorkerConfig{Batch: 1}, river.Config{TestOnly: true, FetchCooldown: 10 * time.Millisecond, FetchPollInterval: 20 * time.Millisecond, JobTimeout: time.Second, RescueStuckJobsAfter: 2 * time.Second})
+	c, err := jobs.NewWorkerWithService(riverpgxv5.New(f.worker), f.signer, jobs.ControlledInventory{Pool: f.worker}, jobs.WorkerConfig{Batch: 1}, river.Config{TestOnly: true, FetchCooldown: 10 * time.Millisecond, FetchPollInterval: 20 * time.Millisecond, JobTimeout: time.Second, RescueStuckJobsAfter: 2 * time.Second})
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -522,7 +522,7 @@ func TestJobsPGCrashHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := jobs.NewWorkerWithService(p, s, jobsBlockingExpirer{p, key}, jobs.WorkerConfig{Batch: 1}, river.Config{TestOnly: true, FetchCooldown: 10 * time.Millisecond, FetchPollInterval: 20 * time.Millisecond, JobTimeout: 30 * time.Second, RescueStuckJobsAfter: 31 * time.Second})
+	c, err := jobs.NewWorkerWithService(riverpgxv5.New(p), s, jobsBlockingExpirer{p, key}, jobs.WorkerConfig{Batch: 1}, river.Config{TestOnly: true, FetchCooldown: 10 * time.Millisecond, FetchPollInterval: 20 * time.Millisecond, JobTimeout: 30 * time.Second, RescueStuckJobsAfter: 31 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
