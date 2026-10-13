@@ -28,6 +28,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       OPENSITE_RUNTIME_DB_PASSWORD: ${OPENSITE_RUNTIME_DB_PASSWORD:?set runtime password}
       OPENSITE_AUTH_DB_PASSWORD: ${OPENSITE_AUTH_DB_PASSWORD:?set auth password}
+      OPENSITE_CUSTOMER_AUTH_DB_PASSWORD: ${OPENSITE_CUSTOMER_AUTH_DB_PASSWORD:?set independent customer auth password}
       OPENSITE_DOMAIN_DB_PASSWORD: ${OPENSITE_DOMAIN_DB_PASSWORD:?set domain password}
       OPENSITE_MEDIA_DB_PASSWORD: ${OPENSITE_MEDIA_DB_PASSWORD:?set media password}
       OPENSITE_WORKER_DB_PASSWORD: ${OPENSITE_WORKER_DB_PASSWORD:?set worker password}
@@ -47,6 +48,7 @@ services:
       OPENSITE_DB: ${OPENSITE_DB:-opensite}
       OPENSITE_RUNTIME_DB_PASSWORD: ${OPENSITE_RUNTIME_DB_PASSWORD:?set runtime password}
       OPENSITE_AUTH_DB_PASSWORD: ${OPENSITE_AUTH_DB_PASSWORD:?set auth password}
+      OPENSITE_CUSTOMER_AUTH_DB_PASSWORD: ${OPENSITE_CUSTOMER_AUTH_DB_PASSWORD:?set independent customer auth password}
       OPENSITE_DOMAIN_DB_PASSWORD: ${OPENSITE_DOMAIN_DB_PASSWORD:?set domain password}
       OPENSITE_MEDIA_DB_PASSWORD: ${OPENSITE_MEDIA_DB_PASSWORD:?set media password}
       OPENSITE_MEDIA_ROOT: /var/lib/opensite/media
@@ -56,15 +58,35 @@ services:
       # Staff login reuses the auth DSN above; startup fails if either is missing.
       OSC_ADMIN_ORIGIN: ${OPENSITE_ADMIN_ORIGIN:?set exact HTTPS admin origin}
       OSC_AUTH_SIGNING_KEY_HEX: ${OPENSITE_AUTH_SIGNING_KEY:?set independent 64-hex auth signing key}
+      OPENSITE_STOREFRONT_ORIGIN: ${OPENSITE_STOREFRONT_ORIGIN:?set exact HTTPS storefront origin}
+      OPENSITE_CUSTOMER_CSRF_SECRET: ${OPENSITE_CUSTOMER_CSRF_SECRET:?set independent base64url customer CSRF secret}
+      # Development capture only: the mailpit sidecar shares this loopback.
+      APP_ENV: development
+      NOTIFICATIONS_SMTP_ENABLED: "true"
+      NOTIFICATIONS_SMTP_HOST: "127.0.0.1"
+      NOTIFICATIONS_SMTP_PORT: "1025"
     volumes:
       - media_data:/var/lib/opensite/media
     ports:
       - "127.0.0.1:${OPENSITE_API_PORT:-8080}:8080"
+      - "127.0.0.1:${OPENSITE_MAIL_PORT:-8025}:8025"
     depends_on:
       postgres:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    restart: unless-stopped
+  mailpit:
+    image: axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48
+    # Sender accepts literal loopback only. No SMTP port is published to the host.
+    network_mode: service:api
+    environment:
+      MP_SMTP_BIND_ADDR: 127.0.0.1:1025
+      MP_UI_BIND_ADDR: 0.0.0.0:8025
+      MP_SMTP_RELAY_ALL: "false"
+    depends_on:
+      api:
+        condition: service_started
     restart: unless-stopped
   worker:
     build:

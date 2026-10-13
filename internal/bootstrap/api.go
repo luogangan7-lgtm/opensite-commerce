@@ -115,6 +115,7 @@ func New(config Config) (server *http.Server, err error) {
 	}
 	metrics := &observability.Metrics{}
 	router.WrapTransport(metrics.Wrap)
+	router.WrapTransport(customerHTTP.WrapTransport)
 	// Socket deadlines do not cancel database queries or lock waits. Preserve
 	// the router's registration snapshot through the request deadline wrapper.
 	handler := deadlineHandler{Router: router}

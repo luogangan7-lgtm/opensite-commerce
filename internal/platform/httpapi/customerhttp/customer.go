@@ -98,7 +98,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, operation string
 		}
 		current, e := h.cfg.Service.Current(r.Context(), tenant, token)
 		if e != nil {
-			clearCookie(w, SessionCookie)
+			if errors.Is(e, c.ErrUnauthorized) {
+				clearCookie(w, SessionCookie)
+			}
 			fail(e)
 			return
 		}
@@ -113,7 +115,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, operation string
 	}
 	if token != "" {
 		if _, e := h.cfg.Service.Current(r.Context(), tenant, token); e != nil {
-			clearCookie(w, SessionCookie)
+			if errors.Is(e, c.ErrUnauthorized) {
+				clearCookie(w, SessionCookie)
+			}
 			fail(e)
 			return
 		}
@@ -321,8 +325,34 @@ func (h *Handler) failure(w http.ResponseWriter, r *http.Request, e error) {
 	httpapi.WriteProblem(w, r, apperrors.New(status, code, detail))
 }
 
+type invalidCookieKey struct{}
+
+// WrapTransport lets admission clear a conclusively invalid cookie even when
+// a downstream cart/checkout capability rejects the request. The callback is
+// private to this request; it never grants an actor or catches a database error.
+func (h *Handler) WrapTransport(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), invalidCookieKey{}, func() { clearCookie(w, SessionCookie) })
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// AdmitGuest requires the tenant-bound anonymous challenge for guest checkout.
+// A stale customer bearer never serves as that proof; cart's own guest token
+// must also be authenticated by the caller before constructing a guest actor.
+func (h *Handler) AdmitGuest(r *http.Request) error {
+	if !h.configured {
+		return apperrors.New(503, "customer_auth_unavailable", "Customer authentication is unavailable")
+	}
+	if !singleHeader(r, "Origin", h.cfg.Origin) || !h.writeCSRF(r, r.PathValue("tenant_id"), "") {
+		return apperrors.New(403, "csrf_failed", "Origin and signed CSRF token are required")
+	}
+	return nil
+}
+
 // Resolve rechecks the live customer session; callers cannot mint an actor from
-// IDs in JSON. It also gates every cookie-authorized storefront write with CSRF.
+// IDs in JSON. Only a definitively invalid bearer falls back to guest capability
+// admission. A transient store failure never changes identity or the cookie.
 func (h *Handler) Resolve(ctx context.Context, r *http.Request) (c.Actor, error) {
 	token, e := cookie(r, SessionCookie)
 	if e != nil {
@@ -332,18 +362,28 @@ func (h *Handler) Resolve(ctx context.Context, r *http.Request) (c.Actor, error)
 		return c.Actor{}, nil
 	}
 	if !h.configured {
-		return c.Actor{}, apperrors.New(401, "unauthenticated", "Customer authentication is required")
+		return c.Actor{}, apperrors.New(503, "customer_auth_unavailable", "Customer authentication is unavailable")
 	}
 	tenant := r.PathValue("tenant_id")
 	if !tenanttx.ValidTenantID(tenant) {
 		return c.Actor{}, apperrors.New(404, "not_found", "Resource not found")
 	}
-	if r.Method != "GET" && r.Method != "HEAD" && (!singleHeader(r, "Origin", h.cfg.Origin) || !h.writeCSRF(r, tenant, token)) {
+	write := r.Method != "GET" && r.Method != "HEAD"
+	if write && !singleHeader(r, "Origin", h.cfg.Origin) {
 		return c.Actor{}, apperrors.New(403, "csrf_failed", "Origin and signed CSRF token are required")
 	}
 	session, e := h.cfg.Service.Current(ctx, tenant, token)
 	if e != nil {
-		return c.Actor{}, apperrors.New(404, "not_found", "Resource not found")
+		if errors.Is(e, c.ErrUnauthorized) {
+			if clear, ok := ctx.Value(invalidCookieKey{}).(func()); ok {
+				clear()
+			}
+			return c.Actor{}, nil
+		}
+		return c.Actor{}, apperrors.New(503, "customer_auth_unavailable", "Customer authentication is unavailable")
+	}
+	if write && !h.writeCSRF(r, tenant, token) {
+		return c.Actor{}, apperrors.New(403, "csrf_failed", "Origin and signed CSRF token are required")
 	}
 	return c.Actor{TenantID: session.TenantID, CustomerID: session.CustomerID, SessionID: session.ID}, nil
 }
