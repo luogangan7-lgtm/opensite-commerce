@@ -51,6 +51,10 @@ BEGIN
  PERFORM set_config('test.privacy_line_before',(SELECT (to_jsonb(x)-'tax_snapshot')::text FROM app.order_lines x WHERE order_id=oid),true);
 END $order$;
 RESET ROLE;
+-- probe: a customer checkout freezes the shipping address the shopper typed.
+INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
+ SELECT tenant_id,uuidv7(),'customer',customer_id::text,'privacy-probe-checkout',sha256('probe'::bytea),uuidv7(),1,id,'{"recipient":"Secret Person","line1":"Private street","city":"Private city"}',currency,total_minor,items_net_minor,tax_minor,shipping_minor,version
+ FROM app.orders WHERE id=current_setting('test.privacy_order')::uuid;
 -- Frozen recipients, an admitted send, a historical send, and old redrive generations.
 DO $notification_seed$
 DECLARE t uuid:=current_setting('app.tenant_id')::uuid; oid uuid:=current_setting('test.privacy_order')::uuid; d app.notification_deliveries; i integer; source uuid; w uuid:=uuidv7();
