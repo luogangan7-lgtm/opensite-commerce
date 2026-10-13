@@ -14,6 +14,7 @@ var (
 	ErrInvalid     = errors.New("data rights: invalid input")
 	ErrNotFound    = errors.New("data rights: not found")
 	ErrConflict    = errors.New("data rights: unavailable capability")
+	ErrBusy        = errors.New("data rights: concurrent operation; retry")
 	ErrUnavailable = errors.New("data rights: unavailable")
 )
 

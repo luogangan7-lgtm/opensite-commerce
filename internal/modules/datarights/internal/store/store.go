@@ -52,6 +52,8 @@ func MapError(e error) error {
 	var p *pgconn.PgError
 	if errors.As(e, &p) {
 		switch p.Code {
+		case "55P03", "40P01", "40001":
+			return contract.ErrBusy
 		case "P0002", "42501":
 			return contract.ErrNotFound
 		case "22023", "22P02", "23514", "23503":

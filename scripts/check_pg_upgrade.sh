@@ -5,7 +5,6 @@
 # Invariants: 010 refuses to seal a live release with unsafe media; every pre-010
 # release ends up sealed (history is immutable); releases created after 010 are not.
 # Reliability preserves compatible pending data and refuses ambiguous old results.
-# Privacy preserves populated customer/address/order bytes, then verifies controlled functions and roles.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -148,6 +147,7 @@ CUSTOMERS_DB=""
 LEDGER_DB=""
 ORDERS_DB=""
 STOREFRONT_DB=""
+NOTIFICATIONS_DB=""
 DATA_RIGHTS_DB=""
 CATALOG_DB=""
 CART_DB=""
@@ -159,7 +159,7 @@ PRICING_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$DATA_RIGHTS_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$DATA_RIGHTS_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -896,7 +896,82 @@ if ! db "$STOREFRONT_DB" < tests/db_storefront.sql >/dev/null || ! db "$STOREFRO
 else pass 'storefront upgrade exposes current sealed pinned pages; draft witnesses stay hidden'; fi
 admin -c "DROP DATABASE $STOREFRONT_DB" >/dev/null; STOREFRONT_DB=""
 
-# Every module step above reports through bad(); aggregate them before the overall PASS.
+# C23a: add only the metrics capability over populated pending and DLQ-only
+# tenants; preserve event identity/content and every prior forward migration.
+ops_metrics=(migrations/[0-9][0-9][0-9]_ops_metrics.sql)
+[[ ${#ops_metrics[@]} == 1 ]] || { bad 'exactly one ops-metrics migration required'; exit 1; }
+OPS_METRICS_DB=upgrade_ops_metrics_$$; DB=$OPS_METRICS_DB
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${ops_metrics[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('ops-existing-pending') RETURNING id AS ta \gset
+INSERT INTO app.tenants(name) VALUES('ops-existing-DLQ-only') RETURNING id AS tb \gset
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key,status,created_at)
+ VALUES(:'ta','ops.legacy','{"witness":"pending"}','test','legacy-pending','pending',clock_timestamp()-interval '1 minute'),
+       (:'tb','ops.legacy','{"witness":"dead"}','test','legacy-dead','dead_letter',clock_timestamp()-interval '1 hour');
+SQL
+apply_forward "$DB" "${ops_metrics[0]}"
+result=$(db "$DB" <<'SQL'
+SELECT 'OPS_PRESERVED='||count(*)||'|'||count(*) FILTER(WHERE status='pending' AND payload->>'witness'='pending')||'|'||
+ count(*) FILTER(WHERE status='dead_letter' AND payload->>'witness'='dead') FROM app.outbox_events;
+SET ROLE app_outbox_worker;
+SELECT 'OPS_METRICS='||pending||'|'||dead_letters||'|'||(oldest_pending_age_seconds>=60) FROM app.outbox_metrics();
+RESET ROLE;
+SQL
+)
+[[ $result == *'OPS_PRESERVED=2|1|1'* && $result == *'OPS_METRICS=1|1|true'* ]] || bad "ops-metrics populated upgrade: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${ops_metrics[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+river_db "$DB" --verify
+admin -c "DROP DATABASE $DB"; OPS_METRICS_DB=""
+pass 'ops metrics preserves pending/DLQ-only tenants and exposes only aggregate worker gauges'
+# Notifications additive upgrade: every actual predecessor, populated original
+# order event retained verbatim; historical source events are not silently sent.
+notifications=(migrations/[0-9][0-9][0-9]_notifications.sql)
+[[ ${#notifications[@]} == 1 ]] || { echo 'FAIL: one notifications migration required' >&2; exit 1; }
+NOTIFICATIONS_DB=notifications_upgrade_$$
+admin -c "CREATE DATABASE $NOTIFICATIONS_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${notifications[0]} ]] || break
+ apply_forward "$NOTIFICATIONS_DB" "$f"
+done
+db "$NOTIFICATIONS_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('notification-upgrade') RETURNING id AS t \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_orders_executor;
+INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+VALUES(:'t',uuidv7(),1,'upgrade',sha256('upgrade'::bytea),'{"email":"upgrade@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
+RESET ROLE;
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+VALUES(:'t','order.paid',jsonb_build_object('order_id',:'oid'),'orders.events','upgrade-source');
+SQL
+apply_forward "$NOTIFICATIONS_DB" "${notifications[0]}"
+result=$(db "$NOTIFICATIONS_DB" <<'SQL'
+SELECT t.id AS t,o.id AS oid FROM app.tenants t JOIN app.orders o ON o.tenant_id=t.id WHERE t.name='notification-upgrade' \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SELECT 'NOTIFICATIONS_UPGRADE='||(SELECT count(*) FROM app.outbox_events WHERE tenant_id=:'t' AND delivery_target='orders.events' AND status='pending' AND attempts=0 AND dedup_key='upgrade-source' AND payload=jsonb_build_object('order_id',:'oid'))||'|'||(SELECT count(*) FROM app.notification_deliveries WHERE tenant_id=:'t');
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(:'t','order.fulfilled',jsonb_build_object('order_id',:'oid'),'orders.events','upgrade-new');
+SELECT 'NOTIFICATIONS_NEW='||(SELECT count(*) FROM app.notification_deliveries WHERE tenant_id=:'t' AND recipient='upgrade@example.test' AND template_key='order.shipped')||'|'||(SELECT count(*) FROM app.outbox_events WHERE tenant_id=:'t' AND delivery_target='notifications.email');
+SQL
+)
+[[ $result == *'NOTIFICATIONS_UPGRADE=1|0'* && $result == *'NOTIFICATIONS_NEW=1|1'* ]] || bad "notification populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${notifications[0]} ]] || continue
+ apply_forward "$NOTIFICATIONS_DB" "$f"
+done
+db "$NOTIFICATIONS_DB" -f tests/db_notifications.sql >/dev/null
+db "$NOTIFICATIONS_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $NOTIFICATIONS_DB" >/dev/null; NOTIFICATIONS_DB=""
+pass 'notifications upgrade preserves original order outbox and fans out only newly inserted events'
+
+
 # C-22a data rights upgrade BEGIN: select by logical suffix and apply every
 # predecessor before seeding. Existing customer/address/order rows are hashed
 # before/after the forward migration; privacy and whole-schema authority gates
@@ -961,42 +1036,6 @@ fi
 admin -c "DROP DATABASE $DB" >/dev/null; DATA_RIGHTS_DB=""
 # C-22a data rights upgrade END
 
+# Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
-# C23a: add only the metrics capability over populated pending and DLQ-only
-# tenants; preserve event identity/content and every prior forward migration.
-ops_metrics=(migrations/[0-9][0-9][0-9]_ops_metrics.sql)
-[[ ${#ops_metrics[@]} == 1 ]] || { bad 'exactly one ops-metrics migration required'; exit 1; }
-OPS_METRICS_DB=upgrade_ops_metrics_$$; DB=$OPS_METRICS_DB
-admin -c "CREATE DATABASE $DB" >/dev/null
-for f in migrations/[0-9][0-9][0-9]_*.sql; do
- [[ $f < ${ops_metrics[0]} ]] || break
- apply_forward "$DB" "$f"
-done
-db "$DB" <<'SQL' >/dev/null
-INSERT INTO app.tenants(name) VALUES('ops-existing-pending') RETURNING id AS ta \gset
-INSERT INTO app.tenants(name) VALUES('ops-existing-DLQ-only') RETURNING id AS tb \gset
-INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key,status,created_at)
- VALUES(:'ta','ops.legacy','{"witness":"pending"}','test','legacy-pending','pending',clock_timestamp()-interval '1 minute'),
-       (:'tb','ops.legacy','{"witness":"dead"}','test','legacy-dead','dead_letter',clock_timestamp()-interval '1 hour');
-SQL
-apply_forward "$DB" "${ops_metrics[0]}"
-result=$(db "$DB" <<'SQL'
-SELECT 'OPS_PRESERVED='||count(*)||'|'||count(*) FILTER(WHERE status='pending' AND payload->>'witness'='pending')||'|'||
- count(*) FILTER(WHERE status='dead_letter' AND payload->>'witness'='dead') FROM app.outbox_events;
-SET ROLE app_outbox_worker;
-SELECT 'OPS_METRICS='||pending||'|'||dead_letters||'|'||(oldest_pending_age_seconds>=60) FROM app.outbox_metrics();
-RESET ROLE;
-SQL
-)
-[[ $result == *'OPS_PRESERVED=2|1|1'* && $result == *'OPS_METRICS=1|1|true'* ]] || bad "ops-metrics populated upgrade: $result"
-for f in migrations/[0-9][0-9][0-9]_*.sql; do
- [[ $f > ${ops_metrics[0]} ]] || continue
- apply_forward "$DB" "$f"
-done
-db "$DB" -f tests/db_ops_metrics.sql >/dev/null
-db "$DB" -f tests/db_role_matrix.sql >/dev/null
-river_db "$DB" --verify
-admin -c "DROP DATABASE $DB"; OPS_METRICS_DB=""
-pass 'ops metrics preserves pending/DLQ-only tenants and exposes only aggregate worker gauges'
-[[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront and ops metrics upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics and notifications upgrade gates'

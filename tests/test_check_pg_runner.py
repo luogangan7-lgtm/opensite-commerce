@@ -74,6 +74,7 @@ expected = [
     'db_cart.sql',
     'db_storefront.sql',
     'db_ops_metrics.sql',
+    'db_notifications.sql',
     'db_data_rights.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))

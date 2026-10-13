@@ -480,6 +480,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/notifications/failures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** @description Bounded failure metadata only; no recipient, subject or body. Uncertain sends require operator investigation. */
+        get: operations["listNotificationFailures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/notifications/{notification_id}/redrive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                notification_id: components["parameters"]["NotificationId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Explicit idempotent redrive of a dead-letter notification. Same key replays its stable receipt; uncertain sends cannot be redriven. Receipt means queued, not email delivered. */
+        post: operations["redriveNotification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/t/{tenant_id}/customers/{customer_id}/data-exports": {
         parameters: {
             query?: never;
@@ -596,36 +637,37 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        DataExportRequest: {
+        NotificationFailure: {
             /** Format: uuid */
-            request_id: string;
-            status: string;
-        };
-        DataExportStatus: {
+            id: string;
             /** Format: uuid */
-            request_id: string;
-            status: string;
+            event_id: string;
+            /** @enum {string} */
+            template_key: "order.paid" | "order.shipped" | "order.refund" | "quote.sent" | "quote.approved";
+            /** @enum {string} */
+            status: "failed" | "dead_letter" | "uncertain";
+            /** Format: int32 */
+            attempts: number;
+            /** Format: int32 */
+            generation: number;
             /** Format: date-time */
-            expires_at: string;
-            download_url?: string;
+            created_at: string;
             /** Format: date-time */
-            download_expires_at?: string;
+            updated_at: string;
+            safe_error?: string;
         };
-        DataErasureResult: {
-            counts: {
-                [key: string]: number;
-            };
-            revoked_exports?: string[];
+        NotificationFailures: {
+            items: components["schemas"]["NotificationFailure"][];
         };
-        CatalogCSVReport: {
-            rows: number;
-            imported: number;
-            errors: {
-                row: number;
-                field: string;
-                code: string;
-                message: string;
-            }[];
+        NotificationRedriveReceipt: {
+            /** Format: uuid */
+            notification_id: string;
+            /** Format: uuid */
+            token: string;
+            /** @enum {string} */
+            status: "pending";
+            /** Format: int32 */
+            generation: number;
         };
         CreateCart: {
             currency: string;
@@ -986,6 +1028,37 @@ export interface components {
             /** Format: int32 */
             sort_order: number;
         };
+        DataExportRequest: {
+            /** Format: uuid */
+            request_id: string;
+            status: string;
+        };
+        DataExportStatus: {
+            /** Format: uuid */
+            request_id: string;
+            status: string;
+            /** Format: date-time */
+            expires_at: string;
+            download_url?: string;
+            /** Format: date-time */
+            download_expires_at?: string;
+        };
+        DataErasureResult: {
+            counts: {
+                [key: string]: number;
+            };
+            revoked_exports?: string[];
+        };
+        CatalogCSVReport: {
+            rows: number;
+            imported: number;
+            errors: {
+                row: number;
+                field: string;
+                code: string;
+                message: string;
+            }[];
+        };
     };
     responses: {
         /** @description BadRequest */
@@ -999,6 +1072,15 @@ export interface components {
         };
         /** @description NotFound */
         NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description InternalServerError */
+        InternalServerError: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1107,6 +1189,9 @@ export interface components {
         };
     };
     parameters: {
+        NotificationId: string;
+        /** @description Tenant-scoped notification redrive key; the same notification and key replay the stored receipt. */
+        NotificationIdempotencyKey: string;
         CartId: string;
         SkuId: string;
         CartToken: string;
@@ -2481,6 +2566,90 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listNotificationFailures: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Failure metadata */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationFailures"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    redriveNotification: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant-scoped notification redrive key; the same notification and key replay the stored receipt. */
+                "Idempotency-Key": components["parameters"]["NotificationIdempotencyKey"];
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                notification_id: components["parameters"]["NotificationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued redrive receipt, replayed for the same key */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRedriveReceipt"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };

@@ -15,10 +15,12 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
+	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/catalogcsvhttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/datarightshttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
 
@@ -33,6 +35,7 @@ type Config struct {
 	Catalog       catalog.Config
 	Media         media.Config
 	Cart          *cart.Module
+	Notifications notificationcontract.Service
 }
 
 func New(config Config) (server *http.Server, err error) {
@@ -52,6 +55,7 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
+	routes = append(routes, notificationhttp.New(config.Notifications).Routes()...)
 	config.Privacy.Subject, config.CatalogCSV.Subject = config.Subject, config.Subject
 	routes = append(routes, datarightshttp.New(config.Privacy).Routes()...)
 	routes = append(routes, catalogcsvhttp.New(config.CatalogCSV).Routes()...)

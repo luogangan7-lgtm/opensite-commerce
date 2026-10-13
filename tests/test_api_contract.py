@@ -124,7 +124,7 @@ class APIContractTests(unittest.TestCase):
                        "downloadCustomerDataExport", "eraseCustomerData"}
         csv = {"preflightCatalogCSV", "importCatalogCSV", "exportCatalogCSV"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | data_rights | csv)
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | data_rights | csv | {"listNotificationFailures", "redriveNotification"})
         for name in data_rights | csv:
             path, method, operation = ops[name]
             self.assertIn("{tenant_id}", path)

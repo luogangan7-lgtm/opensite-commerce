@@ -27,7 +27,7 @@ DECLARE
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
-  'orders','order_lines','order_adjustments','data_rights_exports','data_rights_erasures'];
+  'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','data_rights_exports','data_rights_erasures'];
  role_name text;
  r record;
  t record;
@@ -261,7 +261,7 @@ BEGIN
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants','outbox_metrics') LOOP
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -285,7 +285,7 @@ BEGIN
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants','outbox_metrics'))<>10 THEN
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -725,15 +725,56 @@ BEGIN
  IF NOT EXISTS(SELECT FROM pg_policy p WHERE p.polrelid='app.outbox_events'::regclass AND p.polname='outbox_tenant_discovery' AND p.polcmd='r' AND p.polroles=ARRAY[r.oid] AND pg_get_expr(p.polqual,p.polrelid)='true' AND p.polwithcheck IS NULL) THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_POLICY'; END IF;
 END $discovery_matrix$;
 SELECT 'PASS: outbox broker exact discovery/aggregate table-column-routine/RLS matrix' AS result;
+
+-- Notifications executor has only exact frozen-envelope and fenced-state columns.
+DO $notifications$
+DECLARE r record;t record;a record;f record; privilege text;cols text[]; expected boolean; role_name text;
+ names text[]:=ARRAY['notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive']; BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_notifications_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+ OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid) OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_UNSAFE_ROLE'; END IF;
+ FOR t IN SELECT c.* FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
+  IF t.relname IN('notification_deliveries','notification_redrive_requests') AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_RLS'; END IF;
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=privilege='SELECT' AND t.relname IN('notification_deliveries','notification_redrive_requests','outbox_events');
+   cols:=ARRAY[]::text[];
+   IF expected THEN SELECT array_agg(attname::text) INTO cols FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+   ELSIF privilege='SELECT' AND t.relname='orders' THEN cols:=ARRAY['tenant_id','id','customer_id','guest_contact'];
+   ELSIF privilege='SELECT' AND t.relname='customers' THEN cols:=ARRAY['tenant_id','id','email_normalized'];
+   ELSIF privilege='INSERT' AND t.relname='notification_deliveries' THEN cols:=ARRAY['tenant_id','id','source_event_id','dispatch_event_id','recipient','locale','template_key','reference_id','status','last_error'];
+   ELSIF privilege='INSERT' AND t.relname='notification_redrive_requests' THEN cols:=ARRAY['tenant_id','notification_id','idempotency_key','generation','dispatch_event_id'];
+   ELSIF privilege='INSERT' AND t.relname='outbox_events' THEN cols:=ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key'];
+   ELSIF privilege='UPDATE' AND t.relname='notification_deliveries' THEN cols:=ARRAY['dispatch_event_id','status','attempt_count','generation','send_token','lease_attempt','lease_worker','last_error','updated_at','sent_at'];
+   ELSIF privilege='UPDATE' AND t.relname='outbox_events' THEN cols:=ARRAY['status','lease_owner','lease_until','attempts','last_error']; END IF;
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_TABLE % %',t.relname,privilege; END IF;
+   IF privilege IN('SELECT','INSERT','UPDATE','REFERENCES') THEN
+    FOR a IN SELECT attname,attnum FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     IF has_column_privilege(r.oid,t.oid,a.attnum,privilege) IS DISTINCT FROM (a.attname=ANY(cols)) OR has_column_privilege(r.oid,t.oid,a.attnum,privilege||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_COLUMN %.% %',t.relname,a.attname,privilege; END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.* FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' LOOP
+  IF f.proname=ANY(names) THEN
+   IF NOT f.prosecdef OR f.proowner<>r.oid OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp' OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_FUNCTION %',f.proname; END IF;
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+    expected:=role_name='app_notifications_executor' OR role_name='app_runtime' AND f.proname='notification_redrive' OR role_name='app_outbox_worker' AND f.proname IN('claim_notification_outbox','notification_begin','notification_finish');
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') IS DISTINCT FROM (role_name='app_notifications_executor') THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_EXECUTE % %',role_name,f.proname; END IF;
+   END LOOP;
+  ELSIF has_function_privilege(r.oid,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_FOREIGN_FUNCTION %',f.proname; END IF;
+ END LOOP;
+ IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace='app'::regnamespace AND p.proname=ANY(names))<>cardinality(names) THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_INCOMPLETE'; END IF;
+END $notifications$;
+SELECT 'PASS: notifications exact column/function privileges and FORCE RLS' AS result;
 -- C-22a: exact controlled executor matrix including every column, independent
 -- of the migration grant statements. No login can assume the privacy role.
 DO $privacy_matrix$
 DECLARE
  r record; t record; a record; privilege text; expected boolean; cols text[];
- selected text[]:=ARRAY['tenants','customers','customer_addresses','buyer_company_members','orders','order_lines','carts','cart_lines','data_rights_exports','data_rights_erasures'];
+ selected text[]:=ARRAY['tenants','customers','customer_addresses','buyer_company_members','orders','order_lines','carts','cart_lines','data_rights_exports','data_rights_erasures','notification_deliveries'];
  commands text[]:=ARRAY['data_rights_request_export','data_rights_status','data_rights_build_export','data_rights_complete_export','data_rights_download_info','data_rights_consume_export','data_rights_erase_customer','data_rights_download_deadline','data_rights_worker_info'];
  f record; role_name text;
- private_functions text[]:=ARRAY['data_rights_context','data_rights_tax_scrub','data_rights_lock_export','data_rights_line_guard','data_rights_erasure_guard','data_rights_credential_guard','data_rights_order_customer_guard','data_rights_customer_guard'];
+ private_functions text[]:=ARRAY['data_rights_context','data_rights_tax_scrub','data_rights_lock_export','data_rights_line_guard','data_rights_erasure_guard','data_rights_credential_guard','data_rights_order_customer_guard','data_rights_customer_guard','data_rights_notification_insert_guard','data_rights_notification_guard','data_rights_notification_dispatch_insert_guard','data_rights_notification_dispatch_guard'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_data_rights_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -752,7 +793,8 @@ BEGIN
     cols:=ARRAY[]::text[];
     IF NOT expected THEN
      IF privilege='SELECT' AND t.relname='customer_credentials' THEN cols:=ARRAY['tenant_id','customer_id'];
-     ELSIF privilege='UPDATE' THEN cols:=CASE t.relname WHEN 'customers' THEN ARRAY['email','display_name','status'] WHEN 'buyer_company_members' THEN ARRAY['status'] WHEN 'orders' THEN ARRAY['shipping_snapshot'] WHEN 'order_lines' THEN ARRAY['tax_snapshot'] ELSE ARRAY[]::text[] END; END IF;
+     ELSIF privilege='SELECT' AND t.relname='outbox_events' THEN cols:=ARRAY['tenant_id','id','event_type','delivery_target','payload','status','lease_owner','lease_until','last_error'];
+     ELSIF privilege='UPDATE' THEN cols:=CASE t.relname WHEN 'customers' THEN ARRAY['email','display_name','status'] WHEN 'buyer_company_members' THEN ARRAY['status'] WHEN 'orders' THEN ARRAY['shipping_snapshot'] WHEN 'order_lines' THEN ARRAY['tax_snapshot'] WHEN 'notification_deliveries' THEN ARRAY['recipient','status','last_error','send_token','lease_attempt','lease_worker','sent_at','updated_at'] WHEN 'outbox_events' THEN ARRAY['status','lease_owner','lease_until','last_error'] ELSE ARRAY[]::text[] END; END IF;
     END IF;
     FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
      IF has_column_privilege(r.oid,t.oid,a.attnum,privilege) IS DISTINCT FROM (expected OR a.attname::text=ANY(cols))
@@ -765,9 +807,9 @@ BEGIN
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND starts_with(p.proname,'data_rights_'))<>cardinality(commands||private_functions) THEN RAISE EXCEPTION 'privacy function inventory incomplete'; END IF;
  FOR f IN SELECT p.oid,p.proname,p.proowner,p.prosecdef,p.proconfig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND starts_with(p.proname,'data_rights_') LOOP
   IF NOT f.proname=ANY(commands||private_functions) OR f.proowner<>r.oid
-   OR f.prosecdef IS DISTINCT FROM (f.proname=ANY(commands||ARRAY['data_rights_context','data_rights_lock_export','data_rights_credential_guard','data_rights_order_customer_guard']))
+   OR f.prosecdef IS DISTINCT FROM (f.proname=ANY(commands||ARRAY['data_rights_context','data_rights_lock_export','data_rights_credential_guard','data_rights_order_customer_guard','data_rights_notification_insert_guard','data_rights_notification_dispatch_insert_guard']))
    OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
-   OR cardinality(f.proconfig) IS DISTINCT FROM (CASE WHEN f.proname IN('data_rights_credential_guard','data_rights_order_customer_guard') THEN 2 ELSE 1 END) THEN RAISE EXCEPTION 'unsafe privacy function %',f.proname; END IF;
+   OR cardinality(f.proconfig) IS DISTINCT FROM (CASE WHEN f.proname IN('data_rights_credential_guard','data_rights_order_customer_guard','data_rights_notification_insert_guard','data_rights_notification_dispatch_insert_guard') THEN 2 ELSE 1 END) THEN RAISE EXCEPTION 'unsafe privacy function %',f.proname; END IF;
   IF EXISTS(SELECT FROM aclexplode(coalesce((SELECT proacl FROM pg_proc WHERE oid=f.oid),acldefault('f',r.oid))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN RAISE EXCEPTION 'public privacy function capability'; END IF;
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') AND rolname<>'app_data_rights_executor' LOOP
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name='app_runtime' AND f.proname=ANY(commands))

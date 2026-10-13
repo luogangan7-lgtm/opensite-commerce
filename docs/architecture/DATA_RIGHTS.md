@@ -57,13 +57,42 @@ Amounts, currency, quantities, order IDs/state and ledger entries remain intact.
 Snapshot guards permit only the exact privacy scrub under an unassumable,
 non-BYPASSRLS executor role; runtime cannot use that exception directly.
 
-Customer-first row locking serializes export generation/download against
-erasure. Guards prevent new credentials, addresses or customer orders from
+Export generation/download lock the customer before their request. Erasure first
+locks existing customer orders in UUID order, then the customer and requests. A
+second order scan uses NOWAIT to catch newly committed orders without waiting on
+a financial transition that needs the customer lock. This serializes erasure
+with export generation/download and notification fanout. Guards prevent new credentials, addresses or customer orders from
 resurrecting PII for an erased customer. Retry of erasure is safe; an old export
 job cannot make a revoked request ready again. Files are cleaned by ID after
 database erasure. If unlink fails, access remains revoked; retry cleanup before
 retiring the storage volume. Pending and expired artifacts also require storage
 retention cleanup; SQL deadlines alone do not delete physical files.
+
+Order notifications are owned through `(tenant_id, orders.customer_id)` and
+`reference_id`, never through email equality. Erasure replaces their frozen
+recipients with `erased-<delivery UUID>@invalid.test`, clears send tokens, and
+retires every pending/current/redrive dispatch generation. Already delivered
+outbox receipts retain their historical delivered state. The contact and
+terminal dispatch guards permit only the exact scrub under the privacy executor;
+redrive cannot revive an erased envelope. Later order lifecycle events still
+commit, but their notifications and dispatches start terminal and contain no
+original contact. Guest orders with no customer link remain outside this scope.
+
+Notification workers admit a send in a committed database transaction before
+SMTP IO. Erasure prevents subsequent admission and stale completion, but cannot
+recall a message whose send was already admitted or accepted externally. Real
+SMTP cancellation/delivery is **NOT_RUN**; the DB tests cover token/lease fencing,
+recipient removal and future fanout. Customer sessions and future quote/inquiry
+ownership do not gain an invented mapping from this integration.
+
+Erasure locks existing dispatches before envelopes. A concurrent redrive may
+introduce a generation while these locks are acquired; NOWAIT on envelope locks
+and the second dispatch scan aborts the entire operation on contention. Retry
+`privacy_busy` with the same idempotency key. SQLSTATE 55P03, 40P01 and 40001
+from domain work map to the stable HTTP 409 code `privacy_busy`; rollback saves
+no successful response. Errors opening or committing the outer authorized
+transaction still use the redacted HTTP 500 response; this mapping does not
+claim to classify every transaction failure.
 
 The append-only erasure receipt and audit event record tenant/customer ID,
 trusted actor, time and affected categories/counts, without erased PII. Keep

@@ -1,5 +1,5 @@
 -- Real PostgreSQL privacy gate; synthetic tenant/customer fixtures roll back.
--- Depends on 025 controlled functions. Called by check_pg; no production data.
+-- Depends on 026 notifications and 027 controlled functions. Called by check_pg; no production data.
 -- Asserts scope, credentials exclusion, single use, erasure and runtime fences.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -51,6 +51,39 @@ BEGIN
  PERFORM set_config('test.privacy_line_before',(SELECT (to_jsonb(x)-'tax_snapshot')::text FROM app.order_lines x WHERE order_id=oid),true);
 END $order$;
 RESET ROLE;
+-- Frozen recipients, an admitted send, a historical send, and old redrive generations.
+DO $notification_seed$
+DECLARE t uuid:=current_setting('app.tenant_id')::uuid; oid uuid:=current_setting('test.privacy_order')::uuid; d app.notification_deliveries; i integer; source uuid; w uuid:=uuidv7();
+BEGIN
+ FOR i IN 1..4 LOOP
+  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+   VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','privacy-notification-'||i) RETURNING id INTO source;
+  SELECT * INTO d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=source;
+  IF d.recipient<>'privacy@example.invalid' THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION fixture recipient'; END IF;
+  IF i=1 THEN
+   UPDATE app.outbox_events SET status='processing',lease_owner=w,lease_until=clock_timestamp()+interval '5 minutes',attempts=1 WHERE tenant_id=t AND id=d.dispatch_event_id;
+   UPDATE app.notification_deliveries SET status='sending',send_token=uuidv7(),lease_worker=w,lease_attempt=1 WHERE tenant_id=t AND id=d.id RETURNING * INTO d;
+   PERFORM set_config('test.privacy_notification',d.id::text,true);PERFORM set_config('test.privacy_dispatch',d.dispatch_event_id::text,true);
+   PERFORM set_config('test.privacy_send_token',d.send_token::text,true);PERFORM set_config('test.privacy_send_worker',w::text,true);
+  ELSIF i=2 THEN
+   UPDATE app.notification_deliveries SET status='sent',sent_at=clock_timestamp() WHERE tenant_id=t AND id=d.id;
+   UPDATE app.outbox_events SET status='delivered',delivered_at=clock_timestamp() WHERE tenant_id=t AND id=d.dispatch_event_id;
+  ELSIF i=3 THEN
+   UPDATE app.notification_deliveries SET status='dead_letter',last_error='SEND_FAILED' WHERE tenant_id=t AND id=d.id;
+   PERFORM app.notification_redrive(t,d.id,'privacy-old-redrive');
+  END IF;
+ END LOOP;
+ -- Identical email is deliberately not an ownership key: an unrelated guest
+ -- order's frozen recipient must remain intact.
+ EXECUTE 'SET LOCAL ROLE app_orders_executor';
+ INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+  VALUES(t,uuidv7(),2,'privacy-unowned-guest',sha256('guest'::bytea),'{"email":"privacy@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id INTO oid;
+ EXECUTE 'RESET ROLE';
+ INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+  VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','privacy-unowned-guest') RETURNING id INTO source;
+ SELECT id INTO source FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=source;
+ PERFORM set_config('test.privacy_unowned_notification',source::text,true);
+END $notification_seed$;
 SELECT set_config('app.tenant_id',:'t',true),set_config('test.privacy_customer',:'c',true),set_config('test.privacy_foreign',:'foreign_c',true);
 SET LOCAL ROLE app_runtime;
 DO $gate$
@@ -82,6 +115,37 @@ BEGIN
  BEGIN DELETE FROM app.customer_credentials; RAISE EXCEPTION 'PRIVACY_GATE runtime delete'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN UPDATE app.data_rights_exports SET status='ready'; RAISE EXCEPTION 'PRIVACY_GATE raw export mutation'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $gate$;
+RESET ROLE;
+DO $notification_privacy$
+DECLARE t uuid:=current_setting('app.tenant_id')::uuid; oid uuid:=current_setting('test.privacy_order')::uuid; n uuid:=current_setting('test.privacy_notification')::uuid; source uuid; nd app.notification_deliveries;
+BEGIN
+ IF (SELECT recipient FROM app.notification_deliveries WHERE tenant_id=t AND id=current_setting('test.privacy_unowned_notification')::uuid)<>'privacy@example.invalid' THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION unowned email matched'; END IF;
+ IF EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND reference_id=oid AND (recipient<>'erased-'||id::text||'@invalid.test' OR status<>'dead_letter' OR last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR send_token IS NOT NULL OR lease_worker IS NOT NULL OR lease_attempt IS NOT NULL OR sent_at IS NOT NULL)) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION PII or live send residue'; END IF;
+ IF EXISTS(SELECT FROM app.outbox_events e JOIN app.notification_deliveries d ON d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id) WHERE d.tenant_id=t AND d.reference_id=oid AND (e.status NOT IN('dead_letter','delivered') OR e.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR e.lease_owner IS NOT NULL OR e.lease_until IS NOT NULL)) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION live dispatch generation'; END IF;
+ BEGIN PERFORM app.notification_redrive(t,n,'privacy-revive');RAISE EXCEPTION 'PRIVACY_NOTIFICATION redrive revival'; EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ EXECUTE 'SET LOCAL ROLE app_runtime';
+ BEGIN UPDATE app.notification_deliveries SET recipient='resurrected@example.test' WHERE tenant_id=t AND id=n; RAISE EXCEPTION 'PRIVACY_NOTIFICATION raw mutation'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ EXECUTE 'RESET ROLE';
+ EXECUTE 'SET LOCAL ROLE app_notifications_executor';
+ BEGIN UPDATE app.notification_deliveries SET status='pending',last_error=NULL WHERE tenant_id=t AND id=n; RAISE EXCEPTION 'PRIVACY_NOTIFICATION terminal revival'; EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ EXECUTE 'RESET ROLE';
+ EXECUTE 'SET LOCAL ROLE app_data_rights_executor';
+ BEGIN UPDATE app.notification_deliveries SET recipient='forged@example.test' WHERE tenant_id=t AND id=n; RAISE EXCEPTION 'PRIVACY_NOTIFICATION forged scrub'; EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ BEGIN UPDATE app.outbox_events SET status='pending',last_error=NULL WHERE tenant_id=t AND id=current_setting('test.privacy_dispatch')::uuid; RAISE EXCEPTION 'PRIVACY_NOTIFICATION dispatch revival'; EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ EXECUTE 'RESET ROLE';
+ -- A financial event after erasure remains valid, but cannot revive a frozen contact.
+ INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(t,'order.fulfilled',jsonb_build_object('order_id',oid),'orders.events','privacy-future-notification') RETURNING id INTO source;
+ SELECT * INTO nd FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=source;
+ IF nd.status<>'dead_letter' OR nd.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR nd.recipient<>'erased-'||nd.id::text||'@invalid.test' THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION future fanout'; END IF;
+ IF EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND id=nd.dispatch_event_id AND status<>'dead_letter') THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION future dispatch'; END IF;
+END $notification_privacy$;
+SELECT set_config('app.outbox_worker',current_setting('test.privacy_send_worker'),true),set_config('app.outbox_attempt','1',true);
+SET LOCAL ROLE app_outbox_worker;
+DO $notification_fence$
+BEGIN
+ IF app.notification_finish(current_setting('app.tenant_id')::uuid,current_setting('test.privacy_notification')::uuid,current_setting('test.privacy_send_token')::uuid,'sent',NULL) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION stale finish'; END IF;
+ BEGIN PERFORM app.notification_begin(current_setting('app.tenant_id')::uuid,current_setting('test.privacy_dispatch')::uuid,current_setting('test.privacy_notification')::uuid); RAISE EXCEPTION 'PRIVACY_NOTIFICATION stale begin'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $notification_fence$;
 RESET ROLE;
 -- Check expired capability independently from request expiry and single-use.
 INSERT INTO app.customers(tenant_id,email) VALUES(:'t','expiry@example.invalid') RETURNING id AS expiry_customer \gset

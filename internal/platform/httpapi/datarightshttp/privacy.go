@@ -54,6 +54,8 @@ func (h *Handler) Routes() []httpapi.Route {
 }
 func privacyError(err error) error {
 	switch {
+	case errors.Is(err, contract.ErrBusy):
+		return apperrors.New(409, "privacy_busy", "Concurrent data-rights operation; retry")
 	case errors.Is(err, contract.ErrInvalid):
 		return apperrors.New(400, "invalid_request", "Invalid data-rights input")
 	case errors.Is(err, contract.ErrNotFound):

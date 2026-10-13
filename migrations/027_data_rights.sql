@@ -64,6 +64,14 @@ GRANT UPDATE(shipping_snapshot) ON app.orders TO app_data_rights_executor;
 GRANT UPDATE(tax_snapshot) ON app.order_lines TO app_data_rights_executor;
 GRANT INSERT,UPDATE ON app.data_rights_exports TO app_data_rights_executor;
 GRANT INSERT ON app.data_rights_erasures,app.audit_events TO app_data_rights_executor;
+-- Privacy owns only the contact scrub and dispatch retirement capability.
+GRANT SELECT ON app.notification_deliveries TO app_data_rights_executor;
+GRANT SELECT(tenant_id,id,event_type,delivery_target,payload,status,lease_owner,lease_until,last_error) ON app.outbox_events TO app_data_rights_executor;
+GRANT UPDATE(recipient,status,last_error,send_token,lease_attempt,lease_worker,sent_at,updated_at) ON app.notification_deliveries TO app_data_rights_executor;
+GRANT UPDATE(status,lease_owner,lease_until,last_error) ON app.outbox_events TO app_data_rights_executor;
+CREATE POLICY data_rights_scope ON app.notification_deliveries TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid) WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
+CREATE POLICY data_rights_scope ON app.outbox_events TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid) WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid AND delivery_target='notifications.email');
+
 CREATE FUNCTION app.data_rights_context() RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
 DECLARE t uuid;
 BEGIN
@@ -216,14 +224,45 @@ BEGIN
  RETURN jsonb_build_object('id',r.id,'status','consumed');
 END $fn$;
 CREATE FUNCTION app.data_rights_erase_customer(p_customer uuid,p_actor_kind text,p_actor_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
-DECLARE t uuid:=app.data_rights_context();c app.customers; requests jsonb; naddr integer;ncred integer;nb2b integer;norder integer;nline integer;
+DECLARE t uuid:=app.data_rights_context();c app.customers; requests jsonb; naddr integer;ncred integer;nb2b integer;norder integer;nline integer;nnotification integer;
 BEGIN
  IF p_customer IS NULL OR p_actor_id IS NULL OR p_actor_kind IS NULL OR p_actor_kind NOT IN('user','api_key','service') THEN RAISE EXCEPTION 'PRIVACY_INVALID' USING ERRCODE='22023'; END IF;
+ -- Existing financial writers lock order before notification fanout locks customer.
+ PERFORM id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer ORDER BY id FOR UPDATE;
  SELECT * INTO c FROM app.customers WHERE tenant_id=t AND id=p_customer FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'PRIVACY_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ -- Catch orders committed while the first pass waited for customer admission.
+ -- Fail atomically rather than wait on a transition that now needs our customer.
+ PERFORM id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer ORDER BY id FOR UPDATE NOWAIT;
  PERFORM id FROM app.data_rights_exports WHERE tenant_id=t AND customer_id=p_customer ORDER BY id FOR UPDATE;
  SELECT coalesce(jsonb_agg(id ORDER BY id),'[]'::jsonb) INTO requests FROM app.data_rights_exports WHERE tenant_id=t AND customer_id=p_customer;
  UPDATE app.data_rights_exports SET status='revoked',token_hash=NULL,content_hash=NULL WHERE tenant_id=t AND customer_id=p_customer;
+ -- Lock all existing dispatch generations before their delivery rows, matching
+ -- begin/finish. Payload binds a delivery ID; emails never establish ownership.
+ PERFORM e.id FROM app.outbox_events e JOIN app.notification_deliveries d
+  ON d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id)
+  JOIN app.orders o ON(o.tenant_id,o.id)=(d.tenant_id,d.reference_id)
+  WHERE o.tenant_id=t AND o.customer_id=p_customer AND d.template_key IN('order.paid','order.shipped','order.refund') AND e.delivery_target='notifications.email'
+  ORDER BY e.id FOR UPDATE OF e;
+ PERFORM d.id FROM app.notification_deliveries d JOIN app.orders o ON(o.tenant_id,o.id)=(d.tenant_id,d.reference_id)
+  WHERE o.tenant_id=t AND o.customer_id=p_customer AND d.template_key IN('order.paid','order.shipped','order.refund') ORDER BY d.id FOR UPDATE OF d NOWAIT;
+ -- A concurrent redrive can introduce a generation during the first pass.
+ -- NOWAIT on delivery and this second dispatch pass prevents the inverse
+ -- delivery -> newly admitted worker's outbox lock from becoming a deadlock.
+ -- Contention aborts the entire erasure; callers may retry without partial PII.
+ PERFORM e.id FROM app.outbox_events e JOIN app.notification_deliveries d
+  ON d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id)
+  JOIN app.orders o ON(o.tenant_id,o.id)=(d.tenant_id,d.reference_id)
+  WHERE o.tenant_id=t AND o.customer_id=p_customer AND d.template_key IN('order.paid','order.shipped','order.refund') AND e.delivery_target='notifications.email'
+  ORDER BY e.id FOR UPDATE OF e NOWAIT;
+ UPDATE app.outbox_events e SET status=CASE WHEN e.status='delivered' THEN 'delivered' ELSE 'dead_letter' END,lease_owner=NULL,lease_until=NULL,last_error='PRIVACY_ERASED'
+  FROM app.notification_deliveries d,app.orders o WHERE d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id)
+  AND(o.tenant_id,o.id)=(d.tenant_id,d.reference_id) AND o.tenant_id=t AND o.customer_id=p_customer
+  AND d.template_key IN('order.paid','order.shipped','order.refund') AND e.delivery_target='notifications.email';
+ UPDATE app.notification_deliveries d SET recipient='erased-'||d.id::text||'@invalid.test',status='dead_letter',last_error='PRIVACY_ERASED',send_token=NULL,lease_attempt=NULL,lease_worker=NULL,sent_at=NULL,updated_at=clock_timestamp()
+  FROM app.orders o WHERE(o.tenant_id,o.id)=(d.tenant_id,d.reference_id) AND o.tenant_id=t AND o.customer_id=p_customer
+  AND d.template_key IN('order.paid','order.shipped','order.refund') AND d.recipient<>'';GET DIAGNOSTICS nnotification=ROW_COUNT;
+
  DELETE FROM app.customer_addresses WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS naddr=ROW_COUNT;
  DELETE FROM app.customer_credentials WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS ncred=ROW_COUNT;
  UPDATE app.buyer_company_members SET status='revoked' WHERE tenant_id=t AND customer_id=p_customer AND status<>'revoked';GET DIAGNOSTICS nb2b=ROW_COUNT;
@@ -231,8 +270,8 @@ BEGIN
  UPDATE app.order_lines l SET tax_snapshot=app.data_rights_tax_scrub(l.tax_snapshot) FROM app.orders o WHERE (o.tenant_id,o.id)=(l.tenant_id,l.order_id) AND o.tenant_id=t AND o.customer_id=p_customer;GET DIAGNOSTICS nline=ROW_COUNT;
  UPDATE app.customers SET email='erased+'||id::text||'@invalid.example',display_name='[erased]',status='disabled' WHERE tenant_id=t AND id=p_customer;
  INSERT INTO app.data_rights_erasures(tenant_id,customer_id,actor_kind,actor_id) VALUES(t,p_customer,p_actor_kind,p_actor_id) ON CONFLICT DO NOTHING;
- INSERT INTO app.audit_events(tenant_id,actor_kind,actor_id,operation,resource_type,resource_id,payload) VALUES(t,p_actor_kind,p_actor_id,'data_rights.customer.erase','customer',p_customer,jsonb_build_object('scope','customer','addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline));
- RETURN jsonb_build_object('customer_id',p_customer,'requests',requests,'counts',jsonb_build_object('addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline));
+ INSERT INTO app.audit_events(tenant_id,actor_kind,actor_id,operation,resource_type,resource_id,payload) VALUES(t,p_actor_kind,p_actor_id,'data_rights.customer.erase','customer',p_customer,jsonb_build_object('scope','customer','addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification));
+ RETURN jsonb_build_object('customer_id',p_customer,'requests',requests,'counts',jsonb_build_object('addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification));
 END $fn$;
 -- Immutable receipt is the restore/re-erasure barrier; no raw PII is retained.
 CREATE FUNCTION app.data_rights_erasure_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
@@ -278,6 +317,56 @@ BEGIN
  RETURN NEW;
 END $fn$;
 CREATE TRIGGER data_rights_customer_guard BEFORE UPDATE ON app.customers FOR EACH ROW EXECUTE FUNCTION app.data_rights_customer_guard();
+-- Fanout keeps its module contract; privacy adds only authoritative lifecycle
+-- admission. Function-local tenant binding supports existing privileged fixtures
+-- while the caller's ordinary table RLS still controls the INSERT itself.
+CREATE FUNCTION app.data_rights_notification_insert_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp SET app.tenant_id='' AS $fn$
+DECLARE customer uuid;c app.customers;
+BEGIN
+ IF NEW.template_key NOT IN('order.paid','order.shipped','order.refund') THEN RETURN NEW; END IF;
+ PERFORM set_config('app.tenant_id',NEW.tenant_id::text,true);
+ SELECT customer_id INTO customer FROM app.orders WHERE tenant_id=NEW.tenant_id AND id=NEW.reference_id;
+ IF customer IS NULL THEN RETURN NEW; END IF;
+ SELECT * INTO c FROM app.customers WHERE tenant_id=NEW.tenant_id AND id=customer FOR SHARE;
+ IF FOUND AND (c.status<>'active' OR EXISTS(SELECT FROM app.data_rights_erasures WHERE tenant_id=NEW.tenant_id AND customer_id=customer)) AND NEW.recipient<>'' THEN
+  NEW.recipient:='erased-'||NEW.id::text||'@invalid.test';NEW.status:='dead_letter';NEW.last_error:='PRIVACY_ERASED';NEW.send_token:=NULL;NEW.lease_attempt:=NULL;NEW.lease_worker:=NULL;NEW.sent_at:=NULL;
+ END IF;
+ RETURN NEW;
+END $fn$;
+CREATE TRIGGER data_rights_notification_insert_guard BEFORE INSERT ON app.notification_deliveries FOR EACH ROW EXECUTE FUNCTION app.data_rights_notification_insert_guard();
+CREATE FUNCTION app.data_rights_notification_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+BEGIN
+ IF OLD.last_error='PRIVACY_ERASED' AND (to_jsonb(NEW)-'updated_at') IS DISTINCT FROM (to_jsonb(OLD)-'updated_at') THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION_IMMUTABLE' USING ERRCODE='55000'; END IF;
+ IF current_user='app_data_rights_executor' THEN
+  IF NEW.recipient<>'erased-'||OLD.id::text||'@invalid.test' OR NEW.status<>'dead_letter' OR NEW.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR NEW.send_token IS NOT NULL OR NEW.lease_attempt IS NOT NULL OR NEW.lease_worker IS NOT NULL OR NEW.sent_at IS NOT NULL
+   OR (to_jsonb(NEW)-ARRAY['recipient','status','last_error','send_token','lease_attempt','lease_worker','sent_at','updated_at']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['recipient','status','last_error','send_token','lease_attempt','lease_worker','sent_at','updated_at']) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION_SCRUB_ONLY' USING ERRCODE='55000'; END IF;
+ ELSIF (OLD.recipient<>'' AND NEW.recipient IS DISTINCT FROM OLD.recipient) OR NEW.last_error='PRIVACY_ERASED' AND OLD.last_error IS DISTINCT FROM 'PRIVACY_ERASED' THEN
+  RAISE EXCEPTION 'PRIVACY_NOTIFICATION_ENVELOPE_IMMUTABLE' USING ERRCODE='55000';
+ END IF;
+ RETURN NEW;
+END $fn$;
+CREATE TRIGGER data_rights_notification_guard BEFORE UPDATE ON app.notification_deliveries FOR EACH ROW EXECUTE FUNCTION app.data_rights_notification_guard();
+CREATE FUNCTION app.data_rights_notification_dispatch_insert_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp SET app.tenant_id='' AS $fn$
+BEGIN
+ IF NEW.delivery_target<>'notifications.email' OR NEW.event_type<>'notification.dispatch' THEN RETURN NEW; END IF;
+ PERFORM set_config('app.tenant_id',NEW.tenant_id::text,true);
+ IF EXISTS(SELECT FROM app.notification_deliveries d WHERE d.tenant_id=NEW.tenant_id AND NEW.payload=jsonb_build_object('notification_id',d.id) AND d.last_error='PRIVACY_ERASED') THEN
+  NEW.status:='dead_letter';NEW.lease_owner:=NULL;NEW.lease_until:=NULL;NEW.last_error:='PRIVACY_ERASED';
+ END IF;
+ RETURN NEW;
+END $fn$;
+CREATE TRIGGER data_rights_notification_dispatch_insert_guard BEFORE INSERT ON app.outbox_events FOR EACH ROW EXECUTE FUNCTION app.data_rights_notification_dispatch_insert_guard();
+CREATE FUNCTION app.data_rights_notification_dispatch_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+BEGIN
+ IF OLD.delivery_target<>'notifications.email' THEN RETURN NEW; END IF;
+ IF OLD.last_error='PRIVACY_ERASED' AND NEW IS DISTINCT FROM OLD THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION_DISPATCH_IMMUTABLE' USING ERRCODE='55000'; END IF;
+ IF NEW.last_error='PRIVACY_ERASED' AND OLD.last_error IS DISTINCT FROM 'PRIVACY_ERASED' THEN
+  IF current_user<>'app_data_rights_executor' OR NEW.status IS DISTINCT FROM (CASE WHEN OLD.status='delivered' THEN 'delivered' ELSE 'dead_letter' END) OR NEW.lease_owner IS NOT NULL OR NEW.lease_until IS NOT NULL
+   OR (to_jsonb(NEW)-ARRAY['status','lease_owner','lease_until','last_error']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['status','lease_owner','lease_until','last_error']) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION_DISPATCH_SCRUB_ONLY' USING ERRCODE='55000'; END IF;
+ END IF;
+ RETURN NEW;
+END $fn$;
+CREATE TRIGGER data_rights_notification_dispatch_guard BEFORE UPDATE ON app.outbox_events FOR EACH ROW EXECUTE FUNCTION app.data_rights_notification_dispatch_guard();
 -- Ownership is the security boundary. No login/member can become this role.
 GRANT CREATE ON SCHEMA app TO app_data_rights_executor;
 DO $functions$
