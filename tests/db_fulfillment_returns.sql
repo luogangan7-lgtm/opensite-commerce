@@ -250,6 +250,112 @@ BEGIN
   RAISE NOTICE 'PASS: active RMA % financial event fence, prior replay and no-RMA legacy path',gate_name;
  END LOOP;
 END $active_rma$;
+-- Legacy refunds consume the same financial entitlement as RMA refunds. A full
+-- cancellation must freeze the remaining 190, including when split into two RMAs.
+DO $legacy_conservation$
+DECLARE
+ t uuid:=current_setting('test.fulfillment_t')::uuid;sku uuid:=current_setting('test.fulfillment_sku')::uuid;
+ oid uuid;lid uuid;res app.inventory_reservations;ord app.orders;r jsonb;
+ income uuid:=uuidv7();tax uuid:=uuidv7();shipping uuid:=uuidv7();cash uuid:=uuidv7();journal uuid;
+ case_i int;part_i int;parts int;amount bigint;initial_stock bigint;rid uuid;
+BEGIN
+ INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
+  (t,income,'legacy-income','USD','revenue'),(t,tax,'legacy-tax','USD','liability'),
+  (t,shipping,'legacy-shipping','USD','revenue'),(t,cash,'legacy-cash','USD','asset');
+ FOR case_i IN 1..2 LOOP
+  oid:=uuidv7();lid:=uuidv7();parts:=case_i;
+  SELECT on_hand INTO initial_stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
+  res:=app.inventory_reserve(sku,2,'order',oid,'legacy-reserve-'||case_i,900);
+  ord:=app.orders_create(oid,'legacy-order-'||case_i,sha256(('legacy'||case_i)::bytea),NULL,
+   '{"email":"legacy@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
+   jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
+    'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
+    'reservation_id',res.id,'tax_snapshot','{}'::jsonb)),'[]');
+  ord:=app.orders_transition(oid,'paid','legacy-paid-'||case_i,0);
+  ord:=app.orders_transition(oid,'partially_refunded','legacy-credit-'||case_i,10);
+  FOR part_i IN 1..parts LOOP
+   r:=app.returns_create(oid,ord.version,'legacy-rma-'||case_i||'-'||part_i,'unshipped_cancel','remaining credit',
+    jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',2/parts)));
+   rid:=(r->>'id')::uuid;amount:=190/parts;
+   IF (r->>'refund_minor')::bigint<>amount THEN
+    RAISE EXCEPTION 'FULFILLMENT_GATE legacy credit frozen amount: got %, expected %',r->>'refund_minor',amount;END IF;
+   SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+   EXECUTE 'SET LOCAL ROLE app_returns_service';
+   r:=app.returns_prepare_refund(rid,ord.version,'legacy-refund-'||case_i||'-'||part_i,'legacy-capture',1,income,tax,shipping,cash);
+   IF (r->>'refund_minor')::bigint<>amount THEN RAISE EXCEPTION 'FULFILLMENT_GATE legacy freeze drift';END IF;
+   journal:=app.post_ledger(t,'USD','return',rid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[amount,amount]);
+   PERFORM app.returns_complete_refund(rid,'legacy-refund-'||case_i||'-'||part_i,'legacy-capture',journal);
+   EXECUTE 'SET LOCAL ROLE app_runtime';
+   SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+  END LOOP;
+  IF ord.refunded_minor<>200 OR ord.state<>'refunded'
+   OR (SELECT sum(refund_minor) FROM app.returns WHERE tenant_id=t AND order_id=oid)<>190
+   OR (SELECT on_hand FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku)<>initial_stock
+   OR (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=t AND owner_type='return'
+    AND owner_id IN(SELECT id FROM app.returns WHERE tenant_id=t AND order_id=oid))<>parts THEN
+   RAISE EXCEPTION 'FULFILLMENT_GATE legacy/RMA conservation or restore-once failed case %',case_i;END IF;
+ END LOOP;
+ RAISE NOTICE 'PASS: legacy 10 + RMA 190 and legacy 10 + RMA 95 + RMA 95';
+END $legacy_conservation$;
+-- A discounted two-unit order has entitlements [0,1]. Receive/refund the
+-- positive unit first, then receive the zero unit after the order is refunded.
+DO $zero_after_refund$
+DECLARE
+ t uuid:=current_setting('test.fulfillment_t')::uuid;sku uuid:=current_setting('test.fulfillment_sku')::uuid;
+ oid uuid:=uuidv7();lid uuid:=uuidv7();res app.inventory_reservations;ord app.orders;
+ shipment jsonb;a jsonb;b jsonb;received jsonb;sid uuid;aid uuid;bid uuid;receive_version bigint;
+ income uuid:=uuidv7();tax uuid:=uuidv7();shipping uuid:=uuidv7();cash uuid:=uuidv7();journal uuid;initial_stock bigint;
+BEGIN
+ INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
+  (t,income,'zero-income','USD','revenue'),(t,tax,'zero-tax','USD','liability'),
+  (t,shipping,'zero-shipping','USD','revenue'),(t,cash,'zero-cash','USD','asset');
+ SELECT on_hand INTO initial_stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
+ res:=app.inventory_reserve(sku,2,'order',oid,'zero-reserve',900);
+ ord:=app.orders_create(oid,'zero-order',sha256('zero'::bytea),NULL,
+  '{"email":"zero@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
+  jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
+   'unit_price_minor',1,'line_net_minor',2,'line_tax_minor',0,'line_total_minor',2,
+   'reservation_id',res.id,'tax_snapshot','{}'::jsonb)),
+  jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','discount','amount_minor',-1,'reason','zero fixture')));
+ ord:=app.orders_transition(oid,'paid','zero-paid',0);
+ shipment:=app.fulfillment_create_shipment(oid,ord.version,'zero-shipment','manual','ZERO',
+  jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',2)));
+ sid:=(shipment->'lines'->0->>'id')::uuid;
+ SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+ a:=app.returns_create(oid,ord.version,'zero-a','shipment_return','zero unit',
+  jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',1)));
+ aid:=(a->>'id')::uuid;
+ SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+ b:=app.returns_create(oid,ord.version,'zero-b','shipment_return','positive unit',
+  jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',1)));
+ bid:=(b->>'id')::uuid;
+ IF (a->>'refund_minor')::bigint<>0 OR (b->>'refund_minor')::bigint<>1 THEN
+  RAISE EXCEPTION 'FULFILLMENT_GATE zero fixture entitlements not [0,1]';END IF;
+ SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+ PERFORM app.returns_receive(bid,ord.version,'zero-receive-b',true);
+ SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+ EXECUTE 'SET LOCAL ROLE app_returns_service';
+ PERFORM app.returns_prepare_refund(bid,ord.version,'zero-refund-b','zero-capture',1,income,tax,shipping,cash);
+ journal:=app.post_ledger(t,'USD','return',bid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[1,1]::bigint[]);
+ PERFORM app.returns_complete_refund(bid,'zero-refund-b','zero-capture',journal);
+ EXECUTE 'SET LOCAL ROLE app_runtime';
+ SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
+ IF ord.state<>'refunded' THEN RAISE EXCEPTION 'FULFILLMENT_GATE zero positive unit did not refund order';END IF;
+ receive_version:=ord.version;
+ received:=app.returns_receive(aid,receive_version,'zero-receive-a',true);
+ IF received->>'status'<>'completed' OR (received->>'restocked')::boolean IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'FULFILLMENT_GATE zero return lacks terminal completed receipt';END IF;
+ IF app.returns_receive(aid,receive_version,'zero-receive-a',true) IS DISTINCT FROM received THEN
+  RAISE EXCEPTION 'FULFILLMENT_GATE zero receive replay drift';END IF;
+ IF (SELECT state FROM app.orders WHERE tenant_id=t AND id=oid)<>'refunded'
+  OR (SELECT refunded_minor FROM app.orders WHERE tenant_id=t AND id=oid)<>1
+  OR (SELECT on_hand FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku)<>initial_stock
+  OR (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=t AND owner_type='return' AND owner_id=aid)<>1
+  OR EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND id=aid AND (refund_key IS NOT NULL OR ledger_transaction_id IS NOT NULL))
+  OR EXISTS(SELECT FROM app.ledger_transactions WHERE tenant_id=t AND source_type='return' AND source_id=aid::text) THEN
+  RAISE EXCEPTION 'FULFILLMENT_GATE zero receive changed money/order or repeated restore';END IF;
+ RAISE NOTICE 'PASS: zero RMA receive after refunded order terminal, restore-once, no financial journal';
+END $zero_after_refund$;
 RESET ROLE;
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
  VALUES(:'t',:'product','fulfillment-sku-2','second') RETURNING id AS sku2 \gset
