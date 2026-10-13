@@ -49,7 +49,7 @@ CREATE TABLE app.returns(
  tax_minor bigint NOT NULL DEFAULT 0 CHECK(tax_minor>=0),
  shipping_minor bigint NOT NULL DEFAULT 0 CHECK(shipping_minor>=0),
  refund_minor bigint NOT NULL DEFAULT 0 CHECK(refund_minor=income_minor+tax_minor+shipping_minor),
- status text NOT NULL CHECK(status IN('requested','received','refund_pending','refunded')),
+ status text NOT NULL CHECK(status IN('requested','received','refund_pending','refunded','completed')),
  order_version bigint NOT NULL DEFAULT 1 CHECK(order_version>0),sealed boolean NOT NULL DEFAULT false,
  restocked boolean NOT NULL DEFAULT false,received_at timestamptz,
  creation_response jsonb CHECK(creation_response IS NULL OR jsonb_typeof(creation_response)='object'),
@@ -76,7 +76,8 @@ CREATE TABLE app.returns(
   AND provider_ref IS NOT NULL AND payment_version IS NOT NULL AND refund_expected_version IS NOT NULL
   AND income_account_id IS NOT NULL AND tax_account_id IS NOT NULL AND shipping_account_id IS NOT NULL
   AND cash_account_id IS NOT NULL AND refund_minor>0)),
- CHECK((status='refunded')=(ledger_transaction_id IS NOT NULL AND refunded_at IS NOT NULL))
+ CHECK((status='refunded')=(ledger_transaction_id IS NOT NULL AND refunded_at IS NOT NULL)),
+ CHECK(status<>'completed' OR (refund_minor=0 AND refund_key IS NULL AND ledger_transaction_id IS NULL AND refunded_at IS NULL))
 );
 CREATE INDEX returns_order ON app.returns(tenant_id,order_id);
 CREATE TABLE app.return_lines(
@@ -193,7 +194,7 @@ BEGIN
   NOT EXISTS(SELECT FROM app.order_lines l WHERE l.tenant_id=t AND l.order_id=p_id AND
    coalesce((SELECT sum(s.quantity) FROM app.shipment_lines s WHERE s.tenant_id=t AND s.order_line_id=l.id),0)<>l.quantity)
  INTO has_shipped,all_shipped;
- target:=CASE WHEN o.state='partially_refunded' THEN o.state WHEN all_shipped THEN 'fulfilled'
+ target:=CASE WHEN o.state IN('partially_refunded','refunded') THEN o.state WHEN all_shipped THEN 'fulfilled'
   WHEN has_shipped THEN 'partially_fulfilled' ELSE 'paid' END;
  UPDATE app.orders SET state=target,version=version+1,updated_at=clock_timestamp()
  WHERE tenant_id=t AND id=p_id RETURNING * INTO o;
@@ -297,7 +298,8 @@ BEGIN
  END IF;
  IF TG_TABLE_NAME='returns' AND OLD.status IS DISTINCT FROM NEW.status AND NOT(
   OLD.status='requested' AND NEW.status='received' OR OLD.status='received' AND NEW.status='refund_pending'
-  OR OLD.status='refund_pending' AND NEW.status='refunded') THEN
+  OR OLD.status='refund_pending' AND NEW.status='refunded'
+  OR OLD.status='received' AND NEW.status='completed' AND NEW.refund_minor=0) THEN
   RAISE EXCEPTION 'FULFILLMENT_RETURN_STATE' USING ERRCODE='55000'; END IF;
  RETURN NEW;
 END $$;
@@ -312,7 +314,8 @@ BEGIN
  IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'FULFILLMENT_LINE_IMMUTABLE' USING ERRCODE='55000'; END IF;
  IF NEW.tenant_id IS DISTINCT FROM t THEN RAISE EXCEPTION 'FULFILLMENT_TENANT_SCOPE' USING ERRCODE='42501'; END IF;
  o:=app.orders_fulfillment_fence(NEW.order_id,NULL);
- IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded') THEN
+ IF NOT o.sealed OR (o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded')
+  AND NOT(TG_TABLE_NAME='return_lines' AND o.state='refunded')) THEN
   RAISE EXCEPTION 'FULFILLMENT_ORDER_STATE' USING ERRCODE='55000'; END IF;
  SELECT * INTO l FROM app.order_lines WHERE tenant_id=t AND order_id=NEW.order_id AND id=NEW.order_line_id;
  IF NOT FOUND THEN RAISE EXCEPTION 'FULFILLMENT_ORDER_LINE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
@@ -393,7 +396,9 @@ END $$;
 CREATE FUNCTION app.returns_create(p_order uuid,p_expected_version bigint,p_key text,p_kind text,p_reason text,p_lines jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
 DECLARE t uuid:=app.orders_context(); o app.orders; r app.returns; h bytea; line record; ol app.order_lines;
- ids uuid[]; weights bigint[]; income_parts bigint[]; shipping_parts bigint[]; index_v integer; income bigint;
+ ids uuid[]; weights bigint[]; income_parts bigint[]; tax_parts bigint[]:=ARRAY[]::bigint[]; shipping_parts bigint[];
+ original_income bigint[]; original_shipping bigint[]; index_v integer; income bigint;
+ frozen record; legacy numeric; has_legacy boolean; credit bigint;
  prior numeric; n bigint; tax bigint; ship bigint; total_income bigint;total_tax bigint;total_shipping bigint;
 BEGIN
  IF p_order IS NULL OR p_expected_version IS NULL OR p_expected_version<=0 OR p_key IS NULL OR p_key !~ '^[!-~]{1,128}$'
@@ -413,7 +418,7 @@ BEGIN
   RETURN r.creation_response;
  END IF;
  IF o.version<>p_expected_version THEN RAISE EXCEPTION 'FULFILLMENT_VERSION_CONFLICT' USING ERRCODE='22023'; END IF;
- IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded') THEN
+ IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded','refunded') THEN
   RAISE EXCEPTION 'FULFILLMENT_ORDER_STATE' USING ERRCODE='55000'; END IF;
  income:=o.items_net_minor+o.adjustment_minor;
  IF income<0 THEN RAISE EXCEPTION 'FULFILLMENT_NEGATIVE_ADJUSTED_INCOME' USING ERRCODE='22023'; END IF;
@@ -424,6 +429,34 @@ BEGIN
  income_parts:=app.fulfillment_allocate(income,weights);
  SELECT array_agg(quantity ORDER BY id) INTO weights FROM app.order_lines WHERE tenant_id=t AND order_id=p_order;
  shipping_parts:=app.fulfillment_allocate(o.shipping_minor,weights);
+ original_income:=income_parts; original_shipping:=shipping_parts;
+ -- LEGACY_REFUND_CREDIT: direct Orders refunds have no component allocation.
+ -- Preserve every frozen receipt, then attribute that credit only to remaining
+ -- capacities in UUID line order, income/tax/shipping order. A saturated prefix
+ -- cannot receive another allocation, so attribution stays monotone even when a
+ -- legacy refund arrives between completed RMAs. Never reweight original caps.
+ SELECT o.refunded_minor-coalesce(sum(rr.refund_minor),0) INTO legacy
+ FROM app.returns rr WHERE rr.tenant_id=t AND rr.order_id=p_order AND rr.status='refunded';
+ IF legacy<0 THEN RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
+ has_legacy:=legacy>0;
+ FOR ol IN SELECT * FROM app.order_lines WHERE tenant_id=t AND order_id=p_order ORDER BY id LOOP
+  index_v:=array_position(ids,ol.id);
+  SELECT coalesce(sum(rl.income_minor),0) AS income,coalesce(sum(rl.tax_minor),0) AS tax,
+   coalesce(sum(rl.shipping_minor),0) AS shipping INTO frozen
+  FROM app.return_lines rl WHERE rl.tenant_id=t AND rl.order_line_id=ol.id;
+  IF frozen.income>income_parts[index_v] OR frozen.tax>ol.line_tax_minor OR frozen.shipping>shipping_parts[index_v] THEN
+   RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
+  income_parts[index_v]:=(income_parts[index_v]::numeric-frozen.income)::bigint;
+  tax_parts:=array_append(tax_parts,(ol.line_tax_minor::numeric-frozen.tax)::bigint);
+  shipping_parts[index_v]:=(shipping_parts[index_v]::numeric-frozen.shipping)::bigint;
+  credit:=least(legacy,income_parts[index_v])::bigint;
+  income_parts[index_v]:=income_parts[index_v]-credit; legacy:=legacy-credit;
+  credit:=least(legacy,tax_parts[index_v])::bigint;
+  tax_parts[index_v]:=tax_parts[index_v]-credit; legacy:=legacy-credit;
+  credit:=least(legacy,shipping_parts[index_v])::bigint;
+  shipping_parts[index_v]:=shipping_parts[index_v]-credit; legacy:=legacy-credit;
+ END LOOP;
+ IF legacy<>0 THEN RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
  INSERT INTO app.returns(tenant_id,order_id,kind,creation_key,request_hash,reason,currency,status,restocked,received_at)
  VALUES(t,p_order,p_kind,p_key,h,p_reason,o.currency,CASE p_kind WHEN 'unshipped_cancel' THEN 'received' ELSE 'requested' END,
   p_kind='unshipped_cancel',CASE WHEN p_kind='unshipped_cancel' THEN clock_timestamp() END) RETURNING * INTO r;
@@ -436,10 +469,23 @@ BEGIN
   index_v:=array_position(ids,ol.id);
   SELECT coalesce(sum(quantity),0) INTO prior FROM app.return_lines WHERE tenant_id=t AND order_line_id=ol.id;
   IF prior+line.quantity>ol.quantity THEN RAISE EXCEPTION 'FULFILLMENT_RETURN_ORDER_BOUND' USING ERRCODE='23514'; END IF;
-  -- CUMULATIVE_ENTITLEMENT: monotone per-unit floors; the last unit gets all dust.
-  n:=(div(income_parts[index_v]::numeric*(prior+line.quantity),ol.quantity)-div(income_parts[index_v]::numeric*prior,ol.quantity))::bigint;
-  tax:=(div(ol.line_tax_minor::numeric*(prior+line.quantity),ol.quantity)-div(ol.line_tax_minor::numeric*prior,ol.quantity))::bigint;
-  ship:=(div(shipping_parts[index_v]::numeric*(prior+line.quantity),ol.quantity)-div(shipping_parts[index_v]::numeric*prior,ol.quantity))::bigint;
+  IF has_legacy THEN
+   -- Remaining units share only unfrozen, uncredited capacities. The final
+   -- remaining unit takes every component's dust; numeric products are exact.
+   n:=div(income_parts[index_v]::numeric*line.quantity,ol.quantity-prior)::bigint;
+   tax:=div(tax_parts[index_v]::numeric*line.quantity,ol.quantity-prior)::bigint;
+   ship:=div(shipping_parts[index_v]::numeric*line.quantity,ol.quantity-prior)::bigint;
+  ELSE
+   -- CUMULATIVE_ENTITLEMENT: retain the original no-legacy per-unit rounding.
+   n:=(div(original_income[index_v]::numeric*(prior+line.quantity),ol.quantity)-div(original_income[index_v]::numeric*prior,ol.quantity))::bigint;
+   tax:=(div(ol.line_tax_minor::numeric*(prior+line.quantity),ol.quantity)-div(ol.line_tax_minor::numeric*prior,ol.quantity))::bigint;
+   ship:=(div(original_shipping[index_v]::numeric*(prior+line.quantity),ol.quantity)-div(original_shipping[index_v]::numeric*prior,ol.quantity))::bigint;
+  END IF;
+  IF n>income_parts[index_v] OR tax>tax_parts[index_v] OR ship>shipping_parts[index_v] THEN
+   RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
+  income_parts[index_v]:=income_parts[index_v]-n;
+  tax_parts[index_v]:=tax_parts[index_v]-tax;
+  shipping_parts[index_v]:=shipping_parts[index_v]-ship;
   INSERT INTO app.return_lines(tenant_id,return_id,order_id,order_line_id,shipment_line_id,quantity,income_minor,tax_minor,shipping_minor)
    VALUES(t,r.id,p_order,ol.id,line.shipment_line_id,line.quantity,n,tax,ship);
  END LOOP;
@@ -448,6 +494,9 @@ BEGIN
  UPDATE app.returns SET income_minor=total_income,tax_minor=total_tax,shipping_minor=total_shipping,
   refund_minor=total_income+total_tax+total_shipping,sealed=true WHERE tenant_id=t AND id=r.id;
  IF p_kind='unshipped_cancel' THEN PERFORM app.inventory_restore_return(r.id); END IF;
+ IF p_kind='unshipped_cancel' AND total_income+total_tax+total_shipping=0 THEN
+  UPDATE app.returns SET status='completed' WHERE tenant_id=t AND id=r.id;
+ END IF;
  o:=app.orders_fulfillment_advance(p_order,'return:'||r.id::text);
  UPDATE app.returns SET order_version=o.version WHERE tenant_id=t AND id=r.id;
  UPDATE app.returns SET creation_response=app.fulfillment_return_json(r.id) WHERE tenant_id=t AND id=r.id RETURNING * INTO r;
@@ -473,13 +522,14 @@ BEGIN
   RETURN r.receive_response;
  END IF;
  IF o.version<>p_expected_version THEN RAISE EXCEPTION 'FULFILLMENT_VERSION_CONFLICT' USING ERRCODE='22023'; END IF;
- IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded') THEN
+ IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded','refunded') THEN
   RAISE EXCEPTION 'FULFILLMENT_ORDER_STATE' USING ERRCODE='55000'; END IF;
  IF r.kind<>'shipment_return' OR r.status<>'requested' OR NOT r.sealed THEN
   RAISE EXCEPTION 'FULFILLMENT_RETURN_STATE' USING ERRCODE='55000'; END IF;
  UPDATE app.returns SET status='received',received_at=clock_timestamp(),restocked=p_restock,receive_key=p_key,receive_hash=h
  WHERE tenant_id=t AND id=p_return;
  IF p_restock THEN PERFORM app.inventory_restore_return(p_return); END IF;
+ IF r.refund_minor=0 THEN UPDATE app.returns SET status='completed' WHERE tenant_id=t AND id=p_return; END IF;
  o:=app.orders_fulfillment_advance(r.order_id,'receive:'||r.id::text);
  UPDATE app.returns SET order_version=o.version WHERE tenant_id=t AND id=p_return;
  UPDATE app.returns SET receive_response=app.fulfillment_return_json(r.id) WHERE tenant_id=t AND id=p_return RETURNING * INTO r;

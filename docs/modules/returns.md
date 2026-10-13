@@ -21,10 +21,29 @@ for zero net weights); tax uses each frozen line tax, shipping uses ordered
 quantity. Each line's component budget is allocated by cumulative integer floors:
 `floor(budget * cumulative_returned / ordered) - floor(budget * prior / ordered)`.
 This is monotone, has no negative rounding delta and consumes every remainder
-when all units are returned. Stored amounts use bigint minor units and one
-currency. Invalid negative net budgets fail before contacting a payment provider.
-Zero-value returns do not call the Payment Port. No new tax, promotion, currency
-conversion or shipping-price calculation is performed.
+when all units are returned **without earlier direct Orders refunds**.
+
+Legacy direct refunds have no income/tax/shipping attribution. Subtract every
+immutable return-line allocation from the original component caps first, then
+consume legacy credit from the remaining caps in stable order: order-line UUID,
+then income, tax and shipping. Remaining quantities share only those remaining
+budgets; their final unit consumes the rounding remainder. Completed returns and
+their receipts never change. This also permits a legacy refund between completed
+RMAs without making refunded money available again. Active RMAs continue to
+exclude new direct Orders refunds, while existing event replay remains available.
+
+Stored amounts use bigint minor units and one currency; intermediate integer
+products use exact numeric arithmetic. Invalid negative net budgets fail before
+contacting a payment provider. No new tax, promotion, currency conversion or
+shipping-price calculation is performed.
+
+Zero-value cancellations enter terminal `completed` after immediate receipt and
+once-only stock restoration. Zero-value physical returns remain `requested`
+until receipt, then enter `completed` even if another return already fully
+refunded the order. Receipt preserves that refunded order state. `completed`
+requires zero money, no refund intent and no journal; replay returns the stored
+receipt and cannot restore stock twice. These returns do not call the Payment
+Port. Positive refunds retain `received` → `refund_pending` → `refunded`.
 
 ## Durable provider and ledger coordination
 
