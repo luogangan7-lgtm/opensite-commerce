@@ -546,7 +546,7 @@ func TestCustomerAuthResetDuringKDFCannotCreateStaleSession(t *testing.T) {
 }
 
 func TestCustomerAuthRealKDFMailboxProofAndCredentials(t *testing.T) {
-	s, r, m, _ := fixture(t)
+	s, _, m, _ := fixture(t)
 	s.deriveKey = argon2.IDKey
 	password := opaque(t)
 	if e := s.Register(context.Background(), tenantA, buyerEmail, password, testIP); e != nil {

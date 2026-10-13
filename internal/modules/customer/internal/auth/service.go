@@ -10,7 +10,7 @@ import (
 	"errors"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
-	"net/mail"
+	netmail "net/mail"
 	"net/netip"
 	"strings"
 	"unicode"
@@ -18,7 +18,7 @@ import (
 )
 
 func validEmail(email string) bool {
-	a, e := mail.ParseAddress(email)
+	a, e := netmail.ParseAddress(email)
 	at := strings.LastIndexByte(email, '@')
 	return e == nil && a.Address == email && len(email) <= 254 && at > 0 && strings.Contains(email[at+1:], ".") && utf8.ValidString(email) && strings.IndexFunc(email, unicode.IsControl) < 0
 }

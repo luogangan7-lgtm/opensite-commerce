@@ -378,3 +378,32 @@ func TestCustomerPGChallengeExpiryConcurrentConsumeAndSessionExpiry(t *testing.T
 	})
 	f.requireCurrent(t, f.tenant, session.Token, false)
 }
+
+// Executor authority is part of the caller capability: owning trusted proof
+// functions must never grant permission to replace objects in their schema.
+func TestCustomerPGRejectsExecutorPrivilegeDrift(t *testing.T) {
+	f := customerPG(t)
+	// Register cleanup before injection; it must run even when the assertion
+	// fails or the request context expires. Other customer PG tests are serial.
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := f.owner.InMaintenance(cleanupCtx, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `REVOKE CREATE ON SCHEMA app FROM app_customer_executor`)
+			return err
+		}); err != nil {
+			t.Error("CUSTOMER_PG_EXECUTOR_PRIVILEGE_CLEANUP_FAILED")
+		}
+	}()
+	f.fixture(t, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `GRANT CREATE ON SCHEMA app TO app_customer_executor`)
+		return err
+	})
+	runner, err := pgxadapter.OpenCustomerRunner(f.ctx, os.Getenv("CUSTOMER_AUTH_TEST_DATABASE_URL"))
+	if runner != nil {
+		runner.Close()
+	}
+	if err == nil {
+		t.Fatal("CUSTOMER_PG_EXECUTOR_PRIVILEGE_DRIFT_RED: executor schema CREATE was accepted")
+	}
+}

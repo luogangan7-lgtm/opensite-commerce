@@ -2,7 +2,7 @@
 -- Dependencies: customer-owned proof functions; caller: dedicated tenant-scoped repository.
 -- Invariants: no direct credential DML, opaque hashes and explicit SQL casts.
 -- name: CustomerCredential :one
-SELECT c.id AS customer_id,c.email,c.status='active' AS active,c.verified_at IS NOT NULL AS verified,p.password_hash
+SELECT c.id AS customer_id,c.email,c.status='active' AS active,(c.verified_at IS NOT NULL)::boolean AS verified,p.password_hash
 FROM app.customers c JOIN app.customer_credentials p ON(p.tenant_id,p.customer_id)=(c.tenant_id,c.id)
 WHERE c.tenant_id=sqlc.arg(tenant_id)::uuid AND c.email_normalized=sqlc.arg(email)::text;
 -- name: PrepareCustomerRegistration :one

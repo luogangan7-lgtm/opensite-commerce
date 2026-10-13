@@ -44,7 +44,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CustomerCredentialsInput'
+              $ref: '#/components/schemas/CustomerRegistrationInput'
       responses:
         '202':
           description: Customer authentication result
@@ -2641,6 +2641,19 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    CustomerRegistrationInput:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 12
+          maxLength: 1024
     CustomerCredentialsInput:
       type: object
       additionalProperties: false
