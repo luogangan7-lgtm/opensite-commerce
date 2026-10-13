@@ -42,6 +42,8 @@ jobs:
       C22A_MAINTENANCE_DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Land in-development migrations in this ephemeral checkout only
+        run: python3 scripts/pending_migrations.py ci-normalize
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: '1.27.2'
