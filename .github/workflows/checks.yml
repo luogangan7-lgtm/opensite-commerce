@@ -27,6 +27,9 @@ jobs:
       C07_FIXTURE_PASSWORD: ci_catalog_test_only
       C07_DATABASE_URL: postgres://c07_runtime:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
       C07_MEDIA_DATABASE_URL: postgres://c07_media:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
+      # Every pgx step (incl. check_codegen) needs the C-22a fixture; #54 forbids skips.
+      C22A_DATABASE_URL: postgres://c07_runtime:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
+      C22A_MAINTENANCE_DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -67,13 +70,8 @@ jobs:
       - name: Catalog/media real HTTP gates with isolated role logins
         env:
           OPENSITE_DISPOSABLE_PG: '1'
-          C22A_DATABASE_URL: ${{ env.C07_DATABASE_URL }}
-          C22A_MAINTENANCE_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: ./scripts/check_catalog_api.sh
       - name: Go pgx-tagged vet and race tests
-        env:
-          C22A_DATABASE_URL: ${{ env.C07_DATABASE_URL }}
-          C22A_MAINTENANCE_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: |
           # Restore the committed isolated fixture after its HTTP mutation tests.
           psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f tests/fixtures/catalog_api.sql
