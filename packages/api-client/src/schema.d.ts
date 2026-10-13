@@ -11,7 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Lists metadata for keys owned by this tenant, including revoked keys; plaintext and hashes are never returned. */
+        /** @description Lists the newest 100 keys owned by this tenant, including revoked keys, ordered by creation time then ID; plaintext and hashes are never returned. Older keys can still be revoked by ID. */
         get: operations["listAPIKeys"];
         put?: never;
         /** @description An active owner or admin creates a key for this tenant with scopes no wider than their current role. The 256-bit secret is returned once. No Idempotency-Key replay is provided because plaintext secrets must never be retained to reproduce a response. A lost response requires revocation and a new key. Unknown scopes are rejected; tenant, issuer and hash are server-derived. */
@@ -2224,6 +2224,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

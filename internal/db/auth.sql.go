@@ -111,7 +111,7 @@ SELECT k.id,k.key_prefix,k.scopes,k.issued_by,k.created_at,k.expires_at,k.revoke
  JOIN app.tenant_memberships m ON m.tenant_id=k.tenant_id AND m.user_id=$1::uuid
  JOIN app.users u ON u.id=m.user_id JOIN app.tenants t ON t.id=k.tenant_id
  WHERE k.tenant_id=$2::uuid AND m.status='active' AND m.role IN ('owner','admin') AND u.status='active' AND t.status='active'
- ORDER BY k.created_at DESC,k.id
+ ORDER BY k.created_at DESC,k.id LIMIT 100
 `
 
 type TenantListAPIKeysParams struct {
@@ -130,6 +130,7 @@ type TenantListAPIKeysRow struct {
 	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
 }
 
+// Bound custody reads to the newest 100 keys, including revocation metadata.
 func (q *Queries) TenantListAPIKeys(ctx context.Context, arg TenantListAPIKeysParams) ([]TenantListAPIKeysRow, error) {
 	rows, err := q.db.Query(ctx, tenantListAPIKeys, arg.UserID, arg.TenantID)
 	if err != nil {
