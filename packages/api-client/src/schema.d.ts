@@ -761,6 +761,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CustomerRegistrationInput: {
+            /** Format: email */
+            email: string;
+            password: string;
+        };
         CustomerCredentialsInput: {
             /** Format: email */
             email: string;
@@ -1492,7 +1497,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CustomerCredentialsInput"];
+                "application/json": components["schemas"]["CustomerRegistrationInput"];
             };
         };
         responses: {

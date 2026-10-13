@@ -67,7 +67,7 @@ func (q *Queries) ConsumeCustomerVerification(ctx context.Context, tokenHash []b
 }
 
 const customerCredential = `-- name: CustomerCredential :one
-SELECT c.id AS customer_id,c.email,c.status='active' AS active,c.verified_at IS NOT NULL AS verified,p.password_hash
+SELECT c.id AS customer_id,c.email,c.status='active' AS active,(c.verified_at IS NOT NULL)::boolean AS verified,p.password_hash
 FROM app.customers c JOIN app.customer_credentials p ON(p.tenant_id,p.customer_id)=(c.tenant_id,c.id)
 WHERE c.tenant_id=$1::uuid AND c.email_normalized=$2::text
 `
@@ -81,7 +81,7 @@ type CustomerCredentialRow struct {
 	CustomerID   pgtype.UUID `json:"customer_id"`
 	Email        string      `json:"email"`
 	Active       bool        `json:"active"`
-	Verified     interface{} `json:"verified"`
+	Verified     bool        `json:"verified"`
 	PasswordHash string      `json:"password_hash"`
 }
 
