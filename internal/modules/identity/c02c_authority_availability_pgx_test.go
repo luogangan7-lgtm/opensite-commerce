@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	authcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant"
 	keycontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant/contract"
 )
@@ -152,6 +153,38 @@ func TestC02cAuthorityAvailabilityPostgres(t *testing.T) {
 			cancel()
 			<-finished
 			t.Fatal("authority lock wait exceeded the internal two-second operation bound")
+		}
+	})
+
+	t.Run("staff_session_mutation_has_internal_bound_and_recovers", func(t *testing.T) {
+		var independentHash [32]byte
+		copy(independentHash[:], c02cKeyHash(t))
+		var independentID string
+		if err := admin.QueryRow(ctx, `INSERT INTO app.auth_sessions(user_id,token_hash,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour') RETURNING id::text`, other, independentHash[:]).Scan(&independentID); err != nil {
+			t.Fatal("independent session fixture failed", safeCode(err))
+		}
+		release := holdLoginGate(t, ctx, admin, `SELECT id FROM app.auth_sessions WHERE id=$1 FOR SHARE`, sessionID)
+		defer release()
+		callCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		finished := make(chan error, 1)
+		go func() { finished <- loginModule.repository.RevokeSession(callCtx, sessionID, time.Now()) }()
+		select {
+		case err := <-finished:
+			if !errors.Is(err, login.ErrDatabase) {
+				t.Fatal("blocked staff session mutation did not return sanitized database unavailable")
+			}
+		case <-time.After(2500 * time.Millisecond):
+			cancel()
+			<-finished
+			t.Fatal("staff session lock wait exceeded the internal two-second operation bound")
+		}
+		release()
+		lookupCtx, lookupCancel := context.WithTimeout(ctx, time.Second)
+		defer lookupCancel()
+		session, err := loginModule.repository.LookupSession(lookupCtx, independentHash, time.Now(), 30*time.Minute)
+		if err != nil || session.ID != independentID {
+			t.Fatal("staff authentication did not recover after bounded lock failure")
 		}
 	})
 }
