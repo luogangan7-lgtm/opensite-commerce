@@ -4,6 +4,7 @@ Runs in the foundation CI via test_ops_drill; no containers are needed for these
 negative cases. A fake Docker executable witnesses any attempted side effect.
 """
 import os
+import importlib.util
 from pathlib import Path
 import subprocess
 import sys
@@ -44,6 +45,29 @@ class CIOnlyRunnerTests(unittest.TestCase):
     def test_invalid_run_identity_cannot_start_stack(self):
         self.assert_refused({'CI': 'true', 'GITHUB_ACTIONS': 'true',
                              'GITHUB_RUN_ID': 'not-number', 'GITHUB_RUN_ATTEMPT': '1'})
+
+
+class BrowserReceiptTests(unittest.TestCase):
+    def verify(self, report):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('mvp_e2e_runner', source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.verify_browser_report(report)
+
+    def test_forged_pass_totals_without_executed_assertions_are_rejected(self):
+        with self.assertRaises(RuntimeError):
+            self.verify({'stats': {'expected': 20, 'skipped': 4, 'unexpected': 0, 'flaky': 0},
+                         'suites': []})
+
+    def test_arbitrary_skipped_assertion_cannot_become_a_declared_gap(self):
+        report = {'stats': {'expected': 20, 'skipped': 4, 'unexpected': 0, 'flaky': 0},
+                  'suites': [{'specs': [{'title': 'real API denies anonymous catalog reads and creation before data access',
+                                         'file': 'admin.spec.ts', 'tests': [{'projectName': 'desktop',
+                                         'expectedStatus': 'skipped', 'annotations': [{'type': 'fixme'}],
+                                         'results': [{'status': 'skipped'}]}]}]}]}
+        with self.assertRaises(RuntimeError):
+            self.verify(report)
 
 
 if __name__ == '__main__':

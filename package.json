@@ -17,6 +17,7 @@
     "build:admin": "vite build --config web/admin/vite.config.ts web/admin",
     "build:gallery": "vite build --config web/admin/vite.config.ts web/admin --mode gallery --outDir dist-gallery",
     "visual:test": "playwright test",
+    "e2e:test": "playwright test --config playwright.e2e.config.ts",
     "visual:update": "bun scripts/frontend/update-baselines.ts",
     "frontend:check": "bash scripts/check_frontend.sh",
     "build:storefront": "bun run --filter @opensite/storefront build",
