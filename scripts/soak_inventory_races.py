@@ -47,8 +47,17 @@ SELECT a.application_name,l.locktype,l.mode,l.granted,l.classid,l.objid,l.objsub
  WHERE left(a.application_name,length('$RACE_PREFIX'))='$RACE_PREFIX'
  ORDER BY a.application_name,l.locktype,l.granted;
 SQL
+  if [[ ${T:-} =~ ^[0-9a-f-]{36}$ ]]; then
+    sql <<SQL || true
+SELECT clock_timestamp() AS observed_clock,id,state,quantity,expires_at,finished_at
+ FROM app.inventory_reservations WHERE tenant_id='$T' ORDER BY id;
+SELECT tenant_id,warehouse_id,sku_id,on_hand,reserved
+ FROM app.stock_levels WHERE tenant_id='$T' ORDER BY warehouse_id,sku_id;
+SQL
+  fi
 }
 trap 'status=$?; if [[ $status -ne 0 || $fail -ne 0 ]]; then diagnostics; fi; cleanup' EXIT
+trap 'exit 143' TERM INT
 '''
     return prelude + diagnostics + block + '\n[[ $fail -eq 0 ]] || exit 1\necho "PASS: focused inventory races"\n'
 
