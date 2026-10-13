@@ -986,9 +986,10 @@ db "$SKUS_DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('sku-upgrade') RETURNING id AS t \gset
 INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES(:'t','P','ready') RETURNING id AS p \gset
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','A','a'),(:'t',:'p','B','b');
-INSERT INTO app.warehouses(tenant_id) VALUES(:'t') RETURNING id AS w \gset
-INSERT INTO app.stock_levels(tenant_id,warehouse_id,sku_id,on_hand,reserved)
- SELECT :'t',:'w',id,3,CASE sku WHEN 'A' THEN 3 ELSE 1 END FROM app.product_variants WHERE tenant_id=:'t';
+SELECT set_config('app.tenant_id',:'t',false);
+SELECT app.inventory_adjust(id,3,'sku upgrade receipt',uuidv7(),'inbound') FROM app.product_variants WHERE tenant_id=:'t';
+SELECT app.inventory_reserve(id,CASE sku WHEN 'A' THEN 3 ELSE 1 END,'sku_upgrade',uuidv7(),'sku-upgrade-'||sku)
+ FROM app.product_variants WHERE tenant_id=:'t';
 SQL
 apply_forward "$SKUS_DB" "${storefront_skus[0]}"
 result=$(db "$SKUS_DB" -c "SELECT 'SKU_UPGRADE='||string_agg(v.sku||':'||s.on_hand||'/'||s.reserved||'/'||s.in_stock,',' ORDER BY v.sku) FROM app.stock_levels s JOIN app.product_variants v ON (v.tenant_id,v.id)=(s.tenant_id,s.sku_id)")
