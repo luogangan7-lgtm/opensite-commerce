@@ -54,3 +54,11 @@ FROM app.order_adjustments WHERE tenant_id=sqlc.arg(tenant_id) AND order_id=sqlc
 -- The admin read path refuses to run in a writable transaction (fail closed).
 -- name: GetOrdersTransactionReadOnly :one
 SELECT current_setting('transaction_read_only')::boolean AS read_only;
+-- name: ListOrderReservationIDs :many
+SELECT reservation_id FROM app.order_lines WHERE tenant_id=$1 AND order_id=$2 ORDER BY reservation_id;
+
+-- name: CountLiveOrderReservations :one
+-- Read after LockOrderReservations; locked rows reflect the latest committed state.
+SELECT count(*) FILTER(WHERE state='active' AND expires_at>clock_timestamp()+make_interval(secs=>sqlc.arg(min_remaining_seconds)::integer))::bigint AS live,
+ count(*)::bigint AS total
+FROM app.inventory_reservations WHERE tenant_id=sqlc.arg(tenant_id) AND id=ANY(sqlc.arg(reservation_ids)::uuid[]);
