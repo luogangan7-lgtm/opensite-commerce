@@ -21,6 +21,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Issues short-lived signed anonymous CSRF material in a Secure HttpOnly host-only cookie and returns the matching header token. No tenant context. */
+        get: operations["getAdminLoginChallenge"];
+        put?: never;
+        /** @description Requires the signed anonymous challenge cookie and matching X-CSRF-Token, plus the exact configured Origin. Always creates a fresh opaque session; rotation consumes a valid same-user old session atomically. Credentials and raw tokens are never included in problem details. */
+        post: operations["createStaffLoginSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Checks only active user and session, even after the last membership is suspended. Requires session-bound signed CSRF and exact configured Origin. Revokes the current session and clears the admin session cookie. */
+        post: operations["logoutCurrentStaffSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Active global user/session admission with idle and absolute expiry; no membership required. */
+        get: operations["getAdminSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -670,6 +722,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** @description Sealed order snapshots, newest first by (created_at, id), in a read-only snapshot transaction. Guest contact PII is never returned; customer_kind only says whether the buyer was a tenant customer or a guest. A malformed cursor, or one issued for a different state filter, is a 400. The cursor is opaque and not authenticated; it only positions the page within the caller's own tenant and cannot reveal other rows. */
+        get: operations["listOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/orders/{order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description One sealed order snapshot. Missing, unsealed and other-tenant orders are all 404. Line titles are not part of the immutable snapshot, so title is always null; shipping.method is the frozen rate method (fixed, by_weight, free_over_amount), not a carrier. Guest contact (including email) is not exposed by this operation. */
+        get: operations["getOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -794,6 +887,22 @@ export interface components {
             navigation: components["schemas"]["PublishedNavigation"][];
             pages: components["schemas"]["PublishedPage"][];
             products: components["schemas"]["PublishedProduct"][];
+        };
+        LoginChallenge: {
+            csrf_token: string;
+        };
+        AdminLogin: {
+            email: string;
+            password: string;
+        };
+        AdminSessionView: {
+            /** Format: uuid */
+            user_id: string;
+            /** Format: uuid */
+            session_id: string;
+            /** Format: date-time */
+            expires_at: string;
+            csrf_token: string;
         };
         CreateAdminSession: {
             identifier: string;
@@ -1171,6 +1280,69 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** @description Signed integer minor units as a canonical decimal string (exact in JavaScript). */
+        MinorAmount: string;
+        /** @enum {string} */
+        OrderState: "pending_payment" | "paid" | "partially_fulfilled" | "fulfilled" | "cancelled" | "partially_refunded" | "refunded";
+        OrderSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            order_number: number;
+            state: components["schemas"]["OrderState"];
+            currency: string;
+            total_minor: components["schemas"]["MinorAmount"];
+            /** @enum {string} */
+            customer_kind: "customer" | "guest";
+            /** Format: date-time */
+            created_at: string;
+        };
+        OrderPage: {
+            items: components["schemas"]["OrderSummary"][];
+            next_cursor?: string;
+        };
+        OrderLine: {
+            /** Format: uuid */
+            line_id: string;
+            sku_code: string;
+            /** @description Always null; product titles are not frozen into the order snapshot. */
+            title: string | null;
+            /** Format: int64 */
+            quantity: number;
+            unit_price_minor: components["schemas"]["MinorAmount"];
+            tax_minor: components["schemas"]["MinorAmount"];
+            line_total_minor: components["schemas"]["MinorAmount"];
+        };
+        OrderAdjustment: {
+            /** Format: uuid */
+            id: string;
+            reason: string;
+            amount_minor: components["schemas"]["MinorAmount"];
+        };
+        OrderShipping: {
+            amount_minor: components["schemas"]["MinorAmount"];
+            /** @description Frozen shipping rate method; null if the snapshot lacks one. */
+            method: string | null;
+        };
+        OrderDetail: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            order_number: number;
+            state: components["schemas"]["OrderState"];
+            /** Format: int64 */
+            version: number;
+            currency: string;
+            lines: components["schemas"]["OrderLine"][];
+            adjustments: components["schemas"]["OrderAdjustment"][];
+            shipping: components["schemas"]["OrderShipping"];
+            tax_total_minor: components["schemas"]["MinorAmount"];
+            total_minor: components["schemas"]["MinorAmount"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
     };
     responses: {
         /** @description BadRequest */
@@ -1316,6 +1488,8 @@ export interface components {
         CartId: string;
         SkuId: string;
         CartToken: string;
+        /** @description Signed anonymous login challenge with five-minute expiry; Secure HttpOnly SameSite=Lax Path=/ and no Domain. */
+        LoginChallengeCookie: string;
         /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
         TenantId: string;
         /** @description Session owned by the caller; never a token. */
@@ -1388,6 +1562,145 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getAdminLoginChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Anonymous login challenge; Cache-Control no-store */
+            200: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginChallenge"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    createStaffLoginSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
+                Origin: components["parameters"]["Origin"];
+            };
+            path?: never;
+            cookie: {
+                /** @description Signed anonymous login challenge with five-minute expiry; Secure HttpOnly SameSite=Lax Path=/ and no Domain. */
+                "__Host-osc_login_csrf": components["parameters"]["LoginChallengeCookie"];
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminLogin"];
+            };
+        };
+        responses: {
+            /** @description New admin session and signed known-device cookies; Cache-Control no-store */
+            201: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSessionView"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    logoutCurrentStaffSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
+                Origin: components["parameters"]["Origin"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session revoked; cookie cleared; Cache-Control no-store */
+            204: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getAdminSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current actor and session-bound CSRF; Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSessionView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["Problem"];
         };
     };
     health: {
@@ -3180,6 +3493,86 @@ export interface operations {
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listOrders: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque, unauthenticated next_cursor from the prior page with the same state filter; positions only within the caller's tenant. */
+                cursor?: string;
+                state?: components["schemas"]["OrderState"];
+            };
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of order summaries; no-store. */
+            200: {
+                headers: {
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Order snapshot; no-store. */
+            200: {
+                headers: {
+                    /** @description Strong validator, the quoted order version. */
+                    ETag: string;
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };

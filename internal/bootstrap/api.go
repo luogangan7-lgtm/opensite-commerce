@@ -1,7 +1,7 @@
-// Package bootstrap statically wires the API using platform/httpapi and observability.
-// cmd/api calls it; it owns no business handlers, database pool or migrations.
-// Generated business HTTP adapters stay in platform/httpapi and consume public ports.
-// Registration errors stop construction, so invalid routes cannot be served.
+// Package bootstrap wires catalog, media, cart, injected routes and operational telemetry.
+// Dependencies: module constructors, platform/httpapi and observability; caller: cmd/api.
+// It owns no business tables or pools. Registration errors refuse startup; request
+// contexts are bounded, route snapshots immutable and metric labels nonsensitive.
 package bootstrap
 
 import (
@@ -16,6 +16,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
@@ -30,6 +31,7 @@ type Config struct {
 	Routes                   []httpapi.Route
 	Catalog                  catalog.Config
 	Media                    media.Config
+	Orders                   orders.HTTPConfig
 	Cart                     *cart.Module
 	Quotes                   quoteshttp.QuotesService
 	QuotesBuyerAuthenticator httpapi.Authenticator
@@ -53,6 +55,7 @@ func New(config Config) (server *http.Server, err error) {
 	routes := []httpapi.Route{health}
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)
+	routes = append(routes, orders.NewHTTP(config.Orders).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
 	if config.Quotes != nil {
 		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
@@ -66,7 +69,19 @@ func New(config Config) (server *http.Server, err error) {
 	}
 	metrics := &observability.Metrics{}
 	router.WrapTransport(metrics.Wrap)
-	return &http.Server{Addr: config.Address, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}, nil
+	// Socket deadlines do not cancel database queries or lock waits. Preserve
+	// the router's registration snapshot through the request deadline wrapper.
+	handler := deadlineHandler{Router: router}
+	return &http.Server{Addr: config.Address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second}, nil
+}
+
+// Embedding exposes the router's immutable RouteSpecs snapshot for contract gates.
+type deadlineHandler struct{ *httpapi.Router }
+
+func (h deadlineHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
+	defer cancel()
+	h.Router.ServeHTTP(w, r.WithContext(ctx))
 }
 
 func Run(ctx context.Context, config Config) error {
