@@ -179,7 +179,10 @@ func TestDefaultCartWiringIsUnavailableAndSeparateFromStaff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := server.Handler.(*httpapi.Router)
+	router, ok := server.Handler.(interface{ RouteSpecs() []httpapi.RouteSpec })
+	if !ok {
+		t.Fatal("handler must expose its registered route snapshot")
+	}
 	ids := map[string]bool{}
 	for _, spec := range router.RouteSpecs() {
 		ids[spec.OperationID] = true
