@@ -10,3 +10,6 @@ type CommandTag = pgconn.CommandTag
 
 // PgError preserves PostgreSQL error matching without exposing pgconn connectors.
 type PgError = pgconn.PgError
+
+// NewCommandTag builds an inert result value for fakes; it opens no connection.
+func NewCommandTag(s string) CommandTag { return pgconn.NewCommandTag(s) }
