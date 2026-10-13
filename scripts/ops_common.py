@@ -40,7 +40,7 @@ def load_environment():
         if not line or line.startswith("#"):
             continue
         key, separator, value = line.partition("=")
-        if (not separator or not re.fullmatch(r"(?:POSTGRES_PASSWORD|COMPOSE_PROJECT_NAME|OPENSITE_[A-Z0-9_]+)", key)
+        if (not separator or not re.fullmatch(r"(?:POSTGRES_PASSWORD|COMPOSE_PROJECT_NAME|OPENSITE_[A-Z0-9_]+|JOB_SIGNING_KEY|JOB_TENANTS|OUTBOX_ENABLED)", key)
                 or key in values):
             raise OpsError(f"invalid ops environment assignment at line {number}")
         if value[:1] in {"'", '"'}:
@@ -140,6 +140,23 @@ def migrate(database=None):
     return pg_command(["bash", "-c",
                        'export DATABASE_URL="host=127.0.0.1 user=postgres dbname=$1"; '
                        'exec bash /workspace/scripts/migrate.sh', "ops-migrate", name])
+
+
+def verify_river(database=None):
+    """Verify frozen River history/capabilities without installing or mutating it.
+
+    Prefer an existing PG-container binary; otherwise the compiled migrator image
+    owns the verify-only command. No host Go build or unconfigured Compose call.
+    """
+    name = db_name(database)
+    ready = pg_command(["sh", "-c", 'if test -x /usr/local/bin/river-migrate; then printf available; else printf missing; fi']).stdout
+    if ready == b"available":
+        return pg_command(["sh", "-c",
+                           'export DATABASE_URL="host=127.0.0.1 user=postgres dbname=$1"; '
+                           'exec /usr/local/bin/river-migrate --verify', "ops-river-verify", name])
+    if ready != b"missing":
+        raise OpsError("cannot inspect River verifier")
+    return compose(["run", "--rm", "--no-deps", "-e", f"OPENSITE_DB={name}", "migrate", "verify"])
 
 
 @contextmanager

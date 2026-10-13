@@ -2,12 +2,28 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location('ops_deploy', Path(__file__).resolve().parents[1] / 'scripts/ops_deploy.py')
 ops = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ops)
 
 class DeployTests(unittest.TestCase):
+    def test_river_install_precedes_application_and_verify_follows(self):
+        calls = []
+        with patch.object(ops.subprocess, 'run', side_effect=lambda argv, **kw: calls.append(argv) or SimpleNamespace(returncode=0)):
+            ops.install_migrations({'DATABASE_URL':'fixture'})
+        self.assertEqual(calls[0], ['/usr/local/bin/river-migrate'])
+        self.assertEqual(calls[1], ['bash', str(ops.ROOT / 'scripts/migrate.sh')])
+        self.assertEqual(calls[2], ['/usr/local/bin/river-migrate', '--verify'])
+
+    def test_river_failure_stops_before_application_migrations(self):
+        calls = []
+        with patch.object(ops.subprocess, 'run', side_effect=lambda argv, **kw: calls.append(argv) or SimpleNamespace(returncode=1)):
+            with self.assertRaises(ops.DeployError): ops.install_migrations({'DATABASE_URL':'fixture'})
+        self.assertEqual(calls, [['/usr/local/bin/river-migrate']])
+
     def test_preflight_checks_every_connectable_database(self):
         calls = []
         def query(sql, database):

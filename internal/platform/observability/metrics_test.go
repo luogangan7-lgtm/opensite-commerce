@@ -64,10 +64,6 @@ func TestScrapeMethodsAndImplicitStatus(t *testing.T) {
 	}
 }
 
-func TestWorkerOutboxRuntimeNOT_RUN(t *testing.T) {
-	t.Skip("NOT_RUN: worker/outbox polling awaits merged reliability implementation; WorkerMetrics is an interface only")
-}
-
 func TestLatencyMeasuresElapsedTime(t *testing.T) {
 	var metrics observability.Metrics
 	handler := metrics.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { time.Sleep(10 * time.Millisecond); w.WriteHeader(204) }))

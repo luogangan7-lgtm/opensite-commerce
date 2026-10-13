@@ -8,22 +8,26 @@ this stack.
 ## Start and migrate
 
 Copy `.env.example` to `.env`, restrict its permissions (`chmod 600 .env`) and
-replace all five password placeholders with independent random values of at
-least 24 characters. Use simple `KEY=value` or single-quoted values, with no
+replace all seven password placeholders with independent random values of at
+least 24 characters, and the independent 64-hex job signing key. Use simple `KEY=value` or single-quoted values, with no
 interpolation or multiline values. Never commit the file or print resolved
 Compose configuration. The helpers read `.env`; exported variables take
 precedence. Set `OPENSITE_ENV_FILE` to use another private file and
 `COMPOSE_PROJECT_NAME` to isolate a stack.
 
 ```sh
-docker compose --env-file .env -f deploy/compose.yaml up -d --build --wait api
+docker compose --env-file .env -f deploy/compose.yaml up -d --build --wait api worker
 curl --fail http://127.0.0.1:8080/healthz
 curl --fail http://127.0.0.1:8080/metrics
+curl --fail http://127.0.0.1:8081/healthz
+curl --fail http://127.0.0.1:8081/metrics
 ```
 
-Postgres must become healthy before the migrator runs. The migrator checks the
-cluster, applies the frozen forward-only/checksum-checked `migrate.sh`, and
-provisions restricted login identities. API startup waits for successful
+Postgres uses a TCP readiness probe so its temporary initialization server
+cannot satisfy the migration dependency. The migrator checks the cluster,
+installs the locked River history in its independently owned `queue` schema,
+applies frozen forward-only/checksum-checked application migrations, verifies
+River history, and provisions restricted login identities. API startup waits for successful
 migration and verifies its separately configured runtime, auth, domain and
 media pools. Auth/domain consumers remain pending their application wiring;
 configuration does not install an authenticator. The separate media identity
@@ -36,6 +40,11 @@ docker compose --env-file .env -f deploy/compose.yaml run --rm migrate install
 ```
 
 Only the migrator and PostgreSQL service receive the administrator password.
+The worker has separate queue and outbox login pools, starts actual River
+processing, and exposes health only after startup. A bounded metrics query
+returns backlog, DLQ count and oldest backlog age across tenants without
+returning tenant IDs or payloads. The broker owns that narrow function; workers
+receive EXECUTE, without direct outbox reads or queue DDL.
 API logins are `NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`, with exactly
 one approved group membership each. Database `CONNECT` is revoked from PUBLIC.
 See [runtime-roles.md](runtime-roles.md). `/healthz` is process liveness (204),
@@ -73,7 +82,8 @@ bash scripts/restore.sh work/backups/opensite-TIMESTAMP.dump
 
 The backup prints archive and manifest filenames. It creates private,
 timestamped `pg_dump -Fc` archives and SHA-256 manifests with counts and
-deterministic content hashes for every `app` table and the migration ledger.
+deterministic content hashes for every `app` and `queue` table, including
+River migration history, plus the application migration ledger.
 Dump and manifest share one exported REPEATABLE READ snapshot. Restrict access
 to both files: archives contain all application data. `OPENSITE_BACKUP_DIR`
 or `--directory` changes the output location. This is a full backup, without
@@ -91,7 +101,8 @@ database archive preserves table owners, grants and RLS; restore also reapplies
 the current environment's login credentials and database CONNECT policy.
 
 Restore runs a single transactional `pg_restore`, compares all counts/hashes,
-checks migration checksums, and compares content again. Keep a failed target
+checks application migration checksums and the locked River history, and
+compares content again. Keep a failed target
 isolated for investigation; restoration does not silently delete it. Trusted
 administrators must keep exclusive control of the target throughout recovery.
 Database backups do not include LocalFS media. For a consistent database/media
@@ -108,11 +119,14 @@ bash scripts/ops_drill.sh --receipt-dir work/C23a/evidence
 The drill generates private temporary secrets and an unpredictable project
 name. It starts Compose, verifies real password logins and restricted grants,
 creates/removes its own second-database negative fixture, seeds nonempty
-database and media witnesses, and checks metrics. After quiescing API it backs
+database, queue and media witnesses, and checks API/worker metrics. After
+quiescing API and worker it backs
 up the database and media, verifies checksums, and prints `ROLLBACK_POINT`
 before destroying **only its own project's volumes**. It creates a fresh
 cluster, bootstraps capability roles, restores into a fresh empty database,
-compares every table and media bytes, and verifies API health and grants again.
+compares every table and media bytes, and verifies API/worker health and grants
+again. It then submits a signed synthetic inventory-expiry job and requires
+River completion after restart.
 Corrupted archive and populated-target probes must fail. `drill.json` records
 the source SHA, hashes, counts, steps and explicit pending gates. On success
 or ordinary failure the drill removes its project, volumes and private files.
@@ -126,8 +140,8 @@ is first dispatchable after its workflow file reaches the default branch.
 
 ## Rotate local passwords
 
-Stop API (and a future worker), edit the private `.env`, then run
-`migrate provision` and recreate API. It resets approved login memberships and
+Stop API and worker, edit the private `.env`, then run
+`migrate provision` and recreate both services. It resets approved login memberships and
 passwords without printing SQL or client error payloads. Changing
 `POSTGRES_PASSWORD` alone does not change an initialized PostgreSQL cluster's
 administrator password: use a trusted interactive `psql` session and
@@ -135,11 +149,14 @@ administrator password: use a trusted interactive `psql` session and
 SQL files or shell history. Keep the pre-rotation `.env` private until all
 new pools are verified, then remove that owned copy.
 
-## Pending integration
+## Delivery boundaries
 
-PR #25 is not in this base, so `worker` is an opt-in `pending-worker` placeholder
-that exits 78 with `NOT_RUN`; it does not claim job processing or monitoring.
-The worker/outbox backlog and DLQ metrics snapshot interface has an explicit
-skipped test until that integration. Astro SSR is also absent from this base,
-so storefront is omitted. These are integration dependencies, not a complete
-commerce deployment. Queue-schema backups must be added when River merges.
+Outbox sending is disabled (`OUTBOX_ENABLED=false`): this local stack has no
+external Sender. The actual dispatcher remains fail-closed when sending is
+requested without a configured Sender; its existing integration tests exercise
+a test Sender. Aggregate backlog/DLQ monitoring is live independently of
+sending. `JOB_TENANTS` is a trusted comma-separated UUID configuration for
+periodic expiry; empty disables periodic producers while queued signed jobs
+are still processed. Keep `JOB_SIGNING_KEY` stable across worker restarts.
+Astro SSR is absent from this base, so storefront is omitted (`NOT_RUN`). This
+is a local recovery rehearsal, with no cloud resources, TLS or real alerts.

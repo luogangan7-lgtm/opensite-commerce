@@ -2,7 +2,7 @@
 """Snapshot-consistent custom backups and fresh-database restore verification.
 
 Depends on stdlib + ops_common/container PG18; called by backup.sh/restore.sh and
-ops_drill. Reads ALL app tables + public.schema_migrations, restores full ACLs.
+ops_drill. Reads ALL app/queue tables and both migration histories, restores ACLs.
 Never drops/cleans objects, never restores over an existing application database.
 """
 import argparse
@@ -14,12 +14,12 @@ from pathlib import Path
 import re
 import sys
 
-from ops_common import OpsError, ROOT, db_name, load_environment, migrate, pg_command, psql, quote_ident, snapshot
+from ops_common import OpsError, ROOT, db_name, load_environment, migrate, pg_command, psql, quote_ident, snapshot, verify_river
 
 TABLES = """SELECT n.nspname AS schema_name, c.relname AS table_name
 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
 WHERE c.relkind IN ('r','p') AND
- (n.nspname='app' OR (n.nspname='public' AND c.relname='schema_migrations'))
+ (n.nspname IN ('app','queue') OR (n.nspname='public' AND c.relname='schema_migrations'))
 ORDER BY n.nspname COLLATE "C", c.relname COLLATE "C"
 """
 
@@ -88,6 +88,8 @@ FROM (""" + TABLES + ") tables\n\\gexec\nCOMMIT;\n"
         raise OpsError("invalid table manifest response") from None
     if "public.schema_migrations" not in result or not any(key.startswith("app.") for key in result):
         raise OpsError("manifest requires app tables and migration history")
+    if not {"queue.river_migration", "queue.river_job"}.issubset(result):
+        raise OpsError("manifest requires queue history and job witness")
     return dict(sorted(result.items()))
 
 
@@ -144,8 +146,10 @@ def read_manifest(archive, manifest_path):
             raise OpsError("manifest requires migration history")
         if not any(key.startswith("app.") for key in tables):
             raise OpsError("manifest requires app tables")
+        if not {"queue.river_migration", "queue.river_job"}.issubset(tables):
+            raise OpsError("manifest requires queue history and job witness")
         for table, receipt in tables.items():
-            if not (table.startswith("app.") or table == "public.schema_migrations"):
+            if not (table.startswith(("app.", "queue.")) or table == "public.schema_migrations"):
                 raise OpsError("unexpected manifest table")
             if (not isinstance(receipt, dict) or type(receipt.get("rows")) is not int
                     or receipt["rows"] < 0
@@ -189,6 +193,7 @@ def restore(archive, manifest_path=None, database=None):
                 "--exit-on-error", "--single-transaction"], input=archive.read_bytes())
     compare_tables(manifest["tables"], table_manifest(name))
     migrate(name)
+    verify_river(name)
     compare_tables(manifest["tables"], table_manifest(name))
     # pg_restore into a pre-created DB does not recover database-level CONNECT
     # privileges. Apply the same env-scoped login policy as normal provisioning.

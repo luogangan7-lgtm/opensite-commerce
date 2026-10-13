@@ -5,13 +5,14 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -tags pgx -trimpath -o /out/api ./cmd/api && go build -trimpath -o /out/healthcheck ./cmd/healthcheck
+RUN go build -tags pgx -trimpath -o /out/api ./cmd/api && go build -tags pgx -trimpath -o /out/worker ./cmd/worker && go build -trimpath -o /out/river-migrate ./cmd/river-migrate && go build -trimpath -o /out/healthcheck ./cmd/healthcheck
 
 FROM postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336 AS migrator
 RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 WORKDIR /workspace
 COPY migrations ./migrations
 COPY scripts/migrate.sh scripts/ops_deploy.py ./scripts/
+COPY --from=build /out/river-migrate /usr/local/bin/
 ENTRYPOINT ["python3", "/workspace/scripts/ops_deploy.py"]
 CMD ["install"]
 
@@ -21,3 +22,9 @@ RUN mkdir -p /var/lib/opensite/media && chown 65532:65532 /var/lib/opensite/medi
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/api"]
 HEALTHCHECK --interval=5s --timeout=4s --retries=15 CMD ["/usr/local/bin/healthcheck"]
+
+FROM postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336 AS worker
+COPY --from=build /out/worker /out/healthcheck /usr/local/bin/
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/worker"]
+HEALTHCHECK --interval=5s --timeout=4s --retries=15 CMD ["/usr/local/bin/healthcheck", "http://127.0.0.1:8081/healthz"]

@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/jobs"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/outbox"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -53,8 +54,14 @@ func runContext(parent context.Context, getenv func(string) string, sender outbo
 	if enabled == "true" && sender == nil {
 		return errors.New("OUTBOX_SENDER_NOT_CONFIGURED")
 	}
-	if enabled == "true" && getenv("OUTBOX_DATABASE_URL") == "" {
-		return errors.New("OUTBOX_DATABASE_URL required")
+	if enabled == "true" {
+		url, err := workerDSN(getenv, "OUTBOX_DATABASE_URL", "OUTBOX", "opensite_outbox_login")
+		if err != nil {
+			return err
+		}
+		if url == "" {
+			return errors.New("OUTBOX_DATABASE_URL required")
+		}
 	}
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -68,6 +75,20 @@ func runContext(parent context.Context, getenv func(string) string, sender outbo
 	if err := worker.Start(context.WithoutCancel(ctx)); err != nil {
 		return errors.New("worker startup failed")
 	}
+	var monitor *workerMonitor
+	var monitorDone <-chan error
+	if observed, ok := worker.(interface {
+		MetricsSource() observability.WorkerMetrics
+	}); ok {
+		monitor, err = startWorkerMonitor(getenv("OSC_WORKER_ADDR"), observed.MetricsSource())
+		if err != nil {
+			stop, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer stopCancel()
+			_ = worker.Stop(stop)
+			return err
+		}
+		monitorDone = monitor.done
+	}
 	runnerDone := make(chan error, 1)
 	if runner != nil {
 		go func() { runnerDone <- runner.Run(ctx) }()
@@ -78,10 +99,16 @@ func runContext(parent context.Context, getenv func(string) string, sender outbo
 	case <-ctx.Done():
 	case runErr = <-runnerDone:
 		joined = true
+	case <-monitorDone:
+		runErr = errors.New("worker monitor stopped unexpectedly")
 	}
 	cancel()
 	stop, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer stopCancel()
+	var monitorErr error
+	if monitor != nil {
+		monitorErr = monitor.Stop(stop)
+	}
 	stopErr := worker.Stop(stop)
 	if runner != nil && !joined {
 		select {
@@ -96,11 +123,17 @@ func runContext(parent context.Context, getenv func(string) string, sender outbo
 	if stopErr != nil {
 		return errors.New("worker stop failed")
 	}
+	if monitorErr != nil {
+		return monitorErr
+	}
 	return nil
 }
 
 func composeWorkers(ctx context.Context, getenv func(string) string, sender outbox.Sender) (jobWorker, *outbox.Runner, func(), error) {
-	url := getenv("WORKER_DATABASE_URL")
+	url, err := workerDSN(getenv, "WORKER_DATABASE_URL", "WORKER", "opensite_queue_login")
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	if url == "" {
 		return nil, nil, nil, errors.New("WORKER_DATABASE_URL required")
 	}
@@ -135,15 +168,22 @@ func composeWorkers(ctx context.Context, getenv func(string) string, sender outb
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	outboxURL, err := workerDSN(getenv, "OUTBOX_DATABASE_URL", "OUTBOX", "opensite_outbox_login")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if outboxURL == "" {
+		return nil, nil, nil, errors.New("OUTBOX_DATABASE_URL required for worker metrics")
+	}
+	outboxPool, err := pgxadapter.OpenQueuePool(startupCtx, outboxURL, "app_outbox_worker")
+	if err != nil {
+		return nil, nil, nil, errors.New("outbox database capability unavailable")
+	}
+	cleanup = func() { outboxPool.Close(); pool.Close() }
 	var runner *outbox.Runner
 	if getenv("OUTBOX_ENABLED") == "true" {
-		outboxPool, err := pgxadapter.OpenQueuePool(startupCtx, getenv("OUTBOX_DATABASE_URL"), "app_outbox_worker")
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		cleanup = func() { outboxPool.Close(); pool.Close() }
 		runner = &outbox.Runner{Source: outbox.PGTenantSource{Pool: outboxPool}, Dispatcher: outbox.Dispatcher{Store: outbox.PGStore{Pool: outboxPool}, Sender: sender, Config: outbox.Config{WorkerID: uuid.NewString(), LeaseSeconds: 60, BaseRetrySeconds: 2, MaxRetrySeconds: 300}}, PollInterval: time.Second, CycleTimeout: 30 * time.Second, TenantBatchSize: 100, EventsPerTenant: 10}
 	}
 	success = true
-	return worker, runner, cleanup, nil
+	return &observedWorker{jobWorker: worker, source: outboxMetrics{query: outboxPool}}, runner, cleanup, nil
 }

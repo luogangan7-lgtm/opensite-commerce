@@ -149,12 +149,13 @@ ORDERS_DB=""
 CATALOG_DB=""
 QUEUE_DB=""
 LIMITS_DB=""
+OPS_METRICS_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$OPS_METRICS_DB" "$INVENTORY_DB" "$PRICING_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -741,8 +742,15 @@ SELECT 'LIMITS_UPGRADE='||count(*)||'|'||count(*) FILTER(WHERE status='dead_lett
 SQL
 )
 [[ $result == *'LIMITS_UPGRADE=4|2|2|10'* ]] || bad "limits populated upgrade: $result"
+# Apply every later forward migration before the whole-schema capability matrix.
+# This keeps the legacy limits witness above anchored to its own upgrade step.
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${limits_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
 river_db "$DB" --verify
 db "$DB" -f tests/db_reliability_limits.sql >/dev/null
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; LIMITS_DB=""
 pass 'reliability limits upgrade preserves delivery identity, retires exhausted work, accepts live final ACK'
@@ -803,4 +811,42 @@ db "$DB" -f tests/db_orders.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; ORDERS_DB=""
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue and reliability limits upgrade gates'
+
+# C23a: add only the metrics capability over populated pending and DLQ-only
+# tenants; preserve event identity/content and every prior forward migration.
+ops_metrics=(migrations/[0-9][0-9][0-9]_ops_metrics.sql)
+[[ ${#ops_metrics[@]} == 1 ]] || { bad 'exactly one ops-metrics migration required'; exit 1; }
+OPS_METRICS_DB=upgrade_ops_metrics_$$; DB=$OPS_METRICS_DB
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${ops_metrics[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('ops-existing-pending') RETURNING id AS ta \gset
+INSERT INTO app.tenants(name) VALUES('ops-existing-DLQ-only') RETURNING id AS tb \gset
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key,status,created_at)
+ VALUES(:'ta','ops.legacy','{"witness":"pending"}','test','legacy-pending','pending',clock_timestamp()-interval '1 minute'),
+       (:'tb','ops.legacy','{"witness":"dead"}','test','legacy-dead','dead_letter',clock_timestamp()-interval '1 hour');
+SQL
+apply_forward "$DB" "${ops_metrics[0]}"
+result=$(db "$DB" <<'SQL'
+SELECT 'OPS_PRESERVED='||count(*)||'|'||count(*) FILTER(WHERE status='pending' AND payload->>'witness'='pending')||'|'||
+ count(*) FILTER(WHERE status='dead_letter' AND payload->>'witness'='dead') FROM app.outbox_events;
+SET ROLE app_outbox_worker;
+SELECT 'OPS_METRICS='||pending||'|'||dead_letters||'|'||(oldest_pending_age_seconds>=60) FROM app.outbox_metrics();
+RESET ROLE;
+SQL
+)
+[[ $result == *'OPS_PRESERVED=2|1|1'* && $result == *'OPS_METRICS=1|1|true'* ]] || bad "ops-metrics populated upgrade: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${ops_metrics[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" -f tests/db_ops_metrics.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+river_db "$DB" --verify
+admin -c "DROP DATABASE $DB"; OPS_METRICS_DB=""
+pass 'ops metrics preserves pending/DLQ-only tenants and exposes only aggregate worker gauges'
+[[ $fail -eq 0 ]] || exit 1
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits and ops metrics upgrade gates'

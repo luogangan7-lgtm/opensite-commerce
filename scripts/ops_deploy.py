@@ -15,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 LOGIN_ROLES = {'RUNTIME': ('opensite_runtime_login', 'app_runtime'),
                'AUTH': ('opensite_auth_login', 'app_auth'),
                'DOMAIN': ('opensite_domain_login', 'app_domain_resolver'),
-               'MEDIA': ('opensite_media_login', 'app_media_service')}
+               'MEDIA': ('opensite_media_login', 'app_media_service'),
+               'WORKER': ('opensite_queue_login', 'app_queue_worker'),
+               'OUTBOX': ('opensite_outbox_login', 'app_outbox_worker')}
 
 class DeployError(RuntimeError): pass
 
@@ -73,9 +75,18 @@ def provision_sql(database, passwords):
     lines.append('COMMIT;')
     return '\n'.join(lines)
 
+def install_migrations(env):
+    # River owns its separate history: schema/install, app grants, history verify.
+    for command in (['/usr/local/bin/river-migrate'],
+                    ['bash', str(ROOT / 'scripts/migrate.sh')],
+                    ['/usr/local/bin/river-migrate', '--verify']):
+        result = subprocess.run(command, env=env, cwd=ROOT, capture_output=True, text=True, timeout=300)
+        if result.returncode:
+            raise DeployError('MIGRATION_FAILED: inspect source/checksum history with the migration gate')
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['preflight', 'install', 'provision'])
+    parser.add_argument('action', choices=['preflight', 'install', 'provision', 'verify'])
     args = parser.parse_args(argv)
     try:
         database = database_name(os.environ.get('OPENSITE_DB', 'opensite'))
@@ -83,14 +94,18 @@ def main(argv=None):
         preflight(database)
         print('PASS: cluster preflight (one OpenSite application database)')
         if args.action == 'preflight': return 0
+        env = dict(os.environ, PGPASSWORD=os.environ['POSTGRES_PASSWORD'],
+                   DATABASE_URL=f"host={os.environ.get('OPENSITE_DB_HOST', 'postgres')} dbname={database} user=postgres connect_timeout=5")
+        if args.action == 'verify':
+            result = subprocess.run(['/usr/local/bin/river-migrate','--verify'], env=env, cwd=ROOT, capture_output=True, timeout=180)
+            if result.returncode: raise DeployError('RIVER_HISTORY_VERIFICATION_FAILED')
+            print('PASS: restored River history matches locked installer')
+            return 0
         passwords = {kind: os.environ.get(f'OPENSITE_{kind}_DB_PASSWORD', '') for kind in LOGIN_ROLES}
         provisioning = provision_sql(database, passwords)  # validate before any migration writes
         if args.action == 'install':
-            env = dict(os.environ, PGPASSWORD=os.environ['POSTGRES_PASSWORD'],
-                       DATABASE_URL=f"host={os.environ.get('OPENSITE_DB_HOST', 'postgres')} dbname={database} user=postgres connect_timeout=5")
-            result = subprocess.run(['bash', str(ROOT / 'scripts/migrate.sh')], env=env, cwd=ROOT, capture_output=True, text=True, timeout=300)
-            if result.returncode: raise DeployError('MIGRATION_FAILED: inspect source/checksum history with the migration gate')
-            print('PASS: forward migrations and checksums verified')
+            install_migrations(env)
+            print('PASS: River install → forward migrations/checksums → River history verified')
         query(provisioning, database)
         print('PASS: separate restricted login roles; PUBLIC CONNECT revoked')
         return 0

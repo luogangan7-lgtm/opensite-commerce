@@ -12,7 +12,7 @@ services:
       - ../:/workspace:ro
       - media_data:/media
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d \"$$POSTGRES_DB\""]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d \"$$POSTGRES_DB\""]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -29,6 +29,8 @@ services:
       OPENSITE_AUTH_DB_PASSWORD: ${OPENSITE_AUTH_DB_PASSWORD:?set auth password}
       OPENSITE_DOMAIN_DB_PASSWORD: ${OPENSITE_DOMAIN_DB_PASSWORD:?set domain password}
       OPENSITE_MEDIA_DB_PASSWORD: ${OPENSITE_MEDIA_DB_PASSWORD:?set media password}
+      OPENSITE_WORKER_DB_PASSWORD: ${OPENSITE_WORKER_DB_PASSWORD:?set worker password}
+      OPENSITE_OUTBOX_DB_PASSWORD: ${OPENSITE_OUTBOX_DB_PASSWORD:?set outbox password}
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,15 +59,28 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
-  # PR #25 is not in this base: explicitly opt-in placeholder, never a fake worker.
   worker:
-    profiles: ["pending-worker"]
-    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
-    entrypoint: ["/bin/sh", "-c", "echo 'NOT_RUN: River/outbox worker pending PR25 integration'; exit 78"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: worker
+    environment:
+      OSC_WORKER_ADDR: :8081
+      OPENSITE_DB_HOST: postgres
+      OPENSITE_DB: ${OPENSITE_DB:-opensite}
+      OPENSITE_WORKER_DB_PASSWORD: ${OPENSITE_WORKER_DB_PASSWORD:?set worker password}
+      OPENSITE_OUTBOX_DB_PASSWORD: ${OPENSITE_OUTBOX_DB_PASSWORD:?set outbox password}
+      JOB_SIGNING_KEY: ${JOB_SIGNING_KEY:?set independent 64-hex job signing key}
+      JOB_TENANTS: ${JOB_TENANTS:-}
+      OUTBOX_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${OPENSITE_WORKER_PORT:-8081}:8081"
     depends_on:
+      postgres:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    restart: "no"
+    restart: unless-stopped
 # Astro SSR has not merged; storefront is omitted until C-09a integration.
 volumes:
   pg_data:

@@ -11,8 +11,8 @@ The migrations create restricted **NOLOGIN** group roles, including:
 
 **No credentials or application LOGIN role is created by migrations.** A
 production operator must provision separate login identities out-of-band. The
-local Compose migrator provisions environment-backed logins for these four
-capabilities; see [README.md](README.md) for the rehearsal and password policy.
+local Compose migrator provisions environment-backed logins for these four API
+capabilities and separate queue/outbox capabilities; see [README.md](README.md) for the rehearsal and password policy.
 Use `psql` interactively with a privileged administrator and commands such as:
 
 ```sql
@@ -57,8 +57,9 @@ DATABASE ... FROM PUBLIC` so capability logins reach only their own database.
 The River worker login may SET ROLE only to `app_queue_worker`; optional Outbox
 composition uses a separate login allowed only `app_outbox_worker`. Neither is
 permitted to SET ROLE to either DDL owner or `app_outbox_tenant_broker`.
-The broker is NOLOGIN/NOBYPASSRLS and has no memberships; its sole controlled
-function enumerates active Outbox tenant IDs using only tenant_id/status SELECT.
+The broker is NOLOGIN/NOBYPASSRLS and has no memberships; one controlled function enumerates active Outbox tenant IDs; a separate
+aggregate-only metrics function exposes backlog/DLQ counts and age using
+only tenant_id/status/created_at SELECT.
 It has no payload or table-wide privilege. Queue ownership remains isolated in
 `app_river_migrator`; the application and upstream migration histories are separate.
 `OUTBOX_ENABLED` defaults off and a missing Sender fails before any claim.

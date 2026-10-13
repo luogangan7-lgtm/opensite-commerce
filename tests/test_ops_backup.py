@@ -26,7 +26,9 @@ class BackupTests(unittest.TestCase):
         return {"format": 1, "archive": archive.name,
                 "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
                 "tables": {"app.tenants": {"rows": 2, "sha256": "a" * 64},
-                           "public.schema_migrations": {"rows": 23, "sha256": "b" * 64}}}
+                           "public.schema_migrations": {"rows": 23, "sha256": "b" * 64},
+                           "queue.river_migration": {"rows": 7, "sha256": "c" * 64},
+                           "queue.river_job": {"rows": 2, "sha256": "d" * 64}}}
 
     def fixture(self, root):
         archive = root / "fixture.dump"
@@ -71,6 +73,7 @@ class BackupTests(unittest.TestCase):
                     patch.object(backup, "psql", side_effect=query), \
                     patch.object(backup, "pg_command", side_effect=lambda *args, **kwargs: events.append("pg_restore")) as pg, \
                     patch.object(backup, "migrate", side_effect=lambda _: events.append("migrate")) as migrate, \
+                    patch.object(backup, "verify_river", create=True, side_effect=lambda _: events.append("river-verify")) as river, \
                     patch.object(backup, "table_manifest", side_effect=lambda _: (events.append("manifest") or self.manifest(archive)["tables"])):
                 backup.restore(archive, manifest)
                 self.assertEqual(events[0], "preflight")
@@ -79,6 +82,9 @@ class BackupTests(unittest.TestCase):
                 self.assertNotIn("--no-acl", pg.call_args.args[0])
                 self.assertNotIn("--no-owner", pg.call_args.args[0])
                 migrate.assert_called_once_with("opensite")
+                river.assert_called_once_with("opensite")
+                self.assertLess(events.index("migrate"), events.index("river-verify"))
+                self.assertEqual(events[events.index("river-verify") + 1], "manifest")
                 revoke_index = next(i for i, event in enumerate(events) if "REVOKE CONNECT" in event)
                 self.assertLess(revoke_index, events.index("pg_restore"))
                 self.assertEqual(events[-1], "PROVISION")
@@ -122,6 +128,66 @@ class BackupTests(unittest.TestCase):
             manifest.write_text(json.dumps(content))
             with self.assertRaisesRegex(common.OpsError, "migration history"):
                 backup.read_manifest(archive, manifest)
+
+    def test_manifest_requires_queue_history_and_job_witness(self):
+        with tempfile.TemporaryDirectory() as root:
+            archive, manifest = self.fixture(Path(root))
+            for omitted in ("queue.river_migration", "queue.river_job"):
+                content = self.manifest(archive)
+                del content["tables"][omitted]
+                manifest.write_text(json.dumps(content))
+                with patch.object(backup, "psql") as psql:
+                    with self.assertRaisesRegex(common.OpsError, "queue"):
+                        backup.restore(archive, manifest)
+                    psql.assert_not_called()
+
+    def test_queue_job_and_history_changes_fail_manifest_comparison(self):
+        expected = {
+            "queue.river_job": {"rows": 2, "sha256": "d" * 64},
+            "queue.river_migration": {"rows": 7, "sha256": "c" * 64}}
+        for key in expected:
+            actual = {**expected, key: {"rows": expected[key]["rows"], "sha256": "e" * 64}}
+            with self.assertRaisesRegex(common.OpsError, "manifest mismatch"):
+                backup.compare_tables(expected, actual)
+
+    def test_all_table_inventory_contains_queue(self):
+        self.assertIn("'queue'", backup.TABLES)
+
+    def test_live_manifest_refuses_omitted_queue_witness(self):
+        tables = {"app.tenants": {"rows": 2, "sha256": "a" * 64},
+                  "public.schema_migrations": {"rows": 23, "sha256": "b" * 64}}
+        output = "\n".join(json.dumps({"table": table, **receipt}) for table, receipt in tables.items())
+        with patch.object(backup, "psql", return_value=output):
+            with self.assertRaisesRegex(common.OpsError, "queue"):
+                backup.table_manifest("opensite")
+
+    def test_river_verify_prefers_compiled_container_binary(self):
+        ready = subprocess.CompletedProcess([], 0, b"available", b"")
+        with patch.dict(os.environ, {"POSTGRES_PASSWORD": "stdin-secret"}), \
+                patch.object(common, "pg_command", return_value=ready) as pg:
+            common.verify_river("opensite")
+            self.assertEqual(pg.call_count, 2)
+            verify = pg.call_args.args[0]
+            self.assertTrue(any('/usr/local/bin/river-migrate --verify' in arg for arg in verify))
+            self.assertNotIn("stdin-secret", str(pg.call_args))
+
+    def test_river_verify_fallback_targets_configured_migrator_without_host_go(self):
+        missing = subprocess.CompletedProcess([], 0, b"missing", b"")
+        success = subprocess.CompletedProcess([], 0, b"PASS", b"")
+        env = {"DATABASE_URL": "must-not-connect-to-this", "OPENSITE_ENV_FILE": "/tmp/configured.env",
+               "COMPOSE_PROJECT_NAME": "c23atest"}
+        with patch.dict(os.environ, env), patch.object(common, "pg_command", return_value=missing), \
+                patch.object(common.subprocess, "run", return_value=success) as run:
+            common.verify_river("opensite")
+            command = run.call_args.args[0]
+            self.assertEqual(command[-2:], ["migrate", "verify"])
+            self.assertIn("--no-deps", command)
+            self.assertIn("--rm", command)
+            self.assertIn("OPENSITE_DB=opensite", command)
+            self.assertIn("--env-file", command)
+            self.assertIn("/tmp/configured.env", command)
+            self.assertNotIn("must-not-connect-to-this", str(command))
+            self.assertGreater(run.call_args.kwargs["timeout"], 0)
 
     def test_database_identifier_and_system_databases_rejected(self):
         for name in ("postgres", "template0", "template1", "evil; DROP DATABASE foo", ""):
@@ -176,6 +242,15 @@ class BackupTests(unittest.TestCase):
             with patch.dict(os.environ, {"OPENSITE_ENV_FILE": str(env_file)}, clear=True):
                 common.load_environment()
                 self.assertEqual(common.admin_password(), b"configured-secret\n")
+
+    def test_dotenv_accepts_explicit_worker_keys_without_evaluation(self):
+        with tempfile.TemporaryDirectory() as root:
+            Path(root, ".env").write_text("JOB_SIGNING_KEY=abc123\nJOB_TENANTS='tenant-a,tenant-b'\nOUTBOX_ENABLED=false\n")
+            with patch.object(common, "ROOT", Path(root)), patch.dict(os.environ, {}, clear=True):
+                common.load_environment()
+                self.assertEqual(os.environ["JOB_SIGNING_KEY"], "abc123")
+                self.assertEqual(os.environ["JOB_TENANTS"], "tenant-a,tenant-b")
+                self.assertEqual(os.environ["OUTBOX_ENABLED"], "false")
 
     def test_backup_and_restore_cli_load_dotenv_without_manual_exports(self):
         with tempfile.TemporaryDirectory() as root:
