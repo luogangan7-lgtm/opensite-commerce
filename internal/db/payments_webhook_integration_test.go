@@ -29,6 +29,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	paymentcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
+	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
@@ -295,12 +296,54 @@ func TestPaymentsPGCapturedReplayConflictAndLateFailure(t *testing.T) {
 	if after := p.witness(t); after != w {
 		t.Fatal("hash conflict changed receipt/effects")
 	}
-	for _, status := range []payment.PaymentStatus{payment.StatusAuthorized, payment.StatusFailed, payment.StatusCanceled} {
+	raw = p.raw("late-authorized:"+uuid.NewString(), payment.StatusAuthorized, p.start.AmountMinor)
+	var public *apperrors.Error
+	if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); !errors.As(err, &public) || public.Status != 400 || public.Code != "invalid_event" {
+		t.Fatalf("late authorization should be rejected: %v", err)
+	}
+	if after := p.witness(t); after != w {
+		t.Fatal("rejected late authorization changed receipt/effects")
+	}
+	for _, status := range []payment.PaymentStatus{payment.StatusFailed, payment.StatusCanceled} {
 		p.receive(t, "late:"+uuid.NewString(), status, p.start.AmountMinor)
 	}
 	after := p.witness(t)
 	if after.checkout != w.checkout || after.refunded != 0 {
 		t.Fatalf("late facts rewound captured: %+v", after)
+	}
+}
+
+// A provider failure/cancellation is a terminal fact, not a command to the PSP.
+// It releases unpaid inventory once and never books a cash or refund journal.
+func TestPaymentsPGUnpaidFailureAndCancellationReleaseOnce(t *testing.T) {
+	for _, status := range []payment.PaymentStatus{payment.StatusFailed, payment.StatusCanceled} {
+		t.Run(string(status), func(t *testing.T) {
+			p := newPaymentFactFixture(t)
+			id := "unpaid:" + uuid.NewString()
+			if got := p.receive(t, id, status, p.start.AmountMinor); got.Status != "processed" {
+				t.Fatalf("terminal fact not processed: %+v", got)
+			}
+			before := p.witness(t)
+			if before.inbox != 1 || before.events != 1 || before.applied != 1 || before.refunded != 0 ||
+				before.checkout.state != "cancelled" || before.checkout.phase != "failed" ||
+				before.checkout.onHand != 10 || before.checkout.reserved != 0 || before.checkout.journals != 0 ||
+				before.checkout.cash != 0 || before.checkout.receivable != 0 || before.checkout.paidEvents != 0 || before.checkout.cancelEvents != 1 {
+				t.Fatalf("unpaid terminal witness: %+v", before)
+			}
+			p.receive(t, id, status, p.start.AmountMinor)
+			if after := p.witness(t); after != before {
+				t.Fatalf("terminal replay changed effects: %+v %+v", before, after)
+			}
+			raw := p.raw("capture-after-terminal:"+uuid.NewString(), payment.StatusCaptured, p.start.AmountMinor)
+			var public *apperrors.Error
+			if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); !errors.As(err, &public) || public.Status != 409 || public.Code != "payment_conflict" {
+				t.Fatalf("capture after terminal needs reconciliation: %v", err)
+			}
+			after := p.witness(t)
+			if after.checkout != before.checkout || after.refunded != 0 || after.applied != before.applied || after.inbox != before.inbox+1 || after.events != before.events+1 {
+				t.Fatalf("conflicting capture changed business effects or lost its receipt: %+v", after)
+			}
+		})
 	}
 }
 
@@ -332,17 +375,20 @@ func TestPaymentsPGAdmissionAndEffectsRollbackTogether(t *testing.T) {
 	p := newPaymentFactFixture(t)
 	applier := p.f.service.(checkoutcontract.PaymentEventApplier)
 	injected := errors.New("C19_AFTER_PAYMENT_EFFECTS_ROLLBACK")
+	injectedAfterApply := false
 	p.module = p.newModule(t, func(ctx context.Context, tx pgx.Tx, event payment.VerifiedEvent) (bool, error) {
 		applied, err := applier.ApplyPaymentEvent(ctx, tx, event)
 		if err != nil {
 			return applied, err
 		}
+		injectedAfterApply = true
 		return applied, injected
 	})
 	before := p.witness(t)
 	raw := p.raw("rollback:"+uuid.NewString(), payment.StatusCaptured, p.start.AmountMinor)
-	if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); !errors.Is(err, injected) {
-		t.Fatalf("rollback error %v", err)
+	var public *apperrors.Error
+	if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); !injectedAfterApply || !errors.As(err, &public) || public.Status != 503 || public.Code != "payment_unavailable" || public.Detail != "Payment event processing unavailable" {
+		t.Fatalf("rollback must sanitize the injected post-apply error: applied=%v err=%v", injectedAfterApply, err)
 	}
 	if after := p.witness(t); after != before {
 		t.Fatalf("partial commit: %+v %+v", before, after)
