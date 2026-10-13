@@ -767,7 +767,8 @@ BEGIN
    OR cardinality(f.proconfig) IS DISTINCT FROM (CASE WHEN f.proname IN('data_rights_credential_guard','data_rights_order_customer_guard') THEN 2 ELSE 1 END) THEN RAISE EXCEPTION 'unsafe privacy function %',f.proname; END IF;
   IF EXISTS(SELECT FROM aclexplode(coalesce((SELECT proacl FROM pg_proc WHERE oid=f.oid),acldefault('f',r.oid))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN RAISE EXCEPTION 'public privacy function capability'; END IF;
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') AND rolname<>'app_data_rights_executor' LOOP
-   IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name='app_runtime' AND f.proname=ANY(commands)) THEN
+   IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name='app_runtime' AND f.proname=ANY(commands))
+    OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'privacy function privilege mismatch % %',role_name,f.proname; END IF;
   END LOOP;
  END LOOP;

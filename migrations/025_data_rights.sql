@@ -51,7 +51,8 @@ BEGIN
   FOR r IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP EXECUTE format('REVOKE ALL ON app.%I FROM %I',n,r); END LOOP;
  END LOOP;
  FOREACH n IN ARRAY ARRAY['data_rights_exports','data_rights_erasures','customers','customer_addresses','customer_credentials','buyer_company_members','orders','order_lines','carts','cart_lines','audit_events'] LOOP
-  EXECUTE format('CREATE POLICY data_rights_scope ON app.%I TO app_data_rights_executor USING(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',n);
+  EXECUTE format('CREATE POLICY %I ON app.%I TO app_data_rights_executor USING(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',
+   CASE WHEN n IN('data_rights_exports','data_rights_erasures') THEN 'tenant_scope' ELSE 'data_rights_scope' END,n);
  END LOOP;
 END $rls$;
 GRANT SELECT ON app.tenants,app.customers,app.customer_addresses,app.buyer_company_members,app.orders,app.order_lines,app.carts,app.cart_lines,app.data_rights_exports,app.data_rights_erasures TO app_data_rights_executor;
