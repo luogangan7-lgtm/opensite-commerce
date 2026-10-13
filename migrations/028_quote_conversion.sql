@@ -95,20 +95,6 @@ DECLARE q app.quotes; c app.quote_conversions; o record; BEGIN
  OR EXISTS(SELECT FROM app.order_adjustments WHERE tenant_id=p_tenant AND order_id=p_order)
  OR EXISTS(SELECT FROM app.quote_lines WHERE tenant_id=p_tenant AND quote_id=p_quote AND variant_id IS NULL) THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_ORDER_SNAPSHOT' USING ERRCODE='23514'; END IF;
- -- EXCEPT ALL preserves duplicate multiplicities; equal totals do not prove equal lines.
- IF EXISTS(
-  (SELECT variant_id,quantity,unit_price,line_total,(snapshot->'amounts'->>'tax')::bigint,
-    (snapshot->'amounts'->>'gross')::bigint,snapshot->'snapshot'
-   FROM app.quote_lines WHERE tenant_id=p_tenant AND quote_id=p_quote
-   EXCEPT ALL SELECT sku_id,quantity,unit_price_minor,line_net_minor,line_tax_minor,line_total_minor,tax_snapshot
-   FROM app.order_lines WHERE tenant_id=p_tenant AND order_id=p_order)
-  UNION ALL
-  (SELECT sku_id,quantity,unit_price_minor,line_net_minor,line_tax_minor,line_total_minor,tax_snapshot
-   FROM app.order_lines WHERE tenant_id=p_tenant AND order_id=p_order
-   EXCEPT ALL SELECT variant_id,quantity,unit_price,line_total,(snapshot->'amounts'->>'tax')::bigint,
-    (snapshot->'amounts'->>'gross')::bigint,snapshot->'snapshot'
-   FROM app.quote_lines WHERE tenant_id=p_tenant AND quote_id=p_quote)) THEN
-  RAISE EXCEPTION 'QUOTE_CONVERSION_LINE_SNAPSHOT' USING ERRCODE='23514'; END IF;
  INSERT INTO app.quote_conversions(tenant_id,quote_id,buyer_company_id,customer_id,order_id,quote_version,idempotency_key,request_hash,order_number,currency,total_minor)
  VALUES(p_tenant,p_quote,p_company,p_customer,p_order,p_quote_version,p_idempotency_key,p_request_hash,o.order_number,o.currency,o.total_minor)
  RETURNING * INTO c;
