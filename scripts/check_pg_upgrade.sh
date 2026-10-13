@@ -1320,7 +1320,7 @@ SELECT app.inventory_adjust(:'sku',2,'payment upgrade stock',uuidv7(),'inbound')
 SET ROLE app_runtime;
 SELECT uuidv7() AS oid \gset
 SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','payment-upgrade-stock',900)).id AS rid \gset
-SELECT app.orders_create(:'oid','payment-upgrade-order',sha256('payment-upgrade'::bytea),NULL,'{}','USD',0,'{}',
+SELECT app.orders_create(:'oid','payment-upgrade-order',sha256('payment-upgrade'::bytea),NULL,'{"email":"payment-upgrade@example.invalid"}','USD',0,'{}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','payment-upgrade','quantity',1,'unit_price_minor',100,
  'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{}'::jsonb)),'[]');
 INSERT INTO app.checkout_sessions(tenant_id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
