@@ -300,10 +300,20 @@ BEGIN
 END $$;
 CREATE FUNCTION app.orders_finish_return_refund(p_return uuid) RETURNS app.orders
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
-DECLARE t uuid:=app.orders_context(); r app.returns;
+DECLARE t uuid:=app.orders_context(); r app.returns; o app.orders; refunded bigint;
 BEGIN
  SELECT * INTO STRICT r FROM app.returns WHERE tenant_id=t AND id=p_return;
- RETURN app.orders_refund_budget(r.order_id,'complete',r.id,NULL,NULL,NULL,0);
+ SELECT * INTO STRICT o FROM app.orders WHERE tenant_id=t AND id=r.order_id FOR UPDATE;
+ IF r.status<>'refund_pending' OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded')
+  OR r.refund_minor<=0 OR r.refund_minor>o.total_minor-o.refunded_minor THEN
+  RAISE EXCEPTION 'FULFILLMENT_REFUND_BOUND' USING ERRCODE='23514'; END IF;
+ refunded:=o.refunded_minor+r.refund_minor;
+ UPDATE app.orders SET refunded_minor=refunded,state=CASE WHEN refunded=total_minor THEN 'refunded' ELSE 'partially_refunded' END,
+  version=version+1,updated_at=clock_timestamp() WHERE tenant_id=t AND id=o.id RETURNING * INTO o;
+ INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+ VALUES(t,'order.'||o.state,jsonb_build_object('order_id',o.id,'return_id',r.id,'refund_minor',r.refund_minor,'version',o.version),
+  'orders.events','return-refund:'||r.id::text);
+ RETURN o;
 END $$;
 -- Inventory owns restoration; caller supplies only the immutable return ID.
 CREATE FUNCTION app.inventory_restore_return(p_return uuid) RETURNS void
