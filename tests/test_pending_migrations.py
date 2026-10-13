@@ -114,7 +114,8 @@ with tempfile.TemporaryDirectory() as temp:
     assert wrong.returncode == 2 and 'not the next' in wrong.stderr, wrong.stderr
     landed, _ = run(root, 'scripts/land_migration.sh', 'c09a-pii')
     assert landed.returncode == 0, landed.stderr
-    assert (root / 'migrations' / '004_pii_registry.sql').read_text() == 'SELECT 9;\n'
+    # land records the stable-id so later depends-on lines still resolve after landing.
+    assert (root / 'migrations' / '004_pii_registry.sql').read_text() == '-- stable-id: c09a-pii\nSELECT 9;\n'
     assert not (root / 'migrations' / 'pending' / 'c09a-pii_pii_registry.sql').exists()
     for ref in ('sqlc.yaml', 'modules/registry.yaml'):
         text = (root / ref).read_text()
@@ -127,5 +128,51 @@ with tempfile.TemporaryDirectory() as temp:
     assert 'pending' not in (root / 'sqlc.yaml').read_text()
     result, log = run(root, 'scripts/migrate.sh', allow=False)
     assert result.returncode == 0 and len(includes(log)) == 5, result.stderr
+
+
+def tree(root):
+    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob('*')) if p.is_file()}
+
+
+def refs_point_to(root, expected):
+    for ref in ('sqlc.yaml', 'modules/registry.yaml'):
+        text = (root / ref).read_text()
+        assert 'pending' not in text, (ref, text)
+        assert all(f'"migrations/{name}"' in text for name in expected), (ref, text)
+
+
+# 7. depends-on survives landing: reverse-lexicographic dep via ci-normalize (and a stable re-run) ...
+with tempfile.TemporaryDirectory() as temp:
+    root = repo(temp, {'aa_first.sql': '-- depends-on: zz\nSELECT 1;\n', 'zz_second.sql': 'SELECT 2;\n'})
+    normalized = subprocess.run(['python3', 'scripts/pending_migrations.py', 'ci-normalize'], cwd=root, capture_output=True, text=True)
+    assert normalized.returncode == 0, normalized.stderr
+    assert (root / 'migrations' / '004_second.sql').read_text().endswith('SELECT 2;\n')
+    assert (root / 'migrations' / '005_first.sql').read_text().endswith('SELECT 1;\n')
+    refs_point_to(root, ['004_second.sql', '005_first.sql'])
+    before = tree(root)
+    again = subprocess.run(['python3', 'scripts/pending_migrations.py', 'ci-normalize'], cwd=root, capture_output=True, text=True)
+    assert again.returncode == 0 and tree(root) == before, again.stderr
+    result, log = run(root, 'scripts/migrate.sh', allow=False)
+    assert result.returncode == 0 and len(includes(log)) == 5, result.stderr
+
+# ... and a three-node chain landed one PR at a time with consecutive land calls.
+with tempfile.TemporaryDirectory() as temp:
+    root = repo(temp, {'aa_one.sql': '-- depends-on: mm\nSELECT 1;\n', 'mm_two.sql': '-- depends-on: zz\nSELECT 2;\n',
+                       'zz_three.sql': 'SELECT 3;\n'})
+    for stable_id in ('zz', 'mm', 'aa'):
+        landed, _ = run(root, 'scripts/land_migration.sh', stable_id)
+        assert landed.returncode == 0, (stable_id, landed.stderr)
+    assert [p.name for p in sorted((root / 'migrations').glob('0*.sql'))][3:] == ['004_three.sql', '005_two.sql', '006_one.sql']
+    refs_point_to(root, ['004_three.sql', '005_two.sql', '006_one.sql'])
+
+# Unknown deps and cycles still fail before ANY write, even next to valid pending files.
+for pending in ({'aa_ok.sql': 'SELECT 1;\n', 'bb_bad.sql': '-- depends-on: nope\n'},
+                {'aa_ok.sql': 'SELECT 1;\n', 'bb_x.sql': '-- depends-on: cc\n', 'cc_y.sql': '-- depends-on: bb\n'}):
+    with tempfile.TemporaryDirectory() as temp:
+        root = repo(temp, pending)
+        before = tree(root)
+        for args in (['python3', 'scripts/pending_migrations.py', 'ci-normalize'], ['bash', 'scripts/land_migration.sh', 'aa']):
+            failed = subprocess.run(args, cwd=root, capture_output=True, text=True)
+            assert failed.returncode == 2 and tree(root) == before, (pending, args, failed.stderr)
 
 print('PASS: pending migrations order/apply/land + production refusal (mock psql; NO SQL executed)')
