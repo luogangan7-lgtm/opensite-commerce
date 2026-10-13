@@ -2,7 +2,7 @@
   "version": 1,
   "module": "quotes",
   "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
-  "structures": {"QuoteLineSnapshot": "Frozen line calculation/details; arbitrary personal keys conservatively covered.", "QuoteSnapshot": "Frozen quote totals, tax/shipping and potentially inquiry/contact details."},
+  "structures": {"QuoteLineSnapshot": "Frozen line calculation/details; arbitrary personal keys conservatively covered.", "QuoteSnapshot": "Frozen quote totals, tax/shipping and potentially inquiry/contact details.", "Sha256Digest": "Opaque SHA256 request-identity digest; contains no raw request body or contact data."},
   "tables": {
     "inquiries": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Buyer contact is inquiry-owned; buyer_company_id identifies a company but buyer_email does not prove individual customer ownership."},
@@ -67,6 +67,23 @@
         "requested_by": {"classification": "operational"},
         "decided_by": {"classification": "operational"},
         "decision": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "quote_conversions": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "quote_conversions.customer_id -> customers.id", "null_subject_policy": "Customer ownership is an explicit tenant-scoped foreign key; no copied contact or free-form snapshot fields."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "quote_id": {"classification": "operational"},
+        "buyer_company_id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "order_id": {"classification": "operational"},
+        "quote_version": {"classification": "operational"},
+        "idempotency_key": {"classification": "operational", "export": "exclude"},
+        "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "order_number": {"classification": "operational"},
+        "currency": {"classification": "financial_non_contact"},
+        "total_minor": {"classification": "financial_non_contact"},
         "created_at": {"classification": "operational"}
       }
     }
