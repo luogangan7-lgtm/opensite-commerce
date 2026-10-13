@@ -7,6 +7,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 [[ -n "${DATABASE_URL:-}" ]] || { echo 'E2E API requires DATABASE_URL for a disposable PostgreSQL database.' >&2; exit 2; }
 export OSC_STOREFRONT_SAMPLE_SEED=1
+# Queue authorization (021) requires the pinned River schema first, as in check_pg.sh.
+./scripts/migrate_river.sh
 ./scripts/migrate.sh
 ./scripts/seed_storefront.sh
 # Provision without putting a password or DSN in argv, source files, or output.
