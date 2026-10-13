@@ -64,7 +64,7 @@ test('real bootstrapped owner logs in, opens the guarded catalog and signs out',
   const login = page.waitForResponse(response =>
     response.url() === `${fixture.admin}/api/v1/auth/login` && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  expect((await login).status()).toBe(200);
+  expect((await login).status()).toBe(201);
   await expect(page.getByRole('heading', { name: 'Open a store', exact: true })).toBeVisible();
   expect(await hasSession(page)).toBe(true);
   await audit(page, info);
