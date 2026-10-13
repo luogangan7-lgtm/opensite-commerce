@@ -49,7 +49,8 @@ DECLARE
 BEGIN
  -- Fixed IDs intentionally fail on a second load instead of silently reusing
  -- stale rows. The registry runner supplies a fresh database or transaction.
- INSERT INTO app.tenants(id,name) VALUES(t,'privacy-column-canaries');
+ -- The refund canary's USD accounts require explicit tenant currency provisioning.
+ INSERT INTO app.tenants(id,name,settlement_currency) VALUES(t,'privacy-column-canaries','USD');
  PERFORM set_config('app.tenant_id',t::text,true);
  PERFORM set_config('privacy.fixture.tenant_id',t::text,true);
  PERFORM set_config('privacy.fixture.customer_id',customer::text,true);
