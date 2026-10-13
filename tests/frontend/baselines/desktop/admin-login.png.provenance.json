@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "desktop/admin-login.png",
   "scope": "admin",
-  "sourceFingerprint": "865d616abca56dc115805b3999ee03c8fb2f773fa361b70eb8250e34316ea6c8",
+  "sourceFingerprint": "4c6d4c45724393a29b23e46b31e2ba42c56076d1e04e436a0fec75f0af39480b",
   "pngSha256": "a2cd6710f8bfcb131d3f5505e95a0f59b1453515c7cd1f55f7d9c949e08165fa",
   "scopeSnapshots": [
     "desktop/admin-create.png",
@@ -18,8 +18,8 @@
     "mobile/admin-orders.png",
     "mobile/admin-products.png"
   ],
-  "sourceSha": "423d4c069c68f82098ae1530d4aa8ae59aa8a68f",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38412793719",
+  "sourceSha": "6b40b9c76c8aecdb5a436f5905530046fd39b136",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38425965632",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
