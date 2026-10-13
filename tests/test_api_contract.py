@@ -134,8 +134,21 @@ class APIContractTests(unittest.TestCase):
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
+        cms = {"createSiteDraft", "getSiteDraft", "listDraftPages", "createDraftPage", "getDraftPage",
+               "updateDraftPage", "deleteDraftPage", "updateDraftNavigation", "applyPageOperations",
+               "validateSiteDraft", "publishSiteDraft", "createSitePreviewToken", "getSiteReleaseHistory",
+               "restoreSiteRelease", "getSitePreview"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart)
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | cms)
+        for name in cms - {"getSitePreview"}:
+            _, method, operation = ops[name]
+            self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
+            self.assertEqual(operation["x-required-scope"],
+                             "cms:publish" if name in {"publishSiteDraft", "restoreSiteRelease"} else "cms:write")
+            if method != "get":
+                self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, operation["parameters"])
+                if name != "createSiteDraft":
+                    self.assertIn({"$ref": "#/components/parameters/IfMatch"}, operation["parameters"])
         for name in expected - {"health", "getPublishedSite"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
