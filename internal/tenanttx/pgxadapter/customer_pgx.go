@@ -89,8 +89,11 @@ func OpenCustomerRunner(ctx context.Context, dsn string) (*CustomerRunner, error
      ((p.privilege='SELECT' AND c.relname IN('customers','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits'))
       OR EXISTS(SELECT FROM executor_columns e WHERE e.table_name=c.relname AND e.privilege=p.privilege AND a.attname::text=ANY(e.allowed_columns)))
     OR has_column_privilege('app_customer_executor',c.oid,a.attnum,p.privilege||' WITH GRANT OPTION')))
+ -- WHERE predicates can be reordered: keep the sequence-only function inside
+ -- CASE so nonsequence catalog rows never raise wrong_object_type (42809).
  AND NOT EXISTS (SELECT FROM pg_class c WHERE c.relnamespace='app'::regnamespace AND c.relkind='S'
-  AND has_sequence_privilege('app_customer_executor',c.oid,'USAGE,SELECT,UPDATE'))
+  AND CASE WHEN c.relkind='S'
+   THEN has_sequence_privilege('app_customer_executor',c.oid,'USAGE,SELECT,UPDATE') ELSE false END)
  AND NOT EXISTS (SELECT FROM pg_proc f LEFT JOIN executor_functions e ON e.oid=f.oid
   WHERE f.pronamespace='app'::regnamespace AND
    (has_function_privilege('app_customer_executor',f.oid,'EXECUTE') IS DISTINCT FROM (e.oid IS NOT NULL)
@@ -130,7 +133,8 @@ func OpenCustomerRunner(ctx context.Context, dsn string) (*CustomerRunner, error
    AND a.attname NOT IN('tenant_id','id','email','display_name'))
  AND NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   CROSS JOIN (VALUES(session_user::text),('app_customer_auth')) AS subject(name)
-  WHERE n.nspname='app' AND c.relkind='S' AND has_sequence_privilege(subject.name,c.oid,'USAGE,SELECT,UPDATE'))
+  WHERE n.nspname='app' AND c.relkind='S' AND CASE WHEN c.relkind='S'
+   THEN has_sequence_privilege(subject.name,c.oid,'USAGE,SELECT,UPDATE') ELSE false END)
  AND NOT EXISTS (SELECT FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace
   CROSS JOIN (VALUES(session_user::text),('app_customer_auth')) AS subject(name)
   WHERE n.nspname='app' AND (has_function_privilege(subject.name,f.oid,'EXECUTE WITH GRANT OPTION')
