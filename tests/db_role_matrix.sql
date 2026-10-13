@@ -1017,6 +1017,12 @@ BEGIN
     RAISE EXCEPTION 'TENANT_AUTH_ROUTINE_ACL % %',role_name,f.proname; END IF;
   END LOOP;
  END LOOP;
+ IF NOT EXISTS(SELECT FROM pg_policy WHERE polrelid='app.tenant_memberships'::regclass
+  AND polname='credential_membership_lock' AND polcmd='w' AND polpermissive
+  AND polroles=ARRAY['app_credential_writer'::regrole::oid] AND polqual IS NOT NULL AND polwithcheck IS NOT NULL
+  AND pg_get_expr(polqual,polrelid)=pg_get_expr(polwithcheck,polrelid)
+  AND pg_get_expr(polqual,polrelid) LIKE '%tenant_id%app.tenant_id%') THEN
+  RAISE EXCEPTION 'TENANT_AUTH_MEMBERSHIP_LOCK_POLICY'; END IF;
  IF has_table_privilege('app_auth','app.api_keys','INSERT') OR has_any_column_privilege('app_auth','app.api_keys','INSERT')
   OR has_table_privilege('app_auth','app.api_keys','UPDATE') OR has_any_column_privilege('app_auth','app.api_keys','UPDATE')
   OR has_table_privilege('app_auth','app.api_keys','DELETE')

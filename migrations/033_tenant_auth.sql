@@ -11,6 +11,11 @@ GRANT SELECT(tenant_id,user_id,role,status),UPDATE(status) ON app.tenant_members
 GRANT SELECT(tenant_id,id,issued_by,key_prefix,key_hash,scopes,expires_at,revoked_at,created_at,last_used_at),
  UPDATE(revoked_at,last_used_at) ON app.api_keys TO app_credential_writer;
 GRANT SELECT(id,user_id,expires_at,revoked_at,created_at,last_seen_at),UPDATE(revoked_at) ON app.auth_sessions TO app_credential_writer;
+-- FOR SHARE also applies UPDATE policy; this unreachable writer may lock only
+-- the requested tenant's membership. Functions never update membership status.
+CREATE POLICY credential_membership_lock ON app.tenant_memberships FOR UPDATE TO app_credential_writer
+ USING (tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid)
+ WITH CHECK (tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
 CREATE POLICY credential_key_read ON app.api_keys FOR SELECT TO app_credential_writer USING (true);
 
 -- The role allowlist is deliberately explicit; unknown roles have no scopes.
@@ -40,6 +45,7 @@ BEGIN
  IF NOT FOUND OR u_status<>'active' THEN RETURN false; END IF;
  SELECT status INTO t_status FROM app.tenants WHERE id=p_tenant FOR SHARE;
  IF NOT FOUND OR t_status<>'active' THEN RETURN false; END IF;
+ PERFORM set_config('app.tenant_id',p_tenant::text,true);
  SELECT role,status INTO m_role,m_status FROM app.tenant_memberships WHERE tenant_id=p_tenant AND user_id=p_user FOR SHARE;
  IF NOT FOUND OR m_status<>'active' OR NOT p_scope=ANY(app.auth_role_scopes(m_role)) THEN RETURN false; END IF;
  IF p_kind='session' THEN
@@ -67,6 +73,7 @@ BEGIN
  IF NOT FOUND OR u_status<>'active' THEN RAISE EXCEPTION 'API key issuance denied' USING ERRCODE='42501'; END IF;
  SELECT status INTO t_status FROM app.tenants WHERE id=p_tenant FOR SHARE;
  IF NOT FOUND OR t_status<>'active' THEN RAISE EXCEPTION 'API key issuance denied' USING ERRCODE='42501'; END IF;
+ PERFORM set_config('app.tenant_id',p_tenant::text,true);
  SELECT role,status INTO m_role,m_status FROM app.tenant_memberships WHERE tenant_id=p_tenant AND user_id=p_user FOR SHARE;
  IF NOT FOUND OR m_status<>'active' OR m_role NOT IN ('owner','admin') THEN RAISE EXCEPTION 'API key issuance denied' USING ERRCODE='42501'; END IF;
  at_db:=clock_timestamp();
@@ -90,6 +97,7 @@ BEGIN
  IF NOT FOUND OR u_status<>'active' THEN RETURN false; END IF;
  SELECT status INTO t_status FROM app.tenants WHERE id=p_tenant FOR SHARE;
  IF NOT FOUND OR t_status<>'active' THEN RETURN false; END IF;
+ PERFORM set_config('app.tenant_id',p_tenant::text,true);
  SELECT role,status INTO m_role,m_status FROM app.tenant_memberships WHERE tenant_id=p_tenant AND user_id=p_user FOR SHARE;
  IF NOT FOUND OR m_status<>'active' OR m_role NOT IN ('owner','admin') THEN RETURN false; END IF;
  PERFORM set_config('app.tenant_id',p_tenant::text,true);
@@ -111,6 +119,7 @@ BEGIN
  IF NOT FOUND OR u_status<>'active' THEN RETURN false; END IF;
  SELECT status INTO t_status FROM app.tenants WHERE id=k_tenant FOR SHARE;
  IF NOT FOUND OR t_status<>'active' THEN RETURN false; END IF;
+ PERFORM set_config('app.tenant_id',k_tenant::text,true);
  SELECT status INTO m_status FROM app.tenant_memberships WHERE tenant_id=k_tenant AND user_id=k_user FOR SHARE;
  IF NOT FOUND OR m_status<>'active' THEN RETURN false; END IF;
  PERFORM set_config('app.tenant_id',k_tenant::text,true);
