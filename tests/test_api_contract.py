@@ -46,13 +46,14 @@ class APIContractTests(unittest.TestCase):
         self.assertNotIn("content", ops["health"][2]["responses"]["204"])
         expected = {"health", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
-                    "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
+                    "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia",
+                    "createShipment", "createReturn", "receiveReturn", "refundReturn"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
                           if op["x-opensite-status"] == "implemented"}, expected)
         for name in expected - {"health"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
-            self.assertIn(operation["x-required-scope"], {"catalog:read", "catalog:write", "media:write"})
+            self.assertIn(operation["x-required-scope"], {"catalog:read", "catalog:write", "media:write", "fulfillment:write", "returns:write"})
             if method != "get":
                 self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, operation["parameters"])
             if name in {"updateProduct", "archiveProduct", "updateVariant", "archiveVariant"}:

@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
@@ -23,6 +25,8 @@ type Config struct {
 	Routes        []httpapi.Route
 	Catalog       catalog.Config
 	Media         media.Config
+	Fulfillment   fulfillment.HTTPConfig
+	Returns       returns.HTTPConfig
 }
 
 func New(config Config) (server *http.Server, err error) {
@@ -37,6 +41,8 @@ func New(config Config) (server *http.Server, err error) {
 	routes := []httpapi.Route{health}
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)
+	routes = append(routes, fulfillment.NewHTTP(config.Fulfillment).Routes()...)
+	routes = append(routes, returns.NewHTTP(config.Returns).Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {
 		if err := router.Register(route.Spec, route.Handler); err != nil {

@@ -26,7 +26,7 @@ DECLARE
   'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
   'ledger_accounts','ledger_transactions','ledger_entries',
-  'orders','order_lines','order_adjustments'];
+  'orders','order_lines','order_adjustments','shipments','shipment_lines','returns','return_lines'];
  role_name text;
  r record;
  t record;
@@ -172,7 +172,7 @@ DECLARE role_name text; f record;
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver',
   'app_domain_verifier','app_media_service','app_publisher','app_publish_executor',
-  'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_ledger_executor','app_orders_executor','app_queue_worker','app_outbox_tenant_broker'] LOOP
+  'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_ledger_executor','app_orders_executor','app_queue_worker','app_outbox_tenant_broker','app_fulfillment_executor','app_returns_service'] LOOP
   IF pg_has_role(role_name,'app_customer_auth','SET')
    OR pg_has_role('app_customer_auth',role_name,'SET') THEN
    RAISE EXCEPTION 'customer/staff/service capability path: %',role_name;
@@ -250,6 +250,9 @@ BEGIN
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
+   'fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json','fulfillment_header_guard','fulfillment_line_guard',
+   'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund',
+   'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','inventory_restore_return',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
@@ -273,6 +276,9 @@ BEGIN
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
+   'fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json','fulfillment_header_guard','fulfillment_line_guard',
+   'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund',
+   'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','inventory_restore_return',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
@@ -286,7 +292,7 @@ DECLARE role_name text; r record; t record; a record; privilege text; f record;
  public_commands text[]:=ARRAY['inventory_reserve','inventory_expire_due','inventory_release_non_order','inventory_commit_non_order'];
  names text[]:=ARRAY['inventory_context','inventory_immutable_movement','inventory_adjust',
   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
-  'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order'];
+  'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order','inventory_restore_return'];
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['app_inventory_manager','app_inventory_executor'] LOOP
   SELECT * INTO STRICT r FROM pg_roles WHERE rolname=role_name;
@@ -301,7 +307,7 @@ BEGIN
   FOR t IN SELECT c.oid,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
    WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
    FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
-    expected := privilege='SELECT' AND (t.relname=ANY(allowed_tables) OR (role_name='app_inventory_executor' AND t.relname='tenants'))
+    expected := privilege='SELECT' AND (t.relname=ANY(allowed_tables) OR (role_name='app_inventory_executor' AND t.relname IN('tenants','returns','return_lines','order_lines')))
      OR role_name='app_inventory_executor' AND privilege='INSERT' AND t.relname=ANY(allowed_tables)
      OR role_name='app_inventory_executor' AND privilege='UPDATE' AND t.relname=ANY(ARRAY['stock_levels','inventory_reservations']);
     IF has_table_privilege(role_name,t.oid,privilege) IS DISTINCT FROM expected
@@ -327,11 +333,12 @@ BEGIN
    RAISE EXCEPTION 'unsafe inventory function definition: %',f.proname;
   END IF;
   FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier',
-   'app_media_service','app_publisher','app_publish_executor','app_inventory_manager','app_orders_executor','app_customer_auth','app_ledger_executor','app_queue_worker','app_outbox_tenant_broker'] LOOP
+   'app_media_service','app_publisher','app_publish_executor','app_inventory_manager','app_orders_executor','app_customer_auth','app_ledger_executor','app_queue_worker','app_outbox_tenant_broker','app_fulfillment_executor','app_returns_service'] LOOP
    expected := role_name='app_runtime' AND f.proname=ANY(public_commands)
     OR role_name='app_inventory_manager' AND f.proname='inventory_adjust'
     OR role_name='app_orders_executor' AND f.proname IN('inventory_commit','inventory_release')
-    OR role_name='app_queue_worker' AND f.proname='inventory_expire_due';
+    OR role_name='app_queue_worker' AND f.proname='inventory_expire_due'
+    OR role_name='app_fulfillment_executor' AND f.proname='inventory_restore_return';
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'inventory routine authority mismatch: % %',role_name,f.proname;
@@ -443,8 +450,8 @@ BEGIN
     RAISE EXCEPTION 'unsafe ledger routine definition: %',f.proname;
    END IF;
    FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
-    'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_orders_executor','app_queue_worker','app_outbox_tenant_broker'] LOOP
-    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name='app_runtime' AND f.proname='post_ledger')
+    'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_orders_executor','app_queue_worker','app_outbox_tenant_broker','app_fulfillment_executor','app_returns_service'] LOOP
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name IN('app_runtime','app_returns_service') AND f.proname='post_ledger')
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
      RAISE EXCEPTION 'ledger routine authority: % %',role_name,f.proname;
     END IF;
@@ -464,7 +471,7 @@ SELECT 'PASS: ledger exact executor/runtime table-column-function capabilities a
 DO $orders$
 DECLARE r record; t record; a record; f record; role_name text; privilege text;
  expected boolean; allowed text[];
- names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations'];
+ names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_orders_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -479,7 +486,7 @@ BEGIN
    RAISE EXCEPTION 'orders RLS must ENABLE and FORCE';
   END IF;
   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
-   expected:=privilege='SELECT' AND t.relname IN('orders','order_lines','order_adjustments','tenants','inventory_reservations','outbox_events')
+   expected:=privilege='SELECT' AND t.relname IN('orders','order_lines','order_adjustments','tenants','inventory_reservations','outbox_events','shipments','shipment_lines','returns','return_lines')
     OR privilege='INSERT' AND t.relname IN('orders','order_lines','order_adjustments');
    allowed:=ARRAY[]::text[];
    IF expected THEN SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
@@ -519,8 +526,9 @@ BEGIN
   END IF;
   IF f.proname=ANY(names) THEN
    FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
-    'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_ledger_executor','app_queue_worker','app_outbox_tenant_broker'] LOOP
-    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition','orders_lock_reservations');
+    'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_ledger_executor','app_queue_worker','app_outbox_tenant_broker','app_fulfillment_executor','app_returns_service'] LOOP
+    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition','orders_lock_reservations')
+     OR role_name='app_fulfillment_executor' AND f.proname IN('orders_context','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund');
     IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
      RAISE EXCEPTION 'orders routine authority % %',role_name,f.proname;
@@ -540,7 +548,7 @@ DECLARE role_name text; r record; t record; a record; f record; s record; privil
  expected_table boolean; expected_column boolean; allowed text[];
  roles text[]:=ARRAY['app_runtime','app_queue_worker','app_customer_auth','app_ledger_executor','app_outbox_tenant_broker','app_auth','app_domain_resolver',
  'app_domain_verifier','app_media_service','app_publisher','app_publish_executor',
- 'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_orders_executor'];
+ 'app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_orders_executor','app_fulfillment_executor','app_returns_service'];
  tables text[]:=ARRAY['river_job','river_queue','river_leader','river_migration','river_notification'];
  insert_columns text[]:=ARRAY['id','args','created_at','kind','max_attempts','metadata','priority','queue','scheduled_at','state','tags','unique_key','unique_states'];
 BEGIN
@@ -662,3 +670,86 @@ BEGIN
  IF NOT EXISTS(SELECT FROM pg_policy p WHERE p.polrelid='app.outbox_events'::regclass AND p.polname='outbox_tenant_discovery' AND p.polcmd='r' AND p.polroles=ARRAY[r.oid] AND pg_get_expr(p.polqual,p.polrelid)='true' AND p.polwithcheck IS NULL) THEN RAISE EXCEPTION 'OUTBOX_DISCOVERY_POLICY'; END IF;
 END $discovery_matrix$;
 SELECT 'PASS: outbox broker IDs-only exact table-column-routine/RLS matrix' AS result;
+
+-- Fulfillment owns sealed quantity records; trusted Returns service coordinates
+-- PSP+public Ledger only, with no direct writes or inheritance path to any owner.
+DO $fulfillment_matrix$
+DECLARE r record;t record;a record;f record;role_name text;privilege text;
+ expected_table boolean;allowed text[];expected boolean;
+ tables text[]:=ARRAY['shipments','shipment_lines','returns','return_lines'];
+ names text[]:=ARRAY['fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json',
+  'fulfillment_header_guard','fulfillment_line_guard','fulfillment_create_shipment','returns_create',
+  'returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund'];
+BEGIN
+ FOREACH role_name IN ARRAY ARRAY['app_fulfillment_executor','app_returns_service'] LOOP
+  SELECT * INTO STRICT r FROM pg_roles WHERE rolname=role_name;
+  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+   OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid)
+   OR role_name='app_fulfillment_executor' AND EXISTS(SELECT FROM pg_auth_members WHERE roleid=r.oid)
+   OR pg_has_role('app_runtime',r.oid,'SET') OR pg_has_role('app_auth',r.oid,'SET')
+   OR has_schema_privilege(role_name,'app','CREATE') OR NOT has_schema_privilege(role_name,'app','USAGE')
+   OR has_schema_privilege(role_name,'app','USAGE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'FULFILLMENT_MATRIX_UNSAFE_ROLE %',role_name; END IF;
+  FOR t IN SELECT c.oid,c.relname,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
+   IF t.relname=ANY(tables) AND(NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN
+    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FORCE_RLS %',t.relname; END IF;
+   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+    expected_table:=false;allowed:=ARRAY[]::text[];
+    IF privilege='SELECT' AND(role_name='app_fulfillment_executor' AND t.relname=ANY(tables||ARRAY['tenants','orders','order_lines',
+      'inventory_reservations','ledger_accounts','ledger_transactions','ledger_entries'])
+      OR role_name='app_returns_service' AND t.relname IN('returns','return_lines'))
+     OR privilege='INSERT' AND role_name='app_fulfillment_executor' AND t.relname=ANY(tables) THEN
+     expected_table:=true;
+     SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+    ELSIF privilege='SELECT' AND role_name='app_returns_service' AND t.relname='orders' THEN
+     allowed:=ARRAY['tenant_id','id','total_minor','currency'];
+    ELSIF privilege='UPDATE' AND role_name='app_fulfillment_executor' THEN
+     allowed:=CASE t.relname WHEN 'shipments' THEN ARRAY['sealed','order_version']
+      WHEN 'returns' THEN ARRAY['creation_response','receive_response','sealed','order_version','status','restocked','received_at','receive_key','receive_hash','refund_key','refund_hash',
+       'refund_expected_version','provider_ref','payment_version','income_account_id','tax_account_id','shipping_account_id','cash_account_id',
+       'ledger_transaction_id','refunded_at','income_minor','tax_minor','shipping_minor','refund_minor'] ELSE allowed END;
+    END IF;
+    IF has_table_privilege(role_name,t.oid,privilege) IS DISTINCT FROM expected_table
+     OR has_table_privilege(role_name,t.oid,privilege||' WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'FULFILLMENT_MATRIX_TABLE % %.% %',role_name,'app',t.relname,privilege; END IF;
+    IF privilege IN('SELECT','INSERT','UPDATE','REFERENCES') THEN
+     FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+      IF has_column_privilege(role_name,t.oid,a.attnum,privilege) IS DISTINCT FROM(a.attname::text=ANY(allowed))
+       OR has_column_privilege(role_name,t.oid,a.attnum,privilege||' WITH GRANT OPTION') THEN
+       RAISE EXCEPTION 'FULFILLMENT_MATRIX_COLUMN % %.% %',role_name,t.relname,a.attname,privilege; END IF;
+     END LOOP;
+    END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.oid,p.proname,p.proowner,p.prosecdef,p.proconfig,p.proacl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' LOOP
+  IF f.proname=ANY(names) THEN
+   IF f.proowner<>'app_fulfillment_executor'::regrole OR f.prosecdef IS DISTINCT FROM(f.proname NOT IN('fulfillment_allocate','fulfillment_header_guard'))
+    OR cardinality(f.proconfig) IS DISTINCT FROM 1 OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FUNCTION %',f.proname; END IF;
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') AND rolname<>'app_fulfillment_executor' LOOP
+    expected:=role_name='app_runtime' AND f.proname IN('fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot')
+     OR role_name='app_returns_service' AND f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund');
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
+     OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'FULFILLMENT_MATRIX_ROUTINE % %',role_name,f.proname; END IF;
+   END LOOP;
+  END IF;
+  IF has_function_privilege('app_fulfillment_executor',f.oid,'EXECUTE') IS DISTINCT FROM
+   (f.proname=ANY(names) OR f.proname IN('orders_context','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','inventory_restore_return')) THEN
+   RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_EXECUTOR_FUNCTION %',f.proname; END IF;
+  IF has_function_privilege('app_returns_service',f.oid,'EXECUTE') IS DISTINCT FROM
+   (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','post_ledger')) THEN
+   RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_SERVICE_FUNCTION %',f.proname; END IF;
+ END LOOP;
+ IF(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
+  RAISE EXCEPTION 'FULFILLMENT_MATRIX_FUNCTION_SET'; END IF;
+ IF has_table_privilege('app_runtime','app.audit_events','UPDATE') OR has_table_privilege('app_runtime','app.audit_events','DELETE')
+  OR EXISTS(SELECT FROM pg_roles audit_role WHERE pg_has_role('app_runtime',audit_role.oid,'SET') AND audit_role.rolname<>'app_runtime'
+   AND(has_table_privilege(audit_role.oid,'app.audit_events','UPDATE') OR has_table_privilege(audit_role.oid,'app.audit_events','DELETE'))) THEN
+  RAISE EXCEPTION 'FULFILLMENT_MATRIX_AUDIT_INHERITANCE'; END IF;
+END $fulfillment_matrix$;
+SELECT 'PASS: fulfillment executor exact table/column/function and isolated trusted refund service matrix' AS result;

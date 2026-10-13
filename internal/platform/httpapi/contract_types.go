@@ -63,3 +63,27 @@ type UploadSessionStatus = generated.UploadSessionStatus
 type Variant = generated.Variant
 type VariantLifecycleStatus = generated.VariantLifecycleStatus
 type VariantList = generated.VariantList
+
+// Fulfillment/Returns ports preserve compiler-checked strict contract types.
+type CreateShipment = generated.CreateShipment
+type CreateShipmentRequestObject = generated.CreateShipmentRequestObject
+type CreateShipmentResponseObject = generated.CreateShipmentResponseObject
+type CreateShipment201JSONResponse = generated.CreateShipment201JSONResponse
+type CreateReturn = generated.CreateReturn
+type CreateReturnKind = generated.CreateReturnKind
+type CreateReturnRequestObject = generated.CreateReturnRequestObject
+type CreateReturnResponseObject = generated.CreateReturnResponseObject
+type CreateReturn201JSONResponse = generated.CreateReturn201JSONResponse
+type ReceiveReturn = generated.ReceiveReturn
+type ReceiveReturnRequestObject = generated.ReceiveReturnRequestObject
+type ReceiveReturnResponseObject = generated.ReceiveReturnResponseObject
+type ReceiveReturn200JSONResponse = generated.ReceiveReturn200JSONResponse
+type RefundReturn = generated.RefundReturn
+type RefundReturnRequestObject = generated.RefundReturnRequestObject
+type RefundReturnResponseObject = generated.RefundReturnResponseObject
+type RefundReturn200JSONResponse = generated.RefundReturn200JSONResponse
+type ShipmentRecord = generated.ShipmentRecord
+type ShipmentRecordLine = generated.ShipmentRecordLine
+type ReturnRecord = generated.ReturnRecord
+type ReturnRecordKind = generated.ReturnRecordKind
+type ReturnRecordLine = generated.ReturnRecordLine

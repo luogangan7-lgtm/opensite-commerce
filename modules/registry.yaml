@@ -622,6 +622,87 @@
         "internal/contracts/payment/v1"
       ],
       "note": "C-15a freezes the neutral Payment Port v1 and test-only Fake. Real payment storage, service and Stripe are deferred to C-19; no production payment capability exists."
+    },
+    {
+      "name": "fulfillment",
+      "status": "implemented",
+      "go_path": "internal/modules/fulfillment",
+      "go_status": "implemented",
+      "owns_tables": [
+        "shipments",
+        "shipment_lines"
+      ],
+      "operations": [
+        {
+          "operation_id": "createShipment",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "orders",
+        "inventory"
+      ],
+      "tests": [
+        "tests/db_fulfillment_returns.sql",
+        "tests/test_fulfillment_contract.py",
+        "internal/modules/fulfillment/http_test.go",
+        "internal/db/fulfillment_returns_integration_test.go",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh",
+        "tests/db_role_matrix.sql"
+      ],
+      "scopes": [
+        "fulfillment:write"
+      ],
+      "note": "Shipment allocation over committed paid order stock; no second inventory commit. Parent-order version fence serializes cumulative quantities."
+    },
+    {
+      "name": "returns",
+      "status": "implemented",
+      "go_path": "internal/modules/returns",
+      "go_status": "implemented",
+      "owns_tables": [
+        "returns",
+        "return_lines"
+      ],
+      "operations": [
+        {
+          "operation_id": "createReturn",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "receiveReturn",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "refundReturn",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "orders",
+        "fulfillment",
+        "inventory",
+        "payments",
+        "ledger",
+        "money"
+      ],
+      "tests": [
+        "tests/db_fulfillment_returns.sql",
+        "tests/test_fulfillment_contract.py",
+        "internal/modules/returns/http_test.go",
+        "internal/modules/returns/internal/service/refund_test.go",
+        "internal/db/fulfillment_returns_integration_test.go",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh",
+        "tests/db_role_matrix.sql"
+      ],
+      "scopes": [
+        "returns:write"
+      ],
+      "note": "Shipment returns and paid-unshipped cancellation restore stock through Inventory-owned commands. Trusted capture/account ports and app_returns_service capability own durable two-phase refunds; no client financial proof."
     }
   ],
   "migrations": [
@@ -891,6 +972,19 @@
       "touches_tables": [
         "outbox_events",
         "idempotency_records"
+      ]
+    },
+    {
+      "file": "migrations/023_fulfillment_returns.sql",
+      "owner": "fulfillment",
+      "touches_tables": [
+        "shipments",
+        "shipment_lines",
+        "returns",
+        "return_lines",
+        "orders",
+        "inventory_movements",
+        "stock_levels"
       ]
     }
   ]

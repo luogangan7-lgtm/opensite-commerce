@@ -59,3 +59,17 @@ function enumerates active Outbox tenant IDs using only tenant_id/status SELECT.
 It has no payload or table-wide privilege. Queue ownership remains isolated in
 `app_river_migrator`; the application and upstream migration histories are separate.
 `OUTBOX_ENABLED` defaults off and a missing Sender fails before any claim.
+
+### Fulfillment and refund coordinator
+
+`app_returns_service` is a separate NOLOGIN, NOINHERIT, NOBYPASSRLS capability.
+Only a trusted refund coordinator may receive a dedicated login with that role;
+never grant it to `app_runtime`, the Astro renderer or a public query identity.
+Migration grants permit frozen order/return reads and the controlled refund
+prepare/complete and ledger-post functions. They permit no direct return writes,
+inventory adjustment, DDL or role membership administration.
+
+The coordinator must use authenticated tenant transactions through `pgxadapter`
+and server-provided captured-payment/account bindings. Do not provision membership
+in an executor/DDL-owner role. Credentials and provider configuration remain
+out-of-band. A missing trusted binding leaves the refund HTTP operation unavailable.

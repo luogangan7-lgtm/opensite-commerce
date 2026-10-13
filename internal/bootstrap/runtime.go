@@ -24,6 +24,8 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		runners = append(runners, runner)
 		config.Catalog.Run = runner.RunAuthorized
+		config.Fulfillment.Run = runner.RunAuthorizedTx
+		config.Returns.Run = runner.RunAuthorizedTx
 	}
 	if url := os.Getenv("OPENSITE_MEDIA_DATABASE_URL"); url != "" {
 		runner, err := pgxadapter.OpenQueryRunner(ctx, url)

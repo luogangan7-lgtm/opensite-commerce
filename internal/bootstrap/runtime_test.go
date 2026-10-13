@@ -19,7 +19,7 @@ func TestNoDatabaseRuntimeDefaultsDeny(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer closeRuntime()
-	if config.Catalog.Run != nil || config.Media.Run != nil || config.Authenticator != nil {
+	if config.Catalog.Run != nil || config.Media.Run != nil || config.Fulfillment.Run != nil || config.Returns.Run != nil || config.Returns.Service != nil || config.Authenticator != nil {
 		t.Fatal("unconfigured ports were fabricated")
 	}
 	server, err := bootstrap.New(config)

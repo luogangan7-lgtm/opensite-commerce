@@ -44,3 +44,18 @@ func (r *QueryRunner) RunAuthorized(ctx context.Context, tenant string, fn func(
 	}
 	return r.runner.InTenant(ctx, tenant, func(_ context.Context, tx pgx.Tx) error { return fn(db.New(tx)) })
 }
+
+// RunAuthorizedTx hands a transaction only to a previously authenticated
+// command. Multi-module commands share it without acquiring a pool directly.
+func (r *QueryRunner) RunAuthorizedTx(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+	if err := authorizedTenant(ctx, tenant); err != nil {
+		return err
+	}
+	if r == nil {
+		return errors.New("runtime database is unavailable")
+	}
+	if fn == nil {
+		return errors.New("transaction callback is nil")
+	}
+	return r.runner.InTenant(ctx, tenant, fn)
+}

@@ -151,10 +151,11 @@ QUEUE_DB=""
 LIMITS_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
+FULFILLMENT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$FULFILLMENT_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -743,6 +744,10 @@ SQL
 [[ $result == *'LIMITS_UPGRADE=4|2|2|10'* ]] || bad "limits populated upgrade: $result"
 river_db "$DB" --verify
 db "$DB" -f tests/db_reliability_limits.sql >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${limits_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; LIMITS_DB=""
 pass 'reliability limits upgrade preserves delivery identity, retires exhausted work, accepts live final ACK'
@@ -802,5 +807,58 @@ river_db "$DB" --verify
 db "$DB" -f tests/db_orders.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; ORDERS_DB=""
+# C-20a: preserve a pre-module paid/committed order, then allocate shipment
+# and compensate its unshipped remainder. Module identity follows filename suffix.
+fulfillment_files=(migrations/[0-9][0-9][0-9]_fulfillment_returns.sql)
+[[ ${#fulfillment_files[@]} == 1 ]] || { bad 'exactly one fulfillment migration required'; exit 1; }
+FULFILLMENT_DB=upgrade_fulfillment_$$; DB=$FULFILLMENT_DB
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${fulfillment_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('fulfillment-existing') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','existing') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','existing','default') RETURNING id AS sku \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_inventory_manager;
+SELECT app.inventory_adjust(:'sku',5,'legacy stock',uuidv7(),'inbound');
+SET ROLE app_runtime;
+SELECT uuidv7() AS oid,uuidv7() AS lid \gset
+SELECT (app.inventory_reserve(:'sku',2,'order',:'oid','existing-reserve',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','existing-order',sha256('existing'::bytea),NULL,'{"email":"existing@example.invalid"}',
+ 'USD',2,'{"amount_minor":2,"currency":"USD","service":"fixture"}',
+ jsonb_build_array(jsonb_build_object('id',:'lid','sku_id',:'sku','sku','existing','quantity',2,'unit_price_minor',5,
+ 'line_net_minor',10,'line_tax_minor',2,'line_total_minor',12,'reservation_id',:'rid','tax_snapshot','{}'::jsonb)),'[]');
+SELECT app.orders_transition(:'oid','paid','existing-paid',0);
+SQL
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${fulfillment_files[0]} ]] && continue
+ apply_forward "$DB" "$f"
+done
+result=$(db "$DB" <<'SQL'
+SELECT id AS t FROM app.tenants WHERE name='fulfillment-existing' \gset
+SELECT id AS oid FROM app.orders WHERE tenant_id=:'t' \gset
+SELECT id AS lid FROM app.order_lines WHERE tenant_id=:'t' \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_runtime;
+SELECT app.fulfillment_create_shipment(:'oid',2,'existing-shipment','manual','LEGACY',
+ jsonb_build_array(jsonb_build_object('order_line_id',:'lid','quantity',1)));
+SELECT app.returns_create(:'oid',3,'existing-cancel','unshipped_cancel','legacy remainder',
+ jsonb_build_array(jsonb_build_object('order_line_id',:'lid','quantity',1)));
+SELECT 'FULFILLMENT_UPGRADE='||o.state||'|'||o.version||'|'||s.on_hand||'|'||s.reserved||'|'||
+ (SELECT sum(quantity) FROM app.shipment_lines WHERE tenant_id=:'t')||'|'||
+ (SELECT refund_minor FROM app.returns WHERE tenant_id=:'t')||'|'||
+ (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=:'t' AND owner_type='return')
+ FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id=:'t';
+SQL
+)
+[[ $result == *'FULFILLMENT_UPGRADE=partially_fulfilled|4|4|0|1|7|1'* ]] || bad "fulfillment paid legacy upgrade: $result"
+db "$DB" -f tests/db_fulfillment_returns.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"; FULFILLMENT_DB=""
+pass 'fulfillment upgrade preserves paid inventory and compensates only unshipped quantities'
+
 [[ $fail -eq 0 ]] || exit 1
 echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue and reliability limits upgrade gates'
