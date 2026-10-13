@@ -192,8 +192,12 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 // follows the actual DB activity stamp (which a busy touch may leave unchanged).
 // A fresh fixed Max-Age would incorrectly extend a skipped touch's lifetime.
 func (h *Handler) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec platform.RouteSpec) {
-	p, err := h.admitted(ctx, r, spec)
-	if err != nil || p.snapshot.TenantID == "" || p.snapshot.Kind != contract.KindSession || p.token == "" || p.session.ID != p.snapshot.CredentialID {
+	snapshot, err := h.admitted(ctx, r, spec)
+	if err != nil || snapshot.TenantID == "" || snapshot.Kind != contract.KindSession {
+		return
+	}
+	p := ctx.Value(principalKey{}).(principal) // admitted verified this sealed value.
+	if p.token == "" || p.session.ID != snapshot.CredentialID {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
