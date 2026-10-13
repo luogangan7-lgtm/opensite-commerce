@@ -20,9 +20,6 @@ BEGIN
  h:=sha256(convert_to(jsonb_build_object('sku',p_sku,'quantity',p_quantity,'owner_type',p_owner_type,
   'owner_id',p_owner_id,'ttl_seconds',p_ttl_seconds)::text,'UTF8'));
  -- Preserve historical order hashes; non-order idempotency also proves bearer possession.
- IF p_holder_hash IS NOT NULL THEN
-  h:=sha256(h||p_holder_hash);
- END IF;
  -- Serialize the key BEFORE stock; replay never locks an already-existing reservation.
  PERFORM pg_advisory_xact_lock(hashtextextended(t::text||':'||p_key,0));
  SELECT * INTO r FROM app.inventory_reservations WHERE tenant_id=t AND idempotency_key=p_key;
