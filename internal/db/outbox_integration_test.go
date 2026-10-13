@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	outbox "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/outbox"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"os"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func outboxPGFixture(t *testing.T) (context.Context, *pgxpool.Pool, outbox.PGSto
 		if os.Getenv("OUTBOX_REQUIRE_PG") == "1" {
 			t.Fatal("OUTBOX_PG_REQUIRED: missing disposable DATABASE_URL")
 		}
-		t.Skip("NOT_RUN: disposable migrated PG18 DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: disposable migrated PG18 DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)

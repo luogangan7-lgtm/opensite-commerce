@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5/pgtype"
 	idempotency "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"net/http"
 	"os"
 	"reflect"
@@ -43,7 +44,7 @@ func idemFixture(t *testing.T) *idemPGFixture {
 		if os.Getenv("IDEMPOTENCY_REQUIRE_PG") == "1" {
 			t.Fatal("DATABASE_URL required by idempotency PG gate")
 		}
-		t.Skip("NOT_RUN: disposable migrated PostgreSQL DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: disposable migrated PostgreSQL DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	admin, err := pgx.Connect(ctx, dsn)
