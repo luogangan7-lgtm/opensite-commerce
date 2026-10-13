@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ import (
 func TestExportLifecycleAndErasure(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: expendable migrated PostgreSQL required")
+		pgxtest.Skip(t, "NOT_RUN: expendable migrated PostgreSQL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

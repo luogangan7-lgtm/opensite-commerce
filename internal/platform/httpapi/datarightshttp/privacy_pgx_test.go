@@ -22,6 +22,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/datarightshttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/jobs"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -65,7 +66,7 @@ func (s *cleanupFailure) Cleanup(ctx context.Context, tenant string, ids []strin
 func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 	dsn := os.Getenv("C22A_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: dedicated disposable C22A_DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: dedicated disposable C22A_DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()

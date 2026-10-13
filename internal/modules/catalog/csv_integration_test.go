@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/csv"
 	"errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"net/url"
 	"os"
 	"strings"
@@ -27,7 +28,7 @@ func csvPGFixture(t *testing.T) (pgxadapter.Runner, string, string) {
 	runtimeDSN := os.Getenv("C22A_DATABASE_URL")
 	adminDSN := os.Getenv("C22A_MAINTENANCE_DATABASE_URL")
 	if runtimeDSN == "" || adminDSN == "" {
-		t.Skip("NOT_RUN: dedicated disposable C22A_DATABASE_URL + C22A_MAINTENANCE_DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: dedicated disposable C22A_DATABASE_URL + C22A_MAINTENANCE_DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
