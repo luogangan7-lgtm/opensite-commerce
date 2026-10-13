@@ -278,9 +278,16 @@ func TestOrdersServiceExpiredReservationCancel(t *testing.T) {
 				t.Fatal(err)
 			}
 			if expiredByWorker {
+				// Trusted fixture switches to the same expiry capability as production jobs.
+				if _, err := f.tx.Exec(f.ctx, "SET LOCAL ROLE app_queue_worker"); err != nil {
+					t.Fatal(err)
+				}
 				var count int
 				if err := f.tx.QueryRow(f.ctx, "SELECT app.inventory_expire_due(100)").Scan(&count); err != nil || count != 1 {
 					t.Fatalf("expire fixture: %d %v", count, err)
+				}
+				if _, err := f.tx.Exec(f.ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+					t.Fatal(err)
 				}
 			}
 			cancelled, err := svc.Transition(f.ctx, f.tx, f.tenant, contract.TransitionInput{OrderID: in.ID, Target: contract.Cancelled, EventKey: "expired-cancel:1"})
@@ -451,6 +458,10 @@ func TestOrdersServiceMixedReservationExpiryNoDeadlock(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	sweepTx := begin(sweeper)
+	// Expendable fixture connection holds the scheduler role, never runtime expiry.
+	if _, err := sweepTx.Exec(ctx, "SET LOCAL ROLE app_queue_worker"); err != nil {
+		t.Fatal(err)
+	}
 	type swept struct {
 		n   int
 		err error

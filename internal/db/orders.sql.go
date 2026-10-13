@@ -475,7 +475,7 @@ func (q *Queries) LockOrderReservations(ctx context.Context, arg LockOrderReserv
 }
 
 const reserveOrderInventory = `-- name: ReserveOrderInventory :one
-SELECT tenant_id, id, warehouse_id, sku_id, quantity, owner_type, owner_id, idempotency_key, request_hash, ttl_seconds, state, expires_at, created_at, finished_at FROM app.inventory_reserve($1::uuid,$2::bigint,
+SELECT tenant_id, id, warehouse_id, sku_id, quantity, owner_type, owner_id, idempotency_key, request_hash, ttl_seconds, state, expires_at, created_at, finished_at, holder_hash FROM app.inventory_reserve($1::uuid,$2::bigint,
  'order',$3::uuid,$4::text,$5::integer)
 `
 
@@ -511,6 +511,7 @@ func (q *Queries) ReserveOrderInventory(ctx context.Context, arg ReserveOrderInv
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.FinishedAt,
+		&i.HolderHash,
 	)
 	return i, err
 }
