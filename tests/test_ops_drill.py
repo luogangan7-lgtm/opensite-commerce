@@ -88,5 +88,62 @@ class StaffLoginComposeTests(unittest.TestCase):
                 ops_drill.staff_login_reachable('http://api')
 
 
+class CustomerAuthComposeTests(unittest.TestCase):
+    """Customer capability and local proof delivery must be deployed together."""
+    root = Path(__file__).resolve().parents[1]
+
+    def test_compose_provisions_independent_customer_auth_secret(self):
+        import yaml
+        services = yaml.safe_load((self.root / 'deploy/compose.yaml').read_text())['services']
+        for service in ('migrate', 'api'):
+            env = services[service]['environment']
+            self.assertIn('OPENSITE_CUSTOMER_AUTH_DB_PASSWORD', env,
+                          'CUSTOMER_AUTH_COMPOSE_RED: capability pool credential omitted')
+            self.assertTrue(env['OPENSITE_CUSTOMER_AUTH_DB_PASSWORD'].startswith('${OPENSITE_CUSTOMER_AUTH_DB_PASSWORD:?'))
+        for service in ('postgres', 'worker'):
+            self.assertNotIn('OPENSITE_CUSTOMER_AUTH_DB_PASSWORD', services[service]['environment'])
+
+    def test_compose_pins_customer_origin_csrf_and_local_mailbox(self):
+        import yaml
+        services = yaml.safe_load((self.root / 'deploy/compose.yaml').read_text())['services']
+        env = services['api']['environment']
+        for key in ('OPENSITE_STOREFRONT_ORIGIN', 'OPENSITE_CUSTOMER_CSRF_SECRET'):
+            self.assertIn(key, env, 'CUSTOMER_AUTH_SETTINGS_RED: missing customer security setting')
+            self.assertTrue(env[key].startswith('${' + key + ':?'))
+        self.assertEqual(env.get('NOTIFICATIONS_SMTP_ENABLED'), 'true')
+        self.assertEqual(env.get('NOTIFICATIONS_SMTP_HOST'), '127.0.0.1')
+        self.assertEqual(env.get('NOTIFICATIONS_SMTP_PORT'), '1025')
+        self.assertEqual(env.get('APP_ENV'), 'development')
+        self.assertIn('mailpit', services, 'CUSTOMER_LOCAL_PROOF_RED: local capture mailbox omitted')
+        self.assertIn('@sha256:', services['mailpit']['image'])
+        self.assertEqual(services['mailpit']['environment']['MP_SMTP_RELAY_ALL'], 'false')
+        self.assertEqual(services['mailpit']['network_mode'], 'service:api')
+        self.assertNotIn('ports', services['mailpit'])
+        for binding in services['api']['ports']:
+            self.assertTrue(binding.startswith('127.0.0.1:'), 'mail capture must be loopback only')
+        self.assertTrue(any(binding.endswith(':8025') for binding in services['api']['ports']))
+
+    def test_env_example_documents_customer_security_settings(self):
+        example = (self.root / '.env.example').read_text()
+        for key in ('OPENSITE_CUSTOMER_AUTH_DB_PASSWORD', 'OPENSITE_STOREFRONT_ORIGIN',
+                    'OPENSITE_CUSTOMER_CSRF_SECRET'):
+            self.assertIn('\n' + key + '=', example)
+
+    def test_mvp_runner_supplies_customer_origin_and_runtime_secret(self):
+        import ast
+        source = ast.parse((self.root / 'scripts/e2e/run.py').read_text())
+        settings = {node.arg: node.value for node in ast.walk(source) if isinstance(node, ast.keyword)}
+        self.assertIn('OPENSITE_STOREFRONT_ORIGIN', settings,
+                      'CUSTOMER_E2E_ORIGIN_RED: required Compose setting missing from real-stack runner')
+        self.assertEqual(ast.literal_eval(settings['OPENSITE_STOREFRONT_ORIGIN']), 'https://store.e2e.test')
+        generated = [value for node in ast.walk(source) if isinstance(node, ast.Dict)
+                     for key, value in zip(node.keys, node.values)
+                     if isinstance(key, ast.Constant) and key.value == 'OPENSITE_CUSTOMER_CSRF_SECRET']
+        self.assertEqual(len(generated), 1, 'CUSTOMER_E2E_SECRET_RED: no runtime-generated customer CSRF material')
+        self.assertIsInstance(generated[0], ast.Call)
+        self.assertEqual(ast.unparse(generated[0].func), 'secrets.token_urlsafe')
+        self.assertEqual(ast.literal_eval(generated[0].args[0]), 32)
+
+
 if __name__ == '__main__':
     unittest.main()

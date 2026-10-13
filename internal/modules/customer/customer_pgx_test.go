@@ -318,6 +318,16 @@ func TestCustomerPGMailboxLifecycleTenantRotationAndReset(t *testing.T) {
 	if !errors.Is(err, c.ErrToken) {
 		t.Fatal("CUSTOMER_PG_RESET_REPLAY_ACCEPTED")
 	}
+	// Credential-version mismatch also hides a session. Inspect the persisted
+	// rows to prove reset explicitly revoked every pre-existing session.
+	f.fixture(t, func(ctx context.Context, tx pgx.Tx) error {
+		var revoked, live int
+		err := tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE revoked_at IS NOT NULL),count(*) FILTER (WHERE revoked_at IS NULL) FROM app.customer_sessions WHERE tenant_id=$1 AND customer_id=$2 AND id IN($3,$4)`, f.tenant, guestID, rotated.ID, independent.ID).Scan(&revoked, &live)
+		if err == nil && (revoked != 2 || live != 0) {
+			t.Fatal("CUSTOMER_PG_RESET_REVOKED_MARK_MISSING")
+		}
+		return err
+	})
 	f.requireCurrent(t, f.tenant, rotated.Token, false)
 	f.requireCurrent(t, f.tenant, independent.Token, false)
 	f.requireCurrent(t, f.other, otherSession.Token, true)
@@ -388,6 +398,78 @@ func TestCustomerPGChallengeExpiryConcurrentConsumeAndSessionExpiry(t *testing.T
 		return err
 	})
 	f.requireCurrent(t, f.tenant, session.Token, false)
+}
+
+func TestCustomerPGDeadlinesUseDatabaseClockDespiteApplicationSkew(t *testing.T) {
+	const challengeTTL = 2 * time.Minute
+	const absoluteTTL = 10 * time.Minute
+	const idleTTL = 5 * time.Minute
+	for _, skew := range []time.Duration{-24 * time.Hour, 24 * time.Hour} {
+		for _, flow := range []string{"registration", "reset", "session"} {
+			t.Run(skew.String()+"/"+flow, func(t *testing.T) {
+				f := customerPG(t)
+				password := customerPGCredential(t)
+				if flow != "registration" {
+					if err := f.service.Register(f.ctx, f.tenant, f.email, password, f.ip); err != nil {
+						t.Fatal("CUSTOMER_PG_CLOCK_SETUP_REGISTER_FAILED")
+					}
+					if err := f.service.Verify(f.ctx, f.tenant, f.mailbox.latest(t, f.tenant, "register")); err != nil {
+						t.Fatal("CUSTOMER_PG_CLOCK_SETUP_VERIFY_FAILED")
+					}
+				}
+				skewed, err := customer.NewPostgres(f.runtime.InTenant, customer.Config{
+					Mailer: f.mailbox, Secret: customerPGBytes(t, 32),
+					Now:          func() time.Time { return time.Now().Add(skew) },
+					ChallengeTTL: challengeTTL, SessionTTL: absoluteTTL, IdleTTL: idleTTL,
+				})
+				if err != nil {
+					t.Fatal("CUSTOMER_PG_CLOCK_SERVICE_SETUP_FAILED")
+				}
+				var raw string
+				if flow == "registration" {
+					if err := skewed.Register(f.ctx, f.tenant, f.email, password, f.ip); err != nil {
+						t.Fatal("CUSTOMER_PG_DB_CLOCK_CHALLENGE_RED: app skew blocked registration")
+					}
+					raw = f.mailbox.latest(t, f.tenant, "register")
+				} else if flow == "reset" {
+					if err := skewed.RequestReset(f.ctx, f.tenant, f.email, f.ip); err != nil {
+						t.Fatal("CUSTOMER_PG_DB_CLOCK_CHALLENGE_RED: app skew blocked reset")
+					}
+					raw = f.mailbox.latest(t, f.tenant, "reset")
+				} else {
+					session, err := skewed.Login(f.ctx, f.tenant, f.email, password, f.ip, noPreviousCustomerToken)
+					if err != nil {
+						t.Fatal("CUSTOMER_PG_DB_CLOCK_SESSION_RED: app skew blocked login")
+					}
+					raw = session.Token
+				}
+				hash := customerPGTokenHash(t, raw)
+				f.fixture(t, func(ctx context.Context, tx pgx.Tx) error {
+					var absoluteSeconds, idleSeconds float64
+					if flow == "session" {
+						err := tx.QueryRow(ctx, `SELECT extract(epoch FROM(expires_at-created_at))::double precision,extract(epoch FROM(idle_expires_at-created_at))::double precision FROM app.customer_sessions WHERE tenant_id=$1 AND token_hash=$2`, f.tenant, hash[:]).Scan(&absoluteSeconds, &idleSeconds)
+						if err != nil {
+							return err
+						}
+						if absoluteSeconds < absoluteTTL.Seconds()-2 || absoluteSeconds > absoluteTTL.Seconds()+2 || idleSeconds < idleTTL.Seconds()-2 || idleSeconds > idleTTL.Seconds()+2 {
+							t.Fatal("CUSTOMER_PG_DB_CLOCK_SESSION_RED: persisted lifetime follows application clock")
+						}
+						return nil
+					}
+					err := tx.QueryRow(ctx, `SELECT extract(epoch FROM(expires_at-created_at))::double precision FROM app.customer_auth_tokens WHERE tenant_id=$1 AND token_hash=$2`, f.tenant, hash[:]).Scan(&absoluteSeconds)
+					if err == nil && (absoluteSeconds < challengeTTL.Seconds()-2 || absoluteSeconds > challengeTTL.Seconds()+2) {
+						t.Fatal("CUSTOMER_PG_DB_CLOCK_CHALLENGE_RED: persisted lifetime follows application clock")
+					}
+					return err
+				})
+				if flow == "session" {
+					if _, err := skewed.Current(f.ctx, f.tenant, raw); err != nil {
+						t.Fatal("CUSTOMER_PG_DB_CLOCK_CURRENT_RED: DB-live session rejected by application clock")
+					}
+				}
+			})
+		}
+	}
 }
 
 // Executor authority is part of the caller capability: owning trusted proof

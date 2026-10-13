@@ -522,10 +522,14 @@ func TestCustomerAuthKDFDeadlineRetainsCapacityUntilCompletion(t *testing.T) {
 	s.cfg.HashTimeout = 10 * time.Millisecond
 	entered := make(chan struct{}, 2)
 	release := make(chan struct{})
-	defer close(release)
+	completed := make(chan struct{}, 2)
+	var releaseOnce sync.Once
+	releaseWorker := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseWorker()
 	s.deriveKey = func(_, _ []byte, _, _ uint32, _ uint8, _ uint32) []byte {
 		entered <- struct{}{}
 		<-release
+		completed <- struct{}{}
 		return make([]byte, 32)
 	}
 	password := opaque(t)
@@ -558,8 +562,60 @@ func TestCustomerAuthKDFDeadlineRetainsCapacityUntilCompletion(t *testing.T) {
 		t.Fatal("new background KDF escaped concurrency bound")
 	default:
 	}
+	// The timed-out request already returned, but its non-preemptible worker
+	// still owns a slot. Release it and cross both completion barriers before
+	// asserting that the finished worker caused no late persistence writes.
+	releaseWorker()
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("released KDF worker did not complete")
+	}
+	select {
+	case s.hashSlots <- struct{}{}:
+		<-s.hashSlots
+	case <-time.After(time.Second):
+		t.Fatal("completed KDF worker did not release its actual slot")
+	}
 	if len(r.sessions) != 0 || r.failures != 0 {
 		t.Fatal("deadline performed late repository mutation")
+	}
+}
+
+func TestCustomerAuthDatabaseLiveSessionIgnoresApplicationClockSkew(t *testing.T) {
+	for _, skew := range []time.Duration{-24 * time.Hour, 24 * time.Hour} {
+		t.Run(skew.String(), func(t *testing.T) {
+			s, r, _, _ := fixture(t)
+			enabled(t, r)
+			token := opaque(t)
+			hash := hashToken(t, token)
+			r.sessions[hash] = c.Session{ID: buyerID, TenantID: tenantA, CustomerID: buyerID, Email: buyerEmail, ExpiresAt: r.now.Add(time.Hour), IdleExpiresAt: r.now.Add(30 * time.Minute)}
+			s.cfg.Now = func() time.Time { return r.now.Add(skew) }
+			if session, err := s.Current(context.Background(), tenantA, token); err != nil || session.CustomerID != buyerID {
+				t.Fatalf("CUSTOMER_AUTH_APP_CLOCK_SESSION_RED: DB-live session rejected for %v skew: %v", skew, err)
+			}
+		})
+	}
+}
+
+func TestCustomerAuthEmailAllowsLocalMailerDomain(t *testing.T) {
+	for _, tc := range []struct {
+		address string
+		valid   bool
+	}{
+		{"buyer@localhost", true},
+		{"buyer@example.test", true},
+		{"buyer@example.invalid", true},
+		{"buyer@", false},
+		{"buyer", false},
+		{"Buyer <buyer@localhost>", false},
+		{"buyer@localhost\r\nBcc: hidden@example.test", false},
+	} {
+		t.Run(tc.address, func(t *testing.T) {
+			if got := validEmail(tc.address); got != tc.valid {
+				t.Fatalf("CUSTOMER_AUTH_LOCAL_RECIPIENT_RED: validEmail=%v want %v", got, tc.valid)
+			}
+		})
 	}
 }
 

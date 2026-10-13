@@ -32,6 +32,7 @@ type fake struct {
 	calls    int
 	issued   string
 	limited  bool
+	currentError error
 	receipts []domainReceipt
 	reads    []domainReceipt
 }
@@ -77,10 +78,46 @@ func (f *fake) Login(_ context.Context, tenant, email, credential string, ip net
 }
 func (f *fake) Current(_ context.Context, t, token string) (c.Session, error) {
 	f.reads = append(f.reads, domainReceipt{operation: "current", tenant: t, token: token})
+	if f.currentError != nil {
+		return c.Session{}, f.currentError
+	}
 	if token == "" || token != f.issued || t != tenant {
 		return c.Session{}, c.ErrUnauthorized
 	}
 	return c.Session{ID: tenant, TenantID: tenant, CustomerID: tenant, Email: "buyer@example.test", ExpiresAt: time.Now().Add(time.Hour), IdleExpiresAt: time.Now().Add(time.Hour)}, nil
+}
+
+// A temporary read failure does not prove the opaque bearer is invalid. Both
+// session refresh and write preflight must retain it for a recovery retry.
+func TestCustomerCookieSurvivesUnavailableStore(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodDelete} {
+		t.Run(method, func(t *testing.T) {
+			router, f := setup(t)
+			bearer := &http.Cookie{Name: SessionCookie, Value: f.issued}
+			live := request(router, http.MethodGet, sessionPath, "", nil, bearer)
+			csrf := requireCustomerResponse(t, live, true)
+			f.currentError = c.ErrUnavailable
+			outage := request(router, method, sessionPath, "", map[string]string{"Origin": origin, "X-CSRF-Token": csrf}, bearer)
+			if outage.Code != http.StatusServiceUnavailable {
+				t.Fatalf("CUSTOMER_COOKIE_OUTAGE_RED: status %d", outage.Code)
+			}
+			for _, cookie := range outage.Result().Cookies() {
+				if cookie.Name == SessionCookie {
+					t.Fatal("CUSTOMER_COOKIE_OUTAGE_RED: temporary outage changed bearer")
+				}
+			}
+			f.currentError = nil
+			if recovered := request(router, http.MethodGet, sessionPath, "", nil, bearer); recovered.Code != http.StatusOK {
+				t.Fatalf("same bearer did not recover: %d", recovered.Code)
+			}
+			f.currentError = c.ErrUnauthorized
+			invalid := request(router, method, sessionPath, "", map[string]string{"Origin": origin, "X-CSRF-Token": csrf}, bearer)
+			if invalid.Code != http.StatusUnauthorized {
+				t.Fatalf("invalid bearer not rejected: %d", invalid.Code)
+			}
+			requireCustomerCookie(t, invalid, SessionCookie, true)
+		})
+	}
 }
 func (f *fake) Logout(_ context.Context, tenant, token string) error {
 	f.record(domainReceipt{operation: "logout", tenant: tenant, token: token})

@@ -7,7 +7,9 @@ package bootstrap_test
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -37,16 +39,56 @@ type checkoutWiringCustomerPort struct {
 	calls    int
 	tenant   string
 	token    string
+	failure  error
 }
 
 func (p *checkoutWiringCustomerPort) Current(_ context.Context, tenant, token string) (customercontract.Session, error) {
 	p.calls++
 	p.tenant, p.token = tenant, token
+	if p.failure != nil {
+		return customercontract.Session{}, p.failure
+	}
 	session, ok := p.sessions[tenant]
 	if !ok || token != p.wiringCustomer.token {
 		return customercontract.Session{}, customercontract.ErrUnauthorized
 	}
 	return session, nil
+}
+
+func TestCustomerInvalidCookieUsesGuestCheckoutCapability(t *testing.T) {
+	for _, mode := range []string{"expired", "other_tenant", "unavailable"} {
+		t.Run(mode, func(t *testing.T) {
+			handler, port, service, stale := checkoutWiringFixture(t)
+			if mode == "unavailable" { port.failure = customercontract.ErrUnavailable } else { delete(port.sessions, checkoutWiringTenant) }
+			// The anonymous session challenge is the guest's CSRF proof. The
+			// unrelated stale customer cookie cannot invalidate that capability.
+			challengeRequest := httptest.NewRequest(http.MethodGet, checkoutWiringOrigin+"/api/v1/t/"+checkoutWiringTenant+"/customer/session", nil)
+			challenge := httptest.NewRecorder()
+			handler.ServeHTTP(challenge, challengeRequest)
+			var envelope struct { CSRF string `json:"csrf_token"` }
+			if challenge.Code != 200 || json.Unmarshal(challenge.Body.Bytes(), &envelope) != nil { t.Fatal("guest challenge unavailable") }
+			guestRaw := make([]byte, 32)
+			if _, err := rand.Read(guestRaw); err != nil { t.Fatal(err) }
+			guest := base64.RawURLEncoding.EncodeToString(guestRaw)
+			body := strings.TrimSuffix(checkoutWiringBody, "}") + `,"buyer_contact":{"email":"buyer@example.test"}}`
+			r := checkoutWiringRequest(checkoutWiringTenant, envelope.CSRF, stale)
+			r.Body = io.NopCloser(strings.NewReader(body))
+			r.Header.Set("X-Cart-Token", guest)
+			for _, cookie := range challenge.Result().Cookies() { r.AddCookie(cookie) }
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			cleared := false
+			for _, cookie := range w.Result().Cookies() { if cookie.Name == customerhttp.SessionCookie && cookie.MaxAge < 0 { cleared = true } }
+			if mode == "unavailable" {
+				if w.Code != 503 || cleared || service.calls != 0 { t.Fatal("CUSTOMER_CHECKOUT_OUTAGE_RED: store failure downgraded identity") }
+				return
+			}
+			digest := sha256.Sum256([]byte(guest))
+			if w.Code != 201 || service.calls != 1 || service.actor.Kind() != "guest" || service.actor.ID() != hex.EncodeToString(digest[:]) || !cleared {
+				t.Fatalf("CUSTOMER_GUEST_CHECKOUT_RED: status=%d start=%d clear=%v", w.Code, service.calls, cleared)
+			}
+		})
+	}
 }
 
 type checkoutWiringService struct {
