@@ -8,12 +8,12 @@ import Shell from '../layouts/Shell.astro';
 import ErrorPage from './ErrorPage.astro';
 import ProductSummary from './ProductSummary';
 import ProductPurchase from './ProductPurchase';
-import { readPurchaseContext } from '../lib/commerce-server';
+import type { PurchaseContext } from '../lib/commerce-contract';
 import { formatAmount } from '../lib/presentation';
 import type { PublishedPageView } from '../lib/published-page';
-interface Props { view: PublishedPageView }
+interface Props { view: PublishedPageView; purchaseContext?: PurchaseContext }
 const { site, status, ui, isList, product, page, title, description, canonical, homeHref } = Astro.props.view;
-const purchaseContext = !status && product ? await readPurchaseContext(Astro.request, Astro.cookies) : undefined;
+const { purchaseContext } = Astro.props;
 ---
 {status ? <ErrorPage status={status} canonical={canonical} /> : site && <Shell
   title={`${title} | ${site.title}`} description={description} canonical={canonical}

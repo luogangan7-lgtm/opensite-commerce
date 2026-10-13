@@ -26,6 +26,7 @@ async function quality(page: Page, name: string) {
 }
 async function add(page: Page) {
   await page.goto(`${site}/products/canvas-tote`);
+  expect((await page.context().cookies(site)).some(cookie => cookie.name === '__Host-osc_storefront_fixture' && cookie.httpOnly && cookie.secure)).toBe(true);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Canvas tote');
   await expect(page.locator('[data-fixture-notice]')).toBeVisible();
   await page.getByRole('button', { name: 'Add to cart', exact: true }).click();
