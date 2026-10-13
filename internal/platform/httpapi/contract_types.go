@@ -71,6 +71,7 @@ type GetPublishedSite404ApplicationProblemPlusJSONResponse = generated.GetPublis
 type GetPublishedSite503ApplicationProblemPlusJSONResponse = generated.GetPublishedSite503ApplicationProblemPlusJSONResponse
 type Problem = generated.Problem
 type PublishedSite = generated.PublishedSite
+type SitePreview = generated.SitePreview
 type CreateSiteDraftRequestObject = generated.CreateSiteDraftRequestObject
 type CreateSiteDraftResponseObject = generated.CreateSiteDraftResponseObject
 type GetSiteDraftRequestObject = generated.GetSiteDraftRequestObject

@@ -45,7 +45,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Current sealed public release for a verified DNS hostname. Version-1 public manifest seals product view models derived from catalog published listings and pinned content revisions. */
+        /** @description Current public storefront body for a verified DNS hostname, served as the precomputed storefront serving row (docs/architecture/ADR_STOREFRONT_SERVING.md). Product content and SKU membership (sku_id, sku_code, option_values) are sealed at publish. price_minor is the anonymous default price (quantity 1, the product's release currency, active audience=all lists in their time window, priority descending then list id ascending) computed when the serving row was built; available is on-hand minus reserved > 0 at build time, never a count. Unpriced or non-ready SKUs at publish are not members (adding them requires republish). After the next price boundary the body falls back to skus [] until rebuilt. Cart and checkout re-price and reserve authoritatively. The body is host-independent (no hostname) and carries the host's tenant_id for tenant-scoped cart APIs. */
         get: operations["getPublishedSite"];
         put?: never;
         post?: never;
@@ -1126,6 +1126,19 @@ export interface components {
             currency: string;
         };
         PublishedSite: {
+            /** @description Tenant resolved from the verified hostname; storefronts use it for tenant-scoped APIs such as /api/v1/t/{tenant_id}/carts. */
+            tenant_id: string;
+            site_id: string;
+            release_id: string;
+            locale: string;
+            title: string;
+            description: string;
+            navigation: components["schemas"]["PublishedNavigation"][];
+            pages: components["schemas"]["PublishedPage"][];
+            products: components["schemas"]["PublicProduct"][];
+        };
+        /** @description CMS draft preview projection (never the public storefront body; no tenant_id or SKUs). */
+        SitePreview: {
             site_id: string;
             release_id: string;
             hostname: string;
@@ -1135,6 +1148,30 @@ export interface components {
             navigation: components["schemas"]["PublishedNavigation"][];
             pages: components["schemas"]["PublishedPage"][];
             products: components["schemas"]["PublishedProduct"][];
+        };
+        PublicProduct: {
+            id: string;
+            slug: string;
+            name: string;
+            description: string;
+            unit_amount: string;
+            currency: string;
+            /** @description Purchasable SKUs; see getPublishedSite for membership, price and availability rules. */
+            skus: components["schemas"]["PublishedSku"][];
+        };
+        PublishedSkuOptionValue: {
+            name: string;
+            value: string;
+        };
+        PublishedSku: {
+            sku_id: string;
+            sku_code: string;
+            option_values: components["schemas"]["PublishedSkuOptionValue"][];
+            /** @description Anonymous default unit price in minor units as a decimal string, as of the serving build. */
+            price_minor: string;
+            currency: string;
+            /** @description True when on-hand stock exceeded active reservations at the serving build; never a count. */
+            available: boolean;
         };
         LoginChallenge: {
             csrf_token: string;
@@ -3420,7 +3457,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublishedSite"];
+                    "application/json": components["schemas"]["SitePreview"];
                 };
             };
             400: components["responses"]["Problem"];

@@ -777,6 +777,17 @@ type AppSiteReleaseRoute struct {
 	PageRevision int64       `json:"page_revision"`
 }
 
+type AppSiteReleaseSku struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	SiteID       pgtype.UUID `json:"site_id"`
+	ReleaseID    pgtype.UUID `json:"release_id"`
+	ProductID    pgtype.UUID `json:"product_id"`
+	SkuID        pgtype.UUID `json:"sku_id"`
+	Ordinal      int32       `json:"ordinal"`
+	SkuCode      string      `json:"sku_code"`
+	OptionValues []byte      `json:"option_values"`
+}
+
 type AppSiteReleaseTemplate struct {
 	TenantID     pgtype.UUID `json:"tenant_id"`
 	SiteID       pgtype.UUID `json:"site_id"`
@@ -792,6 +803,19 @@ type AppStockLevel struct {
 	SkuID       pgtype.UUID `json:"sku_id"`
 	OnHand      int64       `json:"on_hand"`
 	Reserved    int64       `json:"reserved"`
+}
+
+type AppStorefrontServing struct {
+	TenantID            pgtype.UUID        `json:"tenant_id"`
+	SiteID              pgtype.UUID        `json:"site_id"`
+	ReleaseID           pgtype.UUID        `json:"release_id"`
+	PublicationRevision int64              `json:"publication_revision"`
+	ServingGeneration   int64              `json:"serving_generation"`
+	Body                []byte             `json:"body"`
+	FallbackBody        []byte             `json:"fallback_body"`
+	BodySha256          []byte             `json:"body_sha256"`
+	ValidUntil          pgtype.Timestamptz `json:"valid_until"`
+	BuiltAt             pgtype.Timestamptz `json:"built_at"`
 }
 
 type AppTaxCategory struct {

@@ -1,6 +1,6 @@
 # ADR: Storefront serving projection (C-15b / C-15c)
 
-- Status: proposed (design gate; no implementation in this PR)
+- Status: accepted 2026-10-13 with the amendments in §7; C-15b implemented in the same PR
 - Date: 2026-10-13
 - Base: `origin/main` b296a2a
 - Supersedes: the design in PR #55 (live SKU joins on the anonymous read path). #55 will be
@@ -63,7 +63,7 @@ artifact that can be rebuilt from the release plus live price and stock.
 | `body` | `bytea`: exact HTTP response body of `getPublishedSite` (UTF-8 JSON plus the trailing newline) |
 | `fallback_body` | `bytea`: same pages and products with `skus: []` everywhere (never stale) |
 | `body_sha256` | `sha256(body)`; check value and ETag source |
-| `valid_until` | `timestamptz`: earliest time a refresh-variable field can change on its own (the next start or end boundary of any price list that could change a winner); `NULL` if none |
+| `valid_until` | `timestamptz`: in C-15b, the next start or end boundary of any price list (in the product's currency) that prices a member SKU; `NULL` if none. C-15c adds a staleness cap (§7) |
 | `built_at` | build time (the transaction's `now()`) |
 
 Public read rule: serve `body` while `now() < valid_until` (or `valid_until IS NULL`),
@@ -99,7 +99,7 @@ tenant transaction. C-15b adds one step in the same transaction, before commit:
    `available` at `false`. Over 1 MiB rejects the publish (422). A later refresh can
    therefore never push the body over budget.
 6. **Write** the serving row through one narrow routine,
-   `app.storefront_serving_put(tenant, site, release, publication_revision,
+   `app.cms_serving_put(tenant, site, release, publication_revision,
    expected_generation, body, fallback_body, sha, valid_until)`. It compares and swaps on
    `(publication_revision = sites.publication_revision AND serving_generation =
    expected_generation)`. Any error rolls back the whole publish (atomicity).
@@ -143,7 +143,7 @@ the row's `publication_revision` equals the current one.
 - A refresh job reads the current publication, the release, its `site_release_skus` and
   live price and stock under the tenant transaction. It rebuilds `body`, `valid_until` and
   `body_sha256` with the same builder (`fallback_body` is unchanged), then writes through
-  `storefront_serving_put` with the generation it read. A stale writer can never
+  `cms_serving_put` with the generation it read. A stale writer can never
   overwrite a newer publish or newer refresh, because CAS fails on
   `publication_revision` or `serving_generation`; a failed CAS drops the result.
 - A SKU archived or priced out after publish stays in membership but is omitted from
@@ -205,3 +205,34 @@ Each gate must go red when the property is broken; record a fault-injection red�
 - Live per-SKU price lookup instead of the async serving price (owner decision; §2.6).
 - Migration number: next contiguous at push, or `migrations/pending/<stable-id>` once
   INF-MIG lands.
+
+## 7. Amendments at acceptance and implementation notes (C-15b)
+
+1. **valid_until in C-15b is the next price-list boundary only.** It has no maximum-staleness
+   cap: without the C-15c worker, a cap would push every site to the fallback. C-15c sets
+   `valid_until = min(next boundary, built_at + max_staleness)` and ships the refresh worker
+   at the same time. **Until C-15c lands, the displayed price and availability are as of the
+   last publish or restore and can be stale until a republish. Checkout is the authority**:
+   the cart re-quotes and checkout reserves stock against live data.
+2. **Unpriced or non-ready SKUs at publish are not members.** If they become priced or ready
+   later, they need a republish (§2.1).
+3. **The public body is host-independent.** A site can have several verified hostnames, and
+   one serving row per (tenant, site) must be valid for all of them, so `PublishedSite` no
+   longer carries `hostname`. The storefront SSR already uses its request URL. The CMS
+   preview (`SitePreview`) keeps `hostname`.
+4. **Routines.** SKU membership is written by `app.cms_seal_skus`. It is write-once, only for
+   the current release created by the same transaction (`created_at = now()`), and an
+   immutability trigger blocks later changes. The serving row is written only by
+   `app.cms_serving_put`, which does the compare-and-swap on publication revision and
+   generation. Both are `SECURITY DEFINER` routines owned by `app_publish_executor` and
+   executable only by `app_runtime`. They are covered by the existing CMS routine matrix.
+5. **Legacy releases.** Releases published outside the CMS write path (pre-C-15b data, SQL
+   fixtures, `app.publish_release` callers) have no serving row. The public read serves their
+   sealed projection with `skus: []` and `tenant_id`, which is byte-identical in shape to a
+   fallback body. Revoking the 024 release, route and page grants is therefore deferred until
+   C-15c backfills serving rows. `app_domain_resolver` still has no catalog, pricing,
+   inventory or membership grants (G4).
+6. **Transport.** `contract.Reader.Serve` returns the stored bytes. The HTTP handler writes
+   them as-is, with `ETag` set to the body's SHA-256. Errors keep the generated
+   problem responses.
+

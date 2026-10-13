@@ -28,7 +28,8 @@ DECLARE
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals',
-  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts'];
+  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts',
+  'site_release_skus','storefront_serving'];
  role_name text;
  r record;
  t record;
@@ -162,8 +163,10 @@ BEGIN
     ELSIF role_name='app_domain_resolver' AND privilege='SELECT' THEN
      allowed_columns := CASE t.relname
       WHEN 'site_domains' THEN ARRAY['tenant_id','site_id','normalized_hostname','status','verified_at']
-      WHEN 'sites' THEN ARRAY['tenant_id','id','published_release_id','default_locale']
+      WHEN 'sites' THEN ARRAY['tenant_id','id','published_release_id','default_locale','publication_revision']
       WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','sealed','manifest']
+      -- Storefront serving (ADR_STOREFRONT_SERVING): the current serving row only.
+      WHEN 'storefront_serving' THEN ARRAY['tenant_id','site_id','publication_revision','body','fallback_body','body_sha256','valid_until']
       WHEN 'site_release_routes' THEN ARRAY['tenant_id','site_id','release_id','locale','path','page_id','page_revision']
       WHEN 'page_revisions' THEN ARRAY['tenant_id','site_id','page_id','locale','revision','document']
       ELSE ARRAY[]::text[] END;
@@ -326,6 +329,7 @@ BEGIN
     OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['sites','site_releases','site_release_routes','site_release_templates','site_release_media','media_assets','media_blobs','site_drafts','draft_pages','draft_operations','pages','page_revisions','products','product_variants','product_listings','product_content_revisions','price_lists','price_entries','draft_page_media']) AND privilege='SELECT'
     OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['draft_pages','draft_page_media','pages','page_revisions','site_release_routes','site_release_media','draft_operations','audit_events']) AND privilege='INSERT'
     OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['draft_pages','draft_page_media']) AND privilege='DELETE'
+    OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['site_release_skus','storefront_serving']) AND privilege=ANY(ARRAY['SELECT','INSERT'])
     OR role_name='app_reliability_executor' AND t.relname='outbox_events' AND privilege='SELECT' THEN
      expected_table := true;
      SELECT array_agg(attname::text) INTO allowed FROM pg_attribute
@@ -340,7 +344,8 @@ BEGIN
                               WHEN 'draft_pages' THEN ARRAY['path','document']
                               WHEN 'site_releases' THEN ARRAY['sealed']
                               WHEN 'media_assets' THEN ARRAY['visibility']
-                              WHEN 'media_blobs' THEN ARRAY['status'] ELSE allowed END;
+                              WHEN 'media_blobs' THEN ARRAY['status']
+                              WHEN 'storefront_serving' THEN ARRAY['release_id','publication_revision','serving_generation','body','fallback_body','body_sha256','valid_until','built_at'] ELSE allowed END;
     ELSIF role_name='app_reliability_executor' AND t.relname='outbox_events' AND privilege='UPDATE' THEN
      allowed:=ARRAY['status','lease_owner','lease_until','attempts','next_attempt_at','last_error','delivered_at'];
     END IF;
@@ -936,8 +941,9 @@ SELECT 'PASS: quotes exact table/column/function grants, bounded definer authori
 -- CMS controlled functions and capability flag must have exact effective ACLs.
 DO $cms_matrix$
 DECLARE f record; role_name text; expected boolean;
- names text[]:=ARRAY['cms_context','cms_revision_immutable','cms_draft_guard','cms_validate_document','cms_products','cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history'];
- public_names text[]:=ARRAY['cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history'];
+ names text[]:=ARRAY['cms_context','cms_revision_immutable','cms_draft_guard','cms_validate_document','cms_products','cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history',
+  'cms_release_skus_immutable','cms_seal_skus','cms_serving_put'];
+ public_names text[]:=ARRAY['cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history','cms_seal_skus','cms_serving_put'];
 BEGIN
  IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname LIKE 'cms_%')<>cardinality(names) THEN RAISE EXCEPTION 'CMS_MATRIX_ROUTINE_SET'; END IF;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname LIKE 'cms_%' LOOP
@@ -953,7 +959,7 @@ BEGIN
  END LOOP;
  IF has_column_privilege('app_runtime','app.site_drafts','is_cms','INSERT') OR has_column_privilege('app_runtime','app.site_drafts','is_cms','UPDATE')
   OR has_column_privilege('app_runtime','app.sites','publication_revision','INSERT') OR has_column_privilege('app_runtime','app.sites','publication_revision','UPDATE') THEN RAISE EXCEPTION 'CMS_MATRIX_FLAG_AUTHORITY'; END IF;
- IF NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='app.draft_page_media'::regclass) THEN RAISE EXCEPTION 'CMS_MATRIX_FORCE_RLS'; END IF;
+ IF EXISTS(SELECT FROM pg_class WHERE oid IN ('app.draft_page_media'::regclass,'app.site_release_skus'::regclass,'app.storefront_serving'::regclass) AND NOT (relrowsecurity AND relforcerowsecurity)) THEN RAISE EXCEPTION 'CMS_MATRIX_FORCE_RLS'; END IF;
 END $cms_matrix$;
 SELECT 'PASS: CMS exact routine/capability flag/FORCE RLS matrix' AS result;
 -- Checkout uses an invoker trigger, not a new capability role: nobody in the

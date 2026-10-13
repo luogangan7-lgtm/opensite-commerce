@@ -33,3 +33,54 @@ CROSS JOIN LATERAL (SELECT octet_length(r.manifest::text)+coalesce(sum(octet_len
   ON (pr.tenant_id,pr.site_id,pr.page_id,pr.locale,pr.revision)=(rr.tenant_id,rr.site_id,rr.page_id,rr.locale,rr.page_revision)
  WHERE (rr.tenant_id,rr.site_id,rr.release_id)=(r.tenant_id,r.site_id,r.id) AND lower(rr.locale)=lower(r.manifest->>'locale')) budget
 WHERE r.tenant_id=sqlc.arg(tenant_id)::uuid AND r.site_id=sqlc.arg(site_id)::uuid AND r.id=sqlc.arg(release_id)::uuid AND r.sealed;
+
+-- name: ServingPublication :one
+-- Storefront serving build (ADR_STOREFRONT_SERVING): current epoch, DB clock, generation.
+SELECT s.publication_revision,s.published_release_id::text AS release_id,now()::timestamptz AS at,
+ coalesce((SELECT sv.serving_generation FROM app.storefront_serving sv WHERE sv.tenant_id=s.tenant_id AND sv.site_id=s.id),0)::bigint AS generation
+FROM app.sites s WHERE s.tenant_id=sqlc.arg(tenant_id)::uuid AND s.id=sqlc.arg(site_id)::uuid;
+
+-- name: ServingLiveCandidates :many
+-- Publish: ready SKUs of ready released products (input scan budget via row_limit).
+SELECT v.product_id::text AS product_id,v.id::text AS sku_id,v.sku,
+ coalesce((SELECT jsonb_agg(jsonb_build_object('name',o.code,'value',ov.label) ORDER BY o.code)
+  FROM app.variant_option_values vo
+  JOIN app.product_options o ON (o.tenant_id,o.product_id,o.id)=(vo.tenant_id,vo.product_id,vo.option_id)
+  JOIN app.product_option_values ov ON (ov.tenant_id,ov.product_id,ov.option_id,ov.id)=(vo.tenant_id,vo.product_id,vo.option_id,vo.value_id)
+  WHERE (vo.tenant_id,vo.product_id,vo.variant_id)=(v.tenant_id,v.product_id,v.id)),'[]'::jsonb)::jsonb AS option_values
+FROM app.product_variants v JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
+WHERE v.tenant_id=sqlc.arg(tenant_id)::uuid AND v.product_id::text=ANY(sqlc.arg(product_ids)::text[])
+ AND v.lifecycle_status='ready' AND p.lifecycle_status='ready'
+ORDER BY v.product_id,v.sku,v.id LIMIT sqlc.arg(row_limit)::integer;
+
+-- name: ServingSealedCandidates :many
+-- Restore: the release's sealed membership in order, with live readiness.
+SELECT k.product_id::text AS product_id,k.sku_id::text AS sku_id,k.sku_code,k.option_values,
+ coalesce(v.lifecycle_status='ready' AND p.lifecycle_status='ready',false)::boolean AS ready
+FROM app.site_release_skus k
+LEFT JOIN app.product_variants v ON (v.tenant_id,v.id)=(k.tenant_id,k.sku_id)
+LEFT JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
+WHERE k.tenant_id=sqlc.arg(tenant_id)::uuid AND k.site_id=sqlc.arg(site_id)::uuid AND k.release_id=sqlc.arg(release_id)::uuid
+ORDER BY k.ordinal;
+
+-- name: ServingPriceRows :many
+-- Quantity-1 rows of active audience=all lists that have not ended (window applied in Go).
+SELECT l.id::text AS list_id,l.currency::text AS currency,l.status,l.priority,l.starts_at,l.ends_at,l.audience,
+ e.sku_id::text AS sku_id,e.min_quantity,e.unit_amount
+FROM app.price_entries e JOIN app.price_lists l ON (l.tenant_id,l.id)=(e.tenant_id,e.price_list_id)
+WHERE e.tenant_id=sqlc.arg(tenant_id)::uuid AND e.sku_id::text=ANY(sqlc.arg(sku_ids)::text[]) AND e.min_quantity=1
+ AND l.status='active' AND l.audience='all' AND (l.ends_at IS NULL OR l.ends_at>sqlc.arg(at)::timestamptz)
+ORDER BY l.id,e.sku_id LIMIT sqlc.arg(row_limit)::integer;
+
+-- name: ServingAvailability :many
+SELECT sku_id::text AS sku_id,bool_or(on_hand>reserved)::boolean AS available
+FROM app.stock_levels WHERE tenant_id=sqlc.arg(tenant_id)::uuid AND sku_id::text=ANY(sqlc.arg(sku_ids)::text[])
+GROUP BY sku_id;
+
+-- name: SealReleaseSKUs :one
+SELECT app.cms_seal_skus(sqlc.arg(tenant_id)::uuid,sqlc.arg(site_id)::uuid,sqlc.arg(release_id)::uuid,sqlc.arg(skus)::jsonb)::integer;
+
+-- name: PutServing :one
+SELECT app.cms_serving_put(sqlc.arg(tenant_id)::uuid,sqlc.arg(site_id)::uuid,sqlc.arg(release_id)::uuid,
+ sqlc.arg(publication_revision)::bigint,sqlc.arg(expected_generation)::bigint,sqlc.arg(body)::bytea,
+ sqlc.arg(fallback_body)::bytea,sqlc.narg(valid_until)::timestamptz)::bigint;
