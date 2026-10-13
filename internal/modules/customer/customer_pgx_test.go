@@ -105,7 +105,9 @@ func customerPG(t *testing.T) customerPGFixture {
 	}
 	runtime, err := pgxadapter.OpenCustomerRunner(ctx, customerDSN)
 	if err != nil {
-		t.Fatal("CUSTOMER_PG_CAPABILITY_CONNECT_FAILED")
+		// The adapter returns only a fixed diagnostic code, never its DSN,
+		// backend message, detail or credential material.
+		t.Fatalf("CUSTOMER_PG_CAPABILITY_CONNECT_FAILED: %v", err)
 	}
 	t.Cleanup(runtime.Close)
 	mailbox := &customerPGMailbox{}

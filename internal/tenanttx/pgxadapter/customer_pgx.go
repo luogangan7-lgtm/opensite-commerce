@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
 )
@@ -27,6 +28,7 @@ func OpenCustomerRunner(ctx context.Context, dsn string) (*CustomerRunner, error
 	if err != nil {
 		return nil, errors.New("customer database is unavailable or misconfigured")
 	}
+	var capabilityErr error
 	err = r.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var safe bool
 		err := tx.QueryRow(ctx, `WITH expected_functions AS (
@@ -140,14 +142,39 @@ func OpenCustomerRunner(ctx context.Context, dsn string) (*CustomerRunner, error
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner)))
     WHERE grantee=0 AND privilege_type='EXECUTE'))
  FROM pg_roles r WHERE r.rolname=session_user`).Scan(&safe)
-		if err != nil || !safe {
-			return errors.New("unsafe customer database capability")
+		if err != nil {
+			capabilityErr = errors.New("customer capability metadata query failed")
+			// Backend messages, details and wrapped errors may expose connection or
+			// data secrets. Retain only a validated five-character SQLSTATE.
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr != nil && len(pgErr.Code) == 5 {
+				validCode := true
+				for _, c := range pgErr.Code {
+					if !(c >= '0' && c <= '9' || c >= 'A' && c <= 'Z') {
+						validCode = false
+						break
+					}
+				}
+				if validCode {
+					capabilityErr = errors.New("customer capability metadata SQLSTATE " + pgErr.Code)
+				}
+			}
+			return capabilityErr
+		}
+		if !safe {
+			capabilityErr = errors.New("customer capability check failed")
+			return capabilityErr
 		}
 		return nil
 	})
 	if err != nil {
 		closePool()
-		return nil, errors.New("customer database login must be dedicated to app_customer_auth")
+		// Preserve our sanitized classification without returning transaction
+		// errors, which can contain the original backend message or DSN.
+		if capabilityErr != nil {
+			return nil, capabilityErr
+		}
+		return nil, errors.New("customer capability transaction failed")
 	}
 	return &CustomerRunner{runner: r, close: closePool}, nil
 }
