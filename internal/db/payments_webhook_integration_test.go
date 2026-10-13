@@ -165,6 +165,8 @@ func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
 				t.Fatal(err)
 			}
 			stamp := p.at
+			var payloadTenant *paymentFactFixture
+			var payloadBefore paymentFactWitness
 			switch name {
 			case "stale":
 				stamp = stamp.Add(-time.Hour)
@@ -193,7 +195,15 @@ func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
 					body["account_id"] = "foreign_" + p.account
 				}
 			case "payload_tenant":
-				body["tenant_id"] = uuid.NewString()
+				// A valid other tenant/order removes missing-tenant or invalid-order
+				// failures as accidental admission guards. The signed account stays p's.
+				payloadTenant = newPaymentFactFixture(t)
+				payloadBefore = payloadTenant.witness(t)
+				if err := json.Unmarshal(payloadTenant.raw(body["event_id"].(string), payment.StatusCaptured, payloadTenant.start.AmountMinor), &body); err != nil {
+					t.Fatal(err)
+				}
+				body["account_id"] = p.account
+				body["tenant_id"] = payloadTenant.f.tenant
 			case "unknown_order":
 				body["order_id"] = uuid.NewString()
 			case "wrong_amount":
@@ -213,8 +223,18 @@ func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
 			if name == "tampered_bytes" {
 				raw = append(raw, ' ')
 			}
-			if _, err := p.module.Receive(checkoutRequestContext(p.f.ctx), raw, sig); err == nil {
+			_, admissionErr := p.module.Receive(checkoutRequestContext(p.f.ctx), raw, sig)
+			if admissionErr == nil {
 				t.Fatal("invalid fact accepted")
+			}
+			if payloadTenant != nil {
+				var public *apperrors.Error
+				if !errors.As(admissionErr, &public) || public.Status != 400 || public.Code != "invalid_event" {
+					t.Fatalf("payload tenant must fail envelope admission, not FK/RLS or reconciliation: %v", admissionErr)
+				}
+				if after := payloadTenant.witness(t); after != payloadBefore {
+					t.Fatalf("payload-selected tenant changed: before %+v after %+v", payloadBefore, after)
+				}
 			}
 			after := p.witness(t)
 			rejectedFact := name == "unknown_order" || name == "wrong_amount" || name == "wrong_currency" || name == "wrong_ref" || name == "wrong_version"
