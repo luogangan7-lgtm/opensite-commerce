@@ -29,6 +29,25 @@ SELECT q.* FROM app.quotes q WHERE q.tenant_id=sqlc.arg(tenant_id)::uuid AND q.i
 -- name: GetQuoteLines :many
 SELECT * FROM app.quote_lines WHERE tenant_id=sqlc.arg(tenant_id)::uuid AND quote_id=sqlc.arg(quote_id)::uuid ORDER BY line_no;
 
+-- name: LockQuoteConversion :one
+SELECT * FROM app.quote_conversion_lock(sqlc.arg(tenant_id)::uuid,sqlc.arg(quote_id)::uuid,
+ sqlc.arg(company_id)::uuid,sqlc.arg(customer_id)::uuid);
+
+-- name: BindQuoteConversion :one
+SELECT * FROM app.quote_conversion_bind(sqlc.arg(tenant_id)::uuid,sqlc.arg(quote_id)::uuid,
+ sqlc.arg(company_id)::uuid,sqlc.arg(customer_id)::uuid,sqlc.arg(order_id)::uuid,
+ sqlc.arg(quote_version)::bigint,sqlc.arg(idempotency_key)::text,sqlc.arg(request_hash)::bytea);
+
+-- name: GetQuoteConversion :one
+SELECT c.*,o.state FROM app.quote_conversion_get(sqlc.arg(tenant_id)::uuid,sqlc.arg(quote_id)::uuid,
+ sqlc.narg(company_id)::uuid,sqlc.arg(actor_kind)::text,sqlc.arg(actor_id)::uuid) c
+ JOIN app.orders o ON(o.tenant_id,o.id)=(c.tenant_id,c.order_id);
+
+-- name: GetQuoteConversionSKU :one
+-- This is only a label lookup. Negotiated amounts never read live price lists.
+SELECT sku FROM app.product_variants WHERE tenant_id=sqlc.arg(tenant_id)::uuid
+ AND product_id=sqlc.arg(product_id)::uuid AND id=sqlc.arg(variant_id)::uuid;
+
 -- name: GetQuoteApprovals :many
 SELECT * FROM app.quote_approvals WHERE tenant_id=sqlc.arg(tenant_id)::uuid AND quote_id=sqlc.arg(quote_id)::uuid;
 

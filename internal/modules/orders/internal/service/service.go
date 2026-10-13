@@ -27,12 +27,26 @@ import (
 type Service struct{}
 
 var _ contract.Service = Service{}
+var _ contract.QuoteCreator = Service{}
+var _ contract.ReservationValidator = Service{}
 
 func (Service) Create(ctx context.Context, tx pgx.Tx, tenantID string, in contract.CreateInput) (contract.Order, error) {
 	p, err := prepare(in)
 	if err != nil {
 		return contract.Order{}, err
 	}
+	return create(ctx, tx, tenantID, in, p)
+}
+
+func (Service) CreateFromQuote(ctx context.Context, tx pgx.Tx, tenantID string, in contract.CreateInput) (contract.Order, error) {
+	p, err := prepareQuoted(in)
+	if err != nil {
+		return contract.Order{}, err
+	}
+	return create(ctx, tx, tenantID, in, p)
+}
+
+func create(ctx context.Context, tx pgx.Tx, tenantID string, in contract.CreateInput, p prepared) (contract.Order, error) {
 	q, err := store.Tenant(ctx, tx, tenantID)
 	if err != nil {
 		return contract.Order{}, err
@@ -160,6 +174,18 @@ func (Service) GetPayable(ctx context.Context, tx pgx.Tx, tenantID, orderID stri
 	canonicalTenant := uuid.UUID(tenant.Bytes).String()
 	canonicalID := uuid.UUID(row.ID.Bytes).String()
 	return contract.Payable{OrderID: canonicalID, Amount: amount, IntentKey: fmt.Sprintf("payable:v1:%s:%s:%s", canonicalTenant, canonicalID, strconv.FormatInt(row.Version, 10)), Version: row.Version}, nil
+}
+
+func (Service) ValidateReservations(ctx context.Context, tx pgx.Tx, tenantID, orderID string) error {
+	if !validID(orderID) {
+		return contract.ErrInvalid
+	}
+	q, err := store.Tenant(ctx, tx, tenantID)
+	if err != nil {
+		return err
+	}
+	id, _ := store.UUID(orderID)
+	return store.MapError(q.ValidatePaymentReservations(ctx, id))
 }
 func order(row db.AppOrder) contract.Order {
 	return contract.Order{ID: uuid.UUID(row.ID.Bytes).String(), TenantID: uuid.UUID(row.TenantID.Bytes).String(), Number: row.OrderNumber, Version: row.Version, State: contract.State(row.State), Total: money.Money{Amount: row.TotalMinor, Currency: row.Currency}}

@@ -7,6 +7,9 @@ SELECT nullif(current_setting('app.tenant_id',true),'')::uuid AS tenant_id;
 -- name: LockOrderReservations :exec
 SELECT app.orders_lock_reservations(sqlc.arg(order_id)::uuid,sqlc.arg(reservation_ids)::uuid[]);
 
+-- name: ValidatePaymentReservations :exec
+SELECT app.orders_validate_payment_reservations(sqlc.arg(order_id)::uuid);
+
 -- name: ReserveOrderInventory :one
 SELECT * FROM app.inventory_reserve(sqlc.arg(sku_id)::uuid,sqlc.arg(quantity)::bigint,
  'order',sqlc.arg(order_id)::uuid,sqlc.arg(idempotency_key)::text,sqlc.arg(ttl_seconds)::integer);

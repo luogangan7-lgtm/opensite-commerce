@@ -19,6 +19,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quoteorders"
 	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
@@ -32,6 +33,7 @@ type Config struct {
 	Media                    media.Config
 	Cart                     *cart.Module
 	Quotes                   quoteshttp.QuotesService
+	QuoteOrders              quoteorders.Service
 	QuotesBuyerAuthenticator httpapi.Authenticator
 	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
 	Notifications            notificationcontract.Service
@@ -48,7 +50,7 @@ func New(config Config) (server *http.Server, err error) {
 	if cartModule == nil {
 		cartModule = cart.New(nil, nil)
 	}
-	router := httpapi.New(routeAuthenticator{cart: cartModule, staff: config.Authenticator}, config.Logger)
+	router := httpapi.New(routeAuthenticator{cart: cartModule, staff: config.Authenticator, buyer: config.QuotesBuyerAuthenticator}, config.Logger)
 	health := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "health", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })}
 	routes := []httpapi.Route{health}
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
@@ -57,6 +59,7 @@ func New(config Config) (server *http.Server, err error) {
 	if config.Quotes != nil {
 		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
 	}
+	routes = append(routes, quoteorders.New(config.QuoteOrders).Routes()...)
 	routes = append(routes, notificationhttp.New(config.Notifications).Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {
@@ -95,14 +98,21 @@ func Run(ctx context.Context, config Config) error {
 	}
 }
 
-// routeAuthenticator separates storefront capabilities from staff authentication.
-// A staff credential can never authorize a Storefront route by falling through.
+// routeAuthenticator separates customer/company, storefront and staff authority.
+// An absent customer resolver always denies; staff credentials never fall through.
 type routeAuthenticator struct {
 	cart  *cart.Module
 	staff httpapi.Authenticator
+	buyer httpapi.Authenticator
 }
 
 func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	if spec.Access == httpapi.BuyerCompany {
+		if a.buyer == nil {
+			return (httpapi.DenyAuthenticator{}).Authenticate(ctx, r, spec)
+		}
+		return a.buyer.Authenticate(ctx, r, spec)
+	}
 	if spec.Access == httpapi.Storefront {
 		return a.cart.Authenticate(ctx, r, spec)
 	}

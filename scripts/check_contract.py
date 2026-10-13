@@ -45,7 +45,11 @@ SELLER_QUOTES = {
     "withdrawQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw"),
     "expireQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/expire"),
 }
-QUOTE_OPERATIONS = SELLER_QUOTES.keys() | BUYER_QUOTES.keys() | {"submitInquiry"}
+QUOTE_CONVERSIONS = {
+    "createQuoteOrder": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/orders"),
+    "getQuoteOrderConversion": ("get", "/api/v1/t/{tenant_id}/quotes/{quote_id}/order-conversion"),
+}
+QUOTE_OPERATIONS = SELLER_QUOTES.keys() | BUYER_QUOTES.keys() | QUOTE_CONVERSIONS.keys() | {"submitInquiry"}
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -133,6 +137,9 @@ def validate_contract(api):
             ("apiKey", "cookie", "__Host-osc_admin_session"), "adminSession cookie scheme drift")
     key = schemes.get("ApiKeyBearer", {})
     require(key.get("type") == "http" and key.get("scheme") == "bearer", "API key bearer scheme drift")
+    customer = schemes.get("CustomerSession", {})
+    require((customer.get("type"), customer.get("in"), customer.get("name")) ==
+            ("apiKey", "cookie", "__Host-osc_customer_session"), "separate customer session cookie scheme drift")
     require(api.get("security") in (COOKIE_OR_KEY, list(reversed(COOKIE_OR_KEY))), "cookie OR API key required")
     for name in PROBLEM_RESPONSES.values():
         content = api["components"]["responses"][name].get("content", {})
@@ -208,6 +215,9 @@ def validate_contract(api):
         if access == "Public":
             require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite"} | BUYER_QUOTES.keys() and security == [] and
                     "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
+        elif access == "BuyerCompany":
+            require(ident == "createQuoteOrder" and tenant and scope == "quotes:convert" and
+                    security == [{"CustomerSession": []}], f"buyer company session/tenant/scope required: {ident}")
         elif access == "Storefront":
             require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and
                     "x-required-scope" not in op, f"storefront cart tenant/scope policy drift: {ident}")
@@ -240,8 +250,19 @@ def validate_contract(api):
             require((method, path) == BUYER_QUOTES[ident], f"buyer quote route drift: {ident}")
             require(access == "Public" and op.get("x-opensite-trusted-buyer") == "required",
                     f"trusted buyer declaration required: {ident}")
-        elif "x-opensite-trusted-buyer" in op:
+        elif "x-opensite-trusted-buyer" in op and ident != "createQuoteOrder":
             raise ValueError(f"trusted buyer marker outside buyer quote operation: {ident}")
+        if ident in QUOTE_CONVERSIONS:
+            require((method, path) == QUOTE_CONVERSIONS[ident], f"quote conversion route drift: {ident}")
+            if ident == "createQuoteOrder":
+                require(access == "BuyerCompany" and op.get("x-opensite-trusted-buyer") == "required",
+                        "conversion requires an explicitly authenticated company buyer")
+                headers = {p["name"]: p for p in parameters if p["in"] == "header"}
+                require(headers.get("Idempotency-Key", {}).get("required") is True and
+                        headers["Idempotency-Key"].get("schema", {}).get("maxLength") == 128,
+                        "conversion requires bounded idempotency key")
+            else:
+                require(access == "AdminOrAPIKey" and scope == "quotes:read", "conversion read requires seller quotes:read")
         if ident in SELLER_QUOTES:
             require((method, path) == SELLER_QUOTES[ident], f"seller quote route drift: {ident}")
             require(access == "AdminOrAPIKey" and scope == ("quotes:read" if ident == "getQuote" else "quotes:write"),

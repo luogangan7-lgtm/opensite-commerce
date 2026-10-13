@@ -52,11 +52,23 @@ type Buyer struct {
 	CustomerID string
 	Guest      Contact
 }
+
+// QuoteSource identifies an already approved immutable negotiated snapshot.
+// The trusted conversion caller must bind the quote to this order in the same
+// transaction; constructing this value does not establish quote authorization.
+type QuoteSource struct {
+	QuoteID string `json:"quote_id"`
+	Version int64  `json:"version"`
+	LineNo  int32  `json:"line_no"`
+}
 type Line struct {
 	ID, SKUID, SKU string
 	Quantity       int64
 	Price          pricing.Result
 	Tax            tax.LineResult
+	// QuoteSource is accepted only by CreateFromQuote; price-list provenance
+	// must be absent. Monetary and tax bindings are identical to ordinary Create.
+	QuoteSource *QuoteSource
 	// An existing reservation is accepted only for this exact order, SKU and qty.
 	// Empty requests a new order-owned reservation in the same transaction.
 	ReservationID string
@@ -103,4 +115,17 @@ type Service interface {
 	PayableReader
 	Create(context.Context, pgx.Tx, string, CreateInput) (Order, error)
 	Transition(context.Context, pgx.Tx, string, TransitionInput) (Order, error)
+}
+
+// QuoteCreator extends negotiated checkout without weakening the price-list
+// Create contract or forcing unrelated Service consumers to implement it.
+type QuoteCreator interface {
+	CreateFromQuote(context.Context, pgx.Tx, string, CreateInput) (Order, error)
+}
+
+// ReservationValidator checks pending-order holds in the caller transaction
+// before capture. Its result cannot promise holds remain live after commit;
+// final paid transition still checks and consumes them atomically.
+type ReservationValidator interface {
+	ValidateReservations(context.Context, pgx.Tx, string, string) error
 }

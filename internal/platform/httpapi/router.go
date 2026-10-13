@@ -19,8 +19,11 @@ import (
 type Access string
 
 const (
-	Public             Access = "Public"
-	Storefront         Access = "Storefront"
+	Public     Access = "Public"
+	Storefront Access = "Storefront"
+	// BuyerCompany delegates verified customer session, company membership and
+	// scope admission to Authenticator; nil authenticators still deny it.
+	BuyerCompany       Access = "BuyerCompany"
 	AuthenticatedSelf  Access = "AuthenticatedSelf"
 	AdminSession       Access = "AdminSession"
 	APIKey             Access = "APIKey"
@@ -100,7 +103,7 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 	s.mux.Handle(spec.Method+" "+spec.Pattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
-		if spec.Access == Storefront {
+		if spec.Access == Storefront || spec.Access == BuyerCompany {
 			w.Header().Set("Cache-Control", "no-store")
 		}
 		if spec.Access != Public {
@@ -159,7 +162,7 @@ func validateRoute(s RouteSpec) error {
 		return fail("negative body size")
 	}
 	switch s.Access {
-	case Public, Storefront, AuthenticatedSelf, AdminSession, APIKey, AdminOrAPIKey, InternalService:
+	case Public, Storefront, BuyerCompany, AuthenticatedSelf, AdminSession, APIKey, AdminOrAPIKey, InternalService:
 	default:
 		return fail("unknown access class")
 	}
@@ -193,6 +196,9 @@ func validateRoute(s RouteSpec) error {
 	}
 	if s.Access == Storefront && (!tenant || s.Scope != "" || !strings.HasPrefix(s.Pattern, "/api/v1/t/{tenant_id}/")) {
 		return fail("Storefront requires canonical tenant path and no staff scope")
+	}
+	if s.Access == BuyerCompany && (!tenant || s.Scope != "quotes:convert" || !strings.HasPrefix(s.Pattern, "/api/v1/t/{tenant_id}/")) {
+		return fail("BuyerCompany requires canonical tenant path and quotes:convert scope")
 	}
 	if s.Access != Public && s.Access != Storefront && tenant && strings.TrimSpace(s.Scope) == "" {
 		return fail("private tenant route requires scope")

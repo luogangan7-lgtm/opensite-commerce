@@ -27,7 +27,7 @@ DECLARE
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
-  'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals'];
+  'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals','quote_conversions'];
  role_name text;
  r record;
  t record;
@@ -260,8 +260,8 @@ BEGIN
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
-   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote') LOOP
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_validate_payment_reservations','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -284,8 +284,8 @@ BEGIN
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
-   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote'))<>10 THEN
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_validate_payment_reservations','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -524,7 +524,7 @@ SELECT 'PASS: cart tenant helper exact owner/search_path/boolean/STABLE/EXECUTE;
 DO $orders$
 DECLARE r record; t record; a record; f record; role_name text; privilege text;
  expected boolean; allowed text[];
- names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations'];
+ names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_validate_payment_reservations'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_orders_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -545,6 +545,8 @@ BEGIN
    IF expected THEN SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
    ELSIF privilege='UPDATE' AND t.relname='orders' THEN allowed:=ARRAY['state','version','sealed','refunded_minor','updated_at'];
    ELSIF privilege='UPDATE' AND t.relname='inventory_reservations' THEN allowed:=ARRAY['id'];
+   ELSIF privilege='SELECT' AND t.relname='stock_levels' THEN allowed:=ARRAY['tenant_id','warehouse_id','sku_id'];
+   ELSIF privilege='UPDATE' AND t.relname='stock_levels' THEN allowed:=ARRAY['sku_id'];
    ELSIF privilege='INSERT' AND t.relname='outbox_events' THEN allowed:=ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key','created_at'];
    END IF;
    IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected
@@ -580,7 +582,7 @@ BEGIN
   IF f.proname=ANY(names) THEN
    FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
     'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_ledger_executor','app_queue_worker','app_outbox_tenant_broker'] LOOP
-    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition','orders_lock_reservations');
+    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition','orders_lock_reservations','orders_validate_payment_reservations');
     IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
      RAISE EXCEPTION 'orders routine authority % %',role_name,f.proname;
@@ -773,8 +775,8 @@ SELECT 'PASS: notifications exact column/function privileges and FORCE RLS' AS r
 DO $quotes$
 DECLARE r record; t record; a record; f record; privilege text; role_name text;
  expected_table boolean; expected_column boolean; allowed text[];
- names text[]:=ARRAY['quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote'];
- public_names text[]:=ARRAY['quote_actor_access','create_quote','transition_quote'];
+ names text[]:=ARRAY['quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get'];
+ public_names text[]:=ARRAY['quote_actor_access','create_quote','transition_quote','quote_conversion_lock','quote_conversion_bind','quote_conversion_get'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_quotes_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -784,9 +786,9 @@ BEGIN
   RAISE EXCEPTION 'QUOTES_UNSAFE_EXECUTOR'; END IF;
  FOR t IN SELECT c.oid,c.relname,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
  WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
-  IF t.relname=ANY(ARRAY['inquiries','quotes','quote_lines','quote_approvals']) AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN RAISE EXCEPTION 'QUOTES_FORCE_RLS %',t.relname; END IF;
+  IF t.relname=ANY(ARRAY['inquiries','quotes','quote_lines','quote_approvals','quote_conversions']) AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN RAISE EXCEPTION 'QUOTES_FORCE_RLS %',t.relname; END IF;
   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
-   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['quotes','quote_lines','quote_approvals']);
+   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['quotes','quote_lines','quote_approvals','quote_conversions']);
    allowed:=ARRAY[]::text[];
    IF expected_table THEN
     SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
@@ -795,9 +797,12 @@ BEGIN
      WHEN 'tenant_memberships' THEN ARRAY['tenant_id','user_id','role','status']
      WHEN 'inquiries' THEN ARRAY['tenant_id','site_id','id','buyer_company_id']
      WHEN 'buyer_companies' THEN ARRAY['tenant_id','id','status'] WHEN 'customers' THEN ARRAY['tenant_id','id','status']
-     WHEN 'buyer_company_members' THEN ARRAY['tenant_id','buyer_company_id','customer_id','role_code','status'] ELSE allowed END;
+     WHEN 'buyer_company_members' THEN ARRAY['tenant_id','buyer_company_id','customer_id','role_code','status']
+     WHEN 'orders' THEN ARRAY['tenant_id','id','customer_id','order_number','currency','items_net_minor','tax_minor','shipping_minor','shipping_snapshot','total_minor','sealed','state']
+     WHEN 'order_lines' THEN ARRAY['tenant_id','order_id','sku_id','quantity','unit_price_minor','line_net_minor','line_tax_minor','line_total_minor','tax_snapshot']
+     WHEN 'order_adjustments' THEN ARRAY['tenant_id','order_id'] ELSE allowed END;
    ELSIF privilege='INSERT' THEN
-    allowed:=CASE t.relname WHEN 'quotes' THEN ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','created_by','currency','subtotal','tax','shipping','total','snapshot','expires_at']
+    allowed:=CASE t.relname WHEN 'quote_conversions' THEN ARRAY['tenant_id','quote_id','buyer_company_id','customer_id','order_id','quote_version','idempotency_key','request_hash','order_number','currency','total_minor'] WHEN 'quotes' THEN ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','created_by','currency','subtotal','tax','shipping','total','snapshot','expires_at']
      WHEN 'quote_lines' THEN ARRAY['tenant_id','quote_id','line_no','product_id','variant_id','description','quantity','unit_price','line_total','snapshot']
      WHEN 'quote_approvals' THEN ARRAY['tenant_id','quote_id','buyer_company_id','requested_by','decided_by','decision']
      WHEN 'outbox_events' THEN ARRAY['tenant_id','event_type','payload','delivery_target','dedup_key'] ELSE allowed END;

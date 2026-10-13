@@ -679,7 +679,8 @@
         "inquiries",
         "quotes",
         "quote_lines",
-        "quote_approvals"
+        "quote_approvals",
+        "quote_conversions"
       ],
       "operations": [
         {
@@ -721,6 +722,14 @@
         {
           "operation_id": "rejectQuote",
           "status": "implemented"
+        },
+        {
+          "operation_id": "createQuoteOrder",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getQuoteOrderConversion",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -732,19 +741,25 @@
         "pricing",
         "tax",
         "shipping",
-        "reliability"
+        "reliability",
+        "orders"
       ],
       "tests": [
         "internal/modules/quotes/module_test.go",
         "internal/modules/quotes/quotes_pgx_test.go",
         "internal/platform/httpapi/quotes/quotes_test.go",
-        "tests/db_quotes.sql"
+        "tests/db_quotes.sql",
+        "tests/db_quote_conversion.sql",
+        "internal/modules/quotes/conversion_test.go",
+        "internal/bootstrap/quoteorders_pgx_test.go",
+        "internal/platform/httpapi/quoteorders/quoteorders_test.go"
       ],
       "scopes": [
         "quotes:read",
-        "quotes:write"
+        "quotes:write",
+        "quotes:convert"
       ],
-      "note": "C-17a contact collection and immutable quote lifecycle; buyer endpoints require an externally verified sealed customer actor, default denied. No customer authentication implementation or order/payment creation."
+      "note": "Immutable quote lifecycle and single approved snapshot to order conversion. Buyer identity defaults denied; prepayment requires an injected checkout adoption port, whose production adapter is pending checkout integration. Test-only Fake validates the port."
     },
     {
       "name": "notifications",
@@ -1118,6 +1133,20 @@
         "tax_categories",
         "tax_rates",
         "tax_settings"
+      ]
+    },
+    {
+      "file": "migrations/028_quote_conversion.sql",
+      "owner": "quotes",
+      "touches_tables": [
+        "quote_conversions",
+        "quotes",
+        "orders",
+        "order_lines",
+        "order_adjustments",
+        "stock_levels",
+        "inventory_reservations",
+        "outbox_events"
       ]
     }
   ]

@@ -149,6 +149,7 @@ ORDERS_DB=""
 STOREFRONT_DB=""
 NOTIFICATIONS_DB=""
 QUOTES_DB=""
+CONVERSION_DB=""
 CATALOG_DB=""
 CART_DB=""
 QUEUE_DB=""
@@ -159,7 +160,7 @@ PRICING_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$CONVERSION_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1004,5 +1005,34 @@ if ! db "$QUOTES_DB" < tests/db_quotes.sql >/dev/null || ! db "$QUOTES_DB" < tes
  bad 'quotes lifecycle and exact role matrix after populated inquiry upgrade'
 else pass 'quotes forward ALTER preserves existing contact inquiry and runtime lifecycle/grants'; fi
 admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
+# Quote conversion is additive: already-approved immutable rows survive unchanged.
+conversions=(migrations/[0-9][0-9][0-9]_quote_conversion.sql)
+[[ ${#conversions[@]} == 1 ]] || { echo 'FAIL: exactly one quote conversion migration required' >&2; exit 1; }
+CONVERSION_DB=quote_conversion_upgrade_$$
+admin -c "CREATE DATABASE $CONVERSION_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${conversions[0]} ]] || break
+ apply_forward "$CONVERSION_DB" "$f"
+done
+# Reuse only the predecessor-compatible fixture before the conversion assertions.
+# It builds actual Create/Send/Accept/Approve commands under runtime authority.
+{
+ awk '/^BEGIN;/{copy=1} /^DO \$conversion\$/{exit} copy' tests/db_quote_conversion.sql
+ echo "SELECT pg_temp.qc_quote(); COMMIT;"
+} | db "$CONVERSION_DB" >/dev/null
+witness_sql="SELECT encode(sha256(jsonb_build_object('id',id,'status',status,'version',version,'snapshot',snapshot,'total',total,'expires_at',expires_at)::text::bytea),'hex') FROM app.quotes;"
+before=$(db "$CONVERSION_DB" -c "$witness_sql")
+[[ -n $before ]] || bad 'quote conversion upgrade has no approved snapshot witness'
+apply_forward "$CONVERSION_DB" "${conversions[0]}"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${conversions[0]} ]] || continue
+ apply_forward "$CONVERSION_DB" "$f"
+done
+result=$(db "$CONVERSION_DB" -c "$witness_sql")
+[[ $result == "$before" ]] || bad 'quote conversion migration changed existing approved snapshot'
+if ! db "$CONVERSION_DB" < tests/db_quote_conversion.sql >/dev/null || ! db "$CONVERSION_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'quote conversion populated upgrade commands or exact role matrix'
+else pass 'quote conversion preserves approved snapshot; conversion/expiry/authority and grants after upgrade'; fi
+admin -c "DROP DATABASE $CONVERSION_DB" >/dev/null; CONVERSION_DB=""
 [[ $fail -eq 0 ]] || exit 1
 echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications and quotes upgrade gates'

@@ -31,11 +31,12 @@ type lineSnapshot struct {
 	LineTaxMinor   int64  `json:"line_tax_minor"`
 	LineTotalMinor int64  `json:"line_total_minor"`
 	// Pricing provenance is bound into the request hash (not order_lines columns).
-	PriceListID   string       `json:"price_list_id"`
-	PricePriority int32        `json:"price_priority"`
-	PriceMinQty   int64        `json:"price_min_quantity"`
-	ReservationID string       `json:"reservation_id,omitempty"`
-	TaxSnapshot   tax.Snapshot `json:"tax_snapshot"`
+	PriceListID   string                `json:"price_list_id"`
+	PricePriority int32                 `json:"price_priority"`
+	PriceMinQty   int64                 `json:"price_min_quantity"`
+	QuoteSource   *contract.QuoteSource `json:"quote_source,omitempty"`
+	ReservationID string                `json:"reservation_id,omitempty"`
+	TaxSnapshot   tax.Snapshot          `json:"tax_snapshot"`
 }
 
 func validID(id string) bool {
@@ -54,11 +55,22 @@ func validKey(key string) bool {
 	return true
 }
 func prepare(in contract.CreateInput) (prepared, error) {
+	return prepareWithSource(in, false)
+}
+
+func prepareQuoted(in contract.CreateInput) (prepared, error) {
+	return prepareWithSource(in, true)
+}
+
+func prepareWithSource(in contract.CreateInput, negotiated bool) (prepared, error) {
 	invalid := func(reason string) (prepared, error) {
 		return prepared{}, fmt.Errorf("%w: %s", contract.ErrInvalid, reason)
 	}
 	if !validID(in.ID) || !validKey(in.IdempotencyKey) || len(in.Lines) == 0 || len(in.Lines) > 1000 || len(in.Adjustments) > 1000 {
 		return invalid("order identity or lines")
+	}
+	if negotiated && len(in.Adjustments) != 0 {
+		return invalid("negotiated adjustments must already be in the quote")
 	}
 	base := money.Money{Currency: in.Currency}
 	if err := base.Validate(); err != nil {
@@ -92,6 +104,9 @@ func prepare(in contract.CreateInput) (prepared, error) {
 	lines := make([]lineSnapshot, 0, len(in.Lines))
 	ids := map[string]bool{}
 	reservations := map[string]bool{}
+	quoteLines := map[int32]bool{}
+	var quoteID string
+	var quoteVersion int64
 	for _, l := range in.Lines {
 		id := strings.ToLower(l.ID)
 		rid := strings.ToLower(l.ReservationID)
@@ -105,7 +120,22 @@ func prepare(in contract.CreateInput) (prepared, error) {
 			}
 			reservations[rid] = true
 		}
-		if l.Price.Unit.Amount < 0 || l.Price.Unit.Currency != in.Currency || l.Price.Line.Currency != in.Currency || !validID(l.Price.PriceListID) || l.Price.MinQuantity < 1 || l.Price.MinQuantity > l.Quantity {
+		if negotiated {
+			if l.QuoteSource == nil || !validID(l.QuoteSource.QuoteID) || l.QuoteSource.Version <= 0 || l.QuoteSource.LineNo <= 0 || quoteLines[l.QuoteSource.LineNo] || l.Price.PriceListID != "" || l.Price.Priority != 0 || l.Price.MinQuantity != 0 {
+				return invalid("negotiated quote source")
+			}
+			source := *l.QuoteSource
+			source.QuoteID = strings.ToLower(source.QuoteID)
+			if quoteID != "" && (source.QuoteID != quoteID || source.Version != quoteVersion) {
+				return invalid("mixed negotiated quotes")
+			}
+			quoteID, quoteVersion = source.QuoteID, source.Version
+			quoteLines[source.LineNo] = true
+			l.QuoteSource = &source
+		} else if l.QuoteSource != nil || !validID(l.Price.PriceListID) || l.Price.MinQuantity < 1 || l.Price.MinQuantity > l.Quantity {
+			return invalid("price-list source")
+		}
+		if l.Price.Unit.Amount < 0 || l.Price.Unit.Currency != in.Currency || l.Price.Line.Currency != in.Currency {
 			return invalid("pricing quote")
 		}
 		priced, err := l.Price.Unit.Mul(l.Quantity)
@@ -163,7 +193,7 @@ func prepare(in contract.CreateInput) (prepared, error) {
 		if err != nil {
 			return prepared{}, fmt.Errorf("%w: %w", contract.ErrInvalid, err)
 		}
-		lines = append(lines, lineSnapshot{ID: id, SKUID: strings.ToLower(l.SKUID), SKU: l.SKU, Quantity: l.Quantity, UnitPriceMinor: l.Price.Unit.Amount, LineNetMinor: a.Net, LineTaxMinor: a.Tax, LineTotalMinor: a.Gross, PriceListID: strings.ToLower(l.Price.PriceListID), PricePriority: l.Price.Priority, PriceMinQty: l.Price.MinQuantity, ReservationID: rid, TaxSnapshot: s})
+		lines = append(lines, lineSnapshot{ID: id, SKUID: strings.ToLower(l.SKUID), SKU: l.SKU, Quantity: l.Quantity, UnitPriceMinor: l.Price.Unit.Amount, LineNetMinor: a.Net, LineTaxMinor: a.Tax, LineTotalMinor: a.Gross, PriceListID: strings.ToLower(l.Price.PriceListID), PricePriority: l.Price.Priority, PriceMinQty: l.Price.MinQuantity, QuoteSource: l.QuoteSource, ReservationID: rid, TaxSnapshot: s})
 	}
 	for _, a := range in.Adjustments {
 		id := strings.ToLower(a.ID)
@@ -182,7 +212,7 @@ func prepare(in contract.CreateInput) (prepared, error) {
 			return prepared{}, fmt.Errorf("%w: %w", contract.ErrInvalid, err)
 		}
 	}
-	if total.Amount < 0 {
+	if total.Amount < 0 || (negotiated && total.Amount == 0) {
 		return invalid("negative total")
 	}
 	linesJSON, err := json.Marshal(lines)

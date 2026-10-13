@@ -62,7 +62,7 @@ func TestQuotesUnconfiguredAuthenticationIsDenied(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := "11111111-1111-1111-1111-111111111111"
-	for _, tc := range []struct{ method, path string }{{"POST", "/api/public/v1/inquiries"}, {"POST", "/api/v1/t/" + id + "/quotes"}, {"GET", "/api/v1/t/" + id + "/quotes/" + id}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/send"}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/withdraw"}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/expire"}, {"GET", "/api/public/v1/quotes/" + id}, {"POST", "/api/public/v1/quotes/" + id + "/accept"}, {"POST", "/api/public/v1/quotes/" + id + "/approve"}, {"POST", "/api/public/v1/quotes/" + id + "/reject"}} {
+	for _, tc := range []struct{ method, path string }{{"POST", "/api/v1/t/" + id + "/quotes/" + id + "/orders"}, {"GET", "/api/v1/t/" + id + "/quotes/" + id + "/order-conversion"}, {"POST", "/api/public/v1/inquiries"}, {"POST", "/api/v1/t/" + id + "/quotes"}, {"GET", "/api/v1/t/" + id + "/quotes/" + id}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/send"}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/withdraw"}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/expire"}, {"GET", "/api/public/v1/quotes/" + id}, {"POST", "/api/public/v1/quotes/" + id + "/accept"}, {"POST", "/api/public/v1/quotes/" + id + "/approve"}, {"POST", "/api/public/v1/quotes/" + id + "/reject"}} {
 		w := httptest.NewRecorder()
 		server.Handler.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, nil))
 		if w.Code != 401 || w.Header().Get("Content-Type") != "application/problem+json" {

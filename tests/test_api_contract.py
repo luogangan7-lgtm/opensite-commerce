@@ -120,7 +120,7 @@ class APIContractTests(unittest.TestCase):
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
-        quote_operations = {"submitInquiry", "createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote", "getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote"}
+        quote_operations = {"submitInquiry", "createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote", "getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote", "createQuoteOrder", "getQuoteOrderConversion"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
                           if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | {"listNotificationFailures", "redriveNotification"})
         for name in expected - {"health", "getPublishedSite"}:
@@ -165,6 +165,33 @@ class APIContractTests(unittest.TestCase):
         inquiry = self.api["components"]["schemas"]["CreateInquiry"]
         self.assertEqual(set(inquiry["properties"]), {"product_id", "buyer_email", "buyer_name", "quantity", "message"})
         self.assertFalse(inquiry["additionalProperties"])
+
+    def test_quote_conversion_requires_distinct_customer_session(self):
+        ops = operations(self.api)
+        path, method, op = ops["createQuoteOrder"]
+        self.assertEqual((path, method), ("/api/v1/t/{tenant_id}/quotes/{quote_id}/orders", "post"))
+        self.assertEqual(op["x-opensite-access"], "BuyerCompany")
+        self.assertEqual(op["x-required-scope"], "quotes:convert")
+        self.assertEqual(op["security"], [{"CustomerSession": []}])
+        scheme = self.api["components"]["securitySchemes"]["CustomerSession"]
+        self.assertEqual((scheme["type"], scheme["in"], scheme["name"]),
+                         ("apiKey", "cookie", "__Host-osc_customer_session"))
+        contract.validate_contract(self.api)
+        mutations = {
+            "public bypass": lambda a: operations(a)["createQuoteOrder"][2].update({"x-opensite-access": "Public", "security": []}),
+            "staff session": lambda a: operations(a)["createQuoteOrder"][2].update(security=[{"adminSession": []}]),
+            "scope drift": lambda a: operations(a)["createQuoteOrder"][2].update({"x-required-scope": "quotes:write"}),
+            "missing scope": lambda a: operations(a)["createQuoteOrder"][2].pop("x-required-scope"),
+            "customer cookie drift": lambda a: a["components"]["securitySchemes"]["CustomerSession"].update(name="__Host-osc_admin_session"),
+            "missing CSRF": lambda a: operations(a)["createQuoteOrder"][2].update(parameters=[p for p in operations(a)["createQuoteOrder"][2]["parameters"] if p.get("$ref") != "#/components/parameters/CSRFToken"]),
+            "missing Origin": lambda a: operations(a)["createQuoteOrder"][2].update(parameters=[p for p in operations(a)["createQuoteOrder"][2]["parameters"] if p.get("$ref") != "#/components/parameters/BuyerOrigin"]),
+            "missing trusted marker": lambda a: operations(a)["createQuoteOrder"][2].pop("x-opensite-trusted-buyer"),
+        }
+        for name, mutate in mutations.items():
+            api = copy.deepcopy(self.api)
+            mutate(api)
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                contract.validate_contract(api)
 
     def test_quote_operation_status_and_presence_mutations_are_rejected(self):
         names = ("submitInquiry", "createQuote", "getQuote", "sendQuote", "withdrawQuote",
