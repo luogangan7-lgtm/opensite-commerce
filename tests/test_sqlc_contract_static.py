@@ -33,27 +33,34 @@ assert len(tables) >= 25, f'only {len(tables)} tables'
 assert {'warehouses','stock_levels','inventory_reservations','inventory_movements'} <= tables
 functions = set(re.findall(r'\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+app\.([a-z_]+)', all_schema, re.I))
 
-def declared_relation(text):
-    # FROM app.function(...) is a declared routine, never an unknown table.
-    for keyword, name, call in re.findall(r'\b(FROM|INTO|JOIN|UPDATE)\s+app\.([a-z_]+)(\s*\()?', text, re.I):
-        assert name in (functions if call and keyword.upper() in ('FROM', 'JOIN') else tables), name
 
-# Misspellings remain fail-closed in both relation classes.
-declared_relation('SELECT * FROM app.idempotency_claim(NULL); SELECT * FROM app.quotes;')
-for bad in ('SELECT * FROM app.unknown_quote_table;', 'SELECT * FROM app.unknown_quote_function(NULL);'):
+def check_sources(query, origin):
+    # FROM/JOIN may invoke a declared set-returning function. INTO's parentheses
+    # are column lists, so writes must still name a real table. This is only a
+    # name sanity check; pinned sqlc and real PG independently parse/typecheck.
+    sources = re.findall(r'\b(FROM|INTO|JOIN|UPDATE)\s+app\.([a-z_]+)\b(\s*\()?', query, re.I)
+    for clause, name, call in sources:
+        expected = functions if call and clause.upper() in ('FROM', 'JOIN') else tables
+        assert name in expected, (origin, name)
+
+
+check_sources('SELECT * FROM app.inventory_reserve($1, $2);', 'function fixture')
+check_sources('INSERT INTO app.orders(tenant_id,id) VALUES($1,$2);', 'column-list fixture')
+for invalid in ('SELECT * FROM app.missing_function($1);',
+                'INSERT INTO app.missing_table(tenant_id) VALUES($1);'):
     try:
-        declared_relation(bad)
+        check_sources(invalid, 'negative fixture')
     except AssertionError:
         pass
     else:
-        raise AssertionError('undeclared SQL relation accepted')
+        raise AssertionError('static source check accepted an undeclared name')
 query_names = []
 query_text = []
 for qpath in (root/sql['queries']).glob('*.sql'):
     q = qpath.read_text()
     query_text.append(q)
     query_names += re.findall(r'^-- name: (\w+) :(one|many|exec|execrows)',q,re.M)
-    declared_relation(q)
+    check_sources(q, qpath.name)
 assert len(query_names) == len(set(name for name,_ in query_names)), 'duplicate SQL query names'
 assert len(query_names) >= 6
 ci = (root/'.github/workflows/checks.yml').read_text()

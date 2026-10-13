@@ -68,6 +68,7 @@ expected = [
     'db_customers.sql',
     'db_ledger.sql',
     'db_catalog_api.sql',
+    'db_orders.sql',
     'db_quotes.sql',
 ]
 n_migrations = len(list((root / 'migrations').glob('[0-9][0-9][0-9]_*.sql')))
@@ -144,16 +145,9 @@ fi
     failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
     assert failed.returncode == 31, (failed.stdout, failed.stderr)
     assert 'RUN tests/db_customers.sql' in failed.stdout
+    env['FAKE_FAIL_ON'] = 'ORDERS_GATE'
+    failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+    assert failed.returncode == 31, (failed.stdout, failed.stderr)
+    assert 'RUN tests/db_orders.sql' in failed.stdout
+    assert 'PASS: module ownership' not in failed.stdout
 print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, propagates failures (mock psql; NO SQL executed)')
-
-# Quotes must remain in the executed tail and its errors propagate as failures.
-with tempfile.TemporaryDirectory() as tmp:
-    fake = Path(tmp) / 'psql'
-    fake.write_text("#!/bin/bash\npayload=$(cat)\nif [[ $payload == *'SHOW server_version_num'* ]]; then echo 180002; elif [[ $payload == *'QUOTES_SCHEMA_REQUIRED'* ]]; then exit 31; elif [[ $payload == *'MODULE_TABLE_OWNERSHIP'* ]]; then echo \"$FAKE_TABLES_JSON\"; fi\n")
-    fake.chmod(0o755)
-    env = dict(os.environ, DATABASE_URL='postgresql://fake/opensite',
-               FAKE_TABLES_JSON=json.dumps(tables),PATH=str(Path(tmp))+os.pathsep+os.environ['PATH'])
-    failed = subprocess.run(command,cwd=root,env=env,capture_output=True,text=True)
-    assert failed.returncode != 0, (failed.stdout,failed.stderr)
-    assert 'RUN tests/db_quotes.sql' in failed.stdout
-print('PASS: quote SQL acceptance remains a fail-fast executed runner tail')

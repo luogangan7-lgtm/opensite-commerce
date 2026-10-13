@@ -324,7 +324,7 @@ sql <<<"UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-inter
 gate_close 13
 tx inv_expire app_runtime "$T" "SELECT app.inventory_expire_due(1); $(park 13)" &
 await inv_expire advisory
-tx inv_commit app_runtime "$T" "SELECT app.inventory_commit('$RID');" &
+tx inv_commit app_inventory_executor "$T" "SELECT app.inventory_commit('$RID');" &
 await inv_commit "${ROWLOCK[@]}"
 gate_open 13; wait
 expect inv_expire ok; expect inv_commit INVENTORY_INVALID_TRANSITION; expect inv_commit 55000
@@ -340,7 +340,7 @@ await inv_stock advisory
 # Establish a future expiry AFTER the stock-holder is parked. Commit must be
 # observed waiting while still valid; the clock predicate is the expiry barrier.
 sql <<<"UPDATE app.inventory_reservations SET expires_at=clock_timestamp()+interval '3 seconds' WHERE tenant_id='$T' AND id='$RID';" >/dev/null
-tx inv_commit_wait app_runtime "$T" "SELECT app.inventory_commit('$RID');" &
+tx inv_commit_wait app_inventory_executor "$T" "SELECT app.inventory_commit('$RID');" &
 await inv_commit_wait "${ROWLOCK[@]}"
 VALID_WAIT=$(sql <<<"SELECT clock_timestamp()<r.expires_at AND a.xact_start<r.expires_at
  FROM app.inventory_reservations r JOIN pg_stat_activity a ON a.application_name='${RACE_PREFIX}inv_commit_wait'
@@ -582,6 +582,114 @@ got=$(sql <<<"SELECT version||'|'||product_code FROM app.products WHERE tenant_i
 echo "race catalog stale CAS: $got (expected 2|CAS-FIRST)"
 [[ $got == '2|CAS-FIRST' ]] || fail=1
 
+# C-15a: both commands target one sealed order and its exact owned reservation.
+# Park the first after its transition, witness the contender's order-row wait,
+# then release. RC rejects the obsolete command; RR/Serializable serialize-fail.
+# Each level is exercised with both winners; stock, movements and outbox counts
+# are positive witnesses, including rollback of every losing side effect.
+for isolation in 'READ COMMITTED' 'REPEATABLE READ' SERIALIZABLE; do
+ for first_target in paid cancelled; do
+  read -r T SKU OID <<<"$(inventory_fixture)"
+  sql <<SQL >/dev/null
+SELECT set_config('app.tenant_id','$T',false);
+SET ROLE app_runtime;
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','orders-race-reserve',900)).id AS rid \gset
+SELECT app.orders_create('$OID','orders-race-create',sha256('race'::bytea),NULL,
+ '{"email":"race@example.invalid"}','USD',20,'{"amount_minor":20,"currency":"USD","service":"fixture"}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','race-sku','quantity',1,
+ 'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
+ 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
+SQL
+  if [[ $first_target == paid ]]; then second_target=cancelled; stock=0; race_gate=40
+  else second_target=paid; stock=1; race_gate=41; fi
+  gate_close "$race_gate"
+  tx orders_first app_runtime "$T" "SELECT app.orders_transition('$OID','$first_target','race-first',0); $(park "$race_gate")" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
+  await orders_first advisory
+  tx orders_second app_runtime "$T" "SELECT app.orders_transition('$OID','$second_target','race-second',0);" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
+  await orders_second "${ROWLOCK[@]}"
+  gate_open "$race_gate"; wait
+  expect orders_first ok
+  if [[ $isolation == 'READ COMMITTED' ]]; then expect orders_second ORDER_INVALID_TRANSITION; expect orders_second 55000
+  else expect orders_second 40001; fi
+  got=$(sql <<<"SELECT o.state||'|'||o.version||'|'||s.on_hand||'|'||s.reserved||'|'||
+   (SELECT count(*) FROM app.inventory_movements WHERE tenant_id='$T')||'|'||
+   (SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T' AND payload->>'order_id'='$OID')
+   FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id='$T' AND o.id='$OID';")
+  echo "orders pay/cancel $isolation first=$first_target: $got (expected $first_target|2|$stock|0|3|2)"
+  [[ $got == "$first_target|2|$stock|0|3|2" ]] || fail=1
+ done
+done
+
+# C-15a: a two-line order must lock EVERY reservation before its first stock
+# mutation. The first commit parks in a test-only movement trigger; another
+# connection proves the later reservation is already locked (NOWAIT 55P03).
+# A due sweep skips that held later reservation. Payment then notices expiry
+# and rolls all changes back; subsequent expiry+cancel preserve physical stock.
+read -r T SKU OID <<<"$(inventory_fixture 2)"
+sql <<SQL >/dev/null
+SELECT set_config('app.tenant_id','$T',false);
+SET ROLE app_runtime;
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','prelock-first',900)).id AS r1 \gset
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','prelock-second',900)).id AS r2 \gset
+SELECT app.orders_create('$OID','prelock-create',sha256('prelock'::bytea),NULL,
+ '{"email":"prelock@example.invalid"}','USD',0,'{}',
+ jsonb_build_array(
+  jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','prelock-sku','quantity',1,
+   'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
+   'reservation_id',:'r1','tax_snapshot','{}'::jsonb),
+  jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','prelock-sku','quantity',1,
+   'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
+   'reservation_id',:'r2','tax_snapshot','{}'::jsonb)), '[]');
+SQL
+read -r R_FIRST R_LATER <<<"$(sql <<<"SELECT id FROM app.inventory_reservations WHERE tenant_id='$T' AND owner_id='$OID' ORDER BY id;" | paste -sd' ' -)"
+sql <<SQL >/dev/null
+UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second'
+ WHERE tenant_id='$T' AND id='$R_LATER';
+CREATE FUNCTION public.c15a_prelock_$$() RETURNS trigger LANGUAGE plpgsql AS \$body\$
+BEGIN
+ PERFORM pg_advisory_xact_lock_shared($$,42);
+ RETURN NEW;
+END \$body\$;
+CREATE TRIGGER c15a_prelock_$$ BEFORE INSERT ON app.inventory_movements
+ FOR EACH ROW WHEN (NEW.kind='commit' AND NEW.reservation_id='$R_FIRST')
+ EXECUTE FUNCTION public.c15a_prelock_$$();
+SQL
+gate_close 42
+tx orders_prelock_pay app_runtime "$T" "SELECT app.orders_transition('$OID','paid','prelock-pay',0);" &
+await orders_prelock_pay advisory
+tx orders_prelock_probe postgres "$T" "DO \$proof\$ DECLARE locked boolean:=false; BEGIN
+ BEGIN PERFORM id FROM app.inventory_reservations WHERE tenant_id='$T' AND id='$R_LATER' FOR UPDATE NOWAIT;
+ EXCEPTION WHEN lock_not_available THEN locked:=true; END;
+ IF NOT locked THEN RAISE EXCEPTION 'ORDERS_PRELOCK_GATE reservation not locked before stock write'; END IF;
+ END \$proof\$;"
+expect orders_prelock_probe ok
+# In the intentionally broken overlay, NOWAIT succeeds. Do not start a sweep
+# that would deadlock: report the exact fault, then release the driver normally.
+if [[ ! -s "$ERRDIR/orders_prelock_probe" ]]; then
+ tx orders_prelock_sweep app_runtime "$T" "SELECT 'skipped='||app.inventory_expire_due(100);"
+ expect orders_prelock_sweep ok; result orders_prelock_sweep 'skipped=0'
+fi
+gate_open 42; wait
+expect orders_prelock_pay INVENTORY_RESERVATION_EXPIRED; expect orders_prelock_pay 55000
+sql <<SQL >/dev/null
+DROP TRIGGER c15a_prelock_$$ ON app.inventory_movements;
+DROP FUNCTION public.c15a_prelock_$$();
+SQL
+got=$(sql <<<"SELECT o.state||'|'||o.version||'|'||s.on_hand||'|'||s.reserved||'|'||
+ (SELECT count(*) FROM app.inventory_movements WHERE tenant_id='$T')||'|'||
+ (SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T' AND payload->>'order_id'='$OID')
+ FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id='$T' AND o.id='$OID';")
+echo "orders prelock/expiry rollback: $got (expected pending_payment|1|2|2|3|1)"
+[[ $got == 'pending_payment|1|2|2|3|1' ]] || fail=1
+tx orders_prelock_cancel app_runtime "$T" "SELECT app.inventory_expire_due(100); SELECT app.orders_transition('$OID','cancelled','prelock-cancel',0);"
+expect orders_prelock_cancel ok
+got=$(sql <<<"SELECT o.state||'|'||s.on_hand||'|'||s.reserved||'|'||
+ (SELECT count(*) FROM app.inventory_movements WHERE tenant_id='$T')||'|'||
+ (SELECT count(*) FROM app.outbox_events WHERE tenant_id='$T' AND payload->>'order_id'='$OID')
+ FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id='$T' AND o.id='$OID';")
+echo "orders prelock expiry/cancel conservation: $got (expected cancelled|2|0|5|2)"
+[[ $got == 'cancelled|2|0|5|2' ]] || fail=1
+
 # Quotes: freeze a pending quote and use the same expected version for both
 # writers. Run both deterministic winners; a rowlock wait precedes gate release.
 for winner in approve withdraw; do
@@ -624,7 +732,7 @@ SQL
  [[ $got == "$expected|4|$approvals|4" ]] || fail=1
 done
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/quotes contract" >&2; exit 1; fi
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/orders/quotes contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
@@ -633,4 +741,5 @@ echo 'PASS: tax INSERT/UPDATE exclusion races preserve non-overlapping windows'
 echo 'PASS: customer normalized email registrations commit once per tenant'
 echo 'PASS: ledger identical and conflicting posting races preserve one posted journal/two entries'
 echo 'PASS: catalog stale CAS waits for row lock, rechecks version and leaves winner unchanged'
+echo 'PASS: orders pay/cancel and prelock/expiry races conserve inventory and events'
 echo 'PASS: quote approve/withdraw row-lock CAS races have exactly one winner and atomic outbox/approval'
