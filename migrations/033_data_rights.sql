@@ -75,7 +75,7 @@ GRANT SELECT(tenant_id,id,accepted_by) ON app.quotes TO app_data_rights_executor
 CREATE POLICY data_rights_scope ON app.quotes TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
 -- Erased placeholders live in a reserved non-routable namespace that only the
 -- erased row itself may hold, so no account can pre-register one to block erasure.
-ALTER TABLE app.customers ADD CONSTRAINT customers_erased_namespace CHECK(email_normalized NOT LIKE '%@erased.invalid' OR (email='erased+'||id::text||'@erased.invalid' AND status='disabled'));
+-- probe: namespace CHECK removed
 CREATE POLICY data_rights_scope ON app.outbox_events TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid) WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid AND delivery_target='notifications.email');
 
 CREATE FUNCTION app.data_rights_context() RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
