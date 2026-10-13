@@ -64,6 +64,9 @@ jobs:
           OPENSITE_DISPOSABLE_PG: '1'
         run: ./scripts/check_catalog_api.sh
       - name: Go pgx-tagged vet and race tests
+        env:
+          C22A_DATABASE_URL: ${{ env.C07_DATABASE_URL }}
+          C22A_MAINTENANCE_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: |
           # Restore the committed isolated fixture after its HTTP mutation tests.
           psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f tests/fixtures/catalog_api.sql
