@@ -48,6 +48,10 @@ database checks the idle deadline on each use. No bearer token appears in JSON.
 Verified customer context is wired into the existing cart resolver. Checkout
 and customer privacy can consume the same public actor context when their
 storefront HTTP adapters merge; their business logic is outside this card.
+The current purchasing BFF remains its explicitly labeled contract fixture and
+is closed in production. Connecting that BFF to these real cookie/challenge
+endpoints is separate frontend work; this change does not treat fixture login
+headers as customer authentication.
 
 Only Fake or loopback SMTP is supported. Challenge mail refuses recipients
 outside `.test`, `.invalid` and localhost, even with Fake. Links place the
