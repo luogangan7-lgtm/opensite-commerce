@@ -1,6 +1,6 @@
 -- Responsibility: customer authentication invariants on the real CI PostgreSQL.
 -- Dependencies: customer_auth forward migration; called by check_pg only in CI.
--- Invariants: email proof, token purpose/single-use, tenant isolation and sessions.
+-- Invariants: email proof, single-use, tenant identity/session isolation and shared global/IP quotas.
 BEGIN;
 DO $schema$
 DECLARE tab text;
@@ -13,6 +13,12 @@ BEGIN
    RAISE EXCEPTION 'CUSTOMER_AUTH_FORCE_RLS_MISSING: %',tab;
   END IF;
  END LOOP;
+ IF to_regclass('app.customer_auth_global_limits') IS NULL THEN RAISE EXCEPTION 'CUSTOMER_AUTH_GLOBAL_SCHEMA_MISSING'; END IF;
+ IF (SELECT array_agg(attname::text ORDER BY attnum) FROM pg_attribute
+  WHERE attrelid='app.customer_auth_global_limits'::regclass AND attnum>0 AND NOT attisdropped)
+  IS DISTINCT FROM ARRAY['kind','key_hash','window_start','attempts','failures','cooldown_until']::text[]
+ OR EXISTS(SELECT FROM pg_class WHERE oid='app.customer_auth_global_limits'::regclass AND (relrowsecurity OR relforcerowsecurity)) THEN
+  RAISE EXCEPTION 'CUSTOMER_AUTH_GLOBAL_SCHEMA_SCOPE'; END IF;
 END $schema$;
 DO $fixture$
 DECLARE t uuid:=uuidv7(); other_t uuid:=uuidv7(); oid uuid:=uuidv7(); foreign_order uuid:=uuidv7(); guest uuid:=uuidv7();
@@ -159,10 +165,13 @@ BEGIN
  UPDATE app.tenants SET status='active' WHERE id=t;
 END $lifecycle$;
 DO $durable_limits$
-DECLARE t uuid:=uuidv7(); n integer; delay bigint; fixed_account bytea:=sha256('cooldown-account'::bytea);
- fixed_ip bytea:=sha256('cooldown-ip'::bytea); cutoff timestamptz;
+DECLARE t uuid:=uuidv7(); other_t uuid:=uuidv7(); selected_t uuid; n integer; delay bigint;
+ fixed_account bytea:=sha256('cooldown-account'::bytea); fixed_ip bytea:=sha256('cooldown-ip'::bytea);
+ cutoff timestamptz; ip_cutoff timestamptz; global_key bytea:=decode(repeat('00',32),'hex');
 BEGIN
- INSERT INTO app.tenants(id,name) VALUES(t,'customer-auth-durable-limits');
+ INSERT INTO app.tenants(id,name) VALUES(t,'customer-auth-durable-limits'),(other_t,'customer-auth-durable-other');
+ -- These are owner-only transactional fixtures in an expendable CI database.
+ TRUNCATE app.customer_auth_global_limits;
  PERFORM set_config('app.tenant_id',t::text,true);
  EXECUTE 'SET LOCAL ROLE app_customer_auth';
  PERFORM app.customer_admit(fixed_account,fixed_ip,clock_timestamp());
@@ -171,21 +180,65 @@ BEGIN
  IF delay<=0 OR delay>60 THEN RAISE EXCEPTION 'CUSTOMER_AUTH_FAILED_COOLDOWN'; END IF;
  EXECUTE 'RESET ROLE';
  SELECT cooldown_until INTO STRICT cutoff FROM app.customer_auth_limits WHERE tenant_id=t AND kind='account' AND key_hash=fixed_account;
+ SELECT cooldown_until INTO STRICT ip_cutoff FROM app.customer_auth_global_limits WHERE kind='ip' AND key_hash=fixed_ip;
  EXECUTE 'SET LOCAL ROLE app_customer_auth';
  PERFORM app.customer_failed(fixed_account,fixed_ip);
  EXECUTE 'RESET ROLE';
- IF (SELECT cooldown_until FROM app.customer_auth_limits WHERE tenant_id=t AND kind='account' AND key_hash=fixed_account)<>cutoff THEN
- RAISE EXCEPTION 'CUSTOMER_AUTH_COOLDOWN_EXTENDED'; END IF;
- -- Rotating accounts cannot evade one IP counter; rotating both cannot evade global.
+ IF (SELECT cooldown_until FROM app.customer_auth_limits WHERE tenant_id=t AND kind='account' AND key_hash=fixed_account)<>cutoff
+ OR(SELECT cooldown_until FROM app.customer_auth_global_limits WHERE kind='ip' AND key_hash=fixed_ip)<>ip_cutoff THEN
+  RAISE EXCEPTION 'CUSTOMER_AUTH_COOLDOWN_EXTENDED'; END IF;
+ -- IP failure cooldown spans tenants, while account cooldown stays in tenant A.
+ PERFORM set_config('app.tenant_id',other_t::text,true);
  EXECUTE 'SET LOCAL ROLE app_customer_auth';
- FOR n IN 1..31 LOOP delay:=app.customer_admit(sha256(convert_to('ip-account-'||n,'UTF8')),sha256('fixed-ip'::bytea),clock_timestamp()); END LOOP;
- IF delay<=0 OR delay>60 THEN RAISE EXCEPTION 'CUSTOMER_AUTH_IP_DISTRIBUTED_LIMIT'; END IF;
- FOR n IN 1..301 LOOP delay:=app.customer_admit(sha256(convert_to('global-account-'||n,'UTF8')),sha256(convert_to('global-ip-'||n,'UTF8')),clock_timestamp()); END LOOP;
- IF delay<=0 OR delay>60 THEN RAISE EXCEPTION 'CUSTOMER_AUTH_GLOBAL_DISTRIBUTED_LIMIT'; END IF;
+ delay:=app.customer_admit(sha256('other-cooldown-account'::bytea),fixed_ip,clock_timestamp());
+ IF delay<=0 OR delay>60 THEN RAISE EXCEPTION 'CUSTOMER_AUTH_SHARED_IP_COOLDOWN'; END IF;
+ IF app.customer_admit(fixed_account,sha256('different-cooldown-ip'::bytea),clock_timestamp())<>0 THEN
+  RAISE EXCEPTION 'CUSTOMER_AUTH_CROSS_TENANT_ACCOUNT_COOLDOWN'; END IF;
  EXECUTE 'RESET ROLE';
- IF EXISTS(SELECT FROM app.customer_auth_limits WHERE tenant_id=t AND key_hash=sha256('global-account-301'::bytea))
- OR(SELECT attempts FROM app.customer_auth_limits WHERE tenant_id=t AND kind='global')<>301 THEN
- RAISE EXCEPTION 'CUSTOMER_AUTH_GLOBAL_ALLOCATION_BOUND'; END IF;
+ IF EXISTS(SELECT FROM app.customer_auth_limits WHERE tenant_id=other_t AND key_hash=sha256('other-cooldown-account'::bytea)) THEN
+  RAISE EXCEPTION 'CUSTOMER_AUTH_IP_COOLDOWN_ACCOUNT_ALLOCATION'; END IF;
+ TRUNCATE app.customer_auth_global_limits;
+ -- Rotating accounts AND tenants cannot evade the shared IP counter.
+ FOR n IN 1..31 LOOP
+  selected_t:=CASE WHEN n%2=1 THEN t ELSE other_t END;
+  PERFORM set_config('app.tenant_id',selected_t::text,true);
+  EXECUTE 'SET LOCAL ROLE app_customer_auth';
+  delay:=app.customer_admit(sha256(convert_to('ip-account-'||n,'UTF8')),sha256('fixed-ip'::bytea),clock_timestamp());
+  IF (n<=30 AND delay<>0) OR(n=31 AND(delay<=0 OR delay>60)) THEN
+   RAISE EXCEPTION 'CUSTOMER_AUTH_IP_DISTRIBUTED_LIMIT'; END IF;
+  EXECUTE 'RESET ROLE';
+ END LOOP;
+ IF EXISTS(SELECT FROM app.customer_auth_limits WHERE key_hash=sha256('ip-account-31'::bytea))
+ OR(SELECT attempts FROM app.customer_auth_global_limits WHERE kind='ip' AND key_hash=sha256('fixed-ip'::bytea))<>31 THEN
+  RAISE EXCEPTION 'CUSTOMER_AUTH_IP_ALLOCATION_BOUND'; END IF;
+ TRUNCATE app.customer_auth_global_limits;
+ -- Rotating IPs/accounts AND tenants cannot evade global; caller clocks cannot reset it.
+ FOR n IN 1..305 LOOP
+  selected_t:=CASE WHEN n%2=1 THEN t ELSE other_t END;
+  PERFORM set_config('app.tenant_id',selected_t::text,true);
+  EXECUTE 'SET LOCAL ROLE app_customer_auth';
+  delay:=app.customer_admit(sha256(convert_to('global-account-'||n,'UTF8')),sha256(convert_to('global-ip-'||n,'UTF8')),clock_timestamp()+interval '1 day');
+  IF (n<=300 AND delay<>0) OR(n>300 AND(delay<=0 OR delay>60)) THEN
+   RAISE EXCEPTION 'CUSTOMER_AUTH_GLOBAL_DISTRIBUTED_LIMIT'; END IF;
+  EXECUTE 'RESET ROLE';
+ END LOOP;
+ IF EXISTS(SELECT FROM app.customer_auth_limits WHERE key_hash=sha256('global-account-301'::bytea))
+ OR EXISTS(SELECT FROM app.customer_auth_global_limits WHERE kind='ip' AND key_hash=sha256('global-ip-301'::bytea))
+ OR(SELECT attempts FROM app.customer_auth_global_limits WHERE kind='global' AND key_hash=global_key)<>301
+ OR(SELECT count(*) FROM app.customer_auth_global_limits WHERE kind='ip')<>300 THEN
+  RAISE EXCEPTION 'CUSTOMER_AUTH_GLOBAL_ALLOCATION_BOUND'; END IF;
+ TRUNCATE app.customer_auth_global_limits;
+ -- The remaining account budget is ten per tenant, independent of IP rotation.
+ PERFORM set_config('app.tenant_id',t::text,true);
+ EXECUTE 'SET LOCAL ROLE app_customer_auth';
+ FOR n IN 1..11 LOOP
+  delay:=app.customer_admit(sha256('ten-account-budget'::bytea),sha256(convert_to('account-ip-'||n,'UTF8')),clock_timestamp());
+  IF (n<=10 AND delay<>0) OR(n=11 AND(delay<=0 OR delay>60)) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_ACCOUNT_LIMIT'; END IF;
+ END LOOP;
+ PERFORM set_config('app.tenant_id',other_t::text,true);
+ IF app.customer_admit(sha256('ten-account-budget'::bytea),sha256('account-other-ip'::bytea),clock_timestamp())<>0 THEN
+  RAISE EXCEPTION 'CUSTOMER_AUTH_ACCOUNT_LIMIT_TENANT_SCOPE'; END IF;
+ EXECUTE 'RESET ROLE';
 END $durable_limits$;
 ROLLBACK;
-SELECT 'PASS: customer email proof, purpose, single-use, reset revocation and tenant isolation';
+SELECT 'PASS: customer proof/session isolation, shared global/IP quotas and bounded tenant account admission';

@@ -25,7 +25,7 @@ DECLARE
   'shipping_zones','shipping_zone_destinations','shipping_profiles','shipping_rates',
   'tax_zones','tax_zone_locations','tax_categories','tax_rates','tax_settings',
   'customers','customer_credentials','customer_addresses','buyer_companies','buyer_roles','buyer_company_members',
-  'customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits',
+  'customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits',
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals',
@@ -75,7 +75,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','auth_account_attempts','auth_login_attempts','known_devices']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='INSERT' THEN
@@ -985,7 +985,7 @@ BEGIN
    AND(NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_FORCE_RLS %',t.relname; END IF;
   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
    allowed:=ARRAY[]::text[];
-   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['customers','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits']);
+   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['customers','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits']);
    IF expected_table THEN
     SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
    ELSIF privilege='SELECT' THEN
@@ -996,11 +996,13 @@ BEGIN
      WHEN 'customer_auth_tokens' THEN ARRAY['tenant_id','customer_id','token_hash','purpose','email_normalized','pending_password_hash','credential_version','expires_at']
      WHEN 'customer_sessions' THEN ARRAY['tenant_id','customer_id','token_hash','credential_version','expires_at','idle_expires_at']
      WHEN 'customer_guest_order_links' THEN ARRAY['tenant_id','customer_id','order_id']
-     WHEN 'customer_auth_limits' THEN ARRAY['tenant_id','kind','key_hash'] ELSE allowed END;
+     WHEN 'customer_auth_limits' THEN ARRAY['tenant_id','kind','key_hash']
+     WHEN 'customer_auth_global_limits' THEN ARRAY['kind','key_hash'] ELSE allowed END;
    ELSIF privilege='UPDATE' THEN
     allowed:=CASE t.relname WHEN 'customers' THEN ARRAY['verified_at'] WHEN 'customer_credentials' THEN ARRAY['password_hash']
      WHEN 'customer_auth_tokens' THEN ARRAY['consumed_at'] WHEN 'customer_sessions' THEN ARRAY['revoked_at','idle_expires_at','last_seen_at']
-     WHEN 'customer_auth_limits' THEN ARRAY['window_start','attempts','failures','cooldown_until'] ELSE allowed END;
+     WHEN 'customer_auth_limits' THEN ARRAY['window_start','attempts','failures','cooldown_until']
+     WHEN 'customer_auth_global_limits' THEN ARRAY['window_start','attempts','failures','cooldown_until'] ELSE allowed END;
    END IF;
    IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected_table OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'CUSTOMER_AUTH_TABLE_CAPABILITY % %',t.relname,privilege; END IF;

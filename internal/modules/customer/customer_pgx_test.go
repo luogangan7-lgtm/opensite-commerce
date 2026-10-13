@@ -418,3 +418,41 @@ func TestCustomerPGRejectsExecutorPrivilegeDrift(t *testing.T) {
 		t.Fatal("CUSTOMER_PG_EXECUTOR_PRIVILEGE_DRIFT_RED: executor schema CREATE was accepted")
 	}
 }
+
+// Counter metadata is shared across tenants but remains behind the proof port.
+// Inject effective column privileges, including PUBLIC, to prove startup rejects
+// direct reader or broader private-writer authority on the new global table.
+func TestCustomerPGRejectsGlobalCounterPrivilegeDrift(t *testing.T) {
+	f := customerPG(t)
+	for _, tc := range []struct {
+		name, grant, revoke string
+	}{
+		{"customer role reader", "GRANT SELECT(key_hash) ON app.customer_auth_global_limits TO app_customer_auth", "REVOKE SELECT(key_hash) ON app.customer_auth_global_limits FROM app_customer_auth"},
+		{"public reader", "GRANT SELECT(key_hash) ON app.customer_auth_global_limits TO PUBLIC", "REVOKE SELECT(key_hash) ON app.customer_auth_global_limits FROM PUBLIC"},
+		{"executor key writer", "GRANT UPDATE(key_hash) ON app.customer_auth_global_limits TO app_customer_executor", "REVOKE UPDATE(key_hash) ON app.customer_auth_global_limits FROM app_customer_executor"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := f.owner.InMaintenance(cleanupCtx, func(ctx context.Context, tx pgx.Tx) error {
+					_, err := tx.Exec(ctx, tc.revoke)
+					return err
+				}); err != nil {
+					t.Error("CUSTOMER_PG_GLOBAL_PRIVILEGE_CLEANUP_FAILED")
+				}
+			}()
+			f.fixture(t, func(ctx context.Context, tx pgx.Tx) error {
+				_, err := tx.Exec(ctx, tc.grant)
+				return err
+			})
+			runner, err := pgxadapter.OpenCustomerRunner(f.ctx, os.Getenv("CUSTOMER_AUTH_TEST_DATABASE_URL"))
+			if runner != nil {
+				runner.Close()
+			}
+			if err == nil {
+				t.Fatal("CUSTOMER_PG_GLOBAL_PRIVILEGE_DRIFT_RED: global counter privilege accepted")
+			}
+		})
+	}
+}

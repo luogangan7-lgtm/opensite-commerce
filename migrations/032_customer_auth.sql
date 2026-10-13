@@ -1,7 +1,8 @@
 -- Responsibility: Customer mailbox proof, sessions, reset, durable admission and guest links.
 -- Dependencies: customers_b2b and orders; callers: dedicated customer-auth sqlc runner.
 -- Invariants: credential writes require proof; customer-first locks fence resets;
--- immutable order snapshots are read only. Rollback: retain additive schema.
+-- immutable order snapshots are read only; global/IP quotas span all tenants.
+-- Rollback: retain additive schema.
 DO $defaults$ DECLARE found text; BEGIN
  SELECT string_agg(DISTINCT a.privilege_type,',') INTO found FROM pg_default_acl d
  CROSS JOIN LATERAL (SELECT grantee,privilege_type FROM aclexplode(d.defaclacl)
@@ -69,13 +70,30 @@ CREATE TABLE app.customer_guest_order_links(
 );
 CREATE INDEX customer_guest_order_links_customer ON app.customer_guest_order_links(tenant_id,customer_id,order_id);
 CREATE TABLE app.customer_auth_limits(
- tenant_id uuid NOT NULL REFERENCES app.tenants(id), kind text NOT NULL CHECK(kind IN('global','ip','account')),
+ tenant_id uuid NOT NULL REFERENCES app.tenants(id), kind text NOT NULL CHECK(kind='account'),
  key_hash bytea NOT NULL CHECK(octet_length(key_hash)=32), window_start timestamptz NOT NULL DEFAULT clock_timestamp(),
- attempts integer NOT NULL DEFAULT 0 CHECK(attempts BETWEEN 0 AND 301),
+ attempts integer NOT NULL DEFAULT 0 CHECK(attempts BETWEEN 0 AND 11),
  failures integer NOT NULL DEFAULT 0 CHECK(failures BETWEEN 0 AND 10),
  cooldown_until timestamptz NOT NULL DEFAULT '-infinity',
  PRIMARY KEY(tenant_id,kind,key_hash)
 );
+-- Global authentication counters have no tenant identity or tenant policy.
+-- Only the private proof executor may read/debit these opaque keys.
+CREATE TABLE app.customer_auth_global_limits(
+ kind text NOT NULL CHECK(kind IN('global','ip')), key_hash bytea NOT NULL CHECK(octet_length(key_hash)=32),
+ window_start timestamptz NOT NULL DEFAULT clock_timestamp(),
+ attempts integer NOT NULL DEFAULT 0 CHECK(attempts BETWEEN 0 AND CASE kind WHEN 'global' THEN 301 ELSE 31 END),
+ failures integer NOT NULL DEFAULT 0 CHECK(failures BETWEEN 0 AND 10),
+ cooldown_until timestamptz NOT NULL DEFAULT '-infinity',
+ PRIMARY KEY(kind,key_hash),
+ CHECK(kind<>'global' OR key_hash=decode(repeat('00',32),'hex'))
+);
+REVOKE ALL ON app.customer_auth_global_limits FROM PUBLIC;
+DO $global_acl$ DECLARE role_name text; BEGIN
+ FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+  EXECUTE format('REVOKE ALL ON app.customer_auth_global_limits FROM %I',role_name);
+ END LOOP;
+END $global_acl$;
 DO $tables$ DECLARE tab text; role_name text; BEGIN
  FOREACH tab IN ARRAY ARRAY['customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits'] LOOP
   EXECUTE format('ALTER TABLE app.%I ENABLE ROW LEVEL SECURITY',tab);
@@ -100,7 +118,7 @@ CREATE POLICY customer_executor_orders ON app.orders TO app_customer_executor
 REVOKE INSERT(tenant_id,customer_id,password_hash),UPDATE(password_hash) ON app.customer_credentials FROM app_customer_auth;
 GRANT SELECT ON app.customer_auth_tokens,app.customer_sessions,app.customer_guest_order_links TO app_customer_auth;
 GRANT SELECT ON app.customers,app.customer_credentials,app.customer_auth_tokens,app.customer_sessions,
- app.customer_guest_order_links,app.customer_auth_limits TO app_customer_executor;
+ app.customer_guest_order_links,app.customer_auth_limits,app.customer_auth_global_limits TO app_customer_executor;
 GRANT SELECT(id,status) ON app.tenants TO app_customer_executor;
 GRANT SELECT(tenant_id,id,customer_id,guest_contact,sealed) ON app.orders TO app_customer_executor;
 GRANT INSERT(tenant_id,id,email,display_name) ON app.customers TO app_customer_executor;
@@ -114,6 +132,8 @@ GRANT UPDATE(revoked_at,idle_expires_at,last_seen_at) ON app.customer_sessions T
 GRANT INSERT(tenant_id,customer_id,order_id) ON app.customer_guest_order_links TO app_customer_executor;
 GRANT INSERT(tenant_id,kind,key_hash) ON app.customer_auth_limits TO app_customer_executor;
 GRANT UPDATE(window_start,attempts,failures,cooldown_until) ON app.customer_auth_limits TO app_customer_executor;
+GRANT INSERT(kind,key_hash) ON app.customer_auth_global_limits TO app_customer_executor;
+GRANT UPDATE(window_start,attempts,failures,cooldown_until) ON app.customer_auth_global_limits TO app_customer_executor;
 
 CREATE FUNCTION app.customer_auth_context() RETURNS uuid LANGUAGE sql STABLE SECURITY INVOKER
  SET search_path=pg_catalog AS $fn$
@@ -238,41 +258,59 @@ DECLARE t uuid:=app.customer_auth_context(); cid uuid; BEGIN
 END $fn$;
 CREATE FUNCTION app.customer_admit(p_account bytea,p_ip bytea,p_now timestamptz) RETURNS bigint
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $fn$
-DECLARE t uuid:=app.customer_auth_context(); kind_name text; k bytea; cap integer; lim app.customer_auth_limits%ROWTYPE;
- n timestamptz:=clock_timestamp(); delay bigint:=0; BEGIN
+DECLARE t uuid:=app.customer_auth_context(); kind_name text; k bytea; cap integer;
+ shared app.customer_auth_global_limits%ROWTYPE; account app.customer_auth_limits%ROWTYPE;
+ n timestamptz; delay bigint:=0; BEGIN
  IF t IS NULL OR octet_length(p_account)<>32 OR octet_length(p_ip)<>32 OR p_account IS NULL OR p_ip IS NULL THEN RETURN 60; END IF;
- -- ponytail: one tenant-global admission row bounds durable-key allocation; shard only after measured contention.
- FOREACH kind_name IN ARRAY ARRAY['global','ip','account'] LOOP
-  k:=CASE kind_name WHEN 'global' THEN decode(repeat('00',32),'hex') WHEN 'ip' THEN p_ip ELSE p_account END;
-  cap:=CASE kind_name WHEN 'global' THEN 300 WHEN 'ip' THEN 30 ELSE 10 END;
-  INSERT INTO app.customer_auth_limits(tenant_id,kind,key_hash) VALUES(t,kind_name,k) ON CONFLICT DO NOTHING;
-  SELECT * INTO lim FROM app.customer_auth_limits WHERE tenant_id=t AND kind=kind_name AND key_hash=k FOR UPDATE;
-  IF lim.window_start+interval '1 minute'<=n THEN lim.window_start:=n; lim.attempts:=0; END IF;
-  lim.attempts:=least(301,lim.attempts+1);
-  UPDATE app.customer_auth_limits SET window_start=lim.window_start,attempts=lim.attempts WHERE tenant_id=t AND kind=kind_name AND key_hash=k;
-  IF lim.attempts>cap THEN delay:=greatest(delay,ceil(extract(epoch FROM lim.window_start+interval '1 minute'-n))::bigint); END IF;
-  IF lim.cooldown_until>n THEN delay:=greatest(delay,ceil(extract(epoch FROM lim.cooldown_until-n))::bigint); END IF;
-  IF kind_name='global' AND delay>0 THEN RETURN delay; END IF;
+ -- ponytail: one global row bounds admitted key allocation across all tenants; shard only after measured contention.
+ -- Lock/debit global -> IP -> tenant account. A refusal never allocates a downstream key.
+ FOREACH kind_name IN ARRAY ARRAY['global','ip'] LOOP
+  k:=CASE kind_name WHEN 'global' THEN decode(repeat('00',32),'hex') ELSE p_ip END;
+  cap:=CASE kind_name WHEN 'global' THEN 300 ELSE 30 END;
+  INSERT INTO app.customer_auth_global_limits(kind,key_hash) VALUES(kind_name,k) ON CONFLICT DO NOTHING;
+  SELECT * INTO shared FROM app.customer_auth_global_limits WHERE kind=kind_name AND key_hash=k FOR UPDATE;
+  -- p_now is signature-compatible only; the server owns windows even after a lock wait.
+  n:=clock_timestamp();
+  IF shared.window_start+interval '1 minute'<=n THEN shared.window_start:=n; shared.attempts:=0; END IF;
+  shared.attempts:=least(cap+1,shared.attempts+1);
+  UPDATE app.customer_auth_global_limits SET window_start=shared.window_start,attempts=shared.attempts WHERE kind=kind_name AND key_hash=k;
+  IF shared.attempts>cap THEN delay:=greatest(delay,ceil(extract(epoch FROM shared.window_start+interval '1 minute'-n))::bigint); END IF;
+  IF shared.cooldown_until>n THEN delay:=greatest(delay,ceil(extract(epoch FROM shared.cooldown_until-n))::bigint); END IF;
+  IF delay>0 THEN RETURN delay; END IF;
  END LOOP;
+ INSERT INTO app.customer_auth_limits(tenant_id,kind,key_hash) VALUES(t,'account',p_account) ON CONFLICT DO NOTHING;
+ SELECT * INTO account FROM app.customer_auth_limits WHERE tenant_id=t AND kind='account' AND key_hash=p_account FOR UPDATE;
+ n:=clock_timestamp();
+ IF account.window_start+interval '1 minute'<=n THEN account.window_start:=n; account.attempts:=0; END IF;
+ account.attempts:=least(11,account.attempts+1);
+ UPDATE app.customer_auth_limits SET window_start=account.window_start,attempts=account.attempts WHERE tenant_id=t AND kind='account' AND key_hash=p_account;
+ IF account.attempts>10 THEN delay:=greatest(delay,ceil(extract(epoch FROM account.window_start+interval '1 minute'-n))::bigint); END IF;
+ IF account.cooldown_until>n THEN delay:=greatest(delay,ceil(extract(epoch FROM account.cooldown_until-n))::bigint); END IF;
  RETURN delay;
 END $fn$;
 CREATE FUNCTION app.customer_failed(p_account bytea,p_ip bytea) RETURNS boolean
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $fn$
-DECLARE t uuid:=app.customer_auth_context(); kind_name text; k bytea; n timestamptz:=clock_timestamp(); lim app.customer_auth_limits%ROWTYPE; BEGIN
- IF t IS NULL THEN RETURN false; END IF;
- -- Same global -> IP -> account order as admission. Missing admission never allocates failure rows.
- PERFORM 1 FROM app.customer_auth_limits WHERE tenant_id=t AND kind='global' AND key_hash=decode(repeat('00',32),'hex') FOR UPDATE;
- FOREACH kind_name IN ARRAY ARRAY['ip','account'] LOOP
-  k:=CASE kind_name WHEN 'ip' THEN p_ip ELSE p_account END;
-  SELECT * INTO lim FROM app.customer_auth_limits WHERE tenant_id=t AND kind=kind_name AND key_hash=k FOR UPDATE;
-  IF FOUND THEN
-   lim.failures:=least(10,lim.failures+1);
-   UPDATE app.customer_auth_limits SET failures=lim.failures,
-    cooldown_until=CASE WHEN lim.cooldown_until>n OR lim.failures<5 THEN lim.cooldown_until
-     ELSE n+make_interval(secs=>least(60,5*(1<<(lim.failures-5)))) END
-   WHERE tenant_id=t AND kind=kind_name AND key_hash=k;
-  END IF;
- END LOOP;
+DECLARE t uuid:=app.customer_auth_context(); n timestamptz;
+ shared app.customer_auth_global_limits%ROWTYPE; account app.customer_auth_limits%ROWTYPE; BEGIN
+ IF t IS NULL OR octet_length(p_account)<>32 OR octet_length(p_ip)<>32 OR p_account IS NULL OR p_ip IS NULL THEN RETURN false; END IF;
+ -- Same global -> IP -> account order as admission; missing admission allocates no rows.
+ PERFORM 1 FROM app.customer_auth_global_limits WHERE kind='global' AND key_hash=decode(repeat('00',32),'hex') FOR UPDATE;
+ IF NOT FOUND THEN RETURN false; END IF;
+ SELECT * INTO shared FROM app.customer_auth_global_limits WHERE kind='ip' AND key_hash=p_ip FOR UPDATE;
+ IF NOT FOUND THEN RETURN false; END IF;
+ n:=clock_timestamp(); shared.failures:=least(10,shared.failures+1);
+ UPDATE app.customer_auth_global_limits SET failures=shared.failures,
+  cooldown_until=CASE WHEN shared.cooldown_until>n OR shared.failures<5 THEN shared.cooldown_until
+   ELSE n+make_interval(secs=>least(60,5*(1<<(shared.failures-5)))) END
+ WHERE kind='ip' AND key_hash=p_ip;
+ SELECT * INTO account FROM app.customer_auth_limits WHERE tenant_id=t AND kind='account' AND key_hash=p_account FOR UPDATE;
+ IF FOUND THEN
+  n:=clock_timestamp(); account.failures:=least(10,account.failures+1);
+  UPDATE app.customer_auth_limits SET failures=account.failures,
+   cooldown_until=CASE WHEN account.cooldown_until>n OR account.failures<5 THEN account.cooldown_until
+    ELSE n+make_interval(secs=>least(60,5*(1<<(account.failures-5)))) END
+  WHERE tenant_id=t AND kind='account' AND key_hash=p_account;
+ END IF;
  RETURN true;
 END $fn$;
 GRANT CREATE ON SCHEMA app TO app_customer_executor;

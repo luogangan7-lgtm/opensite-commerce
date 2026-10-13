@@ -54,11 +54,13 @@ func OpenCustomerRunner(ctx context.Context, dsn string) (*CustomerRunner, error
   ('customer_sessions','INSERT',ARRAY['tenant_id','customer_id','token_hash','credential_version','expires_at','idle_expires_at']),
   ('customer_guest_order_links','INSERT',ARRAY['tenant_id','customer_id','order_id']),
   ('customer_auth_limits','INSERT',ARRAY['tenant_id','kind','key_hash']),
+  ('customer_auth_global_limits','INSERT',ARRAY['kind','key_hash']),
   ('customers','UPDATE',ARRAY['verified_at']),
   ('customer_credentials','UPDATE',ARRAY['password_hash']),
   ('customer_auth_tokens','UPDATE',ARRAY['consumed_at']),
   ('customer_sessions','UPDATE',ARRAY['revoked_at','idle_expires_at','last_seen_at']),
-  ('customer_auth_limits','UPDATE',ARRAY['window_start','attempts','failures','cooldown_until'])
+  ('customer_auth_limits','UPDATE',ARRAY['window_start','attempts','failures','cooldown_until']),
+  ('customer_auth_global_limits','UPDATE',ARRAY['window_start','attempts','failures','cooldown_until'])
  ) SELECT
  NOT (r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication)
  AND r.rolcanlogin AND current_user=session_user
@@ -73,20 +75,20 @@ func OpenCustomerRunner(ctx context.Context, dsn string) (*CustomerRunner, error
  AND NOT has_schema_privilege('app_customer_executor','app','USAGE WITH GRANT OPTION')
  AND NOT EXISTS (SELECT FROM pg_namespace n WHERE n.nspname='app' AND n.nspowner='app_customer_executor'::regrole)
  AND NOT EXISTS (SELECT FROM pg_class c WHERE c.relnamespace='app'::regnamespace AND c.relowner='app_customer_executor'::regrole)
- -- Mirror the executor matrix: only six complete SELECT grants, the listed
+ -- Mirror the executor matrix: only seven complete SELECT grants, the listed
  -- columns, and the private helper plus ten public proof routines are legal.
  AND NOT EXISTS (SELECT FROM pg_class c
   CROSS JOIN (VALUES('SELECT'),('INSERT'),('UPDATE'),('DELETE'),('TRUNCATE'),('REFERENCES'),('TRIGGER'),('MAINTAIN')) AS p(privilege)
   WHERE c.relnamespace='app'::regnamespace AND c.relkind IN('r','p') AND
    (has_table_privilege('app_customer_executor',c.oid,p.privilege) IS DISTINCT FROM
-     (p.privilege='SELECT' AND c.relname IN('customers','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits'))
+     (p.privilege='SELECT' AND c.relname IN('customers','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits'))
     OR has_table_privilege('app_customer_executor',c.oid,p.privilege||' WITH GRANT OPTION')))
  AND NOT EXISTS (SELECT FROM pg_class c
   JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
   CROSS JOIN (VALUES('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) AS p(privilege)
   WHERE c.relnamespace='app'::regnamespace AND c.relkind IN('r','p') AND
    (has_column_privilege('app_customer_executor',c.oid,a.attnum,p.privilege) IS DISTINCT FROM
-     ((p.privilege='SELECT' AND c.relname IN('customers','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits'))
+     ((p.privilege='SELECT' AND c.relname IN('customers','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits'))
       OR EXISTS(SELECT FROM executor_columns e WHERE e.table_name=c.relname AND e.privilege=p.privilege AND a.attname::text=ANY(e.allowed_columns)))
     OR has_column_privilege('app_customer_executor',c.oid,a.attnum,p.privilege||' WITH GRANT OPTION')))
  -- WHERE predicates can be reordered: keep the sequence-only function inside

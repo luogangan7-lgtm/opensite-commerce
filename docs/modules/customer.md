@@ -26,8 +26,9 @@ Sessions rotate on login, expire after 30 idle minutes or 12 absolute hours by
 default, and are revocable. Password reset consumes a short-lived token once and
 revokes all sessions. Session creation compares the credential snapshot under
 the customer lock, fencing a reset during password verification. Account,
-IPv4/IP64 and tenant-global durable admission return 429 + Retry-After without
-sleeping in request handlers.
+IPv4/IP64 and global durable admission return 429 + Retry-After without sleeping
+in request handlers. Global admission is 300/minute across all tenants; the IP
+budget is 30/minute across all tenants and each tenant account is 10/minute.
 
 Reset requests use the same preparation and mail transport path for every
 syntactically valid address, including unknown, disabled and unverified accounts.
@@ -36,8 +37,20 @@ persisted, and token exchange returns the same invalid-token response. Transport
 failure therefore cannot reveal whether an account exists. This behavior remains
 restricted to the permitted development recipients above.
 
-Durable admission serializes the three budgets in tenant-global, IP, account
-order. Retention and pruning of expired opaque admission keys need a maintenance
+Durable admission serializes global, IP, then tenant account budgets.
+`customer_auth_global_limits` owns shared global/IP rows without `tenant_id`;
+`customer_auth_limits` contains only tenant account rows under FORCE RLS. The
+private NOLOGIN executor alone has minimal direct counter privileges; the
+dedicated login invokes bounded functions and cannot read or write shared rows.
+Windows use the database clock, counters saturate at each cap plus one, and
+global/IP refusals allocate no subsequent IP/account keys. IP failure cooldown
+also spans tenants; account failure cooldown remains tenant-scoped.
+
+All replicas sharing this database must use the same configured auth secret so
+canonical IP HMACs remain stable across replicas. Only the opaque canonical
+IPv4 or IPv6 /64 hash is persisted, never raw IP addresses. Secret changes need
+a coordinated rollout because different secrets create different IP budgets.
+Retention and pruning of expired opaque admission keys need a maintenance
 follow-up before enabling real public email traffic; this card does not add an
 unbounded in-request cleanup operation.
 

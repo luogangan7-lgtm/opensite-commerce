@@ -584,7 +584,8 @@
         "customer_auth_tokens",
         "customer_sessions",
         "customer_guest_order_links",
-        "customer_auth_limits"
+        "customer_auth_limits",
+        "customer_auth_global_limits"
       ],
       "operations": [
         {
@@ -627,10 +628,11 @@
         "tests/db_customer_auth.sql",
         "tests/test_customer_auth_contract.py",
         "internal/modules/customer/internal/auth/service_test.go",
+        "internal/modules/customer/customer_limits_pgx_test.go",
         "internal/platform/httpapi/customerhttp/customer_test.go"
       ],
       "scopes": [],
-      "note": "Tenant customer email proof, separate sessions and reset under app_customer_auth; Fake/local SMTP only. Guest orders retain immutable snapshots and verified customer-owned associations."
+      "note": "Tenant customer email proof, separate sessions and reset under app_customer_auth; global/IP durable quotas shared across tenants with tenant account quotas. Fake/local SMTP only. Guest orders retain immutable snapshots and verified customer-owned associations."
     },
     {
       "name": "b2b",
@@ -1305,6 +1307,7 @@
         "customer_sessions",
         "customer_guest_order_links",
         "customer_auth_limits",
+        "customer_auth_global_limits",
         "orders"
       ]
     }
