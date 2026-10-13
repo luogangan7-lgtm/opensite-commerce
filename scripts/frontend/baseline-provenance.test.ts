@@ -126,9 +126,10 @@ test('push base: a multi-commit push covers a golden changed by an earlier commi
 test('push base: zero, empty, unknown or non-ancestor (force-push) base verifies every golden', () => {
   const repo = repository();
   try {
+    const branch = repo.git('rev-parse', '--abbrev-ref', 'HEAD');
     repo.git('checkout', '-q', '--orphan', 'rewritten');
     const unrelated = repo.commit('force-pushed history');
-    repo.git('checkout', '-q', '-');
+    repo.git('checkout', '-q', branch);
     for (const base of ['0'.repeat(40), '', 'f'.repeat(40), unrelated]) expect(goldenChangeSet()(base, repo.root)).toBe('all');
     expect(goldenChangeSet()(repo.base, repo.root)).toEqual(new Set());
   } finally { rmSync(repo.root, { recursive: true, force: true }); }
