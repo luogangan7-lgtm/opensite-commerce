@@ -118,6 +118,30 @@ test('commerce fixture absolute quantities, zero removes, stale version recovers
   await expect(page.locator('[data-cart-line]')).toHaveCount(0);
 });
 
+test('checkout requires confirmation of an updated server total and reuses ambiguous submission keys', async ({ page }) => {
+  await add(page); await review(page);
+  const keys: string[] = [];
+  await page.route(`${api}/checkout`, async route => {
+    keys.push(route.request().headers()['idempotency-key']!);
+    const response = await route.fetch();
+    if (keys.length === 1) {
+      // The backend accepted this request, but the browser received an ambiguous failure.
+      await route.fulfill({status:502,contentType:'application/problem+json',body:JSON.stringify({code:'purchase_request_failed'})});
+    } else {
+      const body=await response.json();
+      await route.fulfill({response,json:{...body,amount_minor:'9999'}});
+    }
+  });
+  await page.getByRole('button',{name:'Start test checkout',exact:true}).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await page.getByRole('button',{name:'Start test checkout',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toBeDisabled();
+  await expect(page.locator('.payment-result')).toContainText('$99.99');
+  expect(keys).toHaveLength(2); expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
+  await page.getByRole('button',{name:'Confirm updated total',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toBeEnabled();
+});
+
 for (const outcome of ['fail', 'cancel'] as const) test(`commerce fixture Fake ${outcome} never opens paid confirmation`, async ({ page }) => {
   await add(page); await review(page); await start(page);
   await page.getByRole('button', { name: `Fake payment: ${outcome}`, exact: true }).click();

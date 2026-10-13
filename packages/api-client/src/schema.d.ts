@@ -21,6 +21,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/checkout/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Read-only live cart pricing, tax and one applicable shipping method. No reservation or order write. */
+        post: operations["previewCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/checkout/{checkout_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read the saved checkout result only for the verified guest actor and cart. */
+        get: operations["getCheckout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/testing/payments/fake/webhook": {
         parameters: {
             query?: never;
@@ -958,6 +992,28 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CheckoutPreviewInput: {
+            /** Format: uuid */
+            cart_id: string;
+            shipping_address: {
+                country: string;
+                region?: string;
+                postal_code: string;
+            };
+        };
+        CheckoutPreview: {
+            subtotal_minor: string;
+            tax_minor: string;
+            shipping_minor: string;
+            total_minor: string;
+            currency: string;
+            shipping_options: {
+                /** Format: uuid */
+                rate_id: string;
+                method: string;
+                amount_minor: string;
+            }[];
+        };
         CheckoutStart: {
             /** Format: uuid */
             cart_id: string;
@@ -1885,6 +1941,8 @@ export interface components {
         CheckoutOrigin: string;
         /** @description Verified by the trusted resolver against the customer session or guest capability. */
         CheckoutCSRFToken: string;
+        CheckoutCartId: string;
+        CheckoutCartToken: string;
         /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
         TenantId: string;
         /** @description Session owned by the caller; never a token. */
@@ -1927,6 +1985,8 @@ export interface operations {
                 Origin: components["parameters"]["CheckoutOrigin"];
                 /** @description Verified by the trusted resolver against the customer session or guest capability. */
                 "X-CSRF-Token": components["parameters"]["CheckoutCSRFToken"];
+                "X-Cart-ID": components["parameters"]["CheckoutCartId"];
+                "X-Cart-Token": components["parameters"]["CheckoutCartToken"];
             };
             path: {
                 /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
@@ -1960,6 +2020,86 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    previewCheckout: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Exact configured storefront origin; never the admin origin. */
+                Origin: components["parameters"]["CheckoutOrigin"];
+                /** @description Verified by the trusted resolver against the customer session or guest capability. */
+                "X-CSRF-Token": components["parameters"]["CheckoutCSRFToken"];
+                "X-Cart-ID": components["parameters"]["CheckoutCartId"];
+                "X-Cart-Token": components["parameters"]["CheckoutCartToken"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutPreviewInput"];
+            };
+        };
+        responses: {
+            /** @description Read-only live calculation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCheckout: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Exact configured storefront origin; never the admin origin. */
+                Origin: components["parameters"]["CheckoutOrigin"];
+                /** @description Verified by the trusted resolver against the customer session or guest capability. */
+                "X-CSRF-Token": components["parameters"]["CheckoutCSRFToken"];
+                "X-Cart-ID": components["parameters"]["CheckoutCartId"];
+                "X-Cart-Token": components["parameters"]["CheckoutCartToken"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                checkout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Actor-bound durable checkout result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
             503: components["responses"]["ServiceUnavailable"];
         };

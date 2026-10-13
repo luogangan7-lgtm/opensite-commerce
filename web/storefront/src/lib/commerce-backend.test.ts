@@ -3,7 +3,7 @@
  * Invariants: no fixture dependency, cookie-only capability, exact Origin/CSRF, safe problem codes.
  */
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import { handlePurchaseRequest, readPurchaseContext } from './commerce-server';
 const site = 'https://shop.example.test', tenant = 'c0900001-0000-4000-8000-000000000001';
@@ -59,4 +59,34 @@ test('backend problem code is visible without returning upstream private detail'
 test('cookie storage failures return an unavailable context instead of breaking SSR',async()=>{
   const jar={get(){throw new Error('cookie storage blocked');},set(){throw new Error('cookie storage blocked');}} as unknown as AstroCookies;
   expect((await readPurchaseContext(request('context'),jar)).enabled).toBe(false);
+});
+test('backend writes reject foreign Origin and altered CSRF before any upstream IO',async()=>{
+  const jar=cookies(), context=await readPurchaseContext(request('context'),jar.jar);
+  for (const headers of [{Origin:'https://foreign.example.test','X-CSRF-Token':context.csrf}, {Origin:site,'X-CSRF-Token':`${context.csrf}x`}]) {
+    const count=calls.length;
+    const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/cart`,{method:'POST',headers:{Host:'shop.example.test','Content-Type':'application/json',...headers},body:JSON.stringify({sku_id:sku,quantity:1})}),jar.jar,'cart');
+    expect(response.status).toBe(403);expect(calls.length).toBe(count);
+  }
+});
+test('signed cookie tampering and forwarded host cannot reach the cart capability',async()=>{
+  const jar=cookies(),context=await readPurchaseContext(request('context'),jar.jar);
+  await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
+  const name='__Host-osc_storefront_cart', value=jar.values.get(name)!;
+  jar.values.set(name,value+'x');const count=calls.length;
+  expect((await handlePurchaseRequest(request('cart'),jar.jar,'cart')).status).toBe(403);
+  expect(calls.length).toBe(count);
+  const forwarded=request('context');forwarded.headers.set('X-Forwarded-Host','shop.example.test');
+  expect((await readPurchaseContext(forwarded,jar.jar)).enabled).toBe(false);expect(calls.length).toBe(count);
+});
+test('checkout sends a server proof bound to the cart token while exposing only problem codes',async()=>{
+  const jar=cookies(),context=await readPurchaseContext(request('context'),jar.jar);
+  await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
+  failure=true;
+  const response=await handlePurchaseRequest(request('preview',context.csrf,{shipping_address:{country:'US',postal_code:'10001'}}),jar.jar,'preview');
+  expect(response.status).toBe(409);
+  const outbound=calls.at(-1)!;
+  const proof=createHmac('sha256',Buffer.from(process.env.OPENSITE_STOREFRONT_KEY!,'base64url')).update(`checkout:${tenant}:${token}:${site}`).digest('base64url');
+  expect(outbound.headers.get('X-CSRF-Token')).toBe(proof);expect(outbound.headers.get('X-Cart-ID')).toBe(cart);
+  expect(outbound.headers.get('X-Cart-Token')).toBe(token);expect(outbound.url).not.toContain(token);
+  const text=await response.text();expect(text).not.toContain(proof);expect(text).not.toContain(token);
 });

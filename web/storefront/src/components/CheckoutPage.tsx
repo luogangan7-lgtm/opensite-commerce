@@ -19,6 +19,7 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
   const [errors, setErrors] = useState<CheckoutErrors>({});
   const [preview, setPreview] = useState<Preview | null>(null);
   const [result, setResult] = useState<CheckoutResult | null>(null);
+  const [confirmUpdatedTotal, setConfirmUpdatedTotal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const idempotencyKey = useRef<string | null>(null);
@@ -57,13 +58,15 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
       }
       const received=await startCheckout(checkoutInput(fields,context.actor),idempotencyKey.current,context.csrf);
       setResult(received);
-      if (received.amount_minor !== preview.total_minor || received.currency !== preview.currency) setError(ui.priceChanged);
+      const changed = received.amount_minor !== preview.total_minor || received.currency !== preview.currency;
+      setConfirmUpdatedTotal(changed);
+      if (changed) setError(ui.priceChanged);
     }
     catch (cause) { setError(purchaseErrorMessage(cause,ui)); }
     finally { setBusy(false); }
   }
   async function confirm(outcome: PaymentOutcome) {
-    if (!(context.fixture || context.fakePayment) || !result || busy) return;
+    if (!(context.fixture || context.fakePayment) || !result || busy || (outcome === 'captured' && confirmUpdatedTotal)) return;
     setBusy(true); setError('');
     try { setResult(await confirmPayment(result.checkout_id, outcome, context.csrf)); }
     catch (cause) { setError(purchaseErrorMessage(cause,ui)); }
@@ -104,7 +107,8 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
         <h2>{captured ? ui.paymentCaptured : failed ? ui.paymentFailed : canceled ? ui.paymentCanceled : ui.paymentPending}</h2>
         {captured ? <a className="purchase-primary-link" href="/order-complete">{ui.viewConfirmation}</a> : failed || canceled ? <><p>{ui.paymentRetry}</p><a href="/cart">{ui.backCart}</a></> : <>
           <p>{ui.paymentPendingDescription}</p>
-          {(context.fixture || context.fakePayment) && <div className="purchase-actions"><Button loading={busy} onClick={() => confirm('captured')}>{ui.fakeCapture}</Button><Button variant="secondary" disabled={busy} onClick={() => confirm('failed')}>{ui.fakeFail}</Button><Button variant="ghost" disabled={busy} onClick={() => confirm('canceled')}>{ui.fakeCancel}</Button></div>}
+          {confirmUpdatedTotal && <Button onClick={() => { setConfirmUpdatedTotal(false); setError(''); }}>{ui.acceptUpdatedTotal}</Button>}
+          {(context.fixture || context.fakePayment) && <div className="purchase-actions"><Button loading={busy} disabled={confirmUpdatedTotal} onClick={() => confirm('captured')}>{ui.fakeCapture}</Button><Button variant="secondary" disabled={busy} onClick={() => confirm('failed')}>{ui.fakeFail}</Button><Button variant="ghost" disabled={busy} onClick={() => confirm('canceled')}>{ui.fakeCancel}</Button></div>}
         </>}
       </section>}
     </>}

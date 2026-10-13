@@ -20,6 +20,7 @@ export async function backendRequest(origin: string, path: string, token: string
   });
   const headers: Record<string,string> = {Accept: 'application/json', ...(token ? {'X-Cart-Token':token} : {}), ...options.headers};
   const common = {headers, signal: AbortSignal.timeout(5000), redirect:'error' as const, parseAs:'text' as const};
+  const checkoutHeader = {Origin:headers.Origin!, 'X-CSRF-Token':headers['X-CSRF-Token']!, 'X-Cart-ID':headers['X-Cart-ID']!, 'X-Cart-Token':token!};
   const matched = /^\/api\/v1\/t\/([a-f0-9-]+)\/(carts|checkout)(?:\/([a-f0-9-]+|preview))?(?:\/lines\/([a-f0-9-]+))?$/.exec(path);
   if (!matched) throw new Error('Unsupported commerce route');
   const tenant_id = matched[1]!, cart_id = matched[3]!, sku_id = matched[4]!;
@@ -35,11 +36,11 @@ export async function backendRequest(origin: string, path: string, token: string
       result = await client.DELETE('/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}', {...common,params:{path:{tenant_id,cart_id,sku_id},header:{'If-Match':headers['If-Match']!}}});
     }
   } else if (cart_id === 'preview' && options.method === 'POST') {
-    result = await client.POST('/api/v1/t/{tenant_id}/checkout/preview', {...common,params:{path:{tenant_id},header:{Origin:headers.Origin!,'X-CSRF-Token':headers['X-CSRF-Token']!,'X-Cart-ID':headers['X-Cart-ID']!}},body:options.body as APIComponents['schemas']['CheckoutPreviewInput']});
+    result = await client.POST('/api/v1/t/{tenant_id}/checkout/preview', {...common,params:{path:{tenant_id},header:checkoutHeader},body:options.body as APIComponents['schemas']['CheckoutPreviewInput']});
   } else if (cart_id && !options.method) {
-    result = await client.GET('/api/v1/t/{tenant_id}/checkout/{checkout_id}', {...common,params:{path:{tenant_id,checkout_id:cart_id},header:{Origin:headers.Origin!,'X-CSRF-Token':headers['X-CSRF-Token']!,'X-Cart-ID':headers['X-Cart-ID']!}}});
+    result = await client.GET('/api/v1/t/{tenant_id}/checkout/{checkout_id}', {...common,params:{path:{tenant_id,checkout_id:cart_id},header:checkoutHeader}});
   } else if (!cart_id && options.method === 'POST') {
-    result = await client.POST('/api/v1/t/{tenant_id}/checkout', {...common,params:{path:{tenant_id},header:{'Idempotency-Key':headers['Idempotency-Key']!,'X-Cart-ID':headers['X-Cart-ID']!,Origin:headers.Origin!,'X-CSRF-Token':headers['X-CSRF-Token']!}},body:options.body as APIComponents['schemas']['CheckoutStart']});
+    result = await client.POST('/api/v1/t/{tenant_id}/checkout', {...common,params:{path:{tenant_id},header:{...checkoutHeader,'Idempotency-Key':headers['Idempotency-Key']!}},body:options.body as APIComponents['schemas']['CheckoutStart']});
   }
   if (!result) throw new Error('Unsupported commerce method');
   return {response:result.response, text:result.data ?? JSON.stringify(result.error)};

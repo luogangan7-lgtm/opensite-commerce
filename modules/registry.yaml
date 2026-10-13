@@ -772,6 +772,14 @@
           "status": "implemented"
         },
         {
+          "operation_id": "previewCheckout",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getCheckout",
+          "status": "implemented"
+        },
+        {
           "operation_id": "receiveFakePaymentEvent",
           "status": "implemented"
         }
@@ -803,7 +811,7 @@
         "internal/modules/checkout/internal/service/input_test.go"
       ],
       "scopes": [],
-      "note": "C-18a Fake-only checkout orchestration. Optional strict HTTP composition uses a default-deny trusted storefront resolver seam classified Storefront until real customer/guest middleware; URL/Host never authorize. Fake webhook is signed and mounted only in explicit test/development configuration. Cart contract consumption uses the real locked IntentReader in the caller transaction, discards price projections and restores prior actor GUCs. Trusted guest/customer resolver wiring remains absent and default deny; no production payment provider wiring."
+      "note": "C-18a orchestration with C-09d guest capability composition: strict Storefront routes verify server proof and tenant/cart ownership; preview and completion use read-only snapshots. Fake webhook and runtime checkout wiring require explicit test/development mode. Customer sessions and production payment provider wiring remain absent and default deny."
     },
     {
       "name": "quotes",

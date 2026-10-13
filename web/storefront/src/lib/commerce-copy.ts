@@ -11,6 +11,7 @@ const english = {
   loading: 'Loading…', retry: 'Try again', requestFailed: 'We could not complete this request. Try again.',
   stockUnavailable: 'Requested stock is no longer available. Review your cart.',
   priceChanged: 'Prices have changed. Review the updated server totals before confirming payment.',
+  acceptUpdatedTotal: 'Confirm updated total',
   checkoutBusy: 'This checkout is still processing. Retry with the same submission.',
   fakeNotice: 'Test payment provider. This checkout uses the real service with no real charge.',
   cartChanged: 'Your cart changed in another tab. We refreshed it and kept those changes. Review the updated quantities before trying again.',

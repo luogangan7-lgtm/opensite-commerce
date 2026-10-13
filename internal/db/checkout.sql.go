@@ -98,6 +98,47 @@ func (q *Queries) GetCheckoutByID(ctx context.Context, arg GetCheckoutByIDParams
 	return i, err
 }
 
+const getCheckoutByIDSnapshot = `-- name: GetCheckoutByIDSnapshot :one
+SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at FROM app.checkout_sessions WHERE tenant_id=$1 AND id=$2
+`
+
+type GetCheckoutByIDSnapshotParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) GetCheckoutByIDSnapshot(ctx context.Context, arg GetCheckoutByIDSnapshotParams) (AppCheckoutSession, error) {
+	row := q.db.QueryRow(ctx, getCheckoutByIDSnapshot, arg.TenantID, arg.ID)
+	var i AppCheckoutSession
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.ActorKind,
+		&i.ActorID,
+		&i.RequestKey,
+		&i.RequestHash,
+		&i.CartID,
+		&i.CartVersion,
+		&i.OrderID,
+		&i.AddressSnapshot,
+		&i.Currency,
+		&i.AmountMinor,
+		&i.ItemsNetMinor,
+		&i.TaxMinor,
+		&i.ShippingMinor,
+		&i.PayableVersion,
+		&i.Phase,
+		&i.ProviderRef,
+		&i.StartResult,
+		&i.FinalResult,
+		&i.ClaimKind,
+		&i.ClaimKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getCheckoutByKey = `-- name: GetCheckoutByKey :one
 SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at FROM app.checkout_sessions WHERE tenant_id=$1 AND actor_kind=$2 AND actor_id=$3 AND request_key=$4 FOR UPDATE
 `
