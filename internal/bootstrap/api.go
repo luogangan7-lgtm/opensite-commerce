@@ -179,13 +179,7 @@ func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, s
 	if a.staff == nil {
 		return (httpapi.DenyAuthenticator{}).Authenticate(ctx, r, spec)
 	}
-	staffCtx, err := a.staff.Authenticate(ctx, r, spec)
-	if err != nil {
-		if actor, cerr := a.customer.Resolve(ctx, r); cerr == nil && actor.CustomerID != "" {
-			return customercontract.WithActor(ctx, actor), nil
-		}
-	}
-	return staffCtx, err
+	return a.staff.Authenticate(ctx, r, spec)
 }
 
 // ResolveActor preserves the identity projection of the selected staff
