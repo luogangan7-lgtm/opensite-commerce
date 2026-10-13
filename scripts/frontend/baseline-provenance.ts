@@ -16,9 +16,13 @@ export const SPECS: Record<Scope, string> = {
   'storefront-published': 'tests/frontend/storefront.spec.ts',
   'storefront-commerce': 'tests/frontend/storefront-commerce.spec.ts',
 };
+// chromiumArgs (C-08e): GitHub's ubuntu-24.04 runners are heterogeneous CPUs. With GPU raster (SwiftShader JIT)
+// and Skia's per-CPU SIMD dispatch, the same pinned image re-rendered anti-aliased edges ±1 per channel across
+// runs. Software raster with baseline Skia opts makes pixels independent of the host CPU.
 export const RENDERING = {
   locale: 'en-US', timezone: 'UTC', deviceScaleFactor: 1, colorScheme: 'light', reducedMotion: 'reduce',
   desktop: [1280, 800], mobile: [390, 844],
+  chromiumArgs: ['--disable-gpu', '--disable-skia-runtime-opts', '--force-color-profile=srgb'],
 };
 export type BaselineRecord = {
   schema: 2; snapshot: string; scope: Scope; sourceFingerprint: string; pngSha256: string;
