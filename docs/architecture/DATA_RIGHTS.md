@@ -53,9 +53,51 @@ until the host supplies a trusted subject resolver.
 Erasure replaces customer name/email with irreversible placeholders, disables
 the customer, deletes addresses and password credentials, revokes company
 membership, scrubs order shipping/tax JSON and revokes every outstanding export.
+It also scrubs every other copy that the C-PII registry (`modules/privacy/*.json`)
+assigns to the customer through a declared identity path:
+checkout `address_snapshot`/`start_result`/`final_result` and attempt results
+(via `checkout_sessions.order_id -> orders.customer_id`), the snapshot and line
+text of quotes the customer accepted (`quotes.accepted_by`), order adjustment
+reasons, response bodies/references of the customer's own command receipts
+(`idempotency_records` with `actor_kind='customer'`), and deletes pending
+customer-auth tokens (email copy and pending PHC), sessions and mailbox-proven
+guest-order links. Account admission counters have no owner and stay. Each
+scrub writes a fixed marker (`{"erased":true}`, `[erased]`, `erased`); quote
+snapshots keep only calculator money/currency facts. A checkout still in flight
+cannot write a fresh personal result into a scrubbed session.
 Amounts, currency, quantities, order IDs/state and ledger entries remain intact.
 Snapshot guards permit only the exact privacy scrub under an unassumable,
-non-BYPASSRLS executor role; runtime cannot use that exception directly.
+non-BYPASSRLS executor role; runtime cannot use that exception directly. For
+checkout, quote, adjustment and receipt copies the owner module's guard trigger
+is skipped only for that executor, and `data_rights_scrub_guard` admits exactly
+the registered scrub values and nothing else. Writers of these copies lock them
+before the customer, so erasure takes them NOWAIT: contention is `privacy_busy`.
+
+CI erases the registry's canary fixture (`scripts/check_data_rights_canaries.py`):
+every declared personal/contact column holds a distinct canary, the fixture
+customer is erased, and the whole catalog is searched. Subject-owned canaries
+must vanish; retained, staff, merchant, guest and inquiry canaries must remain.
+A newly declared personal column fails that gate until its ownership is decided.
+
+## An email never establishes ownership
+
+Customer erasure follows registered identity paths only (customer ID on the
+row, its order, its accepted quote or its own command receipt). Matching an
+email string never assigns data to a customer, because anyone can type anyone's
+address. Therefore customer erasure does **not** scrub:
+
+- guest orders (`orders.guest_contact`, `customer_id IS NULL`) and their
+  notifications, even when the guest email equals the customer's email;
+- quote inquiry contacts (`inquiries.buyer_email/buyer_name/message`) and the
+  `quote.sent` notifications addressed to them;
+- staff, merchant/public content, rate-limit evidence and free-text audit,
+  outbox, River or webhook payloads whose registry policy has no customer path.
+
+Those subjects are handled by **merchant-operated deletion**: tenant staff verify
+the requester out of band and remove the specific inquiry/guest-order contact.
+That staff command is the data-rights follow-up card C-22b (not in this PR);
+until it ships, the merchant's operator runs it as a reviewed, scoped database
+change and records it in the erasure journal procedure below.
 
 Export generation/download lock the customer before their request. Erasure first
 locks existing customer orders in UUID order, then the customer and requests. A
@@ -82,8 +124,8 @@ Notification workers admit a send in a committed database transaction before
 SMTP IO. Erasure prevents subsequent admission and stale completion, but cannot
 recall a message whose send was already admitted or accepted externally. Real
 SMTP cancellation/delivery is **NOT_RUN**; the DB tests cover token/lease fencing,
-recipient removal and future fanout. Customer sessions and future quote/inquiry
-ownership do not gain an invented mapping from this integration.
+recipient removal and future fanout. Quote inquiry contacts and guest orders
+do not gain an invented ownership mapping from this integration.
 
 Erasure locks existing dispatches before envelopes. A concurrent redrive may
 introduce a generation while these locks are acquired; NOWAIT on envelope locks
@@ -105,12 +147,12 @@ backup-journal replication or choose statutory retention periods.
 
 ## Sealed release media and customer sessions
 
-The current schema has no customer-owned avatar/comment media relationship and
-no customer-session table. `media_uploads.actor_id` is an uploader identifier,
-not a customer ownership contract; staff users must not be matched by email.
-Credential deletion and company-member revocation are exercised. Customer
-session revocation and customer-media tombstones are **NOT_APPLICABLE** to this
-schema, and their future runtime paths are **NOT_RUN**. Existing sealed release
+The current schema has no customer-owned avatar/comment media relationship.
+`media_uploads.actor_id` is an uploader identifier, not a customer ownership
+contract; staff users must not be matched by email. Credential deletion,
+customer-session deletion and company-member revocation are exercised.
+Customer-media tombstones are **NOT_APPLICABLE** to this schema, and their
+future runtime path is **NOT_RUN**. Existing sealed release
 media pinning remains unchanged and is covered by the privacy SQL regression.
 
 When customer-owned media is introduced, its public contract must first bind
@@ -133,9 +175,9 @@ do not change published release pointers or overwrite body/SEO content.
 
 Preflight collects row errors and performs no writes. Import performs preflight
 inside the same transaction as the writes: any conflict or SQL error rolls the
-whole batch back. Import validation failures return a structured report with
-zero imported rows (HTTP 200); HTTP status alone does not indicate a successful
-batch. Request size is at most 1 MiB and 1,000 data records.
+whole batch back. Row validation failures return a structured report with zero
+imported rows (HTTP 200); HTTP status alone does not indicate a successful
+batch. Structural failures (header, encoding, empty file) return 422. Request size is at most 1 MiB and 1,000 data records.
 Exports prefix spreadsheet formula cells beginning with `=`, `+`, `-` or `@`
 with an apostrophe and use standard CSV quoting. The importer handles this
 export escape for round trips. This is not a general arbitrary-schema importer.
