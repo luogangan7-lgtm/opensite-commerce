@@ -1126,8 +1126,6 @@ db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 LOGIN_DB=""
 
-# Aggregate only after all module upgrade steps.
-[[ $fail -eq 0 ]] || exit 1
 # Quotes takes over the existing005 inquiry table without rebuilding contacts.
 # Filename order applies every predecessor, including any integrator renumbering.
 quotes=(migrations/[0-9][0-9][0-9]_quotes.sql)
@@ -1212,5 +1210,6 @@ admin -c "DROP DATABASE $DB"; FULFILLMENT_DB=""
 pass 'fulfillment upgrade preserves paid inventory and compensates only unshipped quantities'
 
 
+# Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
 echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login and fulfillment/returns upgrade gates'

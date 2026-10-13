@@ -163,7 +163,9 @@ def login_runner_contract(races, upgrade):
     assert 'pg_blocking_pids(second.pid)' in rotation, 'login rotation requires an observed blocker'
     assert "expect login_rotate_second 'no rows returned for'" in rotation
     assert 'LOGIN_ROTATION_RACE=1|1|1|0' in rotation, 'exactly one successor must remain'
-    login = upgrade[upgrade.index('# C-02b: start'):]
+    # Later modules also apply their own predecessors/successors. Audit only the
+    # login case through its cleanup, retaining both exact loops and mutations.
+    login = upgrade[upgrade.index('# C-02b: start'):].split('\nLOGIN_DB=""', 1)[0]
     assert 'login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)' in login
     assert '[[ $f < ${login_files[0]} ]] || break' in login
     assert '[[ $f > ${login_files[0]} ]] || continue' in login
