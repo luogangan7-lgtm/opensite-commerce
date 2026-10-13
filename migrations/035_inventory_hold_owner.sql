@@ -120,3 +120,12 @@ GRANT EXECUTE ON FUNCTION app.inventory_reserve_non_order(uuid,bigint,text,uuid,
 -- Its existing primitive accepts only batch size, only due rows, and DB wall clock.
 REVOKE EXECUTE ON FUNCTION app.inventory_expire_due(integer) FROM PUBLIC,app_runtime,app_inventory_manager,app_orders_executor;
 GRANT EXECUTE ON FUNCTION app.inventory_expire_due(integer) TO app_queue_worker;
+-- REVIEW PROBE 145-3: legacy ID-only overload resurrected (fault)
+CREATE FUNCTION app.inventory_release_non_order(p_id uuid) RETURNS app.inventory_reservations
+LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp
+AS 'SELECT app.inventory_finish(p_id,''released'')';
+GRANT CREATE ON SCHEMA app TO app_inventory_executor;
+ALTER FUNCTION app.inventory_release_non_order(uuid) OWNER TO app_inventory_executor;
+REVOKE CREATE ON SCHEMA app FROM app_inventory_executor;
+REVOKE ALL ON FUNCTION app.inventory_release_non_order(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.inventory_release_non_order(uuid) TO app_runtime;
