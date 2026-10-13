@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/v1/t/{tenant_id}/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description C-18a trusted storefront resolver seam. Guest capability or customer session must be verified independently of URL and Host, with exact Origin and session-bound CSRF. This increment has no production resolver; missing resolver rejects. Storefront access carries no employee scope and never falls back to staff authentication. Prices, buyer identity and tenant authorization are not input. quote_id is rejected in this increment; B2B conversion is deferred. */
+        post: operations["createCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/testing/payments/fake/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Explicit test/development configuration only; never mounted in production. The verifier authenticates exact raw bytes before a trusted event reaches checkout. Checkout rechecks persisted tenant/order, amount, currency, version and provider binding and deduplicates delivery inside a transaction. */
+        post: operations["receiveFakePaymentEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/sites/current": {
         parameters: {
             query?: never;
@@ -924,6 +958,63 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CheckoutStart: {
+            /** Format: uuid */
+            cart_id: string;
+            /**
+             * Format: uuid
+             * @description Unsupported in C-18a; returns 422.
+             */
+            quote_id?: string;
+            /** @description Guest snapshot only; required for a guest actor and forbidden for a customer actor. */
+            buyer_contact?: {
+                email: string;
+                name?: string;
+                phone?: string;
+            };
+            shipping_address: components["schemas"]["CheckoutShippingAddress"];
+        };
+        CheckoutShippingAddress: {
+            country: string;
+            subdivision?: string;
+            address1: string;
+            address2?: string;
+            city: string;
+            postal_code: string;
+        };
+        CheckoutResult: {
+            /** Format: uuid */
+            checkout_id: string;
+            /** Format: uuid */
+            order_id: string;
+            state: string;
+            /** Format: int64 */
+            amount_minor: number;
+            currency: string;
+            /** Format: int64 */
+            order_version: number;
+            payment: {
+                provider_ref: string;
+                status: string;
+                next_action_kind?: string;
+                next_action_url?: string;
+            };
+        };
+        FakePaymentEvent: {
+            event_id: string;
+            /** Format: uuid */
+            tenant_id: string;
+            /** Format: uuid */
+            order_id: string;
+            /** Format: int64 */
+            order_version: number;
+            provider_ref: string;
+            /** @enum {string} */
+            status: "authorized" | "captured" | "failed" | "canceled";
+            /** Format: int64 */
+            amount_minor: number;
+            currency: string;
+        };
         NotificationFailure: {
             /** Format: uuid */
             id: string;
@@ -1808,6 +1899,10 @@ export interface components {
         CartToken: string;
         /** @description Signed anonymous login challenge with five-minute expiry; Secure HttpOnly SameSite=Lax Path=/ and no Domain. */
         LoginChallengeCookie: string;
+        /** @description Exact configured storefront origin; never the admin origin. */
+        CheckoutOrigin: string;
+        /** @description Verified by the trusted resolver against the customer session or guest capability. */
+        CheckoutCSRFToken: string;
         /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
         TenantId: string;
         /** @description Session owned by the caller; never a token. */
@@ -1840,6 +1935,92 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    createCheckout: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description Exact configured storefront origin; never the admin origin. */
+                Origin: components["parameters"]["CheckoutOrigin"];
+                /** @description Verified by the trusted resolver against the customer session or guest capability. */
+                "X-CSRF-Token": components["parameters"]["CheckoutCSRFToken"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutStart"];
+            };
+        };
+        responses: {
+            /** @description Stable checkout and provider-neutral payment intent; replay returns the same IDs. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    receiveFakePaymentEvent: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Fake-Signature": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FakePaymentEvent"];
+            };
+        };
+        responses: {
+            /** @description Stable result after payment event admission or replay. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     getPublishedSite: {
         parameters: {
             query: {
