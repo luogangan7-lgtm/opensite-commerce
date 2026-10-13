@@ -111,11 +111,12 @@ export function graphInputFiles(roots: string[], root: string): string[] {
       }
     };
     for (const name of readdirSync(directory).filter(name => /^(?:tsconfig|jsconfig)(?:\.[^.]+)?\.json$/.test(name))) config(join(directory, name));
-    for (const name of readdirSync(directory).filter(name => /^vite\.config\.(?:[cm]?[jt]s)$/.test(name))) {
+    for (const name of readdirSync(directory).filter(name => /^(?:vite|astro)\.config\.(?:[cm]?[jt]s)$/.test(name))) {
       const path = join(directory, name);
       found.add(record(path));
       const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
       const scan = (node: ts.Node): void => {
+        if (ts.isShorthandPropertyAssignment(node) && ['resolve', 'alias'].includes(node.name.text)) throw new Error(`Unsupported Vite resolution config: ${path}`);
         if (ts.isPropertyAssignment(node)) {
           const name = ts.isComputedPropertyName(node.name) ? node.name.expression.getText(source) : node.name.getText(source);
           if (['resolve', 'alias'].includes(name.replace(/^['"]|['"]$/g, ''))) throw new Error(`Unsupported Vite resolution config: ${path}`);
