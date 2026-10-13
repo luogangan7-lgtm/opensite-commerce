@@ -41,6 +41,13 @@ func TestWorkerStopCancelsAfterDefaultGrace(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
+	// The worker lifetime has no deadline: only finite grace or explicit cleanup
+	// can cancel the running task. The separate ctx bounds setup/startup.
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	defer cancelWorker()
+	if _, deadline := workerCtx.Deadline(); deadline {
+		t.Fatal("worker lifetime must not supply a cancellation deadline")
+	}
 	admin, err := pgxadapter.OpenMigrationPool(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -94,8 +101,16 @@ func TestWorkerStopCancelsAfterDefaultGrace(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Start(ctx); err != nil {
-		t.Fatal(err)
+	startResult := make(chan error, 1)
+	go func() { startResult <- client.Start(workerCtx) }()
+	select {
+	case err := <-startResult:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		cancelWorker()
+		t.Fatal("worker startup exceeded setup deadline")
 	}
 	select {
 	case <-service.started:
