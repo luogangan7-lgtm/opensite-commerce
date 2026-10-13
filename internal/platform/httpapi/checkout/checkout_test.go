@@ -138,6 +138,77 @@ func checkProblem(t *testing.T, w *httptest.ResponseRecorder, status int) {
 		t.Fatalf("invalid problem %s", w.Body.String())
 	}
 }
+// authenticatedStaff is an explicit admission fixture. It accepts only its
+// staff cookie and projects a stable actor after authentication; it never puts
+// private Router authorization keys into the request context.
+type authenticatedStaff struct {
+	authentications int
+	projections     int
+}
+
+func (s *authenticatedStaff) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	cookie, err := r.Cookie("admin_session")
+	if err != nil || cookie.Value != "fixture-staff-session" || spec.Access != httpapi.AdminSession || spec.Scope != "fulfillment:write" {
+		return nil, apperrors.New(401, "unauthenticated", "Staff fixture session required")
+	}
+	s.authentications++
+	return ctx, nil
+}
+
+func (s *authenticatedStaff) ResolveActor(_ context.Context, _ *http.Request, _ httpapi.RouteSpec) (httpapi.Actor, error) {
+	s.projections++
+	return httpapi.Actor{Kind: "user", ID: cart}, nil
+}
+
+func TestCheckoutAuthenticatorPreservesAuthenticatedStaffActor(t *testing.T) {
+	h, err := checkout.New(checkout.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The control proves the authenticated fixture works through the same Router.
+	// Wrapping it must preserve the actor required by non-checkout staff writes.
+	for _, wrapped := range []bool{false, true} {
+		staff := &authenticatedStaff{}
+		var auth httpapi.Authenticator = staff
+		if wrapped {
+			auth = h.Authenticator(auth)
+		}
+		r := httpapi.New(auth, nil)
+		reached := false
+		spec := httpapi.RouteSpec{OperationID: "staffActorProbe", Method: http.MethodPost, Pattern: "/api/v1/t/{tenant_id}/staff-actor-probe", Access: httpapi.AdminSession, Scope: "fulfillment:write"}
+		if err := r.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			reached = true
+			gotTenant, err := httpapi.AuthorizedTenant(req.Context())
+			if err != nil || gotTenant != tenant {
+				t.Errorf("wrapped=%v tenant=%q error=%v", wrapped, gotTenant, err)
+				return
+			}
+			gotActor, err := httpapi.AuthorizedActor(req.Context())
+			if err != nil {
+				httpapi.WriteProblem(w, req, err)
+				return
+			}
+			if gotActor != (httpapi.Actor{Kind: "user", ID: cart}) {
+				t.Errorf("wrapped=%v wrong staff actor: %+v", wrapped, gotActor)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})); err != nil {
+			t.Fatal(err)
+		}
+		q := httptest.NewRequest(http.MethodPost, "/api/v1/t/"+tenant+"/staff-actor-probe", nil)
+		q.AddCookie(&http.Cookie{Name: "admin_session", Value: "fixture-staff-session"})
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, q)
+		if !reached || staff.authentications != 1 {
+			t.Fatalf("wrapped=%v valid staff did not authenticate: reached=%v calls=%d", wrapped, reached, staff.authentications)
+		}
+		if w.Code != http.StatusNoContent || staff.projections != 1 {
+			t.Fatalf("wrapped=%v authenticated staff actor lost: status=%d projections=%d body=%s", wrapped, w.Code, staff.projections, w.Body.String())
+		}
+	}
+}
+
 func TestCheckoutDefaultDeny(t *testing.T) {
 	s := &service{}
 	r := router(t, checkout.Config{Service: s})
