@@ -289,7 +289,7 @@ class GovernanceTests(unittest.TestCase):
         # Real Go resolution, offline: no checkout go.mod or downloaded dependency.
         self.source("vendor/github.com/jackc/pgx/v5/pgx.go",
                     "package pgx\ntype Conn struct{}\ntype ConnConfig struct{}\n"
-                    "type Tx interface{}\nfunc Connect() *Conn { return nil }\n"
+                    "type Tx interface{}\ntype ConnectTracer interface{}\nfunc Connect() *Conn { return nil }\n"
                     "func ConnectConfig(*ConnConfig) *Conn { return nil }\n")
         self.source("vendor/modules.txt", "# github.com/jackc/pgx/v5 v5.10.0\n## explicit; go 1.27.2\ngithub.com/jackc/pgx/v5\n")
         with (self.root / "go.mod").open("a") as output:
@@ -893,6 +893,24 @@ class GovernanceTests(unittest.TestCase):
                 self.source(name, f'package {package}\ntype runner struct{{}}\nfunc (runner) InMaintenance() {{}}\nvar Run = runner{{}}.InMaintenance\n')
                 self.assert_red("MODULE_MAINTENANCE_CALL")
                 (self.root / name).unlink()
+
+    def test_adapter_dot_import_is_not_exempt_red(self):
+        self.vendor_pgx()
+        self.source("internal/tenanttx/pgxadapter/dot.go",
+                    'package pgxadapter\nimport . "github.com/jackc/pgx/v5"\nvar Open = Connect\n')
+        self.assert_red("MODULE_RAW_CONNECTION")
+
+    def test_connect_tracer_interface_is_not_a_connector_green(self):
+        self.vendor_pgx()
+        self.source("internal/modules/a/tracer.go",
+                    'package a\nimport "github.com/jackc/pgx/v5"\nvar _ pgx.ConnectTracer = nil\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_adapter_exported_sql_statement_red(self):
+        self.source("internal/tenanttx/pgxadapter/stmt.go",
+                    'package pgxadapter\nimport "database/sql"\nfunc Prepared() *sql.Stmt { return nil }\n')
+        self.assert_red("MODULE_RAW_POOL_EXPORT")
 
     def test_h2_private_maintenance_value_red(self):
         self.source("internal/tenanttx/pgxadapter/exported.go",
