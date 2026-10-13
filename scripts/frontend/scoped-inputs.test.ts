@@ -121,6 +121,18 @@ test('fails closed on unsupported package-import aliases and undeclared bare ali
   expect(() => graphInputFiles(['src/other.ts'], root)).toThrow();
 });
 
+test('fails closed on Astro config Vite aliases that could hide a local leaf', async () => {
+  const { graphInputFiles } = await loadInputs();
+  const base = { 'package.json': JSON.stringify({ dependencies: { react: '1.0.0' } }), 'src/entry.ts': "import 'react';", 'src/shim.tsx': 'export default 1;' };
+  const configs = [
+    "export default { vite: { resolve: { alias: { react: '/src/shim.tsx' } } } };",
+    "const resolve = {}; export default { vite: { resolve } };",
+    "export default { vite: { ['resolve']: {} } };",
+  ];
+  for (const config of configs) expect(() => graphInputFiles(['src/entry.ts'], fixture({ ...base, 'astro.config.mjs': config }))).toThrow();
+  expect(() => graphInputFiles(['src/entry.ts'], fixture({ ...base, 'astro.config.mjs': 'export default { vite: { define: { a: 1 } } };' }))).not.toThrow();
+});
+
 test('keeps distinct renderer roots independent while including their shared CSS', async () => {
   const { graphInputFiles } = await loadInputs();
   const root = fixture({
