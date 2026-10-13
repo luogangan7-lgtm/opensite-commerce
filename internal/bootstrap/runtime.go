@@ -7,7 +7,10 @@ package bootstrap
 import (
 	"context"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"regexp"
@@ -15,9 +18,16 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
+	cartcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
+	checkoutmodule "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout"
+	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
+	httpcheckout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -52,6 +62,10 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	if err != nil {
 		return Config{}, nil, err
 	}
+	checkoutEnv, err := checkoutEnvironment(runtimeURL)
+	if err != nil {
+		return Config{}, nil, err
+	}
 	if url := runtimeURL; url != "" {
 		runner, err := pgxadapter.OpenQueryRunner(startup, url)
 		if err != nil {
@@ -80,6 +94,28 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		config.Orders.Read = runner.RunAuthorizedSnapshot
 		if config.Cart == nil {
 			config.Cart = cart.NewPostgres(cart.Config{Run: runner.RunAuthorized, Read: runner.RunAuthorizedSnapshot}, nil)
+		}
+		if checkoutEnv != nil && config.Checkout == nil {
+			resolver, err := httpcheckout.NewGuestResolver(httpcheckout.GuestConfig{TenantID: checkoutEnv.tenantID, Origin: checkoutEnv.origin, Key: checkoutEnv.key, VerifyCart: func(ctx context.Context, actor checkoutcontract.AuthorizedActor, cartID string) error {
+				guestHash, err := hex.DecodeString(actor.ID())
+				if err != nil {
+					return err
+				}
+				return runner.RunCapabilitySnapshot(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
+					_, err := cart.ReadIntentSnapshot(ctx, tx, cartcontract.AuthorizedActor{TenantID: actor.TenantID(), GuestTokenHash: guestHash}, cartID)
+					return err
+				})
+			}})
+			if err != nil {
+				closeRuntime()
+				return Config{}, nil, err
+			}
+			verifier, err := httpcheckout.NewFakeHMACVerifier(checkoutEnv.fakeKey)
+			if err != nil {
+				closeRuntime()
+				return Config{}, nil, err
+			}
+			config.Checkout = &httpcheckout.Config{Service: checkoutmodule.New(checkoutmodule.Config{Run: runner.RunAuthorizedTx, Read: runner.RunAuthorizedTxSnapshot, Cart: checkoutmodule.NewSQLCart(cart.ReadIntent), SnapshotCart: checkoutmodule.NewSQLCartSnapshot(cart.ReadIntentSnapshot), Rules: checkoutmodule.NewSQLRules(checkoutEnv.metadata), Orders: orders.New(), Ledger: ledger.New(), Payment: paymentfake.New()}), Resolver: resolver, Origin: checkoutEnv.origin, FakeEnabled: true, Environment: checkoutEnv.environment, Verifier: verifier}
 		}
 	}
 	mediaURL, err := environmentDSN("OPENSITE_MEDIA_DATABASE_URL", "MEDIA", "opensite_media_login")
@@ -135,6 +171,46 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		config.Routes = append(config.Routes, staff.Routes()...)
 	}
 	return config, closeRuntime, nil
+}
+
+type checkoutSettings struct {
+	origin, tenantID, environment string
+	key, fakeKey                  []byte
+	metadata                      checkoutmodule.RuleMetadata
+}
+
+func checkoutEnvironment(runtimeURL string) (*checkoutSettings, error) {
+	flag := os.Getenv("OPENSITE_FAKE_PSP")
+	if flag == "" || flag == "0" {
+		return nil, nil
+	}
+	if flag != "1" {
+		return nil, errors.New("invalid Fake PSP flag")
+	}
+	c := &checkoutSettings{origin: os.Getenv("OPENSITE_STOREFRONT_ORIGIN"), tenantID: os.Getenv("OPENSITE_STOREFRONT_TENANT_ID"), environment: os.Getenv("OPENSITE_ENVIRONMENT")}
+	if runtimeURL == "" || (c.environment != "test" && c.environment != "development") {
+		return nil, errors.New("Fake PSP requires nonproduction runtime database")
+	}
+	var err error
+	c.key, err = base64.RawURLEncoding.DecodeString(os.Getenv("OPENSITE_STOREFRONT_KEY"))
+	if err != nil || len(c.key) < 32 {
+		return nil, errors.New("invalid storefront key")
+	}
+	c.fakeKey, err = base64.RawURLEncoding.DecodeString(os.Getenv("OPENSITE_FAKE_WEBHOOK_KEY"))
+	if err != nil || len(c.fakeKey) < 32 {
+		return nil, errors.New("invalid Fake webhook key")
+	}
+	raw := os.Getenv("OPENSITE_CHECKOUT_RULE_METADATA")
+	if len(raw) == 0 || len(raw) > 65536 {
+		return nil, errors.New("invalid checkout rule metadata")
+	}
+	if err := json.Unmarshal([]byte(raw), &c.metadata); err != nil {
+		return nil, fmt.Errorf("invalid checkout rule metadata: %w", err)
+	}
+	if c.metadata.Profiles[c.tenantID] == "" || len(c.metadata.SKUs[c.tenantID]) == 0 {
+		return nil, errors.New("checkout tenant rule metadata missing")
+	}
+	return c, nil
 }
 
 // environmentDSN keeps passwords in the process environment, never command-line

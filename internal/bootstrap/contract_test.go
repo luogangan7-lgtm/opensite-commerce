@@ -81,7 +81,7 @@ func TestUnconfiguredIdentityRouteContract(t *testing.T) {
 	// covers the full mode with real login registrations.
 	optional := map[string]bool{"getAdminLoginChallenge": true, "createStaffLoginSession": true,
 		"getAdminSession": true, "logoutCurrentStaffSession": true,
-		checkout.StartOperation: true, checkout.FakeOperation: true}
+		checkout.StartOperation: true, checkout.PreviewOperation: true, checkout.GetOperation: true, checkout.FakeOperation: true}
 	removed := 0
 	for _, item := range doc.Paths.Map() {
 		for method, op := range item.Operations() {
@@ -108,7 +108,9 @@ func TestUnconfiguredIdentityRouteContract(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
 		{"GET", "/api/v1/auth/login"}, {"POST", "/api/v1/auth/login"},
 		{"GET", "/api/v1/auth/session"}, {"POST", "/api/v1/auth/logout"},
-		{"POST", "/api/v1/t/10000000-0000-4000-8000-000000000001/checkout"}, {"POST", checkout.FakePattern},
+		{"POST", "/api/v1/t/10000000-0000-4000-8000-000000000001/checkout"},
+		{"POST", "/api/v1/t/10000000-0000-4000-8000-000000000001/checkout/preview"},
+		{"GET", "/api/v1/t/10000000-0000-4000-8000-000000000001/checkout/10000000-0000-4000-8000-000000000002"}, {"POST", checkout.FakePattern},
 	} {
 		w := httptest.NewRecorder()
 		server.Handler.ServeHTTP(w, httptest.NewRequest(route.method, route.path, nil))

@@ -60,8 +60,8 @@ func (r *QueryRunner) RunAuthorizedTxSnapshot(ctx context.Context, tenant string
 	return r.RunCapabilitySnapshot(ctx, tenant, fn)
 }
 
-// RunCapabilitySnapshot is only composed behind the CMS module's verified
-// signed-preview capability. It always uses a read-only snapshot and tenant
+// RunCapabilitySnapshot is composed only behind independently verified CMS or
+// storefront guest capabilities. It always uses a read-only snapshot and tenant
 // RLS; route parameters alone must never authorize calling this port.
 func (r *QueryRunner) RunCapabilitySnapshot(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
 	if r == nil || fn == nil {

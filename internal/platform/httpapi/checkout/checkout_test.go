@@ -113,6 +113,8 @@ func request(r http.Handler, path, content string, headers map[string]string) *h
 	q.Header.Set("Content-Type", "application/json")
 	q.Header.Set("Origin", origin)
 	q.Header.Set("X-CSRF-Token", "fixture-session-csrf")
+	q.Header.Set("X-Cart-ID", cart)
+	q.Header.Set("X-Cart-Token", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	q.Header.Set("Idempotency-Key", "fixture-command-1")
 	for k, v := range headers {
 		if v == "" {
@@ -399,17 +401,19 @@ func TestFakeWebhookStrictJSONAndProofOnly(t *testing.T) {
 func TestDuplicateSecurityHeadersRejected(t *testing.T) {
 	s := &service{}
 	r := router(t, checkout.Config{Service: s, Resolver: resolver{actor: actor(t, tenant, "guest")}, Origin: origin})
-	for _, header := range []string{"Origin", "X-CSRF-Token", "Idempotency-Key"} {
+	for _, header := range []string{"Origin", "X-CSRF-Token", "Idempotency-Key", "X-Cart-ID", "X-Cart-Token"} {
 		q := httptest.NewRequest("POST", "/api/v1/t/"+tenant+"/checkout", strings.NewReader(body))
 		q.Header.Set("Content-Type", "application/json")
 		q.Header.Set("Origin", origin)
 		q.Header.Set("X-CSRF-Token", "fixture-session-csrf")
+		q.Header.Set("X-Cart-ID", cart)
+		q.Header.Set("X-Cart-Token", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 		q.Header.Set("Idempotency-Key", "fixture-command-1")
 		q.Header.Add(header, q.Header.Get(header))
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, q)
 		status := 403
-		if header == "Idempotency-Key" {
+		if header == "Idempotency-Key" || header == "X-Cart-ID" || header == "X-Cart-Token" {
 			status = 400
 		}
 		checkProblem(t, w, status)
