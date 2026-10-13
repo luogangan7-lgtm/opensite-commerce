@@ -231,3 +231,69 @@ func TestFailPersistsAfterCycleDeadline(t *testing.T) {
 		t.Fatalf("failure not persisted: ctxErr=%v result=%+v retry=%d", s.failCtxErr, result, s.retry)
 	}
 }
+
+type deadlineAckStore struct{ *fakeStore }
+
+func (s deadlineAckStore) Complete(ctx context.Context, l Lease) (bool, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok || deadline.After(l.LeaseUntil) {
+		return false, errors.New("ack must be lease bounded")
+	}
+	return s.fakeStore.Complete(ctx, l)
+}
+
+func TestAcknowledgmentRetainsLeaseDeadline(t *testing.T) {
+	s := &fakeStore{queue: []Lease{fixture(1)}, completeOK: true}
+	d := dispatcher(s, func(context.Context, Delivery) error { return nil })
+	d.Store = deadlineAckStore{s}
+	if result, err := d.Dispatch(context.Background(), tenant, 1); err != nil || result.Completed != 1 {
+		t.Fatalf("unbounded ack: result=%+v err=%v", result, err)
+	}
+}
+
+type leaseSenderFunc func(context.Context, Lease) error
+
+func (f leaseSenderFunc) Send(context.Context, Delivery) error {
+	return errors.New("lease sender fallback rejected")
+}
+func (f leaseSenderFunc) SendLease(ctx context.Context, lease Lease) error { return f(ctx, lease) }
+
+func TestLeaseSenderReceivesOriginalFenceAndCopiedPayload(t *testing.T) {
+	for _, cancelSend := range []bool{false, true} {
+		t.Run(fmt.Sprint(cancelSend), func(t *testing.T) {
+			claimed := fixture(7)
+			s := &fakeStore{queue: []Lease{claimed}, completeOK: true, failOK: true}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			called := false
+			d := dispatcher(s, nil)
+			d.Sender = leaseSenderFunc(func(send context.Context, got Lease) error {
+				called = true
+				if !reflect.DeepEqual(got, claimed) {
+					t.Errorf("lease identity drift: %+v", got)
+				}
+				if deadline, ok := send.Deadline(); !ok || deadline.After(claimed.LeaseUntil) {
+					t.Error("unbounded lease sender")
+				}
+				got.Delivery.Payload[0] = 'X'
+				if cancelSend {
+					cancel()
+					<-send.Done()
+					return send.Err()
+				}
+				return nil
+			})
+			result, err := d.Dispatch(ctx, tenant, 2)
+			if !called || string(claimed.Delivery.Payload) != `{"x":1}` || !reflect.DeepEqual(s.ack, claimed) {
+				t.Fatalf("fence/payload/capability drift: called=%v ack=%+v original=%+v", called, s.ack, claimed)
+			}
+			if cancelSend {
+				if !errors.Is(err, context.Canceled) || result.Failed != 1 || result.Claimed != 1 {
+					t.Fatalf("cancellation result=%+v err=%v", result, err)
+				}
+			} else if err != nil || result.Completed != 1 {
+				t.Fatalf("delivery result=%+v err=%v", result, err)
+			}
+		})
+	}
+}

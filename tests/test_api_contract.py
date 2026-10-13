@@ -113,7 +113,7 @@ class APIContractTests(unittest.TestCase):
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia"}
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart)
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | {"listNotificationFailures", "redriveNotification"})
         for name in expected - {"health"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")

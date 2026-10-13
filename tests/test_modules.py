@@ -786,6 +786,7 @@ class GovernanceTests(unittest.TestCase):
         self.generated_server()
         importer = 'import "example.test/shop/internal/platform/httpapi/generated"\nvar Mount = generated.HandlerFromMux\n'
         self.source("internal/platform/httpapi/router.go", "package httpapi\n" + importer)
+        self.source("internal/platform/httpapi/notificationhttp/routes.go", "package notificationhttp\n" + importer)
         self.source("cmd/api/main_test.go", "package main\n" + importer)
         self.source("cmd/api/main.go", "package main\nfunc main() {}\n")
         result = self.run_gate()

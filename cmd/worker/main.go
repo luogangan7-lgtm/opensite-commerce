@@ -2,8 +2,8 @@
 
 // Responsibility: jobs and outbox worker startup, capabilities and graceful stop.
 // Dependencies: jobs, outbox, pgx pools, environment/signals; called by main.
-// Invariants: queue/outbox roles use separate pools; OUTBOX_ENABLED defaults off
-// and no production Sender is registered. No unconfigured event is ever claimed.
+// Invariants: queue/outbox roles use separate pools; dispatch defaults off;
+// only explicit local SMTP uses fenced, notification-only delivery claims.
 package main
 
 import (
@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/jobs"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/outbox"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
@@ -32,9 +33,33 @@ func main() {
 func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	// Only tests inject a Sender. Enabling dispatch in this executable fails closed
-	// until a separately reviewed destination-validation/dedup adapter is added.
-	return runContext(ctx, os.Getenv, nil, composeWorkers)
+	sender, err := configuredSender(os.Getenv)
+	if err != nil {
+		return err
+	}
+	return runContext(ctx, os.Getenv, sender, composeWorkers)
+}
+
+// Only explicit local SMTP configuration registers the dedicated adapter.
+func configuredSender(getenv func(string) string) (outbox.Sender, error) {
+	sender, err := notifications.SenderFromEnv(getenv)
+	if err != nil || sender == nil {
+		return nil, err
+	}
+	return configuredNotificationSender{sender: sender}, nil
+}
+
+type configuredNotificationSender struct{ sender notifications.Sender }
+
+func (configuredNotificationSender) Send(context.Context, outbox.Delivery) error {
+	return outbox.ErrInvalidInput
+}
+
+func dispatchComponents(pool pgxadapter.QueueDB, sender outbox.Sender) (outbox.Store, outbox.Sender) {
+	if configured, ok := sender.(configuredNotificationSender); ok {
+		return notifications.OutboxStore(pool), notifications.NewWorker(pool, configured.sender)
+	}
+	return outbox.PGStore{Pool: pool}, sender
 }
 
 // jobWorker keeps startup orchestration injectable without replacing Dispatcher.
@@ -142,7 +167,8 @@ func composeWorkers(ctx context.Context, getenv func(string) string, sender outb
 			return nil, nil, nil, err
 		}
 		cleanup = func() { outboxPool.Close(); pool.Close() }
-		runner = &outbox.Runner{Source: outbox.PGTenantSource{Pool: outboxPool}, Dispatcher: outbox.Dispatcher{Store: outbox.PGStore{Pool: outboxPool}, Sender: sender, Config: outbox.Config{WorkerID: uuid.NewString(), LeaseSeconds: 60, BaseRetrySeconds: 2, MaxRetrySeconds: 300}}, PollInterval: time.Second, CycleTimeout: 30 * time.Second, TenantBatchSize: 100, EventsPerTenant: 10}
+		store, destination := dispatchComponents(outboxPool, sender)
+		runner = &outbox.Runner{Source: outbox.PGTenantSource{Pool: outboxPool}, Dispatcher: outbox.Dispatcher{Store: store, Sender: destination, Config: outbox.Config{WorkerID: uuid.NewString(), LeaseSeconds: 60, BaseRetrySeconds: 2, MaxRetrySeconds: 300}}, PollInterval: time.Second, CycleTimeout: 30 * time.Second, TenantBatchSize: 100, EventsPerTenant: 10}
 	}
 	success = true
 	return worker, runner, cleanup, nil
