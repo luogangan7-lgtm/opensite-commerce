@@ -13,7 +13,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description C-18a trusted storefront resolver seam. Guest capability or customer session must be verified independently of URL and Host, with exact Origin and session-bound CSRF. This increment has no production resolver; missing resolver rejects. Storefront access carries no employee scope and never falls back to staff authentication. Prices, buyer identity and tenant authorization are not input. quote_id is rejected in this increment; B2B conversion is deferred. */
+        /** @description C-09d guest capability checkout. The capability must be verified independently of URL and Host, with exact configured Origin, server proof and tenant/cart ownership. Customer sessions are reserved for a later integration; missing resolver rejects. Storefront access carries no employee scope and never falls back to staff authentication. Prices, buyer identity and tenant authorization are not input. quote_id is rejected in this increment; B2B conversion is deferred. */
         post: operations["createCheckout"];
         delete?: never;
         options?: never;
