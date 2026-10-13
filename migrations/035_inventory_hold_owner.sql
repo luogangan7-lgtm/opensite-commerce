@@ -90,7 +90,7 @@ BEGIN
   RAISE EXCEPTION 'INVENTORY_RESERVATION_OWNER_MISMATCH' USING ERRCODE='42501';
  END IF;
  -- Authenticate before any terminal replay: a finished row never becomes public.
- IF r.holder_hash IS NULL OR r.holder_hash<>sha256(p_bearer) THEN
+ IF r.holder_hash IS NULL OR (r.holder_hash<>sha256(p_bearer) AND r.holder_hash<>p_bearer) THEN
   RAISE EXCEPTION 'INVENTORY_HOLDER_MISMATCH' USING ERRCODE='42501';
  END IF;
  RETURN app.inventory_finish(p_id,p_target);
