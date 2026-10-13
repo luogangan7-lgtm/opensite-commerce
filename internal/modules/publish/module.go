@@ -1,6 +1,7 @@
 // Package publish exposes a sealed-release read facade to API composition.
 // Dependencies: private store/service and public contract; caller: cmd/api.
-// Invariants: only dedicated public connections; no draft or live catalog fallback.
+// Invariants: only dedicated public connections; product content only from the sealed
+// release (no draft/live content fallback); SKU price/availability are live.
 package publish
 
 import (
@@ -27,9 +28,13 @@ func (m *Module) Current(ctx context.Context, host string) (contract.Site, error
 	if m == nil || m.store == nil {
 		return contract.Site{}, contract.ErrUnavailable
 	}
-	s, r, locale, manifest, pages, err := m.store.Current(ctx, host)
+	s, r, locale, manifest, pages, live, err := m.store.Current(ctx, host)
 	if err != nil {
 		return contract.Site{}, err
 	}
-	return service.Project(s, r, host, locale, manifest, pages)
+	site, err := service.Project(s, r, host, locale, manifest, pages)
+	if err != nil {
+		return contract.Site{}, err
+	}
+	return service.AttachSKUs(ctx, site, live)
 }

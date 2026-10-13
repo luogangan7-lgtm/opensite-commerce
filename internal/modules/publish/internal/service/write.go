@@ -254,7 +254,12 @@ func DraftSite(d contract.Draft, host string) (contract.Site, error) {
 		seenIDs[p.ID] = true
 		pages = append(pages, contract.Page{Path: p.Path, Title: p.Document.Title, Description: p.Document.Description, Blocks: p.Document.Blocks})
 	}
-	manifestBytes, err := json.Marshal(manifest{Version: 1, Locale: d.Locale, Title: d.Title, Description: d.Description, Navigation: d.Navigation, Products: d.Products})
+	// Previews project only sealed product fields; live SKUs are never part of a manifest.
+	sealed := make([]sealedProduct, 0, len(d.Products))
+	for _, p := range d.Products {
+		sealed = append(sealed, sealedProduct{ID: p.ID, Slug: p.Slug, Name: p.Name, Description: p.Description, UnitAmount: p.UnitAmount, Currency: p.Currency})
+	}
+	manifestBytes, err := json.Marshal(manifest{Version: 1, Locale: d.Locale, Title: d.Title, Description: d.Description, Navigation: d.Navigation, Products: sealed})
 	if err != nil {
 		return contract.Site{}, contract.ErrUnavailable
 	}

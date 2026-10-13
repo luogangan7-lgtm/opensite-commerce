@@ -56,8 +56,26 @@ type Product struct {
 	Description string `json:"description"`
 	UnitAmount  string `json:"unit_amount"`
 	Currency    string `json:"currency"`
+	SKUs        []SKU  `json:"skus"`
+}
+
+// OptionValue is one live option name/label pair of a purchasable SKU.
+type OptionValue struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// SKU is live purchasable state: availability is a boolean, never a stock count.
+type SKU struct {
+	SKUID        string        `json:"sku_id"`
+	SKUCode      string        `json:"sku_code"`
+	OptionValues []OptionValue `json:"option_values"`
+	PriceMinor   string        `json:"price_minor"`
+	Currency     string        `json:"currency"`
+	Available    bool          `json:"available"`
 }
 type Site struct {
+	TenantID    string       `json:"tenant_id"` // host-resolved tenant for tenant-scoped storefront APIs (carts)
 	SiteID      string       `json:"site_id"`
 	ReleaseID   string       `json:"release_id"`
 	Hostname    string       `json:"hostname"`

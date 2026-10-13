@@ -45,7 +45,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Current sealed public release for a verified DNS hostname. Version-1 public manifest seals product view models derived from catalog published listings and pinned content revisions. */
+        /** @description Current sealed public release for a verified DNS hostname. Version-1 public manifest seals product view models derived from catalog published listings and pinned content revisions. Product content always comes from the sealed release. Each product's `skus` are live, read in the same snapshot transaction: only ready (active) SKUs of ready products listed in the release. `price_minor` is the anonymous default price: the quantity-1 unit amount in the product's release currency from active, in-window, audience=all price lists, chosen by priority descending, then list ID ascending; a SKU without such a price is omitted. `available` is true when on-hand stock exceeds active reservations; stock counts are never exposed. */
         get: operations["getPublishedSite"];
         put?: never;
         post?: never;
@@ -1124,8 +1124,26 @@ export interface components {
             description: string;
             unit_amount: string;
             currency: string;
+            /** @description Live purchasable SKUs; see getPublishedSite for the price and availability rules. */
+            skus: components["schemas"]["PublishedSku"][];
+        };
+        PublishedSkuOptionValue: {
+            name: string;
+            value: string;
+        };
+        PublishedSku: {
+            sku_id: string;
+            sku_code: string;
+            option_values: components["schemas"]["PublishedSkuOptionValue"][];
+            /** @description Live anonymous default unit price in minor units, as a decimal string. */
+            price_minor: string;
+            currency: string;
+            /** @description True when on-hand stock exceeds active reservations; never a count. */
+            available: boolean;
         };
         PublishedSite: {
+            /** @description Tenant resolved from the verified hostname; storefronts use it for tenant-scoped APIs such as /api/v1/t/{tenant_id}/carts. */
+            tenant_id: string;
             site_id: string;
             release_id: string;
             hostname: string;
@@ -2014,7 +2032,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Validated immutable public snapshot */
+            /** @description Validated sealed public snapshot with live SKU price and availability */
             200: {
                 headers: {
                     [name: string]: unknown;

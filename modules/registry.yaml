@@ -355,6 +355,7 @@
         "cms",
         "media",
         "catalog",
+        "inventory",
         "pricing"
       ],
       "tests": [
@@ -368,7 +369,8 @@
         "internal/modules/publish/write_handler_test.go",
         "internal/modules/publish/write_test.go",
         "internal/modules/publish/internal/service/write_test.go",
-        "tests/db_cms_publish.sql"
+        "tests/db_cms_publish.sql",
+        "internal/modules/publish/internal/service/live_test.go"
       ],
       "scopes": [
         "cms:write",
@@ -1313,6 +1315,20 @@
       "touches_tables": [
         "checkout_sessions",
         "checkout_attempts"
+      ]
+    },
+    {
+      "file": "migrations/033_storefront_skus.sql",
+      "owner": "publish",
+      "touches_tables": [
+        "products",
+        "product_variants",
+        "product_options",
+        "product_option_values",
+        "variant_option_values",
+        "price_lists",
+        "price_entries",
+        "stock_levels"
       ]
     }
   ]

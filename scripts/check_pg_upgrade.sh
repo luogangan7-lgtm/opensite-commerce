@@ -157,13 +157,14 @@ LIMITS_DB=""
 OPS_METRICS_DB=""
 INVENTORY_DB=""
 PRICING_DB=""
+SKUS_DB=""
 IDENTITY_DB=""
 LOGIN_DB=""
 CHECKOUT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$SKUS_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -976,6 +977,35 @@ db "$NOTIFICATIONS_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $NOTIFICATIONS_DB" >/dev/null; NOTIFICATIONS_DB=""
 pass 'notifications upgrade preserves original order outbox and fans out only newly inserted events'
 
+# Storefront SKUs: populated stock rows gain the generated boolean with counts intact.
+storefront_skus=(migrations/[0-9][0-9][0-9]_storefront_skus.sql)
+[[ ${#storefront_skus[@]} == 1 ]] || { echo 'FAIL: one storefront SKU migration required' >&2; exit 1; }
+SKUS_DB=storefront_skus_upgrade_$$
+admin -c "CREATE DATABASE $SKUS_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${storefront_skus[0]} ]] || break
+ apply_forward "$SKUS_DB" "$f"
+done
+db "$SKUS_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('sku-upgrade') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES(:'t','P','ready') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','A','a'),(:'t',:'p','B','b');
+SELECT set_config('app.tenant_id',:'t',false);
+SELECT app.inventory_adjust(id,3,'sku upgrade receipt',uuidv7(),'inbound') FROM app.product_variants WHERE tenant_id=:'t';
+SELECT app.inventory_reserve(id,CASE sku WHEN 'A' THEN 3 ELSE 1 END,'sku_upgrade',uuidv7(),'sku-upgrade-'||sku)
+ FROM app.product_variants WHERE tenant_id=:'t';
+SQL
+apply_forward "$SKUS_DB" "${storefront_skus[0]}"
+result=$(db "$SKUS_DB" -c "SELECT 'SKU_UPGRADE='||string_agg(v.sku||':'||s.on_hand||'/'||s.reserved||'/'||s.in_stock,',' ORDER BY v.sku) FROM app.stock_levels s JOIN app.product_variants v ON (v.tenant_id,v.id)=(s.tenant_id,s.sku_id)")
+[[ $result == *'SKU_UPGRADE=A:3/3/false,B:3/1/true'* ]] || bad "storefront SKU populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${storefront_skus[0]} ]] || continue
+ apply_forward "$SKUS_DB" "$f"
+done
+if ! db "$SKUS_DB" < tests/db_storefront.sql >/dev/null || ! db "$SKUS_DB" < tests/db_inventory.sql >/dev/null || ! db "$SKUS_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'storefront SKU RLS/inventory/role matrix after populated upgrade'
+else pass 'storefront SKU upgrade derives in_stock from existing counts; counts stay private'; fi
+admin -c "DROP DATABASE $SKUS_DB" >/dev/null; SKUS_DB=""
 
 # C-02a: discover the identity upgrade by suffix. Seed only after ALL filename-
 # ordered predecessors; retain a full-row snapshot so ids, hashes and state are
@@ -1228,4 +1258,4 @@ admin -c "DROP DATABASE $CHECKOUT_DB"; CHECKOUT_DB=""
 pass 'checkout upgrade preserves paid legacy orders/inventory/outbox and installs permanent fenced receipts'
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login, CMS and checkout upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login, CMS, checkout and storefront SKU upgrade gates'

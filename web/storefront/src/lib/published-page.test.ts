@@ -15,11 +15,11 @@ function requestContext(url: URL, response: { status: number; statusText: string
 }
 
 const site: PublishedSite = {
-  site_id: 'test-site', release_id: 'test-release', hostname: 'shop.example.test', locale: 'en',
+  tenant_id: 'test-tenant', site_id: 'test-site', release_id: 'test-release', hostname: 'shop.example.test', locale: 'en',
   title: 'Test store', description: 'Published description', navigation: [],
   pages: [{ path: '/', title: 'Home', description: 'Home description', blocks: [] },
     { path: '/guides/setup', title: 'Setup', description: 'Setup description', blocks: [] }],
-  products: [{ id: 'product', slug: 'tote', name: 'Tote', description: 'Tote description', unit_amount: '1299', currency: 'USD' }],
+  products: [{ id: 'product', slug: 'tote', name: 'Tote', description: 'Tote description', unit_amount: '1299', currency: 'USD', skus: [] }],
 };
 
 describe('published page prepares the route response before rendering', () => {

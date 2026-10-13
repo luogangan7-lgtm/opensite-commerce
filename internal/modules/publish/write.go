@@ -150,7 +150,12 @@ func (m *WriteModule) Preview(ctx context.Context, tenant, site, draft, token st
 	if d.DraftID != draft || d.SiteID != site || d.Revision != claims.Revision || d.Status != "open" {
 		return contract.Site{}, contract.ErrNotFound
 	}
-	return service.DraftSite(d, "")
+	view, err := service.DraftSite(d, "")
+	if err != nil {
+		return contract.Site{}, err
+	}
+	view.TenantID = claims.TenantID // verified token/path tenant: required by PublishedSite
+	return view, nil
 }
 
 // Compile-time transport contract, not a second implementation.

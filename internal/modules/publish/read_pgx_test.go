@@ -16,6 +16,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/internal/store"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"net/url"
 	"os"
@@ -29,7 +30,7 @@ import (
 func TestPublicPublishedReadPG(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: migrated expendable DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: migrated expendable DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -99,8 +100,11 @@ func TestPublicPublishedReadPG(t *testing.T) {
 		t.Fatalf("public snapshot: %+v %v", got, err)
 	}
 	wantProducts := []contract.Product{
-		{ID: "c0900007-0000-4000-8000-000000000001", Slug: "canvas-tote", Name: "Canvas tote", Description: "A reusable cotton tote for daily essentials.", UnitAmount: "2400", Currency: "USD"},
-		{ID: "c0900007-0000-4000-8000-000000000002", Slug: "ceramic-mug", Name: "Ceramic mug", Description: "A simple mug for your morning routine.", UnitAmount: "1800", Currency: "USD"},
+		{ID: "c0900007-0000-4000-8000-000000000001", Slug: "canvas-tote", Name: "Canvas tote", Description: "A reusable cotton tote for daily essentials.", UnitAmount: "2400", Currency: "USD", SKUs: []contract.SKU{}},
+		{ID: "c0900007-0000-4000-8000-000000000002", Slug: "ceramic-mug", Name: "Ceramic mug", Description: "A simple mug for your morning routine.", UnitAmount: "1800", Currency: "USD", SKUs: []contract.SKU{}},
+	}
+	if got.TenantID != "c0900001-0000-4000-8000-000000000001" {
+		t.Fatalf("host-resolved tenant id: %q", got.TenantID)
 	}
 	if !reflect.DeepEqual(got.Products, wantProducts) {
 		t.Fatalf("published catalog snapshot: %+v", got.Products)
@@ -152,7 +156,7 @@ func TestPublicPublishedReadPG(t *testing.T) {
 		}
 	}
 	other, err := module.Current(ctx, "other.c09.test")
-	if err != nil || other.Title != "OTHER_TENANT_SECRET" || other.SiteID == got.SiteID {
+	if err != nil || other.Title != "OTHER_TENANT_SECRET" || other.SiteID == got.SiteID || other.TenantID != "c0900001-0000-4000-8000-000000000002" {
 		t.Fatalf("host scope: %+v %v", other, err)
 	}
 	r, closeR, err := pgxadapter.OpenPublic(ctx, publicDSN)
@@ -263,7 +267,7 @@ func TestPublicPublishedReadPG(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		_, _, _, _, pages, err := rawStore.Current(ctx, host)
+		_, _, _, _, pages, _, err := rawStore.Current(ctx, host)
 		if tc.oversized && tc.text == 22 {
 			if _, err := module.Current(ctx, host); !errors.Is(err, contract.ErrUnavailable) {
 				t.Errorf("compact response just over 1 MiB served: %v", err)
@@ -286,6 +290,7 @@ func TestPublicPublishedReadPG(t *testing.T) {
 			t.Errorf("near-limit fixture too small: %d bytes", len(encoded))
 		}
 	}
+	testLiveSKUs(t, ctx, admin, module, publicDSN)
 	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, "GRANT app_runtime TO "+quoted)
 		return err

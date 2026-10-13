@@ -118,7 +118,15 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: Public
       security: []
-      description: Current sealed public release for a verified DNS hostname. Version-1 public manifest seals product view models derived from catalog published listings and pinned content revisions.
+      description: >-
+        Current sealed public release for a verified DNS hostname. Version-1 public manifest seals
+        product view models derived from catalog published listings and pinned content revisions.
+        Product content always comes from the sealed release. Each product's `skus` are live, read in the
+        same snapshot transaction: only ready (active) SKUs of ready products listed in the release.
+        `price_minor` is the anonymous default price: the quantity-1 unit amount in the product's release
+        currency from active, in-window, audience=all price lists, chosen by priority descending, then list
+        ID ascending; a SKU without such a price is omitted. `available` is true when on-hand stock exceeds
+        active reservations; stock counts are never exposed.
       parameters:
         - name: host
           in: query
@@ -126,7 +134,7 @@ paths:
           schema: {type: string, minLength: 1, maxLength: 254}
       responses:
         '200':
-          description: Validated immutable public snapshot
+          description: Validated sealed public snapshot with live SKU price and availability
           content:
             application/json:
               schema: {$ref: '#/components/schemas/PublishedSite'}
@@ -3509,7 +3517,7 @@ components:
     PublishedProduct:
       type: object
       additionalProperties: false
-      required: [id, slug, name, description, unit_amount, currency]
+      required: [id, slug, name, description, unit_amount, currency, skus]
       properties:
         id: {type: string, minLength: 1, maxLength: 128}
         slug: {type: string, pattern: '^[a-zA-Z0-9_-]+$', maxLength: 502}
@@ -3517,11 +3525,45 @@ components:
         description: {type: string, maxLength: 10000}
         unit_amount: {type: string, pattern: '^(0|[1-9][0-9]{0,37})$'}
         currency: {type: string, pattern: '^[A-Z]{3}$'}
+        skus:
+          type: array
+          maxItems: 100
+          description: Live purchasable SKUs; see getPublishedSite for the price and availability rules.
+          items: {$ref: '#/components/schemas/PublishedSku'}
+    PublishedSkuOptionValue:
+      type: object
+      additionalProperties: false
+      required: [name, value]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 255}
+        value: {type: string, maxLength: 255}
+    PublishedSku:
+      type: object
+      additionalProperties: false
+      required: [sku_id, sku_code, option_values, price_minor, currency, available]
+      properties:
+        sku_id: {type: string, minLength: 1, maxLength: 128}
+        sku_code: {type: string, minLength: 1, maxLength: 255}
+        option_values:
+          type: array
+          maxItems: 20
+          items: {$ref: '#/components/schemas/PublishedSkuOptionValue'}
+        price_minor:
+          type: string
+          description: Live anonymous default unit price in minor units, as a decimal string.
+          pattern: '^(0|[1-9][0-9]{0,18})$'
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        available:
+          type: boolean
+          description: True when on-hand stock exceeds active reservations; never a count.
     PublishedSite:
       type: object
       additionalProperties: false
-      required: [site_id, release_id, hostname, locale, title, description, navigation, pages, products]
+      required: [tenant_id, site_id, release_id, hostname, locale, title, description, navigation, pages, products]
       properties:
+        tenant_id:
+          type: string
+          description: Tenant resolved from the verified hostname; storefronts use it for tenant-scoped APIs such as /api/v1/t/{tenant_id}/carts.
         site_id: {type: string}
         release_id: {type: string}
         hostname: {type: string}
