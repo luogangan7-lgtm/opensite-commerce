@@ -244,3 +244,29 @@ func TestExhaustedCycleKeepsJobsAliveAndDeliversLaterTenant(t *testing.T) {
 		t.Fatal("jobs missing graceful stop")
 	}
 }
+
+type blockingStopper struct{ release chan struct{} }
+
+func (b blockingStopper) Stop(context.Context) error { <-b.release; return nil }
+
+type signalStopper struct{ called chan struct{} }
+
+func (s signalStopper) Stop(context.Context) error { close(s.called); return nil }
+
+// A monitor drain that never finishes must not delay worker.Stop (PR51 review).
+func TestStopConcurrentlyStartsWorkerStopWhileMonitorDrains(t *testing.T) {
+	monitor := blockingStopper{release: make(chan struct{})}
+	worker := signalStopper{called: make(chan struct{})}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = stopConcurrently(context.Background(), monitor, worker)
+	}()
+	select {
+	case <-worker.called:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker.Stop waited for the monitor")
+	}
+	close(monitor.release)
+	<-done
+}

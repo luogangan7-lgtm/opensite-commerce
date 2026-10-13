@@ -1,4 +1,6 @@
-/** Owns per-PNG integrity and renderer fingerprints; CI writer/verifier call it; artifacts never enter source hashes. */
+/** Owns per-PNG golden provenance (producer run, source SHA, pins, PNG hash); CI writer/verifier call it.
+ * Invariant (C-08d): provenance says who rendered a golden, never whether current code still matches it —
+ * that is the candidate comparison's job. The input fingerprint is producer-time evidence, not an equality gate. */
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -31,8 +33,19 @@ export function filesAt(directory: string): string[] {
   });
 }
 export function sha256(path: string) { return createHash('sha256').update(readFileSync(path)).digest('hex'); }
+/** Stable identity of an input: migrations drop their (CI-renumbered, INF-MIG) numeric prefix and pending/ directory. */
+export function inputKey(path: string): string {
+  const pending = /^migrations\/pending\/([^/]+\.sql)$/.exec(path);
+  if (pending) return `migrations/${pending[1]}`;
+  const numbered = /^migrations\/\d+_([^/]+\.sql)$/.exec(path);
+  return numbered ? `migrations/${numbered[1]}` : path;
+}
+export function fingerprintOf(entries: [path: string, sha256: string][]): string {
+  const lines = entries.map(([path, hash]) => `${inputKey(path)}\0${hash}\n`).sort();
+  return createHash('sha256').update(lines.join('')).digest('hex');
+}
 export function sourceFingerprint(scope: Scope, root = process.cwd()) {
-  return createHash('sha256').update(scopeInputs(scope, root).map(path => `${path}\0${sha256(join(root, path))}\n`).join('')).digest('hex');
+  return fingerprintOf(scopeInputs(scope, root).map(path => [path, sha256(join(root, path))]));
 }
 export function fingerprints(root = process.cwd()): Record<Scope, string> {
   return Object.fromEntries(SCOPES.map(scope => [scope, sourceFingerprint(scope, root)])) as Record<Scope, string>;
@@ -57,7 +70,7 @@ export function makeRecord(snapshot: string, fingerprint: string, png: string, s
   return { schema: 2, snapshot, scope: scopeForSnapshot(snapshot), sourceFingerprint: fingerprint, pngSha256: png,
     scopeSnapshots, sourceSha, runUrl, image: PLAYWRIGHT_IMAGE, playwright: '1.64.0', font: '@fontsource/inter@5.3.0', rendering: RENDERING };
 }
-export function assertBaselineSet(pngs: Record<string, string>, records: Record<string, unknown>, inputs: Record<Scope, string>): BaselineRecord[] {
+export function assertBaselineSet(pngs: Record<string, string>, records: Record<string, unknown>): BaselineRecord[] {
   const pngPaths = Object.keys(pngs).sort();
   const recordPaths = Object.keys(records).sort();
   if (JSON.stringify(pngPaths) !== JSON.stringify(recordPaths)) throw new Error('Missing or orphan PNG provenance record');
@@ -72,7 +85,7 @@ export function assertBaselineSet(pngs: Record<string, string>, records: Record<
     runId(record.runUrl);
     if (record.image !== PLAYWRIGHT_IMAGE || record.playwright !== '1.64.0' || record.font !== '@fontsource/inter@5.3.0' ||
         JSON.stringify(record.rendering) !== JSON.stringify(RENDERING)) throw new Error(`Unpinned PNG rendering: ${snapshot}`);
-    if (!/^[0-9a-f]{64}$/.test(record.sourceFingerprint) || record.sourceFingerprint !== inputs[record.scope]) throw new Error(`Golden inputs changed for ${record.scope}: ${snapshot}`);
+    if (typeof record.sourceFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(record.sourceFingerprint)) throw new Error(`Invalid producer input fingerprint: ${snapshot}`);
     if (!/^[0-9a-f]{64}$/.test(record.pngSha256) || record.pngSha256 !== pngs[snapshot]) throw new Error(`PNG hash differs: ${snapshot}`);
     return record;
   });
@@ -98,9 +111,34 @@ export function readRecords(root = process.cwd()): Record<string, unknown> {
   }));
 }
 export function checkedRecords(root = process.cwd()): BaselineRecord[] {
-  const records = assertBaselineSet(pngHashes(root), readRecords(root), fingerprints(root));
+  const records = assertBaselineSet(pngHashes(root), readRecords(root));
   for (const scope of SCOPES) {
     for (const viewport of ['desktop', 'mobile']) if (!records.some(record => record.scope === scope && record.snapshot.startsWith(`${viewport}/`))) throw new Error(`Missing ${viewport} scope inventory: ${scope}`);
   }
   return records;
+}
+/** Maps `git diff --name-only` paths to the golden snapshots whose PNG or record bytes changed. */
+export function changedSnapshots(paths: string[]): Set<string> {
+  return new Set(paths.filter(path => path.startsWith(`${BASELINES}/`))
+    .map(path => path.slice(BASELINES.length + 1).replace(/\.provenance\.json$/, ''))
+    .filter(snapshot => /^(desktop|mobile)\/[a-z0-9-]+\.png$/.test(snapshot)));
+}
+/**
+ * Goldens to verify against their producer artifact. `HEAD^1` is the pull_request merge-ref base; on push the
+ * base is `github.event.before`, which must be an ancestor of HEAD so every pushed commit is covered. A zero,
+ * empty, unknown or non-ancestor (force-push) base fails closed to 'all'.
+ */
+export function goldenChangeSet(base: string, cwd = process.cwd()): Set<string> | 'all' {
+  const git = (...args: string[]) => Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+  if (base !== 'HEAD^1') {
+    if (!/^[0-9a-f]{40}$/.test(base) || /^0+$/.test(base)) return 'all';
+    if (git('cat-file', '-e', `${base}^{commit}`).exitCode !== 0) {
+      git('fetch', '--no-tags', '--quiet', 'origin', base);
+      if (git('cat-file', '-e', `${base}^{commit}`).exitCode !== 0) return 'all';
+    }
+    if (git('merge-base', '--is-ancestor', base, 'HEAD').exitCode !== 0) return 'all';
+  }
+  const diff = git('diff', '--name-only', '--no-renames', base, 'HEAD', '--', BASELINES);
+  if (diff.exitCode !== 0) throw new Error(`Cannot diff goldens against ${base}`);
+  return changedSnapshots(new TextDecoder().decode(diff.stdout).split('\n').filter(Boolean));
 }
