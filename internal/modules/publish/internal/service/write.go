@@ -239,7 +239,12 @@ func NormalizePayload(op string, raw []byte) ([]byte, error) {
 
 // DraftSite uses the exact published renderer projection, including navigation
 // resolution and combined response budget. Draft-only metadata never reaches it.
-func DraftSite(d contract.Draft) (contract.Site, error) {
+// BudgetHost is the longest admissible public hostname (253 bytes). Publication
+// validation projects with it so a later domain attachment cannot exceed 1 MiB.
+var BudgetHost = strings.Repeat(strings.Repeat("a", 63)+".", 3) + strings.Repeat("a", 61)
+
+// DraftSite projects a draft; host is "" for preview and BudgetHost for validation.
+func DraftSite(d contract.Draft, host string) (contract.Site, error) {
 	pages := make([]contract.Page, 0, len(d.Pages))
 	seenIDs := map[string]bool{}
 	for _, p := range d.Pages {
@@ -257,7 +262,7 @@ func DraftSite(d contract.Draft) (contract.Site, error) {
 	if err != nil {
 		return contract.Site{}, contract.ErrUnavailable
 	}
-	return Project(d.SiteID, d.DraftID, "", d.Locale, manifestBytes, pageBytes)
+	return Project(d.SiteID, d.DraftID, host, d.Locale, manifestBytes, pageBytes)
 }
 
 // DecodeSnapshot admits only the bounded, typed output of controlled SQL routines.

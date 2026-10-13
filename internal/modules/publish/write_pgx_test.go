@@ -314,3 +314,225 @@ func TestCMSWritePublishRestorePG(t *testing.T) {
 		}
 	})
 }
+
+// publishHookTx runs before once, immediately before the cms_publish statement,
+// to pin a deterministic READ COMMITTED interleaving inside the facade's TX.
+type publishHookTx struct {
+	pgx.Tx
+	before func()
+}
+
+func (h publishHookTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if h.before != nil && strings.Contains(sql, "cms_publish(") {
+		h.before()
+	}
+	return h.Tx.QueryRow(ctx, sql, args...)
+}
+
+type cmsPG struct {
+	admin        pgxadapter.Runner
+	m            *publish.WriteModule
+	tenant, site string
+	beforeSeal   func()
+}
+
+// newCMSPG seeds a fresh tenant/site plus extra maintenance SQL ($1 tenant, $2 site).
+func newCMSPG(t *testing.T, ctx context.Context, seed ...string) *cmsPG {
+	t.Helper()
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("NOT_RUN: migrated disposable DATABASE_URL required")
+	}
+	admin, closeAdmin, err := pgxadapter.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(closeAdmin)
+	f := &cmsPG{admin: admin, tenant: newUUID(t), site: newUUID(t)}
+	org := newUUID(t)
+	err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		statements := append([]string{
+			`INSERT INTO app.tenants(id,name) VALUES($1,'C09b bounds PG')`,
+			`INSERT INTO app.organizations(tenant_id,id,display_name) SELECT $1,$3,'C09b' WHERE $2::uuid IS NOT NULL`,
+			`INSERT INTO app.sites(tenant_id,id,organization_id,name,default_locale) VALUES($1,$2,$3,'C09b','en')`,
+		}, seed...)
+		for _, statement := range statements {
+			args := []any{f.tenant, f.site, org}
+			for !strings.Contains(statement, fmt.Sprintf("$%d", len(args))) {
+				args = args[:len(args)-1]
+			}
+			if _, err := tx.Exec(ctx, statement, args...); err != nil {
+				return fmt.Errorf("%s: %w", statement, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	role := func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime")
+		return err
+	}
+	writeRun := func(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+		return admin.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+			if err := role(ctx, tx); err != nil {
+				return err
+			}
+			return fn(ctx, publishHookTx{Tx: tx, before: func() {
+				if f.beforeSeal != nil {
+					hook := f.beforeSeal
+					f.beforeSeal = nil
+					hook()
+				}
+			}})
+		})
+	}
+	readRun := func(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+		return admin.InTenantSnapshot(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+			if err := role(ctx, tx); err != nil {
+				return err
+			}
+			return fn(ctx, tx)
+		})
+	}
+	f.m, err = publish.NewWriter(publish.WriteConfig{Run: writeRun, ReadRun: readRun, PreviewKey: []byte(strings.Repeat("k", 32)), PreviewRun: func(context.Context, contract.PreviewClaims, func(context.Context, pgx.Tx) error) error {
+		return errors.New("unused")
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func (f *cmsPG) exec(t *testing.T, ctx context.Context, c contract.Command) (contract.Result, error) {
+	c.TenantID, c.SiteID = f.tenant, f.site
+	return f.m.Execute(ctx, c)
+}
+
+func (f *cmsPG) count(t *testing.T, ctx context.Context, sql string) int {
+	t.Helper()
+	var n int
+	if err := f.admin.InTenant(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, sql, f.tenant, f.site).Scan(&n)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// Regression for the page x release media cross product: 100 pages x 10
+// distinct pins used to clone into 100,000 rows and a ~4 MB (503) draft read.
+func TestCMSDraftCloneKeepsPerPageMediaPG(t *testing.T) {
+	const pages, perPage = 100, 10
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	f := newCMSPG(t, ctx,
+		`INSERT INTO app.media_blobs(tenant_id,id,backend,storage_key,sha256,size_bytes,status) SELECT $1,b,'local',b::text,sha256(convert_to(b::text,'UTF8')),0,'ready' FROM (SELECT uuidv7() b FROM generate_series(1,1000)) x`,
+		`INSERT INTO app.media_assets(tenant_id,blob_id,filename,mime_type,visibility) SELECT $1,id,'cms.txt','text/plain','public' FROM app.media_blobs WHERE tenant_id=$1`)
+	var media []string
+	if err := f.admin.InTenant(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT array_agg(id::text ORDER BY id) FROM app.media_assets WHERE tenant_id=$1`, f.tenant).Scan(&media)
+	}); err != nil || len(media) != pages*perPage {
+		t.Fatal(len(media), err)
+	}
+	withCMSContextFor(t, true, f.tenant, func(authctx context.Context) {
+		created, err := f.exec(t, authctx, contract.Command{Operation: "create_draft", Payload: []byte(`{"locale":"en","title":"Bounds","description":""}`)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ops := make([]any, 0, pages)
+		for i := 0; i < pages; i++ {
+			path := fmt.Sprintf("/p%d", i)
+			if i == 0 {
+				path = "/"
+			}
+			ops = append(ops, map[string]any{"operation": "save_page", "payload": map[string]any{"page_key": fmt.Sprintf("p%d", i), "locale": "en", "path": path,
+				"document": map[string]any{"title": "Page", "description": "", "blocks": []any{}}, "media_ids": media[i*perPage : (i+1)*perPage]}})
+		}
+		batch, _ := json.Marshal(map[string]any{"operations": ops})
+		draft := created.Draft.DraftID
+		if _, err = f.exec(t, authctx, contract.Command{Operation: "apply_operations", DraftID: draft, ExpectedRevision: 1, Payload: batch}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = f.exec(t, authctx, contract.Command{Operation: "publish_draft", DraftID: draft, ExpectedRevision: 2, Payload: []byte(`{"renderer_build_id":"bounds"}`)}); err != nil {
+			t.Fatal(err)
+		}
+		clone, err := f.exec(t, authctx, contract.Command{Operation: "create_draft", Payload: []byte(`{"locale":"en","title":"Bounds 2","description":""}`)})
+		if err != nil {
+			t.Fatal("clone of a valid release failed:", err)
+		}
+		body, _ := json.Marshal(clone.Draft)
+		// Exactly the published pins, each on its own page: ~45 KB of UUIDs.
+		if len(clone.Draft.Pages) != pages || len(body) > 128<<10 {
+			t.Fatalf("pages%d bytes%d", len(clone.Draft.Pages), len(body))
+		}
+		owner := map[string]string{}
+		for i, id := range media {
+			owner[id] = fmt.Sprintf("p%d", i/perPage)
+		}
+		for _, p := range clone.Draft.Pages {
+			if len(p.MediaIDs) != perPage {
+				t.Fatalf("%s has %d pins", p.PageKey, len(p.MediaIDs))
+			}
+			for _, id := range p.MediaIDs {
+				if owner[id] != p.PageKey {
+					t.Fatalf("%s carries %s's pin", p.PageKey, owner[id])
+				}
+			}
+		}
+		rows := f.count(t, ctx, `SELECT count(*) FROM app.draft_page_media WHERE tenant_id=$1 AND site_id=$2 AND draft_id='`+clone.Draft.DraftID+`'`)
+		if rows != pages*perPage {
+			t.Fatalf("draft_page_media rows %d, want %d", rows, pages*perPage)
+		}
+	})
+}
+
+// A catalog writer committing between draft validation and sealing must not
+// publish an unrenderable release: Project runs on the sealed snapshot in-TX.
+func TestCMSPublishValidatesSealedSnapshotPG(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	// 20 priced products; content revision 2 has 10,000 '&' (each JSON-escaped
+	// to &), passing every SQL bound but exceeding the 1 MiB projection.
+	f := newCMSPG(t, ctx,
+		`INSERT INTO app.products(tenant_id,product_code,lifecycle_status) SELECT $1,'amp-'||g,'ready' FROM generate_series(1,20) g`,
+		`INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status) SELECT tenant_id,id,product_code,'default','ready' FROM app.products WHERE tenant_id=$1`,
+		`INSERT INTO app.price_lists(tenant_id,currency,status,starts_at,priority) SELECT $1,'USD','active','2026-01-01Z',1`,
+		`INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) SELECT $1,l.id,v.id,1,100 FROM app.price_lists l JOIN app.product_variants v ON v.tenant_id=l.tenant_id WHERE l.tenant_id=$1`,
+		`INSERT INTO app.product_content_revisions(tenant_id,product_id,locale,revision,title,seo) SELECT $1,id,'en',r,'Amp',jsonb_build_object('description',CASE r WHEN 1 THEN 'short' ELSE repeat('&',10000) END) FROM app.products, generate_series(1,2) r WHERE tenant_id=$1`,
+		`INSERT INTO app.product_listings(tenant_id,site_id,product_id,locale,slug,status,published_content_revision) SELECT $1,$2,id,'en',product_code,'published',1 FROM app.products WHERE tenant_id=$1`)
+	withCMSContextFor(t, true, f.tenant, func(authctx context.Context) {
+		created, err := f.exec(t, authctx, contract.Command{Operation: "create_draft", Payload: []byte(`{"locale":"en","title":"Seal","description":""}`)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		draft := created.Draft.DraftID
+		home := []byte(`{"page_key":"home","locale":"en","path":"/","document":{"title":"Home","description":"","blocks":[]},"media_ids":[]}`)
+		if _, err = f.exec(t, authctx, contract.Command{Operation: "save_page", DraftID: draft, ExpectedRevision: 1, Payload: home}); err != nil {
+			t.Fatal(err)
+		}
+		f.beforeSeal = func() {
+			if err := f.admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+				_, err := tx.Exec(ctx, `UPDATE app.product_listings SET published_content_revision=2 WHERE tenant_id=$1`, f.tenant)
+				return err
+			}); err != nil {
+				t.Error(err)
+			}
+		}
+		completed := 0
+		_, err = f.exec(t, authctx, contract.Command{Operation: "publish_draft", DraftID: draft, ExpectedRevision: 2, Payload: []byte(`{"renderer_build_id":"seal"}`),
+			Complete: func(context.Context, pgx.Tx, contract.Result) error { completed++; return nil }})
+		if f.beforeSeal != nil {
+			t.Fatal("interleaving hook did not run")
+		}
+		if !errors.Is(err, contract.ErrInvalid) || completed != 0 {
+			t.Fatal("unrenderable sealed release committed:", err, completed)
+		}
+		state := f.count(t, ctx, `SELECT (s.publication_revision=0 AND s.published_release_id IS NULL AND d.status='open')::int+(SELECT count(*) FROM app.site_releases WHERE tenant_id=$1 AND site_id=$2)+(SELECT count(*) FROM app.audit_events WHERE tenant_id=$1 AND operation='cms.publish')
+			FROM app.sites s JOIN app.site_drafts d ON (d.tenant_id,d.site_id)=(s.tenant_id,s.id) WHERE s.tenant_id=$1 AND s.id=$2`)
+		if state != 1 {
+			t.Fatal("pointer/draft/release/audit not rolled back", state)
+		}
+	})
+}

@@ -137,16 +137,16 @@ func TestCMSNavigationBatchAndRenderingAgreement(t *testing.T) {
 		}
 	}
 	d := contract.Draft{DraftID: "33333333-3333-4333-8333-333333333333", SiteID: "22222222-2222-4222-8222-222222222222", Locale: "en-US", Title: "Site", Navigation: []contract.Navigation{}, Products: []contract.Product{}, Pages: []contract.DraftPage{{ID: "44444444-4444-4444-8444-444444444444", Locale: "en-US", Path: "/", Document: contract.PageDocument{Title: "Home", Blocks: []contract.Block{{Kind: "heading", Text: "Home"}}}}}}
-	if _, err := DraftSite(d); err != nil {
+	if _, err := DraftSite(d, BudgetHost); err != nil {
 		t.Fatal(err)
 	}
 	d.Navigation = []contract.Navigation{{Label: "Missing", Href: "/absent"}}
-	if _, err := DraftSite(d); err == nil {
+	if _, err := DraftSite(d, BudgetHost); err == nil {
 		t.Fatal("dangling navigation render accepted")
 	}
 	d.Navigation = []contract.Navigation{}
 	d.Pages[0].Path = "/products"
-	if _, err := DraftSite(d); err == nil {
+	if _, err := DraftSite(d, BudgetHost); err == nil {
 		t.Fatal("reserved route render accepted")
 	}
 }

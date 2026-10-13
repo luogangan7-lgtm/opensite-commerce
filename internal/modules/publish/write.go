@@ -126,7 +126,7 @@ func (m *WriteModule) IssuePreview(ctx context.Context, c contract.Command, ttl 
 	if r.Draft == nil || r.Draft.Status != "open" {
 		return contract.PreviewGrant{}, contract.ErrConflict
 	}
-	if _, err = service.DraftSite(*r.Draft); err != nil {
+	if _, err = service.DraftSite(*r.Draft, service.BudgetHost); err != nil {
 		return contract.PreviewGrant{}, err
 	}
 	token, expiry, err := m.signer.Issue(c.TenantID, c.SiteID, c.DraftID, r.Draft.Revision, ttl)
@@ -150,7 +150,7 @@ func (m *WriteModule) Preview(ctx context.Context, tenant, site, draft, token st
 	if d.DraftID != draft || d.SiteID != site || d.Revision != claims.Revision || d.Status != "open" {
 		return contract.Site{}, contract.ErrNotFound
 	}
-	return service.DraftSite(d)
+	return service.DraftSite(d, "")
 }
 
 // Compile-time transport contract, not a second implementation.

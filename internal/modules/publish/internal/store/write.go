@@ -15,7 +15,6 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/internal/service"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	"strings"
 )
 
 type Transaction func(context.Context, string, func(context.Context, pgx.Tx) error) error
@@ -144,27 +143,27 @@ func (s *WriteStore) Execute(ctx context.Context, c contract.Command, actor http
 				return e
 			}
 			raw, e = q.CMSPublish(ctx, db.CMSPublishParams{TenantID: cmsID(c.TenantID), SiteID: cmsID(c.SiteID), DraftID: cmsID(c.DraftID), ActorKind: actor.Kind, ActorID: cmsID(actor.ID), ExpectedRevision: c.ExpectedRevision, ExpectedReleaseID: cmsID(c.ExpectedReleaseID), ExpectedPublicationRevision: c.ExpectedPublicationRevision, RendererBuildID: v.RendererBuildID})
+			if e != nil {
+				return e
+			}
+			// CMSPublish re-reads the catalog under READ COMMITTED, so the draft
+			// validated above may differ from what was sealed. Validate the sealed
+			// release itself in this transaction; failure rolls everything back.
+			var r contract.Release
+			if e = decodeCMS(raw, &r); e != nil {
+				return e
+			}
+			if e = projectSealed(ctx, q, c.TenantID, c.SiteID, r.ReleaseID); e != nil {
+				return e // this case shadows e; return explicitly
+			}
 		case "restore_release":
 			raw, e = q.CMSRestore(ctx, db.CMSRestoreParams{TenantID: cmsID(c.TenantID), SiteID: cmsID(c.SiteID), ActorKind: actor.Kind, ActorID: cmsID(actor.ID), ExpectedReleaseID: cmsID(c.ExpectedReleaseID), ExpectedPublicationRevision: c.ExpectedPublicationRevision, ReleaseID: cmsID(c.ReleaseID)})
 			if e != nil {
 				return e
 			}
 			// Legacy releases may satisfy SQL shape checks but fail the public
-			// renderer (for example duplicate locale variants). Validate inside
-			// this transaction so pointer, audit and receipt all roll back.
-			snapshot, e := q.LoadCMSReleaseSnapshot(ctx, db.LoadCMSReleaseSnapshotParams{TenantID: cmsID(c.TenantID), SiteID: cmsID(c.SiteID), ReleaseID: cmsID(c.ReleaseID)})
-			if e != nil {
-				return e
-			}
-			if snapshot.SiteID != c.SiteID || snapshot.ReleaseID != c.ReleaseID {
-				return contract.ErrNotFound
-			}
-			// Budget for the longest admissible public hostname even when this
-			// administrative command has no domain attached to its scope.
-			budgetHost := strings.Repeat(strings.Repeat("a", 63)+".", 3) + strings.Repeat("a", 61)
-			if _, e = service.Project(snapshot.SiteID, snapshot.ReleaseID, budgetHost, snapshot.Locale, snapshot.Manifest, snapshot.Pages); e != nil {
-				return contract.ErrInvalid
-			}
+			// renderer (for example duplicate locale variants).
+			e = projectSealed(ctx, q, c.TenantID, c.SiteID, c.ReleaseID)
 		case "list_releases", "get_release":
 			raw, e = q.CMSReleaseHistory(ctx, db.CMSReleaseHistoryParams{TenantID: cmsID(c.TenantID), SiteID: cmsID(c.SiteID)})
 			if e != nil {
@@ -275,6 +274,23 @@ func (s *WriteStore) Execute(ctx context.Context, c contract.Command, actor http
 	}
 	return result, nil
 }
+
+// projectSealed renders the just-sealed or restored release exactly as the public
+// reader will (longest hostname budget) inside the mutating transaction, so an
+// unrenderable release never commits its pointer, audit or receipt.
+func projectSealed(ctx context.Context, q *db.Queries, tenant, site, release string) error {
+	snapshot, err := q.LoadCMSReleaseSnapshot(ctx, db.LoadCMSReleaseSnapshotParams{TenantID: cmsID(tenant), SiteID: cmsID(site), ReleaseID: cmsID(release)})
+	if err != nil {
+		return err
+	}
+	if snapshot.SiteID != site || snapshot.ReleaseID != release {
+		return contract.ErrNotFound
+	}
+	if _, err = service.Project(snapshot.SiteID, snapshot.ReleaseID, service.BudgetHost, snapshot.Locale, snapshot.Manifest, snapshot.Pages); err != nil {
+		return contract.ErrInvalid
+	}
+	return nil
+}
 func validateDraft(d contract.Draft) error {
 	if d.Status != "open" {
 		return contract.ErrConflict
@@ -289,7 +305,7 @@ func validateDraft(d contract.Draft) error {
 	if !root {
 		return contract.ErrInvalid
 	}
-	if _, err := service.DraftSite(d); err != nil {
+	if _, err := service.DraftSite(d, service.BudgetHost); err != nil {
 		return contract.ErrInvalid
 	}
 	return nil
