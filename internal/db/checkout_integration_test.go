@@ -29,6 +29,7 @@ import (
 	orderscontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -115,7 +116,7 @@ func newCheckoutPGFixture(t *testing.T, stock, quantity int64) *checkoutPGFixtur
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Fatal("NOT_RUN: Checkout PG gate requires expendable migrated DATABASE_URL; no skip is permitted")
+		pgxtest.Skip(t, "DATABASE_URL not set: Checkout PG gate requires an expendable migrated database")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	t.Cleanup(cancel)

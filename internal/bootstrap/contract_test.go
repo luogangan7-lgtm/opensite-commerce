@@ -6,7 +6,6 @@ package bootstrap_test
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -58,22 +57,12 @@ func scope(op *openapi3.Operation) string {
 	return s
 }
 
-func TestImplementedRouteContract(t *testing.T) {
-	// Real generated handlers are composed explicitly. The isolated verifier key
-	// is generated for this test, and never enables Fake in default composition.
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatal(err)
-	}
-	verifier, err := checkout.NewFakeHMACVerifier(key)
+func TestUnconfiguredIdentityRouteContract(t *testing.T) {
+	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{publish.StorefrontRoute(nil)}, Quotes: quotes.NewApplication(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{publish.StorefrontRoute(nil)}, Quotes: quotes.NewApplication(nil), Checkout: &checkout.Config{FakeEnabled: true, Environment: "test", Verifier: verifier}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	router, ok := server.Handler.(*httpapi.Router)
+	router, ok := server.Handler.(interface{ RouteSpecs() []httpapi.RouteSpec })
 	if !ok {
 		t.Fatal("bootstrap must expose the registered RouteSpec router")
 	}
@@ -82,44 +71,50 @@ func TestImplementedRouteContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := reconcileRoutes(doc, router.RouteSpecs()); err == nil || !strings.Contains(err.Error(), "has no registered handler") {
+		t.Fatalf("unconfigured startup must fail the full implemented contract: %v", err)
+	}
+	// This mode registers health, catalog, media, cart and public storefront routes,
+	// but no login or optional checkout handlers.
+	// Remove exactly the optional login operations for this mode; every remaining
+	// operation stays under strict reconciliation. TestConfiguredIdentityRouteContract
+	// covers the full mode with real login registrations.
+	optional := map[string]bool{"getAdminLoginChallenge": true, "createStaffLoginSession": true,
+		"getAdminSession": true, "logoutCurrentStaffSession": true,
+		checkout.StartOperation: true, checkout.FakeOperation: true}
+	removed := 0
+	for _, item := range doc.Paths.Map() {
+		for method, op := range item.Operations() {
+			if optional[op.OperationID] {
+				if op.Extensions["x-opensite-status"] != "implemented" {
+					t.Fatalf("optional identity/checkout operation %s must be implemented", op.OperationID)
+				}
+				item.SetOperation(method, nil)
+				removed++
+			}
+		}
+	}
+	if removed != len(optional) {
+		t.Fatalf("optional identity/checkout contract incomplete: %d operations", removed)
+	}
 	if err := reconcileRoutes(doc, router.RouteSpecs()); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func TestCheckoutOmissionFailsFullImplementedContract(t *testing.T) {
-	server, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{publish.StorefrontRoute(nil)}, Quotes: quotes.NewApplication(nil)})
-	if err != nil {
-		t.Fatal(err)
+	w := httptest.NewRecorder()
+	server.Handler.ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("unconfigured health status %d", w.Code)
 	}
-	router := server.Handler.(*httpapi.Router)
-	doc, err := openapi3.NewLoader().LoadFromFile("../../api/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := reconcileRoutes(doc, router.RouteSpecs()); err == nil {
-		t.Fatal("unconfigured optional checkout composition accepted full implemented contract")
-	}
-	// Restrict this default-composition witness to the exact two optional real
-	// checkout transports, while preserving strict parity for all other modules.
-	for path, operationID := range map[string]string{
-		checkout.StartPattern: checkout.StartOperation,
-		checkout.FakePattern:  checkout.FakeOperation,
+	for _, route := range []struct{ method, path string }{
+		{"GET", "/api/v1/auth/login"}, {"POST", "/api/v1/auth/login"},
+		{"GET", "/api/v1/auth/session"}, {"POST", "/api/v1/auth/logout"},
+		{"POST", "/api/v1/t/10000000-0000-4000-8000-000000000001/checkout"}, {"POST", checkout.FakePattern},
 	} {
-		item := doc.Paths.Value(path)
-		if item == nil || item.Post == nil || item.Post.OperationID != operationID || item.Post.Extensions["x-opensite-status"] != "implemented" {
-			t.Fatalf("missing implemented optional contract %s", operationID)
+		w := httptest.NewRecorder()
+		server.Handler.ServeHTTP(w, httptest.NewRequest(route.method, route.path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("unconfigured optional route %s %s served status %d", route.method, route.path, w.Code)
 		}
-		doc.Paths.Delete(path)
-		requestPath := strings.ReplaceAll(path, "{tenant_id}", "10000000-0000-4000-8000-000000000001")
-		response := httptest.NewRecorder()
-		server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, requestPath, nil))
-		if response.Code != http.StatusNotFound {
-			t.Fatalf("unconfigured route %s reachable: %d", path, response.Code)
-		}
-	}
-	if err := reconcileRoutes(doc, router.RouteSpecs()); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -205,7 +200,10 @@ func TestDefaultCartWiringIsUnavailableAndSeparateFromStaff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := server.Handler.(*httpapi.Router)
+	router, ok := server.Handler.(interface{ RouteSpecs() []httpapi.RouteSpec })
+	if !ok {
+		t.Fatal("handler must expose its registered route snapshot")
+	}
 	ids := map[string]bool{}
 	for _, spec := range router.RouteSpecs() {
 		ids[spec.OperationID] = true
