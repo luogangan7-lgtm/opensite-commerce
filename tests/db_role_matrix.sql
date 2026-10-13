@@ -149,6 +149,15 @@ BEGIN
       WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','sealed','manifest']
       WHEN 'site_release_routes' THEN ARRAY['tenant_id','site_id','release_id','locale','path','page_id','page_revision']
       WHEN 'page_revisions' THEN ARRAY['tenant_id','site_id','page_id','locale','revision','document']
+      -- 028: live purchasable SKUs; stock only as the generated in_stock boolean.
+      WHEN 'products' THEN ARRAY['tenant_id','id','lifecycle_status']
+      WHEN 'product_variants' THEN ARRAY['tenant_id','id','product_id','sku','lifecycle_status']
+      WHEN 'product_options' THEN ARRAY['tenant_id','product_id','id','code']
+      WHEN 'product_option_values' THEN ARRAY['tenant_id','product_id','option_id','id','label']
+      WHEN 'variant_option_values' THEN ARRAY['tenant_id','product_id','variant_id','option_id','value_id']
+      WHEN 'price_lists' THEN ARRAY['tenant_id','id','currency','status','starts_at','ends_at','priority','audience']
+      WHEN 'price_entries' THEN ARRAY['tenant_id','price_list_id','sku_id','min_quantity','unit_amount']
+      WHEN 'stock_levels' THEN ARRAY['tenant_id','sku_id','in_stock']
       ELSE ARRAY[]::text[] END;
     END IF;
     IF has_table_privilege(role_name,t.oid,privilege) IS DISTINCT FROM expected_table THEN

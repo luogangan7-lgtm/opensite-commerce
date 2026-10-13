@@ -286,7 +286,10 @@
         "tenant",
         "site",
         "cms",
-        "media"
+        "media",
+        "catalog",
+        "inventory",
+        "pricing"
       ],
       "tests": [
         "internal/pagegraph/graph_test.go",
@@ -295,7 +298,8 @@
         "internal/modules/publish/contract/read_test.go",
         "internal/modules/publish/internal/service/read_test.go",
         "internal/modules/publish/handler_test.go",
-        "tests/db_storefront.sql"
+        "tests/db_storefront.sql",
+        "internal/modules/publish/internal/service/live_test.go"
       ],
       "scopes": [
         "site.draft.write",
@@ -1118,6 +1122,20 @@
         "tax_categories",
         "tax_rates",
         "tax_settings"
+      ]
+    },
+    {
+      "file": "migrations/028_storefront_skus.sql",
+      "owner": "publish",
+      "touches_tables": [
+        "products",
+        "product_variants",
+        "product_options",
+        "product_option_values",
+        "variant_option_values",
+        "price_lists",
+        "price_entries",
+        "stock_levels"
       ]
     }
   ]

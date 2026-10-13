@@ -12,9 +12,9 @@ import (
 )
 
 func TestProjectionResponseBudget(t *testing.T) {
-	products := make([]contract.Product, 100)
+	products := make([]sealedProduct, 100)
 	for i := range products {
-		products[i] = contract.Product{ID: fmt.Sprintf("p%d", i), Slug: fmt.Sprintf("p%d", i), Name: "Product", Description: strings.Repeat("x", 9000), UnitAmount: "100", Currency: "USD"}
+		products[i] = sealedProduct{ID: fmt.Sprintf("p%d", i), Slug: fmt.Sprintf("p%d", i), Name: "Product", Description: strings.Repeat("x", 9000), UnitAmount: "100", Currency: "USD"}
 	}
 	rawManifest, err := json.Marshal(manifest{Version: 1, Locale: "en", Title: "Shop", Navigation: []contract.Navigation{}, Products: products})
 	if err != nil {
@@ -80,7 +80,7 @@ func TestCMSRouteOwnership(t *testing.T) {
 			manifest, err := json.Marshal(map[string]any{
 				"version": 1, "locale": "en", "title": "Shop", "description": "",
 				"navigation": []contract.Navigation{{Label: "Page", Href: tc.path}},
-				"products":   []contract.Product{{ID: "p", Slug: "aid", Name: "Aid", Description: "", UnitAmount: "100", Currency: "USD"}},
+				"products":   []sealedProduct{{ID: "p", Slug: "aid", Name: "Aid", Description: "", UnitAmount: "100", Currency: "USD"}},
 			})
 			if err != nil {
 				t.Fatal(err)

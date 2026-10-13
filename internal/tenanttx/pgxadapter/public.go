@@ -22,7 +22,7 @@ func OpenPublic(ctx context.Context, dsn string) (Runner, func(), error) {
    AND r.rolcanlogin AND r.rolinherit AND current_user=session_user
    AND EXISTS (SELECT FROM pg_roles p WHERE p.rolname='app_domain_resolver' AND NOT (p.rolcanlogin OR p.rolsuper OR p.rolbypassrls OR p.rolcreatedb OR p.rolcreaterole OR p.rolreplication OR p.rolinherit))
    AND NOT EXISTS (SELECT FROM pg_auth_members m WHERE m.member='app_domain_resolver'::regrole)
-   AND NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relname IN ('site_domains','sites','site_releases','site_release_routes','page_revisions') AND NOT (c.relrowsecurity AND c.relforcerowsecurity))
+   AND NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relname IN ('site_domains','sites','site_releases','site_release_routes','page_revisions','products','product_variants','product_options','product_option_values','variant_option_values','price_lists','price_entries','stock_levels') AND NOT (c.relrowsecurity AND c.relforcerowsecurity))
    AND EXISTS (SELECT FROM pg_auth_members m JOIN pg_roles p ON p.oid=m.roleid WHERE m.member=r.oid AND p.rolname='app_domain_resolver' AND m.set_option AND NOT m.admin_option)
    AND NOT EXISTS (SELECT FROM pg_auth_members m WHERE m.member=r.oid AND m.admin_option)
    AND NOT EXISTS (SELECT FROM pg_auth_members m JOIN pg_roles p ON p.oid=m.roleid WHERE m.member=r.oid AND p.rolname<>'app_domain_resolver')
@@ -37,13 +37,21 @@ func OpenPublic(ctx context.Context, dsn string) (Runner, func(), error) {
       WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','sealed','manifest']
       WHEN 'site_release_routes' THEN ARRAY['tenant_id','site_id','release_id','locale','path','page_id','page_revision']
       WHEN 'page_revisions' THEN ARRAY['tenant_id','site_id','page_id','locale','revision','document']
+      WHEN 'products' THEN ARRAY['tenant_id','id','lifecycle_status']
+      WHEN 'product_variants' THEN ARRAY['tenant_id','id','product_id','sku','lifecycle_status']
+      WHEN 'product_options' THEN ARRAY['tenant_id','product_id','id','code']
+      WHEN 'product_option_values' THEN ARRAY['tenant_id','product_id','option_id','id','label']
+      WHEN 'variant_option_values' THEN ARRAY['tenant_id','product_id','variant_id','option_id','value_id']
+      WHEN 'price_lists' THEN ARRAY['tenant_id','id','currency','status','starts_at','ends_at','priority','audience']
+      WHEN 'price_entries' THEN ARRAY['tenant_id','price_list_id','sku_id','min_quantity','unit_amount']
+      WHEN 'stock_levels' THEN ARRAY['tenant_id','sku_id','in_stock']
       ELSE ARRAY[]::text[] END))
    AND NOT has_schema_privilege(session_user,'app','CREATE')
    AND NOT EXISTS (SELECT FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace WHERE n.nspname='app' AND has_function_privilege(session_user,f.oid,'EXECUTE'))
    AND NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relkind IN ('r','p') AND
     (has_table_privilege(session_user,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
      OR has_any_column_privilege(session_user,c.oid,'INSERT,UPDATE,REFERENCES')
-     OR (c.relname NOT IN ('site_domains','sites','site_releases','site_release_routes','page_revisions') AND has_any_column_privilege(session_user,c.oid,'SELECT'))))
+     OR (c.relname NOT IN ('site_domains','sites','site_releases','site_release_routes','page_revisions','products','product_variants','product_options','product_option_values','variant_option_values','price_lists','price_entries','stock_levels') AND has_any_column_privilege(session_user,c.oid,'SELECT'))))
    FROM pg_roles r WHERE r.rolname=session_user`).Scan(&safe)
 		if err != nil {
 			return err

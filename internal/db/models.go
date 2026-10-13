@@ -709,6 +709,7 @@ type AppStockLevel struct {
 	SkuID       pgtype.UUID `json:"sku_id"`
 	OnHand      int64       `json:"on_hand"`
 	Reserved    int64       `json:"reserved"`
+	InStock     pgtype.Bool `json:"in_stock"`
 }
 
 type AppTaxCategory struct {

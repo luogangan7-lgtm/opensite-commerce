@@ -15,6 +15,16 @@ FORCE RLS remains in force. Unknown, unverified, disabled and unpublished hosts
 return the same 404. Malformed hostname authorities are 400; unavailable or
 invalid snapshots are 503. Forwarded host headers are ignored.
 
+Live purchasable SKUs (028) are the one deliberate exception to "sealed only": product
+content stays the release snapshot, while each product's `skus` (ready SKUs of ready
+products listed in the current release) and their price/availability are read live in
+the same repeatable-read transaction. 028 grants the resolver exact catalog/pricing
+columns under FORCE RLS chained from the current sealed release (manifest product ids),
+and stock only as the generated `stock_levels.in_stock` (`on_hand>reserved`) boolean —
+counts stay unreadable. `price_minor` is `pricing.Quote` for quantity 1 in the product's
+release currency over active, in-window `audience='all'` lists; unpriced SKUs are omitted.
+The store also filters explicitly by the host's tenant (defense in depth).
+
 Version 1 release manifests contain only `version`, `locale`, `title`,
 `description`, `navigation` and `products`. Navigation is `{label,href}` and
 products are `{id,slug,name,description,unit_amount,currency}`. Amounts are decimal
