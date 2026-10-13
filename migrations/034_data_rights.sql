@@ -3,14 +3,22 @@
 -- Invariants: tenant/customer locks before request locks; no credentials exported;
 -- snapshot privacy exception changes no financial/identity/state/version columns.
 DO $role$
-DECLARE r text;
+DECLARE m record;
 BEGIN
  IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='app_data_rights_executor') THEN CREATE ROLE app_data_rights_executor NOLOGIN; END IF;
  ALTER ROLE app_data_rights_executor NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT;
- FOR r IN SELECT rolname FROM pg_roles WHERE oid IN(SELECT roleid FROM pg_auth_members WHERE member='app_data_rights_executor'::regrole) LOOP
-  EXECUTE format('REVOKE %I FROM app_data_rights_executor CASCADE',r); END LOOP;
- FOR r IN SELECT rolname FROM pg_roles WHERE oid IN(SELECT member FROM pg_auth_members WHERE roleid='app_data_rights_executor'::regrole) LOOP
-  EXECUTE format('REVOKE app_data_rights_executor FROM %I CASCADE',r); END LOOP;
+ -- pg_auth_members is cluster-wide and a superuser's plain REVOKE skips grants
+ -- recorded by another grantor (as 016): revoke each membership GRANTED BY it.
+ FOR m IN SELECT parent.rolname parent_name,grantor.rolname grantor_name FROM pg_auth_members a
+  JOIN pg_roles parent ON parent.oid=a.roleid JOIN pg_roles grantor ON grantor.oid=a.grantor
+  WHERE a.member='app_data_rights_executor'::regrole LOOP
+  EXECUTE format('REVOKE %I FROM app_data_rights_executor GRANTED BY %I CASCADE',m.parent_name,m.grantor_name); END LOOP;
+ FOR m IN SELECT child.rolname child_name,grantor.rolname grantor_name FROM pg_auth_members a
+  JOIN pg_roles child ON child.oid=a.member JOIN pg_roles grantor ON grantor.oid=a.grantor
+  WHERE a.roleid='app_data_rights_executor'::regrole LOOP
+  EXECUTE format('REVOKE app_data_rights_executor FROM %I GRANTED BY %I CASCADE',m.child_name,m.grantor_name); END LOOP;
+ IF EXISTS(SELECT FROM pg_auth_members WHERE member='app_data_rights_executor'::regrole OR roleid='app_data_rights_executor'::regrole) THEN
+  RAISE EXCEPTION 'PRIVACY_EXECUTOR_MEMBERSHIP_RESIDUAL'; END IF;
 END $role$;
 GRANT USAGE ON SCHEMA app TO app_data_rights_executor;
 REVOKE CREATE ON SCHEMA app FROM app_data_rights_executor;
@@ -50,7 +58,7 @@ BEGIN
   EXECUTE format('REVOKE ALL ON app.%I FROM PUBLIC',n);
   FOR r IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP EXECUTE format('REVOKE ALL ON app.%I FROM %I',n,r); END LOOP;
  END LOOP;
- FOREACH n IN ARRAY ARRAY['data_rights_exports','data_rights_erasures','customers','customer_addresses','customer_credentials','buyer_company_members','orders','order_lines','carts','cart_lines','audit_events'] LOOP
+ FOREACH n IN ARRAY ARRAY['data_rights_exports','data_rights_erasures','customers','customer_addresses','customer_credentials','buyer_company_members','orders','order_lines','order_adjustments','carts','cart_lines','audit_events','quote_lines','idempotency_records','customer_auth_tokens','customer_sessions','customer_guest_order_links'] LOOP
   EXECUTE format('CREATE POLICY %I ON app.%I TO app_data_rights_executor USING(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',
    CASE WHEN n IN('data_rights_exports','data_rights_erasures') THEN 'tenant_scope' ELSE 'data_rights_scope' END,n);
  END LOOP;
@@ -73,9 +81,16 @@ CREATE POLICY data_rights_scope ON app.notification_deliveries TO app_data_right
 -- Quote approval mail goes to quotes.accepted_by; that ID, never an email, is ownership.
 GRANT SELECT(tenant_id,id,accepted_by) ON app.quotes TO app_data_rights_executor;
 CREATE POLICY data_rights_scope ON app.quotes TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
--- Erased placeholders live in a reserved non-routable namespace that only the
--- erased row itself may hold, so no account can pre-register one to block erasure.
-ALTER TABLE app.customers ADD CONSTRAINT customers_erased_namespace CHECK(email_normalized NOT LIKE '%@erased.invalid' OR (email='erased+'||id::text||'@erased.invalid' AND status='disabled'));
+-- Every other declared customer-owned copy (C-PII registry identity paths):
+-- checkout address/results via order, accepted-quote snapshots, customer-actor
+-- command receipts, order adjustment text and customer-auth artifacts.
+GRANT SELECT(tenant_id,id,order_id,start_result,final_result),UPDATE(address_snapshot,start_result,final_result) ON app.checkout_sessions TO app_data_rights_executor;
+GRANT SELECT(tenant_id,event_kind,event_key,checkout_id,result),UPDATE(result) ON app.checkout_attempts TO app_data_rights_executor;
+GRANT SELECT(snapshot),UPDATE(snapshot) ON app.quotes TO app_data_rights_executor;
+GRANT SELECT(tenant_id,quote_id,line_no),UPDATE(description,snapshot) ON app.quote_lines TO app_data_rights_executor;
+GRANT SELECT(tenant_id,id,order_id),UPDATE(reason) ON app.order_adjustments TO app_data_rights_executor;
+GRANT SELECT(tenant_id,actor_kind,actor_id,operation,idempotency_key,response_body,response_body_reference),UPDATE(response_body,response_body_reference) ON app.idempotency_records TO app_data_rights_executor;
+GRANT SELECT(tenant_id,customer_id),DELETE ON app.customer_auth_tokens,app.customer_sessions,app.customer_guest_order_links TO app_data_rights_executor;
 CREATE POLICY data_rights_scope ON app.outbox_events TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid) WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid AND delivery_target='notifications.email');
 
 CREATE FUNCTION app.data_rights_context() RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
@@ -88,6 +103,28 @@ BEGIN
 END $fn$;
 CREATE FUNCTION app.data_rights_tax_scrub(p jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
  SELECT '{"erased":true}'::jsonb;
+$fn$;
+-- Quote snapshot keeps only calculator money/currency facts the quote columns
+-- already hold; all free text/destination/lines are dropped.
+CREATE FUNCTION app.data_rights_quote_scrub(p jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+ SELECT coalesce((SELECT jsonb_object_agg(k,v) FROM jsonb_each(p) e(k,v)
+  WHERE k IN('calculator','currency','subtotal','tax_amount','shipping_amount','total','calculated_at')),'{}'::jsonb)||'{"erased":true}'::jsonb;
+$fn$;
+-- The ONLY values the executor may write into other modules' immutable copies.
+-- Keyed by table; missing/NULL copies stay NULL so shape CHECKs still hold.
+CREATE FUNCTION app.data_rights_scrub_values(p_table text,p_old jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+ SELECT CASE p_table
+  WHEN 'checkout_sessions' THEN jsonb_build_object('address_snapshot','{"erased":true}'::jsonb,
+   'start_result',CASE WHEN jsonb_typeof(p_old->'start_result')='object' THEN '{"erased":true}'::jsonb ELSE 'null'::jsonb END,
+   'final_result',CASE WHEN jsonb_typeof(p_old->'final_result')='object' THEN '{"erased":true}'::jsonb ELSE 'null'::jsonb END)
+  WHEN 'checkout_attempts' THEN jsonb_build_object('result',CASE WHEN jsonb_typeof(p_old->'result')='object' THEN '{"erased":true}'::jsonb ELSE 'null'::jsonb END)
+  WHEN 'quotes' THEN jsonb_build_object('snapshot',app.data_rights_quote_scrub(p_old->'snapshot'))
+  WHEN 'quote_lines' THEN jsonb_build_object('description','[erased]','snapshot','{"erased":true}'::jsonb)
+  WHEN 'order_adjustments' THEN jsonb_build_object('reason','[erased]')
+  WHEN 'idempotency_records' THEN jsonb_build_object(
+   'response_body',CASE WHEN jsonb_typeof(p_old->'response_body')='object' THEN '{"erased":true}'::jsonb ELSE 'null'::jsonb END,
+   'response_body_reference',CASE WHEN jsonb_typeof(p_old->'response_body_reference')='string' THEN '"erased"'::jsonb ELSE 'null'::jsonb END)
+ END;
 $fn$;
 -- Customer owning a notification by business reference: order.customer_id or
 -- quote.accepted_by. Recipient text never establishes ownership.
@@ -238,7 +275,7 @@ BEGIN
  RETURN jsonb_build_object('id',r.id,'status','consumed');
 END $fn$;
 CREATE FUNCTION app.data_rights_erase_customer(p_customer uuid,p_actor_kind text,p_actor_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
-DECLARE t uuid:=app.data_rights_context();c app.customers; requests jsonb; naddr integer;ncred integer;nb2b integer;norder integer;nline integer;nnotification integer;
+DECLARE t uuid:=app.data_rights_context();c app.customers; requests jsonb; naddr integer;ncred integer;nb2b integer;norder integer;nline integer;nnotification integer;ncheckout integer;nattempt integer;nquote integer;nquoteline integer;nadjust integer;nreceipt integer;nauth integer;n integer;
 BEGIN
  IF p_customer IS NULL OR p_actor_id IS NULL OR p_actor_kind IS NULL OR p_actor_kind NOT IN('user','api_key','service') THEN RAISE EXCEPTION 'PRIVACY_INVALID' USING ERRCODE='22023'; END IF;
  -- Existing financial writers lock order before notification fanout locks customer.
@@ -273,6 +310,33 @@ BEGIN
  UPDATE app.notification_deliveries d SET recipient='erased-'||d.id::text||'@invalid.test',status='dead_letter',last_error='PRIVACY_ERASED',send_token=NULL,lease_attempt=NULL,lease_worker=NULL,sent_at=NULL,updated_at=clock_timestamp()
   WHERE d.tenant_id=t AND app.data_rights_notification_owner(d.tenant_id,d.template_key,d.reference_id)=p_customer AND d.recipient<>'';GET DIAGNOSTICS nnotification=ROW_COUNT;
 
+ -- Other declared copies (C-PII identity paths). Their writers lock the copy
+ -- before the customer, so NOWAIT turns contention into a retryable busy
+ -- rollback instead of a deadlock; nothing is partially erased.
+ PERFORM s.id FROM app.checkout_sessions s WHERE s.tenant_id=t AND s.order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer) ORDER BY s.id FOR UPDATE NOWAIT;
+ PERFORM a.event_key FROM app.checkout_attempts a JOIN app.checkout_sessions s ON(s.tenant_id,s.id)=(a.tenant_id,a.checkout_id)
+  WHERE s.tenant_id=t AND s.order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer) ORDER BY a.event_kind,a.event_key FOR UPDATE OF a NOWAIT;
+ PERFORM id FROM app.quotes WHERE tenant_id=t AND accepted_by=p_customer ORDER BY id FOR UPDATE NOWAIT;
+ PERFORM operation FROM app.idempotency_records WHERE tenant_id=t AND actor_kind='customer' AND actor_id=p_customer ORDER BY operation,idempotency_key FOR UPDATE NOWAIT;
+ UPDATE app.checkout_attempts a SET result='{"erased":true}' FROM app.checkout_sessions s WHERE (s.tenant_id,s.id)=(a.tenant_id,a.checkout_id)
+  AND s.tenant_id=t AND s.order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer) AND a.result IS NOT NULL;GET DIAGNOSTICS nattempt=ROW_COUNT;
+ UPDATE app.checkout_sessions SET address_snapshot='{"erased":true}',
+  start_result=CASE WHEN start_result IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END,
+  final_result=CASE WHEN final_result IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END
+  WHERE tenant_id=t AND order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer);GET DIAGNOSTICS ncheckout=ROW_COUNT;
+ UPDATE app.quote_lines l SET description='[erased]',snapshot='{"erased":true}' FROM app.quotes q
+  WHERE (q.tenant_id,q.id)=(l.tenant_id,l.quote_id) AND q.tenant_id=t AND q.accepted_by=p_customer;GET DIAGNOSTICS nquoteline=ROW_COUNT;
+ UPDATE app.quotes SET snapshot=app.data_rights_quote_scrub(snapshot) WHERE tenant_id=t AND accepted_by=p_customer;GET DIAGNOSTICS nquote=ROW_COUNT;
+ UPDATE app.order_adjustments SET reason='[erased]' WHERE tenant_id=t AND order_id IN(SELECT id FROM app.orders WHERE tenant_id=t AND customer_id=p_customer);GET DIAGNOSTICS nadjust=ROW_COUNT;
+ UPDATE app.idempotency_records SET
+  response_body=CASE WHEN response_body IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END,
+  response_body_reference=CASE WHEN response_body_reference IS NULL THEN NULL ELSE 'erased' END
+  WHERE tenant_id=t AND actor_kind='customer' AND actor_id=p_customer AND (response_body IS NOT NULL OR response_body_reference IS NOT NULL);GET DIAGNOSTICS nreceipt=ROW_COUNT;
+ -- Customer-auth artifacts: pending tokens (email copy, pending PHC), sessions
+ -- and mailbox-proven guest links. Account admission counters are unowned.
+ DELETE FROM app.customer_auth_tokens WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS nauth=ROW_COUNT;
+ DELETE FROM app.customer_sessions WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS n=ROW_COUNT;nauth:=nauth+n;
+ DELETE FROM app.customer_guest_order_links WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS n=ROW_COUNT;nauth:=nauth+n;
  DELETE FROM app.customer_addresses WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS naddr=ROW_COUNT;
  DELETE FROM app.customer_credentials WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS ncred=ROW_COUNT;
  UPDATE app.buyer_company_members SET status='revoked' WHERE tenant_id=t AND customer_id=p_customer AND status<>'revoked';GET DIAGNOSTICS nb2b=ROW_COUNT;
@@ -280,8 +344,8 @@ BEGIN
  UPDATE app.order_lines l SET tax_snapshot=app.data_rights_tax_scrub(l.tax_snapshot) FROM app.orders o WHERE (o.tenant_id,o.id)=(l.tenant_id,l.order_id) AND o.tenant_id=t AND o.customer_id=p_customer;GET DIAGNOSTICS nline=ROW_COUNT;
  UPDATE app.customers SET email='erased+'||id::text||'@erased.invalid',display_name='[erased]',status='disabled' WHERE tenant_id=t AND id=p_customer;
  INSERT INTO app.data_rights_erasures(tenant_id,customer_id,actor_kind,actor_id) VALUES(t,p_customer,p_actor_kind,p_actor_id) ON CONFLICT DO NOTHING;
- INSERT INTO app.audit_events(tenant_id,actor_kind,actor_id,operation,resource_type,resource_id,payload) VALUES(t,p_actor_kind,p_actor_id,'data_rights.customer.erase','customer',p_customer,jsonb_build_object('scope','customer','addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification));
- RETURN jsonb_build_object('customer_id',p_customer,'requests',requests,'counts',jsonb_build_object('addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification));
+ INSERT INTO app.audit_events(tenant_id,actor_kind,actor_id,operation,resource_type,resource_id,payload) VALUES(t,p_actor_kind,p_actor_id,'data_rights.customer.erase','customer',p_customer,jsonb_build_object('scope','customer','addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification,'checkouts',ncheckout,'checkout_attempts',nattempt,'quotes',nquote,'quote_lines',nquoteline,'order_adjustments',nadjust,'command_receipts',nreceipt,'customer_auth',nauth));
+ RETURN jsonb_build_object('customer_id',p_customer,'requests',requests,'counts',jsonb_build_object('addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification,'checkouts',ncheckout,'checkout_attempts',nattempt,'quotes',nquote,'quote_lines',nquoteline,'order_adjustments',nadjust,'command_receipts',nreceipt,'customer_auth',nauth));
 END $fn$;
 -- Immutable receipt is the restore/re-erasure barrier; no raw PII is retained.
 CREATE FUNCTION app.data_rights_erasure_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
@@ -382,6 +446,60 @@ BEGIN
  RETURN NEW;
 END $fn$;
 CREATE TRIGGER data_rights_notification_dispatch_guard BEFORE UPDATE ON app.outbox_events FOR EACH ROW EXECUTE FUNCTION app.data_rights_notification_dispatch_guard();
+-- Erased placeholders live in a reserved non-routable namespace that only the
+-- erased row itself may hold, so no account can pre-register one to block
+-- erasure. A trigger (not a CHECK) leaves pre-existing legacy rows valid on
+-- upgrade; it fires on insert and on any email change.
+CREATE FUNCTION app.data_rights_email_namespace_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+BEGIN
+ IF lower(regexp_replace(NEW.email,'^[[:space:]]+|[[:space:]]+$','','g')) LIKE '%@erased.invalid'
+  AND NOT (NEW.email='erased+'||NEW.id::text||'@erased.invalid' AND NEW.status='disabled') THEN
+  RAISE EXCEPTION 'PRIVACY_RESERVED_EMAIL_NAMESPACE' USING ERRCODE='23514'; END IF;
+ RETURN NEW;
+END $fn$;
+CREATE TRIGGER data_rights_email_namespace_guard BEFORE INSERT OR UPDATE OF email ON app.customers FOR EACH ROW EXECUTE FUNCTION app.data_rights_email_namespace_guard();
+-- Owner-module guards keep their full contract for every other role. The
+-- executor bypasses them only into this guard, which admits exactly the
+-- registered scrub values for UPDATE and refuses every other write.
+CREATE FUNCTION app.data_rights_scrub_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+BEGIN
+ IF TG_OP<>'UPDATE' OR to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD)||app.data_rights_scrub_values(TG_TABLE_NAME,to_jsonb(OLD)) THEN
+  RAISE EXCEPTION 'PRIVACY_SCRUB_ONLY' USING ERRCODE='55000'; END IF;
+ RETURN NEW;
+END $fn$;
+DROP TRIGGER checkout_sessions_guard ON app.checkout_sessions;
+CREATE TRIGGER checkout_sessions_guard BEFORE INSERT OR UPDATE OR DELETE ON app.checkout_sessions FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.checkout_guard();
+DROP TRIGGER checkout_attempts_guard ON app.checkout_attempts;
+CREATE TRIGGER checkout_attempts_guard BEFORE INSERT OR UPDATE OR DELETE ON app.checkout_attempts FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.checkout_guard();
+DROP TRIGGER quote_guard ON app.quotes;
+CREATE TRIGGER quote_guard BEFORE INSERT OR UPDATE OR DELETE ON app.quotes FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.guard_quote();
+DROP TRIGGER quote_lines_guard ON app.quote_lines;
+CREATE TRIGGER quote_lines_guard BEFORE INSERT OR UPDATE OR DELETE ON app.quote_lines FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.guard_quote_child();
+DROP TRIGGER order_adjustments_snapshot_guard ON app.order_adjustments;
+CREATE TRIGGER order_adjustments_snapshot_guard BEFORE INSERT OR UPDATE OR DELETE ON app.order_adjustments FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.orders_child_guard();
+DROP TRIGGER idempotency_identity ON app.idempotency_records;
+CREATE TRIGGER idempotency_identity BEFORE UPDATE ON app.idempotency_records FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.guard_idempotency_identity();
+DO $scrub_triggers$ DECLARE n text; BEGIN
+ FOREACH n IN ARRAY ARRAY['checkout_sessions','checkout_attempts','quotes','quote_lines','order_adjustments','idempotency_records'] LOOP
+  EXECUTE format('CREATE TRIGGER data_rights_scrub_guard BEFORE INSERT OR UPDATE OR DELETE ON app.%I FOR EACH ROW WHEN (current_user=''app_data_rights_executor'') EXECUTE FUNCTION app.data_rights_scrub_guard()',n);
+ END LOOP;
+END $scrub_triggers$;
+-- A checkout still in flight at erasure cannot write a fresh personal copy:
+-- later results for a scrubbed session are stored as the erased marker.
+CREATE FUNCTION app.data_rights_checkout_erased_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+BEGIN
+ IF TG_TABLE_NAME='checkout_sessions' THEN
+  IF OLD.address_snapshot='{"erased":true}'::jsonb THEN
+   NEW.start_result:=CASE WHEN NEW.start_result IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END;
+   NEW.final_result:=CASE WHEN NEW.final_result IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END;
+  END IF;
+ ELSIF NEW.result IS NOT NULL AND EXISTS(SELECT FROM app.checkout_sessions s WHERE s.tenant_id=NEW.tenant_id AND s.id=NEW.checkout_id AND s.address_snapshot='{"erased":true}'::jsonb) THEN
+  NEW.result:='{"erased":true}'::jsonb;
+ END IF;
+ RETURN NEW;
+END $fn$;
+CREATE TRIGGER data_rights_checkout_erased_guard BEFORE UPDATE ON app.checkout_sessions FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.data_rights_checkout_erased_guard();
+CREATE TRIGGER data_rights_checkout_erased_guard BEFORE UPDATE ON app.checkout_attempts FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.data_rights_checkout_erased_guard();
 -- Ownership is the security boundary. No login/member can become this role.
 GRANT CREATE ON SCHEMA app TO app_data_rights_executor;
 DO $functions$

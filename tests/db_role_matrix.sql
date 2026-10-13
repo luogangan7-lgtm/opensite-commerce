@@ -893,7 +893,7 @@ DECLARE
  selected text[]:=ARRAY['tenants','customers','customer_addresses','buyer_company_members','orders','order_lines','carts','cart_lines','data_rights_exports','data_rights_erasures','notification_deliveries'];
  commands text[]:=ARRAY['data_rights_request_export','data_rights_status','data_rights_build_export','data_rights_complete_export','data_rights_download_info','data_rights_consume_export','data_rights_erase_customer','data_rights_download_deadline','data_rights_worker_info'];
  f record; role_name text;
- private_functions text[]:=ARRAY['data_rights_context','data_rights_tax_scrub','data_rights_lock_export','data_rights_line_guard','data_rights_erasure_guard','data_rights_credential_guard','data_rights_order_customer_guard','data_rights_customer_guard','data_rights_notification_insert_guard','data_rights_notification_guard','data_rights_notification_dispatch_insert_guard','data_rights_notification_dispatch_guard','data_rights_notification_owner'];
+ private_functions text[]:=ARRAY['data_rights_context','data_rights_tax_scrub','data_rights_lock_export','data_rights_line_guard','data_rights_erasure_guard','data_rights_credential_guard','data_rights_order_customer_guard','data_rights_customer_guard','data_rights_notification_insert_guard','data_rights_notification_guard','data_rights_notification_dispatch_insert_guard','data_rights_notification_dispatch_guard','data_rights_notification_owner','data_rights_quote_scrub','data_rights_scrub_values','data_rights_email_namespace_guard','data_rights_scrub_guard','data_rights_checkout_erased_guard'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_data_rights_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -905,16 +905,21 @@ BEGIN
    expected:=privilege='SELECT' AND t.relname=ANY(selected)
     OR privilege='INSERT' AND t.relname=ANY(ARRAY['data_rights_exports','data_rights_erasures','audit_events'])
     OR privilege='UPDATE' AND t.relname='data_rights_exports'
-    OR privilege='DELETE' AND t.relname=ANY(ARRAY['customer_addresses','customer_credentials']);
+    OR privilege='DELETE' AND t.relname=ANY(ARRAY['customer_addresses','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links']);
    IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'privacy table privilege mismatch app.% %',t.relname,privilege; END IF;
    IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
     cols:=ARRAY[]::text[];
     IF NOT expected THEN
-     IF privilege='SELECT' AND t.relname='customer_credentials' THEN cols:=ARRAY['tenant_id','customer_id'];
-     ELSIF privilege='SELECT' AND t.relname='quotes' THEN cols:=ARRAY['tenant_id','id','accepted_by'];
+     IF privilege='SELECT' AND t.relname=ANY(ARRAY['customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links']) THEN cols:=ARRAY['tenant_id','customer_id'];
+     ELSIF privilege='SELECT' AND t.relname='quotes' THEN cols:=ARRAY['tenant_id','id','accepted_by','snapshot'];
+     ELSIF privilege='SELECT' AND t.relname='checkout_sessions' THEN cols:=ARRAY['tenant_id','id','order_id','start_result','final_result'];
+     ELSIF privilege='SELECT' AND t.relname='checkout_attempts' THEN cols:=ARRAY['tenant_id','event_kind','event_key','checkout_id','result'];
+     ELSIF privilege='SELECT' AND t.relname='quote_lines' THEN cols:=ARRAY['tenant_id','quote_id','line_no'];
+     ELSIF privilege='SELECT' AND t.relname='order_adjustments' THEN cols:=ARRAY['tenant_id','id','order_id'];
+     ELSIF privilege='SELECT' AND t.relname='idempotency_records' THEN cols:=ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','response_body','response_body_reference'];
      ELSIF privilege='SELECT' AND t.relname='outbox_events' THEN cols:=ARRAY['tenant_id','id','event_type','delivery_target','payload','status','lease_owner','lease_until','last_error'];
-     ELSIF privilege='UPDATE' THEN cols:=CASE t.relname WHEN 'customers' THEN ARRAY['email','display_name','status'] WHEN 'buyer_company_members' THEN ARRAY['status'] WHEN 'orders' THEN ARRAY['shipping_snapshot'] WHEN 'order_lines' THEN ARRAY['tax_snapshot'] WHEN 'notification_deliveries' THEN ARRAY['recipient','status','last_error','send_token','lease_attempt','lease_worker','sent_at','updated_at'] WHEN 'outbox_events' THEN ARRAY['status','lease_owner','lease_until','last_error'] ELSE ARRAY[]::text[] END; END IF;
+     ELSIF privilege='UPDATE' THEN cols:=CASE t.relname WHEN 'customers' THEN ARRAY['email','display_name','status'] WHEN 'buyer_company_members' THEN ARRAY['status'] WHEN 'orders' THEN ARRAY['shipping_snapshot'] WHEN 'order_lines' THEN ARRAY['tax_snapshot'] WHEN 'notification_deliveries' THEN ARRAY['recipient','status','last_error','send_token','lease_attempt','lease_worker','sent_at','updated_at'] WHEN 'outbox_events' THEN ARRAY['status','lease_owner','lease_until','last_error'] WHEN 'checkout_sessions' THEN ARRAY['address_snapshot','start_result','final_result'] WHEN 'checkout_attempts' THEN ARRAY['result'] WHEN 'quotes' THEN ARRAY['snapshot'] WHEN 'quote_lines' THEN ARRAY['description','snapshot'] WHEN 'order_adjustments' THEN ARRAY['reason'] WHEN 'idempotency_records' THEN ARRAY['response_body','response_body_reference'] ELSE ARRAY[]::text[] END; END IF;
     END IF;
     FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
      IF has_column_privilege(r.oid,t.oid,a.attnum,privilege) IS DISTINCT FROM (expected OR a.attname::text=ANY(cols))
