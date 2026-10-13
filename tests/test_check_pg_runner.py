@@ -68,6 +68,7 @@ expected = [
     'db_customers.sql',
     'db_ledger.sql',
     'db_catalog_api.sql',
+    'db_orders.sql',
     'db_queue.sql',
     'db_reliability_limits.sql',
 ]
@@ -179,6 +180,7 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
     assert 'RUN tests/db_customers.sql' in failed.stdout
 
     for marker, name in [('C07_EXPECTED_REFUSAL', 'db_catalog_api.sql'),
+                         ('ORDERS_GATE', 'db_orders.sql'),
                          ('QUEUE_CROSS_TENANT_READ', 'db_queue.sql'),
                          ('RELIABILITY_LIMITS_GATE', 'db_reliability_limits.sql')]:
         env['FAKE_FAIL_ON'] = marker
