@@ -1,6 +1,6 @@
 {
-  "sourceSha": "104ac63a9f5b6806972b92b050d7e0160062d530",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38374921022",
+  "sourceSha": "891093e4e27b6e98440ea9750fd0663ed7467371",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38378845302",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
@@ -19,11 +19,11 @@
       844
     ]
   },
-  "sourceFingerprint": "465c4961e3d3f918b0a8cf079521789770332942fdedcafcbaca07c8c5e0f860",
+  "sourceFingerprint": "a0b60440d263dd9e6c65cc3348f1b6f37670e03cddb6765659bb0ea9c6920ae2",
   "pngHashes": {
     "desktop/admin-create.png": "9c657c6519f8957ebe3601d640461dc31da6909b9870c37a18810f586d670b19",
     "desktop/admin-edit.png": "1d240cfad15d81453f71e55b23e73cfe6ea92a7a865987baa93f0d2e498c528c",
-    "desktop/admin-login.png": "4f594195898b4ae3edfcbcf6837445f9182db9cbef1269e6de022d923a648289",
+    "desktop/admin-login.png": "a2cd6710f8bfcb131d3f5505e95a0f59b1453515c7cd1f55f7d9c949e08165fa",
     "desktop/admin-order.png": "ac2ac211e39f7beb78913a3b42d45c6f392609dd27a19696f8923fd7f3867fe8",
     "desktop/admin-orders.png": "d2cf00b9a1f884832a4b26c8bde9beed081c565743f57369fa7d05e4e1019923",
     "desktop/admin-products.png": "142cc5f889994a599bf5dfff567f715961b300c5d11b28707b006b9b8e6be525",
@@ -126,7 +126,7 @@
     "desktop/table-populated.png": "d08058ad37d100b41fc8c61afb9e22bd834d428e94468cb0f8aa73c8763f6c1c",
     "mobile/admin-create.png": "1b903b767f3ca8191f3a31ba8f68d85135b86fc14c8ec76427308645a5842024",
     "mobile/admin-edit.png": "29b4a7cd7b1a78f6766ae52723bc8eeff66a8849381d66223c6364b56d445e3c",
-    "mobile/admin-login.png": "553677f6fe2866086bec1de7716dfcf63cbd81762f756883e43e61e4c83710d3",
+    "mobile/admin-login.png": "cc502f78568e7b1542d862818843858ee59838bacbb5e3633b35f6bd638292ca",
     "mobile/admin-order.png": "780106f9d6dbad76f9a67b2795c9abaa93ff970d44a2cea3e013d8fd58c59263",
     "mobile/admin-orders.png": "fed888bc85dc2c83f37c0b536b4b2d00e08a7a97c62d13fcada8f2f979b1470b",
     "mobile/admin-products.png": "0cdd5c2407a335ce3eaf8f97d267f0d0a9612e1830e52a6e58ec35abcabe6b3a",
