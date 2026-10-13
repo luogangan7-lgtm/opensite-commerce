@@ -5,6 +5,28 @@
 -- cannot overrun immutable order quantities, replay, or cross tenant boundaries.
 \set ON_ERROR_STOP on
 BEGIN;
+-- A shared authority must exist before any functional proof can be accepted.
+-- Catalog checks are followed by a same-OID intervention below, not name lint.
+DO $budget_contract$
+DECLARE command oid:=to_regprocedure('app.orders_refund_budget(uuid,text,uuid,bigint,text,text,bigint)');
+BEGIN
+ IF command IS NULL THEN
+  RAISE EXCEPTION 'SHARED_REFUND_BUDGET_AUTHORITY_MISSING';
+ END IF;
+ IF NOT EXISTS(SELECT FROM pg_proc p WHERE p.oid=command AND p.prorettype='app.orders'::regtype
+  AND p.proowner='app_orders_executor'::regrole AND p.prosecdef
+  AND p.proconfig=ARRAY['search_path=pg_catalog, app, pg_temp']) THEN
+  RAISE EXCEPTION 'SHARED_REFUND_BUDGET_AUTHORITY_CATALOG';
+ END IF;
+ IF EXISTS(SELECT FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  WHERE p.oid=command AND a.privilege_type='EXECUTE'
+  AND a.grantee NOT IN('app_orders_executor'::regrole,'app_fulfillment_executor'::regrole))
+  OR NOT has_function_privilege('app_fulfillment_executor',command,'EXECUTE')
+  OR has_function_privilege('app_runtime',command,'EXECUTE')
+  OR has_function_privilege('app_returns_service',command,'EXECUTE') THEN
+  RAISE EXCEPTION 'SHARED_REFUND_BUDGET_AUTHORITY_ACL';
+ END IF;
+END $budget_contract$;
 INSERT INTO app.tenants(name,settlement_currency) VALUES('fulfillment-A','USD') RETURNING id AS t \gset
 INSERT INTO app.tenants(name,settlement_currency) VALUES('fulfillment-B','USD') RETURNING id AS other_t \gset
 INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','fulfillment') RETURNING id AS product \gset
@@ -565,5 +587,92 @@ BEGIN
  IF n<>1 THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE refund completion unavailable'; END IF;
 END $refund_c04$;
 RESET ROLE;
+-- Poison only the common command, keeping its OID/ACL/signature. Every valid
+-- public route must fail at this authority and roll back all preceding writes.
+CREATE FUNCTION pg_temp.refund_budget_witness(t uuid) RETURNS jsonb LANGUAGE sql AS $$
+ SELECT jsonb_build_object(
+  'orders',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM app.orders x WHERE tenant_id=t),
+  'returns',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM app.returns x WHERE tenant_id=t),
+  'lines',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM app.return_lines x WHERE tenant_id=t),
+  'stock',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY sku_id),'[]') FROM app.stock_levels x WHERE tenant_id=t),
+  'movements',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM app.inventory_movements x WHERE tenant_id=t),
+  'journals',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM app.ledger_transactions x WHERE tenant_id=t),
+  'entries',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY transaction_id,line_no),'[]') FROM app.ledger_entries x WHERE tenant_id=t),
+  'outbox',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM app.outbox_events x WHERE tenant_id=t));
+$$;
+DO $budget_intervention$
+DECLARE command oid:='app.orders_refund_budget(uuid,text,uuid,bigint,text,text,bigint)'::regprocedure;
+ original text:=pg_get_functiondef(command); args text:=pg_get_function_identity_arguments(command);
+ phase text; t uuid; product uuid; sku uuid; oid uuid; lid uuid; rid uuid; journal uuid;
+ income uuid; tax uuid; shipping uuid; cash uuid; reservation app.inventory_reservations; ord app.orders;
+ r jsonb; before jsonb; hit boolean;
+BEGIN
+ FOREACH phase IN ARRAY ARRAY['legacy','freeze','reserve','lock','complete'] LOOP
+  INSERT INTO app.tenants(name,settlement_currency) VALUES('budget intervention '||phase,'USD') RETURNING id INTO t;
+  INSERT INTO app.products(tenant_id,product_code) VALUES(t,'budget') RETURNING id INTO product;
+  INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(t,product,'budget','default') RETURNING id INTO sku;
+  PERFORM set_config('app.tenant_id',t::text,true);
+  PERFORM app.inventory_adjust(sku,20,'budget fixture',uuidv7(),'inbound');
+  income:=uuidv7(); tax:=uuidv7(); shipping:=uuidv7(); cash:=uuidv7();
+  INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
+   (t,income,'sales','USD','revenue'),(t,tax,'tax','USD','liability'),
+   (t,shipping,'shipping','USD','revenue'),(t,cash,'cash','USD','asset');
+  oid:=uuidv7(); lid:=uuidv7();
+  EXECUTE 'SET LOCAL ROLE app_runtime';
+  reservation:=app.inventory_reserve(sku,2,'order',oid,'budget-reserve',900);
+  ord:=app.orders_create(oid,'budget-order',sha256('budget'::bytea),NULL,
+   '{"email":"budget@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
+   jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','budget','quantity',2,
+    'unit_price_minor',10,'line_net_minor',20,'line_tax_minor',0,'line_total_minor',20,
+    'reservation_id',reservation.id,'tax_snapshot','{}'::jsonb)),'[]');
+  ord:=app.orders_transition(oid,'paid','budget-paid',0);
+  IF phase IN('reserve','lock','complete') THEN
+   r:=app.returns_create(oid,ord.version,'budget-return','unshipped_cancel','budget test',
+    jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
+   rid:=(r->>'id')::uuid;
+   SELECT version INTO ord.version FROM app.orders WHERE tenant_id=t AND id=oid;
+  END IF;
+  IF phase IN('lock','complete') THEN
+   EXECUTE 'SET LOCAL ROLE app_returns_service';
+   r:=app.returns_prepare_refund(rid,ord.version,'budget-refund','budget-provider',1,income,tax,shipping,cash);
+  END IF;
+  IF phase='complete' THEN
+   journal:=app.post_ledger(t,'USD','return',rid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[10,10]::bigint[]);
+  END IF;
+  EXECUTE 'RESET ROLE';
+  before:=pg_temp.refund_budget_witness(t);
+  EXECUTE format('CREATE OR REPLACE FUNCTION app.orders_refund_budget(%s) RETURNS app.orders
+   LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $sentinel$
+   BEGIN RAISE EXCEPTION ''SHARED_REFUND_BUDGET_SENTINEL'' USING ERRCODE=''P39B1''; END $sentinel$',args);
+  hit:=false;
+  BEGIN
+   IF phase IN('legacy','freeze') THEN EXECUTE 'SET LOCAL ROLE app_runtime';
+   ELSE EXECUTE 'SET LOCAL ROLE app_returns_service'; END IF;
+   IF phase='legacy' THEN
+    PERFORM app.orders_transition(oid,'partially_refunded','budget-legacy',2);
+   ELSIF phase='freeze' THEN
+    PERFORM app.returns_create(oid,ord.version,'budget-return','unshipped_cancel','budget test',
+     jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
+   ELSIF phase='reserve' THEN
+    PERFORM app.returns_prepare_refund(rid,ord.version,'budget-refund','budget-provider',1,income,tax,shipping,cash);
+   ELSIF phase='lock' THEN
+    PERFORM app.returns_lock_refund(rid,'budget-refund');
+   ELSE
+    PERFORM app.returns_complete_refund(rid,'budget-refund','budget-provider',journal);
+   END IF;
+  EXCEPTION WHEN SQLSTATE 'P39B1' THEN hit:=true;
+  END;
+  EXECUTE 'RESET ROLE';
+  IF NOT hit THEN RAISE EXCEPTION 'SHARED_REFUND_BUDGET_BYPASSED: %',phase; END IF;
+  IF pg_temp.refund_budget_witness(t) IS DISTINCT FROM before THEN
+   RAISE EXCEPTION 'SHARED_REFUND_BUDGET_ROLLBACK: %',phase;
+  END IF;
+  EXECUTE original;
+  IF to_regprocedure('app.orders_refund_budget(uuid,text,uuid,bigint,text,text,bigint)')::oid<>command THEN
+   RAISE EXCEPTION 'SHARED_REFUND_BUDGET_PROBE_CHANGED_OID';
+  END IF;
+  RAISE NOTICE 'PASS: shared budget % public route reaches same OID and rolls back exact witnesses',phase;
+ END LOOP;
+END $budget_intervention$;
 ROLLBACK;
 SELECT 'PASS: refund coordinator completes only existing tenant refundReturn current claims' AS result;
