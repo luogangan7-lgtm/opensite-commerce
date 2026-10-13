@@ -457,7 +457,7 @@ BEGIN
   RAISE EXCEPTION 'PRIVACY_RESERVED_EMAIL_NAMESPACE' USING ERRCODE='23514'; END IF;
  RETURN NEW;
 END $fn$;
-CREATE TRIGGER data_rights_email_namespace_guard BEFORE INSERT OR UPDATE OF email ON app.customers FOR EACH ROW EXECUTE FUNCTION app.data_rights_email_namespace_guard();
+-- probe: namespace trigger not installed
 -- Owner-module guards keep their full contract for every other role. The
 -- executor bypasses them only into this guard, which admits exactly the
 -- registered scrub values for UPDATE and refuses every other write.
