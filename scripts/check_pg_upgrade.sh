@@ -158,10 +158,11 @@ INVENTORY_DB=""
 PRICING_DB=""
 IDENTITY_DB=""
 LOGIN_DB=""
+H4_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$H4_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1129,7 +1130,8 @@ LOGIN_DB=""
 # Discover by suffix so integration renumbering cannot skip any predecessor.
 hardening=(migrations/[0-9][0-9][0-9]_identity_login_hardening.sql)
 [[ ${#hardening[@]} == 1 && -f ${hardening[0]} ]] || { echo 'FAIL: exactly one identity hardening migration required'; exit 1; }
-DB=upgrade_h4_$$
+H4_DB=upgrade_h4_$$
+DB=$H4_DB
 admin -c "CREATE DATABASE $DB" >/dev/null
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f < ${hardening[0]} ]] || break
@@ -1151,6 +1153,7 @@ result=$(db "$DB" -c "SELECT count(*) FROM app.auth_sessions s JOIN public.h4_up
 db "$DB" -f tests/db_identity_hardening.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB" >/dev/null
+H4_DB=""
 pass 'H4 upgrade preserves sessions, installs password revocation and exact ACL'
 
 # Aggregate only after all module upgrade steps.
