@@ -5,8 +5,10 @@
 package bootstrap_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -130,4 +132,42 @@ func TestRouteSpecsAreSuccessfulRegistrationSnapshots(t *testing.T) {
 	if got := router.RouteSpecs(); len(got) != 1 || got[0] != spec {
 		t.Fatalf("snapshot mutated registry: %v", got)
 	}
+}
+
+// Default construction installs real handlers with an unavailable repository.
+// It cannot pretend a cart exists, and staff authentication never admits carts.
+func TestDefaultCartWiringIsUnavailableAndSeparateFromStaff(t *testing.T) {
+	server, err := bootstrap.New(bootstrap.Config{Authenticator: rejectStaffAuth{t: t}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := server.Handler.(*httpapi.Router)
+	ids := map[string]bool{}
+	for _, spec := range router.RouteSpecs() {
+		ids[spec.OperationID] = true
+	}
+	for _, id := range []string{"createCart", "getCart", "setCartLine", "deleteCartLine"} {
+		if !ids[id] {
+			t.Fatalf("missing actual cart operation %s", id)
+		}
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/v1/t/11111111-1111-4111-8111-111111111111/carts", strings.NewReader(`{"currency":"USD"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer staff")
+	req.Header.Set("Cookie", "__Host-osc_admin_session=staff")
+	server.Handler.ServeHTTP(w, req)
+	if w.Code != 503 || w.Header().Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("nil repository faked business result: %d %s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("cart failure cache policy missing")
+	}
+}
+
+type rejectStaffAuth struct{ t *testing.T }
+
+func (a rejectStaffAuth) Authenticate(context.Context, *http.Request, httpapi.RouteSpec) (context.Context, error) {
+	a.t.Fatal("staff auth was used for storefront cart")
+	return nil, nil
 }

@@ -19,6 +19,9 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       GOTOOLCHAIN: local
+      JOBS_REQUIRE_PG: '1'
+      IDEMPOTENCY_REQUIRE_PG: '1'
+      OUTBOX_REQUIRE_PG: '1'
       DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
       C07_FIXTURE_PASSWORD: ci_catalog_test_only
       C07_DATABASE_URL: postgres://c07_runtime:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable

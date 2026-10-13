@@ -37,11 +37,21 @@ func Open(ctx context.Context, dsn string) (Runner, func(), error) {
 // fn receives ONLY a transaction, not the pool. sqlc's db.New(tx) should be
 // constructed inside fn. Never return tx or use it asynchronously.
 func (r Runner) InTenant(ctx context.Context, tenantID string, fn func(context.Context, pgx.Tx) error) error {
+	return r.inTenant(ctx, tenantID, pgx.TxOptions{}, fn)
+}
+
+// InTenantSnapshot is InTenant in one REPEATABLE READ, READ ONLY transaction,
+// so multi-statement reads observe a single snapshot and cannot write.
+func (r Runner) InTenantSnapshot(ctx context.Context, tenantID string, fn func(context.Context, pgx.Tx) error) error {
+	return r.inTenant(ctx, tenantID, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, fn)
+}
+
+func (r Runner) inTenant(ctx context.Context, tenantID string, options pgx.TxOptions, fn func(context.Context, pgx.Tx) error) error {
 	if r.pool == nil {
 		return errors.New("pgx pool is nil")
 	}
 	return tenanttx.Run(ctx, tenantID,
-		r.pool.Begin,
+		func(ctx context.Context) (pgx.Tx, error) { return r.pool.BeginTx(ctx, options) },
 		func(ctx context.Context, tx pgx.Tx, id string) error {
 			_, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id',$1,true)`, id)
 			return err

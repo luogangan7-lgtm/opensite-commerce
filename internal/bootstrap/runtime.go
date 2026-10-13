@@ -5,6 +5,7 @@ package bootstrap
 
 import (
 	"context"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"os"
 )
@@ -24,6 +25,9 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		runners = append(runners, runner)
 		config.Catalog.Run = runner.RunAuthorized
+		if config.Cart == nil {
+			config.Cart = cart.NewPostgres(cart.Config{Run: runner.RunAuthorized, Read: runner.RunAuthorizedSnapshot}, nil)
+		}
 	}
 	if url := os.Getenv("OPENSITE_MEDIA_DATABASE_URL"); url != "" {
 		runner, err := pgxadapter.OpenQueryRunner(ctx, url)

@@ -33,6 +33,15 @@ func (r *QueryRunner) Close() {
 	}
 }
 func (r *QueryRunner) RunAuthorized(ctx context.Context, tenant string, fn func(*db.Queries) error) error {
+	return r.run(ctx, tenant, false, fn)
+}
+
+// RunAuthorizedSnapshot is RunAuthorized in a read-only single-snapshot transaction.
+func (r *QueryRunner) RunAuthorizedSnapshot(ctx context.Context, tenant string, fn func(*db.Queries) error) error {
+	return r.run(ctx, tenant, true, fn)
+}
+
+func (r *QueryRunner) run(ctx context.Context, tenant string, snapshot bool, fn func(*db.Queries) error) error {
 	if err := authorizedTenant(ctx, tenant); err != nil {
 		return err
 	}
@@ -42,5 +51,9 @@ func (r *QueryRunner) RunAuthorized(ctx context.Context, tenant string, fn func(
 	if fn == nil {
 		return errors.New("query callback is nil")
 	}
-	return r.runner.InTenant(ctx, tenant, func(_ context.Context, tx pgx.Tx) error { return fn(db.New(tx)) })
+	in := r.runner.InTenant
+	if snapshot {
+		in = r.runner.InTenantSnapshot
+	}
+	return in(ctx, tenant, func(_ context.Context, tx pgx.Tx) error { return fn(db.New(tx)) })
 }

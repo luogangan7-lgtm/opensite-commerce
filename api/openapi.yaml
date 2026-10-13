@@ -4,8 +4,8 @@ info:
   version: 0.7.0-draft
   description: >-
     Contract-first first-vertical-slice API. Declared operations are not all implemented in this increment. Tenant
-    business targets come from the URL path; credentials authorize them. Health and the published-site read are implemented; other operations
-    are planned contracts.
+    business targets come from the URL path; credentials authorize them. Health, catalog, media, cart and the published-site
+    read operations are implemented; other operations are planned contracts.
 servers:
   - url: /
 security:
@@ -1181,6 +1181,247 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '503':
           $ref: '#/components/responses/Problem'
+  /api/v1/t/{tenant_id}/carts:
+    post:
+      operationId: createCart
+      x-opensite-status: implemented
+      x-opensite-access: Storefront
+      security: []
+      description: Create a cart in an active tenant. Anonymous creation mints a 256-bit
+        guest capability returned once as cart_token; only its hash is persisted. Creation
+        has no existing representation and is exempt from If-Match.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CartToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCart'
+      responses:
+        '201':
+          description: Current cart; no-store. The creation token must be kept secret.
+          headers:
+            ETag:
+              required: true
+              schema:
+                type: string
+              description: Strong version-and-representation validator.
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedCart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/carts/{cart_id}:
+    get:
+      operationId: getCart
+      x-opensite-status: implemented
+      x-opensite-access: Storefront
+      security:
+        - CartToken: []
+      description: Guest X-Cart-Token capability or trusted customer actor resolver
+        must match tenant and cart owner. No staff cookies or bearer keys. Ownership
+        failures are 404. Strong ETag includes version and current price/inventory hints.
+        Writes require exact If-Match; reads do not reserve stock.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CartId'
+        - $ref: '#/components/parameters/CartToken'
+      responses:
+        '200':
+          description: Current cart; no-store. The creation token must be kept secret.
+          headers:
+            ETag:
+              required: true
+              schema:
+                type: string
+              description: Strong version-and-representation validator.
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}:
+    put:
+      operationId: setCartLine
+      x-opensite-status: implemented
+      x-opensite-access: Storefront
+      security:
+        - CartToken: []
+      description: Guest X-Cart-Token capability or trusted customer actor resolver
+        must match tenant and cart owner. No staff cookies or bearer keys. Ownership
+        failures are 404. Strong ETag includes version and current price/inventory hints.
+        Writes require exact If-Match; reads do not reserve stock.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CartId'
+        - $ref: '#/components/parameters/SkuId'
+        - $ref: '#/components/parameters/CartToken'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetCartLine'
+      responses:
+        '200':
+          description: Current cart; no-store. The creation token must be kept secret.
+          headers:
+            ETag:
+              required: true
+              schema:
+                type: string
+              description: Strong version-and-representation validator.
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      operationId: deleteCartLine
+      x-opensite-status: implemented
+      x-opensite-access: Storefront
+      security:
+        - CartToken: []
+      description: Guest X-Cart-Token capability or trusted customer actor resolver
+        must match tenant and cart owner. No staff cookies or bearer keys. Ownership
+        failures are 404. Strong ETag includes version and current price/inventory hints.
+        Writes require exact If-Match; reads do not reserve stock.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CartId'
+        - $ref: '#/components/parameters/SkuId'
+        - $ref: '#/components/parameters/CartToken'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Current cart; no-store. The creation token must be kept secret.
+          headers:
+            ETag:
+              required: true
+              schema:
+                type: string
+              description: Strong version-and-representation validator.
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
 components:
   securitySchemes:
     adminSession:
@@ -1191,8 +1432,36 @@ components:
         Secure, HttpOnly, SameSite=Lax, Path=/ and no Domain on a dedicated admin host. Unsafe cookie-authenticated
         requests require exact Origin and a session-bound HMAC X-CSRF-Token; API-key bearer requests do not require
         CSRF.
+    CartToken:
+      type: apiKey
+      in: header
+      name: X-Cart-Token
+      description: 256-bit base64url guest cart capability. Trusted customer resolution is an optional server-only seam.
     ApiKeyBearer: {type: http, scheme: bearer, bearerFormat: API-Key}
   parameters:
+    CartId:
+      name: cart_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SkuId:
+      name: sku_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CartToken:
+      name: X-Cart-Token
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{43}$
+        minLength: 43
+        maxLength: 43
     TenantId:
       name: tenant_id
       in: path
@@ -1316,6 +1585,24 @@ components:
         type: string
         maxLength: 512
   responses:
+    BadRequest:
+      description: BadRequest
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: NotFound
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServiceUnavailable:
+      description: ServiceUnavailable
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     Unauthorized:
       description: Authentication missing or invalid; bad login credentials are indistinguishable.
       content:
@@ -1376,6 +1663,139 @@ components:
         application/problem+json:
           schema: {$ref: '#/components/schemas/Problem'}
   schemas:
+    CreateCart:
+      type: object
+      additionalProperties: false
+      required:
+      - currency
+      properties:
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+          minLength: 3
+          maxLength: 3
+    SetCartLine:
+      type: object
+      additionalProperties: false
+      required:
+      - quantity
+      properties:
+        quantity:
+          description: Absolute quantity; zero deletes the line.
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1000000
+    CartLine:
+      type: object
+      additionalProperties: false
+      # A line carries either a complete quote or pricing_error, never both or neither.
+      if: {required: [pricing_error]}
+      then:
+        not:
+          anyOf:
+          - required: [unit_amount]
+          - required: [line_amount]
+          - required: [price_list_id]
+          - required: [priority]
+          - required: [min_quantity]
+      else: {required: [unit_amount, line_amount, price_list_id, priority, min_quantity]}
+      required:
+      - sku_id
+      - quantity
+      - available_quantity
+      - sellable
+      properties:
+        sku_id: &id001
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000000
+        unit_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+        line_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+        price_list_id: *id001
+        priority:
+          type: integer
+          format: int32
+          minimum: -2147483648
+          maximum: 2147483647
+        min_quantity:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+        available_quantity:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+        sellable:
+          type: boolean
+        pricing_error:
+          type: string
+          enum: [price_unavailable, amount_overflow]
+          description: Quote is unavailable; monetary and selected price fields are omitted.
+    Cart:
+      type: object
+      additionalProperties: false
+      # A cart is either fully priced (subtotal) or not (pricing_error), never both or neither.
+      if: {required: [pricing_error]}
+      then: {not: {required: [subtotal]}}
+      else: {required: [subtotal]}
+      required:
+      - id
+      - currency
+      - version
+      - lines
+      properties:
+        id: *id001
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+        lines:
+          type: array
+          maxItems: 1000
+          description: At most 1000 distinct SKUs, so the representation fits the 1 MiB response buffer.
+          items:
+            $ref: '#/components/schemas/CartLine'
+        subtotal:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+        pricing_error:
+          type: string
+          enum: [price_unavailable, amount_overflow]
+          description: Cart is not fully priced; subtotal is omitted.
+    CreatedCart:
+      type: object
+      additionalProperties: false
+      required:
+      - cart
+      properties:
+        cart:
+          $ref: '#/components/schemas/Cart'
+        cart_token:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{43}$
+          minLength: 43
+          maxLength: 43
     PublishedBlock:
       type: object
       additionalProperties: false

@@ -329,10 +329,21 @@
         "tenant"
       ],
       "tests": [
-        "tests/db_reliability.sql"
+        "tests/db_reliability.sql",
+        "internal/platform/idempotency/request_test.go",
+        "internal/db/idempotency_integration_test.go",
+        "internal/db/jobs_integration_test.go",
+        "internal/db/outbox_integration_test.go",
+        "tests/db_queue.sql",
+        "tests/db_reliability_limits.sql",
+        "internal/platform/idempotency/ttl_test.go",
+        "internal/platform/outbox/runner_test.go",
+        "internal/db/outbox_runner_integration_test.go",
+        "cmd/worker/main_test.go",
+        "tests/test_reliability_contract_static.py"
       ],
       "scopes": [],
-      "note": "Owns the platform health operation implemented by bootstrap; this does not promote a business Go service."
+      "note": "The business module Go path and business HTTP handlers remain planned. The platform health operation is implemented by bootstrap; this does not promote a business Go service. Platform idempotency, River and Outbox capabilities live under internal/platform; their controlled infrastructure adapters use tenanttx and are outside business-module repository boundaries. queue contains upstream River tables, outside app table ownership."
     },
     {
       "name": "platform-security",
@@ -563,6 +574,50 @@
       ],
       "scopes": [],
       "note": "Internal single-currency posting and account balances. Atomic posting is the only runtime write capability for transactions and entries; tenant settlement currency is explicit, with no automatic default."
+    },
+    {
+      "name": "cart",
+      "status": "implemented",
+      "go_path": "internal/modules/cart",
+      "go_status": "implemented",
+      "owns_tables": [
+        "carts",
+        "cart_lines"
+      ],
+      "operations": [
+        {
+          "operation_id": "createCart",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getCart",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "setCartLine",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "deleteCartLine",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "customer",
+        "catalog",
+        "inventory",
+        "money",
+        "pricing"
+      ],
+      "tests": [
+        "internal/platform/httpapi/carthttp/cart_test.go",
+        "internal/modules/cart/internal/service/service_test.go",
+        "internal/bootstrap/contract_test.go",
+        "internal/db/cart_integration_test.go"
+      ],
+      "scopes": [],
+      "note": "Cart intent has immutable tenant/owner/currency, absolute SKU quantities and optimistic version. Prices/stock are live hints; no reservations, checkout or HTTP guest merge. Storefront authority uses guest capability hash or trusted customer resolver; staff auth is separate."
     },
     {
       "name": "orders",
@@ -878,7 +933,28 @@
       ]
     },
     {
-      "file": "migrations/021_storefront_read.sql",
+      "file": "migrations/021_queue_authorization.sql",
+      "owner": "reliability",
+      "touches_tables": []
+    },
+    {
+      "file": "migrations/022_reliability_limits.sql",
+      "owner": "reliability",
+      "touches_tables": [
+        "outbox_events",
+        "idempotency_records"
+      ]
+    },
+    {
+      "file": "migrations/023_cart.sql",
+      "owner": "cart",
+      "touches_tables": [
+        "carts",
+        "cart_lines"
+      ]
+    },
+    {
+      "file": "migrations/024_storefront_read.sql",
       "owner": "publish",
       "touches_tables": [
         "site_domains",

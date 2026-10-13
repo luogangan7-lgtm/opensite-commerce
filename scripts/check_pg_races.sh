@@ -565,22 +565,51 @@ done
 
 # Catalog optimistic locking: a stale transaction waits on the winner's row
 # lock, then rechecks version at READ COMMITTED and must update zero rows.
-# Gate 25 is distinct from prior module synchronization keys.
+# Gate 31 is distinct from prior module synchronization keys.
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('catalog-cas-race') RETURNING id;" | tail -1)
 P=$(sql <<<"INSERT INTO app.products(tenant_id,product_code) VALUES('$T','CAS-RACE') RETURNING id;" | tail -1)
 cas_first="WITH changed AS (UPDATE app.products SET product_code='CAS-FIRST',version=version+1 WHERE tenant_id='$T' AND id='$P' AND version=1 RETURNING id) SELECT 'C07_CAS_FIRST='||count(*) FROM changed;"
 cas_stale="WITH changed AS (UPDATE app.products SET product_code='CAS-STALE',version=version+1 WHERE tenant_id='$T' AND id='$P' AND version=1 RETURNING id) SELECT 'C07_CAS_STALE='||count(*) FROM changed;"
-gate_close 25
-tx catalog_cas_first app_runtime "$T" "$cas_first $(park 25)" &
+gate_close 31
+tx catalog_cas_first app_runtime "$T" "$cas_first $(park 31)" &
 await catalog_cas_first advisory
 tx catalog_cas_stale app_runtime "$T" "$cas_stale" &
 await catalog_cas_stale "${ROWLOCK[@]}"
-gate_open 25; wait
+gate_open 31; wait
 expect catalog_cas_first ok; expect catalog_cas_stale ok
 result catalog_cas_first 'C07_CAS_FIRST=1'; result catalog_cas_stale 'C07_CAS_STALE=0'
 got=$(sql <<<"SELECT version||'|'||product_code FROM app.products WHERE tenant_id='$T' AND id='$P';")
 echo "race catalog stale CAS: $got (expected 2|CAS-FIRST)"
 [[ $got == '2|CAS-FIRST' ]] || fail=1
+
+# Cart CAS: loser waits on the actual cart row while winner is parked on31.
+# The stale contender may not modify lines; the same transaction owns lock/CAS.
+read -r T C S <<<"$(sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('cart-cas-race') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES(:'t','cart-race','ready') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','cart-race','default') RETURNING id AS s \gset
+INSERT INTO app.carts(tenant_id,guest_token_hash,currency) VALUES(:'t',sha256('race-cart-guest'::bytea),'USD') RETURNING id AS c \gset
+INSERT INTO app.cart_lines VALUES(:'t',:'c',:'s',1);
+SELECT :'t'||' '||:'c'||' '||:'s';
+SQL
+)"
+ctx="SELECT set_config('app.cart_customer_id','',true),set_config('app.cart_token_hash',encode(sha256('race-cart-guest'::bytea),'hex'),true);"
+cas="UPDATE app.carts SET version=version+1 WHERE tenant_id='$T' AND id='$C' AND version=1 RETURNING id"
+gate_close 31
+tx cart_first app_runtime "$T" "$ctx SELECT version FROM app.carts WHERE tenant_id='$T' AND id='$C' FOR UPDATE; WITH bump AS ($cas), changed AS (UPDATE app.cart_lines SET quantity=4 WHERE tenant_id='$T' AND cart_id='$C' AND sku_id='$S' AND EXISTS(SELECT FROM bump) RETURNING sku_id) SELECT 'CART_CAS='||count(*) FROM changed; $(park 31)" &
+cart_first_pid=$!
+await cart_first advisory
+tx cart_second app_runtime "$T" "$ctx SELECT version FROM app.carts WHERE tenant_id='$T' AND id='$C' FOR UPDATE; WITH bump AS ($cas), changed AS (UPDATE app.cart_lines SET quantity=5 WHERE tenant_id='$T' AND cart_id='$C' AND sku_id='$S' AND EXISTS(SELECT FROM bump) RETURNING sku_id) SELECT 'CART_CAS='||count(*) FROM changed;" &
+cart_second_pid=$!
+await cart_second "${ROWLOCK[@]}"
+gate_open 31
+await cart_first gone; await cart_second gone
+wait "$cart_first_pid"; wait "$cart_second_pid"
+expect cart_first ok; expect cart_second ok
+result cart_first 'CART_CAS=1'; result cart_second 'CART_CAS=0'
+got=$(sql <<<"SELECT c.version||'|'||l.quantity FROM app.carts c JOIN app.cart_lines l ON (l.tenant_id,l.cart_id)=(c.tenant_id,c.id) WHERE c.tenant_id='$T' AND c.id='$C';")
+echo "race cart lock/CAS: $got (expected 2|4)"
+[[ $got == '2|4' ]] || fail=1
 
 # C-15a: both commands target one sealed order and its exact owned reservation.
 # Park the first after its transition, witness the contender's order-row wait,
@@ -690,7 +719,7 @@ got=$(sql <<<"SELECT o.state||'|'||s.on_hand||'|'||s.reserved||'|'||
 echo "orders prelock expiry/cancel conservation: $got (expected cancelled|2|0|5|2)"
 [[ $got == 'cancelled|2|0|5|2' ]] || fail=1
 
-if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/orders contract" >&2; exit 1; fi
+if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
 echo 'PASS: pricing duplicate-tier race keeps one committed tier'
@@ -699,4 +728,32 @@ echo 'PASS: tax INSERT/UPDATE exclusion races preserve non-overlapping windows'
 echo 'PASS: customer normalized email registrations commit once per tenant'
 echo 'PASS: ledger identical and conflicting posting races preserve one posted journal/two entries'
 echo 'PASS: catalog stale CAS waits for row lock, rechecks version and leaves winner unchanged'
+echo 'PASS: cart row-lock/CAS contender cannot overwrite winner line or version'
 echo 'PASS: orders pay/cancel and prelock/expiry races conserve inventory and events'
+# Focused native River/claim/fence gates cannot silently skip for missing PG.
+reliability_packages=(./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)
+if [[ -n "${DATABASE_URL:-}" ]]; then
+ JOBS_REQUIRE_PG=1 IDEMPOTENCY_REQUIRE_PG=1 OUTBOX_REQUIRE_PG=1 GOTOOLCHAIN=local \
+  go test -race -tags pgx -count=1 -timeout=120s -run '^(TestPG|TestJobsPG)' "${reliability_packages[@]}"
+else
+ # Compose has no host port. Test binaries run against its loopback database;
+ # the external/CI path above also runs the race detector.
+ (
+  compose=(docker compose -f deploy/compose.yaml)
+  arch="$("${compose[@]}" exec -T postgres uname -m)"
+  case "$arch" in aarch64|arm64) arch=arm64 ;; x86_64) arch=amd64 ;; *) echo 'Unsupported test architecture' >&2; exit 4 ;; esac
+  temp="$(mktemp -d "${TMPDIR:-/tmp}/opensite-reliability.XXXXXX")"
+  container_bin="/tmp/opensite-reliability-$(basename "$temp")"
+  cleanup_go() { "${compose[@]}" exec -T postgres rm -f "$container_bin" >/dev/null 2>&1 || true; rm -rf "$temp"; }
+  trap cleanup_go EXIT
+  for package in "${reliability_packages[@]}"; do
+   GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c -tags pgx -o "$temp/gate" "$package"
+   "${compose[@]}" cp "$temp/gate" "postgres:$container_bin"
+   "${compose[@]}" exec -T -e DATABASE_URL=postgresql://postgres@localhost/opensite?sslmode=disable \
+    -e JOBS_REQUIRE_PG=1 -e IDEMPOTENCY_REQUIRE_PG=1 -e OUTBOX_REQUIRE_PG=1 postgres \
+    sh -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec "$@"' sh "$container_bin" \
+    '-test.run=^(TestPG|TestJobsPG)' -test.count=1 -test.timeout=120s -test.v
+  done
+ )
+fi
+echo 'PASS: native River transaction/admission/restart and Go idempotency/outbox PG gates'
