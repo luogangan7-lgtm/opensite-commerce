@@ -289,6 +289,14 @@ func TestCustomerPGMailboxLifecycleTenantRotationAndReset(t *testing.T) {
 	if err != nil || otherSession.CustomerID == guestID {
 		t.Fatal("CUSTOMER_PG_SAME_EMAIL_TENANT_IDENTITY_SHARED")
 	}
+	// A second independent session proves reset revokes the customer's complete
+	// session set, rather than only the most recently rotated session.
+	independent, err := f.service.Login(f.ctx, f.tenant, f.email, password, f.ip, noPreviousCustomerToken)
+	if err != nil || independent.ID == rotated.ID || independent.Token == rotated.Token || independent.Token == "" {
+		t.Fatal("CUSTOMER_PG_INDEPENDENT_SESSION_FAILED")
+	}
+	f.requireCurrent(t, f.tenant, rotated.Token, true)
+	f.requireCurrent(t, f.tenant, independent.Token, true)
 	if err = f.service.RequestReset(f.ctx, f.tenant, f.email, f.ip); err != nil {
 		t.Fatal("CUSTOMER_PG_RESET_REQUEST_FAILED")
 	}
@@ -309,6 +317,7 @@ func TestCustomerPGMailboxLifecycleTenantRotationAndReset(t *testing.T) {
 		t.Fatal("CUSTOMER_PG_RESET_REPLAY_ACCEPTED")
 	}
 	f.requireCurrent(t, f.tenant, rotated.Token, false)
+	f.requireCurrent(t, f.tenant, independent.Token, false)
 	f.requireCurrent(t, f.other, otherSession.Token, true)
 	_, err = f.service.Login(f.ctx, f.tenant, f.email, password, f.ip, noPreviousCustomerToken)
 	if !errors.Is(err, c.ErrInvalidCredentials) {

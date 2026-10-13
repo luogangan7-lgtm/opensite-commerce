@@ -22,36 +22,71 @@ const tenant = "11111111-1111-4111-8111-111111111111"
 const origin = "https://shop.example.test"
 const sessionPath = "/api/v1/t/" + tenant + "/customer/session"
 
-type fake struct {
-	calls   int
-	issued  string
-	limited bool
+// Domain receipts preserve the exact arguments passed by the public transport.
+type domainReceipt struct {
+	operation, tenant, email, credential, token, previousToken string
+	ip                                                         netip.Addr
 }
 
-func (f *fake) Register(context.Context, string, string, string, netip.Addr) error {
+type fake struct {
+	calls    int
+	issued   string
+	limited  bool
+	receipts []domainReceipt
+	reads    []domainReceipt
+}
+
+func (f *fake) record(receipt domainReceipt) {
 	f.calls++
+	f.receipts = append(f.receipts, receipt)
+}
+func (f *fake) Register(_ context.Context, tenant, email, credential string, ip netip.Addr) error {
+	f.record(domainReceipt{operation: "register", tenant: tenant, email: email, credential: credential, ip: ip})
 	return nil
 }
-func (f *fake) Verify(context.Context, string, string) error                   { f.calls++; return nil }
-func (f *fake) RequestReset(context.Context, string, string, netip.Addr) error { f.calls++; return nil }
-func (f *fake) Reset(context.Context, string, string, string, netip.Addr) error {
-	f.calls++
+func (f *fake) Verify(_ context.Context, tenant, token string) error {
+	f.record(domainReceipt{operation: "verify", tenant: tenant, token: token})
 	return nil
 }
-func (f *fake) Login(context.Context, string, string, string, netip.Addr, string) (c.Session, error) {
-	f.calls++
+func (f *fake) RequestReset(_ context.Context, tenant, email string, ip netip.Addr) error {
+	f.record(domainReceipt{operation: "request-reset", tenant: tenant, email: email, ip: ip})
+	return nil
+}
+func (f *fake) Reset(_ context.Context, tenant, token, credential string, ip netip.Addr) error {
+	f.record(domainReceipt{operation: "reset", tenant: tenant, token: token, credential: credential, ip: ip})
+	f.issued = ""
+	return nil
+}
+func (f *fake) Login(_ context.Context, tenant, email, credential string, ip netip.Addr, previousToken string) (c.Session, error) {
+	f.record(domainReceipt{operation: "login", tenant: tenant, email: email, credential: credential, ip: ip, previousToken: previousToken})
 	if f.limited {
 		return c.Session{}, &c.RateLimitError{RetryAfter: 7 * time.Second}
+	}
+	// Rotation consumes the presented live bearer; the old cookie becomes invalid.
+	if previousToken != "" {
+		if previousToken != f.issued {
+			return c.Session{}, c.ErrUnauthorized
+		}
+		next := make([]byte, 32)
+		if _, err := rand.Read(next); err != nil {
+			return c.Session{}, c.ErrUnavailable
+		}
+		f.issued = base64.RawURLEncoding.EncodeToString(next)
 	}
 	return c.Session{ID: tenant, TenantID: tenant, CustomerID: tenant, Email: "buyer@example.test", Token: f.issued, ExpiresAt: time.Now().Add(time.Hour), IdleExpiresAt: time.Now().Add(time.Hour)}, nil
 }
 func (f *fake) Current(_ context.Context, t, token string) (c.Session, error) {
-	if token != f.issued || t != tenant {
+	f.reads = append(f.reads, domainReceipt{operation: "current", tenant: t, token: token})
+	if token == "" || token != f.issued || t != tenant {
 		return c.Session{}, c.ErrUnauthorized
 	}
 	return c.Session{ID: tenant, TenantID: tenant, CustomerID: tenant, Email: "buyer@example.test", ExpiresAt: time.Now().Add(time.Hour), IdleExpiresAt: time.Now().Add(time.Hour)}, nil
 }
-func (f *fake) Logout(context.Context, string, string) error { f.calls++; return nil }
+func (f *fake) Logout(_ context.Context, tenant, token string) error {
+	f.record(domainReceipt{operation: "logout", tenant: tenant, token: token})
+	f.issued = ""
+	return nil
+}
 func randomToken(t *testing.T) string {
 	t.Helper()
 	b := make([]byte, 32)
@@ -111,6 +146,153 @@ func challenge(t *testing.T, router http.Handler) (string, *http.Cookie) {
 	t.Fatal("challenge cookie absent")
 	return "", nil
 }
+
+func requireCustomerCookie(t *testing.T, w *httptest.ResponseRecorder, name string, cleared bool) *http.Cookie {
+	t.Helper()
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name != name {
+			continue
+		}
+		if !strings.HasPrefix(cookie.Name, "__Host-") || !cookie.Secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" || cookie.Domain != "" {
+			t.Fatal("customer cookie policy")
+		}
+		if cleared {
+			if cookie.Value != "" || cookie.MaxAge >= 0 || !cookie.Expires.Before(time.Now()) {
+				t.Fatal("customer cookie was not cleared")
+			}
+		} else if cookie.Value == "" || cookie.MaxAge < 0 || !cookie.Expires.After(time.Now()) {
+			t.Fatal("customer cookie was not live")
+		}
+		return cookie
+	}
+	t.Fatal("customer cookie absent")
+	return nil
+}
+
+func requireCustomerResponse(t *testing.T, w *httptest.ResponseRecorder, authenticated bool) string {
+	t.Helper()
+	var response struct {
+		Customer *c.Session `json:"customer"`
+		CSRF     string     `json:"csrf_token"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || response.CSRF == "" {
+		t.Fatal("customer response or CSRF absent")
+	}
+	if authenticated {
+		if response.Customer == nil || response.Customer.TenantID != tenant || response.Customer.CustomerID != tenant || response.Customer.Email != "buyer@example.test" {
+			t.Fatal("authenticated customer response changed")
+		}
+	} else if response.Customer != nil {
+		t.Fatal("anonymous challenge disclosed a customer")
+	}
+	return response.CSRF
+}
+
+// Every route proves its wire response and exact public-domain arguments.
+func TestCustomerSevenRouteDomainContracts(t *testing.T) {
+	credential := randomToken(t)
+	challengeToken := randomToken(t)
+	base := "/api/v1/t/" + tenant + "/customer"
+	ip := netip.MustParseAddr("192.0.2.1")
+	tests := []struct {
+		name, method, path string
+		fields             map[string]string
+		status             int
+		label              string
+		want               domainReceipt
+		cleared            bool
+	}{
+		{name: "register", method: "POST", path: base + "/registrations", fields: map[string]string{"email": "buyer@example.test", "password": credential}, status: 202, label: "verification_pending", want: domainReceipt{operation: "register", tenant: tenant, email: "buyer@example.test", credential: credential, ip: ip}},
+		{name: "verify", method: "POST", path: base + "/verifications", fields: map[string]string{"token": challengeToken}, status: 204, want: domainReceipt{operation: "verify", tenant: tenant, token: challengeToken}},
+		{name: "current", method: "GET", path: sessionPath, status: 200},
+		{name: "login", method: "POST", path: sessionPath, fields: map[string]string{"email": "buyer@example.test", "password": credential}, status: 200, want: domainReceipt{operation: "login", tenant: tenant, email: "buyer@example.test", credential: credential, ip: ip}},
+		{name: "logout", method: "DELETE", path: sessionPath, status: 204, want: domainReceipt{operation: "logout", tenant: tenant}, cleared: true},
+		{name: "request-reset", method: "POST", path: base + "/password-resets", fields: map[string]string{"email": "buyer@example.test"}, status: 202, label: "accepted", want: domainReceipt{operation: "request-reset", tenant: tenant, email: "buyer@example.test", ip: ip}},
+		{name: "reset", method: "POST", path: base + "/password-resets/confirm", fields: map[string]string{"token": challengeToken, "password": credential}, status: 204, want: domainReceipt{operation: "reset", tenant: tenant, token: challengeToken, credential: credential, ip: ip}, cleared: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			r, f := setup(t)
+			var csrf string
+			var cookie *http.Cookie
+			want := test.want
+			if test.method != "GET" {
+				if test.name == "logout" {
+					cookie = &http.Cookie{Name: SessionCookie, Value: f.issued}
+					current := request(r, "GET", sessionPath, "", nil, cookie)
+					if current.Code != 200 {
+						t.Fatal("live logout session absent")
+					}
+					csrf = requireCustomerResponse(t, current, true)
+					want.token = cookie.Value
+				} else {
+					csrf, cookie = challenge(t, r)
+				}
+			}
+			var payload string
+			if test.fields != nil {
+				encoded, err := json.Marshal(test.fields)
+				if err != nil {
+					t.Fatal("route fixture encoding failed")
+				}
+				payload = string(encoded)
+			}
+			var cookies []*http.Cookie
+			if cookie != nil {
+				cookies = append(cookies, cookie)
+			}
+			w := request(r, test.method, test.path, payload, map[string]string{"Origin": origin, "X-CSRF-Token": csrf}, cookies...)
+			if w.Code != test.status {
+				t.Fatalf("route status %d, want %d", w.Code, test.status)
+			}
+			if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("Referrer-Policy") != "no-referrer" {
+				t.Fatal("customer transport cache or referrer policy changed")
+			}
+			if test.method == "GET" {
+				if f.calls != 0 || len(f.reads) != 0 {
+					t.Fatal("anonymous session reached domain")
+				}
+				value := requireCustomerResponse(t, w, false)
+				if requireCustomerCookie(t, w, ChallengeCookie, false).Value != value {
+					t.Fatal("challenge cookie and CSRF differ")
+				}
+			} else if len(f.receipts) != 1 || f.receipts[0] != want {
+				t.Fatal("route did not forward exact domain arguments")
+			}
+			if test.status == 204 && w.Body.Len() != 0 {
+				t.Fatal("no-content response contained a body")
+			}
+			if test.label != "" {
+				var status struct {
+					Status string `json:"status"`
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil || status.Status != test.label {
+					t.Fatal("generic route response changed")
+				}
+			}
+			if test.name == "login" {
+				requireCustomerResponse(t, w, true)
+				if requireCustomerCookie(t, w, SessionCookie, false).Value != f.issued || strings.Contains(w.Body.String(), f.issued) {
+					t.Fatal("login bearer transport changed")
+				}
+				requireCustomerCookie(t, w, ChallengeCookie, true)
+			}
+			if test.cleared {
+				requireCustomerCookie(t, w, SessionCookie, true)
+				requireCustomerCookie(t, w, ChallengeCookie, true)
+			}
+			if test.name == "logout" {
+				if len(f.reads) != 2 || f.reads[1] != (domainReceipt{operation: "current", tenant: tenant, token: want.token}) {
+					t.Fatal("logout skipped current-session admission")
+				}
+				if request(r, "GET", sessionPath, "", nil, cookie).Code != 401 {
+					t.Fatal("logged-out bearer remained live")
+				}
+			}
+		})
+	}
+}
+
 func TestCustomerOriginAndSignedCSRF(t *testing.T) {
 	r, f := setup(t)
 	csrf, cookie := challenge(t, r)
@@ -156,6 +338,43 @@ func TestCustomerCookieFlagsRotationAndNoBearerJSON(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("session cookie absent")
+	}
+	firstCookie := requireCustomerCookie(t, w, SessionCookie, false)
+	firstCSRF := requireCustomerResponse(t, w, true)
+	requireCustomerCookie(t, w, ChallengeCookie, true)
+	if len(f.receipts) != 1 || f.receipts[0].previousToken != "" {
+		t.Fatal("first login used a previous bearer")
+	}
+	rotated := request(r, "POST", sessionPath, string(body), map[string]string{"Origin": origin, "X-CSRF-Token": firstCSRF}, firstCookie)
+	if rotated.Code != 200 {
+		t.Fatalf("rotation status %d", rotated.Code)
+	}
+	secondCookie := requireCustomerCookie(t, rotated, SessionCookie, false)
+	secondCSRF := requireCustomerResponse(t, rotated, true)
+	requireCustomerCookie(t, rotated, ChallengeCookie, true)
+	if firstCookie.Value == secondCookie.Value || firstCSRF == secondCSRF || secondCookie.Value != f.issued {
+		t.Fatal("session cookie or CSRF did not rotate")
+	}
+	if len(f.receipts) != 2 || f.receipts[1].previousToken != firstCookie.Value {
+		t.Fatal("rotation did not forward previous bearer")
+	}
+	if strings.Contains(rotated.Body.String(), firstCookie.Value) || strings.Contains(rotated.Body.String(), secondCookie.Value) {
+		t.Fatal("rotated bearer leaked JSON")
+	}
+	if request(r, "GET", sessionPath, "", nil, firstCookie).Code != 401 {
+		t.Fatal("old bearer survived rotation")
+	}
+	current := request(r, "GET", sessionPath, "", nil, secondCookie)
+	if current.Code != 200 || requireCustomerResponse(t, current, true) != secondCSRF {
+		t.Fatal("rotated session or CSRF was not current")
+	}
+	if requireCustomerCookie(t, current, SessionCookie, false).Value != secondCookie.Value {
+		t.Fatal("current session changed bearer")
+	}
+	calls := f.calls
+	stale := request(r, "POST", sessionPath, string(body), map[string]string{"Origin": origin, "X-CSRF-Token": firstCSRF}, secondCookie)
+	if stale.Code != 403 || f.calls != calls {
+		t.Fatal("previous session CSRF reached domain")
 	}
 }
 func TestCustomerStrictFieldsAndRetryAfter(t *testing.T) {
