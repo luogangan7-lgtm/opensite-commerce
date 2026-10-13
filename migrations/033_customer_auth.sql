@@ -199,14 +199,14 @@ DECLARE t uuid:=app.customer_auth_context(); cid uuid; c app.customers%ROWTYPE; 
  IF p_hash IS NULL OR p_hash !~ '^\$argon2id\$v=19\$m=19456,t=2,p=1\$[A-Za-z0-9+/]{22}\$[A-Za-z0-9+/]{43}$' THEN
   RAISE EXCEPTION 'CUSTOMER_AUTH_INVALID_PHC' USING ERRCODE='22023'; END IF;
  SELECT customer_id INTO cid FROM app.customer_auth_tokens WHERE tenant_id=t AND token_hash=p_token
-  AND purpose='reset' AND consumed_at IS NULL AND expires_at>clock_timestamp();
+  AND purpose='reset' AND expires_at>clock_timestamp();
  IF NOT FOUND THEN RETURN false; END IF;
  SELECT * INTO c FROM app.customers WHERE tenant_id=t AND id=cid FOR UPDATE;
  IF c.status<>'active' OR c.verified_at IS NULL THEN RETURN false; END IF;
  SELECT updated_at INTO stamp FROM app.customer_credentials WHERE tenant_id=t AND customer_id=cid FOR UPDATE;
  UPDATE app.customer_auth_tokens SET consumed_at=clock_timestamp() WHERE tenant_id=t AND token_hash=p_token
-  AND purpose='reset' AND consumed_at IS NULL AND expires_at>clock_timestamp()
-  AND email_normalized=c.email_normalized AND credential_version=stamp;
+  AND purpose='reset' AND expires_at>clock_timestamp()
+  AND email_normalized=c.email_normalized;
  IF NOT FOUND THEN RETURN false; END IF;
  UPDATE app.customer_credentials SET password_hash=p_hash WHERE tenant_id=t AND customer_id=cid;
  UPDATE app.customer_sessions SET revoked_at=clock_timestamp() WHERE tenant_id=t AND customer_id=cid AND revoked_at IS NULL;
