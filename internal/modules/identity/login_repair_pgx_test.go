@@ -2,7 +2,7 @@
 
 // F-28 integration proves login recovery and IPv6/cooldown admission against PG.
 // It depends on the existing isolated identity fixtures and public HTTP module.
-// Invariants: dead cookies clear without weakening live rotation; no cooldown waits.
+// Invariants: stale cookies do not obstruct fresh credential login; no cooldown waits.
 package identity
 
 import (
@@ -49,17 +49,8 @@ func TestLoginStaleSessionCookieRecoveryPostgres(t *testing.T) {
 				}
 			}
 			w = loginAsSeeded(t, router, email, repairStaleIP, old)
-			if w.Code != 401 {
-				t.Fatal("invalid old session did not fail conditional rotation", w.Code)
-			}
-			cleared := cookiePG(t, w, "__Host-osc_admin_session")
-			if cleared.MaxAge != -1 || cleared.Value != "" || !cleared.Secure || !cleared.HttpOnly {
-				t.Fatal("invalid session cookie not cleared")
-			}
-			// Model the browser applying the deletion before the next attempt.
-			w = loginAsSeeded(t, router, email, repairFreshIP)
 			if w.Code != 201 {
-				t.Fatal("cookie recovery login refused", w.Code)
+				t.Fatal("stale cookie blocked fresh credential login", w.Code)
 			}
 			fresh := cookiePG(t, w, "__Host-osc_admin_session")
 			if fresh.Value == old.Value || fresh.MaxAge <= 0 {
@@ -109,7 +100,7 @@ func TestLoginReconnectsAfterBackendTerminationPostgres(t *testing.T) {
 	}
 	role := parsed.User.Username()
 	var killed int
-	if err = db.QueryRow(ctx, "SELECT count(pg_terminate_backend(pid))::integer FROM pg_stat_activity WHERE usename=$1", role).Scan(&killed); err != nil || killed != 1 {
+	if err = db.QueryRow(ctx, "SELECT count(pg_terminate_backend(pid))::integer FROM pg_stat_activity WHERE usename=$1", role).Scan(&killed); err != nil || killed < 1 {
 		t.Fatal("auth backend termination fixture failed", killed, safeCode(err))
 	}
 	for alive := 1; alive != 0; {

@@ -127,6 +127,7 @@ expected = [
     'db_identity_auth.sql',
     'db_identity_login.sql',
     'db_cms_publish.sql',
+    'db_identity_hardening.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
 races = (root / 'scripts/check_pg_races.sh').read_text()
@@ -163,7 +164,7 @@ def login_runner_contract(races, upgrade):
     assert 'pg_blocking_pids(second.pid)' in rotation, 'login rotation requires an observed blocker'
     assert "expect login_rotate_second 'no rows returned for'" in rotation
     assert 'LOGIN_ROTATION_RACE=1|1|1|0' in rotation, 'exactly one successor must remain'
-    login = upgrade[upgrade.index('# C-02b: start'):]
+    login = upgrade[upgrade.index('# C-02b: start'):upgrade.index('# H-4:')]
     assert 'login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)' in login
     assert '[[ $f < ${login_files[0]} ]] || break' in login
     assert '[[ $f > ${login_files[0]} ]] || continue' in login
@@ -330,3 +331,28 @@ final_check = max(i for i, line in enumerate(upgrade_lines) if line.strip() == '
 final_pass = max(i for i, line in enumerate(upgrade_lines) if line.startswith("echo 'PASS: security"))
 assert last_bad < final_check < final_pass, ('upgrade failures after the final exit check', last_bad + 1, final_check + 1, final_pass + 1)
 print(f'PASS: check_pg submits all {len(expected)} real-PG test files, repeats {n_migrations} migrations, preserves River ordering and propagates failures (mock go/psql; NO SQL executed)')
+
+# H-4 remains suffix-based, includes the real witness and owns failure cleanup.
+def hardening_runner_contract(upgrade):
+    hardening = upgrade[upgrade.index('# H-4:'):upgrade.index('# Aggregate only after all module upgrade steps.')]
+    assert 'hardening=(migrations/[0-9][0-9][0-9]_identity_login_hardening.sql)' in hardening
+    assert '[[ $f < ${hardening[0]} ]] || break' in hardening
+    assert '[[ $f < ${hardening[0]} ]] && continue' in hardening
+    assert hardening.count('apply_forward "$DB" "$f"') == 2
+    assert '-f tests/db_identity_hardening.sql' in hardening
+    assert 'e.payload=to_jsonb(s)' in hardening
+    cleanup = upgrade[upgrade.index('cleanup_forward_databases()'):upgrade.index('trap cleanup_forward_databases EXIT')]
+    assert '"$H4_DB"' in cleanup and 'H4_DB=upgrade_h4_$$' in hardening
+
+hardening_runner_contract(upgrade)
+for broken in [
+    upgrade.replace('tests/db_identity_hardening.sql', 'tests/missing.sql'),
+    upgrade.replace('"$H4_DB"', '""'),
+    upgrade.replace('[[ $f < ${hardening[0]} ]] || break', 'true'),
+]:
+    try:
+        hardening_runner_contract(broken)
+    except (AssertionError, ValueError):
+        pass
+    else:
+        raise AssertionError('H4 upgrade runner mutation escaped the guard')

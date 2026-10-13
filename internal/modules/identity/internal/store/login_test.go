@@ -6,6 +6,8 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"net/netip"
 	"strings"
@@ -22,18 +24,32 @@ type loginFakeRow struct {
 	err  error
 	user pgtype.UUID
 	at   time.Time
+	kind string
+	deny bool
 }
 
 func (r loginFakeRow) Scan(dest ...any) error {
 	if r.err != nil {
 		return r.err
 	}
+	if r.kind == "validate" {
+		*dest[0].(*pgtype.Bool) = pgtype.Bool{Bool: !r.deny, Valid: true}
+		return nil
+	}
+	if r.kind == "rotation" {
+		*dest[0].(*bool) = !r.deny
+		return nil
+	}
 	id, _ := uuid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	*dest[0].(*pgtype.UUID) = id
+	if r.kind == "lock" {
+		return nil
+	}
 	*dest[1].(*pgtype.UUID) = r.user
 	*dest[2].(*pgtype.Timestamptz) = stamp(r.at)
 	*dest[3].(*pgtype.Timestamptz) = stamp(r.at)
 	*dest[4].(*pgtype.Timestamptz) = stamp(r.at.Add(time.Hour))
+	*dest[5].(*pgtype.Timestamptz) = stamp(r.at)
 	return nil
 }
 
@@ -43,6 +59,7 @@ type loginFakeTx struct {
 	rotated                  bool
 	rejectDevice, failCommit bool
 	noRow                    bool
+	denyAuthority, staleHash bool
 	user                     pgtype.UUID
 	at                       time.Time
 	committed, rolledBack    bool
@@ -64,7 +81,24 @@ func (tx *loginFakeTx) Exec(_ context.Context, sql string, _ ...any) (pgconn.Com
 	}
 	return pgconn.NewCommandTag("INSERT 0 1"), nil
 }
-func (tx *loginFakeTx) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
+func (tx *loginFakeTx) QueryRow(_ context.Context, sql string, _ ...any) pgx.Row {
+	if strings.Contains(sql, "ValidateAuthConnection") {
+		return loginFakeRow{kind: "validate", deny: tx.denyAuthority}
+	}
+	if strings.Contains(sql, "LoginLockUser") {
+		tx.writes = append(tx.writes, "user")
+		if tx.staleHash {
+			return loginFakeRow{err: pgx.ErrNoRows}
+		}
+		return loginFakeRow{kind: "lock"}
+	}
+	if strings.Contains(sql, "LoginLockSession") {
+		tx.writes = append(tx.writes, "session-lock")
+		return loginFakeRow{kind: "lock"}
+	}
+	if strings.Contains(sql, "LoginRotationSession") {
+		return loginFakeRow{kind: "rotation", deny: tx.rotated}
+	}
 	tx.writes = append(tx.writes, "session")
 	if tx.noRow {
 		return loginFakeRow{err: pgx.ErrNoRows}
@@ -107,14 +141,18 @@ func loginFixture() (*LoginRepository, *loginFakeTx, login.SessionInput) {
 	runner := &loginFakeRunner{tx: tx}
 	r := &LoginRepository{runner: runner, gate: make(chan struct{}, 1), idle: 30 * time.Minute}
 	old := [32]byte{1}
-	in := login.SessionInput{UserID: u.String(), TokenHash: [32]byte{2}, DeviceHash: [32]byte{3}, CreatedAt: at, ExpiresAt: at.Add(time.Hour), DeviceExpiresAt: at.Add(24 * time.Hour), OldTokenHash: &old}
+	material := make([]byte, 32)
+	if _, err := rand.Read(material); err != nil {
+		panic(err)
+	}
+	in := login.SessionInput{UserID: u.String(), VerifiedPasswordHash: hex.EncodeToString(material), TokenHash: [32]byte{2}, DeviceHash: [32]byte{3}, CreatedAt: at, ExpiresAt: at.Add(time.Hour), DeviceExpiresAt: at.Add(24 * time.Hour), OldTokenHash: &old}
 	return r, tx, in
 }
 func TestLostRotationNeverInsertsSuccessor(t *testing.T) {
 	r, tx, in := loginFixture()
 	tx.rotated = true
 	_, err := r.SaveLogin(context.Background(), in)
-	if !errors.Is(err, login.ErrSession) || strings.Join(tx.writes, ",") != "rotate" || tx.commitCalls != 0 || tx.committed || !tx.rolledBack || r.runner.(*loginFakeRunner).calls != 1 {
+	if !errors.Is(err, login.ErrSession) || strings.Join(tx.writes, ",") != "user,session-lock,rotate" || tx.commitCalls != 0 || tx.committed || !tx.rolledBack || r.runner.(*loginFakeRunner).calls != 1 {
 		t.Fatalf("lost rotation must rollback before successor: err=%v writes=%v commit=%v rollback=%v", err, tx.writes, tx.committed, tx.rolledBack)
 	}
 }
@@ -127,7 +165,7 @@ func TestSaveLoginTransactionAtomicity(t *testing.T) {
 			tx.noRow = failure == "disabled"
 			got, err := r.SaveLogin(context.Background(), in)
 			if failure == "" {
-				if err != nil || got.UserID != in.UserID || !tx.committed || tx.commitCalls != 1 || r.runner.(*loginFakeRunner).calls != 1 || strings.Join(tx.writes, ",") != "rotate,session,device" {
+				if err != nil || got.UserID != in.UserID || !tx.committed || tx.commitCalls != 1 || r.runner.(*loginFakeRunner).calls != 1 || strings.Join(tx.writes, ",") != "user,session-lock,rotate,session,device" {
 					t.Fatalf("transaction failed: %v %#v", err, tx)
 				}
 			} else {
@@ -138,12 +176,40 @@ func TestSaveLoginTransactionAtomicity(t *testing.T) {
 				if !errors.Is(err, want) || got.ID != "" || tx.committed || !tx.rolledBack {
 					t.Fatalf("unsafe failure: %v %#v", err, tx)
 				}
-				if failure == "disabled" && strings.Join(tx.writes, ",") != "rotate,session" {
+				if failure == "disabled" && strings.Join(tx.writes, ",") != "user,session-lock,rotate,session" {
 					t.Fatal("disabled user inserted device")
 				}
 			}
 		})
 	}
+}
+
+func TestStaleVerifiedPasswordCannotWriteSessions(t *testing.T) {
+	r, tx, in := loginFixture()
+	tx.staleHash = true
+	if got, err := r.SaveLogin(context.Background(), in); got.ID != "" || !errors.Is(err, login.ErrCredentials) || strings.Join(tx.writes, ",") != "user" || tx.committed || !tx.rolledBack {
+		t.Fatal("stale password crossed user fence")
+	}
+}
+
+func TestEveryTransactionValidatesAuthorityBeforeBusinessWork(t *testing.T) {
+	r, tx, in := loginFixture()
+	tx.denyAuthority = true
+	if got, err := r.SaveLogin(context.Background(), in); got.ID != "" || !errors.Is(err, login.ErrDatabase) || len(tx.writes) != 0 || tx.committed || !tx.rolledBack {
+		t.Fatal("authority drift reached business SQL")
+	}
+}
+
+func TestSessionLaneCannotOccupyLoginGate(t *testing.T) {
+	r, _, in := loginFixture()
+	r.sessionGate = make(chan struct{}, 1)
+	r.sessionGate <- struct{}{}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := r.SaveLogin(ctx, in); err != nil {
+		t.Fatal("session gate blocked credential lane")
+	}
+	<-r.sessionGate
 }
 
 func TestRunnerAndCloseErrorsAreRedacted(t *testing.T) {

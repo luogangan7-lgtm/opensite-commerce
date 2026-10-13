@@ -95,14 +95,11 @@ func TestF28LoginSessionCookies(t *testing.T) {
 					session = c
 				}
 			}
-			if session == nil {
-				t.Fatal("session cookie missing")
-			}
 			if fail {
-				if session.Value != "" || session.MaxAge != -1 {
-					t.Fatal("invalid session retained", session)
+				if session != nil {
+					t.Fatal("losing rotation overwrote the winner cookie")
 				}
-			} else if session.MaxAge != 1800 || session.Value == "" {
+			} else if session == nil || session.MaxAge != 1800 || session.Value == "" {
 				t.Fatal("live cookie lacks relative idle lifespan", session)
 			}
 		})
@@ -242,38 +239,32 @@ func TestF28GenericCredentialsAndRetry(t *testing.T) {
 func TestF28StaleCookieRecovery(t *testing.T) {
 	for _, kind := range []string{"malformed", "revoked", "expired", "other-user"} {
 		t.Run(kind, func(t *testing.T) {
-			_, r, f, s, raw := transportFixture(t)
-			f.credential = successfulCredential()
-			f.saveErr = login.ErrSession
+			r, s, f, input := h4Fixture(t)
+			f.staleOld = true
+			raw := base64.RawURLEncoding.EncodeToString(secretKey(t))
 			if kind == "malformed" {
 				raw = "malformed"
 			}
-			q := signedLogin(t, s, "a@example.test", "correct-password")
+			q := signedLogin(t, s, h4Email, input)
 			q.AddCookie(&http.Cookie{Name: SessionCookie, Value: raw})
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, q)
-			if w.Code != 401 {
-				t.Fatal("invalid old token admitted", w.Code)
+			if w.Code != 201 {
+				t.Fatal("stale cookie obstructed fresh credential login", w.Code)
 			}
-			var cleared bool
+			var replaced bool
 			for _, c := range w.Result().Cookies() {
-				if c.Name == SessionCookie && c.Value == "" && c.MaxAge == -1 {
-					cleared = true
+				if c.Name == SessionCookie && c.Value != "" && c.Value != raw && c.MaxAge > 0 {
+					replaced = true
 				}
 			}
-			if !cleared {
-				t.Fatal("old session cookie retained")
-			}
-			// A browser honoring the clearing response sends no old cookie on retry.
-			q = signedLogin(t, s, "a@example.test", "correct-password")
-			w = httptest.NewRecorder()
-			r.ServeHTTP(w, q)
-			if w.Code != 201 {
-				t.Fatal("cleared cookie prevented recovery", w.Code, w.Body.String())
+			if !replaced {
+				t.Fatal("fresh login did not replace stale cookie")
 			}
 		})
 	}
 }
+
 func TestF28RepeatedXFFFields(t *testing.T) {
 	h, _, _, s, _ := transportFixture(t)
 	h = New(s, "https://admin.example.test", 30*time.Minute, netip.MustParsePrefix("10.0.0.0/8"))

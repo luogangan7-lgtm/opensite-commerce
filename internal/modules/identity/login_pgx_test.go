@@ -592,7 +592,7 @@ func TestLoginConcurrentPostgres(t *testing.T) {
 			t.Fatal("witness unavailable")
 		}
 		defer witness.Close(context.Background())
-		waitLoginLocks(t, ctx, &testLoginDB{runner: witness}, "%UPDATE app.auth_sessions s SET revoked_at%", 2)
+		waitLoginLocks(t, ctx, &testLoginDB{runner: witness}, "%LoginLock%", 2)
 		release()
 		results := []int{<-ch, <-ch}
 		sort.Ints(results)

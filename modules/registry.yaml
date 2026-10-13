@@ -57,7 +57,8 @@
         "tests/db_role_matrix.sql",
         "tests/db_identity_auth.sql",
         "tests/db_identity_login.sql",
-        "tests/test_identity_login_contract.py"
+        "tests/test_identity_login_contract.py",
+        "tests/db_identity_hardening.sql"
       ],
       "scopes": [],
       "note": "Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented. Four staff login/challenge/session/logout HTTP operations are implemented; the five admin-session management operations remain planned."
@@ -1256,6 +1257,17 @@
         "price_entries",
         "audit_events",
         "media_assets"
+      ]
+    },
+    {
+      "file": "migrations/032_identity_login_hardening.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "users",
+        "auth_sessions",
+        "auth_account_attempts",
+        "auth_login_attempts",
+        "known_devices"
       ]
     }
   ]

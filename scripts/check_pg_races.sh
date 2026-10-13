@@ -865,10 +865,13 @@ def query(name, token_hash):
     sql = match[1].strip()
     values = {'at': "clock_timestamp()", 'user_id': "'"+user_id+"'",
               'token_hash': "decode('"+token_hash+"','hex')", 'idle_seconds': '1800',
-              'created_at': "clock_timestamp()", 'expires_at': "(clock_timestamp()+interval '1 hour')"}
+              'created_at': "clock_timestamp()", 'expires_at': "(clock_timestamp()+interval '1 hour')",
+              'verified_password_hash': "(SELECT password_hash FROM app.users WHERE id='"+user_id+"')"}
     sql = re.sub(r'sqlc.arg\((\w+)\)', lambda m: values[m[1]], sql)
     assert 'sqlc.' not in sql
     return sql
+print(query('LoginLockUser', old_hash))
+print(query('LoginLockSession', old_hash))
 rotate = query('LoginRotateOldSession', old_hash)
 assert rotate.endswith(';')
 print(rotate[:-1] + ' RETURNING s.id AS rotated \\gset')

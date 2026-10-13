@@ -27,9 +27,11 @@ type Device struct {
 type Session struct {
 	ID, UserID                       string
 	CreatedAt, LastSeenAt, ExpiresAt time.Time
+	DatabaseNow                      time.Time
 }
 type SessionInput struct {
 	UserID                                string
+	VerifiedPasswordHash                  string
 	TokenHash, DeviceHash                 [32]byte
 	CreatedAt, ExpiresAt, DeviceExpiresAt time.Time
 	OldTokenHash                          *[32]byte
@@ -43,6 +45,7 @@ type Repository interface {
 	RecordFailure(context.Context, string, netip.Addr) error
 	Device(context.Context, [32]byte) (Device, error)
 	FailDevice(context.Context, string) error
+	RotationSession(context.Context, [32]byte, string) (bool, error)
 	SaveLogin(context.Context, SessionInput) (Session, error)
 	LookupSession(context.Context, [32]byte, time.Time, time.Duration) (Session, error)
 	RevokeSession(context.Context, string, time.Time) error
@@ -70,11 +73,14 @@ type Config struct {
 	IdleTimeout, AbsoluteTimeout, DeviceLifetime time.Duration
 	// HashTimeout bounds admission/database work and forbids writes after KDF deadline.
 	// A bounded worker retains its slot until Argon2 completes; it cannot be preempted.
-	HashTimeout                     time.Duration
-	TrustedProxies                  []netip.Prefix
-	HashSlots, KnownDeviceHashSlots int
-	IPBurst, GlobalBurst            int
-	Now                             func() time.Time
+	// Session admission has a separate bounded budget and database lane.
+	SessionQueryTimeout                                   time.Duration
+	SessionQuerySlots, SessionIPBurst, SessionGlobalBurst int
+	HashTimeout                                           time.Duration
+	TrustedProxies                                        []netip.Prefix
+	HashSlots, KnownDeviceHashSlots                       int
+	IPBurst, GlobalBurst                                  int
+	Now                                                   func() time.Time
 	// Deprecated: cooldowns reject immediately. Kept for config source compatibility.
 	Wait func(context.Context, time.Duration) error
 }

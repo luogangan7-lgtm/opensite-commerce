@@ -27,6 +27,8 @@ const (
 	ChallengeCookie = "__Host-osc_login_csrf"
 )
 
+type admittedSessionKey struct{}
+
 type Handler struct {
 	service *login.Service
 	origin  string
@@ -60,11 +62,15 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 			return nil, apperrors.New(403, "csrf_invalid", "Request authenticity could not be verified")
 		}
 	}
-	actor, _, err := h.service.Authenticate(ctx, token)
+	ip, err := h.clientIP(r)
+	if err != nil {
+		return nil, apperrors.New(400, "invalid_client_address", "Client address is invalid")
+	}
+	actor, session, err := h.service.Authenticate(ctx, token, ip)
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return login.WithActor(ctx, actor), nil
+	return context.WithValue(login.WithActor(ctx, actor), admittedSessionKey{}, session), nil
 }
 func (h *Handler) sameOrigin(r *http.Request) bool { return oneHeader(r, "Origin") == h.origin }
 func oneHeader(r *http.Request, name string) string {
@@ -133,14 +139,12 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.service.Login(r.Context(), login.LoginInput{Identifier: *dto.Email, Password: *dto.Password, DeviceToken: device, OldSessionToken: old, IP: ip.Unmap()})
 	if err != nil {
-		if errors.Is(err, login.ErrSession) {
-			setCookie(w, SessionCookie, "", -1, time.Unix(1, 0))
-		}
+		// A failed concurrent rotation must not overwrite the winner cookie.
 		writeError(w, r, err)
 		return
 	}
 	h.setSessionCookie(w, result.SessionToken, result.Session)
-	setCookie(w, DeviceCookie, result.DeviceToken, 90*24*60*60, time.Time{})
+	setCookie(w, DeviceCookie, result.DeviceToken, int(h.service.DeviceLifetime()/time.Second), time.Time{})
 	setCookie(w, ChallengeCookie, "", -1, time.Unix(1, 0))
 	writeJSON(w, 201, sessionBody(result.Session, result.CSRFToken))
 }
@@ -150,9 +154,9 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, login.ErrSession)
 		return
 	}
-	_, s, err := h.service.Authenticate(r.Context(), token)
-	if err != nil {
-		writeError(w, r, err)
+	s, admitted := r.Context().Value(admittedSessionKey{}).(login.Session)
+	if !admitted {
+		writeError(w, r, login.ErrSession)
 		return
 	}
 	h.setSessionCookie(w, token, s)
