@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "desktop/dialog-keyboard.png",
   "scope": "gallery",
-  "sourceFingerprint": "e93cbc400b48602070236f5b70e1ff529be493277d8f8a1b3b6a4b557f7b56fe",
+  "sourceFingerprint": "980929f29823c6c437a6c7d5205cd0673700342c24d56afd1504635dacd4a2b2",
   "pngSha256": "0d41d2fc834ffd0072983c25835bb80e132888045d9ef7120d8f273d90a861d8",
   "scopeSnapshots": [
     "desktop/badge-danger.png",
@@ -186,8 +186,8 @@
     "mobile/table-populated-hover.png",
     "mobile/table-populated.png"
   ],
-  "sourceSha": "c04dd847465e62c32c207560846107dfc7cb2731",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38409031663",
+  "sourceSha": "423d4c069c68f82098ae1530d4aa8ae59aa8a68f",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38412793719",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
