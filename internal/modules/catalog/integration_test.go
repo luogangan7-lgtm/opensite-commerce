@@ -11,6 +11,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -31,7 +32,7 @@ func pgRouter(t *testing.T) (*httpapi.Router, *httpapi.Router) {
 	t.Helper()
 	dsn := os.Getenv("C07_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: C07_DATABASE_URL requires disposable migrated PG18 and catalog seed.sql")
+		pgxtest.Skip(t, "NOT_RUN: C07_DATABASE_URL requires disposable migrated PG18 and catalog seed.sql")
 	}
 	parsed, err := url.Parse(dsn)
 	// The internal app_runtime role stays NOLOGIN. This disposable dedicated

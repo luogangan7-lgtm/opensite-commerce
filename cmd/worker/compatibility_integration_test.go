@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"os"
 	"strings"
 	"testing"
@@ -20,7 +21,7 @@ import (
 func TestLegacyWorkerWithoutOutboxPG(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: DATABASE_URL absent for worker composition")
+		pgxtest.Skip(t, "NOT_RUN: DATABASE_URL absent for worker composition")
 	}
 	for _, mode := range []string{"", "false"} {
 		t.Run("outbox_mode_"+mode, func(t *testing.T) {
@@ -59,7 +60,7 @@ func TestLegacyWorkerWithoutOutboxPG(t *testing.T) {
 func TestConfiguredOutboxMetricsPG(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: DATABASE_URL absent for worker composition")
+		pgxtest.Skip(t, "NOT_RUN: DATABASE_URL absent for worker composition")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
