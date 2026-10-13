@@ -1,5 +1,8 @@
 /** Exercises per-PNG integrity and independent input groups; CI runs Bun; fixtures never claim artifact authority. */
 import { expect, test } from 'bun:test';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import * as implementation from './baseline-provenance';
 
 type Scope = 'gallery' | 'admin' | 'storefront-published' | 'storefront-commerce';
@@ -91,4 +94,42 @@ test('C-08d/INF-MIG: renumbering or landing a migration without content change k
   const stamped = fingerprintOf([...base, ['migrations/pending/20261013_orders.sql', content]]);
   expect(fingerprintOf([...base, ['migrations/041_20261013_orders.sql', content]])).toBe(stamped);
   expect(fingerprintOf([...base, ['migrations/034_k7q2_other.sql', content]])).not.toBe(landed);
+});
+
+// Independent review P1 on #103: a push may carry several commits; HEAD^1 only covers the last one.
+type ChangeSet = (base: string, cwd?: string) => Set<string> | 'all';
+const goldenChangeSet = () => (implementation as unknown as { goldenChangeSet: ChangeSet }).goldenChangeSet;
+function repository() {
+  const root = mkdtempSync(join(tmpdir(), 'c08d-push-base-'));
+  const git = (...args: string[]) => {
+    const result = Bun.spawnSync(['git', '-c', 'user.name=ci', '-c', 'user.email=ci@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd: root });
+    if (result.exitCode !== 0) throw new Error(new TextDecoder().decode(result.stderr));
+    return new TextDecoder().decode(result.stdout).trim();
+  };
+  const write = (path: string, text: string) => { mkdirSync(join(root, path, '..'), { recursive: true }); writeFileSync(join(root, path), text); };
+  const commit = (message: string) => { git('add', '-A'); git('commit', '-q', '--allow-empty', '-m', message); return git('rev-parse', 'HEAD'); };
+  git('init', '-q');
+  write('tests/frontend/baselines/desktop/admin-orders.png', 'v1');
+  return { root, git, write, commit, base: commit('base') };
+}
+test('push base: a multi-commit push covers a golden changed by an earlier commit', () => {
+  const repo = repository();
+  try {
+    repo.write('tests/frontend/baselines/desktop/admin-orders.png', 'forged');
+    repo.commit('earlier commit replaces a golden');
+    repo.write('README.md', 'later unrelated commit');
+    repo.commit('later commit');
+    expect(goldenChangeSet()('HEAD^1', repo.root)).toEqual(new Set());
+    expect(goldenChangeSet()(repo.base, repo.root)).toEqual(new Set(['desktop/admin-orders.png']));
+  } finally { rmSync(repo.root, { recursive: true, force: true }); }
+});
+test('push base: zero, empty, unknown or non-ancestor (force-push) base verifies every golden', () => {
+  const repo = repository();
+  try {
+    repo.git('checkout', '-q', '--orphan', 'rewritten');
+    const unrelated = repo.commit('force-pushed history');
+    repo.git('checkout', '-q', '-');
+    for (const base of ['0'.repeat(40), '', 'f'.repeat(40), unrelated]) expect(goldenChangeSet()(base, repo.root)).toBe('all');
+    expect(goldenChangeSet()(repo.base, repo.root)).toEqual(new Set());
+  } finally { rmSync(repo.root, { recursive: true, force: true }); }
 });

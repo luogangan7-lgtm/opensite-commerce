@@ -107,3 +107,11 @@ for (const [label, from, to] of [
     expect(() => assertProducerWorkflow(path, source.replace(producer, faulted))).toThrow(/writer/);
   });
 }
+// Independent review P2-1 on #103: Bun loads .env* into the writer, like bunfig.toml; only .env.example may exist.
+test('rejects .env files at the producer SHA or in the candidate', () => {
+  const { assertNoBunEnvFiles } = implementation as unknown as { assertNoBunEnvFiles(names: string[]): void };
+  expect(() => assertNoBunEnvFiles(['.env.example', 'package.json', 'bun.lock'])).not.toThrow();
+  for (const name of ['.env', '.env.local', '.env.development', '.env.production.local', '.env.test']) {
+    expect(() => assertNoBunEnvFiles(['package.json', name])).toThrow(/writer/);
+  }
+});
