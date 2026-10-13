@@ -1200,7 +1200,7 @@ DECLARE t uuid:=current_setting('qc.t')::uuid; q uuid; BEGIN
  'USD',100,10,5,115,'{"shipping":{"ZoneID":"zone","RateID":"rate","Method":"fixed","Charge":{"Amount":5,"Currency":"USD"}}}',clock_timestamp()+interval '1 hour',
  jsonb_build_array(jsonb_build_object('line_no',1,'product_id',current_setting('qc.product')::uuid,'variant_id',current_setting('qc.sku')::uuid,
  'description','race','quantity',2,'unit_price',50,'line_total',100,'snapshot',jsonb_build_object('id','1','amounts',jsonb_build_object('net',100,'tax',10,'gross',110),
- 'snapshot',jsonb_build_object('currency','USD','reason','fixture')))));
+ 'snapshot',jsonb_build_object('currency','USD','category','standard','reason','fixture')))));
  PERFORM app.transition_quote(t,q,1,'send','staff',current_setting('qc.staff')::uuid);
  PERFORM app.transition_quote(t,q,2,'accept','customer',current_setting('qc.buyer')::uuid);
  PERFORM app.transition_quote(t,q,3,'approve','customer',current_setting('qc.approver')::uuid); RETURN q;
@@ -1224,7 +1224,7 @@ DO \$convert\$ DECLARE c app.quote_conversions; o app.orders; r app.inventory_re
   o:=app.orders_create(oid,'quote-race-create:'||oid,sha256(oid::text::bytea),'$QB',NULL,'USD',5,
   '{"ZoneID":"zone","RateID":"rate","Method":"fixed","Charge":{"Amount":5,"Currency":"USD"}}',
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$QS'::uuid,'sku','race-sku','quantity',2,'unit_price_minor',50,
-  'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',r.id,'tax_snapshot',jsonb_build_object('currency','USD','reason','fixture'))),'[]');
+  'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',r.id,'tax_snapshot',jsonb_build_object('currency','USD','category','standard','reason','fixture'))),'[]');
  END IF;
  c:=app.quote_conversion_bind('$QT','$1','$QC','$QB',oid,4,'$2',sha256('$1'::bytea));
  PERFORM set_config('qc.result',c.order_id::text,true);

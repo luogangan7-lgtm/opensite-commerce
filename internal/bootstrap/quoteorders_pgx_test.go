@@ -27,6 +27,7 @@ import (
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tax"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -58,7 +59,7 @@ type quoteOrderFixture struct {
 func quoteOrdersDB(t *testing.T, expiry time.Duration) *quoteOrderFixture {
 	t.Helper()
 	if os.Getenv("DATABASE_URL") == "" {
-		t.Fatal("NOT_RUN: mandatory expendable migrated PostgreSQL DATABASE_URL")
+		pgxtest.Skip(t, "NOT_RUN: mandatory expendable migrated PostgreSQL DATABASE_URL")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	t.Cleanup(cancel)
@@ -414,6 +415,95 @@ func TestQuoteOrdersPGApprovedSnapshotAndReplay(t *testing.T) {
 		return nil
 	})
 }
+
+// A quote receipt key is scoped to the buyer; the Orders creation key must not
+// widen it to a tenant-wide collision. Both buyers use the real public ports.
+func TestQuoteOrdersPGCreationKeyIsBuyerScoped(t *testing.T) {
+	f := quoteOrdersDB(t, time.Hour)
+	m := quotes.New()
+	approveQuote := func(buyer, approver qc.AuthorizedActor) qc.Quote {
+		t.Helper()
+		var q qc.Quote
+		staff := f.mustActor(t, f.staff, "", true)
+		in := qc.CreateInput{SiteID: f.site, InquiryID: f.inquiry, CompanyID: f.company, Currency: "USD", ExpiresAt: time.Now().Add(time.Hour), Lines: []qc.LineInput{{ProductID: f.product, VariantID: f.sku, Description: "buyer-scoped-key", Quantity: 2, UnitPrice: 100, TaxCategory: "standard"}}, Destination: tax.Destination{Country: "US"}, ShippingProfileID: f.profile}
+		if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+			var e error
+			q, e = m.Create(ctx, tx, staff, in, qc.WriteOptions{IfMatch: "*", IdempotencyKey: uuid.NewString()})
+			return e
+		}); e != nil {
+			t.Fatal(e)
+		}
+		for _, step := range []struct {
+			actor  qc.AuthorizedActor
+			action qc.Action
+		}{{staff, qc.Send}, {buyer, qc.Accept}, {approver, qc.Approve}} {
+			if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
+				var e error
+				q, e = m.Transition(ctx, tx, step.actor, q.ID, step.action, qc.WriteOptions{IfMatch: q.ETag(), IdempotencyKey: uuid.NewString()})
+				return e
+			}); e != nil {
+				t.Fatal(e)
+			}
+		}
+		return q
+	}
+	// Existing fixture buyer is admin and the second customer is approver, so
+	// neither quote is self-approved and both have current company membership.
+	secondActor := f.mustActor(t, f.approver, f.company, false)
+	secondCtx := qc.WithTrustedActor(f.ctx, qc.ActorIdentity{TenantID: f.tenant, CustomerID: f.approver, CompanyID: f.company})
+	secondQuote := approveQuote(secondActor, f.actor)
+	thirdQuote := approveQuote(f.actor, secondActor)
+	key := "shared-customer-conversion-key"
+	first, e := f.app.Convert(f.buyerCtx, f.quote.ID, key)
+	if e != nil {
+		t.Fatalf("first buyer conversion: %v", e)
+	}
+	second, e := f.app.Convert(secondCtx, secondQuote.ID, key)
+	if e != nil {
+		t.Fatalf("same raw key for another buyer must succeed: %v", e)
+	}
+	if first.OrderID == second.OrderID || first.CustomerID != f.buyer || second.CustomerID != f.approver || first.IdempotencyKey != key || second.IdempotencyKey != key {
+		t.Fatalf("buyer key scope first=%+v second=%+v", first, second)
+	}
+	for _, item := range []struct {
+		ctx   context.Context
+		quote string
+		want  qc.Conversion
+	}{{f.buyerCtx, f.quote.ID, first}, {secondCtx, secondQuote.ID, second}} {
+		got, e := f.app.Convert(item.ctx, item.quote, key)
+		if e != nil || got.OrderID != item.want.OrderID || got.CustomerID != item.want.CustomerID || got.State != item.want.State || got.Amount != item.want.Amount || got.IdempotencyKey != key {
+			t.Fatalf("buyer-scoped replay: %+v %v", got, e)
+		}
+	}
+	f.assertEffects(t, first.OrderID, "paid", 2, 2, 2, 96, 0)
+	if f.prepay.createCalls != 2 || f.prepay.captureCalls != 2 || f.prepay.cancelCalls != 0 {
+		t.Fatalf("provider calls after two conversions/replays: %d/%d/%d", f.prepay.createCalls, f.prepay.captureCalls, f.prepay.cancelCalls)
+	}
+	if _, e := f.app.Convert(f.buyerCtx, thirdQuote.ID, key); !errors.Is(e, qc.ErrIdempotencyReused) {
+		t.Fatalf("same buyer same key other quote must reject: %v", e)
+	}
+	f.assertEffects(t, second.OrderID, "paid", 2, 2, 2, 96, 0)
+	if f.prepay.createCalls != 2 || f.prepay.captureCalls != 2 || f.prepay.cancelCalls != 0 {
+		t.Fatalf("rejected key reuse invoked provider: %d/%d/%d", f.prepay.createCalls, f.prepay.captureCalls, f.prepay.cancelCalls)
+	}
+	f.maintenance(t, func(ctx context.Context, tx pgx.Tx) error {
+		var linked, reservations, converted int64
+		var thirdBound bool
+		e := tx.QueryRow(ctx, `SELECT
+		 (SELECT count(*) FROM app.quote_conversions c JOIN app.orders o ON (o.tenant_id,o.id)=(c.tenant_id,c.order_id) WHERE c.tenant_id=$1 AND c.customer_id=o.customer_id AND c.idempotency_key=$2),
+		 (SELECT count(*) FROM app.inventory_reservations WHERE tenant_id=$1),
+		 (SELECT count(*) FROM app.outbox_events WHERE tenant_id=$1 AND event_type='quote.converted'),
+		 EXISTS(SELECT FROM app.quote_conversions WHERE tenant_id=$1 AND quote_id=$3)`, f.tenant, key, thirdQuote.ID).Scan(&linked, &reservations, &converted, &thirdBound)
+		if e != nil {
+			return e
+		}
+		if linked != 2 || reservations != 2 || converted != 2 || thirdBound {
+			return fmt.Errorf("buyer key scope effects linked=%d reservations=%d converted=%d thirdBound=%v", linked, reservations, converted, thirdBound)
+		}
+		return nil
+	})
+}
+
 func TestQuoteOrdersPGConcurrentReplay(t *testing.T) {
 	f := quoteOrdersDB(t, time.Hour)
 	key := uuid.NewString()

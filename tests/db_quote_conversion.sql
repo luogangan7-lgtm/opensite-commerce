@@ -44,7 +44,7 @@ DECLARE t uuid:=current_setting('qc.t')::uuid; q uuid; BEGIN
  '{"shipping":{"ZoneID":"zone","RateID":"rate","Method":"fixed","Charge":{"Amount":5,"Currency":"USD"}}}',clock_timestamp()+interval '1 hour',
  jsonb_build_array(jsonb_build_object('line_no',1,'product_id',current_setting('qc.product')::uuid,
  'variant_id',current_setting('qc.sku')::uuid,'description','negotiated','quantity',2,'unit_price',50,'line_total',100,
- 'snapshot',jsonb_build_object('id','1','amounts',jsonb_build_object('net',100,'tax',10,'gross',110),'snapshot',jsonb_build_object('currency','USD','reason','fixture')))));
+ 'snapshot',jsonb_build_object('id','1','amounts',jsonb_build_object('net',100,'tax',10,'gross',110),'snapshot',jsonb_build_object('currency','USD','category','standard','reason','fixture')))));
  PERFORM app.transition_quote(t,q,1,'send','staff',current_setting('qc.staff')::uuid);
  PERFORM app.transition_quote(t,q,2,'accept','customer',current_setting('qc.buyer')::uuid);
  PERFORM app.transition_quote(t,q,3,'approve','customer',current_setting('qc.approver')::uuid);
@@ -57,7 +57,72 @@ DECLARE oid uuid:=uuidv7(); r app.inventory_reservations; o app.orders; BEGIN
  '{"ZoneID":"zone","RateID":"rate","Method":"fixed","Charge":{"Amount":5,"Currency":"USD"}}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',current_setting('qc.sku')::uuid,'sku','conversion-sku','quantity',2,
  'unit_price_minor',p_unit,'line_net_minor',p_net,'line_tax_minor',p_tax,'line_total_minor',p_net+p_tax,'reservation_id',r.id,
- 'tax_snapshot',jsonb_build_object('currency','USD','reason','fixture'))),'[]'); RETURN o.id;
+ 'tax_snapshot',jsonb_build_object('currency','USD','category','standard','reason','fixture'))),'[]'); RETURN o.id;
+END $$;
+-- Independent descriptors keep quantity * unit = net, gross = net + tax, and
+-- category valid under main's Orders guards. Every order uses real owner holds.
+CREATE FUNCTION pg_temp.qc_snapshot_line(p_qty bigint,p_unit bigint,p_tax bigint,p_reason text DEFAULT 'fixture')
+RETURNS jsonb LANGUAGE sql AS $$
+ SELECT jsonb_build_object('quantity',p_qty,'unit',p_unit,'net',p_qty*p_unit,'tax',p_tax,
+  'tax_snapshot',jsonb_build_object('currency','USD','category','standard','reason',p_reason));
+$$;
+CREATE FUNCTION pg_temp.qc_snapshot_quote(p_lines jsonb) RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE t uuid:=current_setting('qc.t')::uuid; q uuid; lines jsonb; net bigint; tax bigint; BEGIN
+ SELECT sum((x->>'net')::bigint),sum((x->>'tax')::bigint),jsonb_agg(jsonb_build_object(
+  'line_no',n,'product_id',current_setting('qc.product')::uuid,'variant_id',current_setting('qc.sku')::uuid,
+  'description','same-header snapshot','quantity',(x->>'quantity')::bigint,'unit_price',(x->>'unit')::bigint,
+  'line_total',(x->>'net')::bigint,'snapshot',jsonb_build_object('id',n::text,
+   'amounts',jsonb_build_object('net',(x->>'net')::bigint,'tax',(x->>'tax')::bigint,
+    'gross',(x->>'net')::bigint+(x->>'tax')::bigint),'snapshot',x->'tax_snapshot')) ORDER BY n)
+ INTO net,tax,lines FROM jsonb_array_elements(p_lines) WITH ORDINALITY AS l(x,n);
+ q:=app.create_quote(t,current_setting('qc.site')::uuid,current_setting('qc.inquiry')::uuid,
+  current_setting('qc.company')::uuid,current_setting('qc.staff')::uuid,'USD',net,tax,5,net+tax+5,
+  '{"shipping":{"ZoneID":"zone","RateID":"rate","Method":"fixed","Charge":{"Amount":5,"Currency":"USD"}}}',
+  clock_timestamp()+interval '1 hour',lines);
+ PERFORM app.transition_quote(t,q,1,'send','staff',current_setting('qc.staff')::uuid);
+ PERFORM app.transition_quote(t,q,2,'accept','customer',current_setting('qc.buyer')::uuid);
+ PERFORM app.transition_quote(t,q,3,'approve','customer',current_setting('qc.approver')::uuid);
+ RETURN q;
+END $$;
+CREATE FUNCTION pg_temp.qc_snapshot_order(p_lines jsonb,p_shipping jsonb DEFAULT
+ '{"ZoneID":"zone","RateID":"rate","Method":"fixed","Charge":{"Amount":5,"Currency":"USD"}}')
+RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE oid uuid:=uuidv7(); r app.inventory_reservations; o app.orders; x jsonb; lines jsonb:='[]'; BEGIN
+ FOR x IN SELECT value FROM jsonb_array_elements(p_lines) LOOP
+  r:=app.inventory_reserve(current_setting('qc.sku')::uuid,(x->>'quantity')::bigint,'order',oid,'qc-snapshot-reserve:'||uuidv7(),900);
+  lines:=lines||jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',current_setting('qc.sku')::uuid,
+   'sku','conversion-sku','quantity',(x->>'quantity')::bigint,'unit_price_minor',(x->>'unit')::bigint,
+   'line_net_minor',(x->>'net')::bigint,'line_tax_minor',(x->>'tax')::bigint,
+   'line_total_minor',(x->>'net')::bigint+(x->>'tax')::bigint,'reservation_id',r.id,'tax_snapshot',x->'tax_snapshot'));
+ END LOOP;
+ o:=app.orders_create(oid,'qc-snapshot-create:'||oid,sha256(oid::text::bytea),current_setting('qc.buyer')::uuid,
+  NULL,'USD',5,p_shipping,lines,'[]');
+ IF o.id IS DISTINCT FROM oid OR NOT o.sealed OR o.state<>'pending_payment' THEN
+  RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_SETUP_ORDER'; END IF;
+ RETURN o.id;
+END $$;
+CREATE FUNCTION pg_temp.qc_snapshot_refuse(p_quote uuid,p_order uuid,p_label text,p_message text)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE q app.quotes; o app.orders; BEGIN
+ SELECT * INTO STRICT q FROM app.quotes WHERE tenant_id=current_setting('qc.t')::uuid AND id=p_quote;
+ SELECT * INTO STRICT o FROM app.orders WHERE tenant_id=current_setting('qc.t')::uuid AND id=p_order;
+ -- A refusal caused by a changed monetary header is not line-guard evidence.
+ IF (o.currency,o.items_net_minor,o.tax_minor,o.shipping_minor,o.total_minor)
+  IS DISTINCT FROM (q.currency,q.subtotal,q.tax,q.shipping,q.total) THEN
+  RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_SETUP_HEADER %',p_label; END IF;
+ BEGIN
+  PERFORM app.quote_conversion_bind(q.tenant_id,q.id,q.buyer_company_id,current_setting('qc.buyer')::uuid,
+   o.id,q.version,'snapshot:'||p_label,sha256(p_label::bytea));
+ EXCEPTION WHEN OTHERS THEN
+  IF SQLSTATE<>'23514' OR SQLERRM<>p_message THEN
+   RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_WRONG_REFUSAL % expected 23514/% got %/%',p_label,p_message,SQLSTATE,SQLERRM;
+  END IF;
+  IF EXISTS(SELECT FROM app.quote_conversions WHERE tenant_id=q.tenant_id AND quote_id=q.id)
+   OR EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=q.tenant_id AND event_type='quote.converted' AND payload->>'quote_id'=q.id::text) THEN
+   RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_REFUSAL_EFFECTS %',p_label; END IF;
+  RETURN;
+ END;
+ RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_EXPECTED_REFUSAL %',p_label;
 END $$;
 SET LOCAL ROLE app_inventory_manager;
 SELECT app.inventory_adjust(:'sku',100,'conversion fixture',uuidv7(),'inbound');
@@ -114,6 +179,37 @@ DECLARE t uuid:=current_setting('qc.t')::uuid; company uuid:=current_setting('qc
  PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''bad-key'',sha256(''bad''::bytea))',t,q2,company,buyer,bad),'23514','same total different snapshot');
  IF EXISTS(SELECT FROM app.quote_conversions WHERE quote_id=q2) THEN RAISE EXCEPTION 'QUOTE_CONVERSION_BAD_SNAPSHOT_BOUND'; END IF;
 END $conversion$;
+DO $same_header_snapshots$
+DECLARE q uuid; oid uuid; base jsonb; split jsonb; two_lines jsonb; zero_line jsonb; BEGIN
+ base:=jsonb_build_array(pg_temp.qc_snapshot_line(2,50,10));
+ split:=jsonb_build_array(pg_temp.qc_snapshot_line(1,50,5),pg_temp.qc_snapshot_line(1,50,5));
+ -- Exact positive control runs the same descriptor/hold/order helper as negatives.
+ q:=pg_temp.qc_snapshot_quote(base); oid:=pg_temp.qc_snapshot_order(base);
+ PERFORM app.quote_conversion_bind(current_setting('qc.t')::uuid,q,current_setting('qc.company')::uuid,
+  current_setting('qc.buyer')::uuid,oid,4,'snapshot:control',sha256('snapshot:control'::bytea));
+ IF NOT EXISTS(SELECT FROM app.quote_conversions WHERE quote_id=q AND order_id=oid) THEN
+  RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_CONTROL_NOT_BOUND'; END IF;
+ q:=pg_temp.qc_snapshot_quote(base); oid:=pg_temp.qc_snapshot_order(jsonb_build_array(pg_temp.qc_snapshot_line(1,100,10)));
+ PERFORM pg_temp.qc_snapshot_refuse(q,oid,'quantity-unit','QUOTE_CONVERSION_LINE_SNAPSHOT');
+ q:=pg_temp.qc_snapshot_quote(base); oid:=pg_temp.qc_snapshot_order(split);
+ PERFORM pg_temp.qc_snapshot_refuse(q,oid,'line-count','QUOTE_CONVERSION_LINE_SNAPSHOT');
+ q:=pg_temp.qc_snapshot_quote(base); oid:=pg_temp.qc_snapshot_order(jsonb_build_array(pg_temp.qc_snapshot_line(2,50,10,'changed-metadata')));
+ PERFORM pg_temp.qc_snapshot_refuse(q,oid,'tax-metadata','QUOTE_CONVERSION_LINE_SNAPSHOT');
+ -- Valid prices and sums; negotiated per-line amounts cannot be redistributed.
+ q:=pg_temp.qc_snapshot_quote(split);
+ two_lines:=jsonb_build_array(pg_temp.qc_snapshot_line(1,40,4),pg_temp.qc_snapshot_line(1,60,6));
+ oid:=pg_temp.qc_snapshot_order(two_lines);
+ PERFORM pg_temp.qc_snapshot_refuse(q,oid,'line-amounts','QUOTE_CONVERSION_LINE_SNAPSHOT');
+ -- DISTINCT EXCEPT misses this extra identical zero-price tuple. Unique hold
+ -- and line UUIDs stay outside the compared snapshot tuple, as in production.
+ zero_line:=pg_temp.qc_snapshot_line(1,0,0);
+ q:=pg_temp.qc_snapshot_quote(base||jsonb_build_array(zero_line));
+ oid:=pg_temp.qc_snapshot_order(base||jsonb_build_array(zero_line,zero_line));
+ PERFORM pg_temp.qc_snapshot_refuse(q,oid,'duplicate-multiplicity','QUOTE_CONVERSION_LINE_SNAPSHOT');
+ q:=pg_temp.qc_snapshot_quote(base);
+ oid:=pg_temp.qc_snapshot_order(base,'{"ZoneID":"different-zone","RateID":"rate","Method":"fixed","Charge":{"Amount":5,"Currency":"USD"}}');
+ PERFORM pg_temp.qc_snapshot_refuse(q,oid,'shipping-metadata','QUOTE_CONVERSION_ORDER_SNAPSHOT');
+END $same_header_snapshots$;
 RESET ROLE;
 -- Failing the event INSERT rolls the binding statement back as well.
 SET LOCAL ROLE app_runtime;
