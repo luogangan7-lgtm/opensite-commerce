@@ -121,3 +121,34 @@ func TestProjection(t *testing.T) {
 		t.Fatal("raw HTML block accepted")
 	}
 }
+
+// Review threads rnFiO/rnFio/rnC48: character limits, root target and Intl-valid locales.
+func TestProjectionReviewBoundaries(t *testing.T) {
+	project := func(locale, title, nav string, pages string) error {
+		manifest := []byte(`{"version":1,"locale":"` + locale + `","title":"` + title + `","description":"","navigation":` + nav + `,"products":[]}`)
+		_, err := Project("s", "r", "shop.example", locale, manifest, []byte(pages))
+		return err
+	}
+	if err := project("zh", strings.Repeat("店", 300), `[]`, `[]`); err != nil {
+		t.Errorf("300-character non-ASCII title rejected by byte length: %v", err)
+	}
+	if err := project("zh", strings.Repeat("店", 301), `[]`, `[]`); !errors.Is(err, contract.ErrUnavailable) {
+		t.Errorf("301-character title accepted: %v", err)
+	}
+	if err := project("en", "Shop", `[{"label":"Home","href":"/"}]`, `[]`); !errors.Is(err, contract.ErrUnavailable) {
+		t.Errorf("home link without a root page accepted: %v", err)
+	}
+	if err := project("en", "Shop", `[{"label":"Home","href":"/"}]`, `[{"path":"/","title":"Home","description":"","blocks":[]}]`); err != nil {
+		t.Errorf("home link with a root page rejected: %v", err)
+	}
+	for _, locale := range []string{"en", "en-US", "zh-Hant-TW", "es-419", "de-CH-1996", "sl-rozaj-biske"} {
+		if err := project(locale, "Shop", `[]`, `[]`); err != nil {
+			t.Errorf("valid locale %q rejected: %v", locale, err)
+		}
+	}
+	for _, locale := range []string{"en-US-US", "en-abcd-abcd", "en-abcde-abcde", "EN", "en_US", "en-", "e"} {
+		if err := project(locale, "Shop", `[]`, `[]`); !errors.Is(err, contract.ErrUnavailable) {
+			t.Errorf("Intl-invalid locale %q accepted: %v", locale, err)
+		}
+	}
+}

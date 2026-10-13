@@ -92,6 +92,11 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(set(schemas["CartLine"]["required"]), {"sku_id", "quantity", "available_quantity", "sellable"})
         self.assertEqual(set(schemas["Cart"]["required"]), {"id", "currency", "version", "lines"})
 
+    def test_published_product_slug_fits_safe_path(self):
+        # Review thread rsvIP: Project rejects "/products/"+slug paths over 512 bytes.
+        slug = self.api["components"]["schemas"]["PublishedProduct"]["properties"]["slug"]
+        self.assertEqual(slug.get("maxLength"), 512 - len("/products/"))
+
     def test_cookie_and_bearer_are_alternatives(self):
         self.assertEqual(self.api["security"], [{"adminSession": []}, {"ApiKeyBearer": []}])
         cookie = self.api["components"]["securitySchemes"]["adminSession"]

@@ -23,7 +23,7 @@ p { margin-block: var(--space-0) var(--space-5); overflow-wrap: anywhere; }
 .product-list li > div { flex: 1; min-inline-size: min(100%, var(--layout-column-min)); }
 .product-list h2 { margin-block: var(--space-0) var(--space-3); }
 .product-list p { margin-block: var(--space-0); }
-.product-price { font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.product-price { font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); font-variant-numeric: tabular-nums; max-inline-size: 100%; overflow-wrap: anywhere; }
 .product-summary { max-inline-size: var(--layout-prose); }
 .back-link { display: inline-block; margin-block-start: var(--space-8); }
 .error-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); margin-block-start: var(--space-8); }

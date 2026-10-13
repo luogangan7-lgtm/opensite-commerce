@@ -5,7 +5,7 @@
 import type { AstroGlobal } from 'astro';
 import { readPublishedSite, PublicSiteNotFoundError, type PublishedSite } from '@opensite/api-client';
 import { copy } from './copy';
-import { normalizeHostname, readAPIOrigin } from './presentation';
+import { formatAmount, normalizeHostname, readAPIOrigin } from './presentation';
 import { requestCanonical } from './host-policy';
 
 export async function preparePublishedPage(
@@ -18,7 +18,11 @@ export async function preparePublishedPage(
   const canonical = requestCanonical(context);
   try {
     if (!canonical) throw new PublicSiteNotFoundError();
-    site = await readPublishedSite(readAPIOrigin(apiOrigin), normalizeHostname(context.url.hostname));
+    const read = await readPublishedSite(readAPIOrigin(apiOrigin), normalizeHostname(context.url.hostname));
+    // Intl rejects some well-formed-looking locales; fail as 502 here, not mid-stream in render.
+    Intl.getCanonicalLocales(read.locale);
+    for (const item of read.products) formatAmount(item.unit_amount, item.currency, read.locale);
+    site = read;
   } catch (error) {
     status = error instanceof PublicSiteNotFoundError ? 404 : 502;
   }

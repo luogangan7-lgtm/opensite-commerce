@@ -6,6 +6,10 @@ import type { PublishedSite } from '@opensite/api-client';
 import { preparePublishedPage } from './published-page';
 import { readAllowedHosts, requestCanonical } from './host-policy';
 
+// Unbundled tests read the deployment allowlist per call; these are the hosts used below.
+const testHosts = '127.0.0.1,localhost,shop.example.test,other.example.test';
+process.env.OSC_STOREFRONT_ALLOWED_HOSTS = testHosts;
+
 function requestContext(url: URL, response: { status: number; statusText: string; headers: Headers }, headers: Record<string, string> = {}) {
   return { url, response, request: new Request(url, { headers: { host: url.host, ...headers } }) };
 }
@@ -119,5 +123,39 @@ describe('published page prepares the route response before rendering', () => {
     for (const value of ['', '*', '*.example.test', 'https://shop.example.test', 'shop.example.test:443', 'user@shop.example.test']) {
       expect(() => readAllowedHosts(value)).toThrow();
     }
+  });
+  test('Host outside the build allowlist is rejected even when it equals the adapter fallback URL', async () => {
+    // Review thread rnC44: adapter fallback http://localhost:<port>/ must not admit localhost.
+    let requests = 0;
+    const upstream = Bun.serve({ port: 0, fetch() { requests++; return Response.json(site); } });
+    process.env.OSC_STOREFRONT_ALLOWED_HOSTS = 'shop.example.test';
+    try {
+      for (const port of ['4321', '8080']) {
+        const response = { status: 200, statusText: 'OK', headers: new Headers() };
+        const view = await preparePublishedPage(requestContext(new URL(`http://localhost:${port}/`), response), '/', upstream.url.origin);
+        expect(view.status).toBe(404);
+        expect(response.status).toBe(404);
+        expect(view.canonical).toBeUndefined();
+      }
+      expect(requests).toBe(0);
+      expect(requestCanonical({ url: new URL('https://shop.example.test/a'), request: new Request('https://shop.example.test/a', { headers: { host: 'shop.example.test' } }) }))
+        .toBe('https://shop.example.test/a');
+    } finally { process.env.OSC_STOREFRONT_ALLOWED_HOSTS = testHosts; upstream.stop(true); }
+  });
+  test('Intl-invalid published locale becomes a controlled 502 before rendering', async () => {
+    // Review threads rnC48/rnFif: formatting must not throw after the response status is chosen.
+    let locale = 'en-US-US';
+    const upstream = Bun.serve({ port: 0, fetch() { return Response.json({ ...site, locale }); } });
+    try {
+      for (const [value, path, expected] of [['en-US-US', '/products', 502], ['en-abcd-abcd', '/products/tote', 502],
+        ['en-US', '/products', 200], ['zh-Hant-TW', '/products/tote', 200]] as const) {
+        locale = value;
+        const response = { status: 200, statusText: 'OK', headers: new Headers() };
+        const view = await preparePublishedPage(requestContext(new URL(`https://shop.example.test${path}`), response), path, upstream.url.origin);
+        expect(response.status).toBe(expected);
+        expect(view.status).toBe(expected === 200 ? undefined : expected);
+        expect(response.headers.get('Cache-Control')).toBe('no-store');
+      }
+    } finally { upstream.stop(true); }
   });
 });

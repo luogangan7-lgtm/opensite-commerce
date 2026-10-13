@@ -186,6 +186,59 @@ func TestPublicPublishedReadPG(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Review thread rnC5D: a second grantor's ADMIN membership must also be rejected.
+	provisioner := pgx.Identifier{"c09_prov_" + suffix[:12]}.Sanitize()
+	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "CREATE ROLE "+provisioner+" NOLOGIN; GRANT app_domain_resolver TO "+provisioner+" WITH ADMIN OPTION; GRANT app_domain_resolver TO "+quoted+" WITH ADMIN OPTION GRANTED BY "+provisioner)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, close, err := pgxadapter.OpenPublic(ctx, publicDSN); err == nil {
+		close()
+		t.Error("ADMIN resolver membership from a second grantor accepted")
+	}
+	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "REVOKE app_domain_resolver FROM "+quoted+" GRANTED BY "+provisioner+"; DROP ROLE "+provisioner)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, close, err := pgxadapter.OpenPublic(ctx, publicDSN); err != nil {
+		t.Fatalf("single safe membership rejected after revoking second grantor: %v", err)
+	} else {
+		close()
+	}
+	// Review threads rnC40/rnFiU/rnFib: a >50 KB pinned page stays published with or
+	// without a navigation link, and the sealed manifest (not sites.default_locale) selects routes.
+	for _, nav := range []string{`[]`, `[{"label":"About","href":"/about"}]`} {
+		tenant, host := newUUID(t), "large-"+newUUID(t)[:8]+".c09.test"
+		if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, fmt.Sprintf(largeSiteSQL, tenant, host, nav))
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		large, err := module.Current(ctx, host)
+		if err != nil || len(large.Pages) != 1 || large.Pages[0].Path != "/about" || len(large.Pages[0].Blocks) != 7 {
+			t.Fatalf("valid >50 KB published page dropped (nav %s): pages=%d %v", nav, len(large.Pages), err)
+		}
+		if err = admin.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+				return err
+			}
+			tag, err := tx.Exec(ctx, `UPDATE app.sites SET default_locale='fr' WHERE tenant_id=$1`, tenant)
+			if err == nil && tag.RowsAffected() != 1 {
+				err = fmt.Errorf("default_locale changed %d rows", tag.RowsAffected())
+			}
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if after, err := module.Current(ctx, host); err != nil || after.Locale != "en" || len(after.Pages) != 1 {
+			t.Fatalf("mutable default_locale changed sealed release read: %+v %v", after.Locale, err)
+		}
+	}
 	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, "GRANT app_runtime TO "+quoted)
 		return err
@@ -197,3 +250,43 @@ func TestPublicPublishedReadPG(t *testing.T) {
 		t.Fatal("mixed runtime/public membership accepted")
 	}
 }
+
+func newUUID(t *testing.T) string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatal(err)
+	}
+	b[6], b[8] = b[6]&0x0f|0x40, b[8]&0x3f|0x80
+	h := hex.EncodeToString(b)
+	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
+}
+
+// largeSiteSQL publishes one sealed release whose /about page is about 63 KB
+// (seven 9,000-character paragraphs). Args: tenant uuid, verified host, navigation JSON.
+const largeSiteSQL = `DO $large$
+DECLARE t uuid := '%[1]s'; o uuid := gen_random_uuid(); s uuid := gen_random_uuid();
+ pg uuid := gen_random_uuid(); rel uuid := gen_random_uuid(); m jsonb;
+BEGIN
+ INSERT INTO app.tenants(id,name) VALUES(t,'C09 large page '||t);
+ PERFORM set_config('app.tenant_id',t::text,true);
+ EXECUTE 'SET LOCAL ROLE app_runtime';
+ INSERT INTO app.organizations(tenant_id,id,display_name) VALUES(t,o,'C09 large');
+ INSERT INTO app.sites(tenant_id,id,organization_id,name,default_locale) VALUES(t,s,o,'Large','en');
+ INSERT INTO app.pages(tenant_id,site_id,id,page_key) VALUES(t,s,pg,'about');
+ INSERT INTO app.page_revisions(tenant_id,site_id,page_id,locale,revision,document) VALUES(t,s,pg,'en',1,
+  jsonb_build_object('title','About','description','','blocks',
+   (SELECT jsonb_agg(jsonb_build_object('kind','paragraph','text',repeat('x',9000))) FROM generate_series(1,7))));
+ m := jsonb_build_object('version',1,'locale','en','title','Large','description','',
+  'navigation','%[3]s'::jsonb,'products','[]'::jsonb);
+ INSERT INTO app.site_releases(tenant_id,site_id,id,release_no,renderer_build_id,manifest,manifest_hash)
+  VALUES(t,s,rel,1,'c09-review',m,sha256(convert_to(m::text,'UTF8')));
+ INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,page_id,page_revision)
+  VALUES(t,s,rel,'en','/about',pg,1);
+ EXECUTE 'RESET ROLE';
+ EXECUTE 'SET LOCAL ROLE app_domain_verifier';
+ INSERT INTO app.site_domains(tenant_id,site_id,hostname,status,verified_at) VALUES(t,s,'%[2]s','verified',now());
+ EXECUTE 'RESET ROLE';
+ EXECUTE 'SET LOCAL ROLE app_publisher';
+ PERFORM app.publish_release(t,s,rel,NULL);
+ EXECUTE 'RESET ROLE';
+END $large$`

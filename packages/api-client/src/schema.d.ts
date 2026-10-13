@@ -428,10 +428,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/carts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Create a cart in an active tenant. Anonymous creation mints a 256-bit guest capability returned once as cart_token; only its hash is persisted. Creation has no existing representation and is exempt from If-Match. */
+        post: operations["createCart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/carts/{cart_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Guest X-Cart-Token capability or trusted customer actor resolver must match tenant and cart owner. No staff cookies or bearer keys. Ownership failures are 404. Strong ETag includes version and current price/inventory hints. Writes require exact If-Match; reads do not reserve stock. */
+        get: operations["getCart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Guest X-Cart-Token capability or trusted customer actor resolver must match tenant and cart owner. No staff cookies or bearer keys. Ownership failures are 404. Strong ETag includes version and current price/inventory hints. Writes require exact If-Match; reads do not reserve stock. */
+        put: operations["setCartLine"];
+        post?: never;
+        /** @description Guest X-Cart-Token capability or trusted customer actor resolver must match tenant and cart owner. No staff cookies or bearer keys. Ownership failures are 404. Strong ETag includes version and current price/inventory hints. Writes require exact If-Match; reads do not reserve stock. */
+        delete: operations["deleteCartLine"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CreateCart: {
+            currency: string;
+        };
+        SetCartLine: {
+            /**
+             * Format: int64
+             * @description Absolute quantity; zero deletes the line.
+             */
+            quantity: number;
+        };
+        CartLine: {
+            /** Format: uuid */
+            sku_id: string;
+            /** Format: int64 */
+            quantity: number;
+            /** Format: int64 */
+            unit_amount?: number;
+            /** Format: int64 */
+            line_amount?: number;
+            /** Format: uuid */
+            price_list_id?: string;
+            /** Format: int32 */
+            priority?: number;
+            /** Format: int64 */
+            min_quantity?: number;
+            /** Format: int64 */
+            available_quantity: number;
+            sellable: boolean;
+            /**
+             * @description Quote is unavailable; monetary and selected price fields are omitted.
+             * @enum {string}
+             */
+            pricing_error?: "price_unavailable" | "amount_overflow";
+        };
+        Cart: {
+            /** Format: uuid */
+            id: string;
+            currency: string;
+            /** Format: int64 */
+            version: number;
+            /** @description At most 1000 distinct SKUs, so the representation fits the 1 MiB response buffer. */
+            lines: components["schemas"]["CartLine"][];
+            /** Format: int64 */
+            subtotal?: number;
+            /**
+             * @description Cart is not fully priced; subtotal is omitted.
+             * @enum {string}
+             */
+            pricing_error?: "price_unavailable" | "amount_overflow";
+        };
+        CreatedCart: {
+            cart: components["schemas"]["Cart"];
+            cart_token?: string;
+        };
         PublishedBlock: {
             /** @enum {string} */
             kind: "heading" | "paragraph";
@@ -739,6 +845,33 @@ export interface components {
         };
     };
     responses: {
+        /** @description BadRequest */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description NotFound */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description ServiceUnavailable */
+        ServiceUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description Authentication missing or invalid; bad login credentials are indistinguishable. */
         Unauthorized: {
             headers: {
@@ -831,6 +964,9 @@ export interface components {
         };
     };
     parameters: {
+        CartId: string;
+        SkuId: string;
+        CartToken: string;
         /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
         TenantId: string;
         /** @description Session owned by the caller; never a token. */
@@ -2028,6 +2164,181 @@ export interface operations {
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["Problem"];
+        };
+    };
+    createCart: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Cart-Token"?: components["parameters"]["CartToken"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCart"];
+            };
+        };
+        responses: {
+            /** @description Current cart; no-store. The creation token must be kept secret. */
+            201: {
+                headers: {
+                    /** @description Strong version-and-representation validator. */
+                    ETag: string;
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedCart"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCart: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Cart-Token"?: components["parameters"]["CartToken"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                cart_id: components["parameters"]["CartId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current cart; no-store. The creation token must be kept secret. */
+            200: {
+                headers: {
+                    /** @description Strong version-and-representation validator. */
+                    ETag: string;
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cart"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    setCartLine: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Cart-Token"?: components["parameters"]["CartToken"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                cart_id: components["parameters"]["CartId"];
+                sku_id: components["parameters"]["SkuId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCartLine"];
+            };
+        };
+        responses: {
+            /** @description Current cart; no-store. The creation token must be kept secret. */
+            200: {
+                headers: {
+                    /** @description Strong version-and-representation validator. */
+                    ETag: string;
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cart"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteCartLine: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Cart-Token"?: components["parameters"]["CartToken"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                cart_id: components["parameters"]["CartId"];
+                sku_id: components["parameters"]["SkuId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current cart; no-store. The creation token must be kept secret. */
+            200: {
+                headers: {
+                    /** @description Strong version-and-representation validator. */
+                    ETag: string;
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cart"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
 }

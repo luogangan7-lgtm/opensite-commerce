@@ -24,7 +24,25 @@ type manifest struct {
 
 var decimal = regexp.MustCompile(`^(0|[1-9][0-9]{0,37})$`)
 var currency = regexp.MustCompile(`^[A-Z]{3}$`)
-var localePattern = regexp.MustCompile(`^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$`)
+// Well-formed BCP 47 subset (language[-Script][-REGION](-variant)*) that Intl accepts;
+// duplicate variants are rejected separately because Intl rejects them too.
+var localePattern = regexp.MustCompile(`^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*$`)
+
+func validLocale(v string) bool {
+	if !localePattern.MatchString(v) {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, part := range strings.Split(v, "-")[1:] {
+		if len(part) >= 5 || (len(part) == 4 && part[0] >= '0' && part[0] <= '9') {
+			if seen[part] {
+				return false
+			}
+			seen[part] = true
+		}
+	}
+	return true
+}
 
 func decode(raw []byte, v any) error {
 	if len(raw) > 1<<20 {
@@ -41,7 +59,7 @@ func decode(raw []byte, v any) error {
 	return nil
 }
 func text(v string, max int, required bool) bool {
-	return utf8.ValidString(v) && len(v) <= max && !strings.ContainsRune(v, 0) && (!required || strings.TrimSpace(v) != "")
+	return utf8.ValidString(v) && utf8.RuneCountInString(v) <= max && !strings.ContainsRune(v, 0) && (!required || strings.TrimSpace(v) != "")
 }
 func Project(siteID, releaseID, host, locale string, rawManifest, rawPages []byte) (contract.Site, error) {
 	fail := func() (contract.Site, error) { return contract.Site{}, contract.ErrUnavailable }
@@ -50,10 +68,11 @@ func Project(siteID, releaseID, host, locale string, rawManifest, rawPages []byt
 	if decode(rawManifest, &m) != nil || decode(rawPages, &pages) != nil {
 		return fail()
 	}
-	if m.Version != 1 || m.Locale != locale || !localePattern.MatchString(m.Locale) || !text(m.Title, 300, true) || !text(m.Description, 2000, false) || m.Navigation == nil || m.Products == nil || pages == nil || len(m.Navigation) > 50 || len(m.Products) > 500 || len(pages) > 100 {
+	if m.Version != 1 || m.Locale != locale || !validLocale(m.Locale) || !text(m.Title, 300, true) || !text(m.Description, 2000, false) || m.Navigation == nil || m.Products == nil || pages == nil || len(m.Navigation) > 50 || len(m.Products) > 500 || len(pages) > 100 {
 		return fail()
 	}
-	targets := map[string]bool{"/": true, "/products": true}
+	// "/" is a valid target only when the release actually pins a root page.
+	targets := map[string]bool{"/products": true}
 	seenPages := map[string]bool{}
 	seenProducts := map[string]bool{}
 	for _, p := range pages {

@@ -93,3 +93,37 @@ test('storefront custom 502 page and actual backend failure have usable retry is
   expect(response.status()).toBe(502);
   await quality(page);
 });
+
+test('storefront SSR responses carry a strict hash-based CSP and pages run without violations', async ({ page, request }) => {
+  for (const [path, status] of [['/', 200], ['/products/canvas-tote', 200], ['/missing', 404], ['/502', 502]] as const) {
+    const response = await request.get(`${origin}${path}`);
+    expect(response.status()).toBe(status);
+    const csp = response.headers()['content-security-policy'] ?? '';
+    for (const directive of ["default-src 'self'", "base-uri 'none'", "object-src 'none'", "frame-ancestors 'none'", "form-action 'self'", "script-src 'self'", "style-src 'self'"]) {
+      expect(csp).toContain(directive);
+    }
+    expect(csp).not.toMatch(/unsafe-inline|unsafe-eval|\*|data:|https?:/);
+  }
+  await page.addInitScript(() => {
+    const violations: string[] = [];
+    (globalThis as unknown as { cspViolations: string[] }).cspViolations = violations;
+    document.addEventListener('securitypolicyviolation', event => violations.push(`${event.violatedDirective} ${event.blockedURI}`));
+  });
+  for (const url of [`${origin}/products/canvas-tote`, 'http://127.0.0.1:4322/']) {
+    await page.goto(url);
+    await page.evaluate(async () => { await document.fonts.ready; });
+    expect(await page.evaluate(() => (globalThis as unknown as { cspViolations: string[] }).cspViolations)).toEqual([]);
+  }
+  // The React retry island still hydrates under the policy.
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeEnabled();
+});
+
+test('storefront maximum-size published prices wrap instead of overflowing', async ({ page }) => {
+  // 38-digit minor units are valid release data; the formatted price must reflow on narrow screens.
+  const longest = `$${'999,'.repeat(12)}999.99`;
+  for (const path of ['/products', '/products/canvas-tote']) {
+    await page.goto(`${origin}${path}`);
+    await page.locator('.product-price').first().evaluate((element, text) => { element.textContent = text; }, longest);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+});
