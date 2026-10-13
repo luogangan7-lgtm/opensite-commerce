@@ -731,8 +731,13 @@ BEGIN
   -- PROBE-39-1: legacy entry bypasses the shared refund budget primitive.
   SELECT * INTO o FROM app.orders WHERE tenant_id=t AND id=p_id FOR UPDATE;
   SELECT * INTO e FROM app.outbox_events WHERE tenant_id=t AND delivery_target='orders.events' AND dedup_key='transition:'||p_id::text||':'||p_event_key;
-  IF FOUND THEN RETURN o; END IF;
-  IF o.refunded_minor+p_refund_minor>o.total_minor OR p_refund_minor<=0 THEN RAISE EXCEPTION 'ORDER_INVALID_REFUND' USING ERRCODE='22023'; END IF;
+  IF FOUND THEN
+   IF e.payload->>'target' IS DISTINCT FROM p_target OR (e.payload->>'refund_minor')::bigint IS DISTINCT FROM p_refund_minor THEN
+    RAISE EXCEPTION 'ORDER_EVENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
+   RETURN o;
+  END IF;
+  IF o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded') THEN RAISE EXCEPTION 'ORDER_INVALID_TRANSITION' USING ERRCODE='55000'; END IF;
+  IF o.refunded_minor+p_refund_minor>o.total_minor OR (p_target='partially_refunded' AND o.refunded_minor+p_refund_minor>=o.total_minor) OR (p_target='refunded' AND o.refunded_minor+p_refund_minor<>o.total_minor) OR p_refund_minor<=0 THEN RAISE EXCEPTION 'ORDER_INVALID_REFUND' USING ERRCODE='22023'; END IF;
   UPDATE app.orders SET refunded_minor=refunded_minor+p_refund_minor,state=p_target,version=version+1,updated_at=clock_timestamp()
    WHERE tenant_id=t AND id=p_id RETURNING * INTO o;
   INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
