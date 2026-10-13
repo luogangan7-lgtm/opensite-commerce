@@ -30,6 +30,11 @@ CART_PATHS = {
 SELF_OPERATIONS = {"deleteAdminSession", "getCurrentActor", "listAdminSessions", "revokeAdminSession"}
 COOKIE = [{"adminSession": []}]
 COOKIE_OR_KEY = [{"adminSession": []}, {"ApiKeyBearer": []}]
+CUSTOMER_OPERATIONS = {
+    'registerCustomer', 'verifyCustomerEmail', 'getCustomerSession',
+    'createCustomerSession', 'deleteCustomerSession',
+    'requestCustomerPasswordReset', 'confirmCustomerPasswordReset',
+}
 # Buyer identity is supplied by the customer-auth seam; Public here describes
 # the platform router access class, never permission to bypass trusted actors.
 BUYER_QUOTES = {
@@ -206,8 +211,11 @@ def validate_contract(api):
             require(tenant_parameter.get("required") is True and tenant_parameter.get("schema") ==
                     {"type": "string", "format": "uuid"}, f"required tenant UUID parameter missing: {ident}")
         if access == "Public":
-            require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite"} | BUYER_QUOTES.keys() and security == [] and
-                    "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
+            customer = ident in CUSTOMER_OPERATIONS
+            require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite"} | BUYER_QUOTES.keys() | CUSTOMER_OPERATIONS and security == [] and
+                    "x-required-scope" not in op and (tenant if customer else not tenant), f"public operation must be anonymous and scope-free: {ident}")
+            if customer:
+                require(path.startswith('/api/v1/t/{tenant_id}/customer/') and op['x-opensite-status'] == 'implemented', 'customer authentication route drift')
         elif access == "Storefront":
             require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and
                     "x-required-scope" not in op, f"storefront cart tenant/scope policy drift: {ident}")
@@ -266,7 +274,7 @@ def validate_contract(api):
             continue
         for status, name in PROBLEM_RESPONSES.items():
             require(op["responses"].get(status) == {"$ref": "#/components/responses/" + name}, f"missing shared {status} mapping: {ident}")
-        if method in {"post", "put", "patch", "delete"} and access != "Storefront" and (access != "Public" or ident == "createAdminSession"):
+        if method in {"post", "put", "patch", "delete"} and access != "Storefront" and (access != "Public" or ident == "createAdminSession" or ident in CUSTOMER_OPERATIONS):
             headers = {p["name"]: p for p in parameters if p["in"] == "header"}
             required = access != "AdminOrAPIKey"
             for header in ("Origin", "X-CSRF-Token"):

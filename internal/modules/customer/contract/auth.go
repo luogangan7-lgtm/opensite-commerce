@@ -55,6 +55,9 @@ type Credential struct {
 // transaction. Challenges are one-use and hashed; verification may attach a
 // credential to an existing guest only after ownership proof. ConsumeReset must
 // revoke every customer session in the same transaction as the password change.
+// SaveSession compares the verified credential snapshot under the customer lock
+// before rotating the old hash or inserting the successor, so reset wins over
+// an in-flight login that verified a previous password.
 type Repository interface {
 	Credential(context.Context, string, string) (Credential, error)
 	PrepareRegistration(context.Context, string, string, string, [32]byte, time.Time) error

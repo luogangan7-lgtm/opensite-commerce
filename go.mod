@@ -3,6 +3,7 @@ module github.com/luogangan7-lgtm/opensite-commerce
 go 1.27.2
 
 require (
+	golang.org/x/crypto v0.58.0
 	github.com/getkin/kin-openapi v0.142.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/oapi-codegen/nullable v1.2.0
