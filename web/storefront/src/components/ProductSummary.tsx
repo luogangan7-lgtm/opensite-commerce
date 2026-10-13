@@ -1,13 +1,10 @@
-/** Responsibility: read-only published product detail; dependencies: shared Card/price formatter.
- * Callers: product SSR route; invariants: exact price strings, no cart or inventory claims.
+/** Responsibility: read-only published product detail; dependencies: shared Card.
+ * Callers: product SSR route; invariants: the price label is preformatted from sellable SKUs, no inventory counts.
  */
 import { Card } from '@opensite/ui';
-import { formatAmount } from '../lib/presentation';
-export default function ProductSummary({ description, amount, currency, locale }: {
-  description: string; amount: string; currency: string; locale: string;
-}) {
+export default function ProductSummary({ description, price }: { description: string; price: string }) {
   return <Card className="product-summary">
-    <p className="product-price">{formatAmount(amount, currency, locale)}</p>
+    <p className="product-price">{price}</p>
     <p>{description}</p>
   </Card>;
 }

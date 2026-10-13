@@ -24,6 +24,9 @@ func (*QueryRunner) RunAuthorizedTx(ctx context.Context, tenant string, _ func(c
 	}
 	return errors.New("runtime database is unavailable")
 }
+func (r *QueryRunner) RunTrustedTx(context.Context, string, func(context.Context, pgx.Tx) error) error {
+	return errors.New("runtime database is unavailable")
+}
 func (r *QueryRunner) RunAuthorizedTxSnapshot(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
 	return r.RunAuthorizedTx(ctx, tenant, fn)
 }

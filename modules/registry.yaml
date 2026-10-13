@@ -281,7 +281,10 @@
         "site_drafts",
         "draft_pages",
         "draft_operations",
-        "draft_page_media"
+        "draft_page_media",
+        "site_release_skus",
+        "storefront_serving",
+        "serving_invalidations"
       ],
       "operations": [
         {
@@ -355,7 +358,8 @@
         "cms",
         "media",
         "catalog",
-        "pricing"
+        "pricing",
+        "inventory"
       ],
       "tests": [
         "internal/pagegraph/graph_test.go",
@@ -368,7 +372,12 @@
         "internal/modules/publish/write_handler_test.go",
         "internal/modules/publish/write_test.go",
         "internal/modules/publish/internal/service/write_test.go",
-        "tests/db_cms_publish.sql"
+        "tests/db_cms_publish.sql",
+        "internal/modules/publish/internal/service/serving_test.go",
+        "internal/modules/publish/serving_pgx_test.go",
+        "tests/db_storefront_serving.sql",
+        "internal/modules/publish/internal/store/serving_pgx_test.go",
+        "internal/bootstrap/serving_refresh_pgx_test.go"
       ],
       "scopes": [
         "cms:write",
@@ -1379,6 +1388,22 @@
         "outbox_events",
         "order_lines",
         "inventory_reservations"
+      ]
+    },
+    {
+      "file": "migrations/pending/c15b-serving_storefront_serving.sql",
+      "owner": "publish",
+      "touches_tables": [
+        "site_release_skus",
+        "storefront_serving",
+        "serving_invalidations",
+        "sites",
+        "site_releases",
+        "product_variants",
+        "products",
+        "price_lists",
+        "price_entries",
+        "stock_levels"
       ]
     }
   ]

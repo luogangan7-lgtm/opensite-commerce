@@ -506,6 +506,15 @@ GENERATED_SERVER_IMPORTERS = {Path("internal/platform/httpapi"), Path("internal/
                               Path(GENERATED_SERVER)}
 
 
+# The trusted tenant write seam (no HTTP actor) may be named only by its definition and the
+# single composition site of the storefront serving refresher plus that site's pgx test.
+TRUSTED_TX_ALLOWED = {Path("internal/tenanttx/pgxadapter/runtime_pgx.go"),
+                      Path("internal/tenanttx/pgxadapter/runtime_default.go"),
+                      Path("internal/bootstrap/runtime.go"),
+                      Path("internal/bootstrap/serving_refresh_pgx_test.go")}
+TRUSTED_TX = re.compile(r"\bRunTrustedTx\b")
+
+
 def raw_connection_allowed(relative):
     suffix = RAW_CONNECTION_ALLOWED.get(relative.parent)
     return suffix is not None and relative.name.endswith(suffix)
@@ -622,6 +631,8 @@ def check_go(registry, root):
                                 if source_tokens[i] == "package"), "")
                 pool_sources.setdefault((directory, package), []).append((text, str(relative)))
                 check_maintenance(text, relative)
+            require(relative in TRUSTED_TX_ALLOWED or not TRUSTED_TX.search(text),
+                    "MODULE_TRUSTED_TX", str(relative))
             require(not re.search(r'^\s*import\s*(?:\(\s*)?"C"', text, re.M),
                     "MODULE_NON_GO_SOURCE", str(source.relative_to(root)) + " (cgo)")
             for token in go_tokens.finditer(text):

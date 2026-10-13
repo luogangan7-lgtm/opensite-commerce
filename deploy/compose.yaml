@@ -52,6 +52,9 @@ services:
       OPENSITE_DOMAIN_DB_PASSWORD: ${OPENSITE_DOMAIN_DB_PASSWORD:?set domain password}
       OPENSITE_MEDIA_DB_PASSWORD: ${OPENSITE_MEDIA_DB_PASSWORD:?set media password}
       OPENSITE_MEDIA_ROOT: /var/lib/opensite/media
+      # Storefront serving refresher (ADR_STOREFRONT_SERVING 2.6): trusted tenant UUIDs.
+      # Empty = no refresh; published storefronts fall back to "no purchasable SKUs".
+      OPENSITE_SERVING_REFRESH_TENANTS: ${OPENSITE_SERVING_REFRESH_TENANTS:-}
       # Staff login reuses the auth DSN above; startup fails if either is missing.
       OSC_ADMIN_ORIGIN: ${OPENSITE_ADMIN_ORIGIN:?set exact HTTPS admin origin}
       OSC_AUTH_SIGNING_KEY_HEX: ${OPENSITE_AUTH_SIGNING_KEY:?set independent 64-hex auth signing key}
