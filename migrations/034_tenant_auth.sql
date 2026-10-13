@@ -39,8 +39,7 @@ DECLARE u_status text; t_status text; m_status text; m_role text;
  s_user uuid; s_exp timestamptz; s_rev timestamptz; s_created timestamptz; s_seen timestamptz;
  k_tenant uuid; k_user uuid; k_scopes text[]; k_exp timestamptz; k_rev timestamptz; at_db timestamptz;
 BEGIN
- IF p_kind IS NULL OR p_kind NOT IN ('session','api_key') OR p_scope IS NULL OR p_credential IS NULL
-  OR p_tenant IS DISTINCT FROM nullif(current_setting('app.tenant_id',true),'')::uuid THEN RETURN false; END IF;
+ IF p_kind IS NULL OR p_kind NOT IN ('session','api_key') OR p_scope IS NULL OR p_credential IS NULL THEN RETURN false; END IF;
  SELECT status INTO u_status FROM app.users WHERE id=p_user FOR SHARE;
  IF NOT FOUND OR u_status<>'active' THEN RETURN false; END IF;
  SELECT status INTO t_status FROM app.tenants WHERE id=p_tenant FOR SHARE;
