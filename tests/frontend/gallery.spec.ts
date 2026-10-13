@@ -174,6 +174,7 @@ test('native controls expose actual loading, checked, error and help states', as
 });
 
 test('production route excludes the component gallery', async ({ page }) => {
+  await page.route('**/api/v1/auth/session',route=>route.fulfill({status:401,contentType:'application/problem+json',body:JSON.stringify({type:'about:blank',title:'Unauthenticated',status:401,code:'unauthenticated'})}));
   await page.goto('http://127.0.0.1:4174/_gallery');
   await expect(page.getByTestId('gallery')).toHaveCount(0);
   await expect(page.getByText('OpenSite admin')).toBeVisible();
