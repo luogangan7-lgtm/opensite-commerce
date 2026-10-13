@@ -47,6 +47,7 @@ def document():
                 },
                 "columns": {
                     "id": {"classification": "operational"},
+                    "tenant_id": {"classification": "operational"},
                     "guest_email": personal("contact"),
                     "address_snapshot": personal(structure="PostalAddress"),
                     "receipt": personal(structure="ReceiptBytes"),
@@ -59,6 +60,7 @@ def document():
 def catalog():
     return [
         {"table_name": "orders", "column_name": "id", "data_type": "uuid", "udt_name": "uuid"},
+        {"table_name": "orders", "column_name": "tenant_id", "data_type": "uuid", "udt_name": "uuid"},
         {"table_name": "orders", "column_name": "guest_email", "data_type": "text", "udt_name": "text"},
         {"table_name": "orders", "column_name": "address_snapshot", "data_type": "jsonb", "udt_name": "jsonb"},
         {"table_name": "orders", "column_name": "receipt", "data_type": "bytea", "udt_name": "bytea"},
@@ -90,7 +92,7 @@ class PrivacyRegistryTests(unittest.TestCase):
     def test_valid_registry_catalog_and_real_cells(self):
         registry = self.load()
         self.assertEqual(set(registry), {
-            "orders.id", "orders.guest_email", "orders.address_snapshot", "orders.receipt",
+            "orders.id", "orders.tenant_id", "orders.guest_email", "orders.address_snapshot", "orders.receipt",
         })
         self.gate.validate_catalog(registry, catalog())
         template = (
@@ -367,6 +369,32 @@ class PrivacyRegistryTests(unittest.TestCase):
             "modules": [{"name": "orders", "owns_tables": ["orders"]}],
         }))
         return root
+
+    def test_secret_hash_must_declare_export_exclude(self):
+        for export in ("include", "redact", None):
+            with self.subTest(export=export), self.assertRaisesRegex(ValueError, "PRIVACY_SECRET_EXPORT"):
+                body = document()
+                spec = {"classification": "secret_hash"}
+                if export:
+                    spec["export"] = export
+                body["tables"]["orders"]["columns"]["token_hash"] = spec
+                self.load({"orders": body})
+
+    def test_tenant_key_must_be_a_real_column_of_the_table(self):
+        body = document()
+        body["tables"]["orders"]["subject"]["tenant_key"] = "tenant_idd"
+        with self.assertRaisesRegex(ValueError, "PRIVACY_TENANT_KEY_UNKNOWN"):
+            self.gate.validate_catalog(self.load({"orders": body}), catalog())
+
+    def test_manifest_alone_fails_loudly(self):
+        with tempfile.TemporaryDirectory(prefix="privacy-cli-test-") as tmp:
+            root = self.cli_root(tmp)
+            stderr = io.StringIO()
+            with patch.object(sys, "argv", ["privacy_registry.py", "--root", str(root),
+                                            "--manifest", str(root / "m.json")]), \
+                    redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+                self.assertEqual(self.gate.main(), 1)
+            self.assertIn("--manifest requires", stderr.getvalue())
 
     def test_database_and_fixture_cli_refuse_non_github_execution(self):
         for option in ("--database", "--fixture"):
