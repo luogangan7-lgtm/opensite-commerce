@@ -103,6 +103,7 @@ test('real API denies anonymous catalog reads and creation before data access', 
 
 
 test('real owner session reads and creates tenant catalog through production authorization', async ({ page }, info) => {
+  test.setTimeout(95_000);
   await page.goto(`${fixture.admin}/login`);
   await page.getByLabel('Email', { exact: true }).fill(fixture.ownerEmail);
   await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
@@ -120,6 +121,36 @@ test('real owner session reads and creates tenant catalog through production aut
   expect((await catalog).status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible();
   await audit(page, info);
+
+  // Observe the real issued cookie, without modifying it or calling /auth/session.
+  // This fixture uses the existing minimum idle lifetime (1m). Tenant activity
+  // must keep both DB authority and the browser cookie alive past its first expiry.
+  const initialCookie = (await page.context().cookies()).find(cookie => cookie.name === sessionCookie);
+  expect(initialCookie, 'Owner login must issue a browser session cookie').toBeDefined();
+  const initialExpiry = initialCookie!.expires;
+  const remainingLifetime = initialExpiry - Date.now() / 1000;
+  expect(remainingLifetime, 'CI must use the explicit one-minute idle fixture').toBeGreaterThan(0);
+  expect(remainingLifetime, 'CI must use the explicit one-minute idle fixture').toBeLessThanOrEqual(65);
+  const activityStatuses: number[] = [];
+  const browserCatalogStatus = () => page.evaluate(async url =>
+    (await fetch(url, { credentials: 'same-origin', cache: 'no-store' })).status, catalogURL);
+  const pastOriginalExpiry = (initialExpiry + 2) * 1000;
+  while (Date.now() < pastOriginalExpiry) {
+    const status = await browserCatalogStatus();
+    activityStatuses.push(status);
+    expect(status, 'Active tenant reads must keep the browser authenticated').toBe(200);
+    await page.waitForTimeout(2_000);
+  }
+  const finalStatus = await browserCatalogStatus();
+  expect(finalStatus, 'Browser tenant request after the original cookie expiry must remain admitted').toBe(200);
+  const renewedCookie = (await page.context().cookies()).find(cookie => cookie.name === sessionCookie);
+  expect(renewedCookie, 'Tenant activity must preserve the browser cookie').toBeDefined();
+  expect(renewedCookie!.expires).toBeGreaterThan(initialExpiry + 2);
+  expect(renewedCookie!.expires).toBeGreaterThan(Date.now() / 1000);
+  await info.attach('tenant-activity-cookie-lifetime', {
+    body: JSON.stringify({ initialExpiry, renewedExpiry: renewedCookie!.expires, activityStatuses, finalStatus }),
+    contentType: 'application/json',
+  });
 
   // The same real cookie cannot read another tenant, or write without session CSRF.
   expect((await page.request.get(`${fixture.admin}/api/v1/t/${fixture.tenantId}/products`)).status()).toBe(404);

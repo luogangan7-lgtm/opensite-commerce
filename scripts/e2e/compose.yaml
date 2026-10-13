@@ -5,6 +5,8 @@ services:
   api:
     environment:
       OSC_PUBLIC_DATABASE_URL: "host=postgres port=5432 dbname=${OPENSITE_DB} user=opensite_domain_login password=${OPENSITE_DOMAIN_DB_PASSWORD} sslmode=disable"
+      # Existing minimum idle policy; only this disposable browser fixture is shortened.
+      OSC_AUTH_SESSION_IDLE: "1m"
   storefront:
     image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
     working_dir: /workspace
