@@ -5,8 +5,12 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,7 +19,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	httpcheckout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
 
 type guestCartSnapshotRow struct{ values []any }
@@ -99,5 +106,92 @@ func TestGuestCartSnapshotSwitchesToRuntimeRoleBeforeRead(t *testing.T) {
 		} else if err != nil || !tx.roleSet || !tx.cartRead {
 			t.Fatalf("valid runtime snapshot rejected: err=%v role=%v read=%v", err, tx.roleSet, tx.cartRead)
 		}
+	}
+}
+
+type checkoutRoleRunner struct {
+	guestCartSnapshotTx
+	commands, snapshots, capabilities int
+}
+
+func (r *checkoutRoleRunner) RunAuthorizedTx(_ context.Context, _ string, _ func(context.Context, pgx.Tx) error) error {
+	r.commands++
+	return errors.New("authorized tenant stamp required")
+}
+func (r *checkoutRoleRunner) RunAuthorizedTxSnapshot(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error {
+	r.snapshots++
+	return fn(ctx, &r.guestCartSnapshotTx)
+}
+func (r *checkoutRoleRunner) RunCapabilityTx(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error {
+	r.capabilities++
+	return fn(ctx, &r.guestCartSnapshotTx)
+}
+
+type fakePaymentContextService struct{ ctx context.Context }
+
+func (*fakePaymentContextService) Start(context.Context, checkoutcontract.AuthorizedActor, checkoutcontract.StartInput) (checkoutcontract.Result, error) {
+	return checkoutcontract.Result{}, errors.New("unexpected checkout start")
+}
+func (s *fakePaymentContextService) Confirm(ctx context.Context, _ payment.VerifiedEvent) (checkoutcontract.Result, error) {
+	s.ctx = ctx
+	return checkoutcontract.Result{CheckoutID: "c2400002-0000-4000-8000-000000000001", OrderID: "c2400003-0000-4000-8000-000000000001", State: "paid", AmountMinor: 1200, Currency: "USD", OrderVersion: 1, Payment: checkoutcontract.Intent{ProviderRef: "fake-test", Status: payment.StatusCaptured}}, nil
+}
+func (*fakePaymentContextService) Cancel(context.Context, checkoutcontract.AuthorizedActor, checkoutcontract.CancelInput) (checkoutcontract.Result, error) {
+	return checkoutcontract.Result{}, errors.New("unexpected checkout cancel")
+}
+
+func TestCheckoutRoleRunnerRequiresSignedFakeProof(t *testing.T) {
+	const tenant = "c0900001-0000-4000-8000-000000000001"
+	const other = "c0900001-0000-4000-8000-000000000002"
+	const event = `{"event_id":"fake-proof","tenant_id":"` + tenant + `","order_id":"c2400003-0000-4000-8000-000000000001","order_version":1,"provider_ref":"fake-test","status":"captured","amount_minor":1200,"currency":"USD"}`
+	key := make([]byte, 32)
+	verifier, err := httpcheckout.NewFakeHMACVerifier(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &fakePaymentContextService{}
+	handler, err := httpcheckout.New(httpcheckout.Config{Service: service, FakeEnabled: true, Environment: "test", Verifier: verifier})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := httpapi.New(handler.Authenticator(nil), nil)
+	for _, route := range handler.Routes() {
+		if err := router.Register(route.Spec, route.Handler); err != nil {
+			t.Fatal(err)
+		}
+	}
+	request := func(signature string) int {
+		req := httptest.NewRequest(http.MethodPost, httpcheckout.FakePattern, strings.NewReader(event))
+		req.Header.Set("Content-Type", "application/json")
+		if signature != "" {
+			req.Header.Set("X-Fake-Signature", signature)
+		}
+		res := httptest.NewRecorder()
+		router.ServeHTTP(res, req)
+		return res.Code
+	}
+	runner := &checkoutRoleRunner{guestCartSnapshotTx: guestCartSnapshotTx{role: "opensite_runtime_login"}}
+	if got := request(""); got != 401 || service.ctx != nil {
+		t.Fatalf("unsigned Fake request admitted: status=%d context=%v", got, service.ctx)
+	}
+	if err := checkoutCommandRun(runner)(context.Background(), tenant, func(context.Context, pgx.Tx) error { return nil }); err == nil || runner.capabilities != 0 || runner.commands != 1 {
+		t.Fatalf("unsigned context reached capability transaction: err=%v commands=%d capabilities=%d", err, runner.commands, runner.capabilities)
+	}
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(event))
+	if got := request(hex.EncodeToString(mac.Sum(nil))); got != 200 || service.ctx == nil {
+		t.Fatalf("signed Fake request rejected: status=%d context=%v", got, service.ctx)
+	}
+	if err := checkoutCommandRun(runner)(service.ctx, other, func(context.Context, pgx.Tx) error { return nil }); !errors.Is(err, checkoutcontract.ErrForbidden) || runner.capabilities != 0 {
+		t.Fatalf("verified tenant mismatch entered transaction: err=%v capabilities=%d", err, runner.capabilities)
+	}
+	called := false
+	if err := checkoutCommandRun(runner)(service.ctx, tenant, func(context.Context, pgx.Tx) error { called = true; return nil }); err != nil || !called || !runner.roleSet || runner.capabilities != 1 {
+		t.Fatalf("verified Fake transaction failed role admission: err=%v called=%v role=%v capabilities=%d", err, called, runner.roleSet, runner.capabilities)
+	}
+	runner.roleSet = false
+	called = false
+	if err := checkoutSnapshotRun(runner)(context.Background(), tenant, func(context.Context, pgx.Tx) error { called = true; return nil }); err != nil || !called || !runner.roleSet || runner.snapshots != 1 {
+		t.Fatalf("preview snapshot failed role admission: err=%v called=%v role=%v snapshots=%d", err, called, runner.roleSet, runner.snapshots)
 	}
 }

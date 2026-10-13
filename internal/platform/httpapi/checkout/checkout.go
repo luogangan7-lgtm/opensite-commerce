@@ -64,6 +64,16 @@ type actorKey struct{}
 type eventKey struct{}
 type cartIDKey struct{}
 
+// VerifiedFakePaymentTenant exposes only the tenant of the event placed in the
+// private request context by verifyWebhook after raw-signature verification.
+func VerifiedFakePaymentTenant(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	event, ok := ctx.Value(eventKey{}).(payment.VerifiedEvent)
+	return event.TenantID, ok && event.Validate() == nil
+}
+
 func New(config Config) (*Handler, error) {
 	if config.Resolver != nil {
 		u, e := url.Parse(config.Origin)

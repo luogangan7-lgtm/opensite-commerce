@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	cartcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	checkoutmodule "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout"
@@ -97,13 +98,8 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		if checkoutEnv != nil && config.Checkout == nil {
 			resolver, err := httpcheckout.NewGuestResolver(httpcheckout.GuestConfig{TenantID: checkoutEnv.tenantID, Origin: checkoutEnv.origin, Key: checkoutEnv.key, VerifyCart: func(ctx context.Context, actor checkoutcontract.AuthorizedActor, cartID string) error {
-				guestHash, err := hex.DecodeString(actor.ID())
-				if err != nil {
-					return err
-				}
 				return runner.RunCapabilitySnapshot(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
-					_, err := cart.ReadIntentSnapshot(ctx, tx, cartcontract.AuthorizedActor{TenantID: actor.TenantID(), GuestTokenHash: guestHash}, cartID)
-					return err
+					return verifyGuestCartSnapshot(ctx, tx, actor, cartID)
 				})
 			}})
 			if err != nil {
@@ -115,7 +111,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 				closeRuntime()
 				return Config{}, nil, err
 			}
-			config.Checkout = &httpcheckout.Config{Service: checkoutmodule.New(checkoutmodule.Config{Run: runner.RunAuthorizedTx, Read: runner.RunAuthorizedTxSnapshot, Cart: checkoutmodule.NewSQLCart(cart.ReadIntent), SnapshotCart: checkoutmodule.NewSQLCartSnapshot(cart.ReadIntentSnapshot), Rules: checkoutmodule.NewSQLRules(checkoutEnv.metadata), Orders: orders.New(), Ledger: ledger.New(), Payment: paymentfake.New()}), Resolver: resolver, Origin: checkoutEnv.origin, FakeEnabled: true, Environment: checkoutEnv.environment, Verifier: verifier}
+			config.Checkout = &httpcheckout.Config{Service: checkoutmodule.New(checkoutmodule.Config{Run: checkoutCommandRun(runner), Read: checkoutSnapshotRun(runner), Cart: checkoutmodule.NewSQLCart(cart.ReadIntent), SnapshotCart: checkoutmodule.NewSQLCartSnapshot(cart.ReadIntentSnapshot), Rules: checkoutmodule.NewSQLRules(checkoutEnv.metadata), Orders: orders.New(), Ledger: ledger.New(), Payment: paymentfake.New()}), Resolver: resolver, Origin: checkoutEnv.origin, FakeEnabled: true, Environment: checkoutEnv.environment, Verifier: verifier}
 		}
 	}
 	mediaURL, err := environmentDSN("OPENSITE_MEDIA_DATABASE_URL", "MEDIA", "opensite_media_login")
@@ -171,6 +167,53 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		config.Routes = append(config.Routes, staff.Routes()...)
 	}
 	return config, closeRuntime, nil
+}
+
+// verifyGuestCartSnapshot runs only inside a tenant-scoped capability snapshot.
+// The login must assume its granted runtime role before the cart RLS read.
+func verifyGuestCartSnapshot(ctx context.Context, tx pgx.Tx, actor checkoutcontract.AuthorizedActor, cartID string) error {
+	guestHash, err := hex.DecodeString(actor.ID())
+	if err != nil || len(guestHash) != 32 {
+		return checkoutcontract.ErrForbidden
+	}
+	if err := db.New(tx).SetCartRuntimeRole(ctx); err != nil {
+		return err
+	}
+	_, err = cart.ReadIntentSnapshot(ctx, tx, cartcontract.AuthorizedActor{TenantID: actor.TenantID(), GuestTokenHash: guestHash}, cartID)
+	return err
+}
+
+type checkoutTransactionRunner interface {
+	RunAuthorizedTx(context.Context, string, func(context.Context, pgx.Tx) error) error
+	RunAuthorizedTxSnapshot(context.Context, string, func(context.Context, pgx.Tx) error) error
+	RunCapabilityTx(context.Context, string, func(context.Context, pgx.Tx) error) error
+}
+
+func withCheckoutRuntimeRole(fn func(context.Context, pgx.Tx) error) func(context.Context, pgx.Tx) error {
+	return func(ctx context.Context, tx pgx.Tx) error {
+		if err := db.New(tx).SetCartRuntimeRole(ctx); err != nil {
+			return err
+		}
+		return fn(ctx, tx)
+	}
+}
+
+func checkoutCommandRun(r checkoutTransactionRunner) checkoutcontract.Run {
+	return func(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+		if verifiedTenant, ok := httpcheckout.VerifiedFakePaymentTenant(ctx); ok {
+			if verifiedTenant != tenant {
+				return checkoutcontract.ErrForbidden
+			}
+			return r.RunCapabilityTx(ctx, tenant, withCheckoutRuntimeRole(fn))
+		}
+		return r.RunAuthorizedTx(ctx, tenant, withCheckoutRuntimeRole(fn))
+	}
+}
+
+func checkoutSnapshotRun(r checkoutTransactionRunner) checkoutcontract.Run {
+	return func(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+		return r.RunAuthorizedTxSnapshot(ctx, tenant, withCheckoutRuntimeRole(fn))
+	}
 }
 
 type checkoutSettings struct {
