@@ -4,7 +4,7 @@
  * Callers: baseline provenance writer and consumer, CI unit tests.
  * Invariants: sorted repository-relative files, workspace metadata included, unknown local/dynamic dependencies fail closed.
  */
-import ts from 'typescript';
+import ts from 'typescript-parser';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
