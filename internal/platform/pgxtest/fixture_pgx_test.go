@@ -37,6 +37,17 @@ func fixtureLockSource(t *testing.T) string {
 	return dsn
 }
 
+// Each caller owns and closes the physical maintenance session, including panic
+// and cancellation. The shared helper owns the only lock implementation.
+func fixtureLockInitialize(ctx context.Context, source string, initialize func(context.Context) error) error {
+	runner, err := pgxadapter.OpenIdentity(ctx, source)
+	if err != nil {
+		return errors.New("fixture lock maintenance connection unavailable")
+	}
+	defer runner.Close(context.Background())
+	return WithFixtureInitialization(ctx, runner.InMaintenance, initialize)
+}
+
 func TestFixtureInitializationSerializesPostgres(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -80,7 +91,7 @@ func TestFixtureInitializationSerializesPostgres(t *testing.T) {
 	u.RawQuery = q.Encode()
 	entered, done := make(chan struct{}, 1), make(chan error, 1)
 	go func() {
-		done <- WithFixtureInitialization(ctx, u.String(), func(context.Context) error {
+		done <- fixtureLockInitialize(ctx, u.String(), func(context.Context) error {
 			entered <- struct{}{}
 			return nil
 		})
@@ -163,9 +174,9 @@ func TestFixtureInitializationReleasesPostgres(t *testing.T) {
 						recovered = true
 					}
 				}()
-				err = WithFixtureInitialization(ctx, u.String(), func(context.Context) error {
+				err = fixtureLockInitialize(ctx, u.String(), func(context.Context) error {
 					if err := observer.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-						return tx.QueryRow(ctx, `SELECT COALESCE((SELECT a.pid FROM pg_stat_activity a JOIN pg_locks l ON l.pid=a.pid WHERE a.application_name=$1 AND l.locktype='advisory' AND l.classid=0 AND l.objid=$2::oid AND l.objsubid=1 AND l.granted LIMIT 1),0)`, application, fixtureInitializationLockKey).Scan(&holderPID)
+						return tx.QueryRow(ctx, `SELECT COALESCE((SELECT a.pid FROM pg_stat_activity a JOIN pg_locks l ON l.pid=a.pid WHERE a.application_name=$1 AND l.locktype='advisory' AND l.classid=0 AND l.objid::bigint=$2 AND l.objsubid=1 AND l.granted LIMIT 1),0)`, application, fixtureInitializationLockKey).Scan(&holderPID)
 					}); err != nil || holderPID == 0 {
 						t.Error("fixture initializer callback lacks the maintenance session advisory lock")
 					}
@@ -190,7 +201,7 @@ func TestFixtureInitializationReleasesPostgres(t *testing.T) {
 			if err := observer.InMaintenance(cleanup, func(ctx context.Context, tx pgx.Tx) error {
 				// Other packages may already own the shared key. Inspect only this
 				// initializer's recorded backend, never require global idleness.
-				return tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND classid=0 AND objid=$2::oid AND objsubid=1 AND granted)`, holderPID, fixtureInitializationLockKey).Scan(&leaked)
+				return tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND classid=0 AND objid::bigint=$2 AND objsubid=1 AND granted)`, holderPID, fixtureInitializationLockKey).Scan(&leaked)
 			}); err != nil || leaked {
 				t.Fatal("fixture initialization leaked maintenance session advisory lock")
 			}

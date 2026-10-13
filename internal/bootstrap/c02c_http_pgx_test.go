@@ -14,6 +14,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -136,28 +138,38 @@ func c02cHTTPPGFixture(t *testing.T) (context.Context, *pgxadapter.IdentityRunne
 		t.Fatal("HTTP fixture migrations unavailable")
 	}
 	sort.Strings(migrations)
-	for _, path := range migrations {
-		absolute, err := filepath.Abs(path)
-		if err != nil {
-			t.Fatal("HTTP fixture migration path invalid")
-		}
-		if strings.HasSuffix(path, "_queue_authorization.sql") {
-			installer := exec.CommandContext(ctx, "bash", "../../scripts/migrate_river.sh")
-			installer.Env = append(os.Environ(), "DATABASE_URL="+fixtureDSN)
-			installer.Stdout, installer.Stderr = io.Discard, io.Discard
-			if installer.Run() != nil {
-				t.Fatal("HTTP fixture River installation failed")
+	maintenance, maintenanceErr := pgxadapter.OpenIdentity(ctx, source)
+	if maintenanceErr != nil {
+		t.Fatal("HTTP fixture maintenance connection unavailable")
+	}
+	defer maintenance.Close(context.Background())
+	if initializationErr := pgxtest.WithFixtureInitialization(ctx, maintenance.InMaintenance, func(ctx context.Context) error {
+		for _, path := range migrations {
+			absolute, err := filepath.Abs(path)
+			if err != nil {
+				return errors.New("HTTP fixture migration path invalid")
+			}
+			if strings.HasSuffix(path, "_queue_authorization.sql") {
+				installer := exec.CommandContext(ctx, "bash", "../../scripts/migrate_river.sh")
+				installer.Env = append(os.Environ(), "DATABASE_URL="+fixtureDSN)
+				installer.Stdout, installer.Stderr = io.Discard, io.Discard
+				if installer.Run() != nil {
+					return errors.New("HTTP fixture River installation failed")
+				}
+			}
+			if c02cHTTPPSQL(ctx, fixtureDSN, "", "-1", "-f", absolute) != nil {
+				return fmt.Errorf("HTTP fixture migration failed: %s", filepath.Base(path))
 			}
 		}
-		if c02cHTTPPSQL(ctx, fixtureDSN, "", "-1", "-f", absolute) != nil {
-			t.Fatal("HTTP fixture migration failed", filepath.Base(path))
+		for _, entry := range []struct{ role, credential, capability string }{{authRole, authCredential, "app_auth"}, {runtimeRole, runtimeCredential, "app_runtime"}} {
+			sql := "CREATE ROLE " + pgx.Identifier{entry.role}.Sanitize() + " LOGIN INHERIT PASSWORD '" + entry.credential + "'; GRANT " + entry.capability + " TO " + pgx.Identifier{entry.role}.Sanitize() + ";"
+			if c02cHTTPPSQL(ctx, source, sql) != nil {
+				return errors.New("HTTP fixture role creation failed")
+			}
 		}
-	}
-	for _, entry := range []struct{ role, credential, capability string }{{authRole, authCredential, "app_auth"}, {runtimeRole, runtimeCredential, "app_runtime"}} {
-		sql := "CREATE ROLE " + pgx.Identifier{entry.role}.Sanitize() + " LOGIN INHERIT PASSWORD '" + entry.credential + "'; GRANT " + entry.capability + " TO " + pgx.Identifier{entry.role}.Sanitize() + ";"
-		if c02cHTTPPSQL(ctx, source, sql) != nil {
-			t.Fatal("HTTP fixture role creation failed")
-		}
+		return nil
+	}); initializationErr != nil {
+		t.Fatal("fixture initialization failed", initializationErr)
 	}
 	admin, err := pgxadapter.OpenIdentity(ctx, fixtureDSN)
 	if err != nil {

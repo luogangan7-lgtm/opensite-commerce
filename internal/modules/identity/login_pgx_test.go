@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -164,26 +165,36 @@ func setupLoginPG(t *testing.T) (context.Context, *testLoginDB, string, LoginCon
 		t.Fatal("no fixture migrations")
 	}
 	sort.Strings(migrations)
-	for _, path := range migrations {
-		path, e = filepath.Abs(path)
-		if e != nil {
-			t.Fatal("fixture migration path invalid")
-		}
-		if strings.HasSuffix(path, "_queue_authorization.sql") {
-			installer := exec.CommandContext(ctx, "bash", "../../../scripts/migrate_river.sh")
-			installer.Env = append(os.Environ(), "DATABASE_URL="+fixtureDSN)
-			installer.Stdout, installer.Stderr = io.Discard, io.Discard
-			if installer.Run() != nil {
-				t.Fatal("fixture River installation failed")
+	maintenance, maintenanceErr := identityadapter.OpenIdentity(ctx, source)
+	if maintenanceErr != nil {
+		t.Fatal("fixture maintenance connection unavailable")
+	}
+	defer maintenance.Close(context.Background())
+	if initializationErr := pgxtest.WithFixtureInitialization(ctx, maintenance.InMaintenance, func(ctx context.Context) error {
+		for _, path := range migrations {
+			path, e = filepath.Abs(path)
+			if e != nil {
+				return errors.New("fixture migration path invalid")
+			}
+			if strings.HasSuffix(path, "_queue_authorization.sql") {
+				installer := exec.CommandContext(ctx, "bash", "../../../scripts/migrate_river.sh")
+				installer.Env = append(os.Environ(), "DATABASE_URL="+fixtureDSN)
+				installer.Stdout, installer.Stderr = io.Discard, io.Discard
+				if installer.Run() != nil {
+					return errors.New("fixture River installation failed")
+				}
+			}
+			if fixturePSQL(ctx, fixtureDSN, "", "-1", "-f", path) != nil {
+				return fmt.Errorf("migration failed: %s", filepath.Base(path))
 			}
 		}
-		if fixturePSQL(ctx, fixtureDSN, "", "-1", "-f", path) != nil {
-			t.Fatalf("migration failed: %s", filepath.Base(path))
+		// Generated random password is a local fixture; never a command argument.
+		if fixturePSQL(ctx, source, "CREATE ROLE "+pgx.Identifier{role}.Sanitize()+" LOGIN INHERIT PASSWORD '"+roleSecret+"'; GRANT app_auth TO "+pgx.Identifier{role}.Sanitize()+";") != nil {
+			return errors.New("fixture login unavailable")
 		}
-	}
-	// Generated random password is a local fixture; never a command argument.
-	if fixturePSQL(ctx, source, "CREATE ROLE "+pgx.Identifier{role}.Sanitize()+" LOGIN INHERIT PASSWORD '"+roleSecret+"'; GRANT app_auth TO "+pgx.Identifier{role}.Sanitize()+";") != nil {
-		t.Fatal("fixture login unavailable")
+		return nil
+	}); initializationErr != nil {
+		t.Fatal("fixture initialization failed", initializationErr)
 	}
 	runner, e := identityadapter.OpenIdentity(ctx, fixtureDSN)
 	if e != nil {
