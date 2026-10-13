@@ -6,7 +6,8 @@ type Scope = 'gallery' | 'admin' | 'storefront-published' | 'storefront-commerce
 type RecordValue = { schema: number; snapshot: string; scope: Scope; sourceFingerprint: string; pngSha256: string; runUrl: string; sourceSha: string; image: string; rendering: unknown };
 type API = {
   makeRecord(snapshot: string, fingerprint: string, png: string, sourceSha: string, runUrl: string): RecordValue;
-  assertBaselineSet(pngs: Record<string, string>, records: Record<string, unknown>, fingerprints: Record<Scope, string>): RecordValue[];
+  assertBaselineSet(pngs: Record<string, string>, records: Record<string, unknown>): RecordValue[];
+  changedSnapshots(paths: string[]): Set<string>;
   scopeForSnapshot(snapshot: string): Scope;
   assertRunAuthority(record: RecordValue, run: unknown): void;
 };
@@ -20,21 +21,35 @@ const golden = () => api.makeRecord('desktop/admin-orders.png', hashes.admin, pn
 test('each PNG has exactly one valid independent provenance record', () => {
   const record = golden();
   expect(record.schema).toBe(2);
-  expect(api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: record }, hashes)).toEqual([record]);
+  expect(api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: record })).toEqual([record]);
 });
 test('tampering with a single PNG is rejected', () => {
   const record = golden();
-  expect(() => api.assertBaselineSet({ [record.snapshot]: 'f'.repeat(64) }, { [record.snapshot]: record }, hashes)).toThrow(/PNG/);
+  expect(() => api.assertBaselineSet({ [record.snapshot]: 'f'.repeat(64) }, { [record.snapshot]: record })).toThrow(/PNG/);
 });
 test('missing and orphan records are rejected', () => {
   const record = golden();
-  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, {}, hashes)).toThrow(/record/);
-  expect(() => api.assertBaselineSet({}, { [record.snapshot]: record }, hashes)).toThrow(/record/);
+  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, {})).toThrow(/record/);
+  expect(() => api.assertBaselineSet({}, { [record.snapshot]: record })).toThrow(/record/);
 });
-test('an author cannot choose another scope or omit changed inputs', () => {
+test('an author cannot choose another scope or a malformed input fingerprint', () => {
   const record = golden();
-  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: { ...record, scope: 'gallery' } }, hashes)).toThrow(/scope/);
-  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: record }, { ...hashes, admin: 'f'.repeat(64) })).toThrow(/inputs/);
+  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: { ...record, scope: 'gallery' } })).toThrow(/scope/);
+  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: { ...record, sourceFingerprint: 'x' } })).toThrow(/fingerprint/);
+});
+test('C-08d: changed renderer inputs with identical pixels need no new PNG or record', () => {
+  // The record keeps the producer-time fingerprint as evidence; the candidate comparison, not equality, decides staleness.
+  const record = golden();
+  const current = { ...hashes, admin: 'f'.repeat(64) };
+  expect(current.admin).not.toBe(record.sourceFingerprint);
+  expect(api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: record })).toEqual([record]);
+});
+test('C-08d: only PNGs or records changed against the trusted base need their producer artifact', () => {
+  expect([...api.changedSnapshots([
+    'tests/frontend/baselines/desktop/admin-orders.png',
+    'tests/frontend/baselines/mobile/gallery.png.provenance.json',
+    'api/openapi.yaml', 'tests/frontend/admin.spec.ts',
+  ])].sort()).toEqual(['desktop/admin-orders.png', 'mobile/gallery.png']);
 });
 test('forged URLs, source SHA and a real but different producer run are rejected', () => {
   const record = golden();
@@ -42,7 +57,7 @@ test('forged URLs, source SHA and a real but different producer run are rejected
   expect(() => api.assertRunAuthority(record, run)).not.toThrow();
   expect(() => api.assertRunAuthority({ ...record, runUrl: runUrl.replace('123', '456') }, run)).toThrow(/run/);
   expect(() => api.assertRunAuthority({ ...record, sourceSha: '2'.repeat(40) }, run)).toThrow(/SHA/);
-  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: { ...record, runUrl: 'https://attacker.invalid/actions/runs/123' } }, hashes)).toThrow(/run/);
+  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: { ...record, runUrl: 'https://attacker.invalid/actions/runs/123' } })).toThrow(/run/);
 });
 test('two branches changing distinct scopes merge their records without a global fingerprint', () => {
   const admin = golden();
@@ -51,7 +66,7 @@ test('two branches changing distinct scopes merge their records without a global
   const branchA = { ...base, [admin.snapshot]: { ...admin, sourceFingerprint: '5'.repeat(64), runUrl: runUrl.replace('123', '124') } };
   const branchB = { ...base, [commerce.snapshot]: { ...commerce, sourceFingerprint: '6'.repeat(64), runUrl: runUrl.replace('123', '125') } };
   const merged = { [admin.snapshot]: branchA[admin.snapshot], [commerce.snapshot]: branchB[commerce.snapshot] };
-  expect(api.assertBaselineSet({ [admin.snapshot]: png, [commerce.snapshot]: png }, merged, { ...hashes, admin: '5'.repeat(64), 'storefront-commerce': '6'.repeat(64) })).toHaveLength(2);
+  expect(api.assertBaselineSet({ [admin.snapshot]: png, [commerce.snapshot]: png }, merged)).toHaveLength(2);
   expect(JSON.stringify(branchA[commerce.snapshot])).toBe(JSON.stringify(base[commerce.snapshot]));
   expect(JSON.stringify(branchB[admin.snapshot])).toBe(JSON.stringify(base[admin.snapshot]));
 });
@@ -63,5 +78,5 @@ test('unknown snapshots and traversal cannot obtain an arbitrary input scope', (
 });
 test('deleting a PNG and its record together cannot shrink the producer-observed scope inventory', () => {
   const record = { ...golden(), scopeSnapshots: ['desktop/admin-orders.png', 'mobile/admin-orders.png'] };
-  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: record }, hashes)).toThrow(/inventory/);
+  expect(() => api.assertBaselineSet({ [record.snapshot]: png }, { [record.snapshot]: record })).toThrow(/inventory/);
 });
