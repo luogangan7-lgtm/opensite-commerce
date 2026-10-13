@@ -50,7 +50,7 @@ func servingSeed(ids servingIDs, prefix string, price int64, stock int) []string
 		fmt.Sprintf(`WITH l AS (INSERT INTO app.price_lists(tenant_id,currency,status,starts_at,priority,audience) VALUES($1,'USD','active',now()+interval '1 hour',9,'all') RETURNING id)
 		 INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) SELECT $1,l.id,'%s',1,3 FROM l`, ids.ready),
 		`SELECT set_config('app.tenant_id',$1::text,true)`,
-		fmt.Sprintf(`SELECT app.inventory_adjust('%s',%d,'serving fixture',uuidv7(),'inbound')`, ids.ready, stock),
+		fmt.Sprintf(`SELECT app.inventory_adjust('%s',%d,'serving fixture',uuidv7(),'inbound') WHERE $1::uuid IS NOT NULL`, ids.ready, stock),
 	}
 }
 
