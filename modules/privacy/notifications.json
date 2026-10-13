@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "module": "notifications",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {},
+  "tables": {
+    "notification_deliveries": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "order.*: reference_id -> orders.id -> customer_id; quote.approved: reference_id -> quotes.id -> accepted_by", "null_subject_policy": "quote.sent and guest order recipients are inquiry-owned/unverified contacts; do not link by email alone."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "source_event_id": {"classification": "operational"},
+        "dispatch_event_id": {"classification": "operational"},
+        "recipient": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "locale": {"classification": "operational"},
+        "template_key": {"classification": "operational"},
+        "reference_id": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "attempt_count": {"classification": "operational"},
+        "generation": {"classification": "operational"},
+        "send_token": {"classification": "operational"},
+        "lease_attempt": {"classification": "operational"},
+        "lease_worker": {"classification": "operational"},
+        "last_error": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "updated_at": {"classification": "operational"},
+        "sent_at": {"classification": "operational"}
+      }
+    },
+    "notification_redrive_requests": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "notification_id": {"classification": "operational"},
+        "idempotency_key": {"classification": "operational"},
+        "request_token": {"classification": "operational"},
+        "generation": {"classification": "operational"},
+        "dispatch_event_id": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    }
+  }
+}
