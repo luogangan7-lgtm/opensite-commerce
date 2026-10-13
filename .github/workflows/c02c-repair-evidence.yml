@@ -1,0 +1,37 @@
+# Temporary independent CI witnesses; removed after scoped repair receipts.
+name: c02c-repair-evidence
+on: [push]
+permissions:
+  contents: read
+jobs:
+  pg-availability:
+    if: contains(github.event.head_commit.message, '[c02c-repair-evidence]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      OPENSITE_REQUIRE_PGX_FIXTURES: '1'
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with:
+          go-version: '1.27.2'
+      - name: Apply real migrations and security assertions
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          bash scripts/check_pg.sh
+      - name: Scoped actual PostgreSQL activity and availability witnesses
+        run: go test -race -tags pgx -count=1 -v -run TestC02c ./internal/modules/identity/... ./internal/tenanttx/pgxadapter ./internal/modules/tenant/...
