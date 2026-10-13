@@ -513,8 +513,8 @@ def check_maintenance(text, relative):
         return
     tokens, _ = go_imports(text)
     # The private entry point may only be called; a method value or alias would export it.
-    require(not any(tokens[i] == "." and tokens[i + 1] == "inMaintenance" and tokens[i + 2] != "("
-                    for i in range(len(tokens) - 2)),
+    require(not any(tokens[i] == "." and tokens[i + 1] == "inMaintenance" and tokens[i + 2:i + 3] != ["("]
+                    for i in range(len(tokens) - 1)),
             "MODULE_MAINTENANCE_CALL", f"{relative} (inMaintenance used as a value)")
     # Taking a method value is just as powerful as calling it immediately.
     if relative.parent in MAINTENANCE_ALLOWED_DIRS or relative.parts[:2] == ("internal", "ops"):
