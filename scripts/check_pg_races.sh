@@ -627,7 +627,7 @@ SELECT app.orders_create('$OID','orders-race-create',sha256('race'::bytea),NULL,
  '{"email":"race@example.invalid"}','USD',20,'{"amount_minor":20,"currency":"USD","service":"fixture"}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','race-sku','quantity',1,
  'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
- 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
+ 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('category','standard','net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
 SQL
   if [[ $first_target == paid ]]; then second_target=cancelled; stock=0; race_gate=40
   else second_target=paid; stock=1; race_gate=41; fi
@@ -665,10 +665,10 @@ SELECT app.orders_create('$OID','prelock-create',sha256('prelock'::bytea),NULL,
  jsonb_build_array(
   jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','prelock-sku','quantity',1,
    'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
-   'reservation_id',:'r1','tax_snapshot','{}'::jsonb),
+   'reservation_id',:'r1','tax_snapshot','{"category":"standard"}'::jsonb),
   jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','prelock-sku','quantity',1,
    'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
-   'reservation_id',:'r2','tax_snapshot','{}'::jsonb)), '[]');
+   'reservation_id',:'r2','tax_snapshot','{"category":"standard"}'::jsonb)), '[]');
 SQL
 read -r R_FIRST R_LATER <<<"$(sql <<<"SELECT id FROM app.inventory_reservations WHERE tenant_id='$T' AND owner_id='$OID' ORDER BY id;" | paste -sd' ' -)"
 sql <<SQL >/dev/null

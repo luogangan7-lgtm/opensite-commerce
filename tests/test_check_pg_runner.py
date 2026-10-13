@@ -69,6 +69,7 @@ expected = [
     'db_ledger.sql',
     'db_catalog_api.sql',
     'db_orders.sql',
+    'db_orders_guards.sql',
     'db_queue.sql',
     'db_reliability_limits.sql',
     'db_cart.sql',

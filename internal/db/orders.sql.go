@@ -11,6 +11,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const checkOrderCreation = `-- name: CheckOrderCreation :many
+SELECT tenant_id, id, order_number, creation_key, request_hash, customer_id, guest_contact, currency, items_net_minor, tax_minor, shipping_minor, shipping_snapshot, adjustment_minor, total_minor, refunded_minor, state, version, sealed, created_at, updated_at FROM app.orders_check_creation($1::uuid,$2::text,$3::bytea)
+`
+
+type CheckOrderCreationParams struct {
+	ID          pgtype.UUID `json:"id"`
+	CreationKey string      `json:"creation_key"`
+	RequestHash []byte      `json:"request_hash"`
+}
+
+func (q *Queries) CheckOrderCreation(ctx context.Context, arg CheckOrderCreationParams) ([]AppOrder, error) {
+	rows, err := q.db.Query(ctx, checkOrderCreation, arg.ID, arg.CreationKey, arg.RequestHash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AppOrder
+	for rows.Next() {
+		var i AppOrder
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.ID,
+			&i.OrderNumber,
+			&i.CreationKey,
+			&i.RequestHash,
+			&i.CustomerID,
+			&i.GuestContact,
+			&i.Currency,
+			&i.ItemsNetMinor,
+			&i.TaxMinor,
+			&i.ShippingMinor,
+			&i.ShippingSnapshot,
+			&i.AdjustmentMinor,
+			&i.TotalMinor,
+			&i.RefundedMinor,
+			&i.State,
+			&i.Version,
+			&i.Sealed,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createOrder = `-- name: CreateOrder :one
 SELECT tenant_id, id, order_number, creation_key, request_hash, customer_id, guest_contact, currency, items_net_minor, tax_minor, shipping_minor, shipping_snapshot, adjustment_minor, total_minor, refunded_minor, state, version, sealed, created_at, updated_at FROM app.orders_create($1::uuid,$2::text,$3::bytea,
  $4::uuid,$5::jsonb,$6::text,

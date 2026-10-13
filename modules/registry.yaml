@@ -647,7 +647,9 @@
         "internal/modules/orders/internal/service/snapshot_test.go",
         "scripts/check_pg_races.sh",
         "scripts/check_pg_upgrade.sh",
-        "tests/db_role_matrix.sql"
+        "tests/db_role_matrix.sql",
+        "tests/db_orders_guards.sql",
+        "internal/db/orders_guards_integration_test.go"
       ],
       "scopes": [],
       "note": "Tenant-bound immutable order snapshots and caller-transaction financial state transitions. Customer references use the integrated tenant/customer foreign key. Checkout orchestration and real payment adapters remain separate."
@@ -1016,6 +1018,15 @@
         "notification_deliveries",
         "notification_redrive_requests",
         "outbox_events"
+      ]
+    },
+    {
+      "file": "migrations/027_orders_guards.sql",
+      "owner": "orders",
+      "touches_tables": [
+        "orders",
+        "order_lines",
+        "inventory_reservations"
       ]
     }
   ]
