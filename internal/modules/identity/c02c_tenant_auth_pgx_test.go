@@ -17,10 +17,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	authcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	identityadapter "github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -43,6 +46,132 @@ func c02cKeyHash(t *testing.T) []byte {
 	}
 	hash := sha256.Sum256(secret[:])
 	return hash[:]
+}
+
+// Activity receipts use DB time; a throttled touch must not claim a renewal.
+func TestC02cSessionActivityThrottlePostgres(t *testing.T) {
+	ctx, admin, dsn, _ := setupLoginPG(t)
+	auth := c02cAuthDB(t, ctx, dsn)
+	user := seedLoginPG(t, ctx, admin, "c02c-activity@example.test")
+	for _, probe := range []struct {
+		name string
+		idle int64
+		age  string
+		due  bool
+	}{
+		{"recent_session_not_rewritten", 1800, "0.1 seconds", false},
+		{"short_idle_uses_database_clock", 4, "2 seconds", true},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			hash := c02cKeyHash(t)
+			var before time.Time
+			if err := admin.QueryRow(ctx, `INSERT INTO app.auth_sessions(user_id,token_hash,created_at,last_seen_at,expires_at)
+ VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()-$3::interval,clock_timestamp()+interval '1 hour') RETURNING last_seen_at`, user, hash, probe.age).Scan(&before); err != nil {
+				t.Fatal("C02c activity session fixture failed", safeCode(err))
+			}
+			var result db.LoginLookupSessionRow
+			callerTime := before.Add(24 * time.Hour)
+			if probe.due {
+				callerTime = before.Add(-24 * time.Hour)
+			}
+			err := auth.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+				var err error
+				result, err = db.New(tx).LoginLookupSession(ctx, db.LoginLookupSessionParams{
+					TokenHash: hash, IdleSeconds: probe.idle,
+					At: pgtype.Timestamptz{Time: callerTime, Valid: true},
+				})
+				return err
+			})
+			if err != nil {
+				t.Fatal("C02c valid activity session refused", safeCode(err))
+			}
+			if probe.due {
+				if !result.LastSeenAt.Time.After(before) {
+					t.Fatal("C02c short-idle activity used caller clock instead of DB clock")
+				}
+			} else if !result.LastSeenAt.Time.Equal(before) {
+				t.Fatal("C02c recent session activity bypassed throttle")
+			}
+			var unchanged bool
+			if err := admin.QueryRow(ctx, `SELECT last_seen_at=$2 FROM app.auth_sessions WHERE token_hash=$1`, hash, result.LastSeenAt.Time).Scan(&unchanged); err != nil || !unchanged {
+				t.Fatal("C02c session receipt differs from durable activity")
+			}
+		})
+	}
+}
+
+func TestC02cAPIKeyActivityThrottlePostgres(t *testing.T) {
+	ctx, admin, dsn, _ := setupLoginPG(t)
+	auth := c02cAuthDB(t, ctx, dsn)
+	user := seedLoginPG(t, ctx, admin, "c02c-key-activity@example.test")
+	var tenant string
+	if err := admin.QueryRow(ctx, `INSERT INTO app.tenants(name) VALUES('C02c activity') RETURNING id::text`).Scan(&tenant); err != nil {
+		t.Fatal("C02c activity tenant fixture failed")
+	}
+	if _, err := admin.Exec(ctx, `INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'owner')`, tenant, user); err != nil {
+		t.Fatal("C02c activity membership fixture failed")
+	}
+	for _, mode := range []string{"recent", "due", "revoked_recent", "expired_recent"} {
+		t.Run(mode, func(t *testing.T) {
+			id := uuid.NewString()
+			var before time.Time
+			if err := admin.QueryRow(ctx, `INSERT INTO app.api_keys(tenant_id,id,issued_by,key_prefix,key_hash,last_used_at,revoked_at,expires_at)
+ VALUES($1,$2,$3,'activity',$4,clock_timestamp()-CASE WHEN $5='due' THEN interval '61 seconds' ELSE interval '0.1 seconds' END,
+ CASE WHEN $5='revoked_recent' THEN clock_timestamp() END,CASE WHEN $5='expired_recent' THEN clock_timestamp()-interval '1 second' END)
+ RETURNING last_used_at`, tenant, id, user, c02cKeyHash(t), mode).Scan(&before); err != nil {
+				t.Fatal("C02c key activity fixture failed", safeCode(err))
+			}
+			var allowed bool
+			if err := auth.QueryRow(ctx, `SELECT app.auth_touch_api_key($1)`, id).Scan(&allowed); err != nil {
+				t.Fatal("C02c key activity lookup failed", safeCode(err))
+			}
+			if allowed != (mode == "recent" || mode == "due") {
+				t.Fatal("C02c activity throttle changed credential validity", mode)
+			}
+			var after time.Time
+			if err := admin.QueryRow(ctx, `SELECT last_used_at FROM app.api_keys WHERE id=$1`, id).Scan(&after); err != nil {
+				t.Fatal("C02c key activity receipt failed")
+			}
+			if mode == "due" {
+				if !after.After(before) {
+					t.Fatal("C02c due key activity not advanced")
+				}
+			} else if !after.Equal(before) {
+				t.Fatal("C02c recent or denied key activity was rewritten", mode)
+			}
+		})
+	}
+}
+
+func TestC02cAPIKeyListBoundPostgres(t *testing.T) {
+	ctx, admin, dsn, _ := setupLoginPG(t)
+	auth := c02cAuthDB(t, ctx, dsn)
+	user := seedLoginPG(t, ctx, admin, "c02c-list-bound@example.test")
+	var tenant string
+	if err := admin.QueryRow(ctx, `INSERT INTO app.tenants(name) VALUES('C02c list bound') RETURNING id::text`).Scan(&tenant); err != nil {
+		t.Fatal("C02c bounded-list tenant fixture failed")
+	}
+	if _, err := admin.Exec(ctx, `INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'owner')`, tenant, user); err != nil {
+		t.Fatal("C02c bounded-list membership fixture failed")
+	}
+	if _, err := admin.Exec(ctx, `INSERT INTO app.api_keys(tenant_id,id,issued_by,key_prefix,key_hash,created_at)
+ SELECT $1,gen_random_uuid(),$2,n::text,$3,clock_timestamp()-n*interval '1 second' FROM generate_series(1,105) n`, tenant, user, c02cKeyHash(t)); err != nil {
+		t.Fatal("C02c bounded-list key fixture failed", safeCode(err))
+	}
+	var userID, tenantID pgtype.UUID
+	if userID.Scan(user) != nil || tenantID.Scan(tenant) != nil {
+		t.Fatal("C02c bounded-list fixture IDs invalid")
+	}
+	err := auth.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		items, err := db.New(tx).TenantListAPIKeys(ctx, db.TenantListAPIKeysParams{UserID: userID, TenantID: tenantID})
+		if err == nil && (len(items) != 100 || items[0].KeyPrefix != "1" || items[99].KeyPrefix != "100") {
+			t.Error("C02c key list must return exactly the newest 100 keys", len(items))
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal("C02c bounded-list query failed", safeCode(err))
+	}
 }
 
 func TestC02cAuthorizationCapabilitiesPostgres(t *testing.T) {
