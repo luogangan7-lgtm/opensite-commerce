@@ -830,6 +830,55 @@ class GovernanceTests(unittest.TestCase):
                 self.source("internal/tenanttx/pgxadapter/pool.go", 'package pgxadapter\nimport "github.com/jackc/pgx/v5/pgxpool"\n' + body + '\n')
                 self.assert_red("MODULE_RAW_POOL_EXPORT")
 
+    def test_h2_raw_type_aliases_red(self):
+        self.vendor_pgxpool()
+        for body in (
+                'type poolAlias = pgxpool.Pool; func Open() *poolAlias { return nil }',
+                'type hidden = pgxpool.Pool; type hidden2 = hidden; func Open() *hidden2 { return nil }',
+                'type poolCopy pgxpool.Pool; func Open() *poolCopy { return nil }',
+                'type factory func() *pgxpool.Pool; var Open factory',
+                'type (hidden = pgxpool.Pool; hidden2 = hidden); func Open() *hidden2 { return nil }',
+                'type (hidden = pgxpool.Pool; Open = hidden)',
+                'type hidden = pgxpool.Pool; type Public struct { hidden }',
+                'type hidden = pgxpool.Pool; type Public struct { Pool *hidden }'):
+            with self.subTest(body=body):
+                self.source("internal/tenanttx/pgxadapter/pool.go", 'package pgxadapter\nimport "github.com/jackc/pgx/v5/pgxpool"\n' + body + '\n')
+                self.assert_red("MODULE_RAW_POOL_EXPORT")
+
+    def test_h2_transitive_factory_aliases_red(self):
+        self.vendor_pgxpool()
+        for body in (
+                'func open() *pgxpool.Pool { return nil }; var bridge = open; var Open = bridge',
+                'var Open = bridge; var bridge = open; func open() *pgxpool.Pool { return nil }',
+                'func open() *pgxpool.Pool { return nil }; var (bridge = open; Open = bridge)',
+                'func open() *pgxpool.Pool { return nil }; var hidden, Open = 0, open'):
+            with self.subTest(body=body):
+                self.source("internal/tenanttx/pgxadapter/pool.go", 'package pgxadapter\nimport "github.com/jackc/pgx/v5/pgxpool"\n' + body + '\n')
+                self.assert_red("MODULE_RAW_POOL_EXPORT")
+
+    def test_h2_cross_file_raw_aliases_red(self):
+        self.vendor_pgxpool()
+        for private, public in (
+                ('type hidden = pgxpool.Pool', 'func Open() *hidden { return nil }'),
+                ('func open() *pgxpool.Pool { return nil }; var bridge = open', 'var Open = bridge')):
+            with self.subTest(private=private):
+                self.source("internal/tenanttx/pgxadapter/private.go", 'package pgxadapter\nimport "github.com/jackc/pgx/v5/pgxpool"\n' + private + '\n')
+                self.source("internal/tenanttx/pgxadapter/public.go", 'package pgxadapter\n' + public + '\n')
+                self.assert_red("MODULE_RAW_POOL_EXPORT")
+
+    def test_h2_inert_aliases_and_private_pool_green(self):
+        self.vendor_pgx_and_pool()
+        self.source("vendor/github.com/jackc/pgx/v5/pgconn/pgconn.go", "package pgconn\ntype CommandTag struct{}\ntype PgError struct{}\n")
+        with (self.root / "vendor/modules.txt").open("a") as output:
+            output.write("github.com/jackc/pgx/v5/pgconn\n")
+        self.source("internal/tenanttx/pgxadapter/safe.go", 'package pgxadapter\nimport ("github.com/jackc/pgx/v5"; "github.com/jackc/pgx/v5/pgconn"; "github.com/jackc/pgx/v5/pgxpool")\n'
+                    'type CommandTag = pgconn.CommandTag; type PgError = pgconn.PgError\n'
+                    'type QueueDB interface { Begin() pgx.Tx; Exec() CommandTag }\n'
+                    'type Runner struct { pool *pgxpool.Pool }\n'
+                    'func Open() *Runner { var pool *pgxpool.Pool; return &Runner{pool: pool} }\n')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_h2_maintenance_reference_red(self):
         for name in ("internal/modules/a/maintenance.go", "internal/bridge/maintenance.go",
                      "internal/tenanttx/pgxadapter/maintenance.go"):

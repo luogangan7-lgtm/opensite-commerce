@@ -329,7 +329,90 @@ POOL_TYPES = {"github.com/jackc/pgx/v5/pgxpool": ("pgxpool", {"Pool", "Conn"}),
               "database/sql": ("sql", {"DB", "Conn"})}
 
 
-def check_pool_export(text, location):
+def pool_declarations(text):
+    # Keep Go's newline declaration boundaries without changing the import lexer.
+    tokens, imports = go_imports(text.replace("\n", "\n§"))
+    stream = []
+    keywords = {"package", "import", "type", "var", "const", "func", "struct", "interface",
+                "map", "chan", "if", "else", "for", "range", "switch", "select", "case", "defer", "go"}
+    for token in tokens:
+        if token == "§":
+            previous = stream[-1] if stream else ""
+            if previous not in keywords and (re.fullmatch(r"\w+", previous) or previous[:1] in ('"', "'", "`")
+                                               or previous in (")", "]", "}")):
+                stream.append(";")
+        else:
+            stream.append(token)
+    names = {}
+    # Imports come from the unchanged lexer; inserted semicolons are only for declarations.
+    for alias, imported in go_imports(text)[1]:
+        if imported in POOL_TYPES and alias not in ("_", "."):
+            default, types = POOL_TYPES[imported]
+            names[alias or default] = types
+    normalized = []
+    cursor = 0
+    while cursor < len(stream):
+        if cursor + 2 < len(stream) and stream[cursor] in names and stream[cursor + 1] == "." and stream[cursor + 2] in names[stream[cursor]]:
+            normalized.append("__raw_pool__")
+            cursor += 3
+        else:
+            normalized.append(stream[cursor])
+            cursor += 1
+    declarations = []
+
+    def add(kind, part):
+        name_at = 0
+        if kind == "func" and part and part[0] == "(":
+            balance = 1
+            name_at = 1
+            while name_at < len(part) and balance:
+                balance += {"(": 1, ")": -1}.get(part[name_at], 0)
+                name_at += 1
+        if name_at >= len(part):
+            return
+        # Multi-name variable declarations expose every LHS, not only the first.
+        end = name_at + 1
+        if kind == "var":
+            while end + 1 < len(part) and part[end] == ",":
+                end += 2
+        for name in part[name_at:end:2]:
+            declarations.append((kind, name, part[end:]))
+
+    depth = 0
+    for start, token in enumerate(normalized):
+        if depth == 0 and token in ("func", "type", "var"):
+            cursor = start + 1
+            grouped = token in ("type", "var") and cursor < len(normalized) and normalized[cursor] == "("
+            if grouped:
+                cursor += 1
+            while cursor < len(normalized):
+                begin = cursor
+                parens = braces = 0
+                body_at = None
+                while cursor < len(normalized):
+                    current = normalized[cursor]
+                    if parens == braces == 0 and (current == ";" or (grouped and current == ")")):
+                        break
+                    if current == "{" and parens == braces == 0 and body_at is None:
+                        body_at = cursor
+                    parens += {"(": 1, ")": -1, "[": 1, "]": -1}.get(current, 0)
+                    braces += {"{": 1, "}": -1}.get(current, 0)
+                    cursor += 1
+                    if not grouped and body_at is not None and braces == 0:
+                        break
+                end = cursor
+                # Interface method signatures are API; function/struct bodies are opaque.
+                if body_at is not None and "interface" not in normalized[begin:body_at]:
+                    end = body_at
+                add(token, normalized[begin:end])
+                if not grouped or cursor >= len(normalized) or normalized[cursor] == ")":
+                    break
+                cursor += 1
+        depth += {"{": 1, "}": -1}.get(token, 0)
+    return declarations
+
+
+def check_pool_export(text, location, siblings=()):
     tokens, imports = go_imports(text)
     names = {}
     for alias, imported in imports:
@@ -340,60 +423,29 @@ def check_pool_export(text, location):
     def exported(token):
         return bool(re.fullmatch(r"[^\W\d_]\w*", token)) and token[0].isupper()
 
-    def raw_type(sequence):
-        return any(sequence[i] in names and sequence[i + 1] == "." and
-                   sequence[i + 2] in names[sequence[i]] for i in range(len(sequence) - 2))
+    def mentions(sequence, capabilities):
+        return any(token in capabilities and (index == 0 or sequence[index - 1] != ".")
+                   for index, token in enumerate(sequence))
 
-    # Inspect complete signatures, rather than just the token before a type:
-    # named returns and nested function types do not have an exported neighbor.
-    # Function bodies stay opaque so a private pool used by Open is not an API.
-    depth = 0
-    raw_functions = set()
-    exported_vars = []
-    for start, token in enumerate(tokens):
-        if depth == 0 and token in ("func", "type", "var"):
-            end = start + 2
-            parentheses = sum({"(": 1, ")": -1, "[": 1, "]": -1}.get(t, 0)
-                              for t in tokens[start + 1:end])
-            while end < len(tokens):
-                current = tokens[end]
-                if parentheses == 0 and current in ("{", ";", "type", "var", "const"):
-                    break
-                if current == "func" and end + 1 < len(tokens) and tokens[end + 1] != "(":
-                    break
-                parentheses += {"(": 1, ")": -1, "[": 1, "]": -1}.get(current, 0)
-                end += 1
-            name_at = start + 1
-            if token == "func" and tokens[name_at] == "(":
-                balance = 1
-                name_at += 1
-                while name_at < end and balance:
-                    balance += {"(": 1, ")": -1}.get(tokens[name_at], 0)
-                    name_at += 1
-            name = tokens[name_at] if name_at < end else ""
-            signature = tokens[start:end]
-            if token == "type" and "interface" in signature and end < len(tokens):
-                close = end + 1
-                balance = 1
-                while close < len(tokens) and balance:
-                    balance += {"{": 1, "}": -1}.get(tokens[close], 0)
-                    close += 1
-                signature = tokens[start:close]
-            leaking = raw_type(signature)
-            if token == "func" and leaking:
-                raw_functions.add(name)
-            if token == "var" and exported(name):
-                exported_vars.append(signature)
-            require(not (exported(name) and leaking), "MODULE_RAW_POOL_EXPORT",
-                    f"{location}: exported signature exposes a raw pool or connection")
-        depth += {"{": 1, "}": -1}.get(token, 0)
-    require(not any(name in signature for signature in exported_vars for name in raw_functions),
-            "MODULE_RAW_POOL_EXPORT", f"{location}: exported variable exposes a raw factory")
+    declarations = [item for source in (text, *siblings) for item in pool_declarations(source)]
+    raw_types = {"__raw_pool__"}
+    raw_values = set()
+    # Same-package aliases can be forward-declared and spread across files.
+    # Follow only top-level signatures/initializers, never function-body locals.
+    while True:
+        before = (len(raw_types), len(raw_values))
+        for kind, name, signature in declarations:
+            if mentions(signature, raw_types | (raw_values if kind == "var" else set())):
+                (raw_types if kind == "type" else raw_values).add(name)
+        if before == (len(raw_types), len(raw_values)):
+            break
+    for kind, name, signature in pool_declarations(text):
+        require(not (exported(name) and mentions(signature, raw_types | (raw_values if kind == "var" else set()))),
+                "MODULE_RAW_POOL_EXPORT", f"{location}: exported signature exposes a raw pool or connection")
 
-    for index in range(len(tokens) - 2):
-        if not (tokens[index] in names and tokens[index + 1] == "." and
-                tokens[index + 2] in names[tokens[index]] and
-                (index == 0 or tokens[index - 1] != ".")):
+    for index in range(len(tokens)):
+        if not ((index + 2 < len(tokens) and tokens[index] in names and tokens[index + 1] == "." and
+                 tokens[index + 2] in names[tokens[index]]) or tokens[index] in raw_types) or (index > 0 and tokens[index - 1] == "."):
             continue
         cursor = index - 1
         while cursor >= 0 and tokens[cursor] in ("*", "=", "[", "]"):
@@ -423,7 +475,7 @@ def check_pool_export(text, location):
                 leaked = leaked or (factory_at > 0 and exported(tokens[factory_at]) and
                                     tokens[factory_at - 1] in ("var", "type", "(", ";"))
         require(not leaked, "MODULE_RAW_POOL_EXPORT",
-                f"{location}: exported identifier exposes {tokens[index]}.{tokens[index + 2]}")
+                f"{location}: exported identifier exposes a raw pool or connection")
 
 
 # Default deny: only the tenant-transaction adapter may hold a pgxpool or open
@@ -480,6 +532,7 @@ def check_go(registry, root):
     manifest = json.loads(metadata.stdout)
     prefix = manifest["Module"]["Path"] + "/"
     go_tokens = re.compile(r'''//[^\n]*|/\*.*?\*/|`[^`]*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*' ''', re.S | re.X)
+    pool_sources = {}
     for directory, dirs, files in os.walk(root):
         # Stable traversal gives the same first rejection on every filesystem.
         dirs.sort()
@@ -534,7 +587,10 @@ def check_go(registry, root):
                     resolved.is_relative_to(owned) for owned in owned_paths):
                 check_raw_connection(text, str(relative), allow_raw=allowed)
             if relative_parts[:1] != ("vendor",):
-                check_pool_export(text, str(relative))
+                source_tokens, _ = go_imports(text)
+                package = next((source_tokens[i + 1] for i in range(len(source_tokens) - 1)
+                                if source_tokens[i] == "package"), "")
+                pool_sources.setdefault((directory, package), []).append((text, str(relative)))
                 check_maintenance(text, relative)
             require(not re.search(r'^\s*import\s*(?:\(\s*)?"C"', text, re.M),
                     "MODULE_NON_GO_SOURCE", str(source.relative_to(root)) + " (cgo)")
@@ -546,6 +602,10 @@ def check_go(registry, root):
                 # deny the repository prefix, including private package roots.
                 require(not directive or (vendored and prefix not in token.group()),
                         "MODULE_LINKNAME_FORBIDDEN", str(source.relative_to(root)))
+
+    for sources in pool_sources.values():
+        for text, location in sources:
+            check_pool_export(text, location, [other for other, path in sources if path != location])
 
     def reject_local_replace(replacement):
         if replacement and not replacement.get("Version"):
