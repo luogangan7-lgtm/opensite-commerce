@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "mobile/checkbox-checked.png",
   "scope": "gallery",
-  "sourceFingerprint": "b90899f312c347111924539721974b0c6c94f2388b58b05231a1625623a3c401",
+  "sourceFingerprint": "980929f29823c6c437a6c7d5205cd0673700342c24d56afd1504635dacd4a2b2",
   "pngSha256": "9d299c300be803bed4136e3de2bec5c76d431641b4bbe35f869076e336236a3e",
   "scopeSnapshots": [
     "desktop/badge-danger.png",
@@ -186,8 +186,8 @@
     "mobile/table-populated-hover.png",
     "mobile/table-populated.png"
   ],
-  "sourceSha": "ae02c25828f88abd208f56b744a697f898792a89",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38419216376",
+  "sourceSha": "423d4c069c68f82098ae1530d4aa8ae59aa8a68f",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38412793719",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
