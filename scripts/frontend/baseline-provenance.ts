@@ -35,8 +35,10 @@ export function filesAt(directory: string): string[] {
 export function sha256(path: string) { return createHash('sha256').update(readFileSync(path)).digest('hex'); }
 /** Stable identity of an input: migrations drop their (CI-renumbered, INF-MIG) numeric prefix and pending/ directory. */
 export function inputKey(path: string): string {
-  const migration = /^migrations\/(?:pending\/)?(?:\d+_)?([^/]+\.sql)$/.exec(path);
-  return migration ? `migrations/${migration[1]}` : path;
+  const pending = /^migrations\/pending\/([^/]+\.sql)$/.exec(path);
+  if (pending) return `migrations/${pending[1]}`;
+  const numbered = /^migrations\/\d+_([^/]+\.sql)$/.exec(path);
+  return numbered ? `migrations/${numbered[1]}` : path;
 }
 export function fingerprintOf(entries: [path: string, sha256: string][]): string {
   const lines = entries.map(([path, hash]) => `${inputKey(path)}\0${hash}\n`).sort();

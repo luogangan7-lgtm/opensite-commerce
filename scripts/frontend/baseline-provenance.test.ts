@@ -88,5 +88,7 @@ test('C-08d/INF-MIG: renumbering or landing a migration without content change k
   expect(fingerprintOf([...base, ['migrations/035_k7q2_orders.sql', content]])).toBe(landed);
   expect(fingerprintOf([...base, ['migrations/pending/k7q2_orders.sql', content]])).toBe(landed);
   expect(fingerprintOf([...base, ['migrations/034_k7q2_orders.sql', '8'.repeat(64)]])).not.toBe(landed);
+  const stamped = fingerprintOf([...base, ['migrations/pending/20261013_orders.sql', content]]);
+  expect(fingerprintOf([...base, ['migrations/041_20261013_orders.sql', content]])).toBe(stamped);
   expect(fingerprintOf([...base, ['migrations/034_k7q2_other.sql', content]])).not.toBe(landed);
 });
