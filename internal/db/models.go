@@ -455,6 +455,7 @@ type AppPageRevision struct {
 	Revision  int64              `json:"revision"`
 	Document  []byte             `json:"document"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	MediaIds  []pgtype.UUID      `json:"media_ids"`
 }
 
 type AppPriceEntry struct {
