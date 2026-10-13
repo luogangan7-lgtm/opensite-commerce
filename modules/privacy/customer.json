@@ -35,6 +35,7 @@
         "recipient": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
         "address_line1": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
         "address_line2": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "probe_phantom": {"classification": "operational"},
         "city": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
         "subdivision": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
         "postal_code": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
