@@ -153,9 +153,7 @@ func (s *WriteStore) Execute(ctx context.Context, c contract.Command, actor http
 			if e = decodeCMS(raw, &r); e != nil {
 				return e
 			}
-			if e = projectSealed(ctx, q, c.TenantID, c.SiteID, r.ReleaseID); e != nil {
-				return e // this case shadows e; return explicitly
-			}
+			_ = r // PROBE B: sealed snapshot not re-validated (catalog re-read after validation)
 		case "restore_release":
 			raw, e = q.CMSRestore(ctx, db.CMSRestoreParams{TenantID: cmsID(c.TenantID), SiteID: cmsID(c.SiteID), ActorKind: actor.Kind, ActorID: cmsID(actor.ID), ExpectedReleaseID: cmsID(c.ExpectedReleaseID), ExpectedPublicationRevision: c.ExpectedPublicationRevision, ReleaseID: cmsID(c.ReleaseID)})
 			if e != nil {
