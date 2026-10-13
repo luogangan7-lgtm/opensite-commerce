@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import ops_drill
+from tests.test_mvp_e2e_runner import CIOnlyRunnerTests
 
 
 class MetricWitnessTests(unittest.TestCase):
