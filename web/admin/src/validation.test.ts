@@ -1,6 +1,6 @@
 /** Input trust-boundary gate; uses public validation helpers and native File only. */
 import { expect, test } from 'bun:test';
-import { validateCode, validateMediaFile, validateUUID, parseOptionValueIds, formatMinorMoney } from './validation';
+import { scheduleAt, validateCode, validateMediaFile, validateUUID, parseOptionValueIds, formatMinorMoney } from './validation';
 test('ASCII code grammar rejects Unicode, paths, controls and empty values', () => {
   expect(validateCode(' item_1-OK ')).toBeUndefined();
   for (const invalid of ['', '   ', 'a/b', 'é', 'A B', 'a\nb', 'a'.repeat(129)]) expect(validateCode(invalid)).toBeString();
@@ -18,4 +18,15 @@ test('money minor formatting keeps arbitrary integer precision, rejects unsafe n
   expect(formatMinorMoney('9007199254740993', 2)).toBe('90071992547409.93');
   expect(formatMinorMoney('-1', 2)).toBe('-0.01'); expect(formatMinorMoney(100, 0)).toBe('100');
   expect(() => formatMinorMoney(Number.MAX_SAFE_INTEGER + 1, 2)).toThrow();
+});
+
+test('blank browser MIME is accepted; wrong non-blank MIME is not', () => {
+  expect(validateMediaFile(new File(['x'], 'good.avif', { type: '' }))).toBeUndefined();
+  expect(validateMediaFile(new File(['x'], 'a.png', { type: 'text/html' }))).toBeString();
+});
+test('scheduleAt re-arms past the 24.8 day timer cap and does not fire early', () => {
+  const real = globalThis.setTimeout, delays: number[] = []; let fired = 0, t = 0;
+  globalThis.setTimeout = ((fn: () => void, ms: number) => { delays.push(ms); t += ms; fn(); return 0; }) as unknown as typeof setTimeout;
+  try { scheduleAt(60 * 86400000, () => fired++, () => t); } finally { globalThis.setTimeout = real; }
+  expect(delays).toEqual([2147483647, 2147483647, 60 * 86400000 - 2 * 2147483647]); expect(fired).toBe(1);
 });

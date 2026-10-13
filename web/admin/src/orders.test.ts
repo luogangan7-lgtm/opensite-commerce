@@ -80,3 +80,13 @@ test('PR47 order numbers are positive JSON integers, not fabricated string ident
     expect(() => parseOrderDetail({...detail, order_number})).toThrow();
   }
 });
+
+test('CONTRACT FIXTURE (orders read API pending PR): uppercase ids are accepted and sent lowercase', async () => {
+  const {AdminAPI} = await import('./api');
+  const {OrdersAPI} = await import('./orders');
+  const calls: string[] = [];
+  const api = new OrdersAPI(new AdminAPI({fetch: (async (path: string | URL | Request) => { calls.push(String(path)); return Response.json({items: []}); }) as typeof fetch}));
+  const upper = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA';
+  await api.list(upper);
+  expect(calls[0]).toBe(`/api/v1/t/${upper.toLowerCase()}/orders?limit=25`);
+});

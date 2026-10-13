@@ -29,7 +29,7 @@ an optional state filter and a quoted detail version ETag. Every `*_minor` is a
 decimal string, formatted using BigInt without converting amounts to Number.
 Domain Money permits three uppercase ASCII letters. Codes not recognized by
 Intl display their original minor units explicitly instead of guessing a decimal
-exponent. The production build displays **暂不可用** and makes no order read request.
+exponent. The production build displays **Orders are not available yet** and makes no order read request.
 Development/gallery pages and Playwright fixtures show the exact label
 **CONTRACT FIXTURE (orders read API pending PR)**. The fixture is isolated by the
 test runner's intercepted requests; no fixture data is bundled into production.

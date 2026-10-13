@@ -175,3 +175,28 @@ describe('cookie admin API', () => {
     expect(h.calls[2].init.body).toBe(file);
   });
 });
+
+describe('review follow-ups', () => {
+  test('first-time bootstrap 401 is not reported as an expired session', async () => {
+    let expired = 0;
+    const api = new AdminAPI({ fetch: (async () => json({}, 401)) as typeof fetch, onSessionExpired: () => expired++ });
+    await expect(api.session()).rejects.toMatchObject({ status: 401 }); expect(expired).toBe(0);
+  });
+  test('retrying one logical upload replays the same per-step idempotency keys; blank MIME omits declared_mime', async () => {
+    const reserved = { id: product, status: 'reserved' as const, expires_at: session.expires_at };
+    const stored = { ...reserved, status: 'stored' as const, media_id: product };
+    const h = harness([json(session), json(reserved, 201), new Response(null, { status: 204 }), json({}, 503), json(reserved, 201), new Response(null, { status: 204 }), json(stored, 202)]);
+    const api = new AdminAPI({ fetch: h.fetcher }); await api.session();
+    const catalog = new CatalogAPI(api, tenant), file = new File(['abc'], 'photo.avif', { type: '' });
+    await expect(catalog.uploadMedia(file, { idempotencyKey: 'k1' })).rejects.toMatchObject({ status: 503 });
+    expect(await catalog.uploadMedia(file, { idempotencyKey: 'k1' })).toEqual(stored);
+    const keys = h.calls.slice(1).map(c => new Headers(c.init.headers).get('Idempotency-Key'));
+    expect(keys).toEqual(['k1.reserve', 'k1.content', 'k1.complete', 'k1.reserve', 'k1.content', 'k1.complete']);
+    expect(JSON.parse(String(h.calls[1].init.body))).not.toHaveProperty('declared_mime');
+  });
+  test('uppercase UUIDs are canonicalized to lowercase paths', async () => {
+    const h = harness([json({ items: [] })]);
+    await new CatalogAPI(new AdminAPI({ fetch: h.fetcher }), tenant.toUpperCase().replace('4', 'A')).listProducts();
+    expect(h.calls[0].url).toBe(`/api/v1/t/${tenant.replace('4', 'a')}/products`);
+  });
+});

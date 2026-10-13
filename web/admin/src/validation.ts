@@ -13,7 +13,8 @@ export function parseOptionValueIds(value: string): string[] {
 export function validateMediaFile(file: File): string | undefined {
   if (file.size < 1 || file.size > 10 * 1024 * 1024) return 'Choose a nonempty image up to 10 MiB.';
   if (!file.name || new TextEncoder().encode(file.name).length > 255 || /[\/\\\x00-\x1f\x7f]/.test(file.name) || file.name === '.' || file.name === '..') return 'Choose an image with a safe filename.';
-  if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) return 'Supported images: JPEG, PNG, WebP and AVIF.';
+  // Blank type: some platforms cannot map the extension; the server verifies the real bytes.
+  if (file.type && !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) return 'Supported images: JPEG, PNG, WebP and AVIF.';
 }
 /** Decimal display without floating-point division. Currency/exponent comes from contract. */
 export function formatMinorMoney(value: string | number | bigint, exponent: number): string {
@@ -21,4 +22,10 @@ export function formatMinorMoney(value: string | number | bigint, exponent: numb
   const amount = BigInt(value), negative = amount < 0n;
   const digits = (negative ? -amount : amount).toString().padStart(exponent + 1, '0');
   return (negative ? '-' : '') + (exponent ? `${digits.slice(0, -exponent)}.${digits.slice(-exponent)}` : digits);
+}
+/** Runs fire at wall-clock time end (ms). setTimeout caps near 24.8 days, so wake early and re-arm. Returns cancel. */
+export function scheduleAt(end: number, fire: () => void, now: () => number = Date.now): () => void {
+  let timer: ReturnType<typeof setTimeout>;
+  const arm = () => { const left = end - now(); if (left > 2147483647) timer = setTimeout(arm, 2147483647); else timer = setTimeout(fire, Math.max(0, left)); };
+  arm(); return () => clearTimeout(timer);
 }

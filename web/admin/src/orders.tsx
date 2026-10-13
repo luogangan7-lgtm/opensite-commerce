@@ -16,13 +16,13 @@ export const ORDERS_FIXTURE_LABEL = 'CONTRACT FIXTURE (orders read API pending P
 export interface OrderSummary { id: string; order_number: number; state: OrderState; currency: string; total_minor: string; customer_kind: 'customer' | 'guest'; created_at: string }
 export interface OrderPage { items: OrderSummary[]; next_cursor?: string }
 export interface OrderDetail { id: string; order_number: number; state: OrderState; version: number; currency: string; lines: {line_id: string; sku_code: string; title: string | null; quantity: number; unit_price_minor: string; tax_minor: string; line_total_minor: string}[]; adjustments: {id: string; reason: string; amount_minor: string}[]; shipping: {amount_minor: string; method: string | null}; tax_total_minor: string; total_minor: string; created_at: string; updated_at: string }
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function invalid(): never { throw new Error('Invalid orders response. Retry or contact support.'); }
 function object(value: unknown): Record<string, unknown> { if (!value || typeof value !== 'object' || Array.isArray(value)) return invalid(); return value as Record<string, unknown>; }
 function text(value: unknown): string { if (typeof value !== 'string' || value.length === 0) return invalid(); return value; }
 // PR47 allows string|null here; method denotes a rate rule, not a carrier.
 function nullableText(value: unknown): string | null { if (value === null || typeof value === 'string') return value; return invalid(); }
-function uuid(value: unknown): string { const v = text(value); if (!uuidPattern.test(v)) return invalid(); return v; }
+function uuid(value: unknown): string { const v = text(value); if (!uuidPattern.test(v)) return invalid(); return v.toLowerCase(); }
 function minor(value: unknown): string { const v = text(value); if (!/^(0|[1-9]\d*|-[1-9]\d*)$/.test(v)) return invalid(); return v; }
 function positive(value: unknown): number { if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) return invalid(); return value; }
 function date(value: unknown): string { const v = text(value); if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(v) || !Number.isFinite(Date.parse(v))) return invalid(); const month = Number(v.slice(5, 7)), day = Number(v.slice(8, 10)); if (month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(Number(v.slice(0, 4)), month, 0)).getUTCDate()) return invalid(); return v; }

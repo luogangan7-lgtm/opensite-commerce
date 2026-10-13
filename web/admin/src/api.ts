@@ -37,7 +37,7 @@ export class APIError extends Error {
     super(hint); this.name = 'APIError'; this.userHint = hint;
   }
 }
-function id(value: string): string { if (!validateUUID(value)) throw new APIError(400, 'invalid_id'); return value; }
+function id(value: string): string { if (!validateUUID(value)) throw new APIError(400, 'invalid_id'); return value.toLowerCase(); }
 function versionHeader(version: number): string {
   if (!Number.isSafeInteger(version) || version < 1) throw new APIError(400, 'invalid_version');
   return `"${version}"`;
@@ -46,7 +46,7 @@ function csrf(value: unknown): string {
   if (typeof value !== 'string' || !value || value.length > 4096 || /[\r\n]/.test(value)) throw new APIError(502, 'invalid_response');
   return value;
 }
-export type RequestOptions = MutationOptions & { version?: number; raw?: boolean; anonymous?: boolean; responseRaw?: boolean };
+export type RequestOptions = MutationOptions & { version?: number; raw?: boolean; anonymous?: boolean; responseRaw?: boolean; quiet401?: boolean };
 export class AdminAPI {
   private csrfToken = '';
   private authGeneration = 0;
@@ -78,7 +78,8 @@ export class AdminAPI {
     }
     if (options.version !== undefined) headers.set('If-Match', versionHeader(options.version));
     if (body !== undefined) headers.set('Content-Type', options.raw ? 'application/octet-stream' : 'application/json');
-    const timeout = AbortSignal.timeout(15000);
+    // Raw uploads are bounded by the 10 MiB client cap (server enforces its own); give slow links 5 minutes.
+    const timeout = AbortSignal.timeout(options.raw ? 300000 : 15000);
     const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
     const response = await this.fetcher(path, { method, headers, credentials: 'same-origin', redirect: 'error', cache: 'no-store', signal, body: body === undefined ? undefined : options.raw ? body as BodyInit : JSON.stringify(body) });
     // Old requests must not expire a newer session or return its predecessor's data.
@@ -86,7 +87,8 @@ export class AdminAPI {
     if (!response.ok) {
       if (response.status === 401 && !options.anonymous) {
         this.clearSession();
-        if (!this.expiredNotified) { this.expiredNotified = true; this.onSessionExpired?.(); }
+        // The bootstrap probe's 401 means "no session yet", not "expired".
+        if (!options.quiet401 && !this.expiredNotified) { this.expiredNotified = true; this.onSessionExpired?.(); }
       }
       let code: string | undefined;
       if (response.headers.get('Content-Type')?.split(';')[0].trim() === 'application/problem+json') {
@@ -118,7 +120,7 @@ export class AdminAPI {
   }
   async session(signal?: AbortSignal): Promise<AdminSessionView> {
     const generation = this.authGeneration;
-    const view = await this.request<AdminSessionView>('/api/v1/auth/session', 'GET', undefined, { signal });
+    const view = await this.request<AdminSessionView>('/api/v1/auth/session', 'GET', undefined, { signal, quiet401: true });
     this.requireCurrent(generation, signal);
     if (!view || !validateUUID(view.user_id) || !validateUUID(view.session_id) || !Number.isFinite(Date.parse(view.expires_at))) throw new APIError(502, 'invalid_response');
     this.csrfToken = csrf(view.csrf_token); this.expiredNotified = false; return view;
@@ -159,12 +161,15 @@ export class CatalogAPI {
     options.signal?.throwIfAborted();
     const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))].map(byte => byte.toString(16).padStart(2, '0')).join('');
     options.signal?.throwIfAborted();
-    const reserved = await this.client.request<UploadSession>(`${this.base}/media/uploads`, 'POST', { filename: file.name, size_bytes: file.size, sha256: hash, declared_mime: file.type }, options);
+    // One logical upload = one base key; each step derives a stable key so a retry replays instead of duplicating.
+    const base = options.idempotencyKey ?? crypto.randomUUID(), step = (name: string) => ({ ...options, idempotencyKey: `${base}.${name}` });
+    // Blank browser MIME: omit declared_mime; the server sniffs the magic bytes.
+    const reserved = await this.client.request<UploadSession>(`${this.base}/media/uploads`, 'POST', { filename: file.name, size_bytes: file.size, sha256: hash, ...(file.type ? { declared_mime: file.type } : {}) }, step('reserve'));
     const upload = `${this.base}/media/uploads/${id(reserved.id)}`;
-    await this.client.request<void>(`${upload}/content`, 'PUT', file, { ...options, raw: true });
+    await this.client.request<void>(`${upload}/content`, 'PUT', file, { ...step('content'), raw: true });
     // Current complete operation persists synchronously; there is no GET status
     // operation. Surface its declared status rather than synthesizing a poll API.
-    return this.client.request(`${upload}/complete`, 'POST', undefined, options);
+    return this.client.request(`${upload}/complete`, 'POST', undefined, step('complete'));
   }
   linkProductMedia(productId: string, body: LinkProductMedia, options: MutationOptions = {}): Promise<ProductMedia> { id(body.media_id); return this.client.request(`${this.productPath(productId)}/media`, 'POST', body, options); }
   deleteMedia(mediaId: string, options: MutationOptions = {}): Promise<void> { return this.client.request(`${this.base}/media/${id(mediaId)}`, 'DELETE', undefined, options); }
