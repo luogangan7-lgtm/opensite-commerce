@@ -110,6 +110,16 @@ BEGIN
  IF NOT EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND template_key='quote.approved' AND reference_id=current_setting('test.privacy_quote')::uuid AND recipient='privacy@example.invalid' AND status='pending') THEN
   RAISE EXCEPTION 'PRIVACY_QUOTE fixture approval recipient'; END IF;
 END $quote_seed$;
+-- The erased-placeholder namespace is reserved: no account may pre-register a
+-- victim's placeholder (any case) and thereby make erasure fail on uniqueness.
+DO $reserved_namespace$
+DECLARE t uuid:=current_setting('app.tenant_id')::uuid; c uuid:=current_setting('test.privacy_customer')::uuid; e text;
+BEGIN
+ FOREACH e IN ARRAY ARRAY['erased+'||c::text||'@erased.invalid','ERASED+'||c::text||'@Erased.Invalid',' erased+'||c::text||'@erased.invalid','other@erased.invalid'] LOOP
+  BEGIN INSERT INTO app.customers(tenant_id,email) VALUES(t,e); RAISE EXCEPTION 'PRIVACY_GATE reserved namespace squatted %',e; EXCEPTION WHEN check_violation THEN NULL; END;
+  BEGIN UPDATE app.customers SET email=e WHERE tenant_id=t AND email='privacy-approver@example.invalid'; RAISE EXCEPTION 'PRIVACY_GATE reserved namespace update %',e; EXCEPTION WHEN check_violation THEN NULL; END;
+ END LOOP;
+END $reserved_namespace$;
 SELECT set_config('app.tenant_id',:'t',true),set_config('test.privacy_customer',:'c',true),set_config('test.privacy_foreign',:'foreign_c',true);
 SET LOCAL ROLE app_runtime;
 DO $gate$
@@ -164,6 +174,7 @@ BEGIN
  SELECT * INTO nd FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=source;
  IF nd.status<>'dead_letter' OR nd.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR nd.recipient<>'erased-'||nd.id::text||'@invalid.test' THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION future fanout'; END IF;
  IF EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND id=nd.dispatch_event_id AND status<>'dead_letter') THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION future dispatch'; END IF;
+ IF (SELECT email FROM app.customers WHERE tenant_id=t AND id=current_setting('test.privacy_customer')::uuid)<>'erased+'||current_setting('test.privacy_customer')||'@erased.invalid' THEN RAISE EXCEPTION 'PRIVACY_GATE reserved placeholder'; END IF;
  -- Quote approval notifications: scrubbed, dead-lettered, and a post-erasure
  -- approval of a quote the customer accepted cannot revive the contact.
  IF NOT EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND reference_id=current_setting('test.privacy_quote')::uuid AND template_key='quote.approved')
