@@ -6,6 +6,8 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"net/netip"
 	"strings"
@@ -139,7 +141,11 @@ func loginFixture() (*LoginRepository, *loginFakeTx, login.SessionInput) {
 	runner := &loginFakeRunner{tx: tx}
 	r := &LoginRepository{runner: runner, gate: make(chan struct{}, 1), idle: 30 * time.Minute}
 	old := [32]byte{1}
-	in := login.SessionInput{UserID: u.String(), VerifiedPasswordHash: "opaque-verified-hash-fixture", TokenHash: [32]byte{2}, DeviceHash: [32]byte{3}, CreatedAt: at, ExpiresAt: at.Add(time.Hour), DeviceExpiresAt: at.Add(24 * time.Hour), OldTokenHash: &old}
+	material := make([]byte, 32)
+	if _, err := rand.Read(material); err != nil {
+		panic(err)
+	}
+	in := login.SessionInput{UserID: u.String(), VerifiedPasswordHash: hex.EncodeToString(material), TokenHash: [32]byte{2}, DeviceHash: [32]byte{3}, CreatedAt: at, ExpiresAt: at.Add(time.Hour), DeviceExpiresAt: at.Add(24 * time.Hour), OldTokenHash: &old}
 	return r, tx, in
 }
 func TestLostRotationNeverInsertsSuccessor(t *testing.T) {

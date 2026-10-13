@@ -1148,7 +1148,7 @@ for f in migrations/[0-9][0-9][0-9]_*.sql; do
 done
 result=$(db "$DB" -c "SELECT count(*) FROM app.auth_sessions s JOIN public.h4_upgrade_expected e ON e.id=s.id AND e.payload=to_jsonb(s);")
 [[ $result == 1 ]] || { bad 'H4 migration changed existing session'; }
-db "$DB" -f tests/db_identity_login_hardening.sql >/dev/null
+db "$DB" -f tests/db_identity_hardening.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB" >/dev/null
 pass 'H4 upgrade preserves sessions, installs password revocation and exact ACL'
