@@ -37,7 +37,9 @@ Trusted event tenant/order/version/amount/currency/provider reference are checke
 before provider access. Permanent receipts bind event identity to its content.
 Confirm and Cancel compete for one persisted phase claim; only the winner may call
 the provider. Create, capture and cancel use distinct stable provider keys. The
-original claim may resume after a process or database failure using the same key.
+original claim may resume after a database failure using the same key. Process
+restart recovery additionally requires the provider to retain that key's result
+and intent state. Fake keeps these in memory; its restart durability is NOT_RUN.
 The final transaction changes order/inventory, posts the journal and completes the
 receipt together. Order transitions emit their existing outbox events in that same
 transaction. A repeated event or idempotency key cannot duplicate these effects.
@@ -50,8 +52,8 @@ cancelled checkout releases inventory through Orders and posts no journal.
 Fake `ErrorNonRetryable` means the provider operation had no effect and is an
 immutable result for that idempotency key, including concurrent retries. A new
 business attempt requires a new key; an ambiguous external result must never be
-classified this way. A permanent
-create failure cancels the pending order; a permanent capture failure persists a
+classified this way. A permanent create failure cancels the pending order; a
+permanent capture failure persists a
 `failing` claim, cancels the provider intent, then cancels the order. Retryable or
 ambiguous errors preserve the claim. If capture succeeds and the final database
 transaction fails, the service preserves `confirming` and repeats the same capture
