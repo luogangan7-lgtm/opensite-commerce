@@ -109,7 +109,7 @@ REVOKE ALL ON FUNCTION app.auth_revoke_api_key(uuid,uuid,uuid) FROM PUBLIC;
 
 CREATE FUNCTION app.auth_touch_api_key(p_id uuid)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp SET app.tenant_id='' AS $touch$
-DECLARE k_tenant uuid; k_user uuid; k_rev timestamptz; k_exp timestamptz;
+DECLARE k_tenant uuid; k_user uuid; k_rev timestamptz; k_exp timestamptz; k_seen timestamptz;
  u_status text; t_status text; m_status text; at_db timestamptz;
 BEGIN
  -- First read only locates the lock prefix; the key is reread after prefix locks.
@@ -123,10 +123,24 @@ BEGIN
  SELECT status INTO m_status FROM app.tenant_memberships WHERE tenant_id=k_tenant AND user_id=k_user FOR SHARE;
  IF NOT FOUND OR m_status<>'active' THEN RETURN false; END IF;
  PERFORM set_config('app.tenant_id',k_tenant::text,true);
- SELECT revoked_at,expires_at INTO k_rev,k_exp FROM app.api_keys WHERE id=p_id AND tenant_id=k_tenant AND issued_by=k_user FOR UPDATE;
+ -- Activity is optional: validity never depends on acquiring an exclusive key
+ -- lock held by a business transaction's write-authority revalidation.
+ SELECT revoked_at,expires_at,last_used_at INTO k_rev,k_exp,k_seen FROM app.api_keys WHERE id=p_id AND tenant_id=k_tenant AND issued_by=k_user;
  IF NOT FOUND THEN RETURN false; END IF;
  at_db:=clock_timestamp();
  IF k_rev IS NOT NULL OR k_exp IS NOT NULL AND (NOT isfinite(k_exp) OR k_exp<=at_db) THEN RETURN false; END IF;
+ IF isfinite(k_seen) AND k_seen>at_db-interval '60 seconds' THEN RETURN true; END IF;
+ SELECT revoked_at,expires_at,last_used_at INTO k_rev,k_exp,k_seen FROM app.api_keys
+  WHERE id=p_id AND tenant_id=k_tenant AND issued_by=k_user FOR UPDATE SKIP LOCKED;
+ IF NOT FOUND THEN
+  -- A skipped row is not a renewal. Recheck visible validity, so a concurrent
+  -- committed revocation/expiry cannot masquerade as a busy active key.
+  RETURN EXISTS(SELECT FROM app.api_keys WHERE id=p_id AND tenant_id=k_tenant AND issued_by=k_user
+   AND revoked_at IS NULL AND (expires_at IS NULL OR isfinite(expires_at) AND expires_at>clock_timestamp()));
+ END IF;
+ at_db:=clock_timestamp();
+ IF k_rev IS NOT NULL OR k_exp IS NOT NULL AND (NOT isfinite(k_exp) OR k_exp<=at_db) THEN RETURN false; END IF;
+ IF isfinite(k_seen) AND k_seen>at_db-interval '60 seconds' THEN RETURN true; END IF;
  UPDATE app.api_keys SET last_used_at=at_db WHERE id=p_id AND tenant_id=k_tenant;
  RETURN true;
 END;

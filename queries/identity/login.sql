@@ -65,14 +65,37 @@ INSERT INTO app.known_devices(user_id,cookie_hash,created_at,expires_at)
  VALUES(sqlc.arg(user_id)::uuid,sqlc.arg(cookie_hash)::bytea,sqlc.arg(created_at)::timestamptz,sqlc.arg(expires_at)::timestamptz);
 
 -- name: LoginLookupSession :one
-UPDATE app.auth_sessions s SET last_seen_at=greatest(s.last_seen_at,least(sqlc.arg(at)::timestamptz,clock_timestamp()))
- FROM app.users u WHERE s.token_hash=sqlc.arg(token_hash)::bytea AND u.id=s.user_id AND u.status='active'
+-- Admission reads valid authority independently of optional activity updates.
+-- Keep the caller timestamp argument for the existing port; only DB time renews.
+WITH input AS MATERIALIZED (
+ SELECT clock_timestamp() AS at_db,sqlc.arg(at)::timestamptz AS caller_at
+), valid AS MATERIALIZED (
+ SELECT s.id,s.user_id,s.created_at,s.last_seen_at,s.expires_at,i.at_db
+ FROM app.auth_sessions s JOIN app.users u ON u.id=s.user_id CROSS JOIN input i
+ WHERE s.token_hash=sqlc.arg(token_hash)::bytea AND u.status='active'
+ AND s.revoked_at IS NULL AND s.expires_at>i.at_db
+ AND isfinite(s.expires_at) AND isfinite(s.created_at) AND isfinite(s.last_seen_at)
+ AND s.last_seen_at>=s.created_at AND s.expires_at>s.created_at
+ AND s.created_at<=i.at_db AND s.last_seen_at<=i.at_db
+ AND s.last_seen_at>i.at_db-sqlc.arg(idle_seconds)::bigint*interval '1 second'
+), touchable AS MATERIALIZED (
+ SELECT s.id FROM app.auth_sessions s JOIN valid v ON v.id=s.id
+ WHERE s.last_seen_at<=v.at_db-greatest(1,least(60,sqlc.arg(idle_seconds)::bigint/4))*interval '1 second'
+ FOR UPDATE OF s SKIP LOCKED
+), touched AS (
+ UPDATE app.auth_sessions s SET last_seen_at=clock_timestamp()
+ FROM touchable c WHERE c.id=s.id
  AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
  AND isfinite(s.expires_at) AND isfinite(s.created_at) AND isfinite(s.last_seen_at)
  AND s.last_seen_at>=s.created_at AND s.expires_at>s.created_at
  AND s.created_at<=clock_timestamp() AND s.last_seen_at<=clock_timestamp()
  AND s.last_seen_at>clock_timestamp()-sqlc.arg(idle_seconds)::bigint*interval '1 second'
- RETURNING s.id,s.user_id,s.created_at,s.last_seen_at,s.expires_at;
+ RETURNING s.id,s.last_seen_at
+)
+SELECT v.id,v.user_id,v.created_at,coalesce(t.last_seen_at,v.last_seen_at)::timestamptz AS last_seen_at,v.expires_at
+ FROM valid v LEFT JOIN touched t ON t.id=v.id
+ WHERE v.expires_at>clock_timestamp()
+ AND coalesce(t.last_seen_at,v.last_seen_at)>clock_timestamp()-sqlc.arg(idle_seconds)::bigint*interval '1 second';
 
 -- name: LoginRevokeSession :execrows
 UPDATE app.auth_sessions SET revoked_at=sqlc.arg(at)::timestamptz
