@@ -1,17 +1,48 @@
 // Identity composition validates optional offline configuration and opens only
-// the dedicated staff auth connection. cmd/api calls it; no handlers or business
-// SQL live here. Partial credentials or malformed signing keys fail startup.
+// the dedicated staff auth connection. FromEnvironment calls it with the auth DSN
+// it already derived; no handlers or business SQL live here. Partial or
+// malformed identity configuration fails startup loudly; it never drops routes.
 package bootstrap
 
 import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
 	"net/netip"
+	"os"
 	"strings"
 	"time"
 )
+
+// staffLoginEnvironment pairs the deployment's auth DSN (from FromEnvironment)
+// with OSC_ADMIN_ORIGIN, OSC_AUTH_SIGNING_KEY_HEX and OSC_AUTH_TRUSTED_PROXIES.
+// No identity setting at all means no staff module (e.g. storefront e2e); any
+// identity setting requires the full set. Errors name variables, never values.
+func staffLoginEnvironment(authDSN string) (enabled bool, origin, keyHex, proxies string, err error) {
+	origin, keyHex, proxies = os.Getenv("OSC_ADMIN_ORIGIN"), os.Getenv("OSC_AUTH_SIGNING_KEY_HEX"), os.Getenv("OSC_AUTH_TRUSTED_PROXIES")
+	if authDSN == "" && origin == "" && keyHex == "" && proxies == "" {
+		return false, "", "", "", nil
+	}
+	var missing []string
+	if authDSN == "" {
+		missing = append(missing, "OPENSITE_AUTH_DATABASE_URL or OPENSITE_AUTH_DB_PASSWORD")
+	}
+	if origin == "" {
+		missing = append(missing, "OSC_ADMIN_ORIGIN")
+	}
+	if keyHex == "" {
+		missing = append(missing, "OSC_AUTH_SIGNING_KEY_HEX")
+	}
+	if len(missing) > 0 {
+		return false, "", "", "", fmt.Errorf("staff login configuration is incomplete; set %s", strings.Join(missing, ", "))
+	}
+	if _, err = staffLoginConfig(authDSN, origin, keyHex, proxies); err != nil {
+		return false, "", "", "", err
+	}
+	return true, origin, keyHex, proxies, nil
+}
 
 // StaffLogin retains the optional four-argument composition contract; the fifth
 // argument is the explicit deployment proxy allowlist, never inferred from headers.

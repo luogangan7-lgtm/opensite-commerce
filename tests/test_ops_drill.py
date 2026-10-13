@@ -48,5 +48,44 @@ class PredecessorTests(unittest.TestCase):
             ops_drill.migration_predecessor([Path('migrations/001_init.sql')])
 
 
+class StaffLoginComposeTests(unittest.TestCase):
+    """Compose must wire staff login (PR #43 thread on cmd/api/main.go:40)."""
+    root = Path(__file__).resolve().parents[1]
+
+    def test_compose_api_requires_identity_settings(self):
+        import yaml
+        env = yaml.safe_load((self.root / 'deploy/compose.yaml').read_text())['services']['api']['environment']
+        self.assertTrue(env['OSC_ADMIN_ORIGIN'].startswith('${OPENSITE_ADMIN_ORIGIN:?'))
+        self.assertTrue(env['OSC_AUTH_SIGNING_KEY_HEX'].startswith('${OPENSITE_AUTH_SIGNING_KEY:?'))
+        # Staff login reuses the auth capability DSN; no second auth DSN setting.
+        self.assertIn('OPENSITE_AUTH_DB_PASSWORD', env)
+        self.assertNotIn('OSC_AUTH_DATABASE_URL', env)
+
+    def test_env_examples_and_drill_supply_identity_settings(self):
+        example = (self.root / '.env.example').read_text()
+        drill = (self.root / 'scripts/ops_drill.py').read_text()
+        for key in ('OPENSITE_ADMIN_ORIGIN', 'OPENSITE_AUTH_SIGNING_KEY'):
+            self.assertIn('\n' + key + '=', example)
+            self.assertIn("'" + key + "'", drill)
+
+    def response(self, status, body):
+        class Response(io.BytesIO):
+            pass
+        value = Response(body)
+        value.status = status
+        return value
+
+    def test_login_challenge_must_be_served(self):
+        with patch.object(ops_drill.urllib.request, 'urlopen', return_value=self.response(200, b'{"csrf_token":"t"}')):
+            ops_drill.staff_login_reachable('http://api')
+        with patch.object(ops_drill.urllib.request, 'urlopen', return_value=self.response(200, b'{}')):
+            with self.assertRaises(ops_drill.OpsError):
+                ops_drill.staff_login_reachable('http://api')
+        missing = ops_drill.urllib.error.HTTPError('http://api/api/v1/auth/login', 404, 'Not Found', {}, None)
+        with patch.object(ops_drill.urllib.request, 'urlopen', side_effect=missing):
+            with self.assertRaises(OSError):
+                ops_drill.staff_login_reachable('http://api')
+
+
 if __name__ == '__main__':
     unittest.main()
