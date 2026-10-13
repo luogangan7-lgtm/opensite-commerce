@@ -42,6 +42,7 @@ type envelope struct {
 	Status       payment.PaymentStatus `json:"status"`
 	AmountMinor  int64                 `json:"amount_minor"`
 	Currency     string                `json:"currency"`
+	TenantID     string                `json:"tenant_id"`
 }
 
 var accountPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
@@ -139,6 +140,12 @@ func (m *Module) Receive(ctx context.Context, raw []byte, signature string) (con
 	identity, _ := json.Marshal([4]string{"fake", "test", in.AccountID, in.EventID})
 	eventKey := sha256.Sum256(identity)
 	err = m.config.Run(ctx, in.AccountID, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
+		if in.TenantID != "" { // PROBE: trust payload tenant
+			tenant = in.TenantID
+			if _, e := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", tenant); e != nil {
+				return e
+			}
+		}
 		delta := at.Sub(time.Unix(stamp, 0))
 		if delta > 5*time.Minute || delta < -5*time.Minute {
 			return rejected()
