@@ -201,7 +201,10 @@ DO $writer$
 BEGIN
  BEGIN PERFORM id FROM app.products; RAISE EXCEPTION 'IDENTITY_GATE credential writer catalog read';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
- BEGIN PERFORM password_hash FROM app.users; RAISE EXCEPTION 'IDENTITY_GATE credential writer password read';
+ -- H-4 grants this NOLOGIN definer owner only the columns needed to lock
+ -- and recheck credentials; mailbox/catalog/counter reads remain forbidden.
+ PERFORM id,password_hash,status FROM app.users;
+ BEGIN PERFORM email FROM app.users; RAISE EXCEPTION 'IDENTITY_GATE credential writer email read';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN PERFORM failure_count FROM app.auth_account_attempts; RAISE EXCEPTION 'IDENTITY_GATE writer counter read';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
