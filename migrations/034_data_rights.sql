@@ -320,10 +320,15 @@ CREATE TRIGGER data_rights_order_customer_guard BEFORE INSERT ON app.orders FOR 
 
 CREATE FUNCTION app.data_rights_customer_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
 BEGIN
- IF OLD.status='disabled' AND (NEW.email IS DISTINCT FROM OLD.email OR NEW.display_name IS DISTINCT FROM OLD.display_name OR NEW.status IS DISTINCT FROM OLD.status) THEN
-  IF current_user<>'app_data_rights_executor' OR NEW.status<>'disabled' OR NEW.display_name<>'[erased]' OR NEW.email<>'erased+'||OLD.id::text||'@erased.invalid' THEN
-   RAISE EXCEPTION 'PRIVACY_DISABLED_CUSTOMER_IMMUTABLE' USING ERRCODE='55000'; END IF;
- END IF;
+ -- Only an ERASED customer (holding its own reserved placeholder) is frozen.
+ -- A merely disabled account stays a merchant-managed lifecycle state that
+ -- customer-auth may re-enable; erasure itself still requires the executor.
+ IF OLD.email='erased+'||OLD.id::text||'@erased.invalid'
+  AND (NEW.email IS DISTINCT FROM OLD.email OR NEW.display_name IS DISTINCT FROM OLD.display_name OR NEW.status IS DISTINCT FROM OLD.status) THEN
+  RAISE EXCEPTION 'PRIVACY_DISABLED_CUSTOMER_IMMUTABLE' USING ERRCODE='55000'; END IF;
+ IF NEW.email='erased+'||NEW.id::text||'@erased.invalid' AND NEW.email IS DISTINCT FROM OLD.email
+  AND (current_user<>'app_data_rights_executor' OR NEW.status<>'disabled' OR NEW.display_name<>'[erased]') THEN
+  RAISE EXCEPTION 'PRIVACY_DISABLED_CUSTOMER_IMMUTABLE' USING ERRCODE='55000'; END IF;
  RETURN NEW;
 END $fn$;
 CREATE TRIGGER data_rights_customer_guard BEFORE UPDATE ON app.customers FOR EACH ROW EXECUTE FUNCTION app.data_rights_customer_guard();
