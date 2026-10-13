@@ -1,0 +1,43 @@
+{
+  "schema": 2,
+  "snapshot": "desktop/storefront-products.png",
+  "scope": "storefront-published",
+  "sourceFingerprint": "a2236f921bba57537405f709844554694ca70ca3917fcc31efeff93c1189a386",
+  "pngSha256": "8a17a3c8d78325b51e3e99fc2b361a579f61e4cb594c3aae6fd3290c14e4df45",
+  "scopeSnapshots": [
+    "desktop/storefront-404.png",
+    "desktop/storefront-502.png",
+    "desktop/storefront-cms-nested.png",
+    "desktop/storefront-cms.png",
+    "desktop/storefront-home.png",
+    "desktop/storefront-product.png",
+    "desktop/storefront-products.png",
+    "mobile/storefront-404.png",
+    "mobile/storefront-502.png",
+    "mobile/storefront-cms-nested.png",
+    "mobile/storefront-cms.png",
+    "mobile/storefront-home.png",
+    "mobile/storefront-product.png",
+    "mobile/storefront-products.png"
+  ],
+  "sourceSha": "69300cced1aa9a3930d5f44cec65c188d0754e4a",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38395918001",
+  "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
+  "playwright": "1.64.0",
+  "font": "@fontsource/inter@5.3.0",
+  "rendering": {
+    "locale": "en-US",
+    "timezone": "UTC",
+    "deviceScaleFactor": 1,
+    "colorScheme": "light",
+    "reducedMotion": "reduce",
+    "desktop": [
+      1280,
+      800
+    ],
+    "mobile": [
+      390,
+      844
+    ]
+  }
+}
