@@ -3,13 +3,29 @@
 # Either set DATABASE_URL and install psql, or use Docker Compose.
 # Each migration is committed together with its checksum under a DB advisory
 # transaction lock, so concurrent operators cannot half-apply/skip a version.
+# In-development migrations (migrations/pending/, see scripts/pending_migrations.py)
+# are refused unless OPENSITE_ALLOW_PENDING_MIGRATIONS=1 (disposable dev/CI DBs
+# only); they are then applied from a temp dir, numbered after the landed history.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+shopt -s nullglob
+MIGRATIONS_DIR=migrations
+pending=(migrations/pending/*)
+if ((${#pending[@]} > 0)); then
+  if [[ "${OPENSITE_ALLOW_PENDING_MIGRATIONS:-}" != 1 ]]; then
+    echo "Refusing: migrations/pending/ is not empty; land them (scripts/land_migration.sh) or set OPENSITE_ALLOW_PENDING_MIGRATIONS=1 on a disposable dev/CI database" >&2
+    exit 7
+  fi
+  [[ -n "${DATABASE_URL:-}" ]] || { echo "Pending migrations need DATABASE_URL (the Compose container cannot see the temp dir)" >&2; exit 7; }
+  MIGRATIONS_DIR="$(mktemp -d)"
+  trap 'rm -rf "$MIGRATIONS_DIR"' EXIT
+  python3 scripts/pending_migrations.py materialize "$MIGRATIONS_DIR" || exit 2
+fi
 if [[ -n "${DATABASE_URL:-}" ]]; then
   command -v psql >/dev/null || { echo "psql not installed" >&2; exit 4; }
   PSQL=(psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1)
-  INCLUDE_ROOT="$ROOT/migrations"
+  INCLUDE_ROOT="$(cd "$MIGRATIONS_DIR" && pwd)"
 else
   command -v docker >/dev/null || { echo "Neither DATABASE_URL nor Docker is available" >&2; exit 4; }
   PSQL=(docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -U postgres -d opensite -v ON_ERROR_STOP=1)
@@ -24,8 +40,7 @@ if ! [[ "$version_num" =~ ^[0-9]+$ ]] || (( version_num < 180000 || version_num 
   echo "PostgreSQL 18 required (found server_version_num=${version_num})" >&2
   exit 5
 fi
-shopt -s nullglob
-files=(migrations/[0-9][0-9][0-9]_*.sql)
+files=("$MIGRATIONS_DIR"/[0-9][0-9][0-9]_*.sql)
 ((${#files[@]} > 0)) || { echo "No migrations" >&2; exit 3; }
 # Prevent accidentally skipping, renaming or duplicating an ordered migration.
 expected_number=1

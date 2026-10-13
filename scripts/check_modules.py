@@ -101,7 +101,7 @@ def load_registry(path, root):
     for migration in registry["migrations"]:
         require(isinstance(migration, dict), "MODULE_REGISTRY_INVALID", "invalid migration")
         file = migration.get("file", "")
-        require(isinstance(file, str) and re.fullmatch(r"migrations/[0-9]{3}_[a-z0-9_]+\.sql", file) and
+        require(isinstance(file, str) and re.fullmatch(r"migrations/([0-9]{3}|pending/[a-z0-9][a-z0-9-]*)_[a-z0-9_]+\.sql", file) and
                 (root / file).is_file(), "MODULE_REGISTRY_INVALID", "missing or invalid migration path")
         require(file not in migration_files and migration.get("owner") in names,
                 "MODULE_REGISTRY_INVALID", f"{file}: duplicate migration or unknown owner")
@@ -109,7 +109,8 @@ def load_registry(path, root):
         touches = migration.get("touches_tables")
         require(isinstance(touches, list) and all(isinstance(table, str) and table in tables for table in touches),
                 "MODULE_REGISTRY_INVALID", f"{file}: unknown touched table")
-    actual_files = {str(path.relative_to(root)) for path in (root / "migrations").glob("[0-9][0-9][0-9]_*.sql")}
+    actual_files = {str(path.relative_to(root)) for pattern in ("[0-9][0-9][0-9]_*.sql", "pending/*.sql")
+                    for path in (root / "migrations").glob(pattern)}
     require(migration_files == actual_files, "MODULE_REGISTRY_INVALID", "migration inventory differs from registry")
     check_dependencies(registry)
     return registry

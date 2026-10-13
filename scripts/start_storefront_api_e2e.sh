@@ -9,7 +9,9 @@ cd "$ROOT"
 export OSC_STOREFRONT_SAMPLE_SEED=1
 # Queue authorization (021) requires the pinned River schema first, as in check_pg.sh.
 ./scripts/migrate_river.sh
-./scripts/migrate.sh
+# Disposable DB: in-development migrations/pending/ apply from migrate.sh's temp dir, so the
+# frontend check and the baseline producer render from the same unmodified checkout.
+OPENSITE_ALLOW_PENDING_MIGRATIONS=1 ./scripts/migrate.sh
 ./scripts/seed_storefront.sh
 # Provision without putting a password or DSN in argv, source files, or output.
 OSC_PUBLIC_DATABASE_URL="$(python3 - <<'PY'
