@@ -742,6 +742,11 @@ SELECT 'LIMITS_UPGRADE='||count(*)||'|'||count(*) FILTER(WHERE status='dead_lett
 SQL
 )
 [[ $result == *'LIMITS_UPGRADE=4|2|2|10'* ]] || bad "limits populated upgrade: $result"
+# Complete the current app schema before the exact whole-schema role matrix.
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${limits_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
 river_db "$DB" --verify
 db "$DB" -f tests/db_reliability_limits.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
