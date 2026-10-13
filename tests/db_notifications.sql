@@ -32,6 +32,37 @@ DO $contact_null$ DECLARE t uuid:=current_setting('test.notification_t')::uuid; 
   RAISE EXCEPTION 'NOTIFICATIONS_CONTACT_NULL_ERROR accepted missing failure code';
  EXCEPTION WHEN check_violation THEN NULL; END;
 END $contact_null$;
+-- Renderer admission must agree with persisted/fanout envelopes. Savepoint
+-- keeps these witnesses out of the independent claim/fencing tests below.
+SAVEPOINT recipient_admission;
+DO $recipient_admission$
+DECLARE t uuid:=current_setting('test.notification_t')::uuid; contact text; oid uuid; source uuid; d app.notification_deliveries; n integer:=2; valid boolean;
+ domain text:=repeat('b',63)||'.'||repeat('c',63)||'.'||repeat('d',56)||'.test';
+BEGIN
+ FOREACH contact IN ARRAY ARRAY[repeat('a',64)||'@'||domain,repeat('a',64)||'@x'||domain,'.buyer@example.test','buyer..name@example.test','buyer.@example.test','buyer.name@example.test'] LOOP
+  n:=n+1;valid:=n IN(3,8);
+  EXECUTE 'SET LOCAL ROLE app_orders_executor';
+  INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+  VALUES(t,uuidv7(),n,'recipient-admission-'||n,sha256('n'::bytea),jsonb_build_object('email',contact),'USD',100,0,0,'{}',100) RETURNING id INTO oid;
+  EXECUTE 'RESET ROLE';
+  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+  VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','recipient-admission-'||n) RETURNING id INTO source;
+  SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=source;
+  IF valid THEN
+   IF d.recipient<>contact OR d.status<>'pending' OR d.dispatch_event_id IS NULL THEN RAISE EXCEPTION 'NOTIFICATIONS_RECIPIENT_ADMISSION valid dot atom/254 rejected';END IF;
+   IF NOT EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND id=d.dispatch_event_id AND delivery_target='notifications.email') THEN RAISE EXCEPTION 'NOTIFICATIONS_RECIPIENT_ADMISSION valid dispatch missing';END IF;
+  ELSE
+   IF d.recipient<>'' OR d.status<>'dead_letter' OR d.dispatch_event_id IS NOT NULL OR d.last_error IS DISTINCT FROM 'NOTIFICATION_RECIPIENT_UNAVAILABLE' THEN RAISE EXCEPTION 'NOTIFICATIONS_RECIPIENT_ADMISSION invalid length/dot contact dispatched case %',n;END IF;
+   BEGIN PERFORM app.notification_redrive(t,d.id,'invalid-contact');RAISE EXCEPTION 'NOTIFICATIONS_RECIPIENT_ADMISSION invalid contact redriven';EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL;END;
+   -- Exercise the table CHECK independently of the fanout classification.
+   BEGIN
+    UPDATE app.notification_deliveries SET recipient=contact,dispatch_event_id=current_setting('test.notification_source')::uuid,status='pending',last_error=NULL WHERE tenant_id=t AND id=d.id;
+    RAISE EXCEPTION 'NOTIFICATIONS_RECIPIENT_ADMISSION CHECK accepted invalid contact case %',n;
+   EXCEPTION WHEN check_violation THEN NULL;END;
+  END IF;
+ END LOOP;
+END $recipient_admission$;
+ROLLBACK TO SAVEPOINT recipient_admission;
 SET LOCAL ROLE app_runtime;
 DO $runtime$ DECLARE t uuid:=current_setting('test.notification_t')::uuid; BEGIN
  BEGIN INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(t,'notification.dispatch','{}','notifications.email','forge');RAISE EXCEPTION 'NOTIFICATIONS_GATE runtime namespace write'; EXCEPTION WHEN insufficient_privilege THEN NULL;END;

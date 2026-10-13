@@ -10,7 +10,9 @@ Notifications owns `notification_deliveries` and append-only
 `notification_redrive_requests`. The forward notifications migration fans out orders' paid, shipment
 and refund events, plus optional quotes' sent/approved events. SQL resolves
 contacts from authoritative orders/customers and linked quote/inquiry/customer
-records; event payloads provide reference IDs, never recipients. The recipient,
+records; event payloads provide reference IDs, never recipients. Admission accepts
+canonical ASCII dot-atom addresses up to 254 bytes; invalid contacts become a
+terminal recipient-unavailable receipt without a dispatch and cannot be redriven. The recipient,
 source event, template, locale and reference are frozen. Invalid authoritative
 contacts produce a visible terminal failure without rolling back the business
 transaction. Missing optional quote schema produces no dispatch until installed.
