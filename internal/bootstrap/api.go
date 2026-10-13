@@ -13,11 +13,14 @@ import (
 	"time"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
+	cartcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
+	customercontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
 	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
@@ -35,6 +38,9 @@ type Config struct {
 	QuotesBuyerAuthenticator httpapi.Authenticator
 	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
 	Notifications            notificationcontract.Service
+	Customer                 customercontract.Service
+	CustomerOrigin           string
+	CustomerSecret           []byte
 }
 
 func New(config Config) (server *http.Server, err error) {
@@ -48,7 +54,17 @@ func New(config Config) (server *http.Server, err error) {
 	if cartModule == nil {
 		cartModule = cart.New(nil, nil)
 	}
-	router := httpapi.New(routeAuthenticator{cart: cartModule, staff: config.Authenticator}, config.Logger)
+	customerHTTP := customerhttp.New(customerhttp.Config{Service: config.Customer, Origin: config.CustomerOrigin, Secret: config.CustomerSecret})
+	if config.Customer != nil {
+		cartModule = cartModule.WithActorResolver(func(ctx context.Context, _ *http.Request) (cartcontract.AuthorizedActor, error) {
+			actor, ok := customercontract.ActorFromContext(ctx)
+			if !ok {
+				return cartcontract.AuthorizedActor{}, nil
+			}
+			return cartcontract.AuthorizedActor{TenantID: actor.TenantID, CustomerID: actor.CustomerID}, nil
+		})
+	}
+	router := httpapi.New(routeAuthenticator{cart: cartModule, staff: config.Authenticator, customer: customerHTTP}, config.Logger)
 	health := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "health", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })}
 	routes := []httpapi.Route{health}
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
@@ -58,6 +74,7 @@ func New(config Config) (server *http.Server, err error) {
 		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
 	}
 	routes = append(routes, notificationhttp.New(config.Notifications).Routes()...)
+	routes = append(routes, customerHTTP.Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {
 		if err := router.Register(route.Spec, route.Handler); err != nil {
@@ -98,12 +115,20 @@ func Run(ctx context.Context, config Config) error {
 // routeAuthenticator separates storefront capabilities from staff authentication.
 // A staff credential can never authorize a Storefront route by falling through.
 type routeAuthenticator struct {
-	cart  *cart.Module
-	staff httpapi.Authenticator
+	cart     *cart.Module
+	staff    httpapi.Authenticator
+	customer *customerhttp.Handler
 }
 
 func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
 	if spec.Access == httpapi.Storefront {
+		actor, err := a.customer.Resolve(ctx, r)
+		if err != nil {
+			return ctx, err
+		}
+		if actor.CustomerID != "" {
+			ctx = customercontract.WithActor(ctx, actor)
+		}
 		return a.cart.Authenticate(ctx, r, spec)
 	}
 	if a.staff == nil {

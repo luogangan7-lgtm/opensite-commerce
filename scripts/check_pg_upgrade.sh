@@ -149,6 +149,7 @@ ORDERS_DB=""
 STOREFRONT_DB=""
 NOTIFICATIONS_DB=""
 QUOTES_DB=""
+CUSTOMER_AUTH_DB=""
 CATALOG_DB=""
 CART_DB=""
 QUEUE_DB=""
@@ -159,7 +160,7 @@ PRICING_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$CUSTOMER_AUTH_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1004,5 +1005,77 @@ if ! db "$QUOTES_DB" < tests/db_quotes.sql >/dev/null || ! db "$QUOTES_DB" < tes
  bad 'quotes lifecycle and exact role matrix after populated inquiry upgrade'
 else pass 'quotes forward ALTER preserves existing contact inquiry and runtime lifecycle/grants'; fi
 admin -c "DROP DATABASE $QUOTES_DB" >/dev/null; QUOTES_DB=""
+
+# Customer auth upgrades every actual predecessor; old credentials and immutable
+# guest snapshots survive. Mailbox proof verifies legacy identity, never changes PHC.
+customer_auth=(migrations/[0-9][0-9][0-9]_customer_auth.sql)
+[[ ${#customer_auth[@]} == 1 ]] || { echo 'FAIL: exactly one customer auth migration required' >&2; exit 1; }
+CUSTOMER_AUTH_DB=customer_auth_upgrade_$$
+admin -c "CREATE DATABASE $CUSTOMER_AUTH_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${customer_auth[0]} ]] || break
+ apply_forward "$CUSTOMER_AUTH_DB" "$f"
+done
+db "$CUSTOMER_AUTH_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('customer-auth-legacy') RETURNING id AS t \gset
+INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','legacy-auth@example.invalid','Legacy') RETURNING id AS c \gset
+INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash) VALUES(:'t',:'c',
+ '$argon2id$v=19$m=19456,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU');
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_orders_executor;
+INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+VALUES(:'t',uuidv7(),1,'auth-upgrade',sha256('auth-upgrade'::bytea),'{"email":"legacy-auth@example.invalid","name":"Immutable"}','USD',0,0,0,'{}',0) RETURNING id AS oid \gset
+UPDATE app.orders SET sealed=true WHERE tenant_id=:'t' AND id=:'oid';
+RESET ROLE;
+CREATE TABLE public.customer_auth_upgrade_witness AS
+ SELECT to_jsonb(c) AS customer,to_jsonb(p) AS credential,to_jsonb(o) AS snapshot
+ FROM app.customers c JOIN app.customer_credentials p ON(p.tenant_id,p.customer_id)=(c.tenant_id,c.id)
+ JOIN app.orders o ON o.tenant_id=c.tenant_id WHERE c.id=:'c';
+SQL
+# An inbound membership must refuse the new role before any additive schema lands.
+admin -c 'GRANT app_customer_executor TO app_runtime' >/dev/null
+if output=$(apply_forward "$CUSTOMER_AUTH_DB" "${customer_auth[0]}" 2>&1); then
+ bad 'customer executor inbound membership unexpectedly accepted'
+else
+ [[ $output == *CUSTOMER_AUTH_EXECUTOR_UNSAFE* ]] || bad "customer executor membership wrong failure: $output"
+fi
+admin -c 'REVOKE app_customer_executor FROM app_runtime' >/dev/null
+result=$(db "$CUSTOMER_AUTH_DB" -c "SELECT 'AUTH_ATOMIC='||(to_regclass('app.customer_auth_tokens') IS NULL)||'|'||(NOT EXISTS(SELECT FROM pg_attribute WHERE attrelid='app.customers'::regclass AND attname='verified_at' AND NOT attisdropped));")
+[[ $result == 'AUTH_ATOMIC=true|true' ]] || bad "customer executor refused migration left partial schema: $result"
+apply_forward "$CUSTOMER_AUTH_DB" "${customer_auth[0]}"
+result=$(db "$CUSTOMER_AUTH_DB" <<'SQL'
+SELECT 'AUTH_UPGRADE='||(to_jsonb(c)-'verified_at'=w.customer)||'|'||(c.verified_at IS NULL)||'|'||(to_jsonb(p)=w.credential)||'|'||(to_jsonb(o)=w.snapshot)
+ FROM public.customer_auth_upgrade_witness w JOIN app.customers c ON c.id=(w.customer->>'id')::uuid
+ JOIN app.customer_credentials p ON(p.tenant_id,p.customer_id)=(c.tenant_id,c.id)
+ JOIN app.orders o ON o.id=(w.snapshot->>'id')::uuid;
+DO $proof$
+DECLARE t uuid; c uuid; legacy_phc text; candidate text; BEGIN
+ SELECT x.tenant_id,x.id,p.password_hash INTO STRICT t,c,legacy_phc FROM app.customers x
+ JOIN app.customer_credentials p ON(p.tenant_id,p.customer_id)=(x.tenant_id,x.id) WHERE x.email='legacy-auth@example.invalid';
+ candidate:=replace(legacy_phc,'YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU','ZWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU');
+ PERFORM set_config('app.tenant_id',t::text,true);
+ EXECUTE 'SET LOCAL ROLE app_customer_auth';
+ IF NOT app.customer_prepare_registration('legacy-auth@example.invalid',candidate,sha256('legacy-proof'::bytea),clock_timestamp()+interval '1 hour')
+ OR NOT app.customer_consume_verification(sha256('legacy-proof'::bytea)) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_UPGRADE_PROOF'; END IF;
+ IF (SELECT password_hash FROM app.customer_credentials WHERE tenant_id=t AND customer_id=c)<>legacy_phc
+ OR NOT EXISTS(SELECT FROM app.customer_guest_order_links WHERE tenant_id=t AND customer_id=c) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_UPGRADE_LEGACY_CHANGED'; END IF;
+ IF NOT app.customer_prepare_reset('legacy-auth@example.invalid',sha256('legacy-reset'::bytea),clock_timestamp()+interval '1 hour')
+ OR NOT app.customer_consume_reset(sha256('legacy-reset'::bytea),candidate) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_UPGRADE_RESET'; END IF;
+ EXECUTE 'RESET ROLE';
+ IF (SELECT to_jsonb(o) FROM app.orders o WHERE o.id=(SELECT (snapshot->>'id')::uuid FROM public.customer_auth_upgrade_witness))
+ IS DISTINCT FROM(SELECT snapshot FROM public.customer_auth_upgrade_witness) THEN RAISE EXCEPTION 'CUSTOMER_AUTH_UPGRADE_ORDER_CHANGED'; END IF;
+END $proof$;
+SQL
+)
+[[ $result == *'AUTH_UPGRADE=true|true|true|true'* ]] || bad "customer populated upgrade preservation: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${customer_auth[0]} ]] || continue
+ apply_forward "$CUSTOMER_AUTH_DB" "$f"
+done
+river_db "$CUSTOMER_AUTH_DB" --verify
+db "$CUSTOMER_AUTH_DB" -f tests/db_customer_auth.sql >/dev/null
+db "$CUSTOMER_AUTH_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $CUSTOMER_AUTH_DB" >/dev/null; CUSTOMER_AUTH_DB=""
+pass 'customer auth forward upgrade preserves legacy PHC/guest snapshot, rejects unsafe role atomically, then verifies and resets explicitly'
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications and quotes upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes and customer auth upgrade gates'

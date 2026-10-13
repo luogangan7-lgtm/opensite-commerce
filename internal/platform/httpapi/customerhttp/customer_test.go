@@ -20,36 +20,234 @@ import (
 
 const tenant = "11111111-1111-4111-8111-111111111111"
 const origin = "https://shop.example.test"
-const sessionPath = "/api/v1/t/"+tenant+"/customer/session"
-type fake struct { calls int; issued string; limited bool }
-func(f *fake) Register(context.Context,string,string,string,netip.Addr)error{f.calls++;return nil}
-func(f *fake) Verify(context.Context,string,string)error{f.calls++;return nil}
-func(f *fake) RequestReset(context.Context,string,string,netip.Addr)error{f.calls++;return nil}
-func(f *fake) Reset(context.Context,string,string,string,netip.Addr)error{f.calls++;return nil}
-func(f *fake) Login(context.Context,string,string,string,netip.Addr,string)(c.Session,error){f.calls++;if f.limited{return c.Session{},&c.RateLimitError{RetryAfter:7*time.Second}};return c.Session{ID:tenant,TenantID:tenant,CustomerID:tenant,Email:"buyer@example.test",Token:f.issued,ExpiresAt:time.Now().Add(time.Hour),IdleExpiresAt:time.Now().Add(time.Hour)},nil}
-func(f *fake) Current(_ context.Context,t,token string)(c.Session,error){if token!=f.issued||t!=tenant{return c.Session{},c.ErrUnauthorized};return c.Session{ID:tenant,TenantID:tenant,CustomerID:tenant,Email:"buyer@example.test",ExpiresAt:time.Now().Add(time.Hour),IdleExpiresAt:time.Now().Add(time.Hour)},nil}
-func(f *fake) Logout(context.Context,string,string)error{f.calls++;return nil}
-func randomToken(t *testing.T)string{t.Helper();b:=make([]byte,32);if _,e:=rand.Read(b);e!=nil{t.Fatal(e)};return base64.RawURLEncoding.EncodeToString(b)}
-func setup(t *testing.T)(*httpapi.Router,*fake){t.Helper();key:=make([]byte,32);if _,e:=rand.Read(key);e!=nil{t.Fatal(e)};f:=&fake{issued:randomToken(t)};router:=httpapi.New(nil,nil);for _,route:=range New(Config{Service:f,Origin:origin,Secret:key}).Routes(){if e:=router.Register(route.Spec,route.Handler);e!=nil{t.Fatal(e)}};return router,f}
-func request(router http.Handler,method,path,body string,headers map[string]string,cookies ...*http.Cookie)*httptest.ResponseRecorder{r:=httptest.NewRequest(method,origin+path,strings.NewReader(body));r.RemoteAddr="192.0.2.1:2345";if body!=""{r.Header.Set("Content-Type","application/json")};for k,v:=range headers{r.Header.Set(k,v)};for _,c:=range cookies{r.AddCookie(c)};w:=httptest.NewRecorder();router.ServeHTTP(w,r);return w}
-func challenge(t *testing.T,router http.Handler)(string,*http.Cookie){t.Helper();w:=request(router,"GET",sessionPath,"",nil);if w.Code!=200{t.Fatalf("CUSTOMER_AUTH_HTTP_RED: challenge status %d",w.Code)};var b struct{CSRF string `json:"csrf_token"`};if e:=json.Unmarshal(w.Body.Bytes(),&b);e!=nil||b.CSRF==""{t.Fatal("challenge absent")};for _,c:=range w.Result().Cookies(){if c.Name==ChallengeCookie{return b.CSRF,c}};t.Fatal("challenge cookie absent");return "",nil}
-func TestCustomerOriginAndSignedCSRF(t *testing.T){
-	r,f:=setup(t);csrf,cookie:=challenge(t,r)
-	for _,test:=range []struct{name,source,token string; cookie bool}{{"missing","","",false},{"foreign","https://evil.example.test",csrf,true},{"wrong",origin,"unsigned",true},{"no-cookie",origin,csrf,false}}{t.Run(test.name,func(t *testing.T){var cookies []*http.Cookie;if test.cookie{cookies=append(cookies,cookie)};w:=request(r,"POST",sessionPath,`{"email":"buyer@example.test","password":"ignored"}`,map[string]string{"Origin":test.source,"X-CSRF-Token":test.token},cookies...);if w.Code!=403{t.Errorf("CSRF admission status %d",w.Code)}})}
-	if f.calls!=0{t.Fatal("CSRF rejection reached domain")}
+const sessionPath = "/api/v1/t/" + tenant + "/customer/session"
+
+type fake struct {
+	calls   int
+	issued  string
+	limited bool
 }
-func TestCustomerCookieFlagsRotationAndNoBearerJSON(t *testing.T){
-	r,f:=setup(t);csrf,cookie:=challenge(t,r);credential:=randomToken(t);body,_:=json.Marshal(map[string]string{"email":"buyer@example.test","password":credential})
-	w:=request(r,"POST",sessionPath,string(body),map[string]string{"Origin":origin,"X-CSRF-Token":csrf},cookie)
-	if w.Code!=200{t.Fatalf("login status %d",w.Code)};if strings.Contains(w.Body.String(),f.issued){t.Fatal("session bearer leaked JSON")}
-	var found bool;for _,c:=range w.Result().Cookies(){if c.Name==SessionCookie{found=true;if !c.Secure||!c.HttpOnly||c.SameSite!=http.SameSiteLaxMode||c.Path!="/"||c.Domain!=""||c.Value!=f.issued{t.Fatal("customer cookie policy")}}};if !found{t.Fatal("session cookie absent")}
+
+func (f *fake) Register(context.Context, string, string, string, netip.Addr) error {
+	f.calls++
+	return nil
 }
-func TestCustomerStrictFieldsAndRetryAfter(t *testing.T){
-	r,f:=setup(t);csrf,cookie:=challenge(t,r);headers:=map[string]string{"Origin":origin,"X-CSRF-Token":csrf}
-	for _,body:=range []string{`{"email":"a@example.test","email":"b@example.test","password":"ignored"}`,`{"Email":"a@example.test","password":"ignored"}`,`{"email":"a@example.test","password":"ignored","customer_id":"forged"}`}{w:=request(r,"POST",sessionPath,body,headers,cookie);if w.Code!=400{t.Errorf("strict body status %d",w.Code)}}
-	if f.calls!=0{t.Fatal("invalid JSON reached domain")};f.limited=true;credential:=randomToken(t);body,_:=json.Marshal(map[string]string{"email":"buyer@example.test","password":credential});w:=request(r,"POST",sessionPath,string(body),headers,cookie);if w.Code!=429||w.Header().Get("Retry-After")!="7"{t.Fatal("rate response lost")}
+func (f *fake) Verify(context.Context, string, string) error                   { f.calls++; return nil }
+func (f *fake) RequestReset(context.Context, string, string, netip.Addr) error { f.calls++; return nil }
+func (f *fake) Reset(context.Context, string, string, string, netip.Addr) error {
+	f.calls++
+	return nil
 }
-func TestCustomerCookieAmbiguityAndTenantIsolation(t *testing.T){
-	r,f:=setup(t);cookie:=&http.Cookie{Name:SessionCookie,Value:f.issued};w:=request(r,"GET",sessionPath,"",nil,cookie,cookie);if w.Code!=401{t.Fatalf("duplicate cookie status %d",w.Code)}
-	w=request(r,"GET",strings.Replace(sessionPath,tenant,"22222222-2222-4222-8222-222222222222",1),"",nil,cookie);if w.Code!=401{t.Fatalf("cross tenant session status %d",w.Code)}
+func (f *fake) Login(context.Context, string, string, string, netip.Addr, string) (c.Session, error) {
+	f.calls++
+	if f.limited {
+		return c.Session{}, &c.RateLimitError{RetryAfter: 7 * time.Second}
+	}
+	return c.Session{ID: tenant, TenantID: tenant, CustomerID: tenant, Email: "buyer@example.test", Token: f.issued, ExpiresAt: time.Now().Add(time.Hour), IdleExpiresAt: time.Now().Add(time.Hour)}, nil
+}
+func (f *fake) Current(_ context.Context, t, token string) (c.Session, error) {
+	if token != f.issued || t != tenant {
+		return c.Session{}, c.ErrUnauthorized
+	}
+	return c.Session{ID: tenant, TenantID: tenant, CustomerID: tenant, Email: "buyer@example.test", ExpiresAt: time.Now().Add(time.Hour), IdleExpiresAt: time.Now().Add(time.Hour)}, nil
+}
+func (f *fake) Logout(context.Context, string, string) error { f.calls++; return nil }
+func randomToken(t *testing.T) string {
+	t.Helper()
+	b := make([]byte, 32)
+	if _, e := rand.Read(b); e != nil {
+		t.Fatal(e)
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+func setup(t *testing.T) (*httpapi.Router, *fake) {
+	t.Helper()
+	key := make([]byte, 32)
+	if _, e := rand.Read(key); e != nil {
+		t.Fatal(e)
+	}
+	f := &fake{issued: randomToken(t)}
+	router := httpapi.New(nil, nil)
+	for _, route := range New(Config{Service: f, Origin: origin, Secret: key}).Routes() {
+		if e := router.Register(route.Spec, route.Handler); e != nil {
+			t.Fatal(e)
+		}
+	}
+	return router, f
+}
+func request(router http.Handler, method, path, body string, headers map[string]string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, origin+path, strings.NewReader(body))
+	r.RemoteAddr = "192.0.2.1:2345"
+	if body != "" {
+		r.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		r.Header.Set(k, v)
+	}
+	for _, c := range cookies {
+		r.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, r)
+	return w
+}
+func challenge(t *testing.T, router http.Handler) (string, *http.Cookie) {
+	t.Helper()
+	w := request(router, "GET", sessionPath, "", nil)
+	if w.Code != 200 {
+		t.Fatalf("CUSTOMER_AUTH_HTTP_RED: challenge status %d", w.Code)
+	}
+	var b struct {
+		CSRF string `json:"csrf_token"`
+	}
+	if e := json.Unmarshal(w.Body.Bytes(), &b); e != nil || b.CSRF == "" {
+		t.Fatal("challenge absent")
+	}
+	for _, c := range w.Result().Cookies() {
+		if c.Name == ChallengeCookie {
+			return b.CSRF, c
+		}
+	}
+	t.Fatal("challenge cookie absent")
+	return "", nil
+}
+func TestCustomerOriginAndSignedCSRF(t *testing.T) {
+	r, f := setup(t)
+	csrf, cookie := challenge(t, r)
+	for _, test := range []struct {
+		name, source, token string
+		cookie              bool
+	}{{"missing", "", "", false}, {"foreign", "https://evil.example.test", csrf, true}, {"wrong", origin, "unsigned", true}, {"no-cookie", origin, csrf, false}} {
+		t.Run(test.name, func(t *testing.T) {
+			var cookies []*http.Cookie
+			if test.cookie {
+				cookies = append(cookies, cookie)
+			}
+			w := request(r, "POST", sessionPath, `{"email":"buyer@example.test","password":"ignored"}`, map[string]string{"Origin": test.source, "X-CSRF-Token": test.token}, cookies...)
+			if w.Code != 403 {
+				t.Errorf("CSRF admission status %d", w.Code)
+			}
+		})
+	}
+	if f.calls != 0 {
+		t.Fatal("CSRF rejection reached domain")
+	}
+}
+func TestCustomerCookieFlagsRotationAndNoBearerJSON(t *testing.T) {
+	r, f := setup(t)
+	csrf, cookie := challenge(t, r)
+	credential := randomToken(t)
+	body, _ := json.Marshal(map[string]string{"email": "buyer@example.test", "password": credential})
+	w := request(r, "POST", sessionPath, string(body), map[string]string{"Origin": origin, "X-CSRF-Token": csrf}, cookie)
+	if w.Code != 200 {
+		t.Fatalf("login status %d", w.Code)
+	}
+	if strings.Contains(w.Body.String(), f.issued) {
+		t.Fatal("session bearer leaked JSON")
+	}
+	var found bool
+	for _, c := range w.Result().Cookies() {
+		if c.Name == SessionCookie {
+			found = true
+			if !c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.Path != "/" || c.Domain != "" || c.Value != f.issued {
+				t.Fatal("customer cookie policy")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("session cookie absent")
+	}
+}
+func TestCustomerStrictFieldsAndRetryAfter(t *testing.T) {
+	r, f := setup(t)
+	csrf, cookie := challenge(t, r)
+	headers := map[string]string{"Origin": origin, "X-CSRF-Token": csrf}
+	for _, body := range []string{`{"email":"a@example.test","email":"b@example.test","password":"ignored"}`, `{"Email":"a@example.test","password":"ignored"}`, `{"email":"a@example.test","password":"ignored","customer_id":"forged"}`} {
+		w := request(r, "POST", sessionPath, body, headers, cookie)
+		if w.Code != 400 {
+			t.Errorf("strict body status %d", w.Code)
+		}
+	}
+	if f.calls != 0 {
+		t.Fatal("invalid JSON reached domain")
+	}
+	f.limited = true
+	credential := randomToken(t)
+	body, _ := json.Marshal(map[string]string{"email": "buyer@example.test", "password": credential})
+	w := request(r, "POST", sessionPath, string(body), headers, cookie)
+	if w.Code != 429 || w.Header().Get("Retry-After") != "7" {
+		t.Fatal("rate response lost")
+	}
+}
+func TestCustomerCookieAmbiguityAndTenantIsolation(t *testing.T) {
+	r, f := setup(t)
+	cookie := &http.Cookie{Name: SessionCookie, Value: f.issued}
+	w := request(r, "GET", sessionPath, "", nil, cookie, cookie)
+	if w.Code != 401 {
+		t.Fatalf("duplicate cookie status %d", w.Code)
+	}
+	w = request(r, "GET", strings.Replace(sessionPath, tenant, "22222222-2222-4222-8222-222222222222", 1), "", nil, cookie)
+	if w.Code != 401 {
+		t.Fatalf("cross tenant session status %d", w.Code)
+	}
+}
+
+func TestCustomerForeignChallengeOriginAndExpiredCSRF(t *testing.T) {
+	r, f := setup(t)
+	w := request(r, "GET", sessionPath, "", map[string]string{"Origin": "https://foreign.example.test"})
+	if w.Code != 403 || len(w.Result().Cookies()) != 0 {
+		t.Fatal("foreign challenge origin accepted")
+	}
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	now := time.Now()
+	h := New(Config{Service: f, Origin: origin, Secret: key, Now: func() time.Time { return now }})
+	csrf, err := h.challenge(tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(6 * time.Minute)
+	req := httptest.NewRequest("POST", origin+sessionPath, nil)
+	req.Header.Set("X-CSRF-Token", csrf)
+	req.AddCookie(&http.Cookie{Name: ChallengeCookie, Value: csrf})
+	if h.writeCSRF(req, tenant, "") {
+		t.Fatal("expired CSRF accepted")
+	}
+	for _, unsafe := range []string{"https://shop.example.test?", "https://:443", "https://shop.example.test/", "https://shop.example.test#fragment"} {
+		if New(Config{Service: f, Origin: unsafe, Secret: key}).configured {
+			t.Fatal("ambiguous configured origin accepted")
+		}
+	}
+}
+
+func TestCustomerResolverRequiresLiveTenantSessionAndCSRF(t *testing.T) {
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	f := &fake{issued: randomToken(t)}
+	h := New(Config{Service: f, Origin: origin, Secret: key})
+	req := httptest.NewRequest("GET", origin+sessionPath, nil)
+	req.SetPathValue("tenant_id", tenant)
+	actor, err := h.Resolve(context.Background(), req)
+	if err != nil || actor.CustomerID != "" {
+		t.Fatal("guest seam changed")
+	}
+	req.AddCookie(&http.Cookie{Name: SessionCookie, Value: f.issued})
+	actor, err = h.Resolve(context.Background(), req)
+	if err != nil || actor.CustomerID != tenant {
+		t.Fatal("verified context absent")
+	}
+	req.Method = "PUT"
+	if _, err = h.Resolve(context.Background(), req); err == nil {
+		t.Fatal("cookie storefront write bypassed CSRF")
+	}
+	req.Header.Set("Origin", origin)
+	req.Header.Set("X-CSRF-Token", h.sessionCSRF(tenant, f.issued))
+	if _, err = h.Resolve(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	req.SetPathValue("tenant_id", "22222222-2222-4222-8222-222222222222")
+	req.Method = "GET"
+	if _, err = h.Resolve(context.Background(), req); err == nil {
+		t.Fatal("cross tenant actor minted")
+	}
 }

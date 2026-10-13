@@ -134,6 +134,36 @@ func (e ComponentSetPropsType) Valid() bool {
 	}
 }
 
+// Defines values for CustomerRegistrationReceiptStatus.
+const (
+	VerificationPending CustomerRegistrationReceiptStatus = "verification_pending"
+)
+
+// Valid indicates whether the value is a known member of the CustomerRegistrationReceiptStatus enum.
+func (e CustomerRegistrationReceiptStatus) Valid() bool {
+	switch e {
+	case VerificationPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CustomerResetReceiptStatus.
+const (
+	Accepted CustomerResetReceiptStatus = "accepted"
+)
+
+// Valid indicates whether the value is a known member of the CustomerResetReceiptStatus enum.
+func (e CustomerResetReceiptStatus) Valid() bool {
+	switch e {
+	case Accepted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DataBindingResolver.
 const (
 	DataBindingResolverCatalogCollectionProducts1 DataBindingResolver = "catalog.collection-products@1"
@@ -707,6 +737,60 @@ type CurrentActor struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
+// CustomerCredentialsInput defines model for CustomerCredentialsInput.
+type CustomerCredentialsInput struct {
+	Email    openapi_types.Email `json:"email"`
+	Password string              `json:"password"`
+}
+
+// CustomerRegistrationReceipt defines model for CustomerRegistrationReceipt.
+type CustomerRegistrationReceipt struct {
+	Status CustomerRegistrationReceiptStatus `json:"status"`
+}
+
+// CustomerRegistrationReceiptStatus defines model for CustomerRegistrationReceipt.Status.
+type CustomerRegistrationReceiptStatus string
+
+// CustomerResetConfirm defines model for CustomerResetConfirm.
+type CustomerResetConfirm struct {
+	Password string `json:"password"`
+	Token    string `json:"token"`
+}
+
+// CustomerResetReceipt defines model for CustomerResetReceipt.
+type CustomerResetReceipt struct {
+	Status CustomerResetReceiptStatus `json:"status"`
+}
+
+// CustomerResetReceiptStatus defines model for CustomerResetReceipt.Status.
+type CustomerResetReceiptStatus string
+
+// CustomerResetRequest defines model for CustomerResetRequest.
+type CustomerResetRequest struct {
+	Email openapi_types.Email `json:"email"`
+}
+
+// CustomerSessionEnvelope defines model for CustomerSessionEnvelope.
+type CustomerSessionEnvelope struct {
+	CsrfToken string                                 `json:"csrf_token"`
+	Customer  nullable.Nullable[CustomerSessionView] `json:"customer"`
+}
+
+// CustomerSessionView defines model for CustomerSessionView.
+type CustomerSessionView struct {
+	CustomerId    openapi_types.UUID  `json:"customer_id"`
+	Email         openapi_types.Email `json:"email"`
+	ExpiresAt     time.Time           `json:"expires_at"`
+	IdleExpiresAt time.Time           `json:"idle_expires_at"`
+	SessionId     openapi_types.UUID  `json:"session_id"`
+	TenantId      openapi_types.UUID  `json:"tenant_id"`
+}
+
+// CustomerTokenInput defines model for CustomerTokenInput.
+type CustomerTokenInput struct {
+	Token string `json:"token"`
+}
+
 // DataBinding defines model for DataBinding.
 type DataBinding struct {
 	Params   map[string]interface{} `json:"params"`
@@ -1237,6 +1321,42 @@ type SetCartLineParams struct {
 	IfMatch    IfMatch    `json:"If-Match"`
 }
 
+// RequestCustomerPasswordResetParams defines parameters for RequestCustomerPasswordReset.
+type RequestCustomerPasswordResetParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// ConfirmCustomerPasswordResetParams defines parameters for ConfirmCustomerPasswordReset.
+type ConfirmCustomerPasswordResetParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// RegisterCustomerParams defines parameters for RegisterCustomer.
+type RegisterCustomerParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// DeleteCustomerSessionParams defines parameters for DeleteCustomerSession.
+type DeleteCustomerSessionParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// CreateCustomerSessionParams defines parameters for CreateCustomerSession.
+type CreateCustomerSessionParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
+// VerifyCustomerEmailParams defines parameters for VerifyCustomerEmail.
+type VerifyCustomerEmailParams struct {
+	Origin     string `json:"Origin"`
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
 // CreateMediaUploadParams defines parameters for CreateMediaUpload.
 type CreateMediaUploadParams struct {
 	// IdempotencyKey Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422.
@@ -1549,6 +1669,21 @@ type CreateCartJSONRequestBody = CreateCart
 
 // SetCartLineJSONRequestBody defines body for SetCartLine for application/json ContentType.
 type SetCartLineJSONRequestBody = SetCartLine
+
+// RequestCustomerPasswordResetJSONRequestBody defines body for RequestCustomerPasswordReset for application/json ContentType.
+type RequestCustomerPasswordResetJSONRequestBody = CustomerResetRequest
+
+// ConfirmCustomerPasswordResetJSONRequestBody defines body for ConfirmCustomerPasswordReset for application/json ContentType.
+type ConfirmCustomerPasswordResetJSONRequestBody = CustomerResetConfirm
+
+// RegisterCustomerJSONRequestBody defines body for RegisterCustomer for application/json ContentType.
+type RegisterCustomerJSONRequestBody = CustomerCredentialsInput
+
+// CreateCustomerSessionJSONRequestBody defines body for CreateCustomerSession for application/json ContentType.
+type CreateCustomerSessionJSONRequestBody = CustomerCredentialsInput
+
+// VerifyCustomerEmailJSONRequestBody defines body for VerifyCustomerEmail for application/json ContentType.
+type VerifyCustomerEmailJSONRequestBody = CustomerTokenInput
 
 // CreateMediaUploadJSONRequestBody defines body for CreateMediaUpload for application/json ContentType.
 type CreateMediaUploadJSONRequestBody = CreateUpload
@@ -1896,6 +2031,27 @@ type ServerInterface interface {
 
 	// (PUT /api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id})
 	SetCartLine(w http.ResponseWriter, r *http.Request, tenantId TenantId, cartId CartId, skuId SkuId, params SetCartLineParams)
+
+	// (POST /api/v1/t/{tenant_id}/customer/password-resets)
+	RequestCustomerPasswordReset(w http.ResponseWriter, r *http.Request, tenantId TenantId, params RequestCustomerPasswordResetParams)
+
+	// (POST /api/v1/t/{tenant_id}/customer/password-resets/confirm)
+	ConfirmCustomerPasswordReset(w http.ResponseWriter, r *http.Request, tenantId TenantId, params ConfirmCustomerPasswordResetParams)
+
+	// (POST /api/v1/t/{tenant_id}/customer/registrations)
+	RegisterCustomer(w http.ResponseWriter, r *http.Request, tenantId TenantId, params RegisterCustomerParams)
+
+	// (DELETE /api/v1/t/{tenant_id}/customer/session)
+	DeleteCustomerSession(w http.ResponseWriter, r *http.Request, tenantId TenantId, params DeleteCustomerSessionParams)
+
+	// (GET /api/v1/t/{tenant_id}/customer/session)
+	GetCustomerSession(w http.ResponseWriter, r *http.Request, tenantId TenantId)
+
+	// (POST /api/v1/t/{tenant_id}/customer/session)
+	CreateCustomerSession(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateCustomerSessionParams)
+
+	// (POST /api/v1/t/{tenant_id}/customer/verifications)
+	VerifyCustomerEmail(w http.ResponseWriter, r *http.Request, tenantId TenantId, params VerifyCustomerEmailParams)
 
 	// (POST /api/v1/t/{tenant_id}/media/uploads)
 	CreateMediaUpload(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateMediaUploadParams)
@@ -2821,6 +2977,494 @@ func (siw *ServerInterfaceWrapper) SetCartLine(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetCartLine(w, r, tenantId, cartId, skuId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RequestCustomerPasswordReset operation middleware
+func (siw *ServerInterfaceWrapper) RequestCustomerPasswordReset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RequestCustomerPasswordResetParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = Origin
+
+	} else {
+		err := fmt.Errorf("Header parameter Origin is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RequestCustomerPasswordReset(w, r, tenantId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmCustomerPasswordReset operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmCustomerPasswordReset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ConfirmCustomerPasswordResetParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = Origin
+
+	} else {
+		err := fmt.Errorf("Header parameter Origin is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmCustomerPasswordReset(w, r, tenantId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RegisterCustomer operation middleware
+func (siw *ServerInterfaceWrapper) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RegisterCustomerParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = Origin
+
+	} else {
+		err := fmt.Errorf("Header parameter Origin is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterCustomer(w, r, tenantId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCustomerSession operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCustomerSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteCustomerSessionParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = Origin
+
+	} else {
+		err := fmt.Errorf("Header parameter Origin is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCustomerSession(w, r, tenantId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomerSession operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomerSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomerSession(w, r, tenantId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCustomerSession operation middleware
+func (siw *ServerInterfaceWrapper) CreateCustomerSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateCustomerSessionParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = Origin
+
+	} else {
+		err := fmt.Errorf("Header parameter Origin is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCustomerSession(w, r, tenantId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// VerifyCustomerEmail operation middleware
+func (siw *ServerInterfaceWrapper) VerifyCustomerEmail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant_id" -------------
+	var tenantId TenantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant_id", r.PathValue("tenant_id"), &tenantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params VerifyCustomerEmailParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Origin" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
+		var Origin string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: "uri"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
+			return
+		}
+
+		params.Origin = Origin
+
+	} else {
+		err := fmt.Errorf("Header parameter Origin is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VerifyCustomerEmail(w, r, tenantId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5668,6 +6312,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/customer/registrations", wrapper.RegisterCustomer)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/customer/verifications", wrapper.VerifyCustomerEmail)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/t/{tenant_id}/customer/session", wrapper.DeleteCustomerSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/t/{tenant_id}/customer/session", wrapper.GetCustomerSession)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/customer/session", wrapper.CreateCustomerSession)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/customer/password-resets", wrapper.RequestCustomerPasswordReset)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/t/{tenant_id}/customer/password-resets/confirm", wrapper.ConfirmCustomerPasswordReset)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/public/sites/current", wrapper.GetPublishedSite)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.Health)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/admin-sessions", wrapper.ListAdminSessions)
@@ -8820,6 +9471,1497 @@ type SetCartLine503ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response SetCartLine503ApplicationProblemPlusJSONResponse) VisitSetCartLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordResetRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	Params   RequestCustomerPasswordResetParams
+	Body     *RequestCustomerPasswordResetJSONRequestBody
+}
+
+type RequestCustomerPasswordResetResponseObject interface {
+	VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error
+}
+
+type RequestCustomerPasswordReset202JSONResponse CustomerResetReceipt
+
+func (response RequestCustomerPasswordReset202JSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset400ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset401ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset403ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset404ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset409ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset412ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset413ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset415ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset422ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset428ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset429ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestCustomerPasswordReset503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response RequestCustomerPasswordReset503ApplicationProblemPlusJSONResponse) VisitRequestCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordResetRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	Params   ConfirmCustomerPasswordResetParams
+	Body     *ConfirmCustomerPasswordResetJSONRequestBody
+}
+
+type ConfirmCustomerPasswordResetResponseObject interface {
+	VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error
+}
+
+type ConfirmCustomerPasswordReset204Response struct {
+}
+
+func (response ConfirmCustomerPasswordReset204Response) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ConfirmCustomerPasswordReset400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset400ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset401ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset403ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset404ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset409ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset412ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset413ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset415ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset422ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset428ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset429ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmCustomerPasswordReset503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response ConfirmCustomerPasswordReset503ApplicationProblemPlusJSONResponse) VisitConfirmCustomerPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomerRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	Params   RegisterCustomerParams
+	Body     *RegisterCustomerJSONRequestBody
+}
+
+type RegisterCustomerResponseObject interface {
+	VisitRegisterCustomerResponse(w http.ResponseWriter) error
+}
+
+type RegisterCustomer202JSONResponse CustomerRegistrationReceipt
+
+func (response RegisterCustomer202JSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer400ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer401ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer403ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer404ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer409ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer412ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer413ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer415ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer422ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer428ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer429ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterCustomer503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterCustomer503ApplicationProblemPlusJSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSessionRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	Params   DeleteCustomerSessionParams
+}
+
+type DeleteCustomerSessionResponseObject interface {
+	VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error
+}
+
+type DeleteCustomerSession204Response struct {
+}
+
+func (response DeleteCustomerSession204Response) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCustomerSession400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession400ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession401ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession403ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession404ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession409ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession412ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession413ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession415ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession422ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession428ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession429ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomerSession503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteCustomerSession503ApplicationProblemPlusJSONResponse) VisitDeleteCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSessionRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+}
+
+type GetCustomerSessionResponseObject interface {
+	VisitGetCustomerSessionResponse(w http.ResponseWriter) error
+}
+
+type GetCustomerSession200JSONResponse CustomerSessionEnvelope
+
+func (response GetCustomerSession200JSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession400ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession401ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession403ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession404ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession409ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession412ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession413ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession415ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession422ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession428ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession429ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomerSession503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response GetCustomerSession503ApplicationProblemPlusJSONResponse) VisitGetCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSessionRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	Params   CreateCustomerSessionParams
+	Body     *CreateCustomerSessionJSONRequestBody
+}
+
+type CreateCustomerSessionResponseObject interface {
+	VisitCreateCustomerSessionResponse(w http.ResponseWriter) error
+}
+
+type CreateCustomerSession200JSONResponse CustomerSessionEnvelope
+
+func (response CreateCustomerSession200JSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession400ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession401ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession403ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession404ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession409ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession412ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession413ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession415ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession422ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession428ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession429ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCustomerSession503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response CreateCustomerSession503ApplicationProblemPlusJSONResponse) VisitCreateCustomerSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmailRequestObject struct {
+	TenantId TenantId `json:"tenant_id"`
+	Params   VerifyCustomerEmailParams
+	Body     *VerifyCustomerEmailJSONRequestBody
+}
+
+type VerifyCustomerEmailResponseObject interface {
+	VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error
+}
+
+type VerifyCustomerEmail204Response struct {
+}
+
+func (response VerifyCustomerEmail204Response) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type VerifyCustomerEmail400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail400ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail401ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail403ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail404ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail409ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail412ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail413ApplicationProblemPlusJSONResponse struct {
+	PayloadTooLargeApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail413ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail415ApplicationProblemPlusJSONResponse struct {
+	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail415ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail422ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail428ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail429ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VerifyCustomerEmail503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyCustomerEmail503ApplicationProblemPlusJSONResponse) VisitVerifyCustomerEmailResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -14693,6 +16835,27 @@ type StrictServerInterface interface {
 	// (PUT /api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id})
 	SetCartLine(ctx context.Context, request SetCartLineRequestObject) (SetCartLineResponseObject, error)
 
+	// (POST /api/v1/t/{tenant_id}/customer/password-resets)
+	RequestCustomerPasswordReset(ctx context.Context, request RequestCustomerPasswordResetRequestObject) (RequestCustomerPasswordResetResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/customer/password-resets/confirm)
+	ConfirmCustomerPasswordReset(ctx context.Context, request ConfirmCustomerPasswordResetRequestObject) (ConfirmCustomerPasswordResetResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/customer/registrations)
+	RegisterCustomer(ctx context.Context, request RegisterCustomerRequestObject) (RegisterCustomerResponseObject, error)
+
+	// (DELETE /api/v1/t/{tenant_id}/customer/session)
+	DeleteCustomerSession(ctx context.Context, request DeleteCustomerSessionRequestObject) (DeleteCustomerSessionResponseObject, error)
+
+	// (GET /api/v1/t/{tenant_id}/customer/session)
+	GetCustomerSession(ctx context.Context, request GetCustomerSessionRequestObject) (GetCustomerSessionResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/customer/session)
+	CreateCustomerSession(ctx context.Context, request CreateCustomerSessionRequestObject) (CreateCustomerSessionResponseObject, error)
+
+	// (POST /api/v1/t/{tenant_id}/customer/verifications)
+	VerifyCustomerEmail(ctx context.Context, request VerifyCustomerEmailRequestObject) (VerifyCustomerEmailResponseObject, error)
+
 	// (POST /api/v1/t/{tenant_id}/media/uploads)
 	CreateMediaUpload(ctx context.Context, request CreateMediaUploadRequestObject) (CreateMediaUploadResponseObject, error)
 
@@ -15259,6 +17422,229 @@ func (sh *strictHandler) SetCartLine(w http.ResponseWriter, r *http.Request, ten
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetCartLineResponseObject); ok {
 		if err := validResponse.VisitSetCartLineResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RequestCustomerPasswordReset operation middleware
+func (sh *strictHandler) RequestCustomerPasswordReset(w http.ResponseWriter, r *http.Request, tenantId TenantId, params RequestCustomerPasswordResetParams) {
+	var request RequestCustomerPasswordResetRequestObject
+
+	request.TenantId = tenantId
+	request.Params = params
+
+	var body RequestCustomerPasswordResetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RequestCustomerPasswordReset(ctx, request.(RequestCustomerPasswordResetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RequestCustomerPasswordReset")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RequestCustomerPasswordResetResponseObject); ok {
+		if err := validResponse.VisitRequestCustomerPasswordResetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfirmCustomerPasswordReset operation middleware
+func (sh *strictHandler) ConfirmCustomerPasswordReset(w http.ResponseWriter, r *http.Request, tenantId TenantId, params ConfirmCustomerPasswordResetParams) {
+	var request ConfirmCustomerPasswordResetRequestObject
+
+	request.TenantId = tenantId
+	request.Params = params
+
+	var body ConfirmCustomerPasswordResetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfirmCustomerPasswordReset(ctx, request.(ConfirmCustomerPasswordResetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfirmCustomerPasswordReset")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfirmCustomerPasswordResetResponseObject); ok {
+		if err := validResponse.VisitConfirmCustomerPasswordResetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RegisterCustomer operation middleware
+func (sh *strictHandler) RegisterCustomer(w http.ResponseWriter, r *http.Request, tenantId TenantId, params RegisterCustomerParams) {
+	var request RegisterCustomerRequestObject
+
+	request.TenantId = tenantId
+	request.Params = params
+
+	var body RegisterCustomerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RegisterCustomer(ctx, request.(RegisterCustomerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RegisterCustomer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RegisterCustomerResponseObject); ok {
+		if err := validResponse.VisitRegisterCustomerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCustomerSession operation middleware
+func (sh *strictHandler) DeleteCustomerSession(w http.ResponseWriter, r *http.Request, tenantId TenantId, params DeleteCustomerSessionParams) {
+	var request DeleteCustomerSessionRequestObject
+
+	request.TenantId = tenantId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCustomerSession(ctx, request.(DeleteCustomerSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCustomerSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCustomerSessionResponseObject); ok {
+		if err := validResponse.VisitDeleteCustomerSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomerSession operation middleware
+func (sh *strictHandler) GetCustomerSession(w http.ResponseWriter, r *http.Request, tenantId TenantId) {
+	var request GetCustomerSessionRequestObject
+
+	request.TenantId = tenantId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomerSession(ctx, request.(GetCustomerSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomerSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomerSessionResponseObject); ok {
+		if err := validResponse.VisitGetCustomerSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCustomerSession operation middleware
+func (sh *strictHandler) CreateCustomerSession(w http.ResponseWriter, r *http.Request, tenantId TenantId, params CreateCustomerSessionParams) {
+	var request CreateCustomerSessionRequestObject
+
+	request.TenantId = tenantId
+	request.Params = params
+
+	var body CreateCustomerSessionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCustomerSession(ctx, request.(CreateCustomerSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCustomerSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateCustomerSessionResponseObject); ok {
+		if err := validResponse.VisitCreateCustomerSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// VerifyCustomerEmail operation middleware
+func (sh *strictHandler) VerifyCustomerEmail(w http.ResponseWriter, r *http.Request, tenantId TenantId, params VerifyCustomerEmailParams) {
+	var request VerifyCustomerEmailRequestObject
+
+	request.TenantId = tenantId
+	request.Params = params
+
+	var body VerifyCustomerEmailJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.VerifyCustomerEmail(ctx, request.(VerifyCustomerEmailRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "VerifyCustomerEmail")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(VerifyCustomerEmailResponseObject); ok {
+		if err := validResponse.VisitVerifyCustomerEmailResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -16175,160 +18561,172 @@ func (sh *strictHandler) Health(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

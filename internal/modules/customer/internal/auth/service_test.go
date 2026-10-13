@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"golang.org/x/crypto/argon2"
 	"net/netip"
 	"strings"
 	"sync"
@@ -398,8 +399,17 @@ func TestCustomerAuthExpiredVerificationAndResetRevokesSessions(t *testing.T) {
 }
 func TestCustomerAuthUnknownResetAndInvalidTokenAreOpaque(t *testing.T) {
 	s, r, m, _ := fixture(t)
-	if e := s.RequestReset(context.Background(), tenantA, buyerEmail, testIP); e != nil || len(m.messages) != 0 {
-		t.Fatalf("unknown reset response reveals account: %v", e)
+	if e := s.RequestReset(context.Background(), tenantA, buyerEmail, testIP); e != nil || len(m.messages) != 1 {
+		t.Fatalf("CUSTOMER_AUTH_RESET_ENUMERATION_RED: unknown reset skipped transport: %v", e)
+	}
+	deadToken := m.messages[0].token
+	if e := s.Verify(context.Background(), tenantA, deadToken); !errors.Is(e, c.ErrToken) {
+		t.Fatal("unknown reset granted verification")
+	}
+	password := opaque(t)
+	e := s.Reset(context.Background(), tenantA, deadToken, password, testIP)
+	if !errors.Is(e, c.ErrToken) || len(r.reset) != 0 {
+		t.Fatal("unknown reset created usable authority")
 	}
 	for _, token := range []string{"", strings.Repeat("A", 42), strings.Repeat("A", 44), "%" + strings.Repeat("A", 42)} {
 		if e := s.Verify(context.Background(), tenantA, token); !errors.Is(e, c.ErrToken) {
@@ -411,6 +421,31 @@ func TestCustomerAuthUnknownResetAndInvalidTokenAreOpaque(t *testing.T) {
 	}
 	if len(r.sessions) != 0 {
 		t.Fatal("malformed input created session")
+	}
+}
+
+func TestCustomerAuthResetTransportWorkAndFailureAreOpaque(t *testing.T) {
+	for _, state := range []string{"unknown", "unverified", "disabled", "verified"} {
+		t.Run(state, func(t *testing.T) {
+			s, r, m, _ := fixture(t)
+			if state != "unknown" {
+				r.credential = c.Credential{CustomerID: buyerID, Email: buyerEmail, Hash: phcForTest(t), Active: state != "disabled", Verified: state != "unverified"}
+			}
+			if err := s.RequestReset(context.Background(), tenantA, buyerEmail, testIP); err != nil || len(m.messages) != 1 {
+				t.Fatal("CUSTOMER_AUTH_RESET_ENUMERATION_RED: reset eligibility changed envelope work")
+			}
+			if m.messages[0].purpose != "reset" || m.messages[0].email != buyerEmail {
+				t.Fatal("reset envelope shape changed")
+			}
+			_, stored := r.reset[hashToken(t, m.messages[0].token)]
+			if stored != (state == "verified") {
+				t.Fatal("reset challenge eligibility changed")
+			}
+			m.err = errors.New("private transport diagnostic")
+			if err := s.RequestReset(context.Background(), tenantA, buyerEmail, testIP); !errors.Is(err, c.ErrUnavailable) || strings.Contains(err.Error(), privateMarker) {
+				t.Fatal("CUSTOMER_AUTH_RESET_ENUMERATION_RED: reset transport error revealed eligibility")
+			}
+		})
 	}
 }
 func TestCustomerAuthRepositoryAndMailerFailuresAreGeneric(t *testing.T) {
@@ -495,17 +530,50 @@ func TestCustomerAuthConfigurationAndSessionExpiryAreFailClosed(t *testing.T) {
 }
 
 func TestCustomerAuthResetDuringKDFCannotCreateStaleSession(t *testing.T) {
-	s,r,_,_:=fixture(t)
-	enabled(t,r)
-	replacement:=phcForTest(t)
-	s.deriveKey=func(_,_ []byte,_,_ uint32,_ uint8,_ uint32) []byte {
-		r.credential.Hash=replacement
-		r.sessions=make(map[[32]byte]c.Session)
-		return make([]byte,32)
+	s, r, _, _ := fixture(t)
+	enabled(t, r)
+	replacement := phcForTest(t)
+	s.deriveKey = func(_, _ []byte, _, _ uint32, _ uint8, _ uint32) []byte {
+		r.credential.Hash = replacement
+		r.sessions = make(map[[32]byte]c.Session)
+		return make([]byte, 32)
 	}
-	password:=opaque(t)
-	_,e:=s.Login(context.Background(),tenantA,buyerEmail,password,testIP,noPreviousToken)
-	if !errors.Is(e,c.ErrUnauthorized) || len(r.sessions)!=0 {
-		t.Fatalf("CUSTOMER_AUTH_STALE_KDF_RED: reset allowed stale session admission: %v",e)
+	password := opaque(t)
+	_, e := s.Login(context.Background(), tenantA, buyerEmail, password, testIP, noPreviousToken)
+	if !errors.Is(e, c.ErrUnauthorized) || len(r.sessions) != 0 {
+		t.Fatalf("CUSTOMER_AUTH_STALE_KDF_RED: reset allowed stale session admission: %v", e)
+	}
+}
+
+func TestCustomerAuthRealKDFMailboxProofAndCredentials(t *testing.T) {
+	s, r, m, _ := fixture(t)
+	s.deriveKey = argon2.IDKey
+	password := opaque(t)
+	if e := s.Register(context.Background(), tenantA, buyerEmail, password, testIP); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.Login(context.Background(), tenantA, buyerEmail, password, testIP, noPreviousToken); !errors.Is(e, c.ErrInvalidCredentials) {
+		t.Fatal("unverified mailbox admitted to real KDF login")
+	}
+	if e := s.Verify(context.Background(), tenantA, m.messages[0].token); e != nil {
+		t.Fatal(e)
+	}
+	wrong := opaque(t)
+	if _, e := s.Login(context.Background(), tenantA, buyerEmail, wrong, testIP, noPreviousToken); !errors.Is(e, c.ErrInvalidCredentials) {
+		t.Fatal("real KDF accepted incorrect credential")
+	}
+	session, e := s.Login(context.Background(), tenantA, buyerEmail, password, testIP, noPreviousToken)
+	if e != nil || session.CustomerID != buyerID {
+		t.Fatalf("real KDF rejected verified mailbox: %v", e)
+	}
+}
+
+func TestCustomerAuthExistingGuestEmailSpellingDoesNotDenyOwnership(t *testing.T) {
+	s, r, _, _ := fixture(t)
+	enabled(t, r)
+	r.credential.Email = normalizedInput
+	password := opaque(t)
+	if _, e := s.Login(context.Background(), tenantA, buyerEmail, password, testIP, noPreviousToken); e != nil {
+		t.Fatalf("verified normalized guest email refused: %v", e)
 	}
 }

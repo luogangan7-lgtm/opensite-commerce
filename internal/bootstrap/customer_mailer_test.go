@@ -1,7 +1,7 @@
 // Responsibility: exercise the customer mail adapter through its public interface.
 // Dependencies: stdlib and notifications/contract; CI owns execution, no real email.
 // Invariants: challenges never enter URL paths/queries, untrusted inputs fail closed.
-package auth_test
+package bootstrap
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/internal/auth"
+	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 )
 
@@ -41,11 +41,11 @@ func challengeToken() string {
 
 func TestNotificationMailerChallengeLinksAndKeys(t *testing.T) {
 	sender := &mailCapture{}
-	mailer, err := auth.NewNotificationMailer(sender, "https://store.example.test")
+	mailer, err := newCustomerMailer(sender, "https://store.example.test")
 	if err != nil {
 		t.Fatal("valid origin rejected")
 	}
-	var port auth.Mailer = mailer
+	var port c.Mailer = mailer
 	for _, purpose := range []string{"register", "register", "reset"} {
 		if err := port.Send(context.Background(), mailTenant, "buyer@example.test", purpose, challengeToken()); err != nil {
 			t.Fatal("valid local challenge must reach sender")
@@ -94,11 +94,11 @@ func TestNotificationMailerChallengeLinksAndKeys(t *testing.T) {
 
 func TestNotificationMailerRejectsUnsafeConfiguration(t *testing.T) {
 	for _, origin := range []string{"", "http://store.example.test", "https://user:secret@store.example.test", "https://store.example.test/", "https://store.example.test/path", "https://store.example.test?query=secret", "https://store.example.test#secret", "https://store.example.test\r\nInjected: true"} {
-		if _, err := auth.NewNotificationMailer(&mailCapture{}, origin); err == nil {
+		if _, err := newCustomerMailer(&mailCapture{}, origin); err == nil {
 			t.Fatal("unsafe configured origin accepted")
 		}
 	}
-	if _, err := auth.NewNotificationMailer(nil, "https://store.example.test"); err == nil {
+	if _, err := newCustomerMailer(nil, "https://store.example.test"); err == nil {
 		t.Fatal("missing sender accepted")
 	}
 }
@@ -115,7 +115,7 @@ func TestNotificationMailerRejectsUnsafeChallenges(t *testing.T) {
 		{mailTenant, "buyer@example.test", "register", challengeToken() + "="},
 	} {
 		sender := &mailCapture{}
-		mailer, err := auth.NewNotificationMailer(sender, "https://store.example.test")
+		mailer, err := newCustomerMailer(sender, "https://store.example.test")
 		if err != nil {
 			t.Fatal("test configuration rejected")
 		}
@@ -130,7 +130,7 @@ func TestNotificationMailerRejectsUnsafeChallenges(t *testing.T) {
 
 func TestNotificationMailerRedactsTransportFailureAndCancellation(t *testing.T) {
 	sender := &mailCapture{err: errors.New("transport disclosed buyer@example.test " + challengeToken())}
-	mailer, err := auth.NewNotificationMailer(sender, "https://store.example.test")
+	mailer, err := newCustomerMailer(sender, "https://store.example.test")
 	if err != nil {
 		t.Fatal("test configuration rejected")
 	}

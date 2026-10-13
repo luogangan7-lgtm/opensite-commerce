@@ -16,7 +16,7 @@ BEGIN
  PERFORM set_config('test.customers.password_phc',phc,true);
  PERFORM set_config('app.tenant_id',t::text,true);
 END $password_fixture$;
-SET LOCAL ROLE app_customer_auth;
+SET LOCAL ROLE app_customer_executor;
 DO $password_timestamp$
 DECLARE t uuid:=current_setting('test.customers.password_tenant')::uuid;
  customer uuid:=current_setting('test.customers.password_customer')::uuid;
@@ -414,12 +414,16 @@ BEGIN
  IF n<>1 THEN RAISE EXCEPTION 'CUSTOMERS_AUTH_CREDENTIAL_TENANT_READ: %',n; END IF;
  INSERT INTO app.customers(tenant_id,id,email,display_name)
  VALUES(t,new_customer,'registered@example.invalid','Fixture customer');
- INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash)
- VALUES(t,new_customer,phc);
- UPDATE app.customer_credentials SET password_hash=phc
- WHERE tenant_id=t AND customer_id=customer;
- GET DIAGNOSTICS changed=ROW_COUNT;
- IF changed<>1 THEN RAISE EXCEPTION 'CUSTOMERS_AUTH_PASSWORD_WRITE'; END IF;
+ BEGIN
+  INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash)
+  VALUES(t,new_customer,phc);
+  RAISE EXCEPTION 'CUSTOMERS_AUTH_UNVERIFIED_CREDENTIAL_WRITE';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ BEGIN
+  UPDATE app.customer_credentials SET password_hash=phc
+  WHERE tenant_id=t AND customer_id=customer;
+  RAISE EXCEPTION 'CUSTOMERS_AUTH_DIRECT_PASSWORD_WRITE';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
   INSERT INTO app.customers(tenant_id,id,email,display_name)
   VALUES(other_t,uuidv7(),'foreign@example.invalid','Fixture customer');
@@ -431,10 +435,10 @@ BEGIN
   VALUES(other_t,other_guest,phc);
   RAISE EXCEPTION 'CUSTOMERS_AUTH_FOREIGN_CREDENTIAL_WRITE_ACCEPTED';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
- UPDATE app.customer_credentials SET password_hash=phc
- WHERE tenant_id=other_t;
- GET DIAGNOSTICS changed=ROW_COUNT;
- IF changed<>0 THEN RAISE EXCEPTION 'CUSTOMERS_AUTH_FOREIGN_PASSWORD_UPDATE'; END IF;
+ BEGIN
+  UPDATE app.customer_credentials SET password_hash=phc WHERE tenant_id=other_t;
+  RAISE EXCEPTION 'CUSTOMERS_AUTH_FOREIGN_PASSWORD_UPDATE';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
   INSERT INTO app.customers(tenant_id,id,email,display_name,status)
   VALUES(t,uuidv7(),'status-overwrite@example.invalid','Fixture','disabled');
