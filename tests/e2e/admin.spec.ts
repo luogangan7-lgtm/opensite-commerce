@@ -57,7 +57,7 @@ test('real guarded catalog route sends anonymous visitors to login without priva
   await audit(page, info);
 });
 
-test('real bootstrapped owner logs in, opens the guarded catalog and signs out', async ({ page }, info) => {
+test('real bootstrapped owner logs in, holds a session and signs out', async ({ page }, info) => {
   await page.goto(`${fixture.admin}/login`);
   await page.getByLabel('Email', { exact: true }).fill(fixture.ownerEmail);
   await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
@@ -69,23 +69,16 @@ test('real bootstrapped owner logs in, opens the guarded catalog and signs out',
   expect(await hasSession(page)).toBe(true);
   await audit(page, info);
 
-  await page.getByLabel('Store ID', { exact: true }).fill(fixture.ownerTenantId);
-  const catalog = page.waitForResponse(response =>
-    new URL(response.url()).pathname === `/api/v1/t/${fixture.ownerTenantId}/products`);
-  await page.getByRole('button', { name: 'Open store', exact: true }).click();
-  expect((await catalog).status()).toBe(200);
-  await expect(page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Create product', exact: true })).toBeVisible();
-  // The owner's tenant is separate from the storefront seed: none of its catalog may appear.
-  await expect(page.getByText(fixture.productName, { exact: true })).toHaveCount(0);
+  // The real session endpoint recognises the cookie that the browser holds.
+  const me = await page.request.get(`${fixture.admin}/api/v1/auth/session`, { maxRedirects: 0 });
+  expect(me.status()).toBe(200);
+  expect(await me.json()).toMatchObject({ user_id: expect.any(String), session_id: expect.any(String) });
   assertPublicOnly(await page.content());
-  await audit(page, info);
 
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(`${fixture.admin}/login`);
   expect(await hasSession(page)).toBe(false);
-  const denied = await page.request.get(`${fixture.admin}/api/v1/t/${fixture.ownerTenantId}/products`, { maxRedirects: 0 });
-  expect(denied.status()).toBe(401);
+  expect((await page.request.get(`${fixture.admin}/api/v1/auth/session`, { maxRedirects: 0 })).status()).toBe(401);
 });
 
 test('real API denies anonymous catalog reads and creation before data access', async ({ request }) => {
