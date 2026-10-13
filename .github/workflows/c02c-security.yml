@@ -16,7 +16,7 @@ jobs:
         with:
           go-version: '1.27.2'
       - name: Session and key security regressions
-        run: go test -v -race -count=1 -run 'TestC02c' ./internal/modules/identity/internal/httpapi ./internal/platform/httpapi
+        run: go test -v -race -count=1 -run 'TestC02c' ./internal/modules/identity/internal/httpapi ./internal/platform/httpapi ./internal/bootstrap
   security-pg:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
