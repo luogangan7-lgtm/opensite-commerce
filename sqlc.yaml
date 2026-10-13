@@ -24,7 +24,8 @@ sql:
       - "migrations/021_queue_authorization.sql"
       - "migrations/022_reliability_limits.sql"
       - "migrations/023_cart.sql"
-      - "migrations/024_notifications.sql"
+      - "migrations/024_storefront_read.sql"
+      - "migrations/025_notifications.sql"
     queries: "queries"
     gen:
       go:

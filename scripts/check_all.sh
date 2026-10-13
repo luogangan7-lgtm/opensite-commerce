@@ -21,5 +21,7 @@ python3 tests/test_api_contract.py
 python3 tests/test_notifications_contract_static.py
 python3 tests/test_notifications_api.py
 python3 scripts/check_oapi_codegen.py
-bash -n scripts/*.sh
+for script in scripts/*.sh; do
+ bash -n "$script"
+done
 echo 'PASS: offline checks (does not test PostgreSQL or production API)'
