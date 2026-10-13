@@ -598,6 +598,59 @@ func TestCustomerAuthDatabaseLiveSessionIgnoresApplicationClockSkew(t *testing.T
 	}
 }
 
+// A successful repository call with malformed data is a dependency failure,
+// not evidence that the presented bearer was invalid or should be discarded.
+type anomalousSessionRepository struct {
+	c.Repository
+	session c.Session
+}
+
+func (r anomalousSessionRepository) Session(context.Context, string, [32]byte, time.Duration) (c.Session, error) {
+	return r.session, nil
+}
+func (r anomalousSessionRepository) SaveSession(context.Context, string, string, string, *[32]byte, [32]byte, time.Duration, time.Duration) (c.Session, error) {
+	return r.session, nil
+}
+
+func TestCustomerAuthSuccessfulRepositoryAnomalyIsUnavailable(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		mutate    func(*c.Session)
+		loginOnly bool
+	}{
+		{"malformed_email", func(s *c.Session) { s.Email = "buyer@intranet" }, false},
+		{"wrong_tenant", func(s *c.Session) { s.TenantID = tenantB }, false},
+		{"malformed_id", func(s *c.Session) { s.ID = "invalid" }, false},
+		{"missing_deadline", func(s *c.Session) { s.ExpiresAt = time.Time{} }, false},
+		{"inconsistent_deadlines", func(s *c.Session) { s.IdleExpiresAt = s.ExpiresAt.Add(time.Minute) }, false},
+		{"wrong_customer", func(s *c.Session) { s.CustomerID = tenantB }, true},
+	} {
+		for _, operation := range []string{"current", "login"} {
+			if tc.loginOnly && operation != "login" {
+				continue
+			}
+			t.Run(tc.name+"/"+operation, func(t *testing.T) {
+				s, r, _, _ := fixture(t)
+				enabled(t, r)
+				session := c.Session{ID: buyerID, TenantID: tenantA, CustomerID: buyerID, Email: buyerEmail, ExpiresAt: r.now.Add(time.Hour), IdleExpiresAt: r.now.Add(30 * time.Minute)}
+				tc.mutate(&session)
+				s.cfg.Repo = anomalousSessionRepository{Repository: r, session: session}
+				var actual c.Session
+				var err error
+				if operation == "current" {
+					actual, err = s.Current(context.Background(), tenantA, opaque(t))
+				} else {
+					credential := opaque(t)
+					actual, err = s.Login(context.Background(), tenantA, buyerEmail, credential, testIP, noPreviousToken)
+				}
+				if !errors.Is(err, c.ErrUnavailable) || actual != (c.Session{}) {
+					t.Fatalf("CUSTOMER_SESSION_ANOMALY_RED: dependency anomaly became invalid bearer or identity: %v", err)
+				}
+			})
+		}
+	}
+}
+
 func TestCustomerAuthEmailAllowsLocalMailerDomain(t *testing.T) {
 	for _, tc := range []struct {
 		address string
