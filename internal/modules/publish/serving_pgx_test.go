@@ -413,7 +413,7 @@ func TestStorefrontLegacyHostMovePG(t *testing.T) {
 func TestReviewProbeServingCheckoutDeadlockPG(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	ids := servingIDs{product: newUUID(t), ready: newUUID(t), archived: newUUID(t), unpriced: newUUID(t)}
+	ids := servingIDs{product: newUUID(t), ready: "00000000-0000-4000-8000-" + strings.ReplaceAll(newUUID(t), "-", "")[:12], archived: newUUID(t), unpriced: newUUID(t)}
 	a := newCMSPG(t, ctx, servingSeed(ids, "DL", 500, 10)...)
 	exec := func(sql string, args ...any) {
 		t.Helper()
