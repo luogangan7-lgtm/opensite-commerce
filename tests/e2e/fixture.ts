@@ -25,7 +25,17 @@ function seeded(name: string, value: string): string {
   return value;
 }
 
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Required CI value is missing: ${name}`);
+  return value;
+}
+
 export const fixture = {
+  // First owner created by the real bootstrap CLI in run.py; a separate tenant from the storefront seed.
+  ownerEmail: required('E2E_OWNER_EMAIL'),
+  ownerPassword: required('E2E_OWNER_PASSWORD'),
+  ownerTenantId: required('E2E_OWNER_TENANT_ID'),
   api: origin('E2E_API_URL'),
   storefront: origin('E2E_STOREFRONT_URL'),
   admin: origin('E2E_ADMIN_URL'),

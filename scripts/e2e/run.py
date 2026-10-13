@@ -30,12 +30,14 @@ ACTIVE_TESTS = {
     "published navigation and keyboard skip follow real CMS/product routes",
     "missing and unpublished CMS/product routes render accessible real 404",
     "public host resolution denies pending disabled unpublished and unknown domains",
-    "real admin login form reports unavailable authentication safely",
-    "real guarded catalog route shows honest session-unavailable state without private reads",
+    "real admin login rejects malformed and unknown credentials without a session",
+    "real guarded catalog route sends anonymous visitors to login without private reads",
+    "real bootstrapped owner logs in, opens the guarded catalog and signs out",
     "real API denies anonymous catalog reads and creation before data access",
 }
 GAP_TESTS = {
-    "FIXME staff login → create SKU → media upload → publish",
+    "FIXME staff create SKU → media upload → publish",
+    "FIXME admin orders list and detail on the real orders read API",
     "FIXME guest storefront buy → cart → checkout → Fakepay",
 }
 
@@ -93,7 +95,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 20, "skipped": 4, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 22, "skipped": 6, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -123,7 +125,7 @@ def run(receipt_dir):
     receipt = {"schema": 1, "sha": os.environ.get("GITHUB_SHA"), "run_id": os.environ["GITHUB_RUN_ID"],
                "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"], "project": project,
                "status": "RUNNING", "steps": [], "browser_exit": None, "cleanup": "NOT_RUN",
-               "owner_bootstrap": {"status": "FIXME", "blocked_by": "#43", "available": (ROOT / "cmd/bootstrap-admin").is_dir()},
+               "owner_bootstrap": {"status": "NOT_RUN", "available": (ROOT / "cmd/bootstrap-admin").is_dir()},
                "seed_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                for path in [ROOT / "tests/fixtures/storefront_seed.sql", ROOT / "scripts/e2e/seed.sql"]}}
     credentials = {}
@@ -161,9 +163,16 @@ def run(receipt_dir):
     with tempfile.TemporaryDirectory(prefix="opensite-e2e-") as private:
         env_file = Path(private) / ".env"
         credentials = {"POSTGRES_PASSWORD": secrets.token_hex(32), "JOB_SIGNING_KEY": secrets.token_hex(32),
+                       "OPENSITE_AUTH_SIGNING_KEY": secrets.token_hex(32),
+                       "OPENSITE_E2E_OWNER_PASSWORD": secrets.token_hex(32),
+                       "OPENSITE_E2E_BOOTSTRAP_PASSWORD": secrets.token_hex(32),
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
         variables = dict(credentials, COMPOSE_PROJECT_NAME=project, OPENSITE_DB="opensite",
-                         OPENSITE_API_PORT="8080", OPENSITE_WORKER_PORT="8081", JOB_TENANTS=TENANT)
+                         OPENSITE_API_PORT="8080", OPENSITE_WORKER_PORT="8081", JOB_TENANTS=TENANT,
+                         # Staff login requires an HTTPS Origin; the admin preview proxy presents this
+                         # exact value to the API (CI-only), see scripts/e2e/admin.vite.config.ts.
+                         OPENSITE_ADMIN_ORIGIN="https://admin.e2e.test",
+                         OPENSITE_E2E_OWNER_EMAIL="c24-owner@example.test")
         env_file.write_text("".join(f"{key}={value}\n" for key, value in variables.items()))
         env_file.chmod(0o600)
         os.environ.update(variables, OPENSITE_ENV_FILE=str(env_file), OPENSITE_OPS_TIMEOUT="900")
@@ -196,6 +205,23 @@ def run(receipt_dir):
             for source in [ROOT / "tests/fixtures/storefront_seed.sql", ROOT / "scripts/e2e/seed.sql"]:
                 ops_common.psql(source.read_text())
             ops_drill.processed_witness(TENANT)
+            # First owner via the real offline CLI (cmd/bootstrap-admin) on a temporary restricted
+            # LOGIN holding only app_admin_bootstrap, removed afterwards as deploy/runtime-roles.md says.
+            boot = credentials["OPENSITE_E2E_BOOTSTRAP_PASSWORD"]
+            ops_common.psql("CREATE ROLE opensite_e2e_bootstrap LOGIN INHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB "
+                            f"NOCREATEROLE NOREPLICATION PASSWORD '{boot}'; "
+                            "GRANT app_admin_bootstrap TO opensite_e2e_bootstrap; "
+                            "GRANT CONNECT ON DATABASE opensite TO opensite_e2e_bootstrap;")
+            try:
+                command(compose_command(["run", "--rm", "--no-deps", "bootstrap"]), "owner-bootstrap", timeout=600)
+            finally:
+                ops_common.psql("REVOKE CONNECT ON DATABASE opensite FROM opensite_e2e_bootstrap; "
+                                "DROP ROLE IF EXISTS opensite_e2e_bootstrap;")
+            owner_tenant = ops_common.psql("SELECT tenant_id FROM app.tenant_memberships WHERE role='owner';").strip()
+            if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", owner_tenant):
+                raise RuntimeError("MVP E2E owner bootstrap did not create exactly one owner tenant")
+            os.environ["E2E_OWNER_TENANT_ID"] = owner_tenant
+            receipt["owner_bootstrap"]["status"] = "PASS"
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
             persist()
             command(compose_command(["up", "-d", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
