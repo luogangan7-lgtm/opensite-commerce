@@ -565,17 +565,17 @@ done
 
 # Catalog optimistic locking: a stale transaction waits on the winner's row
 # lock, then rechecks version at READ COMMITTED and must update zero rows.
-# Gate 25 is distinct from prior module synchronization keys.
+# Gate 31 is distinct from prior module synchronization keys.
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('catalog-cas-race') RETURNING id;" | tail -1)
 P=$(sql <<<"INSERT INTO app.products(tenant_id,product_code) VALUES('$T','CAS-RACE') RETURNING id;" | tail -1)
 cas_first="WITH changed AS (UPDATE app.products SET product_code='CAS-FIRST',version=version+1 WHERE tenant_id='$T' AND id='$P' AND version=1 RETURNING id) SELECT 'C07_CAS_FIRST='||count(*) FROM changed;"
 cas_stale="WITH changed AS (UPDATE app.products SET product_code='CAS-STALE',version=version+1 WHERE tenant_id='$T' AND id='$P' AND version=1 RETURNING id) SELECT 'C07_CAS_STALE='||count(*) FROM changed;"
-gate_close 25
-tx catalog_cas_first app_runtime "$T" "$cas_first $(park 25)" &
+gate_close 31
+tx catalog_cas_first app_runtime "$T" "$cas_first $(park 31)" &
 await catalog_cas_first advisory
 tx catalog_cas_stale app_runtime "$T" "$cas_stale" &
 await catalog_cas_stale "${ROWLOCK[@]}"
-gate_open 25; wait
+gate_open 31; wait
 expect catalog_cas_first ok; expect catalog_cas_stale ok
 result catalog_cas_first 'C07_CAS_FIRST=1'; result catalog_cas_stale 'C07_CAS_STALE=0'
 got=$(sql <<<"SELECT version||'|'||product_code FROM app.products WHERE tenant_id='$T' AND id='$P';")
@@ -743,3 +743,30 @@ echo 'PASS: ledger identical and conflicting posting races preserve one posted j
 echo 'PASS: catalog stale CAS waits for row lock, rechecks version and leaves winner unchanged'
 echo 'PASS: orders pay/cancel and prelock/expiry races conserve inventory and events'
 echo 'PASS: quote approve/withdraw row-lock CAS races have exactly one winner and atomic outbox/approval'
+# Focused native River/claim/fence gates cannot silently skip for missing PG.
+reliability_packages=(./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)
+if [[ -n "${DATABASE_URL:-}" ]]; then
+ JOBS_REQUIRE_PG=1 IDEMPOTENCY_REQUIRE_PG=1 OUTBOX_REQUIRE_PG=1 GOTOOLCHAIN=local \
+  go test -race -tags pgx -count=1 -timeout=120s -run '^(TestPG|TestJobsPG)' "${reliability_packages[@]}"
+else
+ # Compose has no host port. Test binaries run against its loopback database;
+ # the external/CI path above also runs the race detector.
+ (
+  compose=(docker compose -f deploy/compose.yaml)
+  arch="$("${compose[@]}" exec -T postgres uname -m)"
+  case "$arch" in aarch64|arm64) arch=arm64 ;; x86_64) arch=amd64 ;; *) echo 'Unsupported test architecture' >&2; exit 4 ;; esac
+  temp="$(mktemp -d "${TMPDIR:-/tmp}/opensite-reliability.XXXXXX")"
+  container_bin="/tmp/opensite-reliability-$(basename "$temp")"
+  cleanup_go() { "${compose[@]}" exec -T postgres rm -f "$container_bin" >/dev/null 2>&1 || true; rm -rf "$temp"; }
+  trap cleanup_go EXIT
+  for package in "${reliability_packages[@]}"; do
+   GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c -tags pgx -o "$temp/gate" "$package"
+   "${compose[@]}" cp "$temp/gate" "postgres:$container_bin"
+   "${compose[@]}" exec -T -e DATABASE_URL=postgresql://postgres@localhost/opensite?sslmode=disable \
+    -e JOBS_REQUIRE_PG=1 -e IDEMPOTENCY_REQUIRE_PG=1 -e OUTBOX_REQUIRE_PG=1 postgres \
+    sh -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec "$@"' sh "$container_bin" \
+    '-test.run=^(TestPG|TestJobsPG)' -test.count=1 -test.timeout=120s -test.v
+  done
+ )
+fi
+echo 'PASS: native River transaction/admission/restart and Go idempotency/outbox PG gates'

@@ -10,9 +10,12 @@ else
   command -v docker >/dev/null || { echo "DATABASE_URL or Docker required" >&2; exit 4; }
   PSQL=(docker compose -f deploy/compose.yaml exec -T postgres psql -X -U postgres -d opensite -v ON_ERROR_STOP=1)
 fi
+./scripts/migrate_river.sh
+./scripts/migrate_river.sh  # River checksum/second-run idempotency
 ./scripts/migrate.sh
 ./scripts/migrate.sh  # checksum/second-run idempotency
-for test_file in tests/db_security_audit.sql tests/db_smoke.sql tests/db_isolation.sql tests/db_role_boundaries.sql tests/db_release_integrity.sql tests/db_security_hardening.sql tests/db_role_matrix.sql tests/db_connection_reuse.sql tests/db_security_services.sql tests/db_publish_isolation.sql tests/db_sealed_media.sql tests/db_reliability.sql tests/db_inventory.sql tests/db_pricing.sql tests/db_shipping.sql tests/db_tax.sql tests/db_customers.sql tests/db_ledger.sql tests/db_catalog_api.sql tests/db_orders.sql tests/db_quotes.sql; do
+./scripts/migrate_river.sh --verify
+for test_file in tests/db_security_audit.sql tests/db_smoke.sql tests/db_isolation.sql tests/db_role_boundaries.sql tests/db_release_integrity.sql tests/db_security_hardening.sql tests/db_role_matrix.sql tests/db_connection_reuse.sql tests/db_security_services.sql tests/db_publish_isolation.sql tests/db_sealed_media.sql tests/db_reliability.sql tests/db_inventory.sql tests/db_pricing.sql tests/db_shipping.sql tests/db_tax.sql tests/db_customers.sql tests/db_ledger.sql tests/db_catalog_api.sql tests/db_orders.sql tests/db_queue.sql tests/db_reliability_limits.sql tests/db_quotes.sql; do
   echo "RUN $test_file"
   "${PSQL[@]}" < "$test_file"
 done

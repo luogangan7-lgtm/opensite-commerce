@@ -315,10 +315,21 @@
         "tenant"
       ],
       "tests": [
-        "tests/db_reliability.sql"
+        "tests/db_reliability.sql",
+        "internal/platform/idempotency/request_test.go",
+        "internal/db/idempotency_integration_test.go",
+        "internal/db/jobs_integration_test.go",
+        "internal/db/outbox_integration_test.go",
+        "tests/db_queue.sql",
+        "tests/db_reliability_limits.sql",
+        "internal/platform/idempotency/ttl_test.go",
+        "internal/platform/outbox/runner_test.go",
+        "internal/db/outbox_runner_integration_test.go",
+        "cmd/worker/main_test.go",
+        "tests/test_reliability_contract_static.py"
       ],
       "scopes": [],
-      "note": "Owns the platform health operation implemented by bootstrap; this does not promote a business Go service."
+      "note": "The business module Go path and business HTTP handlers remain planned. The platform health operation is implemented by bootstrap; this does not promote a business Go service. Platform idempotency, River and Outbox capabilities live under internal/platform; their controlled infrastructure adapters use tenanttx and are outside business-module repository boundaries. queue contains upstream River tables, outside app table ownership."
     },
     {
       "name": "platform-security",
@@ -940,7 +951,20 @@
       ]
     },
     {
-      "file": "migrations/021_quotes.sql",
+      "file": "migrations/021_queue_authorization.sql",
+      "owner": "reliability",
+      "touches_tables": []
+    },
+    {
+      "file": "migrations/022_reliability_limits.sql",
+      "owner": "reliability",
+      "touches_tables": [
+        "outbox_events",
+        "idempotency_records"
+      ]
+    },
+    {
+      "file": "migrations/023_quotes.sql",
       "owner": "quotes",
       "touches_tables": [
         "inquiries",
