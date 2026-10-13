@@ -143,7 +143,7 @@ DECLARE s app.sites; current_generation bigint; doc jsonb; BEGIN
   serving_generation=excluded.serving_generation,body=excluded.body,fallback_body=excluded.fallback_body,
   body_sha256=excluded.body_sha256,fallback_sha256=excluded.fallback_sha256,valid_until=excluded.valid_until,
   built_through_seq=greatest(sv.built_through_seq,excluded.built_through_seq),built_at=excluded.built_at;
- DELETE FROM app.serving_invalidations WHERE tenant_id=p_tenant AND site_id=p_site AND seq=ANY(p_folded);
+ DELETE FROM app.serving_invalidations WHERE tenant_id=p_tenant AND site_id=p_site; -- REVIEW PROBE 96-r4: delete all, not only folded
  RETURN p_expected_generation+1;
 END $$;
 
