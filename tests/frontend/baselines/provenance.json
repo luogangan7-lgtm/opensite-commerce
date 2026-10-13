@@ -1,6 +1,6 @@
 {
-  "sourceSha": "9362ab6dff9da99435c0eaa3fc5a7dfa4551cc19",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38283289803",
+  "sourceSha": "ef86e6535a91907b6de6ae3620cae89b5b6f44d4",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38343037089",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
@@ -19,7 +19,7 @@
       844
     ]
   },
-  "sourceFingerprint": "424cfba0b5beea5d1a020d1fc1e781ab3c685eb93c075467066634ce2f59e19f",
+  "sourceFingerprint": "ee4a291580c4a17467b0c182019298dfc2a30c5d523f9c76a4d40cfb3c8dd0b8",
   "pngHashes": {
     "desktop/badge-danger.png": "6424533ec0c64097cdd82079843fd705716d469564f730ccd9761439889da313",
     "desktop/badge-info.png": "dd0f8d174c2f5c5b337acca2557963337dfcb9120d8de4157ad95c819ba0f58b",

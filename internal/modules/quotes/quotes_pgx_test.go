@@ -120,11 +120,17 @@ func TestQuotesPGLifecycleReplayAndAuthority(t *testing.T) {
 	}); e != nil {
 		t.Fatal(e)
 	}
+	if draft.ExpiresAt.Location() != time.UTC {
+		t.Fatalf("fresh quote expiry is not canonical UTC: %v", draft.ExpiresAt.Location())
+	}
 	if draft.Status != "draft" || draft.Version != 1 || draft.Snapshot.Total != 270 {
 		t.Fatalf("draft %+v", draft)
 	}
 	if e := f.run(func(ctx context.Context, tx pgx.Tx) error {
 		got, e := m.Create(ctx, tx, staff, in, opts)
+		if e == nil && got.ExpiresAt.Location() != time.UTC {
+			t.Fatalf("replayed quote expiry is not canonical UTC: %v", got.ExpiresAt.Location())
+		}
 		if e == nil && !reflect.DeepEqual(got, draft) {
 			t.Fatalf("replay changed: %+v", got)
 		}

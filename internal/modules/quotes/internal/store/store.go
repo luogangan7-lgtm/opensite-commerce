@@ -46,7 +46,7 @@ func Get(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, quoteID string) (c
 	if r.AcceptedBy.Valid {
 		accepted = r.AcceptedBy.String()
 	}
-	return c.Quote{ID: r.ID.String(), TenantID: r.TenantID.String(), SiteID: r.SiteID.String(), InquiryID: r.InquiryID.String(), CompanyID: r.BuyerCompanyID.String(), Status: r.Status, Version: r.Version, Currency: r.Currency, ExpiresAt: r.ExpiresAt.Time, CreatedBy: r.CreatedBy.String(), AcceptedBy: accepted, Snapshot: snap}, nil
+	return c.Quote{ID: r.ID.String(), TenantID: r.TenantID.String(), SiteID: r.SiteID.String(), InquiryID: r.InquiryID.String(), CompanyID: r.BuyerCompanyID.String(), Status: r.Status, Version: r.Version, Currency: r.Currency, ExpiresAt: r.ExpiresAt.Time.UTC(), CreatedBy: r.CreatedBy.String(), AcceptedBy: accepted, Snapshot: snap}, nil
 }
 func Rules(ctx context.Context, tx pgx.Tx, tenant, profile string) (c.CalculationRules, error) {
 	r, e := db.New(tx).GetQuoteTaxRules(ctx, id(tenant))

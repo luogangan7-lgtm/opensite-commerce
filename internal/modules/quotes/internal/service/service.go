@@ -85,6 +85,9 @@ func claim(ctx context.Context, tx pgx.Tx, a c.AuthorizedActor, op, target strin
 		if json.Unmarshal(record.Response, &q) != nil || !c.ValidID(q.ID) || q.TenantID != a.TenantID() {
 			return "", nil, c.ErrUnavailable
 		}
+		// PostgreSQL and JSON may attach different Location pointers to the same instant.
+		// Canonical UTC makes fresh results and durable replays identical across hosts.
+		q.ExpiresAt = q.ExpiresAt.UTC()
 		if _, e = Get(ctx, tx, a, q.ID); e != nil {
 			return "", nil, e
 		}
