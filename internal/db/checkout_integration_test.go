@@ -574,3 +574,100 @@ func TestCheckoutPGLastItemCannotOversell(t *testing.T) {
 		t.Fatalf("losing checkout left sessions=%d orders=%d", sessions, ordersCount)
 	}
 }
+
+// A reservation that lapses between Start and Confirm must never reach Capture:
+// the claim locks the order's holds, refuses capture, voids the intent and
+// cancels the order. Both an unswept deadline and a swept (expired) hold count.
+func TestCheckoutPGExpiredReservationIsNotCaptured(t *testing.T) {
+	for _, swept := range []bool{false, true} {
+		t.Run(map[bool]string{false: "deadline-passed", true: "expired-by-sweep"}[swept], func(t *testing.T) {
+			f := newCheckoutPGFixture(t, 10, 2)
+			start := f.start(t)
+			err := f.runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				// Fixture administrator advances only this order's hold deadline.
+				if _, err := tx.Exec(ctx, "UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND owner_id=$2", f.tenant, start.OrderID); err != nil {
+					return err
+				}
+				if !swept {
+					return nil
+				}
+				var n int
+				if err := tx.QueryRow(ctx, "SELECT app.inventory_expire_due(100)").Scan(&n); err != nil || n != 1 {
+					return errors.Join(err, errors.New("expiry sweep did not expire the hold"))
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := checkoutRequestContext(f.ctx)
+			event := f.event(start, payment.StatusAuthorized)
+			got, err := f.service.Confirm(ctx, event)
+			if err != nil || got.State != "failed" || got.Payment.Status != payment.StatusCanceled {
+				t.Fatalf("expired reservation Confirm %#v %v", got, err)
+			}
+			if c, k := f.provider.captures.Load(), f.provider.cancels.Load(); c != 0 || k != 1 {
+				t.Fatalf("provider captures=%d cancels=%d, want 0/1", c, k)
+			}
+			w := f.witness(t, start.OrderID)
+			if w.state != "cancelled" || w.phase != "failed" || w.onHand != 10 || w.reserved != 0 || w.journals != 0 || w.entries != 0 || w.paidEvents != 0 || w.cancelEvents != 1 {
+				t.Fatalf("expired reservation effects %+v", w)
+			}
+			replay, err := f.service.Confirm(ctx, event)
+			if err != nil || replay != got || f.provider.captures.Load() != 0 {
+				t.Fatalf("replay %#v %v captures=%d", replay, err, f.provider.captures.Load())
+			}
+		})
+	}
+}
+
+// ADR-C13a: only the selected profile's zones compete. Another profile's
+// narrower (US-CA) or equally specific (US) zone must not shadow profile A's
+// national rate, while A's own narrower zone still wins.
+func TestCheckoutPGShippingZonesScopedToProfile(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		ownCA    bool
+		otherUS  bool
+		expected int64
+	}{{"other-narrower", false, false, 270}, {"other-narrower-and-equal", false, true, 270}, {"own-narrower-wins", true, true, 290}} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newCheckoutPGFixture(t, 10, 2)
+			other, otherCA, otherUS, ownCA := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
+			stmts := [][]any{
+				{"INSERT INTO app.shipping_profiles(tenant_id,id,name,currency) VALUES($1,$2,'Other','USD')", f.tenant, other},
+				{"INSERT INTO app.shipping_zones(tenant_id,id,name) VALUES($1,$2,'Other California')", f.tenant, otherCA},
+				{"INSERT INTO app.shipping_zone_destinations(tenant_id,zone_id,country_code,subdivision_code) VALUES($1,$2,'US','US-CA')", f.tenant, otherCA},
+				{"INSERT INTO app.shipping_rates(tenant_id,profile_id,zone_id,method,currency,amount) VALUES($1,$2,$3,'fixed','USD',999)", f.tenant, other, otherCA},
+			}
+			if tc.otherUS {
+				stmts = append(stmts,
+					[]any{"INSERT INTO app.shipping_zones(tenant_id,id,name) VALUES($1,$2,'Other US')", f.tenant, otherUS},
+					[]any{"INSERT INTO app.shipping_zone_destinations(tenant_id,zone_id,country_code) VALUES($1,$2,'US')", f.tenant, otherUS},
+					[]any{"INSERT INTO app.shipping_rates(tenant_id,profile_id,zone_id,method,currency,amount) VALUES($1,$2,$3,'fixed','USD',888)", f.tenant, other, otherUS})
+			}
+			if tc.ownCA {
+				stmts = append(stmts,
+					[]any{"INSERT INTO app.shipping_zones(tenant_id,id,name) VALUES($1,$2,'Own California')", f.tenant, ownCA},
+					[]any{"INSERT INTO app.shipping_zone_destinations(tenant_id,zone_id,country_code,subdivision_code) VALUES($1,$2,'US','US-CA')", f.tenant, ownCA},
+					[]any{"INSERT INTO app.shipping_rates(tenant_id,profile_id,zone_id,method,currency,amount) VALUES($1,$2,$3,'fixed','USD',70)", f.tenant, f.profile, ownCA})
+			}
+			if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				for _, s := range stmts {
+					if _, err := tx.Exec(ctx, s[0].(string), s[1:]...); err != nil {
+						return err
+					}
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			in := f.input()
+			in.ShippingAddress.Subdivision = "US-CA"
+			got, err := f.service.Start(checkoutRequestContext(f.ctx), f.actor, in)
+			if err != nil || got.AmountMinor != tc.expected {
+				t.Fatalf("profile-scoped shipping Start %#v %v, want amount %d", got, err, tc.expected)
+			}
+		})
+	}
+}

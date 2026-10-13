@@ -32,7 +32,10 @@ SELECT code,is_exempt FROM app.tax_categories WHERE tenant_id=$1 ORDER BY code;
 -- name: ListCheckoutTaxRates :many
 SELECT id,zone_id,category_code,rate_bp,valid_from,valid_until FROM app.tax_rates WHERE tenant_id=$1 ORDER BY id;
 -- name: ListCheckoutShippingLocations :many
-SELECT zone_id,country_code,subdivision_code FROM app.shipping_zone_destinations WHERE tenant_id=$1 ORDER BY zone_id,country_code,subdivision_code;
+-- ADR-C13a: only zones the selected profile has rates for, so another profile's zone cannot shadow them.
+SELECT d.zone_id,d.country_code,d.subdivision_code FROM app.shipping_zone_destinations d WHERE d.tenant_id=sqlc.arg(tenant_id)
+ AND EXISTS(SELECT FROM app.shipping_rates r WHERE r.tenant_id=d.tenant_id AND r.profile_id=sqlc.arg(profile_id) AND r.zone_id=d.zone_id)
+ ORDER BY d.zone_id,d.country_code,d.subdivision_code;
 -- name: ListCheckoutShippingRates :many
 SELECT * FROM app.shipping_rates WHERE tenant_id=$1 AND profile_id=$2 ORDER BY id;
 -- name: GetCheckoutServerTime :one

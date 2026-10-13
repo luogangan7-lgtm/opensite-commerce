@@ -66,9 +66,12 @@ permanent capture failure persists a
 `failing` claim, cancels the provider intent, then cancels the order. Retryable or
 ambiguous errors preserve the claim. If capture succeeds and the final database
 transaction fails, the service preserves `confirming` and repeats the same capture
-key; it never claims the provider was rolled back. If a reservation expires before
-finalization, compensation/reconciliation needs a later provider card; this card
-preserves the claim and returns an error rather than asserting a refund.
+key; it never claims the provider was rolled back. Before Capture, the payment
+claim row-locks every order hold through Orders and requires each to be active with
+at least 120s left; otherwise it records `failing`, cancels the intent without
+capturing and cancels the order. A hold that still expires after that margin (a
+capture slower than 120s) needs a later provider card for compensation; the claim
+is then preserved and an error returned rather than asserting a refund.
 
 ## Composition and scope
 

@@ -28,6 +28,12 @@ import (
 
 type Service struct{ config contract.Config }
 
+// captureReservationMarginSeconds is the minimum hold lifetime left when a
+// payment claim is taken, so expiry cannot race the following Capture call.
+// ponytail: fixed margin; a real PSP with longer capture latency must raise it
+// (or extend holds) before going live.
+const captureReservationMarginSeconds = 120
+
 var _ contract.Service = (*Service)(nil)
 
 func New(c contract.Config) *Service { return &Service{config: c} }
@@ -38,6 +44,9 @@ func key(s string) bool {
 	return len(s) > 0 && len(s) <= 128 && !strings.ContainsFunc(s, func(c rune) bool { return c < '!' || c > '~' })
 }
 func digest(x any) []byte { b, _ := json.Marshal(x); h := sha256.Sum256(b); return h[:] }
+
+// within reports valid UTF-8 of at most max characters (OpenAPI maxLength semantics).
+func within(v string, max int) bool { return utf8.ValidString(v) && utf8.RuneCountInString(v) <= max }
 func checkedInput(actor contract.AuthorizedActor, in contract.StartInput) error {
 	if !actor.Valid() {
 		return contract.ErrForbidden
@@ -47,15 +56,19 @@ func checkedInput(actor contract.AuthorizedActor, in contract.StartInput) error 
 	}
 	if actor.Kind() == "guest" {
 		p, e := mail.ParseAddress(in.BuyerContact.Email)
-		if e != nil || p.Address != in.BuyerContact.Email || len(in.BuyerContact.Email) > 254 || len(in.BuyerContact.Name) > 200 || len(in.BuyerContact.Phone) > 64 || !utf8.ValidString(in.BuyerContact.Name) || !utf8.ValidString(in.BuyerContact.Phone) {
+		if e != nil || p.Address != in.BuyerContact.Email || len(in.BuyerContact.Email) > 254 || !within(in.BuyerContact.Name, 200) || !within(in.BuyerContact.Phone, 64) {
 			return contract.ErrInvalid
 		}
 	} else if in.BuyerContact != (orders.Contact{}) {
 		return contract.ErrInvalid
 	}
 	a := in.ShippingAddress
-	for _, v := range []string{a.Country, a.Subdivision, a.Address1, a.Address2, a.City, a.PostalCode} {
-		if len(v) > 256 || !utf8.ValidString(v) || strings.ContainsFunc(v, func(c rune) bool { return c < ' ' }) {
+	// Limits mirror CheckoutShippingAddress maxLength in api/openapi.yaml (characters).
+	for _, f := range []struct {
+		v   string
+		max int
+	}{{a.Country, 2}, {a.Subdivision, 100}, {a.Address1, 500}, {a.Address2, 500}, {a.City, 200}, {a.PostalCode, 32}} {
+		if !within(f.v, f.max) || strings.ContainsFunc(f.v, func(c rune) bool { return c < ' ' }) {
 			return contract.ErrInvalid
 		}
 	}
@@ -331,7 +344,9 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 			}
 		}
 		if row.FinalResult != nil {
-			if row.Phase != terminal {
+			// A failure/cancel callback (e.g. Fake's own canceled event after a
+			// successful Cancel) agrees with any non-paid terminal; paid never does.
+			if row.Phase != terminal && !(terminal == "failed" && row.Phase == "cancelled") {
 				return contract.ErrConflict
 			}
 			result, e = decodeResult(row.FinalResult)
@@ -345,7 +360,16 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 			row.Phase = claimPhase
 			row.ClaimKind = store.Text(kind)
 			row.ClaimKey = store.Text(eventKey)
-			row, e = update(ctx, q, row)
+			if row, e = update(ctx, q, row); e != nil || claimPhase != "confirming" {
+				return e
+			}
+			// Never capture unless every hold is live and locked now with a margin
+			// covering provider IO; otherwise void the intent and cancel the order.
+			e = s.config.Orders.LockLiveReservations(ctx, tx, tenantID, row.OrderID.String(), captureReservationMarginSeconds)
+			if errors.Is(e, orders.ErrReservationInactive) {
+				row.Phase = "failing"
+				row, e = update(ctx, q, row)
+			}
 			return e
 		}
 		if (row.Phase != claimPhase && !(claimPhase == "confirming" && row.Phase == "failing")) || row.ClaimKind.String != kind || row.ClaimKey.String != eventKey {

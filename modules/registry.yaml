@@ -712,7 +712,9 @@
         "internal/modules/checkout/internal/service/calculate_test.go",
         "internal/db/checkout_failure_race_test.go",
         "internal/db/checkout_cart_integration_test.go",
-        "internal/modules/checkout/internal/store/cart_test.go"
+        "internal/modules/checkout/internal/store/cart_test.go",
+        "internal/db/checkout_http_integration_test.go",
+        "internal/modules/checkout/internal/service/input_test.go"
       ],
       "scopes": [],
       "note": "C-18a Fake-only checkout orchestration. Optional strict HTTP composition uses a default-deny trusted storefront resolver seam classified Storefront until real customer/guest middleware; URL/Host never authorize. Fake webhook is signed and mounted only in explicit test/development configuration. Cart contract consumption uses the real locked IntentReader in the caller transaction, discards price projections and restores prior actor GUCs. Trusted guest/customer resolver wiring remains absent and default deny; no production payment provider wiring."

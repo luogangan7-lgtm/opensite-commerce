@@ -372,8 +372,15 @@ func (q *Queries) InsertCheckoutAttempt(ctx context.Context, arg InsertCheckoutA
 }
 
 const listCheckoutShippingLocations = `-- name: ListCheckoutShippingLocations :many
-SELECT zone_id,country_code,subdivision_code FROM app.shipping_zone_destinations WHERE tenant_id=$1 ORDER BY zone_id,country_code,subdivision_code
+SELECT d.zone_id,d.country_code,d.subdivision_code FROM app.shipping_zone_destinations d WHERE d.tenant_id=$1
+ AND EXISTS(SELECT FROM app.shipping_rates r WHERE r.tenant_id=d.tenant_id AND r.profile_id=$2 AND r.zone_id=d.zone_id)
+ ORDER BY d.zone_id,d.country_code,d.subdivision_code
 `
+
+type ListCheckoutShippingLocationsParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	ProfileID pgtype.UUID `json:"profile_id"`
+}
 
 type ListCheckoutShippingLocationsRow struct {
 	ZoneID          pgtype.UUID `json:"zone_id"`
@@ -381,8 +388,9 @@ type ListCheckoutShippingLocationsRow struct {
 	SubdivisionCode string      `json:"subdivision_code"`
 }
 
-func (q *Queries) ListCheckoutShippingLocations(ctx context.Context, tenantID pgtype.UUID) ([]ListCheckoutShippingLocationsRow, error) {
-	rows, err := q.db.Query(ctx, listCheckoutShippingLocations, tenantID)
+// ADR-C13a: only zones the selected profile has rates for, so another profile's zone cannot shadow them.
+func (q *Queries) ListCheckoutShippingLocations(ctx context.Context, arg ListCheckoutShippingLocationsParams) ([]ListCheckoutShippingLocationsRow, error) {
+	rows, err := q.db.Query(ctx, listCheckoutShippingLocations, arg.TenantID, arg.ProfileID)
 	if err != nil {
 		return nil, err
 	}

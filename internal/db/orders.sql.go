@@ -11,6 +11,31 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countLiveOrderReservations = `-- name: CountLiveOrderReservations :one
+SELECT count(*) FILTER(WHERE state='active' AND expires_at>clock_timestamp()+make_interval(secs=>$1::integer))::bigint AS live,
+ count(*)::bigint AS total
+FROM app.inventory_reservations WHERE tenant_id=$2 AND id=ANY($3::uuid[])
+`
+
+type CountLiveOrderReservationsParams struct {
+	MinRemainingSeconds int32         `json:"min_remaining_seconds"`
+	TenantID            pgtype.UUID   `json:"tenant_id"`
+	ReservationIds      []pgtype.UUID `json:"reservation_ids"`
+}
+
+type CountLiveOrderReservationsRow struct {
+	Live  int64 `json:"live"`
+	Total int64 `json:"total"`
+}
+
+// Read after LockOrderReservations; locked rows reflect the latest committed state.
+func (q *Queries) CountLiveOrderReservations(ctx context.Context, arg CountLiveOrderReservationsParams) (CountLiveOrderReservationsRow, error) {
+	row := q.db.QueryRow(ctx, countLiveOrderReservations, arg.MinRemainingSeconds, arg.TenantID, arg.ReservationIds)
+	var i CountLiveOrderReservationsRow
+	err := row.Scan(&i.Live, &i.Total)
+	return i, err
+}
+
 const createOrder = `-- name: CreateOrder :one
 SELECT tenant_id, id, order_number, creation_key, request_hash, customer_id, guest_contact, currency, items_net_minor, tax_minor, shipping_minor, shipping_snapshot, adjustment_minor, total_minor, refunded_minor, state, version, sealed, created_at, updated_at FROM app.orders_create($1::uuid,$2::text,$3::bytea,
  $4::uuid,$5::jsonb,$6::text,
@@ -149,6 +174,35 @@ func (q *Queries) GetPayableOrder(ctx context.Context, arg GetPayableOrderParams
 		&i.State,
 	)
 	return i, err
+}
+
+const listOrderReservationIDs = `-- name: ListOrderReservationIDs :many
+SELECT reservation_id FROM app.order_lines WHERE tenant_id=$1 AND order_id=$2 ORDER BY reservation_id
+`
+
+type ListOrderReservationIDsParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	OrderID  pgtype.UUID `json:"order_id"`
+}
+
+func (q *Queries) ListOrderReservationIDs(ctx context.Context, arg ListOrderReservationIDsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listOrderReservationIDs, arg.TenantID, arg.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var reservation_id pgtype.UUID
+		if err := rows.Scan(&reservation_id); err != nil {
+			return nil, err
+		}
+		items = append(items, reservation_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockOrderReservations = `-- name: LockOrderReservations :exec

@@ -128,7 +128,7 @@ func (r *Rules) Load(ctx context.Context, tx pgx.Tx, actor contract.AuthorizedAc
 		}
 		out.Tax.Rates = append(out.Tax.Rates, rate)
 	}
-	shipLocations, e := q.ListCheckoutShippingLocations(ctx, tenant)
+	shipLocations, e := q.ListCheckoutShippingLocations(ctx, db.ListCheckoutShippingLocationsParams{TenantID: tenant, ProfileID: UUID(profile)})
 	if e != nil {
 		return out, MapError(e)
 	}

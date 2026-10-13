@@ -235,8 +235,23 @@ func unauthenticated() error {
 	return apperrors.New(401, "unauthenticated", "Authentication is required")
 }
 func notFound() error { return apperrors.New(404, "not_found", "Checkout resource not found") }
+
+// mapError covers checkout errors and the Orders errors Start/Confirm return
+// unchanged; anything else stays a redacted 500.
 func mapError(err error) error {
 	switch {
+	case errors.Is(err, orders.ErrStockUnavailable), errors.Is(err, orders.ErrReservationInactive):
+		return apperrors.New(409, "stock_unavailable", "Requested stock is no longer available")
+	case errors.Is(err, orders.ErrInvalid):
+		return apperrors.New(422, "validation_failed", "Invalid checkout request")
+	case errors.Is(err, orders.ErrKeyReused):
+		return apperrors.New(422, "idempotency_key_reused", "Idempotency key already bound to different content")
+	case errors.Is(err, orders.ErrNotFound), errors.Is(err, orders.ErrReservationOwner):
+		return notFound()
+	case errors.Is(err, orders.ErrConflict):
+		return apperrors.New(409, "checkout_conflict", "Checkout state conflict")
+	case errors.Is(err, orders.ErrRetry), errors.Is(err, orders.ErrUnavailable):
+		return apperrors.New(503, "checkout_unavailable", "Checkout is unavailable")
 	case errors.Is(err, contract.ErrInvalid):
 		return apperrors.New(422, "validation_failed", "Invalid checkout request")
 	case errors.Is(err, contract.ErrForbidden), errors.Is(err, contract.ErrNotFound):

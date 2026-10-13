@@ -19,6 +19,7 @@ import (
 
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	contract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
+	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
@@ -282,7 +283,9 @@ func TestCheckoutServiceErrorMapping(t *testing.T) {
 	for _, c := range []struct {
 		err    error
 		status int
-	}{{contract.ErrInvalid, 422}, {contract.ErrForbidden, 404}, {contract.ErrNotFound, 404}, {contract.ErrKeyReused, 422}, {contract.ErrConflict, 409}, {contract.ErrUnavailable, 503}, {contract.ErrRetry, 503}, {errors.New("private failure diagnostic"), 500}} {
+	}{{contract.ErrInvalid, 422}, {contract.ErrForbidden, 404}, {contract.ErrNotFound, 404}, {contract.ErrKeyReused, 422}, {contract.ErrConflict, 409}, {contract.ErrUnavailable, 503}, {contract.ErrRetry, 503}, {errors.New("private failure diagnostic"), 500},
+		// Orders errors reach HTTP verbatim from Start/Confirm and keep their meaning.
+		{orders.ErrStockUnavailable, 409}, {orders.ErrReservationInactive, 409}, {orders.ErrConflict, 409}, {orders.ErrInvalid, 422}, {orders.ErrKeyReused, 422}, {orders.ErrNotFound, 404}, {orders.ErrReservationOwner, 404}, {orders.ErrRetry, 503}, {orders.ErrUnavailable, 503}} {
 		s := &service{err: c.err}
 		r := router(t, checkout.Config{Service: s, Resolver: resolver{actor: actor(t, tenant, "guest")}, Origin: origin})
 		w := request(r, "/api/v1/t/"+tenant+"/checkout", body, nil)
