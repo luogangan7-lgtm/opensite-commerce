@@ -190,6 +190,34 @@ BEGIN
  IF nd.id IS NULL OR nd.status<>'dead_letter' OR nd.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR nd.recipient<>'erased-'||nd.id::text||'@invalid.test'
  OR EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND id=nd.dispatch_event_id AND status<>'dead_letter') THEN RAISE EXCEPTION 'PRIVACY_QUOTE post-erasure approval revived contact'; END IF;
 END $notification_privacy$;
+-- The executor's bypass of owner guards is only safe if data_rights_scrub_guard
+-- rejects everything but the exact registered scrub. Grants are widened inside
+-- this rolled-back transaction so the GUARD (not a missing privilege) is tested.
+DO $scrub_guard_negative$
+DECLARE t uuid:=current_setting('app.tenant_id')::uuid; q uuid:=current_setting('test.privacy_quote')::uuid; probe text;
+BEGIN
+ EXECUTE 'GRANT UPDATE(status) ON app.quotes TO app_data_rights_executor';
+ EXECUTE 'GRANT INSERT,DELETE ON app.quote_lines TO app_data_rights_executor';
+ EXECUTE 'SET LOCAL ROLE app_data_rights_executor';
+ -- Positive control: the exact (idempotent) scrub is admitted.
+ UPDATE app.quotes SET snapshot=app.data_rights_quote_scrub(snapshot) WHERE tenant_id=t AND id=q;
+ FOREACH probe IN ARRAY ARRAY['forged','non_scrub_column','partial','insert','delete'] LOOP
+  BEGIN
+   CASE probe
+    WHEN 'forged' THEN UPDATE app.quotes SET snapshot='{"forged":true}' WHERE tenant_id=t AND id=q;
+    WHEN 'non_scrub_column' THEN UPDATE app.quotes SET status='withdrawn' WHERE tenant_id=t AND id=q;
+    WHEN 'partial' THEN UPDATE app.quote_lines SET snapshot='{"forged":true}' WHERE tenant_id=t AND quote_id=q;
+    WHEN 'insert' THEN INSERT INTO app.quote_lines(tenant_id,quote_id,line_no,description,quantity,unit_price,line_total,snapshot)
+     VALUES(t,q,999,'forged',1,1,1,'{}');
+    WHEN 'delete' THEN DELETE FROM app.quote_lines WHERE tenant_id=t AND quote_id=q;
+   END CASE;
+   RAISE EXCEPTION 'PRIVACY_GATE scrub guard admitted %',probe;
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+   IF SQLERRM<>'PRIVACY_SCRUB_ONLY' THEN RAISE; END IF;
+  END;
+ END LOOP;
+ EXECUTE 'RESET ROLE';
+END $scrub_guard_negative$;
 -- The all-tables leftover-PII sweep runs over the C-PII registry canary fixture
 -- (every declared personal/contact column): scripts/check_data_rights_canaries.py.
 SELECT set_config('app.outbox_worker',current_setting('test.privacy_send_worker'),true),set_config('app.outbox_attempt','1',true);
