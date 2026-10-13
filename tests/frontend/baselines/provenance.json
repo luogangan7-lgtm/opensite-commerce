@@ -1,6 +1,6 @@
 {
-  "sourceSha": "1ea0eeabee8639312f325505042631e536cd05fd",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38400949544",
+  "sourceSha": "818d9cf4b0a5fdc036ca74943c75973946c63e5f",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38403009755",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
@@ -19,7 +19,7 @@
       844
     ]
   },
-  "sourceFingerprint": "b994f02b3da77b3e409e956e13f89019c37b4fb8a1ac9641942aac0aeda4e183",
+  "sourceFingerprint": "b768775ea7c5726d63cf24f6d51a74827e8f2ec302bc2af6ed576ff0c2f815f6",
   "pngHashes": {
     "desktop/admin-create.png": "9c657c6519f8957ebe3601d640461dc31da6909b9870c37a18810f586d670b19",
     "desktop/admin-edit.png": "1d240cfad15d81453f71e55b23e73cfe6ea92a7a865987baa93f0d2e498c528c",
