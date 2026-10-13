@@ -140,6 +140,9 @@ func TestCMSWritePublishRestorePG(t *testing.T) {
 		if err != nil || len(preview.Pages) != 2 {
 			t.Fatal(preview, err)
 		}
+		if preview.TenantID != tenant {
+			t.Fatalf("preview tenant_id %q, want %q", preview.TenantID, tenant)
+		}
 		beforeCalls := previewCalls
 		for _, tok := range []string{grant.Token + "x", "bad"} {
 			if _, err = m.Preview(context.Background(), tenant, site, draft, tok); !errors.Is(err, contract.ErrPreviewDenied) {
