@@ -46,7 +46,7 @@ func TestServingPricingParity(t *testing.T) {
 		usdList("l1", 1, servingAt.Add(-time.Hour), &later, pricing.Entry{SKUID: "s1", MinQuantity: 1, UnitAmount: 9007199254740993}),
 		usdList("l0", 1, servingAt.Add(-time.Hour), nil, pricing.Entry{SKUID: "s1", MinQuantity: 1, UnitAmount: 7}), // same priority, lower id wins
 		usdList("l9", 0, time.Time{}, nil, pricing.Entry{SKUID: "s1", MinQuantity: 1, UnitAmount: 1}),
-		usdList("future", 9, servingAt.Add(time.Hour), nil, pricing.Entry{SKUID: "s1", MinQuantity: 1, UnitAmount: 3}),
+		usdList("future", 9, servingAt.Add(10*time.Minute), nil, pricing.Entry{SKUID: "s1", MinQuantity: 1, UnitAmount: 3}),
 	}
 	in := ServingInput{TenantID: "t", At: servingAt, PriceLists: lists, Site: servingSite(contract.Product{ID: "P1", Currency: "USD"}, contract.Product{ID: "p2", Currency: "EUR"}),
 		Candidates: []ServingCandidate{
@@ -66,8 +66,12 @@ func TestServingPricingParity(t *testing.T) {
 	if site.TenantID != "t" || !reflect.DeepEqual(site.Products[0].SKUs, want) || len(site.Products[1].SKUs) != 0 {
 		t.Fatalf("serving SKUs: %+v", site.Products)
 	}
-	if out.ValidUntil == nil || !out.ValidUntil.Equal(servingAt.Add(time.Hour)) {
+	if out.ValidUntil == nil || !out.ValidUntil.Equal(servingAt.Add(10*time.Minute)) {
 		t.Fatalf("valid_until must be the next price boundary: %v", out.ValidUntil)
+	}
+	in.PriceLists = lists[:3] // no future boundary: the max lifetime bounds the row
+	if out, err = BuildServing(context.Background(), in); err != nil || !out.ValidUntil.Equal(servingAt.Add(MaxLifetime)) {
+		t.Fatalf("valid_until must be capped by the max lifetime: %v %v", out.ValidUntil, err)
 	}
 	if fb := decodePublic(t, out.Fallback); len(fb.Products[0].SKUs) != 0 || fb.Products[0].SKUs == nil {
 		t.Fatalf("fallback must keep products with skus []: %+v", fb.Products)

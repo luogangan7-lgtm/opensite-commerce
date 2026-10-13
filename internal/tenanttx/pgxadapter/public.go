@@ -37,7 +37,7 @@ func OpenPublic(ctx context.Context, dsn string) (Runner, func(), error) {
       WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','sealed','manifest']
       WHEN 'site_release_routes' THEN ARRAY['tenant_id','site_id','release_id','locale','path','page_id','page_revision']
       WHEN 'page_revisions' THEN ARRAY['tenant_id','site_id','page_id','locale','revision','document']
-      WHEN 'storefront_serving' THEN ARRAY['tenant_id','site_id','publication_revision','body','fallback_body','body_sha256','valid_until']
+      WHEN 'storefront_serving' THEN ARRAY['tenant_id','site_id','publication_revision','body','fallback_body','body_sha256','fallback_sha256','valid_until']
       ELSE ARRAY[]::text[] END))
    AND NOT has_schema_privilege(session_user,'app','CREATE')
    AND NOT EXISTS (SELECT FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace WHERE n.nspname='app' AND has_function_privilege(session_user,f.oid,'EXECUTE'))

@@ -9,9 +9,11 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
@@ -19,20 +21,33 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
 )
 
-// buildServing seals SKU membership (publish only) and writes the serving row for the
-// release that the site's publication pointer now references.
-func buildServing(ctx context.Context, q *db.Queries, tenant, site, release string, publish bool) error {
-	view, err := projectSealed(ctx, q, tenant, site, release)
-	if err != nil {
-		return err
-	}
+type servingMode int
+
+const (
+	servingPublish servingMode = iota // seal membership from live ready, priced SKUs
+	servingRestore                    // rebuild from the restored release's membership
+	servingRefresh                    // rebuild the current release; degrade, never fail open
+)
+
+// buildServing locks the site's publication row, then seals SKU membership (publish only)
+// and CAS-writes the serving row for the release the pointer references. release is
+// empty for a refresh, which uses whatever release is current after the lock.
+func buildServing(ctx context.Context, q *db.Queries, tenant, site, release string, mode servingMode) error {
 	pub, err := q.ServingPublication(ctx, db.ServingPublicationParams{TenantID: cmsID(tenant), SiteID: cmsID(site)})
 	if err != nil {
 		return err
 	}
+	if release == "" {
+		release = pub.ReleaseID
+	}
 	if pub.ReleaseID != release {
 		return contract.ErrConflict
 	}
+	view, err := projectSealed(ctx, q, tenant, site, release)
+	if err != nil {
+		return err
+	}
+	publish := mode == servingPublish
 	in := service.ServingInput{TenantID: tenant, Site: view, At: pub.At.Time}
 	if publish {
 		ids := make([]string, 0, len(view.Products))
@@ -92,6 +107,11 @@ func buildServing(ctx context.Context, q *db.Queries, tenant, site, release stri
 		}
 	}
 	out, err := service.BuildServing(ctx, in)
+	if mode == servingRefresh && errors.Is(err, service.ErrServingBounds) {
+		// Live data outgrew the bounds after publish: serve the release without SKUs.
+		in.Candidates = nil
+		out, err = service.BuildServing(ctx, in)
+	}
 	if err != nil {
 		return err
 	}
@@ -108,10 +128,7 @@ func buildServing(ctx context.Context, q *db.Queries, tenant, site, release stri
 			return err
 		}
 	}
-	var until pgtype.Timestamptz
-	if out.ValidUntil != nil {
-		until = pgtype.Timestamptz{Time: *out.ValidUntil, Valid: true}
-	}
+	until := pgtype.Timestamptz{Time: *out.ValidUntil, Valid: true}
 	_, err = q.PutServing(ctx, db.PutServingParams{TenantID: cmsID(tenant), SiteID: cmsID(site), ReleaseID: cmsID(release),
 		PublicationRevision: pub.PublicationRevision, ExpectedGeneration: pub.Generation, Body: out.Body, FallbackBody: out.Fallback, ValidUntil: until})
 	return err
@@ -143,4 +160,37 @@ func priceLists(tenant string, rows []db.ServingPriceRowsRow) []pricing.PriceLis
 		lists[i].Entries = append(lists[i].Entries, pricing.Entry{SKUID: r.SkuID, MinQuantity: r.MinQuantity, UnitAmount: r.UnitAmount})
 	}
 	return lists
+}
+
+// MaxRefreshPerSweep bounds one tenant's refresh work per sweep.
+const MaxRefreshPerSweep = 100
+
+// RefreshDue rebuilds every due serving row of one tenant (missing, stale publication,
+// invalidated or near valid_until), each in its own tenant transaction. A row that lost a
+// CAS race to a newer publish or refresh is skipped; the next sweep re-evaluates it.
+func RefreshDue(ctx context.Context, run Transaction, tenant string) (refreshed int, err error) {
+	var sites []string
+	if err = run(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var e error
+		sites, e = db.New(tx).ServingDue(ctx, db.ServingDueParams{TenantID: cmsID(tenant), RowLimit: MaxRefreshPerSweep})
+		return e
+	}); err != nil {
+		return 0, err
+	}
+	var first error
+	for _, site := range sites {
+		e := run(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+			return buildServing(ctx, db.New(tx), tenant, site, "", servingRefresh)
+		})
+		if errors.Is(cmsError(e), contract.ErrConflict) {
+			continue
+		}
+		if e != nil && first == nil {
+			first = e
+		}
+		if e == nil {
+			refreshed++
+		}
+	}
+	return refreshed, first
 }

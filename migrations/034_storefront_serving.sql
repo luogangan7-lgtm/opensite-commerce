@@ -27,7 +27,9 @@ CREATE TABLE app.storefront_serving (
  body bytea NOT NULL CHECK (octet_length(body) BETWEEN 2 AND 1048576),
  fallback_body bytea NOT NULL CHECK (octet_length(fallback_body) BETWEEN 2 AND 1048576),
  body_sha256 bytea NOT NULL CHECK (octet_length(body_sha256)=32),
- valid_until timestamptz,
+ fallback_sha256 bytea NOT NULL CHECK (octet_length(fallback_sha256)=32),
+ valid_until timestamptz NOT NULL,
+ dirty boolean NOT NULL DEFAULT false,
  built_at timestamptz NOT NULL,
  PRIMARY KEY (tenant_id,site_id),
  FOREIGN KEY (tenant_id,site_id,release_id) REFERENCES app.site_releases(tenant_id,site_id,id)
@@ -48,13 +50,13 @@ REVOKE ALL ON app.site_release_skus,app.storefront_serving FROM PUBLIC,app_runti
 -- Runtime reads (builder inputs, current generation); writes only via the routines below.
 GRANT SELECT ON app.site_release_skus,app.storefront_serving TO app_runtime,app_publish_executor;
 GRANT INSERT ON app.site_release_skus,app.storefront_serving TO app_publish_executor;
-GRANT UPDATE(release_id,publication_revision,serving_generation,body,fallback_body,body_sha256,valid_until,built_at)
+GRANT UPDATE(release_id,publication_revision,serving_generation,body,fallback_body,body_sha256,fallback_sha256,valid_until,dirty,built_at)
  ON app.storefront_serving TO app_publish_executor;
 
 -- Anonymous public read: publication epoch plus the current serving row of the
 -- verified host's site; nothing from catalog, pricing, inventory or SKU membership.
 GRANT SELECT (publication_revision) ON app.sites TO app_domain_resolver;
-GRANT SELECT (tenant_id,site_id,publication_revision,body,fallback_body,body_sha256,valid_until)
+GRANT SELECT (tenant_id,site_id,publication_revision,body,fallback_body,body_sha256,fallback_sha256,valid_until)
  ON app.storefront_serving TO app_domain_resolver;
 CREATE POLICY public_current_serving ON app.storefront_serving FOR SELECT TO app_domain_resolver
  USING (EXISTS (SELECT FROM app.sites s WHERE (s.tenant_id,s.id,s.publication_revision)
@@ -99,18 +101,55 @@ DECLARE s app.sites; current_generation bigint; BEGIN
  SELECT serving_generation INTO current_generation FROM app.storefront_serving WHERE tenant_id=p_tenant AND site_id=p_site FOR UPDATE;
  IF coalesce(current_generation,0) IS DISTINCT FROM p_expected_generation THEN
   RAISE EXCEPTION 'CMS_SERVING_STALE' USING ERRCODE='40001'; END IF;
- INSERT INTO app.storefront_serving AS sv(tenant_id,site_id,release_id,publication_revision,serving_generation,body,fallback_body,body_sha256,valid_until,built_at)
- VALUES(p_tenant,p_site,p_release,p_publication,p_expected_generation+1,p_body,p_fallback,sha256(p_body),p_valid_until,now())
+ IF p_valid_until IS NULL OR p_valid_until>now()+interval '15 minutes' THEN
+  RAISE EXCEPTION 'CMS_SERVING_LIFETIME' USING ERRCODE='22023'; END IF;
+ INSERT INTO app.storefront_serving AS sv(tenant_id,site_id,release_id,publication_revision,serving_generation,body,fallback_body,body_sha256,fallback_sha256,valid_until,dirty,built_at)
+ VALUES(p_tenant,p_site,p_release,p_publication,p_expected_generation+1,p_body,p_fallback,sha256(p_body),sha256(p_fallback),p_valid_until,false,now())
  ON CONFLICT(tenant_id,site_id) DO UPDATE SET release_id=excluded.release_id,publication_revision=excluded.publication_revision,
   serving_generation=excluded.serving_generation,body=excluded.body,fallback_body=excluded.fallback_body,
-  body_sha256=excluded.body_sha256,valid_until=excluded.valid_until,built_at=excluded.built_at;
+  body_sha256=excluded.body_sha256,fallback_sha256=excluded.fallback_sha256,valid_until=excluded.valid_until,dirty=false,built_at=excluded.built_at;
  RETURN p_expected_generation+1;
 END $$;
+
+-- Synchronous invalidation (ADR 2.6): any mutation that can change a served value marks the
+-- affected serving rows dirty and bounds their remaining lifetime to a 30 s grace, in the
+-- mutating transaction. Rows are those whose release membership contains the SKU/product,
+-- or every row of the tenant for list-level price changes.
+CREATE FUNCTION app.cms_serving_invalidate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=pg_catalog,app,pg_temp AS $$
+DECLARE r record; t uuid; sku uuid; product uuid;
+BEGIN
+ FOR r IN SELECT * FROM (SELECT CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END n, CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END o) x LOOP
+  t:=coalesce(r.n,r.o)->>'tenant_id';
+  IF TG_TABLE_NAME='price_lists' THEN
+   UPDATE app.storefront_serving SET dirty=true,valid_until=least(valid_until,now()+interval '30 seconds') WHERE tenant_id=t;
+  ELSIF TG_TABLE_NAME='products' THEN
+   product:=coalesce(r.n,r.o)->>'id';
+   UPDATE app.storefront_serving sv SET dirty=true,valid_until=least(sv.valid_until,now()+interval '30 seconds')
+    WHERE sv.tenant_id=t AND EXISTS(SELECT FROM app.site_release_skus k WHERE (k.tenant_id,k.site_id,k.release_id)=(sv.tenant_id,sv.site_id,sv.release_id) AND k.product_id=product);
+  ELSE
+   sku:=CASE TG_TABLE_NAME WHEN 'product_variants' THEN coalesce(r.n,r.o)->>'id' ELSE coalesce(r.n,r.o)->>'sku_id' END;
+   UPDATE app.storefront_serving sv SET dirty=true,valid_until=least(sv.valid_until,now()+interval '30 seconds')
+    WHERE sv.tenant_id=t AND EXISTS(SELECT FROM app.site_release_skus k WHERE (k.tenant_id,k.site_id,k.release_id)=(sv.tenant_id,sv.site_id,sv.release_id) AND k.sku_id=sku);
+  END IF;
+ END LOOP;
+ RETURN NULL;
+END $$;
+CREATE TRIGGER storefront_serving_invalidate AFTER INSERT OR UPDATE OR DELETE ON app.price_lists
+ FOR EACH ROW EXECUTE FUNCTION app.cms_serving_invalidate();
+CREATE TRIGGER storefront_serving_invalidate AFTER INSERT OR UPDATE OR DELETE ON app.price_entries
+ FOR EACH ROW EXECUTE FUNCTION app.cms_serving_invalidate();
+CREATE TRIGGER storefront_serving_invalidate AFTER UPDATE OF lifecycle_status OR DELETE ON app.product_variants
+ FOR EACH ROW EXECUTE FUNCTION app.cms_serving_invalidate();
+CREATE TRIGGER storefront_serving_invalidate AFTER UPDATE OF lifecycle_status ON app.products
+ FOR EACH ROW EXECUTE FUNCTION app.cms_serving_invalidate();
+CREATE TRIGGER storefront_serving_invalidate AFTER INSERT OR UPDATE OF on_hand,reserved OR DELETE ON app.stock_levels
+ FOR EACH ROW EXECUTE FUNCTION app.cms_serving_invalidate();
 
 GRANT CREATE ON SCHEMA app TO app_publish_executor;
 DO $own$ DECLARE f record; BEGIN
  FOR f IN SELECT oid::regprocedure signature,proname FROM pg_proc WHERE pronamespace='app'::regnamespace
-  AND proname IN ('cms_release_skus_immutable','cms_seal_skus','cms_serving_put') LOOP
+  AND proname IN ('cms_release_skus_immutable','cms_seal_skus','cms_serving_put','cms_serving_invalidate') LOOP
   EXECUTE format('ALTER FUNCTION %s OWNER TO app_publish_executor',f.signature);
   EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC',f.signature);
   IF f.proname IN ('cms_seal_skus','cms_serving_put') THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO app_runtime',f.signature); END IF;

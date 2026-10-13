@@ -87,14 +87,13 @@ type SKU struct {
 	Available    bool          `json:"available"`
 }
 
-// PublicProduct is the public product view: sealed content plus purchasable SKUs.
+// PublicProduct is the public product view: sealed content plus purchasable SKUs. It has
+// no product-level price: displayed prices come only from the refreshed SKUs.
 type PublicProduct struct {
 	ID          string `json:"id"`
 	Slug        string `json:"slug"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	UnitAmount  string `json:"unit_amount"`
-	Currency    string `json:"currency"`
 	SKUs        []SKU  `json:"skus"`
 }
 

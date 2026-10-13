@@ -156,7 +156,7 @@ func (s *WriteStore) Execute(ctx context.Context, c contract.Command, actor http
 			}
 			// The serving build re-projects the sealed release (validation) and writes the
 			// public row in this transaction; failure rolls the whole publish back.
-			if e = buildServing(ctx, q, c.TenantID, c.SiteID, r.ReleaseID, true); e != nil {
+			if e = buildServing(ctx, q, c.TenantID, c.SiteID, r.ReleaseID, servingPublish); e != nil {
 				return e // this case shadows e; return explicitly
 			}
 		case "restore_release":
@@ -167,7 +167,7 @@ func (s *WriteStore) Execute(ctx context.Context, c contract.Command, actor http
 			// Legacy releases may satisfy SQL shape checks but fail the public
 			// renderer (for example duplicate locale variants); the serving build
 			// re-projects and rebuilds from the release's sealed SKU membership.
-			e = buildServing(ctx, q, c.TenantID, c.SiteID, c.ReleaseID, false)
+			e = buildServing(ctx, q, c.TenantID, c.SiteID, c.ReleaseID, servingRestore)
 		case "list_releases", "get_release":
 			raw, e = q.CMSReleaseHistory(ctx, db.CMSReleaseHistoryParams{TenantID: cmsID(c.TenantID), SiteID: cmsID(c.SiteID)})
 			if e != nil {

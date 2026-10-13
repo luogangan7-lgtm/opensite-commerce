@@ -12,8 +12,15 @@ import (
 type Store struct{}
 
 func Open(context.Context, string) (*Store, func(), error) { return nil, nil, contract.ErrUnavailable }
-func (*Store) Serving(context.Context, string) (string, []byte, error) {
-	return "", nil, contract.ErrUnavailable
+
+// Legacy mirrors the pgx store's sealed-release snapshot type.
+type Legacy struct {
+	TenantID, SiteID, ReleaseID, Locale string
+	Manifest, Pages                     []byte
+}
+
+func (*Store) Serving(context.Context, string) ([]byte, *Legacy, error) {
+	return nil, nil, contract.ErrUnavailable
 }
 func (*Store) Current(context.Context, string) (string, string, string, []byte, []byte, error) {
 	return "", "", "", nil, nil, contract.ErrUnavailable

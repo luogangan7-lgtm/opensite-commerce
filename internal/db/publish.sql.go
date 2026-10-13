@@ -309,6 +309,41 @@ func (q *Queries) ServingAvailability(ctx context.Context, arg ServingAvailabili
 	return items, nil
 }
 
+const servingDue = `-- name: ServingDue :many
+SELECT s.id::text AS site_id FROM app.sites s
+LEFT JOIN app.storefront_serving sv ON (sv.tenant_id,sv.site_id)=(s.tenant_id,s.id)
+WHERE s.tenant_id=$1::uuid AND s.published_release_id IS NOT NULL
+ AND (sv.site_id IS NULL OR sv.publication_revision<>s.publication_revision OR sv.dirty OR sv.valid_until<now()+interval '60 seconds')
+ORDER BY s.id LIMIT $2::integer
+`
+
+type ServingDueParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	RowLimit int32       `json:"row_limit"`
+}
+
+// Refresh sweep for one tenant: published sites with no current serving row, a dirty row,
+// or a row within 60 s of valid_until (backfill, invalidation and max-lifetime refresh).
+func (q *Queries) ServingDue(ctx context.Context, arg ServingDueParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, servingDue, arg.TenantID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var site_id string
+		if err := rows.Scan(&site_id); err != nil {
+			return nil, err
+		}
+		items = append(items, site_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const servingLiveCandidates = `-- name: ServingLiveCandidates :many
 SELECT v.product_id::text AS product_id,v.id::text AS sku_id,v.sku,
  coalesce((SELECT jsonb_agg(jsonb_build_object('name',o.code,'value',ov.label) ORDER BY o.code)
@@ -430,7 +465,8 @@ func (q *Queries) ServingPriceRows(ctx context.Context, arg ServingPriceRowsPara
 const servingPublication = `-- name: ServingPublication :one
 SELECT s.publication_revision,s.published_release_id::text AS release_id,now()::timestamptz AS at,
  coalesce((SELECT sv.serving_generation FROM app.storefront_serving sv WHERE sv.tenant_id=s.tenant_id AND sv.site_id=s.id),0)::bigint AS generation
-FROM app.sites s WHERE s.tenant_id=$1::uuid AND s.id=$2::uuid
+FROM app.sites s WHERE s.tenant_id=$1::uuid AND s.id=$2::uuid AND s.published_release_id IS NOT NULL
+FOR UPDATE OF s
 `
 
 type ServingPublicationParams struct {
@@ -445,7 +481,8 @@ type ServingPublicationRow struct {
 	Generation          int64              `json:"generation"`
 }
 
-// Storefront serving build (ADR_STOREFRONT_SERVING): current epoch, DB clock, generation.
+// Storefront serving build (ADR_STOREFRONT_SERVING): locks the publication row first, so a
+// refresh waits for an in-flight publish, then reads epoch, DB clock and generation.
 func (q *Queries) ServingPublication(ctx context.Context, arg ServingPublicationParams) (ServingPublicationRow, error) {
 	row := q.db.QueryRow(ctx, servingPublication, arg.TenantID, arg.SiteID)
 	var i ServingPublicationRow

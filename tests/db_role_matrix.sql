@@ -164,7 +164,7 @@ BEGIN
       WHEN 'sites' THEN ARRAY['tenant_id','id','published_release_id','default_locale','publication_revision']
       WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','sealed','manifest']
       -- Storefront serving (ADR_STOREFRONT_SERVING): the current serving row only.
-      WHEN 'storefront_serving' THEN ARRAY['tenant_id','site_id','publication_revision','body','fallback_body','body_sha256','valid_until']
+      WHEN 'storefront_serving' THEN ARRAY['tenant_id','site_id','publication_revision','body','fallback_body','body_sha256','fallback_sha256','valid_until']
       WHEN 'site_release_routes' THEN ARRAY['tenant_id','site_id','release_id','locale','path','page_id','page_revision']
       WHEN 'page_revisions' THEN ARRAY['tenant_id','site_id','page_id','locale','revision','document']
       ELSE ARRAY[]::text[] END;
@@ -345,7 +345,7 @@ BEGIN
                               WHEN 'site_releases' THEN ARRAY['sealed']
                               WHEN 'media_assets' THEN ARRAY['visibility']
                               WHEN 'media_blobs' THEN ARRAY['status']
-                              WHEN 'storefront_serving' THEN ARRAY['release_id','publication_revision','serving_generation','body','fallback_body','body_sha256','valid_until','built_at'] ELSE allowed END;
+                              WHEN 'storefront_serving' THEN ARRAY['release_id','publication_revision','serving_generation','body','fallback_body','body_sha256','fallback_sha256','valid_until','dirty','built_at'] ELSE allowed END;
     ELSIF role_name='app_reliability_executor' AND t.relname='outbox_events' AND privilege='UPDATE' THEN
      allowed:=ARRAY['status','lease_owner','lease_until','attempts','next_attempt_at','last_error','delivered_at'];
     END IF;
@@ -948,13 +948,13 @@ SELECT 'PASS: quotes exact table/column/function grants, bounded definer authori
 DO $cms_matrix$
 DECLARE f record; role_name text; expected boolean;
  names text[]:=ARRAY['cms_context','cms_revision_immutable','cms_draft_guard','cms_validate_document','cms_products','cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history',
-  'cms_release_skus_immutable','cms_seal_skus','cms_serving_put'];
+  'cms_release_skus_immutable','cms_seal_skus','cms_serving_put','cms_serving_invalidate'];
  public_names text[]:=ARRAY['cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history','cms_seal_skus','cms_serving_put'];
 BEGIN
  IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname LIKE 'cms_%')<>cardinality(names) THEN RAISE EXCEPTION 'CMS_MATRIX_ROUTINE_SET'; END IF;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname LIKE 'cms_%' LOOP
   IF NOT f.proname=ANY(names) OR f.proowner<>'app_publish_executor'::regrole
-   OR f.prosecdef IS DISTINCT FROM (f.proname=ANY(public_names)) OR cardinality(f.proconfig)<>1
+   OR f.prosecdef IS DISTINCT FROM (f.proname=ANY(public_names) OR f.proname='cms_serving_invalidate') OR cardinality(f.proconfig)<>1
    OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN RAISE EXCEPTION 'CMS_MATRIX_ROUTINE_DEFINITION'; END IF;
   -- Every app_* role (including later capabilities) has an exact expectation.

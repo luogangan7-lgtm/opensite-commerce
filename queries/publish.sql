@@ -35,10 +35,21 @@ CROSS JOIN LATERAL (SELECT octet_length(r.manifest::text)+coalesce(sum(octet_len
 WHERE r.tenant_id=sqlc.arg(tenant_id)::uuid AND r.site_id=sqlc.arg(site_id)::uuid AND r.id=sqlc.arg(release_id)::uuid AND r.sealed;
 
 -- name: ServingPublication :one
--- Storefront serving build (ADR_STOREFRONT_SERVING): current epoch, DB clock, generation.
+-- Storefront serving build (ADR_STOREFRONT_SERVING): locks the publication row first, so a
+-- refresh waits for an in-flight publish, then reads epoch, DB clock and generation.
 SELECT s.publication_revision,s.published_release_id::text AS release_id,now()::timestamptz AS at,
  coalesce((SELECT sv.serving_generation FROM app.storefront_serving sv WHERE sv.tenant_id=s.tenant_id AND sv.site_id=s.id),0)::bigint AS generation
-FROM app.sites s WHERE s.tenant_id=sqlc.arg(tenant_id)::uuid AND s.id=sqlc.arg(site_id)::uuid;
+FROM app.sites s WHERE s.tenant_id=sqlc.arg(tenant_id)::uuid AND s.id=sqlc.arg(site_id)::uuid AND s.published_release_id IS NOT NULL
+FOR UPDATE OF s;
+
+-- name: ServingDue :many
+-- Refresh sweep for one tenant: published sites with no current serving row, a dirty row,
+-- or a row within 60 s of valid_until (backfill, invalidation and max-lifetime refresh).
+SELECT s.id::text AS site_id FROM app.sites s
+LEFT JOIN app.storefront_serving sv ON (sv.tenant_id,sv.site_id)=(s.tenant_id,s.id)
+WHERE s.tenant_id=sqlc.arg(tenant_id)::uuid AND s.published_release_id IS NOT NULL
+ AND (sv.site_id IS NULL OR sv.publication_revision<>s.publication_revision OR sv.dirty OR sv.valid_until<now()+interval '60 seconds')
+ORDER BY s.id LIMIT sqlc.arg(row_limit)::integer;
 
 -- name: ServingLiveCandidates :many
 -- Publish: ready SKUs of ready released products (input scan budget via row_limit).

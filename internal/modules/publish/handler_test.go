@@ -19,7 +19,7 @@ type publishedReader struct {
 }
 
 // servedBody is deliberately spaced: the transport must write stored bytes as-is.
-const servedBody = `{"tenant_id":"t", "site_id":"s","release_id":"r","locale":"en","title":"Shop","description":"Text","navigation":[],"pages":[],"products":[{"id":"p","slug":"aid","name":"Aid","description":"Text","unit_amount":"9007199254740993","currency":"USD","skus":[]}]}` + "\n"
+const servedBody = `{"tenant_id":"t", "site_id":"s","release_id":"r","locale":"en","title":"Shop","description":"Text","navigation":[],"pages":[],"products":[{"id":"p","slug":"aid","name":"Aid","description":"Text","skus":[{"sku_id":"s","sku_code":"S","option_values":[],"price_minor":"9007199254740993","currency":"USD","available":true}]}]}` + "\n"
 
 func (r *publishedReader) Serve(_ context.Context, host string) ([]byte, error) {
 	r.calls++
@@ -58,7 +58,7 @@ func TestStorefrontAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	products := result["products"].([]any)
-	if products[0].(map[string]any)["unit_amount"] != "9007199254740993" {
+	if products[0].(map[string]any)["skus"].([]any)[0].(map[string]any)["price_minor"] != "9007199254740993" {
 		t.Fatal("amount lost precision")
 	}
 	reader.err = contract.ErrNotFound

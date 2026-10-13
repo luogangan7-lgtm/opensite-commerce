@@ -71,7 +71,7 @@ export async function publishedSite(request: APIRequestContext): Promise<Publish
     title: fixture.title, locale: 'en' });
   expect(site).not.toHaveProperty('hostname');
   expect(site.products.find(product => product.slug === fixture.productSlug)).toMatchObject({
-    id: fixture.productId, name: fixture.productName, unit_amount: '2400', currency: 'USD', skus: [],
+    id: fixture.productId, name: fixture.productName, skus: [],
   });
   return site;
 }

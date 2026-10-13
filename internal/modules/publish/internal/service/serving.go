@@ -31,6 +31,8 @@ const (
 	WireBudget = 1 << 20
 	// maxPriceWidth is the widest price_minor a refresh can write (int64 max).
 	maxPriceWidth = 19
+	// MaxLifetime bounds every serving row: without a refresh it falls back after this.
+	MaxLifetime = 15 * time.Minute
 )
 
 // ErrServingBounds rejects a build whose inputs or outputs exceed the bounds (HTTP 422).
@@ -59,7 +61,8 @@ type ServingMember struct {
 	Options                []contract.OptionValue
 }
 
-// Serving is the built row: body and fallback are exact wire bytes (JSON plus newline).
+// Serving is the built row: body and fallback are exact wire bytes (JSON plus newline);
+// ValidUntil = min(next price boundary of a member SKU, At + MaxLifetime).
 type Serving struct {
 	Body, Fallback []byte
 	ValidUntil     *time.Time
@@ -72,7 +75,7 @@ func BuildServing(ctx context.Context, in ServingInput) (Serving, error) {
 	index := map[string]int{}
 	products := make([]contract.PublicProduct, len(in.Site.Products))
 	for i, p := range in.Site.Products {
-		products[i] = contract.PublicProduct{ID: p.ID, Slug: p.Slug, Name: p.Name, Description: p.Description, UnitAmount: p.UnitAmount, Currency: p.Currency, SKUs: []contract.SKU{}}
+		products[i] = contract.PublicProduct{ID: p.ID, Slug: p.Slug, Name: p.Name, Description: p.Description, SKUs: []contract.SKU{}}
 		key := strings.ToLower(p.ID)
 		if _, dup := index[key]; dup {
 			return out, ErrServingBounds // SKUs attach by product id: one view per id
@@ -105,7 +108,8 @@ func BuildServing(ctx context.Context, in ServingInput) (Serving, error) {
 			continue
 		}
 		p := &products[i]
-		quote, err := pricing.Quote(bySKU[c.SKUID], pricing.Request{TenantID: in.TenantID, SKUID: c.SKUID, Currency: p.Currency, Quantity: 1, At: in.At})
+		currency := in.Site.Products[i].Currency // release currency of the product
+		quote, err := pricing.Quote(bySKU[c.SKUID], pricing.Request{TenantID: in.TenantID, SKUID: c.SKUID, Currency: currency, Quantity: 1, At: in.At})
 		if errors.Is(err, pricing.ErrNoPrice) {
 			continue // not purchasable: never consumes an output cap
 		}
@@ -132,7 +136,7 @@ func BuildServing(ctx context.Context, in ServingInput) (Serving, error) {
 			extra++ // "true" may become "false"
 		}
 		for _, l := range bySKU[c.SKUID] {
-			if l.Currency != p.Currency {
+			if l.Currency != currency {
 				continue
 			}
 			for _, t := range []*time.Time{&l.StartsAt, l.EndsAt} {
@@ -160,7 +164,11 @@ func BuildServing(ctx context.Context, in ServingInput) (Serving, error) {
 	if out.Fallback, err = wire(site); err != nil {
 		return out, err
 	}
-	out.Body, out.ValidUntil = body, boundary
+	until := in.At.Add(MaxLifetime)
+	if boundary != nil && boundary.Before(until) {
+		until = *boundary
+	}
+	out.Body, out.ValidUntil = body, &until
 	return out, nil
 }
 

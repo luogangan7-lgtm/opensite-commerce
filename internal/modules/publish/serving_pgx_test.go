@@ -44,10 +44,10 @@ func servingSeed(ids servingIDs, prefix string, price int64, stock int) []string
 		 INSERT INTO app.variant_option_values(tenant_id,product_id,variant_id,option_id,value_id) SELECT $1,'%[1]s','%[2]s',v.option_id,v.id FROM v`, ids.product, ids.ready, prefix),
 		fmt.Sprintf(`INSERT INTO app.product_content_revisions(tenant_id,product_id,locale,revision,title,seo) VALUES($1,'%s','en',1,'Tote','{"description":""}')`, ids.product),
 		fmt.Sprintf(`INSERT INTO app.product_listings(tenant_id,site_id,product_id,locale,slug,status,published_content_revision) VALUES($1,$2,'%s','en','tote','published',1)`, ids.product),
-		// The winning list has infinite bounds; a higher-priority list starts in one hour.
+		// The winning list has infinite bounds; a higher-priority list starts in ten minutes.
 		fmt.Sprintf(`WITH l AS (INSERT INTO app.price_lists(tenant_id,currency,status,starts_at,ends_at,priority,audience) VALUES($1,'USD','active','-infinity','infinity',0,'all') RETURNING id)
 		 INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) SELECT $1,l.id,s,1,%d FROM l,unnest(ARRAY['%s','%s']::uuid[]) s`, price, ids.ready, ids.archived),
-		fmt.Sprintf(`WITH l AS (INSERT INTO app.price_lists(tenant_id,currency,status,starts_at,priority,audience) VALUES($1,'USD','active',now()+interval '1 hour',9,'all') RETURNING id)
+		fmt.Sprintf(`WITH l AS (INSERT INTO app.price_lists(tenant_id,currency,status,starts_at,priority,audience) VALUES($1,'USD','active',now()+interval '10 minutes',9,'all') RETURNING id)
 		 INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) SELECT $1,l.id,'%s',1,3 FROM l`, ids.ready),
 		`SELECT set_config('app.tenant_id',$1::text,true)`,
 		fmt.Sprintf(`SELECT app.inventory_adjust('%s',%d,'serving fixture',uuidv7(),'inbound') WHERE $1::uuid IS NOT NULL`, ids.ready, stock),
@@ -158,7 +158,7 @@ func TestStorefrontServingPG(t *testing.T) {
 		var sha []byte
 		var boundary, members int
 		if err := a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
-			return tx.QueryRow(ctx, `SELECT body_sha256,(valid_until BETWEEN now()+interval '59 minutes' AND now()+interval '61 minutes')::int,
+			return tx.QueryRow(ctx, `SELECT body_sha256,(valid_until BETWEEN now()+interval '9 minutes' AND now()+interval '11 minutes')::int,
 			 (SELECT count(*) FROM app.site_release_skus WHERE tenant_id=$1 AND release_id=$2) FROM app.storefront_serving WHERE tenant_id=$1`, a.tenant, r1.ReleaseID).Scan(&sha, &boundary, &members)
 		}); err != nil {
 			t.Fatal(err)
@@ -242,6 +242,76 @@ func TestStorefrontServingPG(t *testing.T) {
 		if site, _ := read(hostA); site.ReleaseID != r1.ReleaseID || !reflect.DeepEqual(site.Products[0].SKUs, want("OWN", fmt.Sprint(int64(price)), true)) {
 			t.Fatalf("restore did not rebuild from r1's sealed membership: %+v", site)
 		}
+		// G11: mutations invalidate in their own transaction; the refresher rebuilds.
+		refresh := servingRefresher(t, a)
+		mutate := func(sql string, args ...any) {
+			t.Helper()
+			if err := a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, sql, args...); return err }); err != nil {
+				t.Fatal(err)
+			}
+		}
+		dirty := func() bool {
+			return a.count(t, ctx, `SELECT (dirty AND valid_until<=now()+interval '30 seconds')::int FROM app.storefront_serving WHERE tenant_id=$1 AND site_id=$2`) == 1
+		}
+		mutate(`UPDATE app.price_entries SET unit_amount=777 WHERE tenant_id=$1 AND sku_id=$2 AND min_quantity=1 AND unit_amount=$3`, a.tenant, ids.ready, int64(price))
+		if !dirty() {
+			t.Fatal("price change did not invalidate the serving row")
+		}
+		if n, err := refresh.Sweep(ctx); err != nil || n != 1 {
+			t.Fatalf("refresh sweep: %d %v", n, err)
+		}
+		if site, _ := read(hostA); !reflect.DeepEqual(site.Products[0].SKUs, want("OWN", "777", true)) || dirty() {
+			t.Fatalf("refresh did not serve the new price: %+v", site.Products[0].SKUs)
+		}
+		mutate(`SELECT set_config('app.tenant_id',$1::text,true), app.inventory_reserve($2::uuid,7331,'serving_test',gen_random_uuid(),'serving-'||$1::text)`, a.tenant, ids.ready)
+		if !dirty() {
+			t.Fatal("reservation did not invalidate the serving row")
+		}
+		if _, err := refresh.Sweep(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if site, _ := read(hostA); !reflect.DeepEqual(site.Products[0].SKUs, want("OWN", "777", false)) {
+			t.Fatalf("availability not refreshed: %+v", site.Products[0].SKUs)
+		}
+		mutate(`UPDATE app.product_variants SET lifecycle_status='archived' WHERE tenant_id=$1 AND id=$2`, a.tenant, ids.ready)
+		if !dirty() {
+			t.Fatal("archive did not invalidate the serving row")
+		}
+		if _, err := refresh.Sweep(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if site, _ := read(hostA); len(site.Products[0].SKUs) != 0 {
+			t.Fatalf("archived member still served: %+v", site.Products[0].SKUs)
+		}
+		// G5: a refresh waits for an in-flight publication lock, then CAS-writes.
+		locked, release := make(chan struct{}), make(chan struct{})
+		holder := make(chan error, 1)
+		go func() {
+			holder <- a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				if _, err := tx.Exec(ctx, `SELECT 1 FROM app.sites WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, a.tenant, a.site); err != nil {
+					return err
+				}
+				close(locked)
+				<-release
+				return nil
+			})
+		}()
+		<-locked
+		mutate(`UPDATE app.price_lists SET priority=priority WHERE tenant_id=$1`, a.tenant)
+		swept := make(chan error, 1)
+		go func() { _, err := refresh.Sweep(ctx); swept <- err }()
+		select {
+		case err := <-swept:
+			t.Fatalf("refresh did not wait for the publication lock: %v", err)
+		case <-time.After(time.Second):
+		}
+		close(release)
+		if err := <-holder; err != nil {
+			t.Fatal(err)
+		}
+		if err := <-swept; err != nil || dirty() {
+			t.Fatalf("refresh after lock release: %v", err)
+		}
 	})
 	// G8: the other tenant (same product/SKU UUIDs) serves only its own body.
 	withCMSContextFor(t, true, b.tenant, func(authctx context.Context) {
@@ -258,5 +328,82 @@ func TestStorefrontServingPG(t *testing.T) {
 	}
 	if _, err := public.Serve(ctx, "unknown-"+a.site[:8]+".example.test"); !errors.Is(err, contract.ErrNotFound) {
 		t.Fatalf("unknown host: %v", err)
+	}
+}
+
+// servingRefresher runs refresh builds as the runtime role in tenant transactions.
+func servingRefresher(t *testing.T, f *cmsPG) *publish.Refresher {
+	t.Helper()
+	r, err := publish.NewRefresher(publish.RefreshConfig{Tenants: []string{f.tenant}, Run: func(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+		return f.admin.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+				return err
+			}
+			return fn(ctx, tx)
+		})
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// P1 (thread 4260039759): the compatibility read returns tenant and content from one
+// snapshot. Moving a hostname between tenants between reads never mixes them, and the
+// refresher backfills a serving row for a legacy (SQL-published) site.
+func TestStorefrontLegacyHostMovePG(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	a := newCMSPG(t, ctx)
+	public, closePublic, err := publish.Open(ctx, publicLogin(t, ctx, a.admin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closePublic()
+	host := "moved-" + a.site[:8] + ".c09.test"
+	t1, t2 := newUUID(t), newUUID(t)
+	seed := func(tenant string) {
+		if err := a.admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, fmt.Sprintf(largeSiteSQL, tenant, host, `[]`, 1, 1, "en", 10))
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	owner := func(site string) string {
+		var tenant string
+		if err := a.admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `SELECT tenant_id::text FROM app.sites WHERE id=$1`, site).Scan(&tenant)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return tenant
+	}
+	seed(t1)
+	first, err := public.Current(ctx, host)
+	if err != nil || first.TenantID != t1 || owner(first.SiteID) != t1 {
+		t.Fatalf("legacy read before move: %+v %v", first, err)
+	}
+	if err = a.admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE app.site_domains SET status='disabled',verified_at=NULL WHERE tenant_id=$1 AND normalized_hostname=$2`, t1, host)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seed(t2)
+	second, err := public.Current(ctx, host)
+	if err != nil || second.TenantID != t2 || owner(second.SiteID) != t2 || second.SiteID == first.SiteID {
+		t.Fatalf("legacy read after move paired tenant %q with site of %q: %v", second.TenantID, owner(second.SiteID), err)
+	}
+	// Backfill: the refresher writes a serving row (no SKUs) for the legacy publication.
+	b := &cmsPG{admin: a.admin, tenant: t2}
+	if n, err := servingRefresher(t, b).Sweep(ctx); err != nil || n != 1 {
+		t.Fatalf("legacy backfill: %d %v", n, err)
+	}
+	if got := b.count(t, ctx, `SELECT count(*) FROM app.storefront_serving WHERE tenant_id=$1 AND $2::text=''`); got != 1 {
+		t.Fatalf("backfilled serving rows: %d", got)
+	}
+	if third, err := public.Current(ctx, host); err != nil || third.TenantID != t2 || third.SiteID != second.SiteID {
+		t.Fatalf("served backfill: %+v %v", third, err)
 	}
 }

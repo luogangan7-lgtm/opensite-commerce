@@ -1283,13 +1283,12 @@ export interface components {
             pages: components["schemas"]["PublishedPage"][];
             products: components["schemas"]["PublishedProduct"][];
         };
+        /** @description Public product view. No product-level price; display prices come from the purchasable skus. */
         PublicProduct: {
             id: string;
             slug: string;
             name: string;
             description: string;
-            unit_amount: string;
-            currency: string;
             /** @description Purchasable SKUs; see getPublishedSite for membership, price and availability rules. */
             skus: components["schemas"]["PublishedSku"][];
         };

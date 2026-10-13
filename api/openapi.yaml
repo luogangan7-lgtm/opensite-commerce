@@ -4000,14 +4000,13 @@ components:
     PublicProduct:
       type: object
       additionalProperties: false
-      required: [id, slug, name, description, unit_amount, currency, skus]
+      description: Public product view. No product-level price; display prices come from the purchasable skus.
+      required: [id, slug, name, description, skus]
       properties:
         id: {type: string, minLength: 1, maxLength: 128}
         slug: {type: string, pattern: '^[a-zA-Z0-9_-]+$', maxLength: 502}
         name: {type: string, minLength: 1, maxLength: 300}
         description: {type: string, maxLength: 10000}
-        unit_amount: {type: string, pattern: '^(0|[1-9][0-9]{0,37})$'}
-        currency: {type: string, pattern: '^[A-Z]{3}$'}
         skus:
           type: array
           maxItems: 100

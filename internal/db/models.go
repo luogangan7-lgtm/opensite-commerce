@@ -868,7 +868,9 @@ type AppStorefrontServing struct {
 	Body                []byte             `json:"body"`
 	FallbackBody        []byte             `json:"fallback_body"`
 	BodySha256          []byte             `json:"body_sha256"`
+	FallbackSha256      []byte             `json:"fallback_sha256"`
 	ValidUntil          pgtype.Timestamptz `json:"valid_until"`
+	Dirty               bool               `json:"dirty"`
 	BuiltAt             pgtype.Timestamptz `json:"built_at"`
 }
 

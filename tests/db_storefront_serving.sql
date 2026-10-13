@@ -30,16 +30,25 @@ BEGIN
  BEGIN INSERT INTO app.storefront_serving(tenant_id,site_id,release_id,publication_revision,serving_generation,body,fallback_body,body_sha256,built_at)
   VALUES(t,s,r,1,1,'{}','{}',sha256('{}'),now()); RAISE EXCEPTION 'SERVING_DIRECT_WRITE'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  SELECT publication_revision INTO pub FROM app.sites WHERE tenant_id=t AND id=s;
- gen:=app.cms_serving_put(t,s,r,pub,0,convert_to('{"a":1}'||chr(10),'UTF8'),convert_to('{"a":0}'||chr(10),'UTF8'),NULL);
+ BEGIN PERFORM app.cms_serving_put(t,s,r,pub,0,'\x7b7d','\x7b7d',now()+interval '16 minutes'); RAISE EXCEPTION 'SERVING_LIFETIME_UNBOUNDED'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
+ gen:=app.cms_serving_put(t,s,r,pub,0,convert_to('{"a":1}'||chr(10),'UTF8'),convert_to('{"a":0}'||chr(10),'UTF8'),now()+interval '10 minutes');
  IF gen<>1 THEN RAISE EXCEPTION 'SERVING_FIRST_GENERATION'; END IF;
  -- G5: stale generation or stale publication can never overwrite the newer row.
  BEGIN PERFORM app.cms_serving_put(t,s,r,pub,0,'\x7b7d','\x7b7d',NULL); RAISE EXCEPTION 'SERVING_STALE_GENERATION'; EXCEPTION WHEN serialization_failure THEN NULL; END;
  BEGIN PERFORM app.cms_serving_put(t,s,r,pub-1,1,'\x7b7d','\x7b7d',NULL); RAISE EXCEPTION 'SERVING_STALE_PUBLICATION'; EXCEPTION WHEN serialization_failure THEN NULL; END;
  BEGIN PERFORM app.cms_serving_put(current_setting('test.other')::uuid,s,r,pub,1,'\x7b7d','\x7b7d',NULL); RAISE EXCEPTION 'SERVING_CROSS_TENANT'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  IF (SELECT convert_from(body,'UTF8') FROM app.storefront_serving WHERE tenant_id=t AND site_id=s)<>'{"a":1}'||chr(10)
-  OR (SELECT serving_generation FROM app.storefront_serving WHERE tenant_id=t AND site_id=s)<>1 THEN RAISE EXCEPTION 'SERVING_OVERWRITTEN'; END IF;
+  OR (SELECT serving_generation FROM app.storefront_serving WHERE tenant_id=t AND site_id=s)<>1
+  OR (SELECT fallback_sha256<>sha256(fallback_body) OR body_sha256<>sha256(body) OR dirty FROM app.storefront_serving WHERE tenant_id=t AND site_id=s) THEN RAISE EXCEPTION 'SERVING_OVERWRITTEN'; END IF;
 END $runtime$;
 RESET ROLE;
+-- G11: a mutation of a member SKU invalidates the row in the same transaction (dirty,
+-- lifetime bounded by the 30 s grace); an unrelated tenant's row is untouched.
+UPDATE app.product_variants SET lifecycle_status='archived' WHERE tenant_id=:'tenant' AND id=:'sku';
+DO $invalidate$ BEGIN
+ IF NOT (SELECT dirty AND valid_until<=now()+interval '30 seconds' FROM app.storefront_serving WHERE tenant_id=current_setting('test.tenant')::uuid) THEN
+  RAISE EXCEPTION 'SERVING_NOT_INVALIDATED'; END IF;
+END $invalidate$;
 SELECT set_config('app.tenant_id','',true),set_config('app.public_hostname','serving-a.example',true);
 SET LOCAL ROLE app_domain_resolver;
 DO $public$

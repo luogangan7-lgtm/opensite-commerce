@@ -33,19 +33,15 @@ func (m *Module) Serve(ctx context.Context, host string) ([]byte, error) {
 	if m == nil || m.store == nil {
 		return nil, contract.ErrUnavailable
 	}
-	tenant, body, err := m.store.Serving(ctx, host)
-	if err != nil || body != nil {
+	body, legacy, err := m.store.Serving(ctx, host)
+	if err != nil || legacy == nil {
 		return body, err
 	}
-	s, r, locale, manifest, pages, err := m.store.Current(ctx, host)
+	site, err := service.Project(legacy.SiteID, legacy.ReleaseID, host, legacy.Locale, legacy.Manifest, legacy.Pages)
 	if err != nil {
 		return nil, err
 	}
-	site, err := service.Project(s, r, host, locale, manifest, pages)
-	if err != nil {
-		return nil, err
-	}
-	serving, err := service.BuildServing(ctx, service.ServingInput{TenantID: tenant, Site: site})
+	serving, err := service.BuildServing(ctx, service.ServingInput{TenantID: legacy.TenantID, Site: site})
 	if err != nil {
 		return nil, contract.ErrUnavailable
 	}
