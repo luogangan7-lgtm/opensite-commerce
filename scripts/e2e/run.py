@@ -49,6 +49,10 @@ class CIOnlyError(RuntimeError):
     """Fail before any project import, filesystem write or subprocess."""
 
 
+class WitnessFailure(RuntimeError):
+    """A fixed, non-secret assertion code for the disposable preview witness."""
+
+
 def require_ci(environ=None):
     env = os.environ if environ is None else environ
     if (env.get("CI") != "true" or env.get("GITHUB_ACTIONS") != "true"
@@ -127,7 +131,7 @@ def run(receipt_dir):
     saved = dict(os.environ)
     receipt = {"schema": 1, "sha": os.environ.get("GITHUB_SHA"), "run_id": os.environ["GITHUB_RUN_ID"],
                "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"], "project": project,
-               "status": "RUNNING", "steps": [], "browser_exit": None, "cleanup": "NOT_RUN",
+               "status": "RUNNING", "stage": "initializing", "steps": [], "browser_exit": None, "cleanup": "NOT_RUN",
                "owner_bootstrap": {"status": "NOT_RUN", "available": (ROOT / "cmd/bootstrap-admin").is_dir()},
                "seed_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                for path in [ROOT / "tests/fixtures/storefront_seed.sql", ROOT / "scripts/e2e/seed.sql"]}}
@@ -203,19 +207,21 @@ def run(receipt_dir):
                 with urllib.request.urlopen(request, timeout=5) as response:
                     data = response.read(1_048_577)
                     if len(data) > 1_048_576:
-                        raise RuntimeError("MVP E2E preview response exceeded the bound")
+                        raise WitnessFailure("response_too_large")
                     return response.status, response.headers, json.loads(data)
 
+            receipt["stage"] = "preview.cart_create"
             status, headers, created = request_json("/carts", "POST", {"currency": "USD"})
             cart_id = created.get("cart", {}).get("id")
             token = created.get("cart_token")
             if (status != 201 or not re.fullmatch(r"[0-9a-f-]{36}", str(cart_id))
                     or not re.fullmatch(r"[A-Za-z0-9_-]{43}", str(token))):
-                raise RuntimeError("MVP E2E preview witness could not create a guest cart")
+                raise WitnessFailure("cart_create_unexpected")
+            receipt["stage"] = "preview.cart_line"
             status, _, _ = request_json(f"/carts/{cart_id}/lines/{sku}", "PUT", {"quantity": 1},
                                          {"X-Cart-Token": token, "If-Match": headers.get("ETag", "")})
             if status != 200:
-                raise RuntimeError("MVP E2E preview witness could not set its cart line")
+                raise WitnessFailure("cart_line_unexpected")
 
             snapshot_sql = f"""
 SELECT jsonb_build_object(
@@ -226,25 +232,28 @@ SELECT jsonb_build_object(
  'stock',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.warehouse_id,x.sku_id),'[]'::jsonb) FROM app.stock_levels x WHERE x.tenant_id='{TENANT}')
 )::text;
 """
+            receipt["stage"] = "preview.pg_before"
             before = ops_common.psql(snapshot_sql).strip()
             baseline = json.loads(before)
             tote_stock = [row for row in baseline["stock"] if row["sku_id"] == sku]
             if (any(baseline[name] for name in ("checkout_sessions", "orders", "reservations"))
                     or len(tote_stock) != 1 or tote_stock[0]["on_hand"] != 20 or tote_stock[0]["reserved"] != 0):
-                raise RuntimeError("MVP E2E preview witness has an unexpected durable baseline")
+                raise WitnessFailure("pg_baseline_unexpected")
             origin = "https://shop.e2e.test"
             key = base64.urlsafe_b64decode(credentials["OPENSITE_STOREFRONT_KEY"] + "==")
             proof = base64.urlsafe_b64encode(hmac.new(key, f"checkout:{TENANT}:{token}:{origin}".encode(), hashlib.sha256).digest()).decode().rstrip("=")
+            receipt["stage"] = "preview.request"
             status, _, preview = request_json("/checkout/preview", "POST", {
                 "cart_id": cart_id, "shipping_address": {"country": "US", "postal_code": "10001"}},
                 {"X-Cart-Token": token, "X-Cart-ID": cart_id, "Origin": origin, "X-CSRF-Token": proof})
             if status != 200 or any(preview.get(field) != amount for field, amount in {
                     "subtotal_minor": "2400", "tax_minor": "240", "shipping_minor": "500", "total_minor": "3140",
                     "currency": "USD"}.items()):
-                raise RuntimeError("MVP E2E preview witness returned unexpected exact minor amounts")
+                raise WitnessFailure("amounts_unexpected")
+            receipt["stage"] = "preview.pg_after"
             after = ops_common.psql(snapshot_sql).strip()
             if before != after:
-                raise RuntimeError("MVP E2E preview mutated checkout, order, reservation, movement or stock rows")
+                raise WitnessFailure("pg_rows_changed")
             return {"status": "PASS", "subtotal_minor": "2400", "total_minor": "3140",
                     "pg_snapshot_sha256": hashlib.sha256(before.encode()).hexdigest(),
                     "pg_row_counts": {name: len(rows) for name, rows in baseline.items()}}
@@ -292,12 +301,15 @@ SELECT jsonb_build_object(
             receipt["owner_bootstrap"]["status"] = "PASS"
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
             persist()
+            receipt["stage"] = "frontends.start"
             command(compose_command(["up", "-d", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
+            receipt["stage"] = "frontends.readiness"
             wait_http("http://127.0.0.1:4321/", 200, b"Made for everyday use")
             wait_http("http://127.0.0.1:4173/", 200, b"<div id=\"root\"")
             receipt["preview_readonly"] = preview_readonly_witness()
             receipt["steps"].append("real-ssr-and-admin-positive-readiness")
             persist()
+            receipt["stage"] = "browser"
             result = ROOT / "test-results/e2e/results.json"
             result.unlink(missing_ok=True)  # only this CI harness's own stale result
             receipt["browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "browser"]), "browser", timeout=900, check=False)
@@ -340,8 +352,17 @@ SELECT json_build_object(
 """).strip())
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-accessibility-and-real-pg-purchase-postconditions")
-        except BaseException:
+        except BaseException as error:
             receipt["status"] = "FAIL"
+            failure = {"stage": receipt["stage"], "kind": "interrupted" if isinstance(error, KeyboardInterrupt)
+                       else "http_status" if isinstance(error, urllib.error.HTTPError)
+                       else "assertion" if isinstance(error, WitnessFailure) else "runner_error"}
+            if isinstance(error, urllib.error.HTTPError):
+                failure["http_status"] = error.code
+            elif isinstance(error, WitnessFailure):
+                failure["assertion"] = str(error)
+            receipt["failure"] = failure
+            print("FAIL_STAGE: " + json.dumps(failure, sort_keys=True), file=sys.stderr, flush=True)
             raise
         finally:
             # Collect bounded/sanitized logs before removing only OUR stack.
