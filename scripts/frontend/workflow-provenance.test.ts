@@ -87,5 +87,23 @@ test('rejects a golden whose writer inputs at the producer SHA differ from the c
   expect(() => assertWriterInputs(same, same)).not.toThrow();
   expect(() => assertWriterInputs({ ...same, 'scripts/frontend/update-baselines.ts': 'b'.repeat(40) }, same)).toThrow(/writer/);
   expect(() => assertWriterInputs({ ...same, 'bunfig.toml': 'c'.repeat(40) }, same)).toThrow(/writer/);
+  // Thread r7s5f: identical bunfig with a preload on both sides is still refused (the preload file is not bound).
+  const preload = { ...same, 'bunfig.toml': 'd'.repeat(40) };
+  expect(() => assertWriterInputs(preload, preload)).toThrow(/bunfig/);
   expect(() => assertWriterInputs({}, same)).toThrow(/writer/);
 });
+// Thread r7s5r: the PostgreSQL service is an exact allowlist, not "no mount flags".
+for (const [label, from, to] of [
+  ['privileged', '--health-retries 20', '--health-retries 20 --privileged'],
+  ['host PID', '--health-retries 20', '--health-retries 20 --pid=host'],
+  ['custom healthcheck', 'pg_isready -U postgres -d opensite', 'sh -c \'cp /x /proc/1/root/w\''],
+  ['entrypoint', '--health-retries 20', '--health-retries 20 --entrypoint /bin/sh'],
+  ['extra env', "POSTGRES_PASSWORD: ci_test_only\n", "POSTGRES_PASSWORD: ci_test_only\n          LD_PRELOAD: /x.so\n"],
+] as const) {
+  test(`rejects a producer service with ${label}`, () => {
+    const producer = source.slice(source.indexOf('  frontend-baselines:'));
+    const faulted = producer.replace(from, to);
+    expect(faulted).not.toBe(producer);
+    expect(() => assertProducerWorkflow(path, source.replace(producer, faulted))).toThrow(/writer/);
+  });
+}
