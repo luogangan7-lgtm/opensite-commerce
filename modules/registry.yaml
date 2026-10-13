@@ -745,6 +745,43 @@
         "quotes:write"
       ],
       "note": "C-17a contact collection and immutable quote lifecycle; buyer endpoints require an externally verified sealed customer actor, default denied. No customer authentication implementation or order/payment creation."
+    },
+    {
+      "name": "notifications",
+      "status": "implemented",
+      "go_path": "internal/modules/notifications",
+      "go_status": "implemented",
+      "owns_tables": [
+        "notification_deliveries",
+        "notification_redrive_requests"
+      ],
+      "operations": [
+        {
+          "operation_id": "listNotificationFailures",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "redriveNotification",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "reliability",
+        "orders",
+        "customer"
+      ],
+      "tests": [
+        "tests/db_notifications.sql",
+        "tests/test_notifications_contract_static.py",
+        "tests/test_notifications_api.py",
+        "internal/platform/httpapi/notificationhttp/notifications_test.go",
+        "internal/modules/notifications/internal/service/render_test.go"
+      ],
+      "scopes": [
+        "notifications:write"
+      ],
+      "note": "Admin failure metadata and explicit idempotent dead-letter redrive. No recipient/body in public DTOs, uncertain SMTP acceptance cannot redrive; queue receipt is not email delivery. Uses lease-fenced outbox capability and stdlib fake/SMTP adapters; quotes event SQL is optional until integration."
     }
   ],
   "migrations": [
@@ -1043,7 +1080,16 @@
       ]
     },
     {
-      "file": "migrations/026_quotes.sql",
+      "file": "migrations/026_notifications.sql",
+      "owner": "notifications",
+      "touches_tables": [
+        "notification_deliveries",
+        "notification_redrive_requests",
+        "outbox_events"
+      ]
+    },
+    {
+      "file": "migrations/027_quotes.sql",
       "owner": "quotes",
       "touches_tables": [
         "inquiries",

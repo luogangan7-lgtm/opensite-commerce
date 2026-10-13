@@ -147,6 +147,25 @@ SET LOCAL ROLE app_runtime;
 SELECT pg_temp.quote_reject(format('SELECT app.transition_quote(%L,%L,3,''approve'',''customer'',%L)',:'ta',:'atomic_quote',:'approver'),'42501','purchaser cannot approve');
 RESET ROLE;
 UPDATE app.buyer_company_members SET role_code='approver' WHERE tenant_id=:'ta' AND customer_id=:'approver';
+-- Notifications (026) fans out quote sent/approved events only from authoritative
+-- quote/inquiry/customer rows, which requires the quote ACL block in this migration.
+INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message,buyer_company_id)
+VALUES(:'ta',:'site','Notify-Buyer@Example.test','notify',:'company') RETURNING id AS notify_inquiry \gset
+SELECT set_config('quotes.inquiry',:'notify_inquiry',true);
+SET LOCAL ROLE app_runtime;
+SELECT pg_temp.quote_create() AS notify_quote \gset
+SELECT app.transition_quote(:'ta',:'notify_quote',1,'send','staff',:'staff');
+SELECT app.transition_quote(:'ta',:'notify_quote',2,'accept','customer',:'buyer');
+SELECT app.transition_quote(:'ta',:'notify_quote',3,'approve','customer',:'approver');
+RESET ROLE;
+SELECT set_config('quotes.notify',:'notify_quote',true);
+DO $notify$ DECLARE q uuid:=current_setting('quotes.notify')::uuid; buyer_email text; BEGIN
+ SELECT email_normalized INTO STRICT buyer_email FROM app.customers WHERE id=current_setting('quotes.buyer')::uuid;
+ IF (SELECT count(*) FROM app.notification_deliveries d JOIN app.outbox_events o ON(o.tenant_id,o.id)=(d.tenant_id,d.dispatch_event_id)
+  WHERE d.reference_id=q AND d.template_key='quote.sent' AND d.recipient='notify-buyer@example.test' AND d.status='pending' AND o.delivery_target='notifications.email')<>1
+ OR (SELECT count(*) FROM app.notification_deliveries WHERE reference_id=q AND template_key='quote.approved' AND recipient=buyer_email AND status='pending')<>1
+ OR (SELECT count(*) FROM app.notification_deliveries WHERE reference_id=q)<>2 THEN RAISE EXCEPTION 'QUOTES_NOTIFICATION_FANOUT'; END IF;
+END $notify$;
 -- Active records are rechecked in the DB rather than trusting a service check.
 UPDATE app.tenant_memberships SET status='suspended' WHERE tenant_id=:'ta' AND user_id=:'staff';
 SET LOCAL ROLE app_runtime;

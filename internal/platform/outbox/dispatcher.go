@@ -38,6 +38,12 @@ type Sender interface {
 	Send(context.Context, Delivery) error
 }
 
+// LeaseSender is an optional capability for consumers that fence acceptance on
+// the committed worker/attempt/expiry. It has Sender's cancellation contract.
+type LeaseSender interface {
+	SendLease(context.Context, Lease) error
+}
+
 // Store returns only after its operation's independent transaction commits.
 // Complete and Fail return false for an expired/replaced lease. They must pass
 // tenant, event ID, worker ID and Attempt unmodified to SQL's fencing functions.
@@ -61,8 +67,16 @@ type Result struct{ Claimed, Sent, Completed, Failed int }
 // failBudget bounds the detached transaction that records a failed send.
 const failBudget = 5 * time.Second
 
+var errCycleBudget = errors.New("outbox cycle budget exhausted")
+
 // Dispatch performs at most maxEvents deliveries for a caller-authorized tenant.
 func (d Dispatcher) Dispatch(ctx context.Context, tenantID string, maxEvents int) (Result, error) {
+	return d.dispatch(ctx, ctx, tenantID, maxEvents)
+}
+
+// Runner budgets new claims separately from an already committed delivery.
+// deliveryParent retains explicit shutdown; each active event has a lease bound.
+func (d Dispatcher) dispatch(ctx, deliveryParent context.Context, tenantID string, maxEvents int) (Result, error) {
 	var result Result
 	c := d.Config
 	if d.Store == nil || d.Sender == nil || !tenanttx.ValidTenantID(tenantID) ||
@@ -72,11 +86,17 @@ func (d Dispatcher) Dispatch(ctx context.Context, tenantID string, maxEvents int
 		return result, ErrInvalidInput
 	}
 	for range maxEvents {
-		if err := ctx.Err(); err != nil {
+		if err := deliveryParent.Err(); err != nil {
 			return result, err
+		}
+		if err := ctx.Err(); err != nil {
+			return result, errCycleBudget
 		}
 		leases, err := d.Store.Claim(ctx, tenantID, c.WorkerID, 1, c.LeaseSeconds)
 		if err != nil {
+			if ctx.Err() == context.DeadlineExceeded && deliveryParent.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+				return result, errCycleBudget
+			}
 			return result, err
 		}
 		if len(leases) == 0 {
@@ -95,19 +115,26 @@ func (d Dispatcher) Dispatch(ctx context.Context, tenantID string, maxEvents int
 		if !time.Now().Before(l.LeaseUntil) {
 			return result, ErrLeaseLost
 		}
-		if err := ctx.Err(); err != nil {
+		if err := deliveryParent.Err(); err != nil {
 			return result, err
 		}
 		deadline := time.Now().Add(time.Duration(c.LeaseSeconds) * time.Second)
 		if l.LeaseUntil.Before(deadline) {
 			deadline = l.LeaseUntil
 		}
-		sendCtx, cancel := context.WithDeadline(ctx, deadline)
+		sendCtx, cancel := context.WithDeadline(deliveryParent, deadline)
 		delivery := l.Delivery
 		delivery.Payload = append([]byte(nil), delivery.Payload...)
-		sendErr := d.Sender.Send(sendCtx, delivery)
-		cancel()
+		var sendErr error
+		if sender, ok := d.Sender.(LeaseSender); ok {
+			copiedLease := l
+			copiedLease.Delivery = delivery
+			sendErr = sender.SendLease(sendCtx, copiedLease)
+		} else {
+			sendErr = d.Sender.Send(sendCtx, delivery)
+		}
 		if sendErr != nil {
+			cancel()
 			retry := c.BaseRetrySeconds
 			// Saturate before doubling: attempts can reach MaxInt32 without overflow.
 			for attempt := int32(1); attempt < l.Attempt && retry < c.MaxRetrySeconds; attempt++ {
@@ -132,7 +159,12 @@ func (d Dispatcher) Dispatch(ctx context.Context, tenantID string, maxEvents int
 			continue
 		}
 		result.Sent++
-		accepted, err := d.Store.Complete(ctx, l)
+		if err := sendCtx.Err(); err != nil {
+			cancel()
+			return result, err
+		}
+		accepted, err := d.Store.Complete(sendCtx, l)
+		cancel()
 		if err != nil {
 			return result, err
 		} // Ambiguous ack leaves takeover to the lease protocol.

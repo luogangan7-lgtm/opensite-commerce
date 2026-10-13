@@ -141,6 +141,50 @@ def validate_contract(api):
 
     operations = operation_inventory(api)
     require(SELF_OPERATIONS | {"createAdminSession", "health"} <= operations.keys(), "identity/health operation missing")
+    notification_routes = {
+        "listNotificationFailures": ("/api/v1/t/{tenant_id}/notifications/failures", "get"),
+        "redriveNotification": ("/api/v1/t/{tenant_id}/notifications/{notification_id}/redrive", "post"),
+    }
+    require(notification_routes.keys() <= operations.keys(), "notification operation missing")
+    for ident, expected in notification_routes.items():
+        path, method, op = operations[ident]
+        require((path, method) == expected and op.get("x-opensite-status") == "implemented" and
+                op.get("x-opensite-access") == "AdminOrAPIKey" and
+                op.get("x-required-scope") == "notifications:write", f"notification route/scope/status drift: {ident}")
+        require("requestBody" not in op, f"notification body forbidden: {ident}")
+        response = "NotificationFailures" if ident == "listNotificationFailures" else "NotificationRedriveReceipt"
+        require(op["responses"].get("200", {}).get("content") ==
+                {"application/json": {"schema": {"$ref": "#/components/schemas/" + response}}},
+                f"notification success response drift: {ident}")
+        for code, name in {"400": "BadRequest", "404": "NotFound", "500": "InternalServerError", "503": "ServiceUnavailable"}.items():
+            require(op["responses"].get(code) == {"$ref": "#/components/responses/" + name},
+                    f"notification error response drift: {ident}")
+    list_op = operations["listNotificationFailures"][2]
+    limit = next((p for p in list_op.get("parameters", []) if p.get("name") == "limit"), {})
+    require(limit.get("in") == "query" and limit.get("schema") ==
+            {"type": "integer", "format": "int32", "minimum": 1, "maximum": 100, "default": 25},
+            "notification limit must be bounded")
+    key = api["components"]["parameters"].get("NotificationIdempotencyKey", {})
+    require(key.get("name") == "Idempotency-Key" and key.get("in") == "header" and key.get("required") is True and
+            key.get("schema") == {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[!-~]+$"},
+            "notification redrive key must be bounded printable ASCII")
+    require({"$ref": "#/components/parameters/NotificationIdempotencyKey"} in
+            operations["redriveNotification"][2].get("parameters", []), "notification redrive key missing")
+    schemas = api["components"]["schemas"]
+    failure = schemas["NotificationFailure"]
+    require(failure.get("additionalProperties") is False and set(failure["properties"]) ==
+            {"id", "event_id", "template_key", "status", "attempts", "generation", "created_at", "updated_at", "safe_error"},
+            "notification failure must expose only safe fields")
+    require(failure["properties"]["safe_error"] ==
+            {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z0-9_]+$"},
+            "notification error must be a bounded safe code")
+    require(failure["properties"]["status"].get("enum") == ["failed", "dead_letter", "uncertain"],
+            "notification failure states drift")
+    receipt = schemas["NotificationRedriveReceipt"]
+    require(receipt.get("additionalProperties") is False and set(receipt["properties"]) ==
+            {"notification_id", "token", "status", "generation"} and
+            receipt["properties"]["status"].get("enum") == ["pending"], "notification receipt must expose only queued safe fields")
+
     for ident, (path, method, op) in operations.items():
         require(op.get("x-opensite-status") in {"planned", "implemented"}, f"explicit operation status required: {ident}")
         require(isinstance(op.get("responses"), dict) and bool(op["responses"]), f"nonempty responses required: {ident}")

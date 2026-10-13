@@ -1,5 +1,5 @@
 -- Responsibility: Quotes owns existing inquiries, immutable quotes/lines and one approval.
--- Dependencies: identity001, CMS005, reliability011, customers/B2B016; forward migrator.
+-- Dependencies: identity001, CMS005, reliability011, customers/B2B016, notifications026; forward migrator.
 -- Callers: runtime sqlc commands under an authenticated tenant transaction.
 -- Invariants: composite tenant FKs; actor checked in DB; row-lock/version CAS;
 -- snapshots never change; state+approval+outbox commit together. Rollback: forward repair.
@@ -105,6 +105,11 @@ GRANT UPDATE(status,version,accepted_by,updated_at) ON app.quotes TO app_quotes_
 GRANT INSERT(tenant_id,quote_id,line_no,product_id,variant_id,description,quantity,unit_price,line_total,snapshot) ON app.quote_lines TO app_quotes_executor;
 GRANT INSERT(tenant_id,quote_id,buyer_company_id,requested_by,decided_by,decision) ON app.quote_approvals TO app_quotes_executor;
 GRANT INSERT(tenant_id,event_type,payload,delivery_target,dedup_key) ON app.outbox_events TO app_quotes_executor;
+-- Notifications (026) installed first and refuses unpermissioned optional quote
+-- sources. Install exactly the contact-resolution ACLs it expects so quote
+-- sent/approved events fan out; recipients still come only from these rows.
+GRANT SELECT(tenant_id,id,site_id,inquiry_id,buyer_company_id,accepted_by,status,version) ON app.quotes TO app_notifications_executor;
+GRANT SELECT(tenant_id,id,site_id,buyer_company_id,buyer_email) ON app.inquiries TO app_notifications_executor;
 DO $rls$ DECLARE t text; BEGIN
  FOREACH t IN ARRAY ARRAY['quotes','quote_lines','quote_approvals'] LOOP
   EXECUTE format('ALTER TABLE app.%I ENABLE ROW LEVEL SECURITY',t);
@@ -114,6 +119,8 @@ DO $rls$ DECLARE t text; BEGIN
  FOREACH t IN ARRAY ARRAY['inquiries','buyer_companies','buyer_company_members','customers','tenant_memberships','outbox_events'] LOOP
   EXECUTE format('CREATE POLICY quotes_executor_scope ON app.%I TO app_quotes_executor USING(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',t);
  END LOOP;
+ CREATE POLICY notifications_quotes ON app.quotes TO app_notifications_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
+ CREATE POLICY notifications_inquiries ON app.inquiries TO app_notifications_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
 END $rls$;
 CREATE FUNCTION app.quote_actor_access(p_tenant uuid,p_company uuid,p_kind text,p_actor uuid,p_operation text)
 RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$

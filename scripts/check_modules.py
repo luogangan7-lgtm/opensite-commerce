@@ -359,6 +359,7 @@ RAW_CONNECTION_ALLOWED = {Path("internal/tenanttx/pgxadapter"): "", Path("intern
 # exercise it.
 GENERATED_SERVER = "internal/platform/httpapi/generated"
 GENERATED_SERVER_IMPORTERS = {Path("internal/platform/httpapi"), Path("internal/platform/httpapi/carthttp"),
+                              Path("internal/platform/httpapi/notificationhttp"),
                               Path(GENERATED_SERVER)}
 
 

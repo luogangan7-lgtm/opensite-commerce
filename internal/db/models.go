@@ -328,6 +328,37 @@ type AppMediaUpload struct {
 	MediaID          pgtype.UUID        `json:"media_id"`
 }
 
+type AppNotificationDelivery struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	ID              pgtype.UUID        `json:"id"`
+	SourceEventID   pgtype.UUID        `json:"source_event_id"`
+	DispatchEventID pgtype.UUID        `json:"dispatch_event_id"`
+	Recipient       string             `json:"recipient"`
+	Locale          string             `json:"locale"`
+	TemplateKey     string             `json:"template_key"`
+	ReferenceID     pgtype.UUID        `json:"reference_id"`
+	Status          string             `json:"status"`
+	AttemptCount    int32              `json:"attempt_count"`
+	Generation      int32              `json:"generation"`
+	SendToken       pgtype.UUID        `json:"send_token"`
+	LeaseAttempt    pgtype.Int4        `json:"lease_attempt"`
+	LeaseWorker     pgtype.UUID        `json:"lease_worker"`
+	LastError       pgtype.Text        `json:"last_error"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	SentAt          pgtype.Timestamptz `json:"sent_at"`
+}
+
+type AppNotificationRedriveRequest struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	NotificationID  pgtype.UUID        `json:"notification_id"`
+	IdempotencyKey  string             `json:"idempotency_key"`
+	RequestToken    pgtype.UUID        `json:"request_token"`
+	Generation      int32              `json:"generation"`
+	DispatchEventID pgtype.UUID        `json:"dispatch_event_id"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
 type AppOrder struct {
 	TenantID         pgtype.UUID        `json:"tenant_id"`
 	ID               pgtype.UUID        `json:"id"`
