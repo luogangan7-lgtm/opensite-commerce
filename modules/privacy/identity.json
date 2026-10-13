@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "module": "identity",
+  "note": "Global staff identities and rate-limit identifiers are separate from tenant customers. Hashes remain nonexportable; raw email and source IP are explicitly classified.",
+  "structures": {"Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data."},
+  "tables": {
+    "users": {
+      "subject": {"tenant_key": null, "identity_path": "users.id (global staff identity; separate from customers)"},
+      "columns": {
+        "id": {"classification": "operational"},
+        "email": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "email_normalized": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
+        "password_hash": {"classification": "secret_hash", "export": "exclude"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "auth_sessions": {
+      "subject": {"tenant_key": null, "identity_path": "auth_sessions.user_id -> users.id"},
+      "columns": {
+        "id": {"classification": "operational"},
+        "user_id": {"classification": "operational"},
+        "token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "expires_at": {"classification": "operational"},
+        "revoked_at": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "last_seen_at": {"classification": "operational"}
+      }
+    },
+    "auth_account_attempts": {
+      "subject": {"tenant_key": null, "null_subject_policy": "Global staff authentication identifier; may be an unknown account, never join it to a customer by email."},
+      "columns": {
+        "identifier_normalized": {"classification": "contact", "erase": {"strategy": "retain", "reason": "Bounded security rate-limit evidence for global staff authentication, including unknown identifiers; customer erase must not disable shared anti-abuse enforcement. Identity module must implement its own retention/expiry policy."}, "export": "redact"},
+        "failure_count": {"classification": "operational"},
+        "window_started_at": {"classification": "operational"},
+        "cooldown_until": {"classification": "operational"},
+        "last_failed_at": {"classification": "operational"}
+      }
+    },
+    "auth_login_attempts": {
+      "subject": {"tenant_key": null, "null_subject_policy": "Global staff identifier plus request IP; unknown accounts/IPs are not customer identity proof."},
+      "columns": {
+        "identifier_normalized": {"classification": "contact", "erase": {"strategy": "retain", "reason": "Bounded security rate-limit evidence for global staff authentication, including unknown identifiers; customer erase must not disable shared anti-abuse enforcement. Identity module must implement its own retention/expiry policy."}, "export": "redact"},
+        "ip": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Bounded security rate-limit evidence for global staff authentication, including unknown identifiers; customer erase must not disable shared anti-abuse enforcement. Identity module must implement its own retention/expiry policy."}, "export": "redact", "canary_value": "2001:db8:cafe::42"},
+        "failure_count": {"classification": "operational"},
+        "window_started_at": {"classification": "operational"},
+        "cooldown_until": {"classification": "operational"},
+        "last_failed_at": {"classification": "operational"}
+      }
+    },
+    "known_devices": {
+      "subject": {"tenant_key": null, "identity_path": "known_devices.user_id -> users.id"},
+      "columns": {
+        "id": {"classification": "operational"},
+        "user_id": {"classification": "operational"},
+        "cookie_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "expires_at": {"classification": "operational"},
+        "revoked_at": {"classification": "operational"},
+        "failure_count": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    }
+  }
+}

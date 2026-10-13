@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "module": "pricing",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {},
+  "tables": {
+    "price_lists": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "currency": {"classification": "financial_non_contact"},
+        "status": {"classification": "operational"},
+        "starts_at": {"classification": "operational"},
+        "ends_at": {"classification": "operational"},
+        "priority": {"classification": "operational"},
+        "audience": {"classification": "operational"},
+        "customer_group_id": {"classification": "operational"},
+        "buyer_company_id": {"classification": "operational"}
+      }
+    },
+    "price_entries": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "price_list_id": {"classification": "operational"},
+        "sku_id": {"classification": "operational"},
+        "min_quantity": {"classification": "operational"},
+        "unit_amount": {"classification": "financial_non_contact"}
+      }
+    }
+  }
+}

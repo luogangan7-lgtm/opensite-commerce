@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "module": "b2b",
+  "note": "Explicit column policies for the tables owned by this module. Relational IDs/state/time are operational metadata; direct and derived personal/contact fields require subject-specific handling.",
+  "structures": {},
+  "tables": {
+    "buyer_companies": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "name": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "buyer_roles": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "code": {"classification": "operational"}
+      }
+    },
+    "buyer_company_members": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "buyer_company_id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "role_code": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    }
+  }
+}

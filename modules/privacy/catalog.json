@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "module": "catalog",
+  "note": "Product names, titles, SEO, option/attribute values and content blocks are published merchandise content, not private customer input. New private/customized-customer content needs reclassification and a subject path before persistence.",
+  "structures": {"AttributeSchema": "Merchandise attribute validation definition; not customer attributes.", "ProductBodyBlocks": "Published merchandise description blocks array; private customer input is outside this structure contract.", "ProductSEO": "Published product SEO object; private customer input is outside this structure contract."},
+  "tables": {
+    "products": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "product_code": {"classification": "operational"},
+        "product_code_normalized": {"classification": "operational"},
+        "lifecycle_status": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "version": {"classification": "operational"}
+      }
+    },
+    "product_options": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "code": {"classification": "operational"}
+      }
+    },
+    "product_option_values": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "option_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "value_code": {"classification": "operational"},
+        "label": {"classification": "operational"}
+      }
+    },
+    "product_variants": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "sku": {"classification": "operational"},
+        "sku_normalized": {"classification": "operational"},
+        "option_key": {"classification": "operational"},
+        "created_at": {"classification": "operational"},
+        "version": {"classification": "operational"},
+        "lifecycle_status": {"classification": "operational"}
+      }
+    },
+    "variant_option_values": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "variant_id": {"classification": "operational"},
+        "option_id": {"classification": "operational"},
+        "value_id": {"classification": "operational"}
+      }
+    },
+    "attribute_definitions": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "code": {"classification": "operational"},
+        "value_type": {"classification": "operational"},
+        "schema": {"classification": "operational", "structure": "AttributeSchema"}
+      }
+    },
+    "product_attribute_values": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "attribute_id": {"classification": "operational"},
+        "text_value": {"classification": "operational"},
+        "number_value": {"classification": "operational"},
+        "bool_value": {"classification": "operational"},
+        "enum_value": {"classification": "operational"},
+        "unit_code": {"classification": "operational"}
+      }
+    },
+    "product_content_revisions": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "locale": {"classification": "operational"},
+        "revision": {"classification": "operational"},
+        "title": {"classification": "operational"},
+        "body_blocks": {"classification": "operational", "structure": "ProductBodyBlocks"},
+        "seo": {"classification": "operational", "structure": "ProductSEO"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "product_listings": {
+      "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "site_id": {"classification": "operational"},
+        "product_id": {"classification": "operational"},
+        "locale": {"classification": "operational"},
+        "slug": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "published_content_revision": {"classification": "operational"}
+      }
+    }
+  }
+}
