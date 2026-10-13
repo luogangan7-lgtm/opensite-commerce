@@ -33,6 +33,7 @@ sql:
       - "migrations/030_orders_admin_list_index.sql"
       - "migrations/031_cms_publish.sql"
       - "migrations/032_checkout.sql"
+      - "migrations/033_customer_auth.sql"
       - "migrations/034_storefront_serving.sql"
     queries: ["queries", "queries/reliability", "queries/identity"]
     gen:

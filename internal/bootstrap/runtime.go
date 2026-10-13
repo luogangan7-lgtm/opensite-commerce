@@ -15,7 +15,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
@@ -28,7 +30,11 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	defer cancel()
 	var runners []*pgxadapter.QueryRunner
 	var staff *identity.LoginModule
+	var customerRunner *pgxadapter.CustomerRunner
 	closeRuntime := func() {
+		if customerRunner != nil {
+			customerRunner.Close()
+		}
 		if staff != nil {
 			closing, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_ = staff.Close(closing)
@@ -133,6 +139,40 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		config.Authenticator = staff.Authenticator()
 		config.Routes = append(config.Routes, staff.Routes()...)
+	}
+	customerURL, err := environmentDSN("OPENSITE_CUSTOMER_AUTH_DATABASE_URL", "CUSTOMER_AUTH", "opensite_customer_auth_login")
+	if err != nil {
+		closeRuntime()
+		return Config{}, nil, err
+	}
+	if customerURL != "" && config.Customer == nil {
+		origin := os.Getenv("OPENSITE_STOREFRONT_ORIGIN")
+		secret, err := base64.RawURLEncoding.Strict().DecodeString(os.Getenv("OPENSITE_CUSTOMER_CSRF_SECRET"))
+		if err != nil || len(secret) < 32 || len(secret) > 128 {
+			closeRuntime()
+			return Config{}, nil, errors.New("customer authentication configuration is invalid")
+		}
+		sender, err := notifications.SenderFromEnv(os.Getenv)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, errors.New("customer notification configuration is invalid")
+		}
+		mailer, err := newCustomerMailer(sender, origin)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, err
+		}
+		customerRunner, err = pgxadapter.OpenCustomerRunner(startup, customerURL)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, err
+		}
+		config.Customer, err = customer.NewPostgres(customerRunner.InTenant, customer.Config{Mailer: mailer, Secret: secret})
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, errors.New("customer authentication configuration is invalid")
+		}
+		config.CustomerOrigin, config.CustomerSecret = origin, secret
 	}
 	return config, closeRuntime, nil
 }
