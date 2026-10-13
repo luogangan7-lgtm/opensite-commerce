@@ -274,7 +274,7 @@ func explainPublic(t *testing.T, ctx context.Context, publicDSN, host, tenant st
 	for _, c := range []struct {
 		q    string
 		args []any
-	}{{store.LiveSKUSQL, []any{tenant, 5001}}, {store.LivePriceSQL, []any{tenant, time.Now(), 5001, release}}} {
+	}{{store.LiveSKUSQL, []any{tenant, 5001, release, time.Now()}}} {
 		q, args := c.q, c.args
 		_ = r.InPublicRead(ctx, host, func(ctx context.Context, tx pgx.Tx) error {
 			if _, err := tx.Exec(ctx, "SELECT set_config('statement_timeout','60000',true)"); err != nil {
