@@ -169,6 +169,35 @@ func (q *Queries) GetCart(ctx context.Context, arg GetCartParams) (AppCart, erro
 	return i, err
 }
 
+const getCartContext = `-- name: GetCartContext :one
+SELECT coalesce(current_setting('app.tenant_id',true),'')::text AS tenant_context,
+ coalesce(current_setting('app.cart_customer_id',true),'')::text AS customer_context,
+ coalesce(current_setting('app.cart_token_hash',true),'')::text AS token_context,
+ current_user::text AS runtime_role
+`
+
+type GetCartContextRow struct {
+	TenantContext   string `json:"tenant_context"`
+	CustomerContext string `json:"customer_context"`
+	TokenContext    string `json:"token_context"`
+	RuntimeRole     string `json:"runtime_role"`
+}
+
+// Cart store SQL; depends on cart DDL plus public customer/catalog/price/stock reads.
+// Caller owns one actor-scoped transaction, locks cart before quote/mutation/CAS.
+// No inventory reservation; absolute quantity and deterministic batched quote reads.
+func (q *Queries) GetCartContext(ctx context.Context) (GetCartContextRow, error) {
+	row := q.db.QueryRow(ctx, getCartContext)
+	var i GetCartContextRow
+	err := row.Scan(
+		&i.TenantContext,
+		&i.CustomerContext,
+		&i.TokenContext,
+		&i.RuntimeRole,
+	)
+	return i, err
+}
+
 const getCartForUpdate = `-- name: GetCartForUpdate :one
 SELECT tenant_id, id, customer_id, guest_token_hash, currency, version, created_at FROM app.carts WHERE tenant_id=$1 AND id=$2 FOR UPDATE
 `
@@ -332,9 +361,6 @@ type SetCartContextParams struct {
 	TokenContext    string `json:"token_context"`
 }
 
-// Cart store SQL; depends on cart DDL plus public customer/catalog/price/stock reads.
-// Caller owns one actor-scoped transaction, locks cart before quote/mutation/CAS.
-// No inventory reservation; absolute quantity and deterministic batched quote reads.
 func (q *Queries) SetCartContext(ctx context.Context, arg SetCartContextParams) error {
 	_, err := q.db.Exec(ctx, setCartContext, arg.TenantContext, arg.CustomerContext, arg.TokenContext)
 	return err

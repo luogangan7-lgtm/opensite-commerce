@@ -682,7 +682,8 @@
         "internal/platform/httpapi/carthttp/cart_test.go",
         "internal/modules/cart/internal/service/service_test.go",
         "internal/bootstrap/contract_test.go",
-        "internal/db/cart_integration_test.go"
+        "internal/db/cart_integration_test.go",
+        "internal/modules/cart/internal/store/intent_test.go"
       ],
       "scopes": [],
       "note": "Cart intent has immutable tenant/owner/currency, absolute SKU quantities and optimistic version. Prices/stock are live hints; no reservations, checkout or HTTP guest merge. Storefront authority uses guest capability hash or trusted customer resolver; staff auth is separate."
@@ -757,6 +758,54 @@
         "internal/contracts/payment/v1"
       ],
       "note": "C-15a freezes the neutral Payment Port v1 and test-only Fake. Real payment storage, service and Stripe are deferred to C-19; no production payment capability exists."
+    },
+    {
+      "name": "checkout",
+      "status": "implemented",
+      "go_path": "internal/modules/checkout",
+      "go_status": "implemented",
+      "owns_tables": [
+        "checkout_sessions",
+        "checkout_attempts"
+      ],
+      "operations": [
+        {
+          "operation_id": "createCheckout",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "receiveFakePaymentEvent",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "orders",
+        "ledger",
+        "payments",
+        "pricing",
+        "tax",
+        "shipping",
+        "money",
+        "reliability",
+        "customer",
+        "cart"
+      ],
+      "tests": [
+        "tests/db_checkout.sql",
+        "internal/db/checkout_integration_test.go",
+        "internal/platform/httpapi/checkout/checkout_test.go",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh",
+        "internal/modules/checkout/internal/service/calculate_test.go",
+        "internal/db/checkout_failure_race_test.go",
+        "internal/db/checkout_cart_integration_test.go",
+        "internal/modules/checkout/internal/store/cart_test.go",
+        "internal/db/checkout_http_integration_test.go",
+        "internal/modules/checkout/internal/service/input_test.go"
+      ],
+      "scopes": [],
+      "note": "C-18a Fake-only checkout orchestration. Optional strict HTTP composition uses a default-deny trusted storefront resolver seam classified Storefront until real customer/guest middleware; URL/Host never authorize. Fake webhook is signed and mounted only in explicit test/development configuration. Cart contract consumption uses the real locked IntentReader in the caller transaction, discards price projections and restores prior actor GUCs. Trusted guest/customer resolver wiring remains absent and default deny; no production payment provider wiring."
     },
     {
       "name": "quotes",
@@ -1261,7 +1310,15 @@
       ]
     },
     {
-      "file": "migrations/032_orders_guards.sql",
+      "file": "migrations/032_checkout.sql",
+      "owner": "checkout",
+      "touches_tables": [
+        "checkout_sessions",
+        "checkout_attempts"
+      ]
+    },
+    {
+      "file": "migrations/033_orders_guards.sql",
       "owner": "orders",
       "touches_tables": [
         "orders",
