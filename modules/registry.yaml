@@ -1367,6 +1367,16 @@
         "customer_auth_global_limits",
         "orders"
       ]
+    },
+    {
+      "file": "migrations/pending/rv97-probe_review_probe.sql",
+      "owner": "customer",
+      "touches_tables": []
+    },
+    {
+      "file": "migrations/pending/rv97-base_review_probe_base.sql",
+      "owner": "customer",
+      "touches_tables": []
     }
   ]
 }
