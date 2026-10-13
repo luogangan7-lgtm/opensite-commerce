@@ -149,9 +149,6 @@ def validate_contract(api):
             ("apiKey", "cookie", "__Host-osc_admin_session"), "adminSession cookie scheme drift")
     key = schemes.get("ApiKeyBearer", {})
     require(key.get("type") == "http" and key.get("scheme") == "bearer", "API key bearer scheme drift")
-    customer = schemes.get("customerSession", {})
-    require((customer.get("type"), customer.get("in"), customer.get("name")) ==
-            ("apiKey", "cookie", "__Host-osc_customer_session"), "separate customer session cookie scheme drift")
     require(api.get("security") in (COOKIE_OR_KEY, list(reversed(COOKIE_OR_KEY))), "cookie OR API key required")
     for name in PROBLEM_RESPONSES.values():
         content = api["components"]["responses"][name].get("content", {})

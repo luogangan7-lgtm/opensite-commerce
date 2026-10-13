@@ -19,8 +19,8 @@ import (
 type Access string
 
 const (
-	Public     Access = "Public"
-	Storefront Access = "Storefront"
+	Public             Access = "Public"
+	Storefront         Access = "Storefront"
 	// BuyerCompany admits only a verified customer session and company scope.
 	BuyerCompany       Access = "BuyerCompany"
 	AuthenticatedSelf  Access = "AuthenticatedSelf"
