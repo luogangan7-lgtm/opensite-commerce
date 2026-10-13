@@ -188,22 +188,8 @@ BEGIN
  IF nd.id IS NULL OR nd.status<>'dead_letter' OR nd.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR nd.recipient<>'erased-'||nd.id::text||'@invalid.test'
  OR EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND id=nd.dispatch_event_id AND status<>'dead_letter') THEN RAISE EXCEPTION 'PRIVACY_QUOTE post-erasure approval revived contact'; END IF;
 END $notification_privacy$;
--- No leftover PII anywhere: every row of every non-system table (all modules,
--- including notifications/outbox/DLQ and quotes) is searched for the erased
--- customer's email, name and address. Only the deliberately unowned guest
--- order and its notification may still carry the same email.
-DO $no_leftover_pii$
-DECLARE r record; hits bigint; found text:='';
-BEGIN
- FOR r IN SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-  WHERE c.relkind IN('r','p') AND n.nspname NOT IN('pg_catalog','information_schema') AND NOT starts_with(n.nspname,'pg_') LOOP
-  EXECUTE format('SELECT count(*) FROM %I.%I x WHERE x::text LIKE ANY($1) AND coalesce(to_jsonb(x)->>''id'','''')<>ALL($2)',r.nspname,r.relname)
-   INTO hits USING ARRAY['%erasure-subject@example.invalid%','%Secret Person%','%Private street%','%Private city%'],
-   ARRAY[current_setting('test.privacy_unowned_order'),current_setting('test.privacy_unowned_notification')];
-  IF hits>0 THEN found:=found||format(' %s.%s=%s',r.nspname,r.relname,hits); END IF;
- END LOOP;
- IF found<>'' THEN RAISE EXCEPTION 'PRIVACY_GATE leftover PII:%',found; END IF;
-END $no_leftover_pii$;
+-- The all-tables leftover-PII sweep runs over the C-PII registry canary fixture
+-- (every declared personal/contact column): scripts/check_data_rights_canaries.py.
 SELECT set_config('app.outbox_worker',current_setting('test.privacy_send_worker'),true),set_config('app.outbox_attempt','1',true);
 SET LOCAL ROLE app_outbox_worker;
 DO $notification_fence$
