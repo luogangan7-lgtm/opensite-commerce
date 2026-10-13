@@ -92,3 +92,16 @@ func TestH4ConfiguredDeviceCookieLifetime(t *testing.T) {
 	}
 	t.Fatal("device cookie missing")
 }
+
+func TestH4UnknownAccountWithOldCookieStillUsesCredentialFailure(t *testing.T) {
+	r, s, f, input := h4Fixture(t)
+	f.credential = login.Credential{}
+	old := base64.RawURLEncoding.EncodeToString(secretKey(t))
+	q := signedLogin(t, s, h4Email, input)
+	q.AddCookie(&http.Cookie{Name: SessionCookie, Value: old})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, q)
+	if w.Code != 401 || f.rotationCalls.Load() != 0 || len(w.Result().Cookies()) != 0 {
+		t.Fatal("old cookie revealed account existence or changed cookie", w.Code)
+	}
+}

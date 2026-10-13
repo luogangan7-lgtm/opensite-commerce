@@ -27,11 +27,14 @@ const h4Email = "owner@example.test"
 
 type h4Repository struct {
 	fakeRepo
-	lookupCalls atomic.Int32
-	saveCalls   atomic.Int32
-	entered     chan struct{}
-	release     chan struct{}
-	rotate      bool
+	lookupCalls     atomic.Int32
+	saveCalls       atomic.Int32
+	entered         chan struct{}
+	release         chan struct{}
+	rotate          bool
+	rotationEntered chan struct{}
+	rotationRelease chan struct{}
+	rotationCalls   atomic.Int32
 }
 
 func (f *h4Repository) Credential(context.Context, string) (login.Credential, error) {
@@ -53,7 +56,22 @@ func (f *h4Repository) LookupSession(ctx context.Context, _ [32]byte, _ time.Tim
 	}
 	return f.session, nil
 }
-func (f *h4Repository) SaveLogin(context.Context, login.SessionInput) (login.Session, error) {
+func (f *h4Repository) RotationSession(ctx context.Context, _ [32]byte, _ string) (bool, error) {
+	f.rotationCalls.Add(1)
+	if f.rotationEntered != nil {
+		f.rotationEntered <- struct{}{}
+		select {
+		case <-f.rotationRelease:
+		case <-ctx.Done():
+			return false, ctx.Err()
+		}
+	}
+	return !f.staleOld, nil
+}
+func (f *h4Repository) SaveLogin(_ context.Context, in login.SessionInput) (login.Session, error) {
+	if f.rotate && in.OldTokenHash == nil {
+		return login.Session{}, login.ErrDatabase
+	}
 	if f.saveCalls.Add(1) > 1 && f.rotate {
 		return login.Session{}, login.ErrSession
 	}
@@ -143,6 +161,7 @@ func TestH4SessionAdmittedOnce(t *testing.T) {
 func TestH4RotationLoserCannotDeleteWinnerCookie(t *testing.T) {
 	r, s, f, input := h4Fixture(t)
 	f.rotate = true
+	f.rotationEntered, f.rotationRelease = make(chan struct{}, 2), make(chan struct{})
 	raw := base64.RawURLEncoding.EncodeToString(secretKey(t))
 	start := make(chan struct{})
 	done := make(chan *httptest.ResponseRecorder, 2)
@@ -152,6 +171,14 @@ func TestH4RotationLoserCannotDeleteWinnerCookie(t *testing.T) {
 		go func() { <-start; w := httptest.NewRecorder(); r.ServeHTTP(w, q); done <- w }()
 	}
 	close(start)
+	for i := 0; i < 2; i++ {
+		select {
+		case <-f.rotationEntered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("rotation preflight barrier missing")
+		}
+	}
+	close(f.rotationRelease)
 	winners, losers := 0, 0
 	for i := 0; i < 2; i++ {
 		select {

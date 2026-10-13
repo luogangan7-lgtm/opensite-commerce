@@ -209,6 +209,9 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	if ctx.Err() != nil {
 		return LoginResult{}, ErrRateLimited
 	}
+	if !eligible {
+		oldHash = nil
+	}
 	if oldHash != nil {
 		valid, err := s.repo.RotationSession(ctx, *oldHash, credential.UserID)
 		if err != nil {

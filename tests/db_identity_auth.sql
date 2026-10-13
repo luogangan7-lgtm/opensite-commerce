@@ -63,32 +63,37 @@ INSERT INTO app.known_devices(user_id,cookie_hash,expires_at,created_at)
 SELECT set_config('test.identity_device',:'device',true);
 SET LOCAL ROLE app_auth;
 DO $counter$
-DECLARE t timestamptz:=now(); a app.auth_account_attempts; ip app.auth_login_attempts; i int;
+DECLARE t timestamptz:=clock_timestamp(); a app.auth_account_attempts; ip app.auth_login_attempts; i int; until_first timestamptz; until_ip timestamptz;
 BEGIN
  a:=app.auth_record_failure('  C02A-MISSING@example.test  ','192.0.2.1');
+ IF a.cooldown_until<>a.last_failed_at+interval '1 second' THEN RAISE EXCEPTION 'IDENTITY_GATE first backoff'; END IF;
+ until_first:=clock_timestamp()+interval '60 seconds';
+ UPDATE app.auth_account_attempts SET cooldown_until=until_first WHERE identifier_normalized=a.identifier_normalized;
  a:=app.auth_record_failure('c02a-missing@example.test','192.0.2.1');
  SELECT * INTO STRICT ip FROM app.auth_login_attempts WHERE identifier_normalized=a.identifier_normalized;
- IF a.failure_count<>2 OR ip.failure_count<>2 OR a.cooldown_until<>t+interval '1 second' OR a.last_failed_at<>t THEN
+ IF a.failure_count<>2 OR ip.failure_count<>2 OR a.cooldown_until<>until_first OR a.last_failed_at<t OR a.last_failed_at>clock_timestamp() THEN
   RAISE EXCEPTION 'IDENTITY_GATE atomic two failures/server-clock/non-sliding cooldown'; END IF;
  IF EXISTS(SELECT FROM app.users WHERE email_normalized=a.identifier_normalized) THEN
   RAISE EXCEPTION 'IDENTITY_GATE missing account fixture unexpectedly exists'; END IF;
  -- Advance state, never the production callable clock.
  UPDATE app.auth_account_attempts SET cooldown_until=t-interval '1 second' WHERE identifier_normalized=a.identifier_normalized;
  a:=app.auth_record_failure('c02a-missing@example.test','192.0.2.1');
- IF a.cooldown_until<>t+interval '4 seconds' THEN RAISE EXCEPTION 'IDENTITY_GATE progressive backoff'; END IF;
+ IF a.cooldown_until<>a.last_failed_at+interval '4 seconds' THEN RAISE EXCEPTION 'IDENTITY_GATE progressive backoff'; END IF;
  FOR i IN 1..9 LOOP
   UPDATE app.auth_account_attempts SET cooldown_until=t-interval '1 second' WHERE identifier_normalized='c02a-cap@example.test';
   a:=app.auth_record_failure('c02a-cap@example.test','192.0.2.2');
-  IF a.cooldown_until>t+interval '60 seconds' THEN RAISE EXCEPTION 'IDENTITY_GATE backoff cap'; END IF;
+  IF a.cooldown_until>a.last_failed_at+interval '60 seconds' THEN RAISE EXCEPTION 'IDENTITY_GATE backoff cap'; END IF;
  END LOOP;
- IF a.cooldown_until<>t+interval '60 seconds' THEN RAISE EXCEPTION 'IDENTITY_GATE cap reached'; END IF;
+ IF a.cooldown_until<>a.last_failed_at+interval '60 seconds' THEN RAISE EXCEPTION 'IDENTITY_GATE cap reached'; END IF;
  UPDATE app.auth_account_attempts SET failure_count=1000000,cooldown_until=t-interval '1 second' WHERE identifier_normalized=a.identifier_normalized;
  a:=app.auth_record_failure(a.identifier_normalized,'192.0.2.2');
- IF a.failure_count<>1000000 OR a.cooldown_until<>t+interval '60 seconds' THEN
+ IF a.failure_count<>1000000 OR a.cooldown_until<>a.last_failed_at+interval '60 seconds' THEN
   RAISE EXCEPTION 'IDENTITY_GATE saturating count/backoff'; END IF;
- FOR i IN 1..6 LOOP PERFORM app.auth_record_failure('c02a-ip@example.test','192.0.2.3'); END LOOP;
+ FOR i IN 1..5 LOOP PERFORM app.auth_record_failure('c02a-ip@example.test','192.0.2.3'); END LOOP;
+ SELECT cooldown_until INTO until_ip FROM app.auth_login_attempts WHERE identifier_normalized='c02a-ip@example.test';
+ PERFORM app.auth_record_failure('c02a-ip@example.test','192.0.2.3');
  SELECT * INTO STRICT ip FROM app.auth_login_attempts WHERE identifier_normalized='c02a-ip@example.test';
- IF ip.failure_count<>6 OR ip.cooldown_until<>t+interval '60 seconds' THEN
+ IF ip.failure_count<>6 OR ip.cooldown_until<>until_ip THEN
   RAISE EXCEPTION 'IDENTITY_GATE IP lockout must not slide'; END IF;
  UPDATE app.auth_account_attempts SET window_started_at=t-interval '16 minutes',cooldown_until=t-interval '1 second' WHERE identifier_normalized=ip.identifier_normalized;
  UPDATE app.auth_login_attempts SET window_started_at=t-interval '16 minutes',cooldown_until=t-interval '1 second' WHERE identifier_normalized=ip.identifier_normalized;
