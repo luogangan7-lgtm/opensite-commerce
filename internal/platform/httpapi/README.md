@@ -14,6 +14,30 @@ C-03b; this skeleton does not claim to validate an arbitrary handler's meaning.
 Request IDs are server-generated; logs contain only ID, method, registered route
 pattern, status and duration, never request bodies, credentials or query values.
 
+`ActorResolver` is an optional extension of the configured `Authenticator`.
+After private authentication and tenant/scope admission succeed, the router asks
+it for `Actor{Kind, ID}` and validates a kind of `user`, `api_key` or `service`
+plus a canonical, nonzero UUID. Only the router writes the private stamp read by
+`AuthorizedActor(ctx)`. Public requests and returned authentication contexts
+clear old actor/tenant stamps. Headers, route IDs and ordinary context values
+cannot supply an actor. An authenticator without the extension remains valid
+for existing actor-optional transports; commands requiring an actor return 401.
+For a composed authenticator, `Actor{}, nil` means the selected underlying
+authenticator has no actor projection. The empty value leaves the stamp absent
+and preserves actor-optional routes. A malformed nonempty projection is rejected.
+
+The identity PR #28 `identity.AuthorizedActor` is an alias of its privately
+constructed login actor. The bridge belongs in identity or bootstrap, outside
+this platform package: authenticate first, read `identity.ActorFromContext(ctx)`
+from that returned context, and resolve `Actor{Kind: "user", ID: actor.UserID()}`.
+Never use `actor.SessionID()` as the stable identity. A bootstrap authenticator
+wrapper must forward `ResolveActor` to the selected underlying authenticator,
+without inferring an identity when it is missing. Its API-key bridge must resolve
+the admitted API-key ID; service identity requires a separately admitted service
+ID. This projection implements no password, session, API-key, tenant-membership
+or scope authentication. PR #28's current session transport only admits its
+declared `AuthenticatedSelf` routes; it does not authorize tenant commands.
+
 `DecodeJSON` accepts one DTO object with `application/json` (parameters allowed).
 The default wire limit is 1 MiB, overridden by `RouteSpec.MaxBodySize`. Object and
 array nesting is limited to 64, counting the root as 1; decoded keys and string

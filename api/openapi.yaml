@@ -847,14 +847,20 @@ paths:
           $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts:
     parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/SiteId'
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
     post:
       tags: [Builder]
       operationId: createSiteDraft
-      x-opensite-status: planned
+      x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
-      x-required-scope: site.draft.write
+      x-required-scope: cms:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/OriginIfCookie'
@@ -863,120 +869,638 @@ paths:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/CreateDraft'}
+            schema: {$ref: '#/components/schemas/CreateCMSDraft'}
       responses:
         '201':
-          description: Draft created
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Draft'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
-  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations:
-    parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/SiteId'
-      - $ref: '#/components/parameters/DraftId'
-    post:
-      tags: [Builder]
-      operationId: applyPageOperations
-      x-opensite-status: planned
-      x-opensite-access: AdminOrAPIKey
-      x-required-scope: site.draft.write
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/IfMatch'
-        - $ref: '#/components/parameters/OriginIfCookie'
-        - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/OperationBatch'}
-      responses:
-        '200':
-          description: Draft revision incremented
+          description: CMS operation result
           headers:
             ETag: {schema: {type: string}}
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Draft'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '409': {$ref: '#/components/responses/Conflict'}
+              schema: {$ref: '#/components/schemas/CMSDraft'}
+        '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
         '413': {$ref: '#/components/responses/PayloadTooLarge'}
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
         '428': {$ref: '#/components/responses/PreconditionRequired'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Builder]
+      operationId: getSiteDraft
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraft'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Builder]
+      operationId: listDraftPages
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraftPageList'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+    post:
+      tags: [Builder]
+      operationId: createDraftPage
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SaveCMSPage'}
+      responses:
+        '201':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraftPage'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/pages/{page_id}:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: page_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Builder]
+      operationId: getDraftPage
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraftPage'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+    put:
+      tags: [Builder]
+      operationId: updateDraftPage
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SaveCMSPage'}
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraftPage'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+    delete:
+      tags: [Builder]
+      operationId: deleteDraftPage
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSDeletePageInput'}
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraft'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/navigation:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      tags: [Builder]
+      operationId: updateDraftNavigation
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSNavigationInput'}
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraft'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/operations:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Builder]
+      operationId: applyPageOperations
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSOperationBatch'}
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSDraft'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
   /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/validate:
     parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/SiteId'
-      - $ref: '#/components/parameters/DraftId'
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
     post:
       tags: [Builder]
       operationId: validateSiteDraft
-      x-opensite-status: planned
+      x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
-      x-required-scope: site.draft.write
-      parameters:
-        - $ref: '#/components/parameters/OriginIfCookie'
-        - $ref: '#/components/parameters/CSRFTokenIfCookie'
-      responses:
-        '200':
-          description: Validation report
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/ValidationResult'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
-  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/publish:
-    parameters:
-      - $ref: '#/components/parameters/TenantId'
-      - $ref: '#/components/parameters/SiteId'
-      - $ref: '#/components/parameters/DraftId'
-    post:
-      tags: [Builder]
-      operationId: publishSiteDraft
-      x-opensite-status: planned
-      x-opensite-access: AdminOrAPIKey
-      x-required-scope: site.publish
+      x-required-scope: cms:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/IfMatch'
         - $ref: '#/components/parameters/OriginIfCookie'
         - $ref: '#/components/parameters/CSRFTokenIfCookie'
       responses:
-        '201':
-          description: New immutable release; commit is atomic in PostgreSQL
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/PublishedRelease'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+              schema: {$ref: '#/components/schemas/CMSValidation'}
+        '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
         '413': {$ref: '#/components/responses/PayloadTooLarge'}
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
         '428': {$ref: '#/components/responses/PreconditionRequired'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/publish:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Builder]
+      operationId: publishSiteDraft
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:publish
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSPublishInput'}
+      responses:
+        '201':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSRelease'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview-tokens:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Builder]
+      operationId: createSitePreviewToken
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSPreviewInput'}
+      responses:
+        '201':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSPreviewGrant'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/releases:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Builder]
+      operationId: getSiteReleaseHistory
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:write
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSReleaseList'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/releases/{release_id}/restore:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: release_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Builder]
+      operationId: restoreSiteRelease
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: cms:publish
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CMSRestoreInput'}
+      responses:
+        '201':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CMSRelease'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/sites/{site_id}/drafts/{draft_id}/preview:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: site_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: draft_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Builder]
+      operationId: getSitePreview
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      security: []
+      description: Signed draft projection. Bearer token is mandatory; tampered or expired tokens are denied before database access. Never accepts tokens in query parameters.
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema: {type: string, minLength: 20, maxLength: 4096}
+      responses:
+        '200':
+          description: CMS operation result
+          headers:
+            ETag: {schema: {type: string}}
+            Cache-Control: {schema: {type: string, const: no-store}}
+            X-Robots-Tag: {schema: {type: string, const: 'noindex, nofollow'}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PublishedSite'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/Problem'}
   /api/public/v1/inquiries:
     post:
       tags:
@@ -3136,6 +3660,214 @@ components:
         expires_at:
           type: string
           format: date-time
+      additionalProperties: false
+    CreateCMSDraft:
+      type: object
+      required: [locale, title, description]
+      properties:
+        locale: {type: string, minLength: 2, maxLength: 35}
+        title: {type: string, minLength: 1, maxLength: 300}
+        description: {type: string, maxLength: 2000}
+      additionalProperties: false
+    CMSDocument:
+      type: object
+      required: [title, description, blocks]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 300}
+        description: {type: string, maxLength: 2000}
+        blocks:
+          type: array
+          maxItems: 200
+          items: {$ref: '#/components/schemas/PublishedBlock'}
+      additionalProperties: false
+    SaveCMSPage:
+      type: object
+      required: [page_key, locale, path, document, media_ids]
+      properties:
+        page_key: {type: string, minLength: 1, maxLength: 128}
+        locale: {type: string, minLength: 2, maxLength: 35}
+        path: {type: string, minLength: 1, maxLength: 512, pattern: '^/(?:[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*)?$'}
+        document: {$ref: '#/components/schemas/CMSDocument'}
+        media_ids:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: {type: string, format: uuid}
+      additionalProperties: false
+    CMSDraftPage:
+      type: object
+      required: [id, page_key, locale, path, document, media_ids]
+      properties:
+        id: {type: string, format: uuid}
+        page_key: {type: string}
+        locale: {type: string}
+        path: {type: string}
+        document: {$ref: '#/components/schemas/CMSDocument'}
+        media_ids:
+          type: array
+          items: {type: string, format: uuid}
+      additionalProperties: false
+    CMSDraftPageList:
+      type: array
+      maxItems: 100
+      items: {$ref: '#/components/schemas/CMSDraftPage'}
+    CMSNavigationInput:
+      type: object
+      required: [navigation]
+      properties:
+        navigation:
+          type: array
+          maxItems: 50
+          items: {$ref: '#/components/schemas/PublishedNavigation'}
+      additionalProperties: false
+    CMSDraft:
+      type: object
+      required: [draft_id, site_id, revision, base_release_id, publication_revision, status, locale, title, description, navigation, pages, products]
+      properties:
+        draft_id: {type: string, format: uuid}
+        site_id: {type: string, format: uuid}
+        revision: {type: integer, format: int64, minimum: 1}
+        base_release_id: {type: [string, 'null'], format: uuid}
+        publication_revision: {type: integer, format: int64, minimum: 0}
+        status: {type: string, enum: [open, published, abandoned]}
+        locale: {type: string}
+        title: {type: string}
+        description: {type: string}
+        navigation:
+          type: array
+          items: {$ref: '#/components/schemas/PublishedNavigation'}
+        pages: {$ref: '#/components/schemas/CMSDraftPageList'}
+        products:
+          type: array
+          items: {$ref: '#/components/schemas/PublishedProduct'}
+      additionalProperties: false
+    CMSPublishInput:
+      type: object
+      required: [expected_release_id, expected_publication_revision, renderer_build_id]
+      properties:
+        expected_release_id: {type: [string, 'null'], format: uuid}
+        expected_publication_revision: {type: integer, format: int64, minimum: 0}
+        renderer_build_id: {type: string, minLength: 1, maxLength: 128}
+      additionalProperties: false
+    CMSRelease:
+      type: object
+      required: [release_id, release_no, publication_revision, restored_from, manifest_hash, created_at]
+      properties:
+        release_id: {type: string, format: uuid}
+        release_no: {type: integer, format: int64, minimum: 1}
+        publication_revision: {type: integer, format: int64, minimum: 0}
+        restored_from: {type: [string, 'null'], format: uuid}
+        manifest_hash: {type: string}
+        created_at: {type: string, format: date-time}
+      additionalProperties: false
+    CMSReleaseList:
+      type: array
+      items: {$ref: '#/components/schemas/CMSRelease'}
+    CMSPreviewInput:
+      type: object
+      required: [ttl_seconds]
+      properties:
+        ttl_seconds: {type: integer, minimum: 1, maximum: 300}
+      additionalProperties: false
+    CMSPreviewGrant:
+      type: object
+      required: [token, expires_at, revision]
+      properties:
+        token: {type: string}
+        expires_at: {type: string, format: date-time}
+        revision: {type: integer, format: int64, minimum: 1}
+      additionalProperties: false
+    CMSValidation:
+      type: object
+      required: [valid, revision]
+      properties:
+        valid: {type: boolean}
+        revision: {type: integer, format: int64, minimum: 1}
+      additionalProperties: false
+    CMSRestoreInput:
+      type: object
+      required: [expected_release_id]
+      properties:
+        expected_release_id: {type: [string, 'null'], format: uuid}
+      additionalProperties: false
+    CMSDeletePageInput:
+      type: object
+      required: [locale]
+      properties:
+        locale: {type: string, minLength: 2, maxLength: 35}
+      additionalProperties: false
+    CMSBatchPage:
+      type: object
+      required: [page_key, locale, path, document, media_ids]
+      properties:
+        id: {type: string, format: uuid}
+        page_key: {type: string, minLength: 1, maxLength: 128}
+        locale: {type: string, minLength: 2, maxLength: 35}
+        path: {type: string, minLength: 1, maxLength: 512, pattern: '^/(?:[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*)?$'}
+        document: {$ref: '#/components/schemas/CMSDocument'}
+        media_ids:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: {type: string, format: uuid}
+      additionalProperties: false
+    CMSBatchDeletePage:
+      type: object
+      required: [id, locale]
+      properties:
+        id: {type: string, format: uuid}
+        locale: {type: string, minLength: 2, maxLength: 35}
+      additionalProperties: false
+    CMSOperationSavePage:
+      type: object
+      required: [operation, payload]
+      properties:
+        operation: {type: string, const: save_page}
+        payload: {$ref: '#/components/schemas/CMSBatchPage'}
+      additionalProperties: false
+    CMSOperationDeletePage:
+      type: object
+      required: [operation, payload]
+      properties:
+        operation: {type: string, const: delete_page}
+        payload: {$ref: '#/components/schemas/CMSBatchDeletePage'}
+      additionalProperties: false
+    CMSOperationSetNavigation:
+      type: object
+      required: [operation, payload]
+      properties:
+        operation: {type: string, const: set_navigation}
+        payload: {$ref: '#/components/schemas/CMSNavigationInput'}
+      additionalProperties: false
+    CMSOperationSetMetadata:
+      type: object
+      required: [operation, payload]
+      properties:
+        operation: {type: string, const: set_metadata}
+        payload: {$ref: '#/components/schemas/CreateCMSDraft'}
+      additionalProperties: false
+    CMSOperation:
+      oneOf:
+        - $ref: '#/components/schemas/CMSOperationSavePage'
+        - $ref: '#/components/schemas/CMSOperationDeletePage'
+        - $ref: '#/components/schemas/CMSOperationSetNavigation'
+        - $ref: '#/components/schemas/CMSOperationSetMetadata'
+      discriminator:
+        propertyName: operation
+        mapping:
+          save_page: '#/components/schemas/CMSOperationSavePage'
+          delete_page: '#/components/schemas/CMSOperationDeletePage'
+          set_navigation: '#/components/schemas/CMSOperationSetNavigation'
+          set_metadata: '#/components/schemas/CMSOperationSetMetadata'
+    CMSOperationBatch:
+      type: object
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: '#/components/schemas/CMSOperation'}
       additionalProperties: false
     CreateDraft:
       type: object
