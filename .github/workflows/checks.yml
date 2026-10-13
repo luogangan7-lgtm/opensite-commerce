@@ -1,9 +1,16 @@
 name: foundation-contracts
 on: [push, pull_request]
 
+# PR commits are validated by the pull_request run only; push runs of non-main
+# branches exist solely for the [visual-baseline-update] producer job.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 # One required CI job. No costly SKU/performance suite on every commit.
 jobs:
   foundation:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -97,6 +104,7 @@ jobs:
           fi
 
   frontend:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
