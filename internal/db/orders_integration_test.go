@@ -18,6 +18,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment"
+	fulfillmentcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
@@ -164,8 +166,20 @@ func TestOrdersServiceProductionQueries(t *testing.T) {
 		_, e := svc.Transition(f.ctx, f.tx, f.tenant, contract.TransitionInput{OrderID: in.ID, Target: contract.Cancelled, EventKey: "cancel-after-paid"})
 		return e
 	}, contract.ErrConflict)
-	fulfilled, err := svc.Transition(f.ctx, f.tx, f.tenant, contract.TransitionInput{OrderID: in.ID, Target: contract.Fulfilled, EventKey: "shipment:event-1"})
-	if err != nil || fulfilled.Version != 3 {
+	f.errorAtSavepoint(t, func() error {
+		_, e := svc.Transition(f.ctx, f.tx, f.tenant, contract.TransitionInput{OrderID: in.ID, Target: contract.Fulfilled, EventKey: "shipment:event-1"})
+		return e
+	}, contract.ErrConflict)
+	shipmentInput := fulfillmentcontract.CreateInput{OrderID: in.ID, ExpectedVersion: paid.Version, IdempotencyKey: "shipment:event-1", Carrier: "manual", TrackingNumber: "ORDER-GATE-1"}
+	for _, line := range in.Lines {
+		shipmentInput.Lines = append(shipmentInput.Lines, fulfillmentcontract.Line{OrderLineID: line.ID, Quantity: line.Quantity})
+	}
+	shipment, err := fulfillment.New().CreateShipment(f.ctx, f.tx, f.tenant, shipmentInput)
+	if err != nil || shipment.Status != "shipped" || shipment.OrderVersion != 3 {
+		t.Fatalf("shipment: %v %v", shipment, err)
+	}
+	fulfilled, err := svc.Transition(f.ctx, f.tx, f.tenant, contract.TransitionInput{OrderID: in.ID, Target: contract.Paid, EventKey: "verified-payment:event-1"})
+	if err != nil || fulfilled.State != contract.Fulfilled || fulfilled.Version != 3 {
 		t.Fatalf("fulfill: %v %v", fulfilled, err)
 	}
 	oldReplay, err := svc.Transition(f.ctx, f.tx, f.tenant, contract.TransitionInput{OrderID: in.ID, Target: contract.Paid, EventKey: "verified-payment:event-1"})

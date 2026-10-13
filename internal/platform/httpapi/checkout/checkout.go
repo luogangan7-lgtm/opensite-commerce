@@ -82,7 +82,7 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 	if fallback == nil {
 		fallback = httpapi.DenyAuthenticator{}
 	}
-	return authFunc(func(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	authenticate := authFunc(func(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
 		if spec.OperationID != StartOperation {
 			return fallback.Authenticate(ctx, r, spec)
 		}
@@ -105,6 +105,24 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 		}
 		return context.WithValue(ctx, actorKey{}, actor), nil
 	})
+	return actorAuthenticator{authFunc: authenticate, fallback: fallback}
+}
+
+// actorAuthenticator preserves fallback identity projection after admission.
+// Storefront capabilities and public fake events never acquire staff actors.
+type actorAuthenticator struct {
+	authFunc
+	fallback httpapi.Authenticator
+}
+
+func (a actorAuthenticator) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
+	if spec.Access == httpapi.Storefront || spec.Access == httpapi.Public || spec.OperationID == StartOperation || spec.OperationID == FakeOperation {
+		return httpapi.Actor{}, nil
+	}
+	if resolver, ok := a.fallback.(httpapi.ActorResolver); ok {
+		return resolver.ResolveActor(ctx, r, spec)
+	}
+	return httpapi.Actor{}, nil
 }
 
 type authFunc func(context.Context, *http.Request, httpapi.RouteSpec) (context.Context, error)

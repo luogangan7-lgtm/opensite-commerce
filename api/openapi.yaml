@@ -24,6 +24,8 @@ tags:
   - name: Quotes
   - name: Notifications
   - name: Orders
+  - name: Fulfillment
+  - name: Returns
 paths:
   /api/v1/t/{tenant_id}/customer/registrations:
     post:
@@ -3283,6 +3285,254 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /api/v1/t/{tenant_id}/orders/{order_id}/shipments:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags:
+        - Fulfillment
+      operationId: createShipment
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: fulfillment:write
+      description: Allocate already committed order quantities. Shipment creation never decrements inventory again. If-Match is the order version; identical Idempotency-Key replays before the current version check.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShipment'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '201':
+          description: Durable command result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShipmentRecord'
+        '404':
+          description: Resource missing or owned by another tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Trusted persistence/payment/account binding is unavailable.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/v1/t/{tenant_id}/orders/{order_id}/returns:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags:
+        - Returns
+      operationId: createReturn
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: returns:write
+      description: Request a return from a shipment line, or cancel paid but unshipped quantities. Unshipped cancellation atomically marks quantities received and restores inventory once, blocking later shipment. Shipment returns require a shipment_line_id; cancellations forbid it. If-Match is the order version.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReturn'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '201':
+          description: Durable command result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnRecord'
+        '404':
+          description: Resource missing or owned by another tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Trusted persistence/payment/account binding is unavailable.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/v1/t/{tenant_id}/returns/{return_id}/receive:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ReturnId'
+    post:
+      tags:
+        - Returns
+      operationId: receiveReturn
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: returns:write
+      description: Confirm received quantities and optionally restore inventory exactly once. If-Match is the associated order version, returned as order_version.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiveReturn'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '200':
+          description: Durable command result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnRecord'
+        '404':
+          description: Resource missing or owned by another tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Trusted persistence/payment/account binding is unavailable.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/v1/t/{tenant_id}/returns/{return_id}/refund:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ReturnId'
+    post:
+      tags:
+        - Returns
+      operationId: refundReturn
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: returns:write
+      description: 'Refund the server-calculated frozen return entitlement through a trusted Payment Port. The body is empty: amounts, captured payment proof and ledger accounts are server-owned. The refund intent commits before the provider call and its stable key survives retries; ledger and order completion share a transaction. If-Match is the associated order version. Missing trusted payment/account wiring fails closed with 503.'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundReturn'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '200':
+          description: Durable command result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnRecord'
+        '404':
+          description: Resource missing or owned by another tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Trusted persistence/payment/account binding is unavailable.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 components:
   securitySchemes:
     customerSession:
@@ -3499,6 +3749,20 @@ components:
         maxLength: 512
     QuoteId:
       name: quote_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    OrderId:
+      name: order_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ReturnId:
+      name: return_id
       in: path
       required: true
       schema:
@@ -5108,3 +5372,195 @@ components:
         total_minor: {$ref: '#/components/schemas/MinorAmount'}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    CreateShipment:
+      type: object
+      additionalProperties: false
+      required:
+        - carrier
+        - tracking_number
+        - lines
+      properties:
+        carrier:
+          type: string
+          minLength: 1
+          maxLength: 128
+        tracking_number:
+          type: string
+          maxLength: 256
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/ShipmentQuantity'
+    ShipmentQuantity:
+      type: object
+      additionalProperties: false
+      required:
+        - order_line_id
+        - quantity
+      properties:
+        order_line_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          format: int64
+          minimum: 1
+    ShipmentRecordLine:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - order_line_id
+        - quantity
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_line_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          format: int64
+          minimum: 1
+    ShipmentRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - order_id
+        - order_version
+        - status
+        - lines
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        order_version:
+          type: integer
+          format: int64
+          minimum: 1
+        status:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShipmentRecordLine'
+    CreateReturn:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - reason
+        - lines
+      properties:
+        kind:
+          type: string
+          enum:
+            - shipment_return
+            - unshipped_cancel
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/ReturnQuantity'
+    ReturnQuantity:
+      type: object
+      additionalProperties: false
+      required:
+        - order_line_id
+        - quantity
+      properties:
+        order_line_id:
+          type: string
+          format: uuid
+        shipment_line_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          format: int64
+          minimum: 1
+    ReturnRecordLine:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - order_line_id
+        - quantity
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_line_id:
+          type: string
+          format: uuid
+        shipment_line_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          format: int64
+          minimum: 1
+    ReturnRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - order_id
+        - order_version
+        - kind
+        - status
+        - lines
+        - restocked
+        - refund_minor
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        order_version:
+          type: integer
+          format: int64
+          minimum: 1
+        kind:
+          type: string
+          enum:
+            - shipment_return
+            - unshipped_cancel
+        status:
+          type: string
+        restocked:
+          type: boolean
+        refund_minor:
+          type: integer
+          format: int64
+          minimum: 0
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReturnRecordLine'
+    ReceiveReturn:
+      type: object
+      additionalProperties: false
+      required:
+        - restock
+      properties:
+        restock:
+          type: boolean
+    RefundReturn:
+      type: object
+      additionalProperties: false
+      properties: {}

@@ -44,8 +44,9 @@ accepted before any stock is reserved. The service limits reservation TTL to 1â€
 defaults it to 900 seconds.
 
 Cancellation is allowed only from `pending_payment`. Paid orders require refund
-transitions; cancellation after payment needs funds/stock compensation outside
-this card.
+transitions. The Returns module now coordinates paid unshipped cancellation,
+controlled restock and refund compensation; see `returns.md`. Shipment continues
+to allocate inventory already committed at payment; see `fulfillment.md`.
 
 State boundaries live in `contract.ValidateTransition` and independently in the
 database trigger/function. `Transition` validates command shape; the database
