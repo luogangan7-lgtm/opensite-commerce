@@ -300,11 +300,11 @@ def check_raw_connection(text, location, allow_raw=False):
     sql_aliases = {alias or "sql" for alias, imported in imports
                    if imported == "database/sql" and alias not in ("_", ".")}
     require(not any(alias == "." and imported == "database/sql" for alias, imported in imports),
-            "MODULE_RAW_CONNECTION", location + " (database/sql dot import)")
+            "MODULE_RAW_CONNECTION_IMPORT", location + " (database/sql dot import)")
     for index in range(len(tokens) - 2):
         require(not (tokens[index] in sql_aliases and tokens[index + 1] == "." and
                      tokens[index + 2] in ("Open", "OpenDB")),
-                "MODULE_RAW_CONNECTION", location + " (database/sql connector)")
+                "MODULE_RAW_CONNECTION_IMPORT", location + " (database/sql connector)")
     require(not ("database/sql" in imported_paths and any(
             path == "github.com/jackc/pgx/v5" or path.startswith("github.com/jackc/pgx/v5/")
             for path in imported_paths)), "MODULE_RAW_CONNECTION_IMPORT", location)
