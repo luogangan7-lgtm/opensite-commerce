@@ -32,6 +32,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 // This runtime assertion compiles before the production adoption API exists.
@@ -124,26 +125,143 @@ func (a checkoutAdoptionPG) adopt(t *testing.T, key string) checkoutcontract.Res
 
 func (a checkoutAdoptionPG) assertSnapshot(t *testing.T, r checkoutcontract.Result) {
 	t.Helper()
-	var customer, orderID, currency string
+	var customer, orderID, currency, source string
 	var amount, net, tax, shipping, version, orderCount, sessions int64
 	var noCartID, noCartVersion bool
 	if err := a.f.run(a.f.ctx, a.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT s.actor_id,s.order_id::text,s.currency,s.amount_minor,s.items_net_minor,s.tax_minor,s.shipping_minor,s.payable_version,
+		return tx.QueryRow(ctx, `SELECT s.actor_id,s.order_id::text,s.currency,s.source_kind,s.amount_minor,s.items_net_minor,s.tax_minor,s.shipping_minor,s.payable_version,
 		 s.cart_id IS NULL,s.cart_version IS NULL,
 		 (SELECT count(*) FROM app.orders WHERE tenant_id=$1),
 		 (SELECT count(*) FROM app.checkout_sessions WHERE tenant_id=$1)
-		 FROM app.checkout_sessions s WHERE s.tenant_id=$1 AND s.id=$2`, a.f.tenant, r.CheckoutID).Scan(&customer, &orderID, &currency, &amount, &net, &tax, &shipping, &version, &noCartID, &noCartVersion, &orderCount, &sessions)
+		 FROM app.checkout_sessions s WHERE s.tenant_id=$1 AND s.id=$2`, a.f.tenant, r.CheckoutID).Scan(&customer, &orderID, &currency, &source, &amount, &net, &tax, &shipping, &version, &noCartID, &noCartVersion, &orderCount, &sessions)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if customer != a.f.actor.ID() || orderID != a.order.ID || currency != "USD" || amount != 270 || net != 200 || tax != 20 || shipping != 50 || version != 1 || !noCartID || !noCartVersion || orderCount != 1 || sessions != 1 || a.orders.creates.Load() != 0 {
+	if customer != a.f.actor.ID() || orderID != a.order.ID || currency != "USD" || source != "existing_order" || amount != 270 || net != 200 || tax != 20 || shipping != 50 || version != 1 || !noCartID || !noCartVersion || orderCount != 1 || sessions != 1 || a.orders.creates.Load() != 0 {
 		t.Fatalf("adoption snapshot owner=%s order=%s %s amount=%d net=%d tax=%d shipping=%d v=%d nullCart=%v/%v orders=%d sessions=%d recreates=%d", customer, orderID, currency, amount, net, tax, shipping, version, noCartID, noCartVersion, orderCount, sessions, a.orders.creates.Load())
 	}
+}
+
+// A committed capture followed by a rolled-back finalize is uncertain money.
+// Expiry before recovery must preserve the durable claim and never void it.
+func TestCheckoutPGAdoptionUncertainCaptureExpiredHoldStaysPending(t *testing.T) {
+	a := newCheckoutAdoptionPG(t)
+	start := a.adopt(t, "uncertain:"+uuid.NewString())
+	_, _, _, event := a.signedEventProof(t, start)
+	a.f.rollbackPaid.Store(true)
+	if _, err := a.f.service.Confirm(checkoutRequestContext(a.f.ctx), event); !errors.Is(err, errCheckoutInjectedCommit) {
+		t.Fatalf("capture/finalize fault not reached: %v", err)
+	}
+	before := a.f.witness(t, start.OrderID)
+	if before.phase != "confirming" || before.state != "pending_payment" || before.journals != 0 || a.f.provider.captures.Load() != 1 {
+		t.Fatalf("uncertain capture witness: %+v captures=%d", before, a.f.provider.captures.Load())
+	}
+	if err := a.f.runner.InTenant(a.f.ctx, a.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND owner_type='order' AND owner_id=$2", a.f.tenant, start.OrderID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := a.f.service.Confirm(checkoutRequestContext(a.f.ctx), event); !errors.Is(err, checkoutcontract.ErrRetry) {
+			t.Fatalf("expired uncertain recovery must stay retryable: %v", err)
+		}
+	}
+	if after := a.f.witness(t, start.OrderID); after != before || a.f.provider.captures.Load() != 1 || a.f.provider.cancels.Load() != 0 || a.f.provider.violations.Load() != 0 {
+		t.Fatalf("uncertain money changed: %+v -> %+v captures=%d cancels=%d txIO=%d", before, after, a.f.provider.captures.Load(), a.f.provider.cancels.Load(), a.f.provider.violations.Load())
+	}
+	var incomplete bool
+	if err := a.f.run(a.f.ctx, a.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT s.final_result IS NULL AND a.result IS NULL AND s.claim_kind='payment' AND s.claim_key=$3
+		 FROM app.checkout_sessions s JOIN app.checkout_attempts a ON a.tenant_id=s.tenant_id AND a.checkout_id=s.id
+		 WHERE s.tenant_id=$1 AND s.id=$2 AND a.event_key=$3`, a.f.tenant, start.CheckoutID, event.EventID).Scan(&incomplete)
+	}); err != nil || !incomplete {
+		t.Fatalf("recovery claim/receipt lost: pending=%v %v", incomplete, err)
+	}
+}
+
+func TestCheckoutPGAdoptionSourceAdmissionAndImmutableSnapshot(t *testing.T) {
+	a := newCheckoutAdoptionPG(t)
+	// The positive runtime SQL witness makes missing row-lock privileges fail
+	// directly. Roll back the admitted receipt so later probes cannot hit unique.
+	rollbackAdmission := errors.New("rollback successful runtime admission witness")
+	err := a.f.run(a.f.ctx, a.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var source string
+		var noCartID, noCartVersion bool
+		err := tx.QueryRow(ctx, `INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,source_kind,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
+		 VALUES($1,$2,'customer',$3,$4,sha256('admission-positive'::bytea),'existing_order',$5,'{}','USD',270,200,20,50,1)
+		 RETURNING source_kind,cart_id IS NULL,cart_version IS NULL`, a.f.tenant, uuid.NewString(), a.f.actor.ID(), "positive:"+uuid.NewString(), a.order.ID).Scan(&source, &noCartID, &noCartVersion)
+		if err != nil {
+			return err
+		}
+		if source != "existing_order" || !noCartID || !noCartVersion {
+			return errors.New("runtime admission changed source/cart snapshot")
+		}
+		return rollbackAdmission
+	})
+	if !errors.Is(err, rollbackAdmission) {
+		t.Fatalf("valid direct runtime source admission failed: %v", err)
+	}
+	// Probe real admission before a session exists, so neither uniqueness nor
+	// service validation can mask a missing DB owner/source/component guard.
+	for _, tc := range []struct {
+		name, source, owner                string
+		cartID                             any
+		cartVersion                        any
+		net, tax, shipping, total, version int64
+	}{
+		{"cart-without-cart", "cart", a.f.actor.ID(), nil, nil, 200, 20, 50, 270, 1},
+		{"existing-with-cart-id", "existing_order", a.f.actor.ID(), uuid.NewString(), nil, 200, 20, 50, 270, 1},
+		{"existing-with-cart-version", "existing_order", a.f.actor.ID(), nil, int64(1), 200, 20, 50, 270, 1},
+		{"unknown-source", "unknown", a.f.actor.ID(), nil, nil, 200, 20, 50, 270, 1},
+		{"foreign-owner", "existing_order", a.wrongCustomer, nil, nil, 200, 20, 50, 270, 1},
+		{"net-tax-balanced-mismatch", "existing_order", a.f.actor.ID(), nil, nil, 201, 19, 50, 270, 1},
+		{"shipping-net-balanced-mismatch", "existing_order", a.f.actor.ID(), nil, nil, 199, 20, 51, 270, 1},
+		{"total-balanced-mismatch", "existing_order", a.f.actor.ID(), nil, nil, 201, 20, 50, 271, 1},
+		{"payable-version-mismatch", "existing_order", a.f.actor.ID(), nil, nil, 200, 20, 50, 270, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := a.f.run(a.f.ctx, a.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				_, err := tx.Exec(ctx, `INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,source_kind,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
+				 VALUES($1,$2,'customer',$3,$4,sha256('admission-probe'::bytea),$5,$6,$7,$8,'{}','USD',$9,$10,$11,$12,$13)`, a.f.tenant, uuid.NewString(), tc.owner, "probe:"+uuid.NewString(), tc.source, tc.cartID, tc.cartVersion, a.order.ID, tc.total, tc.net, tc.tax, tc.shipping, tc.version)
+				return err
+			})
+			var pe *pgxadapter.PgError
+			if !errors.As(err, &pe) || pe.Code != "23514" {
+				t.Fatalf("DB must reject source/snapshot with check_violation: %v", err)
+			}
+		})
+	}
+	start := a.adopt(t, "immutable:"+uuid.NewString())
+	// Runtime has no source update grant; administrator has the grant, but must
+	// still fail the immutable guard even when the new cart source is well shaped.
+	err = a.f.run(a.f.ctx, a.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "UPDATE app.checkout_sessions SET source_kind='cart',cart_id=$3,cart_version=1 WHERE tenant_id=$1 AND id=$2", a.f.tenant, start.CheckoutID, uuid.NewString())
+		return err
+	})
+	var pe *pgxadapter.PgError
+	if !errors.As(err, &pe) || pe.Code != "42501" {
+		t.Fatalf("runtime source update granted: %v", err)
+	}
+	err = a.f.runner.InTenant(a.f.ctx, a.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "UPDATE app.checkout_sessions SET source_kind='cart',cart_id=$3,cart_version=1 WHERE tenant_id=$1 AND id=$2", a.f.tenant, start.CheckoutID, uuid.NewString())
+		return err
+	})
+	if !errors.As(err, &pe) || pe.Code != "23514" {
+		t.Fatalf("administrator rewrote source identity: %v", err)
+	}
+	a.assertSnapshot(t, start)
 }
 
 // The event comes from the neutral provider's actual durable-operation result;
 // the production signature verifier admits its wire envelope before Confirm.
 func (a checkoutAdoptionPG) signedEvent(t *testing.T, r checkoutcontract.Result) (http.Handler, []byte, string) {
+	t.Helper()
+	router, raw, signature, _ := a.signedEventProof(t, r)
+	return router, raw, signature
+}
+
+func (a checkoutAdoptionPG) signedEventProof(t *testing.T, r checkoutcontract.Result) (http.Handler, []byte, string, payment.VerifiedEvent) {
 	t.Helper()
 	router, key := checkoutHTTPRouter(t, a.f)
 	for _, e := range a.f.provider.fake.Events() {
@@ -157,10 +275,19 @@ func (a checkoutAdoptionPG) signedEvent(t *testing.T, r checkoutcontract.Result)
 		}
 		mac := hmac.New(sha256.New, key)
 		_, _ = mac.Write(raw)
-		return router, raw, hex.EncodeToString(mac.Sum(nil))
+		signature := hex.EncodeToString(mac.Sum(nil))
+		verifier, err := checkouthttp.NewFakeHMACVerifier(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		proof, err := verifier.Verify(checkoutRequestContext(a.f.ctx), raw, signature)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return router, raw, signature, proof
 	}
 	t.Fatal("provider did not emit an authorized event for the adopted order")
-	return nil, nil, ""
+	return nil, nil, "", payment.VerifiedEvent{}
 }
 
 func (a checkoutAdoptionPG) deliver(t *testing.T, router http.Handler, raw []byte, signature, state string) string {

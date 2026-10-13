@@ -41,6 +41,7 @@ type Config struct {
 	Cart                     *cart.Module
 	Quotes                   quoteshttp.QuotesService
 	QuoteOrders              quoteorders.Service
+	QuoteConversion          *QuoteConversionConfig
 	QuotesBuyerAuthenticator httpapi.Authenticator
 	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
 	CMS                      publish.CMSHTTPConfig
@@ -63,6 +64,21 @@ func New(config Config) (server *http.Server, err error) {
 		cartModule = cart.New(nil, nil)
 	}
 	customerHTTP := customerhttp.New(customerhttp.Config{Service: config.Customer, Origin: config.CustomerOrigin, Secret: config.CustomerSecret})
+	if config.QuoteConversion != nil {
+		if config.QuoteOrders != nil || config.Checkout == nil || config.Customer == nil {
+			return nil, errors.New("typed quote conversion requires customer and checkout capabilities and excludes QuoteOrders injection")
+		}
+		config.QuoteOrders, err = NewQuoteConversion(*config.QuoteConversion, config.Checkout.Service)
+		if err != nil {
+			return nil, err
+		}
+		if config.QuotesBuyerAuthenticator == nil {
+			config.QuotesBuyerAuthenticator = quoteBuyerAdmission{customer: customerHTTP, runner: config.QuoteConversion.Runner}
+		}
+	}
+	if config.QuotesBuyerAuthenticator != nil && config.QuoteOrders == nil {
+		return nil, errors.New("quote buyer admission requires a configured conversion service")
+	}
 	if config.Customer != nil {
 		cartModule = cartModule.WithActorResolver(func(ctx context.Context, _ *http.Request) (cartcontract.AuthorizedActor, error) {
 			actor, ok := customercontract.ActorFromContext(ctx)

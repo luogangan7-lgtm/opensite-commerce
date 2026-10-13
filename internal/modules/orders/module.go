@@ -8,6 +8,5 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/internal/service"
 )
 
-func New() contract.Service                                  { return service.Service{} }
-func NewQuoteCreator() contract.QuoteCreator                 { return service.Service{} }
-func NewReservationValidator() contract.ReservationValidator { return service.Service{} }
+func New() contract.Service                  { return service.Service{} }
+func NewQuoteCreator() contract.QuoteCreator { return service.Service{} }

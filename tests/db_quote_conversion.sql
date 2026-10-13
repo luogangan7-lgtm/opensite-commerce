@@ -173,7 +173,6 @@ DECLARE t uuid:=current_setting('qc.t')::uuid; company uuid:=current_setting('qc
  PERFORM pg_temp.qc_refuse('UPDATE app.quote_conversions SET quote_version=99','42501','runtime direct update');
  PERFORM pg_temp.qc_refuse('DELETE FROM app.quote_conversions','42501','runtime direct delete');
  PERFORM pg_temp.qc_refuse(format('INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(%L,''quote.converted'',''{}'',''quotes'',''converted:forged'')',t),'42501','forged converted event');
- PERFORM app.orders_validate_payment_reservations(oid);
  -- Same total cannot hide a changed tax/net/price composition.
  bad:=pg_temp.qc_order(49,98,12);
  PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''bad-key'',sha256(''bad''::bytea))',t,q2,company,buyer,bad),'23514','same total different snapshot');
@@ -236,12 +235,12 @@ DO $notification_atomic$ BEGIN
  OR EXISTS(SELECT FROM app.notification_deliveries WHERE template_key='quote.converted' AND reference_id=current_setting('qc.q2')::uuid) THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_FAILED_NOTIFICATION_BOUND'; END IF;
 END $notification_atomic$;
--- Preflight must decide DB expiry before a caller invokes Capture; cancellation
--- still releases an expired active hold without producing a paid event.
+-- Orders rejects paying an expired hold; the checkout production gate proves
+-- pre-Capture admission. Cancellation releases it without producing a paid event.
 UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second'
  WHERE owner_id=current_setting('qc.order')::uuid;
 SET LOCAL ROLE app_runtime;
-SELECT pg_temp.qc_refuse(format('SELECT app.orders_validate_payment_reservations(%L)',current_setting('qc.order')),'55000','expired payment preflight');
+SELECT pg_temp.qc_refuse(format('SELECT app.orders_transition(%L,''paid'',''expired-confirm'',0)',current_setting('qc.order')),'55000','expired paid transition');
 SELECT app.orders_transition(current_setting('qc.order')::uuid,'cancelled','fixture-cancel',0);
 DO $cancel$ BEGIN
  IF EXISTS(SELECT FROM app.inventory_reservations WHERE owner_id=current_setting('qc.order')::uuid AND state<>'released')

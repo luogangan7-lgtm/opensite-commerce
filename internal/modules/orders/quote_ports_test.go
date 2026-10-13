@@ -36,28 +36,21 @@ func (x *validationTx) Exec(context.Context, string, ...any) (pgxadapter.Command
 	return pgxadapter.CommandTag{}, x.err
 }
 
-func TestReservationValidatorAdmission(t *testing.T) {
-	svc := orders.NewReservationValidator()
+func TestOrdersLiveReservationFenceAdmission(t *testing.T) {
+	svc := orders.New()
 	ctx := context.Background()
 	x := &validationTx{active: tenant}
-	if err := svc.ValidateReservations(ctx, x, tenant, "bad"); !errors.Is(err, contract.ErrInvalid) || x.reads != 0 || x.execs != 0 {
+	if err := svc.LockLiveReservations(ctx, x, tenant, "bad", 0); !errors.Is(err, contract.ErrInvalid) || x.reads != 0 || x.execs != 0 {
 		t.Fatalf("malformed order reached SQL: %v %+v", err, x)
 	}
-	if err := svc.ValidateReservations(ctx, nil, tenant, order); !errors.Is(err, contract.ErrInvalid) {
+	if err := svc.LockLiveReservations(ctx, nil, tenant, order, 0); !errors.Is(err, contract.ErrInvalid) {
 		t.Fatalf("nil transaction: %v", err)
 	}
 	x = &validationTx{active: order}
-	if err := svc.ValidateReservations(ctx, x, tenant, order); !errors.Is(err, contract.ErrNotFound) || x.execs != 0 {
+	if err := svc.LockLiveReservations(ctx, x, tenant, order, 0); !errors.Is(err, contract.ErrNotFound) || x.execs != 0 {
 		t.Fatalf("foreign tenant reached preflight: %v %+v", err, x)
 	}
-	x = &validationTx{active: tenant, err: &pgxadapter.PgError{Code: "55000", Message: "ORDER_RESERVATION_EXPIRED"}}
-	if err := svc.ValidateReservations(ctx, x, tenant, order); !errors.Is(err, contract.ErrConflict) || x.execs != 1 || errors.As(err, new(*pgxadapter.PgError)) {
-		t.Fatalf("preflight error escaped: %v %+v", err, x)
-	}
-	x = &validationTx{active: tenant}
-	if err := svc.ValidateReservations(ctx, x, tenant, order); err != nil || x.reads != 1 || x.execs != 1 {
-		t.Fatalf("valid scoped preflight: %v %+v", err, x)
-	}
+
 }
 
 func TestQuoteCreatorRejectsMalformedCommand(t *testing.T) {

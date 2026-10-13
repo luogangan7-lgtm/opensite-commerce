@@ -46,6 +46,13 @@ func conversionKey(key string) bool {
 	return true
 }
 
+// Orders creation keys span the tenant; quote receipts retain the buyer's raw
+// key. A JSON tuple preserves field boundaries and the digest fits Orders' cap.
+func conversionOrderKey(tenant, actorKind, actorID, quoteID, rawKey string) string {
+	body, _ := json.Marshal([]string{"quotes.orders.v1", tenant, actorKind, actorID, quoteID, rawKey})
+	return fmt.Sprintf("quotes.orders.v1:%x", sha256.Sum256(body))
+}
+
 func (a *ConversionApplication) Convert(ctx context.Context, quoteID, key string) (out c.Conversion, err error) {
 	actor, err := c.ActorFromContext(ctx)
 	if err != nil {
@@ -91,7 +98,8 @@ func (a *ConversionApplication) Convert(ctx context.Context, quoteID, key string
 			}
 			labels[line.VariantID] = label
 		}
-		in, e := quoteOrder(q, uuid.NewString(), actor.ID(), key, labels)
+		orderKey := conversionOrderKey(actor.TenantID(), actor.Kind(), actor.ID(), quoteID, key)
+		in, e := quoteOrder(q, uuid.NewString(), actor.ID(), orderKey, labels)
 		if e != nil {
 			return e
 		}

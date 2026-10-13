@@ -148,47 +148,6 @@ END $acl$;
 GRANT EXECUTE ON FUNCTION app.quote_conversion_lock(uuid,uuid,uuid,uuid),
  app.quote_conversion_bind(uuid,uuid,uuid,uuid,uuid,bigint,text,bytea),app.quote_conversion_get(uuid,uuid,uuid,text,uuid) TO app_runtime;
 
--- Orders retains the inventory write boundary. This preparation port holds all
--- locks through the caller's capture transaction and decides expiry after waits.
-CREATE FUNCTION app.orders_validate_payment_reservations(p_id uuid) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
-DECLARE t uuid:=app.orders_context(); o app.orders; BEGIN
- SELECT * INTO o FROM app.orders WHERE tenant_id=t AND id=p_id FOR UPDATE;
- IF NOT FOUND THEN RAISE EXCEPTION 'ORDER_NOT_FOUND' USING ERRCODE='P0002'; END IF;
- IF NOT o.sealed OR o.state<>'pending_payment' THEN RAISE EXCEPTION 'ORDER_INVALID_TRANSITION' USING ERRCODE='55000'; END IF;
- PERFORM ir.id FROM app.inventory_reservations ir JOIN app.order_lines ol
- ON(ol.tenant_id,ol.reservation_id)=(ir.tenant_id,ir.id)
- WHERE ol.tenant_id=t AND ol.order_id=p_id ORDER BY ir.id FOR UPDATE OF ir;
- PERFORM s.sku_id FROM app.stock_levels s JOIN app.inventory_reservations ir
- ON(ir.tenant_id,ir.warehouse_id,ir.sku_id)=(s.tenant_id,s.warehouse_id,s.sku_id)
- JOIN app.order_lines ol ON(ol.tenant_id,ol.reservation_id)=(ir.tenant_id,ir.id)
- WHERE ol.tenant_id=t AND ol.order_id=p_id ORDER BY s.warehouse_id,s.sku_id FOR UPDATE OF s;
- IF EXISTS(SELECT FROM app.order_lines ol LEFT JOIN app.inventory_reservations ir
- ON(ir.tenant_id,ir.id)=(ol.tenant_id,ol.reservation_id)
- WHERE ol.tenant_id=t AND ol.order_id=p_id AND(ir.id IS NULL OR ir.owner_type<>'order' OR ir.owner_id<>p_id
- OR ir.sku_id<>ol.sku_id OR ir.quantity<>ol.quantity)) THEN
-  RAISE EXCEPTION 'ORDER_RESERVATION_OWNER_MISMATCH' USING ERRCODE='42501'; END IF;
- IF EXISTS(SELECT FROM app.order_lines ol JOIN app.inventory_reservations ir
- ON(ir.tenant_id,ir.id)=(ol.tenant_id,ol.reservation_id)
- WHERE ol.tenant_id=t AND ol.order_id=p_id AND(ir.state<>'active' OR ir.expires_at<=clock_timestamp())) THEN
-  RAISE EXCEPTION 'ORDER_RESERVATION_INACTIVE' USING ERRCODE='55000'; END IF;
-END $$;
--- Row locks require one UPDATE column; the command never changes stock data.
-GRANT SELECT(tenant_id,warehouse_id,sku_id) ON app.stock_levels TO app_orders_executor;
-GRANT UPDATE(sku_id) ON app.stock_levels TO app_orders_executor;
-CREATE POLICY orders_preflight_stock ON app.stock_levels TO app_orders_executor
- USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
-GRANT CREATE ON SCHEMA app TO app_orders_executor;
-ALTER FUNCTION app.orders_validate_payment_reservations(uuid) OWNER TO app_orders_executor;
-REVOKE CREATE ON SCHEMA app FROM app_orders_executor;
-REVOKE ALL ON FUNCTION app.orders_validate_payment_reservations(uuid) FROM PUBLIC;
-DO $acl$ DECLARE r text; BEGIN
- FOR r IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') AND rolname<>'app_orders_executor' LOOP
-  EXECUTE format('REVOKE ALL ON FUNCTION app.orders_validate_payment_reservations(uuid) FROM %I',r);
- END LOOP;
-END $acl$;
-GRANT EXECUTE ON FUNCTION app.orders_validate_payment_reservations(uuid) TO app_runtime;
-
 -- Forward integration: existing notification lifecycle commands remain unchanged.
 ALTER TABLE app.notification_deliveries DROP CONSTRAINT notification_deliveries_template_key_check;
 ALTER TABLE app.notification_deliveries ADD CONSTRAINT notification_deliveries_template_key_check

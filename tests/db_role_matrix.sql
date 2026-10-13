@@ -368,7 +368,7 @@ BEGIN
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','orders_validate_payment_reservations','outbox_active_tenants','outbox_metrics','notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
    'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
@@ -396,7 +396,7 @@ BEGIN
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','orders_validate_payment_reservations','outbox_active_tenants','outbox_metrics','notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
    'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
@@ -639,7 +639,7 @@ SELECT 'PASS: cart tenant helper exact owner/search_path/boolean/STABLE/EXECUTE;
 DO $orders$
 DECLARE r record; t record; a record; f record; role_name text; privilege text;
  expected boolean; allowed text[];
- names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','orders_validate_payment_reservations'];
+ names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_orders_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -660,8 +660,6 @@ BEGIN
    IF expected THEN SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
    ELSIF privilege='UPDATE' AND t.relname='orders' THEN allowed:=ARRAY['state','version','sealed','refunded_minor','updated_at'];
    ELSIF privilege='UPDATE' AND t.relname='inventory_reservations' THEN allowed:=ARRAY['id'];
-   ELSIF privilege='SELECT' AND t.relname='stock_levels' THEN allowed:=ARRAY['tenant_id','warehouse_id','sku_id'];
-   ELSIF privilege='UPDATE' AND t.relname='stock_levels' THEN allowed:=ARRAY['sku_id'];
    ELSIF privilege='INSERT' AND t.relname='outbox_events' THEN allowed:=ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key','created_at'];
    END IF;
    IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected
@@ -697,7 +695,7 @@ BEGIN
   IF f.proname=ANY(names) THEN
    FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
     'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_ledger_executor','app_queue_worker','app_outbox_tenant_broker'] LOOP
-    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition','orders_lock_reservations','orders_check_creation','orders_validate_payment_reservations');
+    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition','orders_lock_reservations','orders_check_creation');
     IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
      RAISE EXCEPTION 'orders routine authority % %',role_name,f.proname;

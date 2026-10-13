@@ -1,40 +1,57 @@
 //go:build pgx
 
-// Responsibility: exercise approved quote -> immutable order -> Fake prepay in PG.
-// Dependencies: public quotes/orders/ledger ports; pgxadapter owns the pool.
-// Invariants: expendable fixtures only, runtime SQL uses app_runtime; this TEST
-// adapter holds a transaction around deterministic in-memory Fake IO. Its mutex
-// and cache are not durable checkout recovery and are never production wiring.
+// Responsibility: exercise approved quote -> real checkout -> signed Confirm in PG.
+// Dependencies: bootstrap typed composition and public modules; pgxadapter owns pools.
+// Invariants: expendable fixtures, effective app_runtime, provider IO at tx depth zero;
+// tests never implement order transitions, captures or business journals themselves.
 package bootstrap_test
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout"
+	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
-	lc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	oc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tax"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
+type quoteOrderDepth struct{ depth int }
+type quoteOrderDepthKey struct{}
 type quoteOrderRunner struct{ pgxadapter.Runner }
 
 func (r quoteOrderRunner) InTenant(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+	if marker, ok := ctx.Value(quoteOrderDepthKey{}).(*quoteOrderDepth); ok {
+		marker.depth++
+		defer func() { marker.depth-- }()
+	}
 	return r.Runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
 			return err
@@ -52,7 +69,10 @@ type quoteOrderFixture struct {
 	buyerCtx                                                                                               context.Context
 	quote                                                                                                  qc.Quote
 	fake                                                                                                   *paymentfake.Fake
-	prepay                                                                                                 *quoteOrderFakePrepayment
+	prepay                                                                                                 *quoteOrderPaymentProbe
+	checkout                                                                                               checkoutcontract.Service
+	confirm                                                                                                http.Handler
+	signingKey                                                                                             []byte
 	app                                                                                                    *quotes.ConversionApplication
 }
 
@@ -83,8 +103,8 @@ func quoteOrdersDB(t *testing.T, expiry time.Duration) *quoteOrderFixture {
 			{`INSERT INTO app.buyer_companies(tenant_id,id,name) VALUES($1,$2,'buyer'),($1,$3,'other')`, []any{f.tenant, f.company, f.otherCompany}},
 			{`INSERT INTO app.customers(tenant_id,id,email) VALUES($1,$2,$4),($1,$3,$5)`, []any{f.tenant, f.buyer, f.approver, f.buyer + "@example.test", f.approver + "@example.test"}},
 			{`INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code) VALUES($1,$2,$3,'admin'),($1,$2,$4,'approver'),($1,$5,$3,'purchaser')`, []any{f.tenant, f.company, f.buyer, f.approver, f.otherCompany}},
-			{`INSERT INTO app.products(tenant_id,id,product_code) VALUES($1,$2,'quote-orders')`, []any{f.tenant, f.product}},
-			{`INSERT INTO app.product_variants(tenant_id,id,product_id,sku,option_key) VALUES($1,$2,$3,'QUOTE-ORDER-SKU','default')`, []any{f.tenant, f.sku, f.product}},
+			{`INSERT INTO app.products(tenant_id,id,product_code,lifecycle_status) VALUES($1,$2,'quote-orders','ready')`, []any{f.tenant, f.product}},
+			{`INSERT INTO app.product_variants(tenant_id,id,product_id,sku,option_key,lifecycle_status) VALUES($1,$2,$3,'QUOTE-ORDER-SKU','default','ready')`, []any{f.tenant, f.sku, f.product}},
 			{`INSERT INTO app.tax_settings(tenant_id,prices_include_tax) VALUES($1,false)`, []any{f.tenant}},
 			{`INSERT INTO app.tax_zones(tenant_id,id,name) VALUES($1,$2,'US')`, []any{f.tenant, taxzone}},
 			{`INSERT INTO app.tax_zone_locations(tenant_id,zone_id,country_code) VALUES($1,$2,'US')`, []any{f.tenant, taxzone}},
@@ -172,8 +192,36 @@ func quoteOrdersDB(t *testing.T, expiry time.Duration) *quoteOrderFixture {
 		t.Fatalf("approved snapshot: %+v", f.quote)
 	}
 	f.fake = paymentfake.New()
-	f.prepay = &quoteOrderFakePrepayment{f: f, terminal: map[string]qc.Prepayment{}}
-	f.app = quotes.NewConversionApplication(quotes.ConversionConfig{Runner: f.runner, Quotes: m, Orders: orders.NewQuoteCreator(), Checkout: f.prepay})
+	f.prepay = &quoteOrderPaymentProbe{fake: f.fake}
+	f.checkout = checkout.New(checkout.Config{Run: f.runner.InTenant, Orders: orders.New(), Ledger: ledger.New(), Payment: f.prepay})
+	f.app, err = bootstrap.NewQuoteConversion(bootstrap.QuoteConversionConfig{Runner: f.runner, Quotes: m, Orders: orders.NewQuoteCreator()}, f.checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.signingKey = make([]byte, 32)
+	if _, err := rand.Read(f.signingKey); err != nil {
+		t.Fatal(err)
+	}
+	verifier, err := checkouthttp.NewFakeHMACVerifier(f.signingKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := checkouthttp.New(checkouthttp.Config{Service: f.checkout, FakeEnabled: true, Environment: "test", Verifier: verifier})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := httpapi.New(nil, nil)
+	for _, route := range handler.Routes() {
+		if err := router.Register(route.Spec, route.Handler); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.confirm = router
+	t.Cleanup(func() {
+		if f.prepay.violations != 0 {
+			t.Errorf("provider IO in transactions: %d", f.prepay.violations)
+		}
+	})
 	return f
 }
 func (f *quoteOrderFixture) mustActor(t *testing.T, id, company string, staff bool) qc.AuthorizedActor {
@@ -200,111 +248,105 @@ func (f *quoteOrderFixture) maintenance(t *testing.T, fn func(context.Context, p
 	}
 }
 
-// quoteOrderFakePrepayment is deliberately TEST ONLY. Real checkout must persist
-// provider claims/reconciliation; this local mutex/cache proves neither crashes
-// nor network ambiguity. No production adapter is inferred from this harness.
-type quoteOrderFakePrepayment struct {
-	mu                                     sync.Mutex
-	f                                      *quoteOrderFixture
-	terminal                               map[string]qc.Prepayment
-	createCalls, captureCalls, cancelCalls int
-	beforeValidate                         func(context.Context, string) error
+// The neutral probe observes provider calls; it implements no business protocol.
+type quoteOrderPaymentProbe struct {
+	mu                                                 sync.Mutex
+	fake                                               *paymentfake.Fake
+	creates                                            []payment.CreatePaymentIntent
+	createCalls, captureCalls, cancelCalls, violations int
 }
 
-func (p *quoteOrderFakePrepayment) Prepay(ctx context.Context, actor qc.AuthorizedActor, c qc.Conversion) (qc.Prepayment, error) {
+func (p *quoteOrderPaymentProbe) check(ctx context.Context, op paymentfake.Operation) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if out, ok := p.terminal[c.OrderID]; ok {
-		return out, nil
+	if marker, ok := ctx.Value(quoteOrderDepthKey{}).(*quoteOrderDepth); !ok || marker.depth != 0 {
+		p.violations++
+		return errors.New("provider IO requires observed transaction depth zero")
 	}
-	out := qc.Prepayment{OrderID: c.OrderID, Amount: c.Amount, State: string(oc.PendingPayment)}
-	var payable oc.Payable
-	err := p.f.runner.InTenant(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
-		var e error
-		payable, e = orders.New().GetPayable(ctx, tx, actor.TenantID(), c.OrderID)
-		return e
-	})
-	if err != nil {
-		return out, err
-	}
-	req := payment.CreatePaymentIntent{TenantID: actor.TenantID(), OrderID: c.OrderID, Amount: payable.Amount, OrderVersion: payable.Version, IdempotencyKey: "quote-test:create:" + c.OrderID}
-	p.createCalls++
-	intent, err := p.f.fake.CreateIntent(ctx, req)
-	if err != nil {
-		return out, err
-	}
-	out.ProviderRef = intent.ProviderRef
-	op := payment.PaymentOperation{CreatePaymentIntent: req, ProviderRef: intent.ProviderRef}
-	op.IdempotencyKey = "quote-test:capture:" + c.OrderID
-	if p.beforeValidate != nil {
-		hook := p.beforeValidate
-		p.beforeValidate = nil
-		if e := hook(ctx, c.OrderID); e != nil {
-			return out, e
-		}
-	}
-	var invalidHold, definitive bool
-	err = p.f.runner.InTenant(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
-		if e := orders.NewReservationValidator().ValidateReservations(ctx, tx, actor.TenantID(), c.OrderID); e != nil {
-			invalidHold = errors.Is(e, oc.ErrConflict) || errors.Is(e, oc.ErrStockUnavailable)
-			return e
-		}
+	switch op {
+	case paymentfake.Create:
+		p.createCalls++
+	case paymentfake.Capture:
 		p.captureCalls++
-		captured, e := p.f.fake.Capture(ctx, op)
-		if e != nil {
-			var pe *payment.PaymentError
-			definitive = errors.As(e, &pe) && pe.Code == payment.ErrorNonRetryable
-			return e
-		}
-		if captured.Status != payment.StatusCaptured {
-			return errors.New("test Fake capture was not captured")
-		}
-		_, e = orders.New().Transition(ctx, tx, actor.TenantID(), oc.TransitionInput{OrderID: c.OrderID, Target: oc.Paid, EventKey: "quote-test:paid:" + c.OrderID})
-		if e != nil {
-			return e
-		}
-		q, e := quotes.New().Get(ctx, tx, actor, c.QuoteID)
-		if e != nil {
-			return e
-		}
-		// Same account meanings as B2C: recognize sale/receivable, then settle cash.
-		entries := []lc.Entry{}
-		add := func(code string, side lc.Side, amount int64) {
-			if amount > 0 {
-				entries = append(entries, lc.Entry{AccountID: p.f.accounts[code], Side: side, Amount: money.Money{Currency: q.Currency, Amount: amount}})
-			}
-		}
-		add("accounts_receivable", lc.Debit, q.Snapshot.Total)
-		add("revenue", lc.Credit, q.Snapshot.Subtotal)
-		add("tax_payable", lc.Credit, q.Snapshot.TaxAmount)
-		add("shipping_revenue", lc.Credit, q.Snapshot.ShippingAmount)
-		add("cash", lc.Debit, q.Snapshot.Total)
-		add("accounts_receivable", lc.Credit, q.Snapshot.Total)
-		_, e = ledger.New().Post(ctx, tx, lc.Transaction{TenantID: actor.TenantID(), Currency: q.Currency, SourceType: "order", SourceID: c.OrderID, Event: "quote-test:capture", Entries: entries})
-		return e
-	})
-	if err != nil {
-		if !invalidHold && !definitive {
-			return out, err
-		} // Ambiguous failure keeps stock held.
-		op.IdempotencyKey = "quote-test:cancel:" + c.OrderID
+	case paymentfake.Cancel:
 		p.cancelCalls++
-		if _, e := p.f.fake.Cancel(ctx, op); e != nil {
-			return out, e
-		}
-		err = p.f.runner.InTenant(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
-			_, e := orders.New().Transition(ctx, tx, actor.TenantID(), oc.TransitionInput{OrderID: c.OrderID, Target: oc.Cancelled, EventKey: "quote-test:cancelled:" + c.OrderID})
-			return e
-		})
-		if err != nil {
-			return out, err
-		}
-		out.State = string(oc.Cancelled)
-	} else {
-		out.State = string(oc.Paid)
 	}
-	p.terminal[c.OrderID] = out
-	return out, nil
+	return nil
+}
+func (p *quoteOrderPaymentProbe) CreateIntent(ctx context.Context, in payment.CreatePaymentIntent) (payment.PaymentIntentResult, error) {
+	if err := p.check(ctx, paymentfake.Create); err != nil {
+		return payment.PaymentIntentResult{}, err
+	}
+	p.mu.Lock()
+	p.creates = append(p.creates, in)
+	p.mu.Unlock()
+	return p.fake.CreateIntent(ctx, in)
+}
+func (p *quoteOrderPaymentProbe) Capture(ctx context.Context, in payment.PaymentOperation) (payment.PaymentIntentResult, error) {
+	if err := p.check(ctx, paymentfake.Capture); err != nil {
+		return payment.PaymentIntentResult{}, err
+	}
+	return p.fake.Capture(ctx, in)
+}
+func (p *quoteOrderPaymentProbe) Cancel(ctx context.Context, in payment.PaymentOperation) (payment.PaymentIntentResult, error) {
+	if err := p.check(ctx, paymentfake.Cancel); err != nil {
+		return payment.PaymentIntentResult{}, err
+	}
+	return p.fake.Cancel(ctx, in)
+}
+func (p *quoteOrderPaymentProbe) Refund(ctx context.Context, in payment.PaymentOperation) (payment.PaymentIntentResult, error) {
+	if err := p.check(ctx, paymentfake.Refund); err != nil {
+		return payment.PaymentIntentResult{}, err
+	}
+	return p.fake.Refund(ctx, in)
+}
+
+func quoteObserved(ctx context.Context) context.Context {
+	return context.WithValue(ctx, quoteOrderDepthKey{}, &quoteOrderDepth{})
+}
+
+// Sign the actual neutral provider event, then enter the production HTTP verifier.
+func (f *quoteOrderFixture) deliver(t *testing.T, orderID string) *httptest.ResponseRecorder {
+	t.Helper()
+	for _, event := range f.fake.Events() {
+		if event.OrderID != orderID || event.Status != payment.StatusAuthorized {
+			continue
+		}
+		raw, err := json.Marshal(map[string]any{"event_id": event.EventID, "tenant_id": event.TenantID, "order_id": event.OrderID, "order_version": event.OrderVersion, "provider_ref": event.ProviderRef, "status": string(event.Status), "amount_minor": event.Amount.Amount, "currency": event.Amount.Currency})
+		if err != nil {
+			t.Fatal(err)
+		}
+		mac := hmac.New(sha256.New, f.signingKey)
+		_, _ = mac.Write(raw)
+		request := httptest.NewRequest(http.MethodPost, checkouthttp.FakePattern, strings.NewReader(string(raw))).WithContext(quoteObserved(f.ctx))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("X-Fake-Signature", hex.EncodeToString(mac.Sum(nil)))
+		response := httptest.NewRecorder()
+		f.confirm.ServeHTTP(response, request)
+		return response
+	}
+	t.Fatal("actual provider authorized event absent")
+	return nil
+}
+
+func (f *quoteOrderFixture) convertAndPay(t *testing.T, ctx context.Context, quoteID, key string) (qc.Conversion, error) {
+	t.Helper()
+	captures := f.prepay.captureCalls
+	out, err := f.app.Convert(quoteObserved(ctx), quoteID, key)
+	if err != nil || out.State != string(oc.PendingPayment) {
+		return out, err
+	}
+	if f.prepay.captureCalls != captures {
+		t.Fatal("conversion captured before signed Confirm")
+	}
+	if out.ProviderRef == "" {
+		t.Fatal("conversion did not adopt a pending provider intent")
+	}
+	response := f.deliver(t, out.OrderID)
+	if response.Code != http.StatusOK {
+		t.Fatalf("signed Confirm: %d %s", response.Code, response.Body.String())
+	}
+	return f.app.Convert(quoteObserved(ctx), quoteID, key)
 }
 
 func (f *quoteOrderFixture) assertEffects(t *testing.T, order, state string, ordersCount, journals, paidOutbox, onHand, reserved int64) {
@@ -341,7 +383,7 @@ func (f *quoteOrderFixture) assertEffects(t *testing.T, order, state string, ord
 			if state == "cancelled" {
 				wantCancel = 1
 			}
-			if createdEvents != 1 || convertedEvents != 1 || cancelledEvents != wantCancel {
+			if createdEvents != ordersCount || convertedEvents != ordersCount || cancelledEvents != wantCancel {
 				return fmt.Errorf("outbox created=%d converted=%d cancelled=%d", createdEvents, convertedEvents, cancelledEvents)
 			}
 		}
@@ -350,11 +392,11 @@ func (f *quoteOrderFixture) assertEffects(t *testing.T, order, state string, ord
 			if e := tx.QueryRow(ctx, `SELECT coalesce(sum(amount) FILTER(WHERE side='debit'),0)::bigint,coalesce(sum(amount) FILTER(WHERE side='credit'),0)::bigint FROM app.ledger_entries WHERE tenant_id=$1`, f.tenant).Scan(&debit, &credit); e != nil {
 				return e
 			}
-			if debit != 540 || credit != 540 {
+			if debit != 540*journals || credit != 540*journals {
 				return fmt.Errorf("journal balance %d/%d", debit, credit)
 			}
 			var exact bool
-			if e := tx.QueryRow(ctx, `WITH actual AS (SELECT a.code,e.side,sum(e.amount)::bigint AS amount FROM app.ledger_entries e JOIN app.ledger_accounts a ON a.tenant_id=e.tenant_id AND a.id=e.account_id WHERE e.tenant_id=$1 GROUP BY a.code,e.side), expected(code,side,amount) AS (VALUES('accounts_receivable','debit',270::bigint),('accounts_receivable','credit',270::bigint),('cash','debit',270::bigint),('revenue','credit',200::bigint),('tax_payable','credit',20::bigint),('shipping_revenue','credit',50::bigint)) SELECT NOT EXISTS((SELECT * FROM actual EXCEPT ALL SELECT * FROM expected) UNION ALL (SELECT * FROM expected EXCEPT ALL SELECT * FROM actual))`, f.tenant).Scan(&exact); e != nil {
+			if e := tx.QueryRow(ctx, `WITH actual AS (SELECT a.code,e.side,sum(e.amount)::bigint AS amount FROM app.ledger_entries e JOIN app.ledger_accounts a ON a.tenant_id=e.tenant_id AND a.id=e.account_id WHERE e.tenant_id=$1 GROUP BY a.code,e.side), expected(code,side,amount) AS (VALUES('accounts_receivable','debit',270::bigint*$2),('accounts_receivable','credit',270::bigint*$2),('cash','debit',270::bigint*$2),('revenue','credit',200::bigint*$2),('tax_payable','credit',20::bigint*$2),('shipping_revenue','credit',50::bigint*$2)) SELECT NOT EXISTS((SELECT * FROM actual EXCEPT ALL SELECT * FROM expected) UNION ALL (SELECT * FROM expected EXCEPT ALL SELECT * FROM actual))`, f.tenant, journals).Scan(&exact); e != nil {
 				return e
 			}
 			if !exact {
@@ -384,7 +426,7 @@ func TestQuoteOrdersPGApprovedSnapshotAndReplay(t *testing.T) {
 		return nil
 	})
 	key := uuid.NewString()
-	first, e := f.app.Convert(f.buyerCtx, f.quote.ID, key)
+	first, e := f.convertAndPay(t, f.buyerCtx, f.quote.ID, key)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -454,11 +496,11 @@ func TestQuoteOrdersPGCreationKeyIsBuyerScoped(t *testing.T) {
 	secondQuote := approveQuote(secondActor, f.actor)
 	thirdQuote := approveQuote(f.actor, secondActor)
 	key := "shared-customer-conversion-key"
-	first, e := f.app.Convert(f.buyerCtx, f.quote.ID, key)
+	first, e := f.convertAndPay(t, f.buyerCtx, f.quote.ID, key)
 	if e != nil {
 		t.Fatalf("first buyer conversion: %v", e)
 	}
-	second, e := f.app.Convert(secondCtx, secondQuote.ID, key)
+	second, e := f.convertAndPay(t, secondCtx, secondQuote.ID, key)
 	if e != nil {
 		t.Fatalf("same raw key for another buyer must succeed: %v", e)
 	}
@@ -517,7 +559,7 @@ func TestQuoteOrdersPGConcurrentReplay(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			c, e := f.app.Convert(f.buyerCtx, f.quote.ID, key)
+			c, e := f.app.Convert(quoteObserved(f.buyerCtx), f.quote.ID, key)
 			out <- c
 			errs <- e
 		}()
@@ -536,12 +578,32 @@ func TestQuoteOrdersPGConcurrentReplay(t *testing.T) {
 		if id == "" {
 			id = c.OrderID
 		}
-		if id != c.OrderID || c.State != "paid" {
+		if id != c.OrderID || c.State != "pending_payment" {
 			t.Fatalf("concurrent result %+v", c)
 		}
 	}
-	if f.prepay.createCalls != 1 || f.prepay.captureCalls != 1 {
-		t.Fatalf("repeated effect %d/%d", f.prepay.createCalls, f.prepay.captureCalls)
+	if response := f.deliver(t, id); response.Code != http.StatusOK {
+		t.Fatalf("concurrent signed Confirm: %d %s", response.Code, response.Body.String())
+	}
+	if f.prepay.createCalls < 1 || f.prepay.captureCalls != 1 {
+		t.Fatalf("provider transport create/capture %d/%d", f.prepay.createCalls, f.prepay.captureCalls)
+	}
+	for _, request := range f.prepay.creates {
+		if request != f.prepay.creates[0] || request.OrderID != id || request.Amount.Amount != 270 || request.Amount.Currency != "USD" || request.IdempotencyKey == "" {
+			t.Fatal("concurrent provider request binding changed")
+		}
+	}
+	authorized := 0
+	for _, event := range f.fake.Events() {
+		if event.Status == payment.StatusAuthorized {
+			authorized++
+		}
+	}
+	if authorized != 1 {
+		t.Fatalf("concurrent provider intent effects: %d", authorized)
+	}
+	if replay, err := f.app.Convert(f.buyerCtx, f.quote.ID, key); err != nil || replay.OrderID != id || replay.State != "paid" {
+		t.Fatalf("concurrent durable replay: %+v %v", replay, err)
 	}
 	f.assertEffects(t, id, "paid", 1, 1, 1, 98, 0)
 }
@@ -549,7 +611,7 @@ func TestQuoteOrdersPGConcurrentReplay(t *testing.T) {
 func TestQuoteOrdersPGReplayRechecksMembership(t *testing.T) {
 	f := quoteOrdersDB(t, time.Hour)
 	key := uuid.NewString()
-	c, err := f.app.Convert(f.buyerCtx, f.quote.ID, key)
+	c, err := f.convertAndPay(t, f.buyerCtx, f.quote.ID, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,16 +674,25 @@ func TestQuoteOrdersPGDefinitiveFailureAndExpiredHold(t *testing.T) {
 			f := quoteOrdersDB(t, time.Hour)
 			if mode == "definitive" {
 				f.fake.FailNext(paymentfake.Capture, &payment.PaymentError{Code: payment.ErrorNonRetryable, Message: "definitive test decline"})
-			} else {
-				f.prepay.beforeValidate = func(ctx context.Context, id string) error {
-					return f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-						_, e := tx.Exec(ctx, `UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND owner_id=$2`, f.tenant, id)
-						return e
-					})
-				}
 			}
 			key := uuid.NewString()
-			c, e := f.app.Convert(f.buyerCtx, f.quote.ID, key)
+			c, e := f.app.Convert(quoteObserved(f.buyerCtx), f.quote.ID, key)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if c.State != "pending_payment" || f.prepay.captureCalls != 0 {
+				t.Fatalf("conversion captured before event: %+v", c)
+			}
+			if mode == "expired-hold" {
+				f.maintenance(t, func(ctx context.Context, tx pgx.Tx) error {
+					_, e := tx.Exec(ctx, `UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND owner_id=$2`, f.tenant, c.OrderID)
+					return e
+				})
+			}
+			if response := f.deliver(t, c.OrderID); response.Code != http.StatusOK {
+				t.Fatalf("failure signed Confirm: %d %s", response.Code, response.Body.String())
+			}
+			c, e = f.app.Convert(f.buyerCtx, f.quote.ID, key)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -659,15 +730,20 @@ func TestQuoteOrdersPGAmbiguousFailureRetainsReservation(t *testing.T) {
 	f := quoteOrdersDB(t, time.Hour)
 	f.fake.FailNext(paymentfake.Capture, &payment.PaymentError{Code: payment.ErrorRetryable, Message: "ambiguous test failure"})
 	key := uuid.NewString()
-	c, e := f.app.Convert(f.buyerCtx, f.quote.ID, key)
-	var pe *payment.PaymentError
-	if !errors.As(e, &pe) || !pe.Retryable() {
-		t.Fatalf("ambiguous result %+v %v", c, e)
+	c, e := f.app.Convert(quoteObserved(f.buyerCtx), f.quote.ID, key)
+	if e != nil || c.State != "pending_payment" || f.prepay.captureCalls != 0 {
+		t.Fatalf("pending adoption %+v %v", c, e)
+	}
+	if response := f.deliver(t, c.OrderID); response.Code < 500 {
+		t.Fatalf("ambiguous Confirm was accepted: %d %s", response.Code, response.Body.String())
 	}
 	if f.prepay.cancelCalls != 0 {
 		t.Fatal("ambiguous failure canceled intent")
 	}
 	f.assertEffects(t, c.OrderID, "pending_payment", 1, 0, 0, 100, 2)
+	if response := f.deliver(t, c.OrderID); response.Code != http.StatusOK {
+		t.Fatalf("resume signed Confirm: %d %s", response.Code, response.Body.String())
+	}
 	retried, e := f.app.Convert(f.buyerCtx, f.quote.ID, key)
 	if e != nil || retried.OrderID != c.OrderID || retried.State != "paid" {
 		t.Fatalf("resume %+v %v", retried, e)

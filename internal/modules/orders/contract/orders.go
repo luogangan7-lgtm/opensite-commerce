@@ -106,10 +106,12 @@ type TransitionInput struct {
 	RefundMinor int64
 }
 type Payable struct {
-	OrderID   string
-	Amount    money.Money
-	IntentKey string
-	Version   int64
+	OrderID                                string
+	CustomerID                             string
+	Amount                                 money.Money
+	IntentKey                              string
+	Version                                int64
+	ItemsNetMinor, TaxMinor, ShippingMinor int64
 }
 type PayableReader interface {
 	GetPayable(context.Context, pgx.Tx, string, string) (Payable, error)
@@ -118,8 +120,8 @@ type Service interface {
 	PayableReader
 	Create(context.Context, pgx.Tx, string, CreateInput) (Order, error)
 	Transition(context.Context, pgx.Tx, string, TransitionInput) (Order, error)
-	// LockLiveReservations row-locks every hold of a pending order for the caller
-	// transaction and fails with ErrReservationInactive unless each is active
+	// LockLiveReservations locks the parent order before every sorted hold for the
+	// caller transaction and fails with ErrReservationInactive unless each is active
 	// with at least minRemainingSeconds left. Payment capture calls it first.
 	LockLiveReservations(ctx context.Context, tx pgx.Tx, tenantID, orderID string, minRemainingSeconds int32) error
 }
@@ -128,11 +130,4 @@ type Service interface {
 // Create contract or forcing unrelated Service consumers to implement it.
 type QuoteCreator interface {
 	CreateFromQuote(context.Context, pgx.Tx, string, CreateInput) (Order, error)
-}
-
-// ReservationValidator checks pending-order holds in the caller transaction
-// before capture. Its result cannot promise holds remain live after commit;
-// final paid transition still checks and consumes them atomically.
-type ReservationValidator interface {
-	ValidateReservations(context.Context, pgx.Tx, string, string) error
 }

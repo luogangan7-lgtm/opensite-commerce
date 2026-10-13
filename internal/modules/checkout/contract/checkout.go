@@ -1,8 +1,8 @@
 // Package contract owns checkout's transport-neutral actor, commands and ports.
 // Dependencies: Orders/Ledger public contracts, neutral Payment Port, pure calculators.
 // Callers: trusted storefront resolver, checkout service and test composition.
-// Invariants: actor capability is not request data; prices are recomputed, payment
-// calls never hold a database transaction, and this card rejects quote checkout.
+// Invariants: actor capability is not request data; cart prices are recomputed,
+// existing orders retain sealed prices, and payment calls never hold a transaction.
 package contract
 
 import (
@@ -98,6 +98,13 @@ type Service interface {
 	Start(context.Context, AuthorizedActor, StartInput) (Result, error)
 	Confirm(context.Context, payment.VerifiedEvent) (Result, error)
 	Cancel(context.Context, AuthorizedActor, CancelInput) (Result, error)
+}
+
+// ExistingOrderService adopts an already sealed customer order without carts or
+// recalculation. Service stays compatible with transports that only use carts.
+type ExistingOrderService interface {
+	Service
+	AdoptOrder(context.Context, AuthorizedActor, string, string) (Result, error)
 }
 
 // Cart is a consumption projection compatible with PR31's shopping-intent

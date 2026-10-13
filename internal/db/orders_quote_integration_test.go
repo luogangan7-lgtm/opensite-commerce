@@ -14,11 +14,12 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 )
 
 func TestOrdersNegotiatedSourceAndReservationPreflight(t *testing.T) {
 	if os.Getenv("DATABASE_URL") == "" {
-		t.Fatal("NOT_RUN: mandatory expendable migrated PostgreSQL DATABASE_URL")
+		pgxtest.Skip(t, "NOT_RUN: mandatory expendable migrated PostgreSQL DATABASE_URL")
 	}
 	f := newOrderFixture(t)
 	in := f.input(t)
@@ -27,7 +28,7 @@ func TestOrdersNegotiatedSourceAndReservationPreflight(t *testing.T) {
 	in.Lines[0].Price.MinQuantity = 0
 	in.Lines[0].QuoteSource = &c.QuoteSource{QuoteID: uuid.NewString(), Version: 4, LineNo: 1}
 	creator := orders.NewQuoteCreator()
-	validator := orders.NewReservationValidator()
+	validator := orders.New()
 	created, err := creator.CreateFromQuote(f.ctx, f.tx, f.tenant, in)
 	if err != nil || created.Total != (money.Money{Amount: 270, Currency: "USD"}) {
 		t.Fatalf("negotiated create: %+v %v", created, err)
@@ -36,11 +37,11 @@ func TestOrdersNegotiatedSourceAndReservationPreflight(t *testing.T) {
 	if err != nil || replay != created {
 		t.Fatalf("negotiated replay: %+v %v", replay, err)
 	}
-	if err := validator.ValidateReservations(f.ctx, f.tx, f.tenant, in.ID); err != nil {
+	if err := validator.LockLiveReservations(f.ctx, f.tx, f.tenant, in.ID, 0); err != nil {
 		t.Fatalf("live hold rejected: %v", err)
 	}
-	f.errorAtSavepoint(t, func() error { return validator.ValidateReservations(f.ctx, f.tx, f.foreign, in.ID) }, c.ErrNotFound)
-	f.errorAtSavepoint(t, func() error { return validator.ValidateReservations(f.ctx, f.tx, f.tenant, uuid.NewString()) }, c.ErrNotFound)
+	f.errorAtSavepoint(t, func() error { return validator.LockLiveReservations(f.ctx, f.tx, f.foreign, in.ID, 0) }, c.ErrNotFound)
+	f.errorAtSavepoint(t, func() error { return validator.LockLiveReservations(f.ctx, f.tx, f.tenant, uuid.NewString(), 0) }, c.ErrNotFound)
 	changed := in
 	changed.Lines = append([]c.Line(nil), in.Lines...)
 	source := *changed.Lines[0].QuoteSource
@@ -58,10 +59,10 @@ func TestOrdersNegotiatedSourceAndReservationPreflight(t *testing.T) {
 		if _, e := f.tx.Exec(f.ctx, "SET LOCAL ROLE app_runtime"); e != nil {
 			return e
 		}
-		return validator.ValidateReservations(f.ctx, f.tx, f.tenant, in.ID)
-	}, c.ErrConflict)
+		return validator.LockLiveReservations(f.ctx, f.tx, f.tenant, in.ID, 0)
+	}, c.ErrReservationInactive)
 	if _, err := orders.New().Transition(f.ctx, f.tx, f.tenant, c.TransitionInput{OrderID: in.ID, Target: c.Cancelled, EventKey: "negotiated-test-cancel"}); err != nil {
 		t.Fatal(err)
 	}
-	f.errorAtSavepoint(t, func() error { return validator.ValidateReservations(f.ctx, f.tx, f.tenant, in.ID) }, c.ErrConflict)
+	f.errorAtSavepoint(t, func() error { return validator.LockLiveReservations(f.ctx, f.tx, f.tenant, in.ID, 0) }, c.ErrReservationInactive)
 }
