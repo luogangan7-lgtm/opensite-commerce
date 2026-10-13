@@ -16,6 +16,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"os"
 	"sync"
@@ -29,7 +30,7 @@ func ledgerDB(t *testing.T) (context.Context, pgxadapter.Runner) {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		t.Skip("NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
+		pgxtest.Skip(t, "NOT_RUN: expendable migrated PostgreSQL DATABASE_URL required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)

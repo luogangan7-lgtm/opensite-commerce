@@ -157,10 +157,11 @@ export function DataTable({ columns, rows, caption, loading = false, emptyLabel 
   );
 }
 
-export function EmptyState({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
+export function EmptyState({ title, description, action, headingLevel = 3 }: { title: string; description?: string; action?: ReactNode; headingLevel?: 1 | 2 | 3 }) {
+  const Heading = headingLevel === 1 ? 'h1' : headingLevel === 2 ? 'h2' : 'h3';
   return (
     <div className="os-empty-state">
-      <h3>{title}</h3>
+      <Heading>{title}</Heading>
       {description && <p>{description}</p>}
       {action && <div className="os-empty-state__action">{action}</div>}
     </div>
