@@ -531,7 +531,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** @description Sealed order snapshots, newest first by (created_at, id), in a read-only snapshot transaction. Guest contact PII is never returned; customer_kind only says whether the buyer was a tenant customer or a guest. The cursor is opaque, bound to the state filter, and any tampered or mismatched cursor is a 400. */
+        /** @description Sealed order snapshots, newest first by (created_at, id), in a read-only snapshot transaction. Guest contact PII is never returned; customer_kind only says whether the buyer was a tenant customer or a guest. A malformed cursor, or one issued for a different state filter, is a 400. The cursor is opaque and not authenticated; it only positions the page within the caller's own tenant and cannot reveal other rows. */
         get: operations["listOrders"];
         put?: never;
         post?: never;
@@ -2618,7 +2618,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                /** @description Opaque next_cursor from the prior page with the same state filter. */
+                /** @description Opaque, unauthenticated next_cursor from the prior page with the same state filter; positions only within the caller's tenant. */
                 cursor?: string;
                 state?: components["schemas"]["OrderState"];
             };

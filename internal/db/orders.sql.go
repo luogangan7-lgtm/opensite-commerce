@@ -165,6 +165,18 @@ func (q *Queries) GetOrdersTenantContext(ctx context.Context) (pgtype.UUID, erro
 	return tenant_id, err
 }
 
+const getOrdersTransactionReadOnly = `-- name: GetOrdersTransactionReadOnly :one
+SELECT current_setting('transaction_read_only')::boolean AS read_only
+`
+
+// The admin read path refuses to run in a writable transaction (fail closed).
+func (q *Queries) GetOrdersTransactionReadOnly(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, getOrdersTransactionReadOnly)
+	var read_only bool
+	err := row.Scan(&read_only)
+	return read_only, err
+}
+
 const getPayableOrder = `-- name: GetPayableOrder :one
 SELECT id,total_minor,currency,version,state FROM app.orders WHERE tenant_id=$1 AND id=$2 AND sealed
 `

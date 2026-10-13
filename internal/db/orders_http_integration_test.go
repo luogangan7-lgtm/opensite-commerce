@@ -10,6 +10,7 @@ package db_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,6 +58,8 @@ type orderReadFixture struct {
 	guest, customer  string // order ids in tenant
 	discounted, paid string
 	foreignOrder     string
+	unsealed         string
+	runtimeDSN       string
 }
 
 // create commits one order through the public orders command as app_runtime.
@@ -122,7 +125,7 @@ func newOrderReadFixture(t *testing.T) *orderReadFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(runtime.Close)
-	f := &orderReadFixture{t: t, ctx: ctx, maintenance: maintenance, runtime: runtime}
+	f := &orderReadFixture{t: t, ctx: ctx, maintenance: maintenance, runtime: runtime, runtimeDSN: parsed.String()}
 	var product, sku, foreignProduct, foreignSKU, customer string
 	f.scan("INSERT INTO app.tenants(name) VALUES('orders-read') RETURNING id::text", nil, &f.tenant)
 	f.scan("INSERT INTO app.tenants(name) VALUES('orders-read-foreign') RETURNING id::text", nil, &f.foreign)
@@ -182,6 +185,21 @@ func newOrderReadFixture(t *testing.T) *orderReadFixture {
 		t.Fatal(err)
 	}
 	f.foreignOrder = f.create(f.foreign, foreignSKU, nil)
+	// An unsealed (in-construction) snapshot cannot exist via orders_create, so
+	// plant one with the guard trigger suspended; reads must never expose it.
+	f.unsealed = uuid.NewString()
+	if err = maintenance.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SET LOCAL session_replication_role=replica"); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,
+			items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor,sealed)
+			VALUES($1,$2,1000000,'unsealed-read-probe',decode(repeat('ab',32),'hex'),'{"email":"guest@example.test"}','USD',0,0,0,'{}',0,false)`,
+			f.tenant, f.unsealed)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
 	return f
 }
 
@@ -264,8 +282,9 @@ func TestOrdersReadAPIPostgres(t *testing.T) {
 	}
 	all := decodePage(t, orderGet(t, h, base, 200))
 	if len(all.Items) != 4 || all.NextCursor != nil {
-		t.Fatalf("default page: %+v", all)
+		t.Fatalf("default page (unsealed or foreign rows must not appear): %+v", all)
 	}
+	orderGet(t, h, base+"/"+f.unsealed, 404)
 
 	// State filter and cursor binding.
 	paid := decodePage(t, orderGet(t, h, base+"?state=paid", 200))
@@ -282,6 +301,27 @@ func TestOrdersReadAPIPostgres(t *testing.T) {
 	}
 	orderGet(t, h, base+"?limit=3&cursor="+url.QueryEscape(*pending.NextCursor), 400)
 	orderGet(t, h, base+"?state=paid&cursor="+url.QueryEscape(*p1.NextCursor), 400)
+	// A well-formed cursor forged from another tenant's order position still
+	// returns only the caller's rows: it is a seek key, not an authorization.
+	var foreignAt time.Time
+	f.scan("SELECT created_at FROM app.orders WHERE tenant_id=$1 AND id=$2", []any{f.foreign, f.foreignOrder}, &foreignAt)
+	forgedJSON, err := json.Marshal(struct {
+		T  time.Time `json:"t"`
+		ID string    `json:"id"`
+		S  string    `json:"s"`
+	}{foreignAt.Add(time.Hour).UTC(), f.foreignOrder, ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := decodePage(t, orderGet(t, h, base+"?limit=100&cursor="+base64.RawURLEncoding.EncodeToString(forgedJSON), 200))
+	if len(forged.Items) != 4 {
+		t.Fatalf("forged cursor page: %+v", forged)
+	}
+	for _, item := range forged.Items {
+		if id := item["id"]; id != f.guest && id != f.customer && id != f.discounted && id != f.paid {
+			t.Fatalf("forged cursor leaked row %v", id)
+		}
+	}
 	tampered := []byte(*p1.NextCursor)
 	tampered[len(tampered)/2] ^= 1
 	orderGet(t, h, base+"?limit=3&cursor="+url.QueryEscape(string(tampered)), 400)
@@ -330,6 +370,9 @@ func TestOrdersReadAPIPostgres(t *testing.T) {
 		}
 	}
 
+	// The read path itself refuses a writable transaction (fail closed).
+	orderGet(t, f.handler(f.runtime.RunAuthorized), base+"/"+f.discounted, 503)
+
 	// Read-only: a write inside the production snapshot transaction is refused
 	// by PostgreSQL and leaves the order untouched.
 	var writeErr error
@@ -359,4 +402,26 @@ func mustPGUUID(t *testing.T, id string) pgtype.UUID {
 		t.Fatal(err)
 	}
 	return pgtype.UUID{Bytes: parsed, Valid: true}
+}
+
+// Production wiring: FromEnvironment must give the orders read path a
+// read-only runner. A writable runner is refused by the read-only guard.
+func TestOrdersReadAPIProductionWiringIsReadOnly(t *testing.T) {
+	f := newOrderReadFixture(t)
+	t.Setenv("OPENSITE_DATABASE_URL", f.runtimeDSN)
+	config, closeRuntime, err := bootstrap.FromEnvironment(f.ctx, bootstrap.Config{Authenticator: orderReadAuth{tenant: f.tenant},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(closeRuntime)
+	server, err := bootstrap.New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := orderGet(t, server.Handler, "/api/v1/t/"+f.tenant+"/orders/"+f.paid, 200)
+	if w.Header().Get("ETag") != `"2"` {
+		t.Fatalf("production wiring detail: %v %s", w.Header(), w.Body.String())
+	}
+	orderGet(t, server.Handler, "/api/v1/t/"+f.tenant+"/orders?state=paid", 200)
 }

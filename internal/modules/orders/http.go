@@ -64,6 +64,10 @@ func (h *HTTP) snapshot(ctx context.Context, requested uuid.UUID, fn func(*db.Qu
 		if current, e := httpapi.AuthorizedTenant(ctx); e != nil || current != tenant {
 			return notFound()
 		}
+		// Fail closed if wiring ever hands this path a writable transaction.
+		if readOnly, e := q.GetOrdersTransactionReadOnly(ctx); e != nil || !readOnly {
+			return apperrors.New(503, "orders_unavailable", "Order persistence is unavailable")
+		}
 		return fn(q)
 	})
 	var domain *apperrors.Error

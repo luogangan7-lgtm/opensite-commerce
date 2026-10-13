@@ -1509,8 +1509,9 @@ paths:
       x-required-scope: orders:read
       description: Sealed order snapshots, newest first by (created_at, id), in a read-only
         snapshot transaction. Guest contact PII is never returned; customer_kind only says
-        whether the buyer was a tenant customer or a guest. The cursor is opaque, bound to
-        the state filter, and any tampered or mismatched cursor is a 400.
+        whether the buyer was a tenant customer or a guest. A malformed cursor, or one issued
+        for a different state filter, is a 400. The cursor is opaque and not authenticated;
+        it only positions the page within the caller's own tenant and cannot reveal other rows.
       parameters:
         - name: limit
           in: query
@@ -1519,7 +1520,7 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Opaque next_cursor from the prior page with the same state filter.
+          description: Opaque, unauthenticated next_cursor from the prior page with the same state filter; positions only within the caller's tenant.
           schema: {type: string, maxLength: 512}
         - name: state
           in: query

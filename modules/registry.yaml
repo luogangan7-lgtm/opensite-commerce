@@ -1030,6 +1030,13 @@
         "notification_redrive_requests",
         "outbox_events"
       ]
+    },
+    {
+      "file": "migrations/027_orders_admin_list_index.sql",
+      "owner": "orders",
+      "touches_tables": [
+        "orders"
+      ]
     }
   ]
 }

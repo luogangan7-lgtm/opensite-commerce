@@ -50,3 +50,7 @@ FROM app.order_lines WHERE tenant_id=sqlc.arg(tenant_id) AND order_id=sqlc.arg(o
 -- name: ListAdminOrderAdjustments :many
 SELECT id,reason,amount_minor
 FROM app.order_adjustments WHERE tenant_id=sqlc.arg(tenant_id) AND order_id=sqlc.arg(order_id) ORDER BY id;
+
+-- The admin read path refuses to run in a writable transaction (fail closed).
+-- name: GetOrdersTransactionReadOnly :one
+SELECT current_setting('transaction_read_only')::boolean AS read_only;

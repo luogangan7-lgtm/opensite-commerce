@@ -21,6 +21,7 @@ import (
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/shipping"
 )
 
 const tenantA = "11111111-1111-4111-8111-111111111111"
@@ -126,5 +127,14 @@ func TestOrderCursorRoundTrip(t *testing.T) {
 	}
 	if _, _, err = parseOrderCursor(&encoded, ""); err == nil {
 		t.Fatal("cursor accepted under a different filter")
+	}
+}
+
+// GetAdminOrder reads shipping_snapshot->>'Method', the untagged field name the
+// snapshot writer serializes. Renaming or tagging it must fail here, not null out.
+func TestShippingSnapshotMethodKey(t *testing.T) {
+	b, err := json.Marshal(shipping.Result{Method: "fixed"})
+	if err != nil || !strings.Contains(string(b), `"Method":"fixed"`) {
+		t.Fatalf("shipping snapshot key drift: %s %v", b, err)
 	}
 }
