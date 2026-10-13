@@ -327,6 +327,53 @@ type AppMediaUpload struct {
 	MediaID          pgtype.UUID        `json:"media_id"`
 }
 
+type AppOrder struct {
+	TenantID         pgtype.UUID        `json:"tenant_id"`
+	ID               pgtype.UUID        `json:"id"`
+	OrderNumber      int64              `json:"order_number"`
+	CreationKey      string             `json:"creation_key"`
+	RequestHash      []byte             `json:"request_hash"`
+	CustomerID       pgtype.UUID        `json:"customer_id"`
+	GuestContact     []byte             `json:"guest_contact"`
+	Currency         string             `json:"currency"`
+	ItemsNetMinor    int64              `json:"items_net_minor"`
+	TaxMinor         int64              `json:"tax_minor"`
+	ShippingMinor    int64              `json:"shipping_minor"`
+	ShippingSnapshot []byte             `json:"shipping_snapshot"`
+	AdjustmentMinor  int64              `json:"adjustment_minor"`
+	TotalMinor       int64              `json:"total_minor"`
+	RefundedMinor    int64              `json:"refunded_minor"`
+	State            string             `json:"state"`
+	Version          int64              `json:"version"`
+	Sealed           bool               `json:"sealed"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AppOrderAdjustment struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	ID          pgtype.UUID `json:"id"`
+	OrderID     pgtype.UUID `json:"order_id"`
+	Kind        string      `json:"kind"`
+	AmountMinor int64       `json:"amount_minor"`
+	Reason      string      `json:"reason"`
+}
+
+type AppOrderLine struct {
+	TenantID       pgtype.UUID `json:"tenant_id"`
+	ID             pgtype.UUID `json:"id"`
+	OrderID        pgtype.UUID `json:"order_id"`
+	SkuID          pgtype.UUID `json:"sku_id"`
+	Sku            string      `json:"sku"`
+	Quantity       int64       `json:"quantity"`
+	UnitPriceMinor int64       `json:"unit_price_minor"`
+	LineNetMinor   int64       `json:"line_net_minor"`
+	LineTaxMinor   int64       `json:"line_tax_minor"`
+	LineTotalMinor int64       `json:"line_total_minor"`
+	ReservationID  pgtype.UUID `json:"reservation_id"`
+	TaxSnapshot    []byte      `json:"tax_snapshot"`
+}
+
 type AppOrganization struct {
 	TenantID    pgtype.UUID        `json:"tenant_id"`
 	ID          pgtype.UUID        `json:"id"`

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Upgrade gates for security hardening, forward reliability and additive inventory; real PG18 only.
+# Upgrade gates preserve every shipped app module plus separate River history; real PG18 only.
 # Depends on: a superuser DATABASE_URL (or Docker compose) able to CREATE DATABASE.
 # Called by: CI after check_pg.sh. Each case runs in its own throwaway database.
 # Invariants: 010 refuses to seal a live release with unsafe media; every pre-010
@@ -22,6 +22,25 @@ fresh_009() {  # $1 = database name; applies 001-009 exactly as shipped
   for f in migrations/00[1-9]_*.sql; do db "$1" < "$f" >/dev/null; done
 }
 apply_010() { { echo 'BEGIN;'; cat migrations/010_security_hardening.sql; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
+
+# Upstream River history stays separate from app migration checksums.
+river_db() {
+ local name=$1; shift
+ if [[ -n "${DATABASE_URL:-}" ]]; then
+  DATABASE_URL="${base%/*}/$name$query" ./scripts/migrate_river.sh "$@"
+ else
+  RIVER_DATABASE_NAME="$name" ./scripts/migrate_river.sh "$@"
+ fi
+}
+
+
+# Filename suffix, not an integration-assigned number, identifies app queue ACL.
+# Every predecessor/successor loop goes through this guard before app SQL runs.
+apply_forward() {
+ local name=$1 file=$2
+ if [[ $file == *_queue_authorization.sql ]]; then river_db "$name"; fi
+ { echo 'BEGIN;'; cat "$file"; echo 'COMMIT;'; } | db "$name" >/dev/null
+}
 
 SEED_SITE=$(cat <<'SQL'
 INSERT INTO app.tenants(name) VALUES('upgrade') RETURNING id AS t \gset
@@ -117,7 +136,7 @@ fresh_before_reliability() {
  local f
  for f in migrations/[0-9][0-9][0-9]_*.sql; do
   [[ $f < ${reliability[0]} ]] || break
-  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$1" >/dev/null
+  apply_forward "$1" "$f"
  done
 }
 apply_reliability() { { echo 'BEGIN;'; cat "${reliability[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
@@ -126,12 +145,17 @@ SHIPPING_DB=""
 TAX_DB=""
 CUSTOMERS_DB=""
 LEDGER_DB=""
+ORDERS_DB=""
 CATALOG_DB=""
 CART_DB=""
+QUEUE_DB=""
+LIMITS_DB=""
+INVENTORY_DB=""
+PRICING_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$CART_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -169,12 +193,14 @@ done
 [[ $fail -eq 0 ]] || exit 1
 # C-11a: install additive inventory over preexisting tenant/catalog data. Discover
 # the module file by suffix, so integration renumbering does not alter this gate.
-DB=upgrade_inventory_$$
+inventory_files=(migrations/[0-9][0-9][0-9]_inventory.sql)
+[[ ${#inventory_files[@]} == 1 ]] || exit 1
+DB=upgrade_inventory_$$; INVENTORY_DB=$DB
 fresh_009 $DB
-# Every forward migration that precedes inventory (010, 011, ...), in order.
+# Only predecessors; later authorization depends on inventory routines.
 for f in migrations/0[1-9][0-9]_*.sql; do
-  [[ $f == *_inventory.sql ]] && continue  # the glob already excludes 001-009
-  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db $DB >/dev/null
+  [[ $f < ${inventory_files[0]} ]] || break
+  apply_forward "$DB" "$f"
 done
 # No inventory tables existed when this tenant and SKU were written.
 db $DB <<'SQL' >/dev/null
@@ -183,8 +209,6 @@ INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','existing-product')
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
  VALUES(:'t',:'p','existing-sku','default');
 SQL
-inventory_files=(migrations/*_inventory.sql)
-[[ ${#inventory_files[@]} -eq 1 && -f ${inventory_files[0]} ]] || { echo 'FAIL: exactly one inventory migration required'; exit 1; }
 { echo 'BEGIN;'; cat "${inventory_files[0]}"; echo 'COMMIT;'; } | db $DB >/dev/null
 result=$(db $DB <<'SQL'
 SELECT set_config('app.tenant_id',(SELECT id::text FROM app.tenants WHERE name='inventory-upgrade'),false);
@@ -205,6 +229,12 @@ SQL
 if [[ $result == *'INVENTORY_UPGRADE=1|0|3|1|1'* ]]; then
   pass 'inventory upgrade preserves existing tenant/catalog and commits with bounded counters +3 movements'
 else bad "inventory upgrade: $result"; fi
+# Install every successor before the exact full-schema matrix.
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${inventory_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+river_db "$DB" --verify
 # Full scoped SQL and exact authority matrix also run against the upgraded DB.
 db $DB -f tests/db_inventory.sql >/dev/null
 db $DB -f tests/db_role_matrix.sql >/dev/null
@@ -212,7 +242,7 @@ admin -c "DROP DATABASE $DB"
 
 # Existing catalog rows from 001..010 remain usable by the forward pricing DDL.
 # Apply every post-010 migration by its current filename, not a reserved number.
-DB=upgrade_pricing_$$
+DB=upgrade_pricing_$$; PRICING_DB=$DB
 fresh_009 $DB
 if ! out=$(apply_010 $DB); then bad "pricing base hardening: $out"; else
  db "$DB" <<'SQL' >/dev/null
@@ -223,7 +253,7 @@ INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
 SQL
  for f in migrations/[0-9][0-9][0-9]_*.sql; do
   number=${f##*/}; number=${number%%_*}
-  if ((10#$number>10)); then db "$DB" < "$f" >/dev/null; fi
+  if ((10#$number>10)); then apply_forward "$DB" "$f"; fi
  done
  result=$(db "$DB" <<'SQL'
 INSERT INTO app.price_lists(tenant_id,currency,starts_at)
@@ -247,7 +277,7 @@ DB=$SHIPPING_DB
 admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f < ${shipping_files[0]} ]] || break
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+ apply_forward "$DB" "$f"
 done
 db "$DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('shipping-upgrade') RETURNING id AS t \gset
@@ -277,7 +307,7 @@ else bad "shipping upgrade witness: $result"; fi
 # Include any later modules before validating the exact whole-schema matrix.
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${shipping_files[0]} ]] || continue
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+ apply_forward "$DB" "$f"
 done
 db "$DB" -f tests/db_shipping.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
@@ -292,7 +322,7 @@ TAX_DB=tax_upgrade_$$
 admin -c "CREATE DATABASE $TAX_DB" >/dev/null
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f < ${tax[0]} ]] || break
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$TAX_DB" >/dev/null
+ apply_forward "$TAX_DB" "$f"
 done
 db "$TAX_DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('tax-existing-tenant') RETURNING id AS t \gset
@@ -317,7 +347,7 @@ SQL
 # when integration later puts another module after Tax.
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${tax[0]} ]] || continue
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$TAX_DB" >/dev/null
+ apply_forward "$TAX_DB" "$f"
 done
 if ! db "$TAX_DB" < tests/db_tax.sql >/dev/null || ! db "$TAX_DB" < tests/db_role_matrix.sql >/dev/null; then
  bad 'tax constraints/role matrix after populated upgrade'
@@ -333,7 +363,7 @@ fresh_before_customers() {
  local f
  for f in migrations/[0-9][0-9][0-9]_*.sql; do
   [[ $f < ${customers[0]} ]] || break
-  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$1" >/dev/null
+  apply_forward "$1" "$f"
  done
 }
 apply_customers() { { echo 'BEGIN;'; cat "${customers[0]}"; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
@@ -397,7 +427,7 @@ SQL
  # Include any later module before evaluating the repository-wide role matrix.
  for f in migrations/[0-9][0-9][0-9]_*.sql; do
   [[ $f > ${customers[0]} ]] || continue
-  { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$CUSTOMERS_DB" >/dev/null
+  apply_forward "$CUSTOMERS_DB" "$f"
  done
  if ! db "$CUSTOMERS_DB" -f tests/db_customers.sql >/dev/null; then bad 'customers/B2B SQL gate after populated upgrade'; fi
  if ! db "$CUSTOMERS_DB" -f tests/db_role_matrix.sql >/dev/null; then bad 'customers/B2B role matrix after populated upgrade'; fi
@@ -581,7 +611,7 @@ LEDGER_DB=ledger_upgrade_$$
 admin -c "CREATE DATABASE $LEDGER_DB" >/dev/null
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f < ${ledger[0]} ]] || break
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$LEDGER_DB" >/dev/null
+ apply_forward "$LEDGER_DB" "$f"
 done
 db "$LEDGER_DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('ledger-existing-tenant') RETURNING id AS t \gset
@@ -614,7 +644,7 @@ SQL
 [[ $result == *'LEDGER_UNCONFIGURED=1'* && $result == *'LEDGER_UPGRADE=1|1|2|0'* ]] || bad "ledger populated upgrade witness: $result"
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${ledger[0]} ]] || continue
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$LEDGER_DB" >/dev/null
+ apply_forward "$LEDGER_DB" "$f"
 done
 if ! db "$LEDGER_DB" < tests/db_ledger.sql >/dev/null || ! db "$LEDGER_DB" < tests/db_role_matrix.sql >/dev/null; then
  bad 'ledger constraints/role matrix after populated upgrade'
@@ -629,7 +659,7 @@ CATALOG_DB=catalog_api_upgrade_$$
 admin -c "CREATE DATABASE $CATALOG_DB" >/dev/null
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f < ${catalog_api[0]} ]] || break
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$CATALOG_DB" >/dev/null
+ apply_forward "$CATALOG_DB" "$f"
 done
 db "$CATALOG_DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('catalog-existing') RETURNING id AS t \gset
@@ -648,13 +678,135 @@ SQL
 [[ $result == *'1|1|draft|1'* ]] || bad "catalog populated upgrade witness: $result"
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${catalog_api[0]} ]] || continue
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$CATALOG_DB" >/dev/null
+ apply_forward "$CATALOG_DB" "$f"
 done
 if ! db "$CATALOG_DB" < tests/db_catalog_api.sql >/dev/null || ! db "$CATALOG_DB" < tests/db_role_matrix.sql >/dev/null; then
  bad 'catalog constraints/role matrix after populated upgrade'
 else pass 'catalog additive upgrade preserves versions, lifecycle and old uploads'; fi
 admin -c "DROP DATABASE $CATALOG_DB" >/dev/null; CATALOG_DB=""
 
+# C04b: queue authorization over existing tenant + River job, suffix-discovered.
+queue_files=(migrations/[0-9][0-9][0-9]_queue_authorization.sql)
+[[ ${#queue_files[@]} -eq 1 && -f ${queue_files[0]} ]] || { echo 'FAIL: exactly one queue authorization migration required'; exit 1; }
+QUEUE_DB=upgrade_queue_$$; DB=$QUEUE_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${queue_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+river_db "$DB"
+river_db "$DB"  # repeated upstream migration is also safe before app authorization
+legacy=$(db "$DB" <<'SQL'
+INSERT INTO app.tenants(name) VALUES('queue-upgrade') RETURNING id AS t \gset
+INSERT INTO queue.river_job(args,kind,queue)
+ VALUES(jsonb_build_object('tenant_id',:'t'),'queue_legacy','default') RETURNING id;
+SQL
+)
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${queue_files[0]} ]] && continue
+ apply_forward "$DB" "$f"
+done
+river_db "$DB" --verify
+[[ $(db "$DB" -c "SELECT count(*) FROM queue.river_job WHERE kind='queue_legacy' AND id=$legacy AND args->>'tenant_id'=(SELECT id::text FROM app.tenants WHERE name='queue-upgrade')") == 1 ]] || { bad 'queue upgrade changed existing job/tenant identity'; }
+db "$DB" -f tests/db_queue.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"; QUEUE_DB=""
+pass 'queue upgrade preserves job identity; isolated ACL/RLS + both upstream history passes'
+
+# INT25: populate old delivery epochs before the logical limits migration.
+limits_files=(migrations/[0-9][0-9][0-9]_reliability_limits.sql)
+[[ ${#limits_files[@]} == 1 ]] || { bad 'exactly one reliability-limits migration required'; exit 1; }
+LIMITS_DB=upgrade_limits_$$; DB=$LIMITS_DB
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${limits_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('limits-existing') RETURNING id AS t \gset
+INSERT INTO app.outbox_events(tenant_id,id,event_type,payload,delivery_target,dedup_key,status,attempts,lease_owner,lease_until,delivered_at)
+VALUES
+(:'t','00000000-0000-4000-8000-000000000001','legacy','{}','test','failed','failed',10,NULL,NULL,NULL),
+(:'t','00000000-0000-4000-8000-000000000002','legacy','{}','test','crashed','processing',10,'11111111-1111-4111-8111-111111111111',clock_timestamp()-interval '1 second',NULL),
+(:'t','00000000-0000-4000-8000-000000000003','legacy','{}','test','live','processing',10,'11111111-1111-4111-8111-111111111111',clock_timestamp()+interval '1 hour',NULL),
+(:'t','00000000-0000-4000-8000-000000000004','legacy','{}','test','delivered','delivered',2,NULL,NULL,clock_timestamp());
+SQL
+apply_forward "$DB" "${limits_files[0]}"
+result=$(db "$DB" <<'SQL'
+SELECT set_config('app.tenant_id',(SELECT id::text FROM app.tenants WHERE name='limits-existing'),false);
+SET ROLE app_outbox_worker;
+SELECT count(*) FROM app.claim_outbox(current_setting('app.tenant_id')::uuid,'22222222-2222-4222-8222-222222222222',10,60);
+SELECT app.complete_outbox(current_setting('app.tenant_id')::uuid,'00000000-0000-4000-8000-000000000003','11111111-1111-4111-8111-111111111111',10);
+RESET ROLE;
+SELECT 'LIMITS_UPGRADE='||count(*)||'|'||count(*) FILTER(WHERE status='dead_letter')||'|'||count(*) FILTER(WHERE status='delivered')||'|'||max(attempts) FROM app.outbox_events;
+SQL
+)
+[[ $result == *'LIMITS_UPGRADE=4|2|2|10'* ]] || bad "limits populated upgrade: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${limits_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+river_db "$DB" --verify
+db "$DB" -f tests/db_reliability_limits.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"; LIMITS_DB=""
+pass 'reliability limits upgrade preserves delivery identity, retires exhausted work, accepts live final ACK'
+
+[[ $fail -eq 0 ]] || exit 1
+# C-15a: install orders over all preceding forward migrations and preserve a
+# preexisting tenant/SKU/owned active reservation plus its stock movement history.
+orders_files=(migrations/[0-9][0-9][0-9]_orders.sql)
+[[ ${#orders_files[@]} -eq 1 && -f ${orders_files[0]} ]] || { echo 'FAIL: exactly one orders migration required'; exit 1; }
+ORDERS_DB=upgrade_orders_$$; DB=$ORDERS_DB
+admin -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${orders_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('orders-upgrade') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','orders-legacy') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+ VALUES(:'t',:'p','orders-legacy','default') RETURNING id AS sku \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_inventory_manager;
+SELECT app.inventory_adjust(:'sku',3,'legacy receipt',uuidv7(),'inbound');
+RESET ROLE;
+SET ROLE app_runtime;
+SELECT uuidv7() AS oid \gset
+SELECT app.inventory_reserve(:'sku',1,'order',:'oid','legacy-orders-reserve',900);
+SQL
+{ echo 'BEGIN;'; cat "${orders_files[0]}"; echo 'COMMIT;'; } | db "$DB" >/dev/null
+result=$(db "$DB" <<'SQL'
+SELECT id AS t FROM app.tenants WHERE name='orders-upgrade' \gset
+SELECT id AS sku FROM app.product_variants WHERE sku='orders-legacy' \gset
+SELECT id AS rid,owner_id AS oid FROM app.inventory_reservations WHERE tenant_id=:'t' \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_runtime;
+SELECT app.orders_create(:'oid','legacy-create',sha256('legacy'::bytea),NULL,
+ '{"email":"legacy@example.invalid"}','USD',20,'{"currency":"USD","amount_minor":20,"service":"fixture"}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','orders-legacy','quantity',1,
+ 'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
+ 'reservation_id',:'rid','tax_snapshot',jsonb_build_object('net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD'))),'[]');
+SELECT app.orders_transition(:'oid','paid','legacy-pay',0);
+SELECT 'ORDERS_UPGRADE='||o.order_number||'|'||o.state||'|'||o.total_minor||'|'||s.on_hand||'|'||s.reserved||'|'||
+ (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=:'t')||'|'||
+ (SELECT count(*) FROM app.outbox_events WHERE tenant_id=:'t' AND payload->>'order_id'=:'oid')||'|'||
+ has_function_privilege('app_runtime','app.inventory_commit(uuid)','EXECUTE')
+ FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id=:'t';
+SQL
+)
+if [[ $result == *'ORDERS_UPGRADE=1|paid|130|2|0|3|2|false'* ]]; then
+ pass 'orders upgrade preserves legacy reservation/stock and fences runtime terminals'
+else bad "orders upgrade witness: $result"; fi
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${orders_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+river_db "$DB" --verify
+db "$DB" -f tests/db_orders.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"; ORDERS_DB=""
 # Cart additive upgrade: all predecessors, populated customers/catalog, then
 # the logical *_cart suffix. Number reservations can be reconciled without drift.
 cart=(migrations/[0-9][0-9][0-9]_cart.sql)
@@ -663,7 +815,7 @@ CART_DB=cart_upgrade_$$
 admin -c "CREATE DATABASE $CART_DB" >/dev/null
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f < ${cart[0]} ]] || break
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$CART_DB" >/dev/null
+ apply_forward "$CART_DB" "$f"
 done
 db "$CART_DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('cart-existing-tenant') RETURNING id AS t \gset
@@ -692,7 +844,7 @@ SQL
 [[ $result == *'CART_UPGRADE=2|2|1|1'* ]] || bad "cart populated upgrade witness: $result"
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  [[ $f > ${cart[0]} ]] || continue
- { echo 'BEGIN;'; cat "$f"; echo 'COMMIT;'; } | db "$CART_DB" >/dev/null
+ apply_forward "$CART_DB" "$f"
 done
 if ! db "$CART_DB" < tests/db_cart.sql >/dev/null || ! db "$CART_DB" < tests/db_role_matrix.sql >/dev/null; then
  bad 'cart owner/constraints/role matrix after populated upgrade'
@@ -700,4 +852,4 @@ else pass 'cart upgrade preserves prior customers/catalog; owner/CAS and exact p
 admin -c "DROP DATABASE $CART_DB" >/dev/null; CART_DB=""
 
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog and cart upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits and cart upgrade gates'

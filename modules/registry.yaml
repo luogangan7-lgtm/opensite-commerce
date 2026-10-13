@@ -321,10 +321,21 @@
         "tenant"
       ],
       "tests": [
-        "tests/db_reliability.sql"
+        "tests/db_reliability.sql",
+        "internal/platform/idempotency/request_test.go",
+        "internal/db/idempotency_integration_test.go",
+        "internal/db/jobs_integration_test.go",
+        "internal/db/outbox_integration_test.go",
+        "tests/db_queue.sql",
+        "tests/db_reliability_limits.sql",
+        "internal/platform/idempotency/ttl_test.go",
+        "internal/platform/outbox/runner_test.go",
+        "internal/db/outbox_runner_integration_test.go",
+        "cmd/worker/main_test.go",
+        "tests/test_reliability_contract_static.py"
       ],
       "scopes": [],
-      "note": "Owns the platform health operation implemented by bootstrap; this does not promote a business Go service."
+      "note": "The business module Go path and business HTTP handlers remain planned. The platform health operation is implemented by bootstrap; this does not promote a business Go service. Platform idempotency, River and Outbox capabilities live under internal/platform; their controlled infrastructure adapters use tenanttx and are outside business-module repository boundaries. queue contains upstream River tables, outside app table ownership."
     },
     {
       "name": "platform-security",
@@ -449,6 +460,9 @@
       "note": "SQL tables and pure legacy quote engine merged by PR15; target module Go path and HTTP operations remain planned.",
       "legacy_go_paths": [
         "internal/shipping"
+      ],
+      "approved_public_ports": [
+        "internal/shipping"
       ]
     },
     {
@@ -476,6 +490,9 @@
       "scopes": [],
       "note": "Tenant regional rule tables and pure calculator from PR19. Existing internal/tax uses approved Money arithmetic; target module Go path and HTTP operations remain planned. Billing must consume saved Tax snapshots without recalculation.",
       "legacy_go_paths": [
+        "internal/tax"
+      ],
+      "approved_public_ports": [
         "internal/tax"
       ]
     },
@@ -593,6 +610,62 @@
       ],
       "scopes": [],
       "note": "Cart intent has immutable tenant/owner/currency, absolute SKU quantities and optimistic version. Prices/stock are live hints; no reservations, checkout or HTTP guest merge. Storefront authority uses guest capability hash or trusted customer resolver; staff auth is separate."
+    },
+    {
+      "name": "orders",
+      "status": "implemented",
+      "go_path": "internal/modules/orders",
+      "go_status": "implemented",
+      "owns_tables": [
+        "orders",
+        "order_lines",
+        "order_adjustments"
+      ],
+      "operations": [],
+      "dependencies": [
+        "tenant",
+        "catalog",
+        "inventory",
+        "pricing",
+        "tax",
+        "shipping",
+        "money",
+        "reliability",
+        "customer"
+      ],
+      "tests": [
+        "tests/db_orders.sql",
+        "internal/modules/orders/internal/service/snapshot_test.go",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh",
+        "tests/db_role_matrix.sql"
+      ],
+      "scopes": [],
+      "note": "Tenant-bound immutable order snapshots and caller-transaction financial state transitions. Customer references use the integrated tenant/customer foreign key. Checkout orchestration and real payment adapters remain separate."
+    },
+    {
+      "name": "payments",
+      "status": "planned",
+      "go_path": "internal/modules/payments",
+      "go_status": "planned",
+      "owns_tables": [],
+      "operations": [],
+      "dependencies": [
+        "money"
+      ],
+      "tests": [
+        "internal/contracts/payment/v1/payment_test.go",
+        "internal/paymentfake/fake_test.go"
+      ],
+      "scopes": [],
+      "legacy_go_paths": [
+        "internal/contracts/payment/v1",
+        "internal/paymentfake"
+      ],
+      "approved_public_ports": [
+        "internal/contracts/payment/v1"
+      ],
+      "note": "C-15a freezes the neutral Payment Port v1 and test-only Fake. Real payment storage, service and Stripe are deferred to C-19; no production payment capability exists."
     }
   ],
   "migrations": [
@@ -839,6 +912,29 @@
       "owner": "catalog",
       "touches_tables": [
         "product_media"
+      ]
+    },
+    {
+      "file": "migrations/020_orders.sql",
+      "owner": "orders",
+      "touches_tables": [
+        "orders",
+        "order_lines",
+        "order_adjustments",
+        "inventory_reservations"
+      ]
+    },
+    {
+      "file": "migrations/021_queue_authorization.sql",
+      "owner": "reliability",
+      "touches_tables": []
+    },
+    {
+      "file": "migrations/022_reliability_limits.sql",
+      "owner": "reliability",
+      "touches_tables": [
+        "outbox_events",
+        "idempotency_records"
       ]
     },
     {
