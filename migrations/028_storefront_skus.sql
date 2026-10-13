@@ -21,15 +21,13 @@ CREATE POLICY public_release_products ON app.products FOR SELECT TO app_domain_r
  USING (lifecycle_status='ready'
   AND (tenant_id,id::text) IN (SELECT r.tenant_id,lower(item->>'id') FROM app.site_releases r
    CROSS JOIN LATERAL jsonb_array_elements(r.manifest->'products') item));
--- A SKU is visible only with an eligible anonymous price: a quantity-1 row in a visible
--- (active, audience=all, in-window) list whose currency is its release product's currency.
+-- A SKU is visible only with an anonymous default price: a quantity-1 row in a visible
+-- (active, audience=all, in-window, released-currency) list. Matching that list's currency
+-- to the SKU's own product stays in readLive/AttachSKUs: a per-row release join here cost
+-- seconds at 4,001 SKUs, while this set is one hashed lookup per statement.
 CREATE POLICY public_release_skus ON app.product_variants FOR SELECT TO app_domain_resolver
  USING (lifecycle_status='ready' AND (tenant_id,product_id) IN (SELECT p.tenant_id,p.id FROM app.products p)
-  AND (tenant_id,product_id::text,id) IN (SELECT e.tenant_id,lower(item->>'id'),e.sku_id
-   FROM app.price_entries e JOIN app.price_lists l ON (l.tenant_id,l.id)=(e.tenant_id,e.price_list_id)
-   JOIN app.site_releases r ON r.tenant_id=e.tenant_id
-   CROSS JOIN LATERAL jsonb_array_elements(r.manifest->'products') item
-   WHERE item->>'currency'=l.currency::text));
+  AND (tenant_id,id) IN (SELECT e.tenant_id,e.sku_id FROM app.price_entries e));
 CREATE POLICY public_release_sku_options ON app.variant_option_values FOR SELECT TO app_domain_resolver
  USING ((tenant_id,product_id,variant_id) IN (SELECT v.tenant_id,v.product_id,v.id FROM app.product_variants v));
 -- Options/values only as assigned to a visible ready SKU; unassigned or draft-only ones stay hidden.

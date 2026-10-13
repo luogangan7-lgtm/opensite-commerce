@@ -119,14 +119,16 @@ func readLive(ctx context.Context, tx pgx.Tx, host string) (live service.Live, e
 	// Only the winning anonymous default price per SKU, in its release product's currency
 	// (pricing.Quote precedence: priority desc, then list id asc; UUID order equals lowercase
 	// text order), so at most one row per visible SKU. Quote re-checks the row.
-	rows, err = tx.Query(ctx, `SELECT DISTINCT ON (e.sku_id) l.id::text,l.currency::text,l.status,l.priority,l.starts_at,l.ends_at,l.audience,e.sku_id::text,e.min_quantity,e.unit_amount
+	rows, err = tx.Query(ctx, `WITH released AS MATERIALIZED (
+     SELECT lower(item->>'id') AS product_id,item->>'currency' AS currency
+     FROM app.site_releases r CROSS JOIN LATERAL jsonb_array_elements(r.manifest->'products') item
+     WHERE r.tenant_id=$1::uuid AND r.id=$4::uuid)
+   SELECT DISTINCT ON (e.sku_id) l.id::text,l.currency::text,l.status,l.priority,l.starts_at,l.ends_at,l.audience,e.sku_id::text,e.min_quantity,e.unit_amount
    FROM app.price_entries e JOIN app.price_lists l ON (l.tenant_id,l.id)=(e.tenant_id,e.price_list_id)
    JOIN app.product_variants v ON (v.tenant_id,v.id)=(e.tenant_id,e.sku_id)
-   JOIN app.site_releases r ON r.tenant_id=e.tenant_id AND r.id=$4::uuid
-   CROSS JOIN LATERAL jsonb_array_elements(r.manifest->'products') item
+   JOIN released x ON x.product_id=v.product_id::text AND x.currency=l.currency::text
    WHERE e.tenant_id=$1::uuid AND e.min_quantity=1 AND l.status='active' AND l.audience='all'
     AND l.starts_at<=$2 AND (l.ends_at IS NULL OR $2<l.ends_at)
-    AND lower(item->>'id')=v.product_id::text AND item->>'currency'=l.currency::text
    ORDER BY e.sku_id,l.priority DESC,l.id LIMIT $3`, live.TenantID, live.At, maxPriceRows+1, releaseID)
 	if err != nil {
 		return
