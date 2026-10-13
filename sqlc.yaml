@@ -26,7 +26,9 @@ sql:
       - "migrations/023_cart.sql"
       - "migrations/024_storefront_read.sql"
       - "migrations/025_ops_metrics.sql"
-    queries: "queries"
+      - "migrations/026_identity_auth.sql"
+      - "migrations/027_identity_login.sql"
+    queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:
         package: "db"

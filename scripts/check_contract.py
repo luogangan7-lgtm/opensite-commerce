@@ -27,7 +27,14 @@ CART_PATHS = {
     "setCartLine": ("/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}", "put"),
     "deleteCartLine": ("/api/v1/t/{tenant_id}/carts/{cart_id}/lines/{sku_id}", "delete"),
 }
-SELF_OPERATIONS = {"deleteAdminSession", "getCurrentActor", "listAdminSessions", "revokeAdminSession"}
+SELF_OPERATIONS = {"deleteAdminSession", "getCurrentActor", "listAdminSessions", "revokeAdminSession",
+                   "logoutCurrentStaffSession", "getAdminSession"}
+STAFF_OPERATIONS = {
+    "getAdminLoginChallenge": ("/api/v1/auth/login", "get", "Public"),
+    "createStaffLoginSession": ("/api/v1/auth/login", "post", "Public"),
+    "logoutCurrentStaffSession": ("/api/v1/auth/logout", "post", "AuthenticatedSelf"),
+    "getAdminSession": ("/api/v1/auth/session", "get", "AuthenticatedSelf"),
+}
 COOKIE = [{"adminSession": []}]
 COOKIE_OR_KEY = [{"adminSession": []}, {"ApiKeyBearer": []}]
 
@@ -124,7 +131,7 @@ def validate_contract(api):
                 f"Problem response mapping drift: {name}")
 
     operations = operation_inventory(api)
-    require(SELF_OPERATIONS | {"createAdminSession", "health"} <= operations.keys(), "identity/health operation missing")
+    require(SELF_OPERATIONS | {"createAdminSession", "health"} | STAFF_OPERATIONS.keys() <= operations.keys(), "identity/health operation missing")
     for ident, (path, method, op) in operations.items():
         require(op.get("x-opensite-status") in {"planned", "implemented"}, f"explicit operation status required: {ident}")
         require(isinstance(op.get("responses"), dict) and bool(op["responses"]), f"nonempty responses required: {ident}")
@@ -146,7 +153,7 @@ def validate_contract(api):
             require(tenant_parameter.get("required") is True and tenant_parameter.get("schema") ==
                     {"type": "string", "format": "uuid"}, f"required tenant UUID parameter missing: {ident}")
         if access == "Public":
-            require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite"} and security == [] and
+            require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite", "getAdminLoginChallenge", "createStaffLoginSession"} and security == [] and
                     "x-required-scope" not in op and not tenant, f"public operation must be anonymous and scope-free: {ident}")
         elif access == "Storefront":
             require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and
@@ -178,15 +185,21 @@ def validate_contract(api):
             require(access == "AuthenticatedSelf", f"self identity access drift: {ident}")
         if access in {"AdminSession", "AdminOrAPIKey"}:
             require(tenant, f"private business operation requires tenant path: {ident}")
-        if ident == "createAdminSession":
+        if ident in {"createAdminSession", "createStaffLoginSession"}:
             require(access == "Public" and method == "post" and "x-required-scope" not in op, "login must be Public with pre-login CSRF")
+        if ident in STAFF_OPERATIONS:
+            require((path, method, access) == STAFF_OPERATIONS[ident] and op["x-opensite-status"] == "implemented",
+                    f"implemented staff declaration drift: {ident}")
+        if ident == "createStaffLoginSession":
+            challenge = next((p for p in parameters if p["in"] == "cookie" and p["name"] == "__Host-osc_login_csrf"), {})
+            require(challenge.get("required") is True, "staff login requires anonymous challenge cookie")
         if ident == "health":
             require((path, method, access, op["x-opensite-status"]) == ("/healthz", "get", "Public", "implemented"), "health declaration drift")
             require(set(op["responses"]) == {"204"} and "content" not in op["responses"]["204"], "health is a bodyless 204")
             continue
         for status, name in PROBLEM_RESPONSES.items():
             require(op["responses"].get(status) == {"$ref": "#/components/responses/" + name}, f"missing shared {status} mapping: {ident}")
-        if method in {"post", "put", "patch", "delete"} and access != "Storefront" and (access != "Public" or ident == "createAdminSession"):
+        if method in {"post", "put", "patch", "delete"} and access != "Storefront" and (access != "Public" or ident in {"createAdminSession", "createStaffLoginSession"}):
             headers = {p["name"]: p for p in parameters if p["in"] == "header"}
             required = access != "AdminOrAPIKey"
             for header in ("Origin", "X-CSRF-Token"):
