@@ -13,9 +13,9 @@ import { AdminAPI, APIError } from './api';
 export const ORDER_STATES = ['pending_payment', 'paid', 'partially_fulfilled', 'fulfilled', 'cancelled', 'partially_refunded', 'refunded'] as const;
 export type OrderState = typeof ORDER_STATES[number];
 export const ORDERS_FIXTURE_LABEL = 'CONTRACT FIXTURE (orders read API pending PR)';
-export interface OrderSummary { id: string; order_number: string; state: OrderState; currency: string; total_minor: string; customer_kind: 'customer' | 'guest'; created_at: string }
+export interface OrderSummary { id: string; order_number: number; state: OrderState; currency: string; total_minor: string; customer_kind: 'customer' | 'guest'; created_at: string }
 export interface OrderPage { items: OrderSummary[]; next_cursor?: string }
-export interface OrderDetail { id: string; order_number: string; state: OrderState; version: number; currency: string; lines: {line_id: string; sku_code: string; title: string | null; quantity: number; unit_price_minor: string; tax_minor: string; line_total_minor: string}[]; adjustments: {id: string; reason: string; amount_minor: string}[]; shipping: {amount_minor: string; method: string | null}; tax_total_minor: string; total_minor: string; created_at: string; updated_at: string }
+export interface OrderDetail { id: string; order_number: number; state: OrderState; version: number; currency: string; lines: {line_id: string; sku_code: string; title: string | null; quantity: number; unit_price_minor: string; tax_minor: string; line_total_minor: string}[]; adjustments: {id: string; reason: string; amount_minor: string}[]; shipping: {amount_minor: string; method: string | null}; tax_total_minor: string; total_minor: string; created_at: string; updated_at: string }
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function invalid(): never { throw new Error('Invalid orders response. Retry or contact support.'); }
 function object(value: unknown): Record<string, unknown> { if (!value || typeof value !== 'object' || Array.isArray(value)) return invalid(); return value as Record<string, unknown>; }
@@ -29,7 +29,7 @@ function date(value: unknown): string { const v = text(value); if (!/^\d{4}-\d{2
 function currency(value: unknown): string { const v = text(value); if (!/^[A-Z]{3}$/.test(v)) return invalid(); return v; }
 function state(value: unknown): OrderState { if (!ORDER_STATES.includes(value as OrderState)) return invalid(); return value as OrderState; }
 function array<T>(value: unknown, parse: (v: unknown) => T): T[] { if (!Array.isArray(value)) return invalid(); return value.map(parse); }
-function base(value: unknown) { const v = object(value); return {id: uuid(v.id), order_number: text(v.order_number), state: state(v.state), currency: currency(v.currency), total_minor: minor(v.total_minor), created_at: date(v.created_at)}; }
+function base(value: unknown) { const v = object(value); return {id: uuid(v.id), order_number: positive(v.order_number), state: state(v.state), currency: currency(v.currency), total_minor: minor(v.total_minor), created_at: date(v.created_at)}; }
 export function parseOrderPage(value: unknown): OrderPage {
   const v = object(value);
   const items = array(v.items, row => { const r = object(row); if (r.customer_kind !== 'customer' && r.customer_kind !== 'guest') return invalid(); return {...base(r), customer_kind: r.customer_kind as OrderSummary['customer_kind']}; });

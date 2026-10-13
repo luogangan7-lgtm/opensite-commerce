@@ -5,7 +5,7 @@ export const tenant='11111111-1111-4111-8111-111111111111',productId='22222222-2
 const created='2026-10-12T12:00:00Z';
 export const product={id:productId,product_code:'SAMPLE',lifecycle_status:'draft',version:1,created_at:created};
 // PR47 snapshots have no product title, guest email or adjustment kind.
-export const order={id:orderId,order_number:'ORD-0001',state:'paid',version:1,currency:'USD',lines:[{line_id:variantId,sku_code:'SAMPLE-1',title:null,quantity:2,unit_price_minor:'1000',tax_minor:'200',line_total_minor:'2200'}],adjustments:[{id:mediaId,reason:'Manual adjustment',amount_minor:'-100'}],shipping:{amount_minor:'500',method:'fixed'},tax_total_minor:'200',total_minor:'2600',created_at:created,updated_at:created};
+export const order={id:orderId,order_number:1001,state:'paid',version:1,currency:'USD',lines:[{line_id:variantId,sku_code:'SAMPLE-1',title:null,quantity:2,unit_price_minor:'1000',tax_minor:'200',line_total_minor:'2200'}],adjustments:[{id:mediaId,reason:'Manual adjustment',amount_minor:'-100'}],shipping:{amount_minor:'500',method:'fixed'},tax_total_minor:'200',total_minor:'2600',created_at:created,updated_at:created};
 export async function fixture(page:Page,options:{authenticated?:boolean;loginStatus?:number;productConflict?:boolean;uploadFailure?:boolean;uploadStatus?:'ready'|'processing'|'failed';ordersFailure?:number;orderMissing?:boolean;orderBadETag?:boolean;shippingMethod?:string|null;empty?:boolean}={}){
  let authenticated=options.authenticated??true,current={...product},variants:{id:string;product_id:string;sku:string;version:number;lifecycle_status:string;option_value_ids:string[];created_at:string}[]=[];
  let ordersFailure=options.ordersFailure;

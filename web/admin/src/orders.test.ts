@@ -3,8 +3,8 @@ import { expect, test } from 'bun:test';
 import { formatMoney, parseOrderPage, parseOrderDetail } from './orders';
 const id = '11111111-1111-4111-8111-111111111111';
 const time = '2026-10-13T00:00:00Z';
-const summary = { id, order_number: 'ORD-1', state: 'paid', currency: 'USD', total_minor: '900719925474099301', customer_kind: 'guest', created_at: time };
-const detail = { id, order_number: 'ORD-1', state: 'paid', version: 1, currency: 'USD', lines: [{ line_id: id, sku_code: 'SKU-1', title: null, quantity: 2, unit_price_minor: '10', tax_minor: '1', line_total_minor: '20' }], adjustments: [{ id, reason: 'discount', amount_minor: '-3' }], shipping: { amount_minor: '2', method: 'by_weight' }, tax_total_minor: '1', total_minor: '20', created_at: time, updated_at: time };
+const summary = { id, order_number: 1001, state: 'paid', currency: 'USD', total_minor: '900719925474099301', customer_kind: 'guest', created_at: time };
+const detail = { id, order_number: 1001, state: 'paid', version: 1, currency: 'USD', lines: [{ line_id: id, sku_code: 'SKU-1', title: null, quantity: 2, unit_price_minor: '10', tax_minor: '1', line_total_minor: '20' }], adjustments: [{ id, reason: 'discount', amount_minor: '-3' }], shipping: { amount_minor: '2', method: 'by_weight' }, tax_total_minor: '1', total_minor: '20', created_at: time, updated_at: time };
 test('PR47 projection accepts null snapshot titles and nullable shipping rules', () => {
   for (const method of [null, 'fixed', 'by_weight', 'free_over_amount', '', 'future_rule']) {
     const parsed = parseOrderDetail({...detail, shipping: {...detail.shipping, method}});
@@ -70,4 +70,13 @@ test('domain currencies preserve original minor units without guessing an expone
   expect(parseOrderPage({items:[{...summary,currency:'ZZZ'}]}).items[0].currency).toBe('ZZZ');
   expect(formatMoney('900719925474099301','ZZZ')).toBe('ZZZ 900719925474099301 minor units');
   expect(formatMoney('-123','ABC')).toBe('ABC -123 minor units');
+});
+
+test('PR47 order numbers are positive JSON integers, not fabricated string identifiers', () => {
+  expect(parseOrderPage({items: [summary]}).items[0].order_number).toBe(1001);
+  expect(parseOrderDetail(detail).order_number).toBe(1001);
+  for (const order_number of ['ORD-1001', '1001', 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    expect(() => parseOrderPage({items: [{...summary, order_number}]})).toThrow();
+    expect(() => parseOrderDetail({...detail, order_number})).toThrow();
+  }
 });
