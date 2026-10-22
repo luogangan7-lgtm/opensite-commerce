@@ -527,8 +527,7 @@ const listCustomerOrders = `-- name: ListCustomerOrders :many
 SELECT o.id,o.order_number,o.state,o.currency,o.total_minor,o.created_at
 FROM app.orders o
 WHERE o.tenant_id=$1
- AND (o.customer_id=$2 OR (o.customer_id IS NULL AND EXISTS(
-  SELECT 1 FROM app.customer_guest_order_links k WHERE k.tenant_id=o.tenant_id AND k.order_id=o.id AND k.customer_id=$2)))
+ AND $2::uuid IS NOT NULL
  AND o.sealed
  AND (NOT $3::boolean OR (o.created_at,o.id)<($4::timestamptz,$5::uuid))
 ORDER BY o.created_at DESC,o.id DESC LIMIT $6::integer
