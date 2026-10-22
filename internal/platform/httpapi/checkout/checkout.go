@@ -132,7 +132,7 @@ func (a composedAuth) Authenticate(ctx context.Context, r *http.Request, spec ht
 	return a.authenticate(ctx, r, spec)
 }
 func (a composedAuth) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
-	if browserOperation(spec.OperationID) {
+	if spec.Access == httpapi.Storefront || spec.Access == httpapi.Public || browserOperation(spec.OperationID) || spec.OperationID == FakeOperation {
 		return httpapi.Actor{}, nil
 	}
 	if resolver, ok := a.fallback.(httpapi.ActorResolver); ok {
@@ -141,7 +141,7 @@ func (a composedAuth) ResolveActor(ctx context.Context, r *http.Request, spec ht
 	return httpapi.Actor{}, nil
 }
 func (a composedAuth) ResolveTransactionAuthorization(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
-	if browserOperation(spec.OperationID) {
+	if spec.Access == httpapi.Storefront || spec.Access == httpapi.Public || browserOperation(spec.OperationID) || spec.OperationID == FakeOperation {
 		return nil, nil
 	}
 	if resolver, ok := a.fallback.(httpapi.TransactionAuthorizationResolver); ok {

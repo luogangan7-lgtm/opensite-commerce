@@ -32,6 +32,7 @@ type fakeRepo struct {
 	dead                                  bool
 	lookups                               int
 	revokeErr                             error
+	lookupBlock                           chan struct{}
 }
 
 func (f *fakeRepo) Credential(context.Context, string) (login.Credential, error) {
@@ -60,7 +61,12 @@ func (f *fakeRepo) SaveLogin(_ context.Context, in login.SessionInput) (login.Se
 	}
 	return f.session, nil
 }
-func (f *fakeRepo) LookupSession(_ context.Context, h [32]byte, _ time.Time, _ time.Duration) (login.Session, error) {
+func (f *fakeRepo) LookupSession(ctx context.Context, h [32]byte, _ time.Time, _ time.Duration) (login.Session, error) {
+	if f.lookupBlock != nil {
+		f.lookupBlock <- struct{}{}
+		<-ctx.Done()
+		return login.Session{}, ctx.Err()
+	}
 	f.lookups++
 	if f.dead || h != f.hash {
 		return login.Session{}, login.ErrSession

@@ -31,6 +31,16 @@ DECLARE
  release uuid := 'f0c10000-0000-4000-8000-000000000020';
  blog uuid := 'f0c10000-0000-4000-8000-000000000021';
  notification_order uuid := 'f0c10000-0000-4000-8000-000000000022';
+ fulfillment_order uuid := 'f0c10000-0000-4000-8000-000000000023';
+ fulfillment_line uuid := 'f0c10000-0000-4000-8000-000000000024';
+ income_account uuid := 'f0c10000-0000-4000-8000-000000000025';
+ tax_account uuid := 'f0c10000-0000-4000-8000-000000000026';
+ shipping_account uuid := 'f0c10000-0000-4000-8000-000000000027';
+ cash_account uuid := 'f0c10000-0000-4000-8000-000000000028';
+ shipment_receipt jsonb;
+ return_receipt jsonb;
+ shipment_line uuid;
+ return_id uuid;
  quote uuid;
  reservation app.inventory_reservations;
  registered app.orders;
@@ -39,7 +49,8 @@ DECLARE
 BEGIN
  -- Fixed IDs intentionally fail on a second load instead of silently reusing
  -- stale rows. The registry runner supplies a fresh database or transaction.
- INSERT INTO app.tenants(id,name) VALUES(t,'privacy-column-canaries');
+ -- The refund canary's USD accounts require explicit tenant currency provisioning.
+ INSERT INTO app.tenants(id,name,settlement_currency) VALUES(t,'privacy-column-canaries','USD');
  PERFORM set_config('app.tenant_id',t::text,true);
  PERFORM set_config('privacy.fixture.tenant_id',t::text,true);
  PERFORM set_config('privacy.fixture.customer_id',customer::text,true);
@@ -188,6 +199,41 @@ BEGIN
    AND position({{canary:notification_deliveries.recipient}} in n.recipient)>0) THEN
   RAISE EXCEPTION 'PRIVACY_NOTIFICATION_CUSTOMER_WITNESS_MISSING';
  END IF;
+
+ -- Independent paid stock graph: the earlier checkout order is cancelled and
+ -- cannot authorize fulfillment. Commands retain all real guards, quantity
+ -- bounds and immutable receipt writes; no PSP, ledger post or worker is run.
+ reservation := app.inventory_reserve(sku,2,'order',fulfillment_order,'privacy-fulfillment-hold',900);
+ registered := app.orders_create(fulfillment_order,'privacy-fulfillment-order',
+  sha256('privacy-fulfillment-order'::bytea),customer,NULL,'USD',0,'{}'::jsonb,
+  jsonb_build_array(jsonb_build_object('id',fulfillment_line,'sku_id',sku,'sku','privacy-fixture-sku',
+   'quantity',2,'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
+   'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]'::jsonb);
+ registered := app.orders_transition(fulfillment_order,'paid','privacy-fulfillment-payment');
+ shipment_receipt := app.fulfillment_create_shipment(fulfillment_order,registered.version,
+  'privacy-shipment',{{canary:shipments.carrier}},{{canary:shipments.tracking_number}},
+  jsonb_build_array(jsonb_build_object('order_line_id',fulfillment_line,'quantity',1)));
+ SELECT id INTO STRICT shipment_line FROM app.shipment_lines
+ WHERE tenant_id=t AND shipment_id=(shipment_receipt->>'id')::uuid AND order_line_id=fulfillment_line;
+ SELECT * INTO STRICT registered FROM app.orders WHERE tenant_id=t AND id=fulfillment_order;
+ -- Each immutable response column has its own distinct token in the reason
+ -- copied by fulfillment_return_json. The gate reads each persisted cell,
+ -- rather than accepting a marker in only the authoritative reason column.
+ return_receipt := app.returns_create(fulfillment_order,registered.version,'privacy-return',
+  'shipment_return',{{canary:returns.reason}}||' '||{{canary:returns.creation_response}}||' '||
+   {{canary:returns.receive_response}},
+  jsonb_build_array(jsonb_build_object('order_line_id',fulfillment_line,'shipment_line_id',shipment_line,'quantity',1)));
+ return_id := (return_receipt->>'id')::uuid;
+ SELECT * INTO STRICT registered FROM app.orders WHERE tenant_id=t AND id=fulfillment_order;
+ PERFORM app.returns_receive(return_id,registered.version,'privacy-return-receive',true);
+ INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
+  (t,income_account,'privacy-return-income','USD','revenue'),
+  (t,tax_account,'privacy-return-tax','USD','liability'),
+  (t,shipping_account,'privacy-return-shipping','USD','revenue'),
+  (t,cash_account,'privacy-return-cash','USD','asset');
+ SELECT * INTO STRICT registered FROM app.orders WHERE tenant_id=t AND id=fulfillment_order;
+ PERFORM app.returns_prepare_refund(return_id,registered.version,'privacy-return-refund',
+  {{canary:returns.provider_ref}},1,income_account,tax_account,shipping_account,cash_account);
 
  -- Guest contact retains its own independent column canary.
  reservation := app.inventory_reserve(sku,1,'order',guest_order,'privacy-guest-hold',900);

@@ -125,18 +125,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, sessionBody(result.Session, result.CSRFToken))
 }
 func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
-	token, ok := cookieValue(r, SessionCookie)
-	if !ok {
-		writeError(w, r, login.ErrSession)
-		return
-	}
-	_, s, err := h.service.Authenticate(r.Context(), token)
-	if err != nil {
+	spec := platform.RouteSpec{OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.AuthenticatedSelf}
+	if _, err := h.admitted(r.Context(), r, spec); err != nil {
 		writeError(w, r, err)
 		return
 	}
-	h.setSessionCookie(w, token, s)
-	writeJSON(w, 200, sessionBody(s, h.service.SessionCSRF(token)))
+	p := r.Context().Value(principalKey{}).(principal)
+	h.setSessionCookie(w, p.token, p.session)
+	writeJSON(w, 200, sessionBody(p.session, h.service.SessionCSRF(p.token)))
 }
 func (h *Handler) setSessionCookie(w http.ResponseWriter, token string, s login.Session) {
 	expires := h.cookieExpiry(s)

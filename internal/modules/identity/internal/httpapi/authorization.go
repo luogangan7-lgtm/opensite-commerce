@@ -149,7 +149,11 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 		if h.service == nil {
 			return nil, authUnavailable()
 		}
-		actor, liveSession, err := h.service.Authenticate(ctx, token)
+		ip, err := h.clientIP(r)
+		if err != nil {
+			return nil, unauthenticated()
+		}
+		actor, liveSession, err := h.service.Authenticate(ctx, token, ip)
 		if err != nil {
 			return nil, mapError(err)
 		}
