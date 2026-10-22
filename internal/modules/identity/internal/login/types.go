@@ -30,11 +30,11 @@ type Session struct {
 	CreatedAt, LastSeenAt, ExpiresAt time.Time
 }
 type SessionInput struct {
-	UserID                                string
-	VerifiedPasswordHash                  string
-	TokenHash, DeviceHash                 [32]byte
+	UserID                               string
+	VerifiedPasswordHash                 string
+	TokenHash, DeviceHash                [32]byte
 	CreatedAt, ExpiresAt, DeviceExpiresAt time.Time
-	OldTokenHash                          *[32]byte
+	OldTokenHash                         *[32]byte
 }
 
 // Repository is implemented by the private sqlc store. SaveLogin must revoke the

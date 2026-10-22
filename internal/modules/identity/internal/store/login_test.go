@@ -44,12 +44,12 @@ func (r loginFakeRow) Scan(dest ...any) error {
 
 type loginFakeTx struct {
 	pgx.Tx
-	writes                   []string
-	rotated                  bool
+	writes                              []string
+	rotated                             bool
 	rejectDevice, failCommit, rejectUser bool
-	noRow                    bool
-	user                     pgtype.UUID
-	at                       time.Time
+	noRow                               bool
+	user                                pgtype.UUID
+	at                                  time.Time
 	committed, rolledBack    bool
 	commitCalls              int
 }

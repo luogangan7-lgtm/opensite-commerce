@@ -953,7 +953,7 @@ auth_tx login_rotate_second "SET LOCAL lock_timeout='500ms'; SET LOCAL statement
 login_second_pid=$!
 await login_rotate_second "${ROWLOCK[@]}"
 blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}login_rotate_first' AND second.application_name='${RACE_PREFIX}login_rotate_second';")
-[[ $blocked == t ]] || { echo 'FAIL: login second did not block on old session'; fail=1; }
+[[ $blocked == t ]] || { echo 'FAIL: login second did not block on user-before-session lock'; fail=1; }
 gate_open 74
 wait "$login_first_pid" "$login_second_pid"
 expect login_rotate_first ok; expect login_rotate_second 'no rows returned for'

@@ -89,6 +89,12 @@ func TestF28LoginSessionCookies(t *testing.T) {
 			if w.Code != want {
 				t.Fatal(w.Code, w.Body.String())
 			}
+			if fail {
+				if len(w.Result().Cookies()) != 0 {
+					t.Fatal("rotation loser overwrote winner cookies", w.Header())
+				}
+				return
+			}
 			var session *http.Cookie
 			for _, c := range w.Result().Cookies() {
 				if c.Name == SessionCookie {
@@ -98,11 +104,7 @@ func TestF28LoginSessionCookies(t *testing.T) {
 			if session == nil {
 				t.Fatal("session cookie missing")
 			}
-			if fail {
-				if session.Value != "" || session.MaxAge != -1 {
-					t.Fatal("invalid session retained", session)
-				}
-			} else if session.MaxAge != 1800 || session.Value == "" {
+			if session.MaxAge != 1800 || session.Value == "" {
 				t.Fatal("live cookie lacks relative idle lifespan", session)
 			}
 		})
