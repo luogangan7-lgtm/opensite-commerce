@@ -8,6 +8,7 @@ test('registry passes and broken foreground fails',()=>{expect(checkContrast(sou
 // These pairs occur in danger hover, FormField errors, links/ghost buttons and disabled Checkbox labels.
 test('actual component text pairs are registered at WCAG AA text thresholds',()=>{
   const textPairs = [
+    ['color-on-brand','color-disabled'],
     ['color-on-brand','color-danger'],
     ['color-danger','color-surface'], ['color-danger','color-canvas'],
     ['color-brand','color-surface'], ['color-brand','color-canvas'],
