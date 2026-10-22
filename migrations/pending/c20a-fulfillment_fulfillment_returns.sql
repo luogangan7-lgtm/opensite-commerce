@@ -501,6 +501,9 @@ BEGIN
  IF FOUND THEN
   IF r.request_hash<>h THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
   PERFORM app.orders_refund_budget(p_order,'freeze',r.id,NULL,NULL,NULL,0);
+  -- Erasure may have committed while the Order fence waited. Never replay
+  -- the receipt copied before that fence; read its current scrubbed value.
+  SELECT * INTO STRICT r FROM app.returns WHERE tenant_id=t AND creation_key=p_key;
   -- Erased frozen receipts keep only a marker; return the scrubbed live
   -- financial projection so public command callers still receive the RMA ID.
   RETURN CASE WHEN r.creation_response='{"erased":true}'::jsonb THEN app.fulfillment_return_json(r.id) ELSE r.creation_response END;
@@ -621,12 +624,7 @@ BEGIN
  h:=sha256(convert_to(jsonb_build_object('return_id',p_return,'expected_version',p_expected_version,'restock',p_restock)::text,'UTF8'));
  SELECT * INTO r FROM app.returns WHERE tenant_id=t AND id=p_return;
  IF NOT FOUND THEN RAISE EXCEPTION 'FULFILLMENT_RETURN_NOT_FOUND' USING ERRCODE='P0002'; END IF;
- IF r.receive_key IS NOT NULL THEN
-  IF r.receive_key<>p_key OR r.receive_hash<>h THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
-  -- Erased frozen receipts keep only a marker; return the scrubbed live
-  -- financial projection so public command callers still receive the RMA ID.
-  RETURN CASE WHEN r.receive_response='{"erased":true}'::jsonb THEN app.fulfillment_return_json(r.id) ELSE r.receive_response END;
- END IF;
+ -- Replays share erasure's Order fence and reload the receipt after waiting.
  o:=app.orders_fulfillment_fence(r.order_id,NULL);
  SELECT * INTO STRICT r FROM app.returns WHERE tenant_id=t AND id=p_return FOR UPDATE;
  IF r.receive_key IS NOT NULL THEN

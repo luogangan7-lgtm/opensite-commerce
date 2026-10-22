@@ -182,6 +182,9 @@ reason/receipt text and every return-derived inventory reason, including while
 the refund is in `refund_reconcile`; recovery must still complete afterward.
 Restock movements write the fixed non-PII code `return_received`. The privacy
 executor may only write exact scrub markers and cannot alter refund authority.
+Creation and receipt replays take the shared Order fence and read their receipt
+after acquiring it, so an erasure committed during that wait cannot leak a stale
+personal snapshot.
 Provider-success/database-failure retries reuse the same Payment Port fingerprint.
 
 The final tenant transaction posts a `return` / `refund` ledger journal, debiting
