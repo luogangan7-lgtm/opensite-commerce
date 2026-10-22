@@ -57,7 +57,9 @@ func TestStaffPricingAdmission(t *testing.T) {
 		} {
 			r := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 			r.Header.Set("Content-Type", "application/json")
-			r.Header.Set("If-Match", tc.version)
+			if tc.version != "" {
+				r.Header.Set("If-Match", tc.version)
+			}
 			w := httptest.NewRecorder()
 			server.Handler.ServeHTTP(w, r)
 			want := tc.want

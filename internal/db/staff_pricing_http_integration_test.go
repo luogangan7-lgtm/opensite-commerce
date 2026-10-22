@@ -83,7 +83,9 @@ func TestPGStaffPricingPersistence(t *testing.T) {
 		t.Helper()
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
-		r.Header.Set("If-Match", version)
+		if version != "" {
+			r.Header.Set("If-Match", version)
+		}
 		w := httptest.NewRecorder()
 		server.Handler.ServeHTTP(w, r)
 		if w.Code != want {
