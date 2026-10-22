@@ -187,7 +187,7 @@ type routeAuthenticator struct {
 }
 
 func (a routeAuthenticator) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec httpapi.RouteSpec) {
-	if spec.Access != httpapi.Storefront {
+	if spec.Access != httpapi.Storefront && spec.Access != httpapi.BuyerCompany {
 		if responder, ok := a.staff.(httpapi.AuthenticationResponder); ok {
 			responder.AuthenticationResponse(ctx, w, r, spec)
 		}
@@ -230,9 +230,9 @@ func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, s
 }
 
 // ResolveTransactionAuthorization forwards only staff write admission. Storefront
-// commands retain their own capability checks and must never acquire staff scope.
+// and buyer commands retain their capability checks and never acquire staff scope.
 func (a routeAuthenticator) ResolveTransactionAuthorization(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
-	if spec.Access == httpapi.Storefront {
+	if spec.Access == httpapi.Storefront || spec.Access == httpapi.BuyerCompany {
 		return nil, nil
 	}
 	if resolver, ok := a.staff.(httpapi.TransactionAuthorizationResolver); ok {
