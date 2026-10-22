@@ -25,6 +25,7 @@ type Device struct {
 	Revoked    bool
 }
 type Session struct {
+	DatabaseNow                      time.Time
 	ID, UserID                       string
 	CreatedAt, LastSeenAt, ExpiresAt time.Time
 }

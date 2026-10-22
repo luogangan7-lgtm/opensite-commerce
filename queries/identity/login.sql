@@ -31,15 +31,15 @@ SELECT current_user=session_user
 SELECT id,password_hash,status FROM app.users WHERE email_normalized=sqlc.arg(identifier)::text;
 
 -- name: LoginCooldowns :one
-SELECT (SELECT cooldown_until FROM app.auth_account_attempts WHERE identifier_normalized=sqlc.arg(identifier)::text)::timestamptz AS account_until,
- (SELECT cooldown_until FROM app.auth_login_attempts WHERE identifier_normalized=sqlc.arg(identifier)::text AND ip=sqlc.arg(ip)::inet)::timestamptz AS ip_until;
+SELECT (SELECT CASE WHEN isfinite(cooldown_until) THEN cooldown_until ELSE clock_timestamp() END FROM app.auth_account_attempts WHERE identifier_normalized=sqlc.arg(identifier)::text AND cooldown_until>clock_timestamp())::timestamptz AS account_until,
+ (SELECT CASE WHEN isfinite(cooldown_until) THEN cooldown_until ELSE clock_timestamp() END FROM app.auth_login_attempts WHERE identifier_normalized=sqlc.arg(identifier)::text AND ip=sqlc.arg(ip)::inet AND cooldown_until>clock_timestamp())::timestamptz AS ip_until;
 
 -- name: LoginRecordFailure :exec
 SELECT app.auth_record_failure(sqlc.arg(identifier)::text,sqlc.arg(ip)::inet);
 
 -- name: LoginDevice :one
 SELECT id,user_id,expires_at,revoked_at FROM app.known_devices
- WHERE cookie_hash=sqlc.arg(cookie_hash)::bytea AND revoked_at IS NULL;
+ WHERE cookie_hash=sqlc.arg(cookie_hash)::bytea AND revoked_at IS NULL AND expires_at>clock_timestamp() AND isfinite(expires_at);
 
 -- name: LoginFailDevice :exec
 SELECT app.auth_fail_known_device(sqlc.arg(id)::uuid);
@@ -55,14 +55,18 @@ UPDATE app.auth_sessions s SET revoked_at=clock_timestamp()
  AND s.last_seen_at>clock_timestamp()-sqlc.arg(idle_seconds)::bigint*interval '1 second';
 
 -- name: LoginInsertSession :one
+WITH instant AS MATERIALIZED (SELECT clock_timestamp()::timestamptz AS at)
 INSERT INTO app.auth_sessions(user_id,token_hash,created_at,last_seen_at,expires_at)
- SELECT u.id,sqlc.arg(token_hash)::bytea,sqlc.arg(created_at)::timestamptz,sqlc.arg(created_at)::timestamptz,sqlc.arg(expires_at)::timestamptz
- FROM app.users u WHERE u.id=sqlc.arg(user_id)::uuid AND u.status='active'
- RETURNING id,user_id,created_at,last_seen_at,expires_at;
+ SELECT u.id,sqlc.arg(token_hash)::bytea,instant.at,instant.at,
+ instant.at+(sqlc.arg(expires_at)::timestamptz-sqlc.arg(created_at)::timestamptz)
+ FROM app.users u CROSS JOIN instant WHERE u.id=sqlc.arg(user_id)::uuid AND u.status='active'
+ RETURNING id,user_id,created_at,last_seen_at,expires_at,clock_timestamp()::timestamptz AS database_now;
 
 -- name: LoginInsertDevice :exec
+WITH instant AS MATERIALIZED (SELECT clock_timestamp()::timestamptz AS at)
 INSERT INTO app.known_devices(user_id,cookie_hash,created_at,expires_at)
- VALUES(sqlc.arg(user_id)::uuid,sqlc.arg(cookie_hash)::bytea,sqlc.arg(created_at)::timestamptz,sqlc.arg(expires_at)::timestamptz);
+ SELECT sqlc.arg(user_id)::uuid,sqlc.arg(cookie_hash)::bytea,instant.at,
+ instant.at+(sqlc.arg(expires_at)::timestamptz-sqlc.arg(created_at)::timestamptz) FROM instant;
 
 -- name: LoginLookupSession :one
 -- Admission reads valid authority independently of optional activity updates.
@@ -92,11 +96,13 @@ WITH input AS MATERIALIZED (
  AND s.last_seen_at>clock_timestamp()-sqlc.arg(idle_seconds)::bigint*interval '1 second'
  RETURNING s.id,s.last_seen_at
 )
-SELECT v.id,v.user_id,v.created_at,coalesce(t.last_seen_at,v.last_seen_at)::timestamptz AS last_seen_at,v.expires_at
+SELECT v.id,v.user_id,v.created_at,coalesce(t.last_seen_at,v.last_seen_at)::timestamptz AS last_seen_at,v.expires_at,clock_timestamp()::timestamptz AS database_now
  FROM valid v LEFT JOIN touched t ON t.id=v.id
  WHERE v.expires_at>clock_timestamp()
  AND coalesce(t.last_seen_at,v.last_seen_at)>clock_timestamp()-sqlc.arg(idle_seconds)::bigint*interval '1 second';
 
 -- name: LoginRevokeSession :execrows
-UPDATE app.auth_sessions SET revoked_at=sqlc.arg(at)::timestamptz
+-- Retain the caller timestamp port, but only DB time mutates state.
+WITH input AS MATERIALIZED (SELECT sqlc.arg(at)::timestamptz AS caller_at)
+UPDATE app.auth_sessions SET revoked_at=clock_timestamp()
  WHERE id=sqlc.arg(id)::uuid AND revoked_at IS NULL;
