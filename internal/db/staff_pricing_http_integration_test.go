@@ -18,16 +18,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/pricing"
+	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
-type pricingAdmission struct{}
+type pricingAdmission string
 
-func (pricingAdmission) Authenticate(ctx context.Context, _ *http.Request, _ httpapi.RouteSpec) (context.Context, error) {
-	return ctx, nil
+func (role pricingAdmission) Authenticate(ctx context.Context, _ *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	for _, scope := range contract.RoleScopes(string(role)) {
+		if spec.Scope == scope {
+			return ctx, nil
+		}
+	}
+	return nil, apperrors.New(403, "forbidden", "Scope denied")
 }
 
 func TestPGStaffPricingPersistence(t *testing.T) {
@@ -67,7 +74,7 @@ func TestPGStaffPricingPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer runner.Close()
-	server, err := bootstrap.New(bootstrap.Config{Authenticator: pricingAdmission{}, Pricing: pricing.Config{Run: runner.RunAuthorized}})
+	server, err := bootstrap.New(bootstrap.Config{Authenticator: pricingAdmission("owner"), Pricing: pricing.Config{Run: runner.RunAuthorized}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,6 +110,16 @@ func TestPGStaffPricingPersistence(t *testing.T) {
 	if request("GET", path, "", "", 200)["version"] != float64(2) {
 		t.Fatal("list CAS not persisted")
 	}
+	ownerServer := server
+	for _, role := range []pricingAdmission{"viewer", "content_editor"} {
+		server, err = bootstrap.New(bootstrap.Config{Authenticator: role, Pricing: pricing.Config{Run: runner.RunAuthorized}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request("GET", base, "", "", 403)
+		request("PUT", tier, `{"unit_amount":300}`, `"2"`, 403)
+	}
+	server = ownerServer
 	var amount int64
 	if err := root.QueryRow(ctx, "SELECT unit_amount FROM app.price_entries WHERE tenant_id=$1", tenant).Scan(&amount); err != nil || amount != 125 {
 		t.Fatalf("price persistence %d %v", amount, err)
