@@ -40,6 +40,8 @@ beforeEach(()=>{
         return Response.json(session(),{headers});
       }
       if(path.endsWith('/session')&&r.method==='DELETE')return new Response(null,{status:204,headers:{'Set-Cookie':`${sessionName}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`}});
+      if(path.endsWith('/orders'))return Response.json({items:[{id:cart,order_number:9007199254740991,state:'paid',currency:'USD',total_minor:'3140',created_at:'2026-10-23T00:00:00Z'}]});
+      if(path.endsWith('/orders/'+cart))return Response.json({code:'not_found'},{status:404});
       if(path.endsWith('/verifications'))return new Response(null,{status:204});
       if(path.endsWith('/registrations'))return Response.json({status:'verification_pending'},{status:202});
     }
@@ -124,4 +126,19 @@ test('login and registration failures do not relay account-existence codes or pr
     denied=status;const response=await send(operation,context.csrf,{email:'buyer@example.test',password:'twelve-byte-password'});
     expect(response.status).toBe(400);expect(await response.json()).toMatchObject({code:'customer_auth_failed'});
   }
+});
+
+test('history forwards only the validated customer cookie and preserves exact money and foreign 404',async()=>{
+  values.set(sessionName,bearer);await readPurchaseContext(request('context'),jar);
+  const list=await send('history');expect(list.status).toBe(200);
+  expect(list.headers.get('Cache-Control')).toBe('no-store');
+  expect(await list.json()).toMatchObject({items:[{id:cart,order_number:'9007199254740991',total_minor:'3140'}]});
+  expect((await send('history/'+cart)).status).toBe(404);
+  for(const r of calls.filter(r=>r.url.includes('/customer/orders'))){
+    expect(r.headers.get('Cookie')).toBe(`${sessionName}=${bearer}`);
+    expect(r.headers.has('Authorization')).toBe(false);expect(r.headers.has('X-Cart-Token')).toBe(false);
+  }
+  values.delete(sessionName);const before=calls.length;
+  expect((await send('history')).status).toBe(401);
+  expect(calls.slice(before).some(r=>r.url.includes('/customer/orders'))).toBe(false);
 });
