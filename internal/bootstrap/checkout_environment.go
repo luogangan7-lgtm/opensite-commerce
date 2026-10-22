@@ -20,7 +20,6 @@ import (
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
 
 type fakeCheckoutEnvironment struct {
@@ -72,20 +71,19 @@ func composeFakeCheckout(config Config, runner runtimeQuoteRunner, env fakeCheck
 	if !env.enabled {
 		return config, nil
 	}
-	if runner.run == nil || runner.snapshot == nil || config.Customer == nil || config.Checkout != nil || config.QuoteConversion != nil || config.QuoteOrders != nil || config.QuotesBuyerAuthenticator != nil {
+	if runner.run == nil || runner.snapshot == nil || config.Customer == nil || config.Checkout == nil || config.Checkout.Events == nil || config.Checkout.Service != nil || config.Checkout.Resolver != nil || config.QuoteConversion != nil || config.QuoteOrders != nil || config.QuotesBuyerAuthenticator != nil {
 		return Config{}, errors.New("Fake checkout requires runtime/customer capabilities and excludes injected payment composition")
 	}
 	if bytes.Equal(env.key, config.CustomerSecret) {
 		return Config{}, errors.New("Fake checkout requires an independent signing key")
 	}
-	verifier, err := checkouthttp.NewFakeHMACVerifier(env.key)
-	if err != nil {
-		return Config{}, errors.New("Fake checkout verifier configuration is invalid")
-	}
 	// Adoption uses the sealed Orders snapshot; nil Cart/Rules deliberately expose
 	// no cart-start readiness or unmodeled canonical catalog metadata.
 	service := checkout.New(checkout.Config{Run: runner.run, Orders: orders.New(), Ledger: ledger.New(), Payment: paymentfake.New()})
-	config.Checkout = &checkouthttp.Config{Service: service, Origin: config.CustomerOrigin, Environment: env.environment, FakeEnabled: true, Verifier: verifier}
+	// Preserve the mapped Payments receiver composed by wireFakePayments. Public
+	// callbacks admit completed facts; the retired verifier cannot authorize them.
+	config.Checkout.Service, config.Checkout.Origin = service, config.CustomerOrigin
+	config.Checkout.Environment, config.Checkout.FakeEnabled = env.environment, true
 	config.Quotes = quotes.NewApplication(runner)
 	config.QuoteConversion = &QuoteConversionConfig{Runner: runner, Quotes: quotes.New(), Orders: orders.NewQuoteCreator()}
 	return config, nil

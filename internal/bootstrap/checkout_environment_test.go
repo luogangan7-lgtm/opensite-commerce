@@ -103,3 +103,19 @@ func TestQuoteFakeCompositionPreservesMappedReceiver(t *testing.T) {
 		t.Fatal("quote commands and mapped payment receiver were not composed together")
 	}
 }
+
+func TestQuoteFakeConflictingSigningAuthoritiesFailBeforeIO(t *testing.T) {
+	t.Setenv("OPENSITE_ENVIRONMENT", "test")
+	t.Setenv("OPENSITE_CHECKOUT_FAKE_ENABLED", "true")
+	t.Setenv("OPENSITE_CHECKOUT_FAKE_SIGNING_KEY", base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)))
+	t.Setenv("OPENSITE_FAKE_PSP", "1")
+	t.Setenv("OPENSITE_FAKE_WEBHOOK_KEY", base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))
+	_, closeRuntime, err := FromEnvironment(context.Background(), Config{})
+	if closeRuntime != nil {
+		closeRuntime()
+		t.Fatal("conflicting signing authorities initialized database capabilities")
+	}
+	if err == nil || err.Error() != "Fake checkout and payment signing keys conflict" {
+		t.Fatalf("conflicting signing authorities were not refused before IO: %v", err)
+	}
+}

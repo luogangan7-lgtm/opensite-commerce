@@ -5,6 +5,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -33,6 +34,14 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	fakeEnabled, fakeKey, fakeErr := fakePaymentEnvironment()
 	if fakeErr != nil {
 		return Config{}, nil, fakeErr
+	}
+	if fakeEnvironment.enabled {
+		// Both optional entrypoints share one account-mapped ingress. Refuse two
+		// different verifier keys rather than silently choosing a signing authority.
+		if fakeEnabled && !bytes.Equal(fakeKey, fakeEnvironment.key) {
+			return Config{}, nil, errors.New("Fake checkout and payment signing keys conflict")
+		}
+		fakeEnabled, fakeKey = true, fakeEnvironment.key
 	}
 	// Bound all capability pool probes together, including explicit DSNs.
 	startup, cancel := context.WithTimeout(ctx, 15*time.Second)

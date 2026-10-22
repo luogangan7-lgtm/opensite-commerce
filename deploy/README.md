@@ -218,8 +218,13 @@ composition with the neutral development Fake. Opt in with
 unpadded base64url. Runtime and customer-auth database capabilities, exact HTTPS
 storefront origin, and the customer CSRF secret are required. Production or
 partial Fake configuration refuses startup; omitted flags keep buyer conversion
-default denied. Payment progresses through the signed Fake webhook; conversion
-only creates/adopts the pending sealed order. Cart checkout still needs explicit
+default denied. The signing key configures the same account-mapped Payments
+receiver used by `OPENSITE_FAKE_PSP`; if both toggles are enabled their keys must
+match. Provision an enabled Fake/test account mapping before delivering events.
+Payment progresses through timestamp-signed completed Fake facts (`account_id`,
+not a client-supplied tenant); the callback never issues Capture. Conversion
+only creates/adopts the pending sealed order. Trusted checkout Confirm owns
+capture commands and their reservation preflight. Cart checkout still needs explicit
 trusted canonical rule metadata and is not enabled by this adoption capability.
 The Compose API environment passes these optional variables. Direct API runs
 must pass them explicitly in the process environment.
