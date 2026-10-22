@@ -14,3 +14,11 @@ export async function readPublishedSite(origin:string,hostname:string):Promise<P
   if(!response.ok||!data) throw new Error('Published site read failed');
   return data;
 }
+
+/** Server commerce transport shares the generated OpenAPI paths; never a browser credential store. */
+export type { components as APIComponents } from './schema';
+export function createCommerceClient(origin: string, fetcher: (request: Request) => Promise<Response>) {
+  const base=new URL(origin);
+  if(!['http:','https:'].includes(base.protocol)||base.username||base.password||base.pathname!=='/'||base.search||base.hash) throw new Error('Commerce API requires an HTTP origin');
+  return createClient<paths>({baseUrl:base.origin,fetch:fetcher});
+}

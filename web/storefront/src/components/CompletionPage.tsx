@@ -25,7 +25,7 @@ export default function CompletionPage({ context, locale = 'en' }: { context: Pu
     {context.enabled && <>
       {loading && <p role="status">{ui.loading}</p>}
       {error && <div className="purchase-error" role="alert"><p>{error}</p><Button variant="secondary" onClick={load}>{ui.retry}</Button></div>}
-      {!loading && !error && (result?.payment.status === 'captured' ? <section className="payment-result" data-completion-ready="true" data-payment-status="captured">
+      {!loading && !error && (result?.state === 'paid' && result.payment.status === 'captured' ? <section className="payment-result" data-completion-ready="true" data-payment-status="captured">
         <h2>{ui.paymentCaptured}</h2><dl className="purchase-totals"><div><dt>{ui.orderId}</dt><dd>{result.order_id}</dd></div><div><dt>{ui.total}</dt><dd>{formatAmount(result.amount_minor, result.currency, locale)}</dd></div><div><dt>{ui.paymentStatus}</dt><dd>{ui.paymentCaptured}</dd></div></dl>
         <a href="/products">{ui.returnProducts}</a>
       </section> : <EmptyState title={ui.noCompletion} description={ui.noCompletionDescription} action={<a href="/cart">{ui.backCart}</a>} />)}

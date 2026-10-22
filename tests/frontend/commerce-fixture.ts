@@ -121,9 +121,9 @@ export const commerceFixtureServer = createServer(async (req, res) => {
       const input = await body(req); const result = session.checkout;
       if (!result || input.checkout_id !== result.checkout_id) return reject(res, 404, 'checkout_not_found');
       if (!['captured', 'failed', 'canceled'].includes(String(input.outcome))) return reject(res, 422, 'payment_outcome_invalid');
-      if (result.state === 'paid') return reply(res, 200, result);
+      if (result.state === 'paid') return reply(res, 200, {event_id:`fixture:${result.checkout_id}:${input.outcome}`,status:'processed'});
       result.payment.status = String(input.outcome); result.state = input.outcome === 'captured' ? 'paid' : String(input.outcome); result.order_version++;
-      return reply(res, 200, result);
+      return reply(res, 200, {event_id:`fixture:${result.checkout_id}:${input.outcome}`,status:'processed'});
     }
     if (path === '/__fixture/completion' && method === 'GET') return session.checkout ? reply(res, 200, session.checkout) : reject(res, 404, 'checkout_not_found');
     return reject(res, 404, 'route_not_found');
