@@ -87,6 +87,10 @@ jobs:
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: '1.27.2'
+      - name: CI-SPEED-2 targeted mutation gate
+        run: |
+          go mod download
+          go test -race -count=1 -timeout=5m -run '^TestAPIContractLoaderOnce$' ./internal/platform/httpapi
       - name: Go / PageGraph / LocalFS / Tenant Transaction
         run: |
           go mod download

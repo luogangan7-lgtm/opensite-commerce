@@ -14,7 +14,7 @@ import (
 var apiContract = cacheAPIContract(generated.GetSwagger)
 
 func cacheAPIContract(load func() (*openapi3.T, error)) func() (*openapi3.T, error) {
-	return sync.OnceValues(load)
+	return func() (*openapi3.T, error) { return sync.OnceValues(load)() }
 }
 
 // GetSwagger returns the shared read-only API contract, including resolved refs.
