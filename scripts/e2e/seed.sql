@@ -67,6 +67,29 @@ BEGIN
   RAISE EXCEPTION 'C24_CONFIG_DRIFT';
  END IF;
 END $verify$;
+-- C-09d-C: runtime stock and ledger inputs precede REAL CMS publication.
+DO $purchase_seed$
+DECLARE t uuid := 'c0900001-0000-4000-8000-000000000001'; n integer; account_code text; account_kind text;
+BEGIN
+ PERFORM set_config('app.tenant_id',t::text,true);
+ -- The browse-only seed leaves settlement unset; initialize only before our first stock/account seed.
+ UPDATE app.tenants SET settlement_currency='USD' WHERE id=t AND settlement_currency IS NULL
+  AND NOT EXISTS(SELECT FROM app.stock_levels WHERE tenant_id=t)
+  AND NOT EXISTS(SELECT FROM app.ledger_accounts WHERE tenant_id=t);
+ IF NOT EXISTS(SELECT FROM app.tenants WHERE id=t AND settlement_currency='USD') THEN RAISE EXCEPTION 'C09D_CURRENCY_DRIFT'; END IF;
+ FOR n IN 1..2 LOOP
+  IF NOT EXISTS(SELECT FROM app.stock_levels WHERE tenant_id=t AND sku_id=('c2400008-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid) THEN
+   PERFORM app.inventory_adjust(('c2400008-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,20,'C09d purchase seed',('c09d0001-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'inbound');
+  END IF;
+  IF NOT EXISTS(SELECT FROM app.stock_levels WHERE tenant_id=t AND sku_id=('c2400008-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid AND on_hand=20 AND reserved=0) THEN RAISE EXCEPTION 'C09D_STOCK_DRIFT'; END IF;
+ END LOOP;
+ FOR account_code,account_kind IN SELECT * FROM (VALUES('cash','asset'),('accounts_receivable','asset'),('revenue','revenue'),('tax_payable','liability'),('shipping_revenue','revenue')) AS a(code,kind) LOOP
+  INSERT INTO app.ledger_accounts(tenant_id,code,currency,account_type) VALUES(t,account_code,'USD',account_kind) ON CONFLICT DO NOTHING;
+  IF NOT EXISTS(SELECT FROM app.ledger_accounts a WHERE a.tenant_id=t AND a.code=account_code AND a.currency='USD' AND a.account_type=account_kind AND a.status='active') THEN RAISE EXCEPTION 'C09D_LEDGER_DRIFT'; END IF;
+ END LOOP;
+ INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment,enabled) VALUES(t,'fake','c09d-e2e','test',true) ON CONFLICT DO NOTHING;
+ IF NOT EXISTS(SELECT FROM app.payment_provider_accounts WHERE tenant_id=t AND provider='fake' AND provider_account_id='c09d-e2e' AND environment='test' AND enabled) THEN RAISE EXCEPTION 'C09D_ACCOUNT_DRIFT'; END IF;
+END $purchase_seed$;
 -- C-19a owns separate tenants: this is webhook acceptance, not a purchase UI seed.
 DO $payment_seed$
 DECLARE n integer; suffix text; t uuid; fixture_sku uuid; oid uuid; cid uuid; r app.inventory_reservations; fixture_order app.orders; account_code text; account_kind text;

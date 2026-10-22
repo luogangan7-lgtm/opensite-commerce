@@ -133,6 +133,7 @@ expected = [
     'db_customer_auth.sql',
     'db_inventory_owner.sql',
     'db_payments.sql',
+    'db_data_rights.sql',
     'db_fulfillment_returns.sql',
     'db_quote_conversion.sql',
     'db_identity_clock.sql',

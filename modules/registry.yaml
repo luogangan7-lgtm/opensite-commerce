@@ -193,6 +193,18 @@
         {
           "operation_id": "archiveVariant",
           "status": "implemented"
+        },
+        {
+          "operation_id": "preflightCatalogCSV",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "importCatalogCSV",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "exportCatalogCSV",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -203,11 +215,15 @@
         "tests/db_smoke.sql",
         "tests/test_sqlc_contract_static.py",
         "tests/db_catalog_api.sql",
-        "internal/modules/catalog/integration_test.go"
+        "internal/modules/catalog/integration_test.go",
+        "internal/modules/catalog/csv_test.go",
+        "internal/modules/catalog/csv_store_test.go"
       ],
       "scopes": [
         "catalog:read",
-        "catalog:write"
+        "catalog:write",
+        "catalog:import",
+        "catalog:export"
       ],
       "note": "C-07a typed handlers through platform authorized-tenant runner. Authentication and C-04b idempotency middleware are separate integration seams; default authentication denies."
     },
@@ -1018,6 +1034,52 @@
       "note": "Admin failure metadata and explicit idempotent dead-letter redrive. No recipient/body in public DTOs, uncertain SMTP acceptance cannot redrive; queue receipt is not email delivery. Uses lease-fenced outbox capability and stdlib fake/SMTP adapters; quotes event SQL is optional until integration."
     },
     {
+      "name": "datarights",
+      "status": "implemented",
+      "go_path": "internal/modules/datarights",
+      "go_status": "implemented",
+      "owns_tables": [
+        "data_rights_exports",
+        "data_rights_erasures"
+      ],
+      "operations": [
+        {
+          "operation_id": "requestCustomerDataExport",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getCustomerDataExport",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "downloadCustomerDataExport",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "eraseCustomerData",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "customer",
+        "orders",
+        "cart",
+        "reliability",
+        "notifications",
+        "quotes",
+        "checkout"
+      ],
+      "tests": [
+        "tests/db_data_rights.sql",
+        "internal/modules/datarights/internal/service/files_test.go",
+        "internal/platform/jobs/privacy_test.go"
+      ],
+      "scopes": [
+        "customers:privacy"
+      ],
+      "note": "C-22a controlled customer export/erasure; original data belongs to customer/orders/cart. No customer-owned media or customer session model exists; future sealed media overlay is documented."
+    },
+    {
       "name": "fulfillment",
       "status": "implemented",
       "go_path": "internal/modules/fulfillment",
@@ -1570,6 +1632,38 @@
         "webhook_inbox",
         "checkout_sessions"
       ]
+    },
+    {
+      "file": "migrations/pending/c22a-data-rights_data_rights.sql",
+      "owner": "datarights",
+      "touches_tables": [
+        "data_rights_exports",
+        "data_rights_erasures",
+        "customers",
+        "customer_addresses",
+        "customer_credentials",
+        "buyer_company_members",
+        "orders",
+        "order_lines",
+        "carts",
+        "cart_lines",
+        "audit_events",
+        "notification_deliveries",
+        "outbox_events",
+        "quotes",
+        "quote_lines",
+        "order_adjustments",
+        "checkout_sessions",
+        "checkout_attempts",
+        "idempotency_records",
+        "customer_auth_tokens",
+        "customer_sessions",
+        "customer_guest_order_links",
+        "shipments",
+        "returns",
+        "inventory_movements"
+      ],
+      "note": "Controlled privacy functions preserve other modules money and snapshot invariants."
     },
     {
       "file": "migrations/pending/c02c-tenant-auth_tenant_auth.sql",

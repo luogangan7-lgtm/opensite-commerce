@@ -5,6 +5,11 @@ services:
   api:
     environment:
       OSC_PUBLIC_DATABASE_URL: "host=postgres port=5432 dbname=${OPENSITE_DB} user=opensite_domain_login password=${OPENSITE_DOMAIN_DB_PASSWORD} sslmode=disable"
+      OPENSITE_CMS_PREVIEW_KEY: ${OPENSITE_CMS_PREVIEW_KEY}
+      OPENSITE_IDEMPOTENCY_ROOT: /tmp/c09d-receipts
+      OPENSITE_STOREFRONT_KEY: ${OPENSITE_STOREFRONT_KEY}
+      OPENSITE_STOREFRONT_TENANT_ID: c0900001-0000-4000-8000-000000000001
+      OPENSITE_CHECKOUT_RULE_METADATA: ${OPENSITE_CHECKOUT_RULE_METADATA}
       # Existing minimum idle policy; only this disposable browser fixture is shortened.
       OSC_AUTH_SESSION_IDLE: "1m"
       OPENSITE_FAKE_PSP: "1"
@@ -18,6 +23,17 @@ services:
       HOST: 0.0.0.0
       PORT: "4321"
       OSC_READ_API_ORIGIN: http://api:8080
+      GITHUB_ACTIONS: "true"
+      OSC_COMMERCE_MODE: backend
+      OSC_COMMERCE_API_ORIGIN: http://api:8080
+      OSC_COMMERCE_SITE: http://127.0.0.1:4321
+      OSC_COMMERCE_COOKIE_KEY: ${OSC_COMMERCE_COOKIE_KEY}
+      OPENSITE_STOREFRONT_KEY: ${OPENSITE_STOREFRONT_KEY}
+      OPENSITE_STOREFRONT_ORIGIN: ${OPENSITE_STOREFRONT_ORIGIN}
+      OPENSITE_FAKE_PSP: "1"
+      OPENSITE_ENVIRONMENT: test
+      OPENSITE_FAKE_WEBHOOK_KEY: ${OPENSITE_FAKE_WEBHOOK_KEY}
+      OPENSITE_FAKE_ACCOUNT_ID: c09d-e2e
     volumes:
       - ../:/workspace:ro
     ports:
@@ -77,6 +93,7 @@ services:
       E2E_STOREFRONT_URL: http://127.0.0.1:4321
       E2E_ADMIN_URL: http://127.0.0.1:4173
       E2E_TENANT_ID: c0900001-0000-4000-8000-000000000001
+      E2E_RELEASE_ID: ${E2E_RELEASE_ID:-}
       E2E_PRODUCT_SLUG: canvas-tote
       E2E_CMS_SLUG: about
       E2E_OWNER_EMAIL: ${OPENSITE_E2E_OWNER_EMAIL}
