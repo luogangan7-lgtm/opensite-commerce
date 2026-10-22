@@ -544,7 +544,8 @@
         "internal/db/pricing_integration_test.go",
         "tests/db_pricing.sql",
         "tests/db_staff_pricing.sql",
-        "internal/bootstrap/pricing_contract_test.go"
+        "internal/bootstrap/pricing_contract_test.go",
+        "internal/db/staff_pricing_http_integration_test.go"
       ],
       "scopes": [
         "catalog:write"

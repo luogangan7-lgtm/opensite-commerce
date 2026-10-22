@@ -4,6 +4,67 @@
  */
 
 export interface paths {
+    "/api/v1/t/{tenant_id}/price-lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get: operations["listPriceLists"];
+        put?: never;
+        post: operations["createPriceList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/price-lists/{price_list_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                price_list_id: components["parameters"]["PriceListId"];
+            };
+            cookie?: never;
+        };
+        get: operations["getPriceList"];
+        put: operations["updatePriceList"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/price-lists/{price_list_id}/variants/{variant_id}/prices/{min_quantity}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                price_list_id: components["parameters"]["PriceListId"];
+                variant_id: components["parameters"]["VariantId"];
+                min_quantity: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["setVariantPrice"];
+        post?: never;
+        delete: operations["clearVariantPrice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/t/{tenant_id}/api-keys": {
         parameters: {
             query?: never;
@@ -1344,6 +1405,54 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Complete replacement; omitted optional fields are cleared. Windows use [starts_at,ends_at). Currency must equal tenant settlement currency; unset returns 409 settlement_currency_required. Archived lists are terminal. */
+        StaffPriceListInput: {
+            currency: string;
+            /** @enum {string} */
+            status: "draft" | "active" | "archived";
+            /** Format: date-time */
+            starts_at: string;
+            /** Format: date-time */
+            ends_at?: string;
+            /** Format: int32 */
+            priority: number;
+            /** @enum {string} */
+            audience: "all" | "customer_group" | "buyer_company";
+            /** Format: uuid */
+            customer_group_id?: string;
+            /** Format: uuid */
+            buyer_company_id?: string;
+        };
+        StaffPriceList: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            version: number;
+            currency: string;
+            /** @enum {string} */
+            status: "draft" | "active" | "archived";
+            /** Format: date-time */
+            starts_at: string;
+            /** Format: date-time */
+            ends_at?: string;
+            /** Format: int32 */
+            priority: number;
+            /** @enum {string} */
+            audience: "all" | "customer_group" | "buyer_company";
+            /** Format: uuid */
+            customer_group_id?: string;
+            /** Format: uuid */
+            buyer_company_id?: string;
+        };
+        StaffUnitPrice: {
+            /** Format: int64 */
+            unit_amount: number;
+        };
+        StaffPriceListPage: {
+            items: components["schemas"]["StaffPriceList"][];
+            /** Format: uuid */
+            next_cursor?: string;
+        };
         CheckoutPreviewInput: {
             /** Format: uuid */
             cart_id: string;
@@ -2552,6 +2661,7 @@ export interface components {
         ProductId: string;
         DraftId: string;
         UploadId: string;
+        PriceListId: string;
         IfMatch: string;
         /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
         IdempotencyKey: string;
@@ -2570,6 +2680,267 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listPriceLists: {
+        parameters: {
+            query?: {
+                after?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Price list version fences the entire list and all its variant tiers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPriceListPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createPriceList: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffPriceListInput"];
+            };
+        };
+        responses: {
+            /** @description Price list version fences the entire list and all its variant tiers. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPriceList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getPriceList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                price_list_id: components["parameters"]["PriceListId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Price list version fences the entire list and all its variant tiers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPriceList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updatePriceList: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                price_list_id: components["parameters"]["PriceListId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffPriceListInput"];
+            };
+        };
+        responses: {
+            /** @description Price list version fences the entire list and all its variant tiers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPriceList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    setVariantPrice: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                price_list_id: components["parameters"]["PriceListId"];
+                variant_id: components["parameters"]["VariantId"];
+                min_quantity: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffUnitPrice"];
+            };
+        };
+        responses: {
+            /** @description Price list version fences the entire list and all its variant tiers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPriceList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    clearVariantPrice: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                price_list_id: components["parameters"]["PriceListId"];
+                variant_id: components["parameters"]["VariantId"];
+                min_quantity: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Price list version fences the entire list and all its variant tiers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPriceList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     listAPIKeys: {
         parameters: {
             query?: never;

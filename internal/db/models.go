@@ -653,6 +653,7 @@ type AppPriceList struct {
 	Audience        string             `json:"audience"`
 	CustomerGroupID pgtype.UUID        `json:"customer_group_id"`
 	BuyerCompanyID  pgtype.UUID        `json:"buyer_company_id"`
+	Version         int64              `json:"version"`
 }
 
 type AppProduct struct {
