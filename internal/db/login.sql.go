@@ -231,7 +231,7 @@ func (q *Queries) LoginRecordFailure(ctx context.Context, arg LoginRecordFailure
 
 const loginRevokeSession = `-- name: LoginRevokeSession :execrows
 WITH input AS MATERIALIZED (SELECT $2::timestamptz AS caller_at)
-UPDATE app.auth_sessions SET revoked_at=clock_timestamp()
+UPDATE app.auth_sessions SET revoked_at=(SELECT caller_at FROM input)
  WHERE id=$1::uuid AND revoked_at IS NULL
 `
 
