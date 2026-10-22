@@ -198,11 +198,12 @@ BEGIN
    OR (OLD.state='fulfilled' AND NEW.state IN('partially_refunded','refunded'))
    OR (OLD.state='partially_refunded' AND NEW.state IN('partially_refunded','refunded')))
    OR NEW.refunded_minor<OLD.refunded_minor
-   OR (NEW.state IN('partially_refunded','refunded') AND NEW.refunded_minor<=OLD.refunded_minor) THEN
+   OR (NEW.state IN('partially_refunded','refunded') AND OLD.state IS DISTINCT FROM NEW.state AND NEW.refunded_minor<=OLD.refunded_minor) THEN
    RAISE EXCEPTION 'ORDER_INVALID_TRANSITION' USING ERRCODE='55000';
   END IF;
  ELSE
-  IF NEW.version<>OLD.version THEN RAISE EXCEPTION 'ORDER_INVALID_VERSION' USING ERRCODE='55000'; END IF;
+  IF NEW.version<>OLD.version AND NOT(current_user='app_orders_executor' AND NEW.version=OLD.version+1) THEN
+   RAISE EXCEPTION 'ORDER_INVALID_VERSION' USING ERRCODE='55000'; END IF;
  END IF;
  RETURN NEW;
 END $fn$;
