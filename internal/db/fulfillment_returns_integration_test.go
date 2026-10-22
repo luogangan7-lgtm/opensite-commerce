@@ -8,6 +8,7 @@ package db_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -259,6 +260,94 @@ func TestFulfillmentRefundReconcileAfterCustomerErasure(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestReturnReceiptReplayWaitsForErasureFence(t *testing.T) {
+	for _, mode := range []string{"creation", "receive"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newFulfillmentFixture(t)
+			customer := uuid.NewString()
+			err := f.maint.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				if _, err := tx.Exec(ctx, "INSERT INTO app.customers(tenant_id,id,email) VALUES($1,$2,'replay-erasure@example.invalid')", f.tenant, customer); err != nil {
+					return err
+				}
+				_, err := tx.Exec(ctx, "INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES($1,$2,$3)", f.tenant, customer, f.order.ID)
+				return err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var shipped fulfillmentcontract.Shipment
+			err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				var err error
+				shipped, err = fulfillment.New().CreateShipment(ctx, tx, f.tenant, fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "privacy-replay-shipment", Carrier: "manual", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 1}}})
+				return err
+			})
+			if err != nil || len(shipped.Lines) != 1 {
+				t.Fatalf("replay shipment fixture: %+v %v", shipped, err)
+			}
+			request := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: shipped.OrderVersion, IdempotencyKey: "privacy-replay-return", Kind: returnscontract.ShipmentReturn, Reason: "private replay receipt canary", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipped.Lines[0].ID, Quantity: 1}}}
+			var requested returnscontract.Return
+			err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				var err error
+				requested, err = f.returns.Request(ctx, tx, f.tenant, request)
+				return err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			receive := returnscontract.ReceiveInput{ReturnID: requested.ID, ExpectedVersion: requested.OrderVersion, IdempotencyKey: "privacy-replay-receive", Restock: true}
+			if mode == "receive" {
+				err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+					_, err := f.returns.Receive(ctx, tx, f.tenant, receive)
+					return err
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Park a successful erasure before COMMIT. READ COMMITTED replay can
+			// still see the old receipt, but must wait on its owner's Order fence.
+			ready, release := make(chan struct{}), make(chan struct{}, 1)
+			eraser := startBudgetSession(t, f, "runtime", false, func(ctx context.Context, tx pgx.Tx) error {
+				if _, err := tx.Exec(ctx, "SELECT app.data_rights_erase_customer($1,'service',$2)", customer, uuid.NewString()); err != nil {
+					return err
+				}
+				close(ready)
+				select {
+				case <-release:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			})
+			defer eraser.stop()
+			budgetBarrier(t, f, ready)
+			lines, err := json.Marshal(request.Lines)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var reason string
+			replay := startBudgetSession(t, f, "runtime", false, func(ctx context.Context, tx pgx.Tx) error {
+				if mode == "receive" {
+					return tx.QueryRow(ctx, "SELECT app.returns_receive($1,$2,$3,$4)->>'reason'", receive.ReturnID, receive.ExpectedVersion, receive.IdempotencyKey, receive.Restock).Scan(&reason)
+				}
+				return tx.QueryRow(ctx, "SELECT app.returns_create($1,$2,$3,$4,$5,$6::jsonb)->>'reason'", request.OrderID, request.ExpectedVersion, request.IdempotencyKey, string(request.Kind), request.Reason, lines).Scan(&reason)
+			})
+			defer replay.stop()
+			awaitBudgetBlock(t, f, replay.pid, eraser.pid)
+			release <- struct{}{}
+			if err := budgetDone(t, f, eraser); err != nil {
+				t.Fatal(err)
+			}
+			if err := budgetDone(t, f, replay); err != nil {
+				t.Fatal(err)
+			}
+			if reason != "[erased]" {
+				t.Fatalf("replay returned a pre-erasure receipt after the Order fence: %q", reason)
+			}
+		})
 	}
 }
 
