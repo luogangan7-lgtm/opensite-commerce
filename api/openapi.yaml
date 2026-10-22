@@ -421,16 +421,16 @@ paths:
       x-opensite-access: Public
       x-test-only: true
       description: >-
-        Explicit test/development configuration only; never mounted in production. The verifier authenticates
-        exact raw bytes before a trusted event reaches checkout. Checkout rechecks persisted tenant/order,
-        amount, currency, version and provider binding and deduplicates delivery inside a transaction.
+        Explicit test/development configuration only; never mounted in production. Payments authenticates
+        timestamp plus exact raw bytes and derives tenant authority from a trusted account binding.
+        The durable receipt reports pending or processed; external facts never reissue provider commands.
       security:
         - FakeWebhookSignature: []
       parameters:
         - name: X-Fake-Signature
           in: header
           required: true
-          schema: {type: string, pattern: '^[0-9a-f]{64}$'}
+          schema: {type: string, pattern: '^t=[0-9]{1,12},v1=[0-9a-f]{64}$'}
       requestBody:
         required: true
         content:
@@ -438,10 +438,10 @@ paths:
             schema: {$ref: '#/components/schemas/FakePaymentEvent'}
       responses:
         '200':
-          description: Stable result after payment event admission or replay.
+          description: Durable payment fact receipt after admission or replay.
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/CheckoutResult'}
+              schema: {$ref: '#/components/schemas/FakePaymentReceipt'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -3316,7 +3316,7 @@ components:
       type: apiKey
       in: header
       name: X-Fake-Signature
-      description: HMAC SHA256 of exact request bytes with isolated test key; test/development only.
+      description: HMAC SHA256 of timestamp + dot + exact request bytes with isolated account key; DB-clock freshness; test/development only.
     adminSession:
       type: apiKey
       in: cookie
@@ -3748,16 +3748,23 @@ components:
     FakePaymentEvent:
       type: object
       additionalProperties: false
-      required: [event_id, tenant_id, order_id, order_version, provider_ref, status, amount_minor, currency]
+      required: [event_id, account_id, order_id, order_version, provider_ref, status, amount_minor, currency]
       properties:
         event_id: {type: string, minLength: 1, maxLength: 128}
-        tenant_id: {type: string, format: uuid}
+        account_id: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$'}
         order_id: {type: string, format: uuid}
         order_version: {type: integer, format: int64, minimum: 1}
         provider_ref: {type: string, minLength: 1, maxLength: 200}
-        status: {type: string, enum: [authorized, captured, failed, canceled]}
+        status: {type: string, enum: [captured, failed, canceled, partially_refunded, refunded]}
         amount_minor: {type: integer, format: int64, minimum: 1}
         currency: {type: string, pattern: '^[A-Z]{3}$'}
+    FakePaymentReceipt:
+      type: object
+      additionalProperties: false
+      required: [event_id, status]
+      properties:
+        event_id: {type: string, minLength: 1, maxLength: 128}
+        status: {type: string, enum: [pending, processed, rejected]}
     NotificationFailure:
       type: object
       additionalProperties: false
