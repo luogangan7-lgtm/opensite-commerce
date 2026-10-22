@@ -7,13 +7,12 @@ package checkout
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"strconv"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/google/uuid"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
@@ -189,20 +188,6 @@ func (s *Handler) browserReader(ctx context.Context, target string) (contract.Au
 	return actor, reader, nil
 }
 
-type previewOptionJSON struct {
-	RateID      string `json:"rate_id"`
-	Method      string `json:"method"`
-	AmountMinor string `json:"amount_minor"`
-}
-type previewJSON struct {
-	SubtotalMinor   string              `json:"subtotal_minor"`
-	TaxMinor        string              `json:"tax_minor"`
-	ShippingMinor   string              `json:"shipping_minor"`
-	TotalMinor      string              `json:"total_minor"`
-	Currency        string              `json:"currency"`
-	ShippingOptions []previewOptionJSON `json:"shipping_options"`
-}
-
 func (s *Handler) PreviewCheckout(ctx context.Context, r httpapi.PreviewCheckoutRequestObject) (httpapi.PreviewCheckoutResponseObject, error) {
 	actor, reader, err := s.browserReader(ctx, r.TenantId.String())
 	if err != nil {
@@ -218,18 +203,20 @@ func (s *Handler) PreviewCheckout(ctx context.Context, r httpapi.PreviewCheckout
 	if err != nil {
 		return nil, mapError(err)
 	}
-	options := make([]previewOptionJSON, 0, len(result.ShippingOptions))
-	for _, option := range result.ShippingOptions {
-		options = append(options, previewOptionJSON{option.RateID, option.Method, strconv.FormatInt(option.AmountMinor, 10)})
-	}
-	wire := previewJSON{strconv.FormatInt(result.SubtotalMinor, 10), strconv.FormatInt(result.TaxMinor, 10), strconv.FormatInt(result.ShippingMinor, 10), strconv.FormatInt(result.TotalMinor, 10), result.Currency, options}
-	encoded, err := json.Marshal(wire)
-	if err != nil {
-		return nil, err
-	}
-	var dto httpapi.CheckoutPreview
-	if err := json.Unmarshal(encoded, &dto); err != nil {
-		return nil, err
+
+	dto := httpapi.CheckoutPreview{SubtotalMinor: strconv.FormatInt(result.SubtotalMinor, 10), TaxMinor: strconv.FormatInt(result.TaxMinor, 10), ShippingMinor: strconv.FormatInt(result.ShippingMinor, 10), TotalMinor: strconv.FormatInt(result.TotalMinor, 10), Currency: result.Currency}
+	dto.ShippingOptions = make([]struct {
+		AmountMinor string    `json:"amount_minor"`
+		Method      string    `json:"method"`
+		RateId      uuid.UUID `json:"rate_id"`
+	}, len(result.ShippingOptions))
+	for i, option := range result.ShippingOptions {
+		id, err := uuid.Parse(option.RateID)
+		if err != nil || id == uuid.Nil {
+			return nil, fmt.Errorf("invalid shipping rate")
+		}
+		dto.ShippingOptions[i].AmountMinor = strconv.FormatInt(option.AmountMinor, 10)
+		dto.ShippingOptions[i].Method, dto.ShippingOptions[i].RateId = option.Method, id
 	}
 	return httpapi.PreviewCheckout200JSONResponse(dto), nil
 }
@@ -303,7 +290,9 @@ func (s *Handler) CreateCheckout(ctx context.Context, r httpapi.CreateCheckoutRe
 		contact = orders.Contact{Email: body.BuyerContact.Email, Name: value(body.BuyerContact.Name), Phone: value(body.BuyerContact.Phone)}
 	}
 	input := contract.StartInput{CartID: body.CartId.String(), IdempotencyKey: string(r.Params.IdempotencyKey), BuyerContact: contact, ShippingAddress: contract.ShippingAddress{Country: body.ShippingAddress.Country, Subdivision: value(body.ShippingAddress.Subdivision), Address1: body.ShippingAddress.Address1, Address2: value(body.ShippingAddress.Address2), City: body.ShippingAddress.City, PostalCode: body.ShippingAddress.PostalCode}}
-	if cartID, _ := ctx.Value(cartIDKey{}).(string); cartID != "" && cartID != input.CartID { return nil, notFound() }
+	if cartID, _ := ctx.Value(cartIDKey{}).(string); cartID != "" && cartID != input.CartID {
+		return nil, notFound()
+	}
 	result, err := s.config.Service.Start(ctx, actor, input)
 	if err != nil {
 		return nil, mapError(err)
@@ -394,11 +383,17 @@ func mapError(err error) error {
 }
 
 // Browser operations have one admission path; employee extensions only forward elsewhere.
-func browserOperation(op string) bool { return op == StartOperation || op == PreviewOperation || op == GetOperation }
+func browserOperation(op string) bool {
+	return op == StartOperation || op == PreviewOperation || op == GetOperation
+}
 func browserSpec(s httpapi.RouteSpec) bool {
- return s.OperationID == StartOperation && s.Method == http.MethodPost && s.Pattern == StartPattern || s.OperationID == PreviewOperation && s.Method == http.MethodPost && s.Pattern == PreviewPattern || s.OperationID == GetOperation && s.Method == http.MethodGet && s.Pattern == GetPattern
+	return s.OperationID == StartOperation && s.Method == http.MethodPost && s.Pattern == StartPattern || s.OperationID == PreviewOperation && s.Method == http.MethodPost && s.Pattern == PreviewPattern || s.OperationID == GetOperation && s.Method == http.MethodGet && s.Pattern == GetPattern
 }
 func (a composedAuth) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec httpapi.RouteSpec) {
- if browserOperation(spec.OperationID) { return }
- if responder, ok := a.fallback.(httpapi.AuthenticationResponder); ok { responder.AuthenticationResponse(ctx,w,r,spec) }
+	if browserOperation(spec.OperationID) {
+		return
+	}
+	if responder, ok := a.fallback.(httpapi.AuthenticationResponder); ok {
+		responder.AuthenticationResponse(ctx, w, r, spec)
+	}
 }

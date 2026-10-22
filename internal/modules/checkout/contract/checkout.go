@@ -176,12 +176,12 @@ type RulesReader interface {
 // the callback; this module never elevates or opens a connection itself.
 type Run func(context.Context, string, func(context.Context, pgx.Tx) error) error
 type Config struct {
-	Read Run
+	Read         Run
 	SnapshotCart CartReader
-	Run     Run
-	Cart    CartReader
-	Rules   RulesReader
-	Orders  orders.Service
-	Ledger  ledger.Poster
-	Payment payment.Port
+	Run          Run
+	Cart         CartReader
+	Rules        RulesReader
+	Orders       orders.Service
+	Ledger       ledger.Poster
+	Payment      payment.Port
 }

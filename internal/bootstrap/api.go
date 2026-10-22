@@ -96,7 +96,9 @@ func New(config Config) (server *http.Server, err error) {
 		checkoutConfig := *config.Checkout
 		var admissionCustomer *customerhttp.Handler
 		guestResolver, hasGuest := checkoutConfig.Resolver.(*checkout.GuestResolver)
-		if hasGuest && guestResolver == nil { return nil, errors.New("checkout guest resolver unavailable") }
+		if hasGuest && guestResolver == nil {
+			return nil, errors.New("checkout guest resolver unavailable")
+		}
 		if config.Customer != nil && (checkoutConfig.Resolver == nil || hasGuest) {
 			if checkoutConfig.Origin == "" {
 				checkoutConfig.Origin = config.CustomerOrigin
@@ -104,7 +106,11 @@ func New(config Config) (server *http.Server, err error) {
 			if checkoutConfig.Origin != config.CustomerOrigin {
 				return nil, errors.New("customer checkout requires the configured customer origin")
 			}
-			if hasGuest { checkoutConfig.Resolver = customerGuestCheckoutResolver{guest: guestResolver} } else { checkoutConfig.Resolver = customerCheckoutResolver{} }
+			if hasGuest {
+				checkoutConfig.Resolver = customerGuestCheckoutResolver{guest: guestResolver}
+			} else {
+				checkoutConfig.Resolver = customerCheckoutResolver{}
+			}
 			admissionCustomer = customerHTTP
 		}
 		handler, err := checkout.New(checkoutConfig)

@@ -59,14 +59,16 @@ func TestGuestResolverBindsTenantCartAndProof(t *testing.T) {
 		}
 	}
 
- for _,n := range []int{31,33,34} {
-  badToken := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("g",n)))
-  mac := hmac.New(sha256.New,key)
-  _,_ = mac.Write([]byte("checkout:"+tenant+":"+badToken+":"+origin))
-  r := request(tenant,cart,origin,base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
-  r.Header.Set("X-Cart-Token",badToken)
-  if _,err := resolver.Resolve(context.Background(),r); err==nil { t.Fatalf("admitted %d-byte capability",n) }
- }
+	for _, n := range []int{31, 33, 34} {
+		badToken := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("g", n)))
+		mac := hmac.New(sha256.New, key)
+		_, _ = mac.Write([]byte("checkout:" + tenant + ":" + badToken + ":" + origin))
+		r := request(tenant, cart, origin, base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
+		r.Header.Set("X-Cart-Token", badToken)
+		if _, err := resolver.Resolve(context.Background(), r); err == nil {
+			t.Fatalf("admitted %d-byte capability", n)
+		}
+	}
 	if calls != 2 {
 		t.Fatalf("cart verifier was bypassed or called before proof admission: %d", calls)
 	}

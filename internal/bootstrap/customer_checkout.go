@@ -25,7 +25,7 @@ type checkoutAdmission struct {
 	actors   httpapi.ActorResolver
 	customer *customerhttp.Handler
 	cart     *cart.Module
-	guest bool
+	guest    bool
 }
 
 // Non-storefront admission selects the same staff authority as actor projection.
@@ -40,7 +40,9 @@ func (a checkoutAdmission) AuthenticationResponse(ctx context.Context, w http.Re
 
 func (a checkoutAdmission) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
 	if a.customer != nil && checkoutBrowserSpec(spec) {
-		if a.guest && !hasCheckoutCustomerCookie(r) { return a.next.Authenticate(ctx,r,spec) }
+		if a.guest && !hasCheckoutCustomerCookie(r) {
+			return a.next.Authenticate(ctx, r, spec)
+		}
 		// The resolver port returns only an actor, so establish the live customer
 		// context before checkout intercepts the route. Never reuse a prior stamp.
 		actor, err := a.customer.Resolve(ctx, r)
@@ -48,7 +50,9 @@ func (a checkoutAdmission) Authenticate(ctx context.Context, r *http.Request, sp
 			return nil, err
 		}
 		if actor.CustomerID == "" {
-			if a.guest { return nil, apperrors.New(404,"not_found","Checkout resource not found") }
+			if a.guest {
+				return nil, apperrors.New(404, "not_found", "Checkout resource not found")
+			}
 			if len(r.Header.Values("X-Cart-Token")) == 0 {
 				return nil, checkoutCustomerRequired()
 			}
@@ -109,15 +113,27 @@ func checkoutCustomerRequired() error {
 // The concrete guest/customer composition requires a fresh private customer proof.
 type checkoutCustomerProof struct{}
 type customerGuestCheckoutResolver struct{ guest *checkouthttp.GuestResolver }
-func (g customerGuestCheckoutResolver) Resolve(ctx context.Context, r *http.Request) (checkoutcontract.AuthorizedActor,error) {
- if ok,_ := ctx.Value(checkoutCustomerProof{}).(bool); ok { return (customerCheckoutResolver{}).Resolve(ctx,r) }
- if hasCheckoutCustomerCookie(r) { return checkoutcontract.AuthorizedActor{}, checkoutCustomerRequired() }
- return g.guest.Resolve(ctx,r)
+
+func (g customerGuestCheckoutResolver) Resolve(ctx context.Context, r *http.Request) (checkoutcontract.AuthorizedActor, error) {
+	if ok, _ := ctx.Value(checkoutCustomerProof{}).(bool); ok {
+		return (customerCheckoutResolver{}).Resolve(ctx, r)
+	}
+	if hasCheckoutCustomerCookie(r) {
+		return checkoutcontract.AuthorizedActor{}, checkoutCustomerRequired()
+	}
+	return g.guest.Resolve(ctx, r)
 }
 func hasCheckoutCustomerCookie(r *http.Request) bool {
- for _,header := range r.Header.Values("Cookie") { for _,part := range strings.Split(header,";") { name,_,_ := strings.Cut(strings.TrimSpace(part),"="); if name == customerhttp.SessionCookie { return true } } }
- return false
+	for _, header := range r.Header.Values("Cookie") {
+		for _, part := range strings.Split(header, ";") {
+			name, _, _ := strings.Cut(strings.TrimSpace(part), "=")
+			if name == customerhttp.SessionCookie {
+				return true
+			}
+		}
+	}
+	return false
 }
 func checkoutBrowserSpec(s httpapi.RouteSpec) bool {
- return s.Access == httpapi.Storefront && s.Scope == "" && (s.OperationID == checkouthttp.StartOperation && s.Method == http.MethodPost && s.Pattern == checkouthttp.StartPattern || s.OperationID == checkouthttp.PreviewOperation && s.Method == http.MethodPost && s.Pattern == checkouthttp.PreviewPattern || s.OperationID == checkouthttp.GetOperation && s.Method == http.MethodGet && s.Pattern == checkouthttp.GetPattern)
+	return s.Access == httpapi.Storefront && s.Scope == "" && (s.OperationID == checkouthttp.StartOperation && s.Method == http.MethodPost && s.Pattern == checkouthttp.StartPattern || s.OperationID == checkouthttp.PreviewOperation && s.Method == http.MethodPost && s.Pattern == checkouthttp.PreviewPattern || s.OperationID == checkouthttp.GetOperation && s.Method == http.MethodGet && s.Pattern == checkouthttp.GetPattern)
 }
