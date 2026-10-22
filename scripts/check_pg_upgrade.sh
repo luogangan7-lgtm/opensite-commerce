@@ -164,10 +164,11 @@ CHECKOUT_DB=""
 SERVING_DB=""
 CUSTOMER_AUTH_DB=""
 PAYMENTS_DB=""
+CLOCK_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$CLOCK_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1131,6 +1132,37 @@ db "$DB" -f tests/db_identity_auth.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 LOGIN_DB=""
+
+# H4-clock: discover by suffix and apply every predecessor, never a fixed number.
+clock_files=(migrations/[0-9][0-9][0-9]_identity_db_clock.sql)
+[[ ${#clock_files[@]} -eq 1 && -f ${clock_files[0]} ]] || { echo 'FAIL: clock migration missing'; exit 1; }
+CLOCK_DB=upgrade_clock_$$
+admin -c "CREATE DATABASE $CLOCK_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${clock_files[0]} ]] || break
+ apply_forward "$CLOCK_DB" "$f"
+done
+db "$CLOCK_DB" <<'SQL' >/dev/null
+INSERT INTO app.users(email,password_hash) VALUES('clock-upgrade@example.test','preserve') RETURNING id AS u \gset
+INSERT INTO app.known_devices(user_id,cookie_hash,expires_at) VALUES(:'u',sha256('upgrade-clock'::bytea),clock_timestamp()+interval '1 day');
+SELECT app.auth_record_failure('clock-upgrade@example.test','192.0.2.75');
+CREATE VIEW public.clock_rows AS
+ SELECT 'account' kind,to_jsonb(a) payload FROM app.auth_account_attempts a
+ UNION ALL SELECT 'ip',to_jsonb(i) FROM app.auth_login_attempts i
+ UNION ALL SELECT 'device',to_jsonb(d) FROM app.known_devices d
+ UNION ALL SELECT 'acl',jsonb_build_object('oid',oid,'owner',proowner,'acl',proacl) FROM pg_proc WHERE oid IN ('app.auth_record_failure(text,inet)'::regprocedure,'app.auth_fail_known_device(uuid)'::regprocedure);
+CREATE TABLE public.clock_expected AS SELECT * FROM public.clock_rows;
+SQL
+apply_forward "$CLOCK_DB" "${clock_files[0]}"
+[[ $(db "$CLOCK_DB" -c "SELECT NOT EXISTS((TABLE public.clock_rows EXCEPT TABLE public.clock_expected) UNION ALL (TABLE public.clock_expected EXCEPT TABLE public.clock_rows))") == t ]] || bad 'clock upgrade changed stored rows or exact function authority'
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${clock_files[0]} ]] || continue
+ apply_forward "$CLOCK_DB" "$f"
+done
+db "$CLOCK_DB" -f tests/db_identity_clock.sql >/dev/null
+db "$CLOCK_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $CLOCK_DB" >/dev/null; CLOCK_DB=""
+pass 'clock upgrade preserves populated attempts/devices and exact function OID/owner/ACL'
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1

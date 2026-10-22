@@ -35,6 +35,7 @@ func (r loginFakeRow) Scan(dest ...any) error {
 	*dest[2].(*pgtype.Timestamptz) = stamp(r.at)
 	*dest[3].(*pgtype.Timestamptz) = stamp(r.at)
 	*dest[4].(*pgtype.Timestamptz) = stamp(r.at.Add(time.Hour))
+	*dest[5].(*pgtype.Timestamptz) = stamp(r.at)
 	return nil
 }
 

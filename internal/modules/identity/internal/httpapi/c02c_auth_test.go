@@ -119,7 +119,7 @@ func c02cAuthFixture(t *testing.T) *c02cFixture {
 	t.Helper()
 	now := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
 	token := c02cRandom(t)
-	repo := &fakeRepo{session: login.Session{ID: c02cSession, UserID: c02cUser, CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(time.Hour)}, hash: sha256.Sum256(token)}
+	repo := &fakeRepo{session: login.Session{DatabaseNow: now, ID: c02cSession, UserID: c02cUser, CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(time.Hour)}, hash: sha256.Sum256(token)}
 	service, err := login.New(repo, login.Config{Origin: c02cOrigin, SigningKey: c02cRandom(t), Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)

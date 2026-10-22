@@ -57,6 +57,8 @@
         "tests/db_role_matrix.sql",
         "tests/db_identity_auth.sql",
         "tests/db_identity_login.sql",
+        "tests/db_identity_clock.sql",
+        "internal/modules/identity/h4_clock_pgx_test.go",
         "tests/test_identity_login_contract.py"
       ],
       "scopes": [],
@@ -1458,6 +1460,15 @@
         "tenant_memberships",
         "api_keys",
         "auth_sessions"
+      ]
+    },
+    {
+      "file": "migrations/pending/h4-clock_identity_db_clock.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "auth_account_attempts",
+        "auth_login_attempts",
+        "known_devices"
       ]
     }
   ]
