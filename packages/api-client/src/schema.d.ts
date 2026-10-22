@@ -5352,7 +5352,12 @@ export interface operations {
             query: {
                 token: string;
             };
-            header?: never;
+            header?: {
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
             path: {
                 /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
                 tenant_id: components["parameters"]["TenantId"];
