@@ -295,6 +295,27 @@ class GovernanceTests(unittest.TestCase):
         with (self.root / "go.mod").open("a") as output:
             output.write("\nrequire github.com/jackc/pgx/v5 v5.10.0\n")
 
+    def test_trusted_tx_outside_refresher_composition_red(self):
+        # Exact path match: another file in the same package, or any module, is rejected.
+        for name, package in (("internal/modules/a/refresh.go", "a"), ("internal/bootstrap/api.go", "bootstrap"),
+                              ("internal/bootstrap/runtime_test.go", "bootstrap")):
+            with self.subTest(name=name):
+                self.source(name, f"package {package}\n\n// composes runner.RunTrustedTx\nconst Seam = 1\n")
+                self.assert_red("MODULE_TRUSTED_TX")
+                (self.root / name).unlink()
+
+    def test_trusted_tx_in_export_review_list_green(self):
+        # The #153 export-surface review list must name every adapter export, including this seam.
+        self.source("internal/tenanttx/pgxadapter/export_surface_test.go",
+                    "package pgxadapter\n\nvar reviewed = []string{\"method:QueryRunner.RunTrustedTx\"}\n")
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_trusted_tx_in_refresher_composition_green(self):
+        self.source("internal/bootstrap/runtime.go", "package bootstrap\n\n// composes runner.RunTrustedTx for the refresher\nconst Seam = \"RunTrustedTx\"\n")
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_raw_pgx_connection_selectors_red(self):
         self.vendor_pgx()
         for alias in ("pgx", "driver", "驱动"):

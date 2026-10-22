@@ -309,11 +309,14 @@ inventory_check() {  # physical/reserved/active-quantity/movement-count
    FROM app.stock_levels s WHERE s.tenant_id='$3' AND s.sku_id='$4';")
   echo "$1: $got (expected $2)"; [[ $got == "$2" ]] || fail=1
 }
+# Fixture capabilities are independent CSPRNG bytes; the same key shares one bearer.
+inventory_bearer() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
 read -r T SKU OWNER <<<"$(inventory_fixture)"
+HOLDER=$(inventory_bearer)
 gate_close 11
-tx inv_first app_runtime "$T" "SELECT app.inventory_reserve('$SKU',1,'checkout','$OWNER','last-first',900); $(park 11)" &
+tx inv_first app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','last-first',900,decode('$HOLDER','hex')); $(park 11)" &
 await inv_first advisory
-tx inv_second app_runtime "$T" "SELECT app.inventory_reserve('$SKU',1,'checkout','$OWNER','last-second',900);" &
+tx inv_second app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','last-second',900,decode('$HOLDER','hex'));" &
 await inv_second "${ROWLOCK[@]}"
 gate_open 11; wait
 expect inv_first ok; expect inv_second INVENTORY_INSUFFICIENT_STOCK; expect inv_second P0001
@@ -321,10 +324,11 @@ inventory_check 'race inventory last unit' '1|1|1|2' "$T" "$SKU"
 
 for quantity in 1 2; do
   read -r T SKU OWNER <<<"$(inventory_fixture)"
+  HOLDER=$(inventory_bearer)
   gate_close 12
-  tx inv_key_first app_runtime "$T" "SELECT app.inventory_reserve('$SKU',1,'checkout','$OWNER','same-key',900); $(park 12)" &
+  tx inv_key_first app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','same-key',900,decode('$HOLDER','hex')); $(park 12)" &
   await inv_key_first advisory
-  tx inv_key_second app_runtime "$T" "SELECT app.inventory_reserve('$SKU',$quantity,'checkout','$OWNER','same-key',900);" &
+  tx inv_key_second app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',$quantity,'checkout','$OWNER','same-key',900,decode('$HOLDER','hex'));" &
   await inv_key_second advisory
   gate_open 12; wait
   expect inv_key_first ok
@@ -337,7 +341,7 @@ read -r T SKU OWNER <<<"$(inventory_fixture)"
 RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SELECT (app.inventory_reserve('$SKU',1,'order','$OWNER','expiry-race',900)).id;" | tail -1)
 sql <<<"UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id='$T' AND id='$RID';" >/dev/null
 gate_close 13
-tx inv_expire app_runtime "$T" "SELECT app.inventory_expire_due(1); $(park 13)" &
+tx inv_expire app_queue_worker "$T" "SELECT app.inventory_expire_due(1); $(park 13)" &
 await inv_expire advisory
 tx inv_commit app_inventory_executor "$T" "SELECT app.inventory_commit('$RID');" &
 await inv_commit "${ROWLOCK[@]}"
@@ -374,12 +378,12 @@ STOCK_BLOCKER=$(sql <<<"SELECT count(*)=1 AND bool_and(h.pid=ANY(pg_blocking_pid
  WHERE c.application_name='${RACE_PREFIX}inv_commit_wait' AND h.application_name='${RACE_PREFIX}inv_stock';")
 echo "race inventory commit blocked by stock holder: $STOCK_BLOCKER (expected t)"
 [[ $STOCK_BLOCKER == t ]] || { echo 'FAIL: commit did not wait on the stock holder'; exit 1; }
-SKIPPED=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT app.inventory_expire_due(1);" | tail -1)
+SKIPPED=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_queue_worker; SELECT app.inventory_expire_due(1);" | tail -1)
 echo "race inventory expiry skips busy commit: $SKIPPED (expected 0)"
 [[ $SKIPPED == 0 ]] || fail=1
 gate_open 14; wait
 expect inv_stock ok; expect inv_commit_wait INVENTORY_RESERVATION_EXPIRED; expect inv_commit_wait 55000
-sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT app.inventory_expire_due(1);" >/dev/null
+sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_queue_worker; SELECT app.inventory_expire_due(1);" >/dev/null
 inventory_check 'race inventory skipped busy commit then expiry' '2|0|0|4' "$T" "$SKU"
 
 read -r T SKU OWNER <<<"$(inventory_fixture 0)"
@@ -395,8 +399,9 @@ inventory_check 'race inventory concurrent first warehouse+stock' '3|0|0|2' "$T"
 # Expiry sweep must advance past a LOCKED oldest due reservation: with batch 1 it
 # still expires another due row (it must not keep re-selecting the locked one).
 read -r T SKU OWNER <<<"$(inventory_fixture 2)"
-R1=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve('$SKU',1,'checkout','$OWNER','sweep-old',1)).id;" | tail -1)
-R2=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve('$SKU',1,'checkout','$OWNER','sweep-new',2)).id;" | tail -1)
+HOLDER=$(inventory_bearer)
+R1=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','sweep-old',1,decode('$HOLDER','hex'))).id;" | tail -1)
+R2=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','sweep-new',2,decode('$HOLDER','hex'))).id;" | tail -1)
 for _ in $(seq 1 100); do  # poll the database clock until both are due; never order actors by sleep
   [[ $(sql <<<"SELECT count(*) FROM app.inventory_reservations WHERE tenant_id='$T' AND expires_at<=clock_timestamp();") == 2 ]] && break
   sleep 0.05
@@ -404,13 +409,44 @@ done
 gate_close 16
 tx sweep_hold postgres "$T" "SELECT 1 FROM app.inventory_reservations WHERE id='$R1' FOR UPDATE; $(park 16)" &
 await sweep_hold advisory
-SWEPT=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT app.inventory_expire_due(1);" | tail -1)
+SWEPT=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_queue_worker; SELECT app.inventory_expire_due(1);" | tail -1)
 gate_open 16; wait
 echo "race expiry sweep skips locked oldest: expired=$SWEPT (expected 1)"
 [[ $SWEPT == 1 ]] || fail=1
 got=$(sql <<<"SELECT string_agg(state,',' ORDER BY expires_at) FROM app.inventory_reservations WHERE tenant_id='$T';")
 echo "race expiry sweep states: $got (expected active,expired)"
 [[ $got == 'active,expired' ]] || fail=1
+# C-20b: public observation of the tuple/hash never grants terminal authority.
+# The legitimate command parks with the row locked and its state uncommitted;
+# a foreign replay must wait for that lock, then reject even a terminal replay.
+for terminal in release commit; do
+ for attack in observed_hash wrong_bearer; do
+  read -r T SKU OWNER <<<"$(inventory_fixture)"
+  HOLDER=$(inventory_bearer)
+  RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','holder-race',900,decode('$HOLDER','hex'))).id;" | tail -1)
+  read -r OBSERVED_OWNER OBSERVED_HASH <<<"$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT owner_id||' '||encode(holder_hash,'hex') FROM app.inventory_reservations WHERE id='$RID';" | tail -1)"
+  [[ $OBSERVED_OWNER == "$OWNER" && ${#OBSERVED_HASH} == 64 ]] || { echo 'FAIL: holder race lacks runtime observation'; exit 1; }
+  FOREIGN_BEARER=$OBSERVED_HASH
+  [[ $attack != wrong_bearer ]] || FOREIGN_BEARER=$(inventory_bearer)
+  gate_close 140
+  tx inv_holder app_runtime "$T" "SELECT app.inventory_${terminal}_non_order('$RID','checkout','$OWNER',decode('$HOLDER','hex')); $(park 140)" &
+  await inv_holder advisory
+  tx inv_foreign app_runtime "$T" "SELECT app.inventory_${terminal}_non_order('$RID','checkout','$OBSERVED_OWNER',decode('$FOREIGN_BEARER','hex'));" &
+  await inv_foreign "${ROWLOCK[@]}"
+  BLOCKED=$(sql <<<"SELECT count(*)=1 AND bool_and(h.pid=ANY(pg_blocking_pids(f.pid))) FROM pg_stat_activity f CROSS JOIN pg_stat_activity h WHERE f.application_name='${RACE_PREFIX}inv_foreign' AND h.application_name='${RACE_PREFIX}inv_holder';")
+  [[ $BLOCKED == t ]] || { echo 'FAIL: foreign finish did not wait on holder reservation'; fail=1; }
+  gate_open 140; wait
+  expect inv_holder ok; expect inv_foreign INVENTORY_HOLDER_MISMATCH; expect inv_foreign 42501
+  tx inv_holder_replay app_runtime "$T" "SELECT app.inventory_${terminal}_non_order('$RID','checkout','$OWNER',decode('$HOLDER','hex'));"
+  expect inv_holder_replay ok
+  physical=1; state=released
+  if [[ $terminal == commit ]]; then physical=0; state=committed; fi
+  inventory_check "race inventory holder $terminal / $attack" "$physical|0|0|3" "$T" "$SKU"
+  got=$(sql <<<"SELECT r.state||'|'||(SELECT count(*) FROM app.inventory_movements m WHERE m.reservation_id=r.id AND m.kind='$terminal') FROM app.inventory_reservations r WHERE r.id='$RID';")
+  echo "race inventory holder terminal witness: $got (expected $state|1)"
+  [[ $got == "$state|1" ]] || fail=1
+ done
+done
 # Pricing's unique tier must survive two trusted writers on separate connections.
 # No numbered migration is assumed; this is an invariant of the pricing tables.
 read -r T L K <<<"$(sql <<'SQL'
@@ -717,7 +753,7 @@ expect orders_prelock_probe ok
 # In the intentionally broken overlay, NOWAIT succeeds. Do not start a sweep
 # that would deadlock: report the exact fault, then release the driver normally.
 if [[ ! -s "$ERRDIR/orders_prelock_probe" ]]; then
- tx orders_prelock_sweep app_runtime "$T" "SELECT 'skipped='||app.inventory_expire_due(100);"
+ tx orders_prelock_sweep app_queue_worker "$T" "SELECT 'skipped='||app.inventory_expire_due(100);"
  expect orders_prelock_sweep ok; result orders_prelock_sweep 'skipped=0'
 fi
 gate_open 42; wait
@@ -732,7 +768,9 @@ got=$(sql <<<"SELECT o.state||'|'||o.version||'|'||s.on_hand||'|'||s.reserved||'
  FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id='$T' AND o.id='$OID';")
 echo "orders prelock/expiry rollback: $got (expected pending_payment|1|2|2|3|1)"
 [[ $got == 'pending_payment|1|2|2|3|1' ]] || fail=1
-tx orders_prelock_cancel app_runtime "$T" "SELECT app.inventory_expire_due(100); SELECT app.orders_transition('$OID','cancelled','prelock-cancel',0);"
+tx orders_prelock_cleanup app_queue_worker "$T" "SELECT 'expired='||app.inventory_expire_due(100);"
+expect orders_prelock_cleanup ok; result orders_prelock_cleanup 'expired=1'
+tx orders_prelock_cancel app_runtime "$T" "SELECT app.orders_transition('$OID','cancelled','prelock-cancel',0);"
 expect orders_prelock_cancel ok
 got=$(sql <<<"SELECT o.state||'|'||s.on_hand||'|'||s.reserved||'|'||
  (SELECT count(*) FROM app.inventory_movements WHERE tenant_id='$T')||'|'||
@@ -1341,6 +1379,41 @@ expect fulfill_direct_rr_b 40001
 [[ $(sql <<<"SELECT sum(quantity)||'|'||(SELECT version FROM app.orders WHERE tenant_id='$T' AND id='$OID') FROM app.shipment_lines WHERE tenant_id='$T';") == '2|2' ]] || fail=1
 echo 'PASS: direct trusted RR quantity trigger writes parent before child aggregates (129)'
 echo 'PASS: fulfillment shipment/ship-cancel/return and RR stale-snapshot quantity races (120-123)'
+
+# C-19a gates93/94: actual inbox unique-key contention and public stream lock.
+# Separate connections must be observed blocked before release; no timed ordering.
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('payments-gate93') RETURNING id;" | tail -1)
+ACCOUNT="c19-race-$T"
+sql <<<"INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment,enabled) VALUES('$T','fake','$ACCOUNT','test',true);" >/dev/null
+inbox_insert="INSERT INTO app.webhook_inbox(tenant_id,provider,provider_account_id,environment,provider_event_id,payload_hash,payload_reference) VALUES('$T','fake','$ACCOUNT','test','race-event',sha256('same'::bytea),'payment:race') ON CONFLICT (tenant_id,provider,provider_account_id,environment,provider_event_id) DO NOTHING RETURNING 'C19_INBOX_INSERTED';"
+gate_close 93
+tx payment_inbox_first app_runtime "$T" "$inbox_insert $(park 93)" &
+await payment_inbox_first advisory
+tx payment_inbox_second app_runtime "$T" "$inbox_insert" &
+await payment_inbox_second "${ROWLOCK[@]}"
+gate_open 93; wait
+expect payment_inbox_first ok; expect payment_inbox_second ok
+result payment_inbox_first C19_INBOX_INSERTED
+if [[ $(cat "$ERRDIR/payment_inbox_second.out") == *C19_INBOX_INSERTED* ]]; then
+ echo 'FAIL: C19 duplicate inbox inserted twice'; fail=1
+fi
+got=$(sql <<<"SELECT count(*)||'|'||bool_and(payload_hash=sha256('same'::bytea)) FROM app.webhook_inbox WHERE tenant_id='$T' AND provider_account_id='$ACCOUNT' AND provider_event_id='race-event';")
+echo "payments gate93 duplicate inbox: $got (expected 1|true)"
+[[ $got == '1|true' ]] || fail=1
+# The production lock function is the single authority for stream lock identity.
+# A different provider intent progresses while an identical intent is blocked.
+gate_close 94
+tx payment_stream_first app_runtime "$T" "SELECT app.lock_payment_stream('$ACCOUNT','intent-one'); $(park 94)" &
+await payment_stream_first advisory
+tx payment_stream_second app_runtime "$T" "SELECT app.lock_payment_stream('$ACCOUNT','intent-one'); SELECT 'C19_STREAM_SECOND';" &
+await payment_stream_second advisory
+tx payment_stream_other app_runtime "$T" "SELECT app.lock_payment_stream('$ACCOUNT','intent-two'); SELECT 'C19_STREAM_OTHER';" &
+payment_other_pid=$!
+await_job payment_stream_other "$payment_other_pid"
+expect payment_stream_other ok; result payment_stream_other C19_STREAM_OTHER
+gate_open 94; wait
+expect payment_stream_first ok; expect payment_stream_second ok
+result payment_stream_second C19_STREAM_SECOND
 
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth/fulfillment/returns contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'

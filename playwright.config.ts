@@ -1,6 +1,6 @@
 /** Locks Chromium/font rendering inputs; used by CI and container comparisons; CI alone can create golden images. */
 import { defineConfig } from '@playwright/test';
-import { PLAYWRIGHT_IMAGE } from './scripts/frontend/baseline-provenance';
+import { PLAYWRIGHT_IMAGE, RENDERING } from './scripts/frontend/baseline-provenance';
 
 if (process.argv.some(argument => argument.startsWith('--update-snapshots')) &&
     (process.env.GITHUB_ACTIONS !== 'true' || process.env.OPENSITE_BASELINE_UPDATE !== '1' ||
@@ -11,16 +11,17 @@ if (process.argv.some(argument => argument.startsWith('--update-snapshots')) &&
 export default defineConfig({
   testDir: './tests/frontend',
   timeout: 180_000,
-  expect: { timeout: 10_000, toHaveScreenshot: { animations: 'disabled', threshold: 0, maxDiffPixels: 0 } },
+  expect: { timeout: 10_000, toHaveScreenshot: { animations: 'disabled', caret: 'hide', threshold: 0, maxDiffPixels: 0 } },
   fullyParallel: false,
   workers: 1,
   retries: 0,
   updateSnapshots: 'none',
   forbidOnly: true,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [['list'], ['html', { open: 'never' }], ['./scripts/frontend/golden-usage-reporter.ts']],
   snapshotPathTemplate: '{testDir}/baselines/{projectName}/{arg}{ext}',
   use: {
     browserName: 'chromium',
+    launchOptions: { args: RENDERING.chromiumArgs },
     baseURL: 'http://127.0.0.1:4173',
     locale: 'en-US', timezoneId: 'UTC', colorScheme: 'light',
     reducedMotion: 'reduce', deviceScaleFactor: 1,

@@ -1,7 +1,7 @@
 // Package checkout adapts the checkout contract to generated strict HTTP routes.
-// Dependencies: checkout/payment contracts, platform HTTP admission; no SQL/pools.
+// Dependencies: checkout/payments contracts, platform HTTP admission; no SQL/pools.
 // Caller: bootstrap. The URL is a target, actor comes only from a trusted resolver,
-// and Fake raw signatures are admitted only in explicit nonproduction composition.
+// and raw Fake events reach Payments only after strict nonproduction admission.
 package checkout
 
 import (
@@ -17,6 +17,7 @@ import (
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	contract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
+	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
@@ -37,8 +38,8 @@ type StorefrontResolver interface {
 	Resolve(context.Context, *http.Request) (contract.AuthorizedActor, error)
 }
 
-// SignatureVerifier authenticates exact raw bytes and performs trusted provider
-// account/tenant mapping before producing an event. Core rechecks DB binding.
+// SignatureVerifier is the retired compatibility port.
+// Deprecated: it cannot authorize a webhook; use payments.Receiver.
 type SignatureVerifier interface {
 	Verify(context.Context, []byte, string) (payment.VerifiedEvent, error)
 }
@@ -48,14 +49,20 @@ type Config struct {
 	Origin      string
 	FakeEnabled bool
 	Environment string
-	Verifier    SignatureVerifier
+	Events      payments.Receiver
+	// Deprecated: ignored; an Events receiver is required for Fake admission.
+	Verifier SignatureVerifier
 }
 type Handler struct {
 	httpapi.StrictServerInterface
 	config Config
 }
 type actorKey struct{}
-type eventKey struct{}
+type rawEventKey struct{}
+type rawEvent struct {
+	body      []byte
+	signature string
+}
 
 func New(config Config) (*Handler, error) {
 	if config.Resolver != nil {
@@ -68,8 +75,8 @@ func New(config Config) (*Handler, error) {
 		if config.Environment != "test" && config.Environment != "development" {
 			return nil, fmt.Errorf("Fake payment webhook is forbidden outside test/development")
 		}
-		if config.Verifier == nil {
-			return nil, fmt.Errorf("Fake payment webhook requires a signature verifier")
+		if config.Events == nil {
+			return nil, fmt.Errorf("Fake payment webhook requires a payments receiver")
 		}
 	}
 	return &Handler{config: config}, nil
@@ -138,14 +145,15 @@ func (s *Handler) Routes() []httpapi.Route {
 	routes := httpapi.StrictRoutes(s, specs)
 	for i := range routes {
 		if routes[i].Spec.OperationID == FakeOperation {
-			routes[i].Handler = s.verifyWebhook(routes[i].Handler)
+			routes[i].Handler = s.captureWebhook(routes[i].Handler)
 		}
 	}
 	return routes
 }
-func (s *Handler) verifyWebhook(next http.Handler) http.Handler {
+func (s *Handler) captureWebhook(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Exact bytes reach the verifier before strict generated JSON decoding. The
+		// Preserve exact bytes before strict JSON decoding. No receiver or domain
+		// write runs until StrictRoutes accepts the body and signature header. The
 		// outer router has already applied middleware and the route's body limit.
 		values := r.Header.Values("X-Fake-Signature")
 		if len(values) != 1 || values[0] == "" {
@@ -162,13 +170,8 @@ func (s *Handler) verifyWebhook(next http.Handler) http.Handler {
 			}
 			return
 		}
-		event, err := s.config.Verifier.Verify(r.Context(), raw, values[0])
-		if err != nil || event.Validate() != nil {
-			httpapi.WriteProblem(w, r, unauthenticated())
-			return
-		}
 		r.Body = io.NopCloser(bytes.NewReader(raw))
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), eventKey{}, event)))
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), rawEventKey{}, rawEvent{body: raw, signature: values[0]})))
 	})
 }
 func (s *Handler) CreateCheckout(ctx context.Context, r httpapi.CreateCheckoutRequestObject) (httpapi.CreateCheckoutResponseObject, error) {
@@ -208,23 +211,25 @@ func (s *Handler) CreateCheckout(ctx context.Context, r httpapi.CreateCheckoutRe
 	}
 	return httpapi.CreateCheckout201JSONResponse(dto), nil
 }
-func (s *Handler) ReceiveFakePaymentEvent(ctx context.Context, _ httpapi.ReceiveFakePaymentEventRequestObject) (httpapi.ReceiveFakePaymentEventResponseObject, error) {
-	event, ok := ctx.Value(eventKey{}).(payment.VerifiedEvent)
-	if !ok || event.Validate() != nil {
+func (s *Handler) ReceiveFakePaymentEvent(ctx context.Context, r httpapi.ReceiveFakePaymentEventRequestObject) (httpapi.ReceiveFakePaymentEventResponseObject, error) {
+	raw, ok := ctx.Value(rawEventKey{}).(rawEvent)
+	if !ok || r.Body == nil {
 		return nil, unauthenticated()
 	}
-	if !s.config.FakeEnabled || s.config.Service == nil {
-		return nil, apperrors.New(503, "checkout_unavailable", "Checkout is unavailable")
+	if !s.config.FakeEnabled || s.config.Events == nil {
+		return nil, apperrors.New(503, "payments_unavailable", "Payments are unavailable")
 	}
-	result, err := s.config.Service.Confirm(ctx, event)
-	if err != nil {
-		return nil, mapError(err)
-	}
-	dto, err := representation(result)
+	receipt, err := s.config.Events.Receive(ctx, raw.body, raw.signature)
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.ReceiveFakePaymentEvent200JSONResponse(dto), nil
+	if receipt.Status == "rejected" {
+		return nil, apperrors.New(409, "payment_conflict", "Payment event conflict")
+	}
+	if receipt.EventID == "" || (receipt.Status != "pending" && receipt.Status != "processed") {
+		return nil, fmt.Errorf("invalid payment event receipt")
+	}
+	return httpapi.ReceiveFakePaymentEvent200JSONResponse{EventId: receipt.EventID, Status: httpapi.FakePaymentReceiptStatus(receipt.Status)}, nil
 }
 func representation(r contract.Result) (httpapi.CheckoutResult, error) {
 	checkoutID, e1 := uuid.Parse(r.CheckoutID)

@@ -584,22 +584,30 @@ func TestCheckoutPGExpiredReservationIsNotCaptured(t *testing.T) {
 		t.Run(map[bool]string{false: "deadline-passed", true: "expired-by-sweep"}[swept], func(t *testing.T) {
 			f := newCheckoutPGFixture(t, 10, 2)
 			start := f.start(t)
-			err := f.runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-				// Fixture administrator advances only this order's hold deadline.
-				if _, err := tx.Exec(ctx, "UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND owner_id=$2", f.tenant, start.OrderID); err != nil {
-					return err
-				}
-				if !swept {
-					return nil
-				}
-				var n int
-				if err := tx.QueryRow(ctx, "SELECT app.inventory_expire_due(100)").Scan(&n); err != nil || n != 1 {
-					return errors.Join(err, errors.New("expiry sweep did not expire the hold"))
-				}
-				return nil
+			err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				// Only the trusted fixture administrator advances this order's deadline.
+				_, err := tx.Exec(ctx, "UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND owner_id=$2", f.tenant, start.OrderID)
+				return err
 			})
 			if err != nil {
 				t.Fatal(err)
+			}
+			if swept {
+				queue, err := pgxadapter.OpenQueuePool(f.ctx, os.Getenv("DATABASE_URL"), "app_queue_worker")
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(queue.Close)
+				err = pgxadapter.InQueueTenant(f.ctx, queue, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+					var n int
+					if err := tx.QueryRow(ctx, "SELECT app.inventory_expire_due(100)").Scan(&n); err != nil || n != 1 {
+						return errors.Join(err, errors.New("expiry sweep did not expire the hold"))
+					}
+					return nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			ctx := checkoutRequestContext(f.ctx)
 			event := f.event(start, payment.StatusAuthorized)

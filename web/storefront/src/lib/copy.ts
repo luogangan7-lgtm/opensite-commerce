@@ -7,7 +7,7 @@ const english = {
   emptyProducts: 'No products available', emptyDescription: 'Check back for new products.',
   notFound: 'Page not found', notFoundDescription: 'This page is unavailable. Return home to continue browsing.',
   unavailable: 'Store temporarily unavailable', unavailableDescription: 'We could not load this store. Try again in a moment.',
-  retry: 'Try again', returnHome: 'Return home',
+  retry: 'Try again', returnHome: 'Return home', priceUnavailable: 'Currently unavailable',
 } as const;
 export type CopyKey = keyof typeof english;
 export type StorefrontDictionary = Record<CopyKey, string>;

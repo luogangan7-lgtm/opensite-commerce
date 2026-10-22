@@ -16,9 +16,14 @@ export const SPECS: Record<Scope, string> = {
   'storefront-published': 'tests/frontend/storefront.spec.ts',
   'storefront-commerce': 'tests/frontend/storefront-commerce.spec.ts',
 };
+// chromiumArgs (C-08e): one producer job rendered storefront-commerce-cart.png twice (compare, then update) on the
+// same host and got two variants differing ±1 per channel at the anti-aliased corners of the just-blurred
+// quantity input only. Pixels depended on repaint history: cc partial raster re-rasters only the invalidated
+// rect of a reused tile. Full-tile raster, CPU raster and an sRGB output profile make pixels a function of the DOM.
 export const RENDERING = {
   locale: 'en-US', timezone: 'UTC', deviceScaleFactor: 1, colorScheme: 'light', reducedMotion: 'reduce',
   desktop: [1280, 800], mobile: [390, 844],
+  chromiumArgs: ['--disable-partial-raster', '--disable-gpu', '--force-color-profile=srgb'],
 };
 export type BaselineRecord = {
   schema: 2; snapshot: string; scope: Scope; sourceFingerprint: string; pngSha256: string;

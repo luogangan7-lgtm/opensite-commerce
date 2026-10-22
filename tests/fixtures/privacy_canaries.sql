@@ -105,6 +105,9 @@ BEGIN
  VALUES(t,site,release,'en','product',
   jsonb_build_object('title',{{canary:site_release_templates.document}},'blocks','[]'::jsonb));
  PERFORM app.seal_release(t,site,release);
+ INSERT INTO app.storefront_serving(tenant_id,site_id,release_id,publication_revision,serving_generation,body,fallback_body,body_sha256,fallback_sha256,valid_until,built_at)
+ VALUES(t,site,release,1,1,convert_to({{canary:storefront_serving.body}},'UTF8'),convert_to({{canary:storefront_serving.fallback_body}},'UTF8'),
+  sha256('privacy-serving'::bytea),sha256('privacy-serving-fallback'::bytea),now()+interval '5 minutes',now());
 
  INSERT INTO app.customers(tenant_id,id,email,display_name)
  VALUES(t,customer,{{canary:customers.email}}||'.'||{{canary:customers.email_normalized}}||'.'||

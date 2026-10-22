@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -25,6 +26,10 @@ import (
 )
 
 func FromEnvironment(ctx context.Context, config Config) (Config, func(), error) {
+	fakeEnabled, fakeKey, fakeErr := fakePaymentEnvironment()
+	if fakeErr != nil {
+		return Config{}, nil, fakeErr
+	}
 	// Bound all capability pool probes together, including explicit DSNs.
 	startup, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -58,6 +63,9 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	if err != nil {
 		return Config{}, nil, err
 	}
+	if fakeEnabled && runtimeURL == "" {
+		return Config{}, nil, errors.New("Fake payment requires the runtime database")
+	}
 	if url := runtimeURL; url != "" {
 		runner, err := pgxadapter.OpenQueryRunner(startup, url)
 		if err != nil {
@@ -65,6 +73,12 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			return Config{}, nil, err
 		}
 		runners = append(runners, runner)
+		if fakeEnabled {
+			if err := wireFakePayments(&config, runner, fakeKey); err != nil {
+				closeRuntime()
+				return Config{}, nil, err
+			}
+		}
 		config.Catalog.Run = runner.RunAuthorized
 		config.CMS.Idempotency.Run = runner.RunAuthorizedTx
 		if encoded := os.Getenv("OPENSITE_CMS_PREVIEW_KEY"); encoded != "" && config.CMS.Writer == nil {
@@ -82,6 +96,24 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 				return Config{}, nil, errors.New("CMS writer configuration is invalid")
 			}
 			config.CMS.Writer = writer
+		}
+		// Storefront serving refresh (ADR_STOREFRONT_SERVING 2.6): deployment-authorized
+		// tenants only; without it serving rows degrade to their fallback, never to stale.
+		list := os.Getenv("OPENSITE_SERVING_REFRESH_TENANTS")
+		if list == "" && config.Logger != nil {
+			config.Logger.Warn("OPENSITE_SERVING_REFRESH_TENANTS is empty: storefront serving rows are not refreshed and fall back to no purchasable SKUs")
+		}
+		if list != "" {
+			refresher, err := publish.NewRefresher(publish.RefreshConfig{Run: runner.RunTrustedTx, Tenants: strings.Split(list, ","), Logger: config.Logger})
+			if err != nil {
+				closeRuntime()
+				return Config{}, nil, err
+			}
+			refreshCtx, stopRefresh := context.WithCancel(context.WithoutCancel(ctx))
+			done := make(chan struct{})
+			go func() { defer close(done); refresher.Run(refreshCtx) }()
+			previous := closeRuntime
+			closeRuntime = func() { stopRefresh(); <-done; previous() }
 		}
 		config.Orders.Read = runner.RunAuthorizedSnapshot
 		config.Fulfillment.Run = runner.RunAuthorizedTx

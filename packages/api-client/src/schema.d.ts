@@ -117,7 +117,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Explicit test/development configuration only; never mounted in production. The verifier authenticates exact raw bytes before a trusted event reaches checkout. Checkout rechecks persisted tenant/order, amount, currency, version and provider binding and deduplicates delivery inside a transaction. */
+        /** @description Explicit test/development configuration only; never mounted in production. Payments authenticates timestamp plus exact raw bytes and derives tenant authority from a trusted account binding. The durable receipt reports pending or processed; external facts never reissue provider commands. */
         post: operations["receiveFakePaymentEvent"];
         delete?: never;
         options?: never;
@@ -132,7 +132,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Current sealed public release for a verified DNS hostname. Version-1 public manifest seals product view models derived from catalog published listings and pinned content revisions. */
+        /** @description Current public storefront body for a verified DNS hostname, served as the precomputed storefront serving row (docs/architecture/ADR_STOREFRONT_SERVING.md). Product content and SKU membership (sku_id, sku_code, option_values) are sealed at publish. price_minor is the anonymous default price (quantity 1, the product's release currency, active audience=all lists in their time window, priority descending then list id ascending) computed when the serving row was built; available is on-hand minus reserved > 0 at build time, never a count. Unpriced or non-ready SKUs at publish are not members (adding them requires republish). Price, stock and lifecycle changes invalidate the body in their own transaction and a refresher rebuilds it; a body past its next price boundary, 15-minute lifetime or 30-second invalidation grace is replaced by the fallback (skus []), never served stale. Products carry no product-level price: display prices come from skus. Cart and checkout re-price and reserve authoritatively. The body is host-independent (no hostname) and carries the host's tenant_id for tenant-scoped cart APIs. */
         get: operations["getPublishedSite"];
         put?: never;
         post?: never;
@@ -1041,90 +1041,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/t/{tenant_id}/orders/{order_id}/shipments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                order_id: components["parameters"]["OrderId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Allocate already committed order quantities. Shipment creation never decrements inventory again. If-Match is the order version; identical Idempotency-Key replays before the current version check. */
-        post: operations["createShipment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/t/{tenant_id}/orders/{order_id}/returns": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                order_id: components["parameters"]["OrderId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Request a return from a shipment line, or cancel paid but unshipped quantities. Unshipped cancellation atomically marks quantities received and restores inventory once, blocking later shipment. Shipment returns require a shipment_line_id; cancellations forbid it. If-Match is the order version. */
-        post: operations["createReturn"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/t/{tenant_id}/returns/{return_id}/receive": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                return_id: components["parameters"]["ReturnId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Confirm received quantities and optionally restore inventory exactly once. If-Match is the associated order version, returned as order_version. */
-        post: operations["receiveReturn"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/t/{tenant_id}/returns/{return_id}/refund": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                return_id: components["parameters"]["ReturnId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Refund the server-calculated frozen return entitlement through a trusted Payment Port. The body is empty: amounts, captured payment proof and ledger accounts are server-owned. The refund intent commits before the provider call and its stable key survives retries; ledger and order completion share a transaction. If-Match is the associated order version. Missing trusted payment/account wiring fails closed with 503. */
-        post: operations["refundReturn"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1223,18 +1139,22 @@ export interface components {
         };
         FakePaymentEvent: {
             event_id: string;
-            /** Format: uuid */
-            tenant_id: string;
+            account_id: string;
             /** Format: uuid */
             order_id: string;
             /** Format: int64 */
             order_version: number;
             provider_ref: string;
             /** @enum {string} */
-            status: "authorized" | "captured" | "failed" | "canceled";
+            status: "captured" | "failed" | "canceled" | "partially_refunded" | "refunded";
             /** Format: int64 */
             amount_minor: number;
             currency: string;
+        };
+        FakePaymentReceipt: {
+            event_id: string;
+            /** @enum {string} */
+            status: "pending" | "processed" | "rejected";
         };
         NotificationFailure: {
             /** Format: uuid */
@@ -1347,6 +1267,19 @@ export interface components {
             currency: string;
         };
         PublishedSite: {
+            /** @description Tenant resolved from the verified hostname; storefronts use it for tenant-scoped APIs such as /api/v1/t/{tenant_id}/carts. */
+            tenant_id: string;
+            site_id: string;
+            release_id: string;
+            locale: string;
+            title: string;
+            description: string;
+            navigation: components["schemas"]["PublishedNavigation"][];
+            pages: components["schemas"]["PublishedPage"][];
+            products: components["schemas"]["PublicProduct"][];
+        };
+        /** @description CMS draft preview projection (never the public storefront body; no tenant_id or SKUs). */
+        SitePreview: {
             site_id: string;
             release_id: string;
             hostname: string;
@@ -1356,6 +1289,29 @@ export interface components {
             navigation: components["schemas"]["PublishedNavigation"][];
             pages: components["schemas"]["PublishedPage"][];
             products: components["schemas"]["PublishedProduct"][];
+        };
+        /** @description Public product view. No product-level price; display prices come from the purchasable skus. */
+        PublicProduct: {
+            id: string;
+            slug: string;
+            name: string;
+            description: string;
+            /** @description Purchasable SKUs; see getPublishedSite for membership, price and availability rules. */
+            skus: components["schemas"]["PublishedSku"][];
+        };
+        PublishedSkuOptionValue: {
+            name: string;
+            value: string;
+        };
+        PublishedSku: {
+            sku_id: string;
+            sku_code: string;
+            option_values: components["schemas"]["PublishedSkuOptionValue"][];
+            /** @description Anonymous default unit price in minor units as a decimal string, as of the serving build. */
+            price_minor: string;
+            currency: string;
+            /** @description True when on-hand stock exceeded active reservations at the serving build; never a count. */
+            available: boolean;
         };
         LoginChallenge: {
             csrf_token: string;
@@ -1955,78 +1911,6 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        CreateShipment: {
-            carrier: string;
-            tracking_number: string;
-            lines: components["schemas"]["ShipmentQuantity"][];
-        };
-        ShipmentQuantity: {
-            /** Format: uuid */
-            order_line_id: string;
-            /** Format: int64 */
-            quantity: number;
-        };
-        ShipmentRecordLine: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            order_line_id: string;
-            /** Format: int64 */
-            quantity: number;
-        };
-        ShipmentRecord: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            order_id: string;
-            /** Format: int64 */
-            order_version: number;
-            status: string;
-            lines: components["schemas"]["ShipmentRecordLine"][];
-        };
-        CreateReturn: {
-            /** @enum {string} */
-            kind: "shipment_return" | "unshipped_cancel";
-            reason: string;
-            lines: components["schemas"]["ReturnQuantity"][];
-        };
-        ReturnQuantity: {
-            /** Format: uuid */
-            order_line_id: string;
-            /** Format: uuid */
-            shipment_line_id?: string;
-            /** Format: int64 */
-            quantity: number;
-        };
-        ReturnRecordLine: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            order_line_id: string;
-            /** Format: uuid */
-            shipment_line_id?: string;
-            /** Format: int64 */
-            quantity: number;
-        };
-        ReturnRecord: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            order_id: string;
-            /** Format: int64 */
-            order_version: number;
-            /** @enum {string} */
-            kind: "shipment_return" | "unshipped_cancel";
-            status: string;
-            restocked: boolean;
-            /** Format: int64 */
-            refund_minor: number;
-            lines: components["schemas"]["ReturnRecordLine"][];
-        };
-        ReceiveReturn: {
-            restock: boolean;
-        };
-        RefundReturn: Record<string, never>;
     };
     responses: {
         /** @description BadRequest */
@@ -2203,8 +2087,6 @@ export interface components {
         /** @description Opaque base64url created_at/id cursor from the prior response. */
         Cursor: string;
         QuoteId: string;
-        OrderId: string;
-        ReturnId: string;
     };
     requestBodies: never;
     headers: never;
@@ -2551,13 +2433,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Stable result after payment event admission or replay. */
+            /** @description Durable payment fact receipt after admission or replay. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CheckoutResult"];
+                    "application/json": components["schemas"]["FakePaymentReceipt"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -3992,7 +3874,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublishedSite"];
+                    "application/json": components["schemas"]["SitePreview"];
                 };
             };
             400: components["responses"]["Problem"];
@@ -5130,262 +5012,6 @@ export interface operations {
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    createShipment: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
-                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-                "If-Match": components["parameters"]["IfMatch"];
-                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
-                Origin?: components["parameters"]["OriginIfCookie"];
-                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
-                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
-            };
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                order_id: components["parameters"]["OrderId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateShipment"];
-            };
-        };
-        responses: {
-            /** @description Durable command result. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShipmentRecord"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description Resource missing or owned by another tenant. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            /** @description Trusted persistence/payment/account binding is unavailable. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    createReturn: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
-                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-                "If-Match": components["parameters"]["IfMatch"];
-                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
-                Origin?: components["parameters"]["OriginIfCookie"];
-                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
-                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
-            };
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                order_id: components["parameters"]["OrderId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateReturn"];
-            };
-        };
-        responses: {
-            /** @description Durable command result. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReturnRecord"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description Resource missing or owned by another tenant. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            /** @description Trusted persistence/payment/account binding is unavailable. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    receiveReturn: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
-                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-                "If-Match": components["parameters"]["IfMatch"];
-                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
-                Origin?: components["parameters"]["OriginIfCookie"];
-                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
-                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
-            };
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                return_id: components["parameters"]["ReturnId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReceiveReturn"];
-            };
-        };
-        responses: {
-            /** @description Durable command result. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReturnRecord"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description Resource missing or owned by another tenant. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            /** @description Trusted persistence/payment/account binding is unavailable. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    refundReturn: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
-                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-                "If-Match": components["parameters"]["IfMatch"];
-                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
-                Origin?: components["parameters"]["OriginIfCookie"];
-                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
-                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
-            };
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                return_id: components["parameters"]["ReturnId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RefundReturn"];
-            };
-        };
-        responses: {
-            /** @description Durable command result. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReturnRecord"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description Resource missing or owned by another tenant. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            /** @description Trusted persistence/payment/account binding is unavailable. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
         };
     };
 }
