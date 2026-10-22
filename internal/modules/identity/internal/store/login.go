@@ -1,6 +1,6 @@
 // Responsibility: private staff-auth persistence through generated SQL.
 // Dependencies: tenanttx identity runner and internal/db; identity login service calls.
-// Invariants: dedicated app_auth LOGIN; serialized connection; atomic rotation;
+// Invariants: runner-admitted app_auth LOGIN; isolated bounded lanes; atomic rotation;
 // driver errors and credentials never escape this boundary.
 package store
 
@@ -18,16 +18,15 @@ import (
 )
 
 type authRunner interface {
-	InMaintenance(context.Context, func(context.Context, pgx.Tx) error) error
+	RunAuthentication(context.Context, func(context.Context, *db.Queries) error) error
 	Close(context.Context) error
 }
 
-// LoginRepository owns one dedicated connection. Waiting and SQL execution
-// share an internal two-second budget, shortened by any caller deadline.
+// LoginRepository isolates session queries from credential work. Each runner
+// owns one connection, queue, role validation and an internal two-second budget.
 type LoginRepository struct {
-	runner authRunner
-	gate   chan struct{}
-	idle   time.Duration
+	runner, sessionRunner authRunner
+	idle                  time.Duration
 }
 
 var _ login.Repository = (*LoginRepository)(nil)
@@ -40,56 +39,34 @@ func OpenLogin(ctx context.Context, dsn string, idleTimeout time.Duration) (*Log
 	if err != nil {
 		return nil, login.ErrDatabase
 	}
-	r := &LoginRepository{runner: runner, gate: make(chan struct{}, 1), idle: idleTimeout}
-	err = r.run(ctx, func(ctx context.Context, q *db.Queries) error {
-		allowed, err := q.ValidateAuthConnection(ctx)
-		if err != nil || !allowed.Valid || !allowed.Bool {
-			return login.ErrDatabase
-		}
-		return nil
-	})
+	sessions, err := identityadapter.OpenStaffAuthentication(ctx, dsn)
 	if err != nil {
-		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = runner.Close(closeCtx)
+		_ = runner.Close(ctx)
+		return nil, login.ErrDatabase
+	}
+	r := &LoginRepository{runner: runner, sessionRunner: sessions, idle: idleTimeout}
+	noop := func(context.Context, *db.Queries) error { return nil }
+	if r.run(ctx, noop) != nil || r.runLane(ctx, sessions, noop) != nil {
+		_ = r.Close(ctx)
 		return nil, login.ErrDatabase
 	}
 	return r, nil
 }
 
-// run holds the deadline-aware connection gate through callback and commit.
-// Only sqlc queries constructed from the current transaction reach callers.
+// run delegates all queue/deadline/role policy to the query-only adapter port.
 func (r *LoginRepository) run(ctx context.Context, fn func(context.Context, *db.Queries) error) error {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	if err := r.enter(ctx); err != nil {
-		return err
-	}
-	defer r.leave()
-	err := r.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error { return fn(ctx, db.New(tx)) })
+	return r.runLane(ctx, r.runner, fn)
+}
+func (r *LoginRepository) runLane(ctx context.Context, runner authRunner, fn func(context.Context, *db.Queries) error) error {
+	err := runner.RunAuthentication(ctx, fn)
 	if err == nil || errors.Is(err, login.ErrNotFound) || errors.Is(err, login.ErrSession) {
 		return err
 	}
 	return login.ErrDatabase
 }
-func (r *LoginRepository) enter(ctx context.Context) error {
-	if ctx.Err() != nil {
-		return login.ErrDatabase
-	}
-	select {
-	case r.gate <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return login.ErrDatabase
-	}
-}
-func (r *LoginRepository) leave() { <-r.gate }
 func (r *LoginRepository) Close(ctx context.Context) error {
-	if err := r.enter(ctx); err != nil {
-		return err
-	}
-	defer r.leave()
-	if err := r.runner.Close(ctx); err != nil {
+	credentialErr, sessionErr := r.runner.Close(ctx), r.sessionRunner.Close(ctx)
+	if credentialErr != nil || sessionErr != nil {
 		return login.ErrDatabase
 	}
 	return nil
@@ -201,7 +178,7 @@ func (r *LoginRepository) LookupSession(ctx context.Context, hash [32]byte, at t
 		return login.Session{}, login.ErrSession
 	}
 	var row db.LoginLookupSessionRow
-	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
+	err := r.runLane(ctx, r.sessionRunner, func(ctx context.Context, q *db.Queries) error {
 		var err error
 		row, err = q.LoginLookupSession(ctx, db.LoginLookupSessionParams{At: stamp(at), TokenHash: hash[:], IdleSeconds: int64(idle / time.Second)})
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -100,7 +100,10 @@ def assert_contract(registry, source):
     assert create['properties']['scopes']['type'] == 'array'
     assert create['properties']['scopes']['maxItems'] == len(SCOPES)
     assert set(create['properties']['scopes']['items']['enum']) == SCOPES, 'unknown scopes must fail closed'
-    assert {body['x-required-scope'] for body in blocks.values() if 'x-required-scope' in body} == SCOPES
+    # Buyer capabilities are not scopes that a staff administrator can issue.
+    staff_blocks = [body for body in blocks.values()
+                    if body.get('x-opensite-access') in {'AdminSession', 'AdminOrAPIKey'}]
+    assert {body['x-required-scope'] for body in staff_blocks if 'x-required-scope' in body} == SCOPES
     view = schemas['APIKeyView']
     assert view['additionalProperties'] is False
     assert set(view['required']) == {'id', 'key_prefix', 'scopes', 'issued_by', 'created_at'}
@@ -127,7 +130,8 @@ check_operations(registry, ROOT / 'api/openapi.yaml')
 # Inject faults into in-memory/temporary copies, preserving the shared checkout.
 api = yaml.safe_load(source)
 for fault in ['anonymous session', 'login CSRF removed', 'planned status changed', 'actual status changed',
-              'bearer key management', 'key CSRF removed', 'unknown scope', 'secret in list', 'secret replay']:
+              'bearer key management', 'key CSRF removed', 'unknown scope', 'unknown staff route scope',
+              'secret in list', 'secret replay']:
     bad_api = copy.deepcopy(api)
     bad_registry = copy.deepcopy(registry)
     if fault == 'anonymous session':
@@ -140,6 +144,8 @@ for fault in ['anonymous session', 'login CSRF removed', 'planned status changed
         bad_api['paths'][KEY_PATH + '/{key_id}']['delete']['parameters'] = [{'$ref': '#/components/parameters/TenantId'}]
     elif fault == 'unknown scope':
         bad_api['components']['schemas']['CreateAPIKey']['properties']['scopes']['items']['enum'].append('unknown:scope')
+    elif fault == 'unknown staff route scope':
+        bad_api['paths']['/api/v1/t/{tenant_id}/quotes/{quote_id}']['get']['x-required-scope'] = 'unknown:scope'
     elif fault == 'secret in list':
         bad_api['components']['schemas']['APIKeyView']['properties']['key'] = {'type': 'string'}
     elif fault == 'secret replay':

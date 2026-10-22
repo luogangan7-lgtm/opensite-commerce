@@ -57,7 +57,11 @@ SELLER_QUOTES = {
     "withdrawQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/withdraw"),
     "expireQuote": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/expire"),
 }
-QUOTE_OPERATIONS = SELLER_QUOTES.keys() | BUYER_QUOTES.keys() | {"submitInquiry"}
+QUOTE_CONVERSIONS = {
+    "createQuoteOrder": ("post", "/api/v1/t/{tenant_id}/quotes/{quote_id}/orders"),
+    "getQuoteOrderConversion": ("get", "/api/v1/t/{tenant_id}/quotes/{quote_id}/order-conversion"),
+}
+QUOTE_OPERATIONS = SELLER_QUOTES.keys() | BUYER_QUOTES.keys() | QUOTE_CONVERSIONS.keys() | {"submitInquiry"}
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -251,6 +255,9 @@ def validate_contract(api):
                 if customer:
                     require(path.startswith('/api/v1/t/{tenant_id}/customer/') and op['x-opensite-status'] == 'implemented',
                             'customer authentication route drift')
+        elif access == "BuyerCompany":
+            require(ident == "createQuoteOrder" and tenant and scope == "quotes:convert" and
+                    security == [{"customerSession": []}], f"buyer company session/tenant/scope required: {ident}")
         elif access == "Storefront":
             if ident == "createCheckout":
                 require((path, method) == ("/api/v1/t/{tenant_id}/checkout", "post") and tenant and
@@ -305,8 +312,24 @@ def validate_contract(api):
             require((method, path) == BUYER_QUOTES[ident], f"buyer quote route drift: {ident}")
             require(access == "Public" and op.get("x-opensite-trusted-buyer") == "required",
                     f"trusted buyer declaration required: {ident}")
-        elif "x-opensite-trusted-buyer" in op:
+        elif "x-opensite-trusted-buyer" in op and ident != "createQuoteOrder":
             raise ValueError(f"trusted buyer marker outside buyer quote operation: {ident}")
+        if ident in QUOTE_CONVERSIONS:
+            require((method, path) == QUOTE_CONVERSIONS[ident], f"quote conversion route drift: {ident}")
+            if ident == "createQuoteOrder":
+                require(access == "BuyerCompany" and op.get("x-opensite-trusted-buyer") == "required",
+                        "conversion requires an explicitly authenticated company buyer")
+                headers = {p["name"]: p for p in parameters if p["in"] == "header"}
+                require(headers.get("Idempotency-Key", {}).get("required") is True and
+                        headers["Idempotency-Key"].get("schema", {}).get("maxLength") == 128,
+                        "conversion requires bounded idempotency key")
+                for header, schema in {"Origin": {"type": "string", "format": "uri"},
+                                       "X-CSRF-Token": {"type": "string", "minLength": 1, "maxLength": 512}}.items():
+                    require(headers.get(header, {}).get("required") is True and
+                            headers[header].get("schema") == schema,
+                            f"conversion {header} admission contract missing/incorrect")
+            else:
+                require(access == "AdminOrAPIKey" and scope == "quotes:read", "conversion read requires seller quotes:read")
         if ident in SELLER_QUOTES:
             require((method, path) == SELLER_QUOTES[ident], f"seller quote route drift: {ident}")
             require(access == "AdminOrAPIKey" and scope == ("quotes:read" if ident == "getQuote" else "quotes:write"),

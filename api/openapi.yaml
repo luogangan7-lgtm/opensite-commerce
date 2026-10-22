@@ -2802,6 +2802,87 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v1/t/{tenant_id}/quotes/{quote_id}/orders:
+    post:
+      tags: [Quotes]
+      operationId: createQuoteOrder
+      x-opensite-status: implemented
+      x-opensite-access: BuyerCompany
+      x-required-scope: quotes:convert
+      x-opensite-trusted-buyer: required
+      security:
+        - customerSession: []
+      description: >-
+        Convert an approved quote to exactly one order from its immutable payable snapshot.
+        The router's injected buyer authenticator must verify the separate customer session,
+        exact storefront Origin, session-bound CSRF and active company membership;
+        without it this endpoint returns 401. Tenant/company mismatch returns 404. Identity,
+        amount, price, currency and snapshot fields are never accepted from the client.
+        Requires one visible ASCII Idempotency-Key of 1 to 128 bytes, without whitespace.
+        Retrying the same key returns the original conversion; competing different keys
+        return 409, and reusing a key for a different quote returns 422. Conversion does not
+        claim payment success. Customer authentication and real checkout remain separate gates.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutOrigin'
+        - $ref: '#/components/parameters/CheckoutCSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuoteOrder'
+      responses:
+        '201':
+          description: Original conversion receipt, including idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteOrderConversion'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /api/v1/t/{tenant_id}/quotes/{quote_id}/order-conversion:
+    get:
+      tags: [Quotes]
+      operationId: getQuoteOrderConversion
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: quotes:read
+      description: Read a quote conversion receipt using trusted seller identity and quotes:read scope. Foreign tenants return 404.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/QuoteId'
+      responses:
+        '200':
+          description: Quote conversion receipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteOrderConversion'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /api/v1/t/{tenant_id}/quotes/{quote_id}/send:
     post:
       tags:
@@ -4142,7 +4223,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         event_id: {type: string, format: uuid}
-        template_key: {type: string, enum: [order.paid, order.shipped, order.refund, quote.sent, quote.approved]}
+        template_key: {type: string, enum: [order.paid, order.shipped, order.refund, quote.sent, quote.approved, quote.converted]}
         status: {type: string, enum: [failed, dead_letter, uncertain]}
         attempts: {type: integer, format: int32, minimum: 0, maximum: 2147483647}
         generation: {type: integer, format: int32, minimum: 1, maximum: 2147483647}
@@ -5280,6 +5361,28 @@ components:
           format: int32
           minimum: 0
       additionalProperties: false
+    CreateQuoteOrder:
+      type: object
+      additionalProperties: false
+    QuoteOrderConversion:
+      type: object
+      additionalProperties: false
+      required: [quote_id, quote_version, order_id, order_number, amount, currency, state, created_at]
+      properties:
+        quote_id: {type: string, format: uuid}
+        quote_version: {type: string, pattern: '^[1-9][0-9]*$'}
+        order_id: {type: string, format: uuid}
+        order_number: {type: string, pattern: '^[1-9][0-9]*$'}
+        amount:
+          type: string
+          pattern: '^[1-9][0-9]*$'
+          description: Exact positive payable amount in currency minor units from the approved quote snapshot.
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        state:
+          type: string
+          enum: [pending_payment, paid, partially_fulfilled, fulfilled, cancelled, partially_refunded, refunded]
+        provider_ref: {type: string, minLength: 1, maxLength: 512}
+        created_at: {type: string, format: date-time}
     QuoteTransition:
       type: object
       additionalProperties: false

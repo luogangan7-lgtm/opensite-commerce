@@ -7,6 +7,16 @@ package httpapi
 
 import "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
 
+type CreateQuoteOrder = generated.CreateQuoteOrder
+type QuoteOrderConversion = generated.QuoteOrderConversion
+type QuoteOrderConversionState = generated.QuoteOrderConversionState
+type CreateQuoteOrderRequestObject = generated.CreateQuoteOrderRequestObject
+type CreateQuoteOrderResponseObject = generated.CreateQuoteOrderResponseObject
+type CreateQuoteOrder201JSONResponse = generated.CreateQuoteOrder201JSONResponse
+type GetQuoteOrderConversionRequestObject = generated.GetQuoteOrderConversionRequestObject
+type GetQuoteOrderConversionResponseObject = generated.GetQuoteOrderConversionResponseObject
+type GetQuoteOrderConversion200JSONResponse = generated.GetQuoteOrderConversion200JSONResponse
+
 type ArchiveProduct204Response = generated.ArchiveProduct204Response
 type ArchiveProductRequestObject = generated.ArchiveProductRequestObject
 type ArchiveProductResponseObject = generated.ArchiveProductResponseObject

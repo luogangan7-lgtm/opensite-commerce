@@ -10,6 +10,19 @@ read-only `GetPayable` port. Every method accepts an already authorized
 tenant must match `app.tenant_id`. Orders opens no connection or pool, imports
 no payment provider, and issues SQL exclusively through generated sqlc queries.
 
+`NewQuoteCreator` exposes the optional `CreateFromQuote` transaction port. It
+accepts fixed negotiated money with `QuoteSource` (quote ID, immutable version,
+line number), requires one source quote and distinct line numbers, and forbids
+price-list/tier provenance and extra adjustments. The source joins the permanent
+creation hash; ordinary `Create` rejects it. The trusted caller must verify the
+approved quote and bind its durable conversion in this same transaction. Orders
+does not authenticate a quote from a constructed value or reprice it.
+
+`NewReservationValidator` exposes `ValidateReservations` before provider capture.
+It checks the matching tenant, pending sealed order and exact live holds through
+the database-owned function. Provider I/O follows after the transaction ends;
+the final paid transition still atomically rechecks and consumes reservations.
+
 Create accepts stable caller-assigned order and line IDs, an idempotency key,
 a customer UUID or a frozen guest contact, and previously authorized results
 from Pricing, Tax and Shipping. It validates checked Money arithmetic, quantity

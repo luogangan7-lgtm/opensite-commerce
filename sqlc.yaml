@@ -41,6 +41,8 @@ sql:
       - "migrations/pending/c20a-fulfillment_fulfillment_returns.sql"
       - "migrations/pending/c02c-tenant-auth_tenant_auth.sql"
       - "migrations/pending/c20a-fulfillment-scopes_fulfillment_role_scopes.sql"
+      - "migrations/pending/c18b-quote-conversion_quote_conversion.sql"
+      - "migrations/pending/c18b-checkout-source_checkout_source.sql"
     queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant"]
     gen:
       go:

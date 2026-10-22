@@ -32,8 +32,8 @@ func Render(event, recipient, locale, key, reference string) (contract.Message, 
 	if event == "" || len(event) > 64 || !ValidRecipient(recipient) || len(reference) > 256 || strings.ContainsAny(reference, "\r\n") {
 		return contract.Message{}, fmt.Errorf("NOTIFICATION_INVALID_ENVELOPE")
 	}
-	english := map[string]string{"order.paid": "Payment received", "order.shipped": "Order shipped", "order.refund": "Refund processed", "quote.sent": "Quote ready", "quote.approved": "Quote approved"}
-	chinese := map[string]string{"order.paid": "付款已收到", "order.shipped": "訂單已出貨", "order.refund": "退款已處理", "quote.sent": "報價已準備", "quote.approved": "報價已核准"}
+	english := map[string]string{"order.paid": "Payment received", "order.shipped": "Order shipped", "order.refund": "Refund processed", "quote.sent": "Quote ready", "quote.approved": "Quote approved", "quote.converted": "Quote converted to order"}
+	chinese := map[string]string{"order.paid": "付款已收到", "order.shipped": "訂單已出貨", "order.refund": "退款已處理", "quote.sent": "報價已準備", "quote.approved": "報價已核准", "quote.converted": "報價已轉為訂單"}
 	subject, ok := english[key]
 	if !ok {
 		return contract.Message{}, fmt.Errorf("NOTIFICATION_UNKNOWN_TEMPLATE")
