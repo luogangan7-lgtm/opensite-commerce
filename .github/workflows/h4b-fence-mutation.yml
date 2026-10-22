@@ -1,0 +1,69 @@
+# Temporary H4 fence probe: control and two trigger mutants use the same gate.
+name: h4b-fence-mutation
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  fence-probe:
+    if: github.head_ref == 'codex/h4b-fence-probe'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [control, no-revoke, revoke-same-value]
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      JOBS_REQUIRE_PG: '1'
+      DATABASE_URL: postgresql://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ matrix.variant == 'control' && '9ac057f0fff0cd8e64ad31d9655761ed5ee8e76b' || github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Bind source
+        run: git rev-parse HEAD
+      - name: Inject one bounded trigger fault per mutant
+        env:
+          PROBE_VARIANT: ${{ matrix.variant }}
+        run: |
+          python3 - <<'PYPROBE'
+          import hashlib, os
+          from pathlib import Path
+          p = Path('migrations/pending/h4-identity_hardening.sql')
+          s = p.read_text()
+          variant = os.environ['PROBE_VARIANT']
+          if variant == 'no-revoke':
+              old = "UPDATE app.auth_sessions SET revoked_at=clock_timestamp()\n   WHERE user_id=NEW.id AND revoked_at IS NULL;"
+              assert s.count(old) == 1
+              s = s.replace(old, 'NULL; -- injected missing atomic revoke-all')
+          elif variant == 'revoke-same-value':
+              old = 'IF NEW.password_hash IS DISTINCT FROM OLD.password_hash THEN'
+              assert s.count(old) == 1
+              s = s.replace(old, 'IF true THEN -- injected no-op password revocation')
+          p.write_text(s)
+          print(variant, hashlib.sha256(s.encode()).hexdigest())
+          PYPROBE
+      - name: Normalize pending migrations only in ephemeral CI checkout
+        run: python3 scripts/pending_migrations.py ci-normalize
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - name: Fixture PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+      - name: Original fence gate (control must pass; each mutant must fail its own invariant)
+        run: go test -v -race -tags pgx -count=1 -run '^TestH4FencePasswordChangePostgres$' ./internal/modules/identity
