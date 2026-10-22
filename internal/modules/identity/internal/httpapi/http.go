@@ -131,6 +131,10 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := r.Context().Value(principalKey{}).(principal)
+	if _, _, err := h.service.Authenticate(r.Context(), p.token); err != nil {
+		writeError(w, r, err)
+		return
+	}
 	h.setSessionCookie(w, p.token, p.session)
 	writeJSON(w, 200, sessionBody(p.session, h.service.SessionCSRF(p.token)))
 }
