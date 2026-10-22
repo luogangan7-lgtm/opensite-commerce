@@ -148,7 +148,7 @@ test('registered purchase appears only in owned history',async({page,request},in
   expect((await page.request.get(`${backend}/${checkout.order_id}`)).status()).toBe(404);
   expect((await page.request.get(`${api}/history/${checkout.order_id}`)).status()).toBe(404);
   await page.context().clearCookies();
-  await page.context().addCookies([{name:'__Host-osc_customer_session',value:'A'.repeat(43),url:fixture.storefront,secure:true,httpOnly:true,sameSite:'Lax'}]);
+  await page.context().addCookies([{...oldSession!,value:'A'.repeat(43)}]);
   expect((await page.request.get(backend)).status()).toBe(401);
   expect((await page.request.get(`${api}/history`)).status()).toBe(401);
   await page.context().clearCookies();
