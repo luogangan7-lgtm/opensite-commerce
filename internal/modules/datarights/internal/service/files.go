@@ -230,8 +230,10 @@ func (s *Service) Sweep(ctx context.Context, tenant string) error {
 				return err
 			}
 		}
+		// A previous unlink may have succeeded before its fsync failed.
+		// Sync an empty retry too, before acknowledging reclamation.
 		if readErr == io.EOF {
-			return nil
+			return d.Sync()
 		}
 	}
 }
