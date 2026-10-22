@@ -358,15 +358,19 @@ func TestOrdersReadAPIPostgres(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		cursor string
-		query  string
+		state  string
 	}{
 		{"non-base64url character", string(nonBase64), ""},
 		{"base64url of non-JSON bytes", base64.RawURLEncoding.EncodeToString([]byte("not-json")), ""},
 		{"malformed UUID", base64.RawURLEncoding.EncodeToString(malformedUUID), ""},
-		{"filter mismatch", *pending.NextCursor, "state=paid"},
+		{"filter mismatch", *pending.NextCursor, "paid"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			w := orderGet(t, h, base+"?limit=3&"+tc.query+"cursor="+url.QueryEscape(tc.cursor), 400)
+			query := url.Values{"limit": {"3"}, "cursor": {tc.cursor}}
+			if tc.state != "" {
+				query.Set("state", tc.state)
+			}
+			w := orderGet(t, h, base+"?"+query.Encode(), 400)
 			var problem struct {
 				Code   string `json:"code"`
 				Status int    `json:"status"`
