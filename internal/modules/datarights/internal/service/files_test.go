@@ -3,6 +3,7 @@ package service
 
 import (
 	"os"
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -55,5 +56,21 @@ func TestTokenBoundToAllScope(t *testing.T) {
 	}
 	if len(a) < 40 {
 		t.Fatal("weak token")
+	}
+}
+
+func TestCleanupRemovesPrivateArtifactAndRetries(t *testing.T) {
+	s := Service{root: t.TempDir()}
+	if err := s.write(tenant, request, []byte("private copy")); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := s.Cleanup(context.Background(), tenant, []string{request}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, _ := s.path(tenant, request)
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatal("cleanup retained private artifact", err)
 	}
 }

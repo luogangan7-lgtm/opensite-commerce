@@ -130,22 +130,5 @@ func (s *Service) read(tenant, id string) ([]byte, error) {
 	return b, nil
 }
 func (s *Service) Cleanup(ctx context.Context, tenant string, ids []string) error {
-	r, e := s.openRoot()
-	if e != nil {
-		return contract.ErrUnavailable
-	}
-	defer r.Close()
-	for _, id := range ids {
-		if e = ctx.Err(); e != nil {
-			return e
-		}
-		p, e := s.relative(tenant, id)
-		if e != nil {
-			return e
-		}
-		if e = r.Remove(p); e != nil && !os.IsNotExist(e) {
-			return contract.ErrUnavailable
-		}
-	}
-	return nil
+	return nil // MUTATION PROBE: acknowledge cleanup without deleting PII.
 }
