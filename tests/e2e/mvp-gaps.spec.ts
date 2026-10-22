@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
 import { audit, fixture } from './fixture';
 
 test('FIXME staff create SKU → media upload → publish', async () => {
-  test.fixme(true, 'Staff login is covered in admin.spec.ts; CMS publish (#45) is merged but its private routes need the production staff authenticator (C-02c); PR #55 storefront SKUs is OPEN');
+  test.fixme(true, 'Staff/catalog/media/CMS authorization is merged; catalog content/listing/price write APIs are absent. Await the explicit E2E-ADMIN fixture-preparation decision before claiming a created SKU reaches publication.');
   throw new Error('Replace this gap with the complete real browser journey and persisted API assertions before removing FIXME');
 });
 

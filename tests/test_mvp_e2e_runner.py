@@ -120,6 +120,18 @@ class BrowserReceiptTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
                 module.verify_browser_report(changed)
 
+    def test_real_admin_orders_cannot_be_removed_skipped_or_reclassified(self):
+        module = self.runner()
+        for mutation in ('remove', 'wrong_file', 'skip', 'fixme'):
+            report = self.browser_report(module)
+            admin = next(s for s in report['suites'][0]['specs'] if s['title'] in module.ADMIN_TESTS)
+            if mutation == 'remove': report['suites'][0]['specs'].remove(admin)
+            elif mutation == 'wrong_file': admin['file'] = 'admin.spec.ts'
+            elif mutation == 'skip': admin['tests'][0]['results'] = [{'status': 'skipped'}]
+            else: admin['tests'][0]['expectedStatus'] = 'skipped'
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                module.verify_browser_report(report)
+
     def test_browser_green_cannot_replace_persisted_payment_witness(self):
         module = self.runner()
         self.assertEqual(module.verify_payment_witness(self.rows())['status'], 'PASS')

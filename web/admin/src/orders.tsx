@@ -1,6 +1,6 @@
 /**
  * Responsibility: owner-specified, read-only orders contract and admin views.
- * Dependencies: AdminAPI transport, React Router, shared UI; callers: admin routes.
+ * Dependencies: generated OpenAPI client over AdminAPI, React Router, shared UI; callers: admin routes.
  * Invariants: PR47 snapshots identify lines by SKU, never inferred product titles;
  * minor amounts stay exact strings/BigInt; no fulfillment/refund writes;
  * contract fixture is visibly labelled and does not establish backend authorization.
@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Badge, Button, Card, DataTable, EmptyState, FormField, Select } from '@opensite/ui';
 import { AdminAPI, APIError } from './api';
+import { createCommerceClient } from '../../../packages/api-client/src';
 
 export const ORDER_STATES = ['pending_payment', 'paid', 'partially_fulfilled', 'fulfilled', 'cancelled', 'partially_refunded', 'refunded'] as const;
 export type OrderState = typeof ORDER_STATES[number];
@@ -55,17 +56,29 @@ export function formatMoney(amount: string, code: string): string {
   return `${code} ${n < 0n ? '-' : ''}${whole}${fraction}`;
 }
 export class OrdersAPI {
-  constructor(private readonly api: AdminAPI) {}
+  private readonly client;
+  constructor(api: AdminAPI) {
+    // Only the generated URL path reaches the cookie transport; its origin is
+    // never fetched. Keep expiry, aborts, redirect denial and safe errors in AdminAPI.
+    this.client = createCommerceClient('http://localhost', request => {
+      const url = new URL(request.url);
+      return api.request<Response>(url.pathname + url.search, 'GET', undefined,
+        { signal: request.signal, responseRaw: true });
+    });
+  }
   async list(tenantId: string, options: {cursor?: string; limit?: number; state?: OrderState; signal?: AbortSignal} = {}): Promise<OrderPage> {
     const limit = options.limit ?? 25; if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Error('Order page limit must be 1–100.');
-    const query = new URLSearchParams({limit: String(limit)});
-    if (options.cursor) query.set('cursor', options.cursor);
-    if (options.state) query.set('state', state(options.state));
-    return parseOrderPage(await this.api.request<unknown>(`/api/v1/t/${uuid(tenantId)}/orders?${query}`, 'GET', undefined, {signal: options.signal}));
+    const { data } = await this.client.GET('/api/v1/t/{tenant_id}/orders', {
+      params: { path: { tenant_id: uuid(tenantId) }, query: { limit, cursor: options.cursor,
+        state: options.state ? state(options.state) : undefined } }, signal: options.signal,
+    });
+    return parseOrderPage(data);
   }
   async get(tenantId: string, orderId: string, signal?: AbortSignal): Promise<OrderDetail> {
-    const response = await this.api.request<Response>(`/api/v1/t/${uuid(tenantId)}/orders/${uuid(orderId)}`, 'GET', undefined, {signal, responseRaw: true});
-    const order = parseOrderDetail(await response.json());
+    const { data, response } = await this.client.GET('/api/v1/t/{tenant_id}/orders/{order_id}', {
+      params: { path: { tenant_id: uuid(tenantId), order_id: uuid(orderId) } }, signal,
+    });
+    const order = parseOrderDetail(data);
     if (response.headers.get('ETag') !== `"${order.version}"`) throw new Error('Invalid order version response. Retry or contact support.');
     return order;
   }
