@@ -5,7 +5,7 @@
   "structures": {},
   "tables": {
     "notification_deliveries": {
-      "subject": {"tenant_key": "tenant_id", "identity_path": "order.*: reference_id -> orders.id -> customer_id; quote.approved: reference_id -> quotes.id -> accepted_by", "null_subject_policy": "quote.sent and guest order recipients are inquiry-owned/unverified contacts; do not link by email alone."},
+      "subject": {"tenant_key": "tenant_id", "identity_path": "order.*: reference_id -> orders.id -> customer_id (or mailbox-verified customer_guest_order_links.customer_id); quote.approved: reference_id -> quotes.id -> accepted_by", "null_subject_policy": "quote.sent and guest order recipients are inquiry-owned/unverified contacts; do not link by email alone."},
       "columns": {
         "tenant_id": {"classification": "operational"},
         "id": {"classification": "operational"},

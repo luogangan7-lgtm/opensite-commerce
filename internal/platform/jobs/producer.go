@@ -60,3 +60,33 @@ func (e *Enqueuer) InventoryExpireTx(ctx context.Context, tx pgx.Tx, batch int) 
 	}
 	return e.client.InsertTx(ctx, tx, args, nil)
 }
+
+// CustomerExportTx joins the same authorized domain transaction. Tenant custody
+// comes exclusively from its SET LOCAL scope, not from a caller/job argument.
+func (e *Enqueuer) CustomerExportTx(ctx context.Context, tx pgx.Tx, request string) (err error) {
+	if tx == nil {
+		return errors.New("job transaction required")
+	}
+	defer func() {
+		if err != nil {
+			rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+			defer cancel()
+			if rb := tx.Rollback(rollbackCtx); rb != nil && !errors.Is(rb, pgx.ErrTxClosed) {
+				err = errors.Join(err, rb)
+			}
+		}
+	}()
+	if e == nil || e.signer == nil || e.client == nil {
+		return errors.New("job enqueuer required")
+	}
+	tenant, err := db.New(tx).CurrentJobTenant(ctx)
+	if err != nil {
+		return err
+	}
+	args, err := e.signer.customerExportArgs(tenant, request)
+	if err != nil {
+		return err
+	}
+	_, err = e.client.InsertTx(ctx, tx, args, nil)
+	return err
+}

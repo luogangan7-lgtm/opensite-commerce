@@ -5,7 +5,7 @@
   "structures": {"CheckoutAddressSnapshot": "Frozen destination/contact object; customer erase must account for this immutable copy.", "CheckoutAttemptResult": "Cached payment/cancel operation response, including any derived personal fields.", "CheckoutFinalResult": "Cached terminal checkout response; may contain derived contact/provider payload copy.", "CheckoutStartResult": "Cached checkout/payment creation response; may contain contact/provider payload copy.", "Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data."},
   "tables": {
     "checkout_sessions": {
-      "subject": {"tenant_key": "tenant_id", "identity_path": "checkout_sessions.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest checkout actor hash does not prove customer identity; use linked verified order ownership only."},
+      "subject": {"tenant_key": "tenant_id", "identity_path": "checkout_sessions.order_id -> orders.id -> orders.customer_id -> customers.id | or (mailbox-verified) customer_guest_order_links.order_id -> customer_id -> customers.id", "null_subject_policy": "Guest checkout actor hash does not prove customer identity; use linked verified order ownership only."},
       "columns": {
         "tenant_id": {"classification": "operational"},
         "id": {"classification": "operational"},
@@ -38,7 +38,7 @@
       }
     },
     "checkout_attempts": {
-      "subject": {"tenant_key": "tenant_id", "identity_path": "checkout_attempts.checkout_id -> checkout_sessions.id -> checkout_sessions.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest checkout inherits unverified contact policy."},
+      "subject": {"tenant_key": "tenant_id", "identity_path": "checkout_attempts.checkout_id -> checkout_sessions.id -> checkout_sessions.order_id -> orders.id -> orders.customer_id -> customers.id | or (mailbox-verified) customer_guest_order_links.order_id -> customer_id -> customers.id", "null_subject_policy": "Guest checkout inherits unverified contact policy."},
       "columns": {
         "tenant_id": {"classification": "operational"},
         "event_kind": {"classification": "operational"},

@@ -36,10 +36,15 @@ func (s ControlledInventory) Expire(ctx context.Context, tenant string, batch in
 	})
 }
 
+type ExportSweeper interface {
+	Sweep(context.Context, string) error
+}
+
 type InventoryWorker struct {
 	river.WorkerDefaults[InventoryExpireArgs]
 	Signer  *Signer
 	Service Expirer
+	Sweeper ExportSweeper
 }
 
 func (w *InventoryWorker) Work(ctx context.Context, job *river.Job[InventoryExpireArgs]) error {
@@ -52,15 +57,23 @@ func (w *InventoryWorker) Work(ctx context.Context, job *river.Job[InventoryExpi
 	if w.Service == nil {
 		return errors.New("inventory service unavailable")
 	}
-	return w.Service.Expire(ctx, job.Args.TenantID, job.Args.Batch)
+	err := w.Service.Expire(ctx, job.Args.TenantID, job.Args.Batch)
+	if w.Sweeper != nil {
+		// Reclamation must still run when inventory expiry fails; both paths
+		// are idempotent, so a combined failure safely retries the tenant job.
+		return errors.Join(err, w.Sweeper.Sweep(ctx, job.Args.TenantID))
+	}
+	return err
 }
 
 // Tenants come from trusted deployment configuration, never from pending jobs.
 // Empty Tenants disables periodic producers while still processing queued jobs.
 type WorkerConfig struct {
-	Tenants  []string
-	Batch    int
-	Interval time.Duration
+	ExportSweeper ExportSweeper
+	ExportService ExportBuilder
+	Tenants       []string
+	Batch         int
+	Interval      time.Duration
 }
 
 // An unregistered kind is a permanent admission failure, not a transient
@@ -112,10 +125,16 @@ func buildWorker(driver *riverpgxv5.Driver, signer *Signer, service Expirer, cfg
 		return nil, errors.New("expiry interval must be at least one second")
 	}
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &InventoryWorker{Signer: signer, Service: service})
+	river.AddWorker(workers, &InventoryWorker{Signer: signer, Service: service, Sweeper: cfg.ExportSweeper})
+	if cfg.ExportService != nil {
+		river.AddWorker(workers, &CustomerExportWorker{Signer: signer, Service: cfg.ExportService})
+	}
 	tuning.Schema, tuning.Workers = "queue", workers
 	tuning.ErrorHandler = admissionErrors{}
 	tuning.Queues = map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 1}}
+	if cfg.ExportService != nil {
+		tuning.Queues[CustomerDataExportQueue] = river.QueueConfig{MaxWorkers: 1}
+	}
 	tuning.ReindexerIndexNames = []string{} // worker has no DDL/REINDEX rights.
 	if tuning.SoftStopTimeout <= 0 || tuning.SoftStopTimeout > maxSoftStopTimeout {
 		tuning.SoftStopTimeout = maxSoftStopTimeout
