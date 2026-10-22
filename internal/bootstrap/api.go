@@ -26,8 +26,10 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/catalogcsvhttp"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/datarightshttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quoteorders"
 	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
@@ -35,6 +37,9 @@ import (
 )
 
 type Config struct {
+	Subject                  httpapi.SubjectResolver
+	Privacy                  datarightshttp.Config
+	CatalogCSV               catalogcsvhttp.Config
 	Address                  string
 	Logger                   *slog.Logger
 	Authenticator            httpapi.Authenticator
@@ -144,6 +149,9 @@ func New(config Config) (server *http.Server, err error) {
 	}
 	routes = append(routes, quoteorders.New(config.QuoteOrders).Routes()...)
 	routes = append(routes, notificationhttp.New(config.Notifications).Routes()...)
+	config.Privacy.Subject, config.CatalogCSV.Subject = config.Subject, config.Subject
+	routes = append(routes, datarightshttp.New(config.Privacy).Routes()...)
+	routes = append(routes, catalogcsvhttp.New(config.CatalogCSV).Routes()...)
 	routes = append(routes, customerHTTP.Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {

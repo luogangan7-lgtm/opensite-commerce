@@ -136,20 +136,6 @@ func (s *Service) ListPriceLists(ctx context.Context, r api.ListPriceListsReques
 	}
 	return api.ListPriceLists200JSONResponse(page), err
 }
-func (s *Service) ListVariantPrices(ctx context.Context, r api.ListVariantPricesRequestObject) (api.ListVariantPricesResponseObject, error) {
-	var after int64
-	if r.Params.AfterQuantity != nil {
-		after = *r.Params.AfterQuantity
-	}
-	page, err := decode[api.StaffVariantPricePage](s.query(ctx, r.TenantId, func(q *db.Queries) ([]byte, error) {
-		return q.ListStaffVariantPrices(ctx, db.ListStaffVariantPricesParams{TenantID: id(r.TenantId), ListID: id(r.PriceListId), SkuID: id(r.VariantId), AfterQuantity: after})
-	}))
-	if len(page.Items) > 100 {
-		page.Items = page.Items[:100]
-		page.NextMinQuantity = &page.Items[99].MinQuantity
-	}
-	return api.ListVariantPrices200JSONResponse(page), err
-}
 func (s *Service) entry(ctx context.Context, tenant, list, variant uuid.UUID, min int64, amount pgtype.Int8, raw string) (api.StaffPriceList, error) {
 	v, err := version(raw)
 	if err != nil {
@@ -177,7 +163,7 @@ func (s *Service) Routes() []httpapi.Route {
 	var specs []httpapi.RouteSpec
 	for _, r := range []struct{ method, path, operation string }{
 		{"POST", base, "createPriceList"}, {"GET", base, "listPriceLists"}, {"GET", list, "getPriceList"},
-		{"PUT", list, "updatePriceList"}, {"GET", prices, "listVariantPrices"},
+		{"PUT", list, "updatePriceList"},
 		{"PUT", prices + "/{min_quantity}", "setVariantPrice"}, {"DELETE", prices + "/{min_quantity}", "clearVariantPrice"},
 	} {
 		specs = append(specs, httpapi.RouteSpec{Method: r.method, Pattern: r.path, OperationID: r.operation, Access: httpapi.AdminOrAPIKey, Scope: "catalog:write", MaxBodySize: httpapi.DefaultMaxBodySize})

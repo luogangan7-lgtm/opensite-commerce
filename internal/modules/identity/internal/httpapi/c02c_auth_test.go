@@ -261,6 +261,42 @@ func TestC02cSessionRoleScopes(t *testing.T) {
 	}
 }
 
+// FIX-44: the orchestrator's exact grants apply to sessions and bearer keys;
+// a stored key cannot expand a downgraded role or escape its issuing tenant.
+func TestFIX44ScopeAdmission(t *testing.T) {
+	for _, role := range []string{"owner", "admin", "catalog_editor", "content_editor", "viewer"} {
+		for _, scope := range []string{"customers:privacy", "catalog:import", "catalog:export", "unknown:scope"} {
+			for _, bearer := range []bool{false, true} {
+				t.Run(role+"/"+scope+"/"+map[bool]string{false: "session", true: "key"}[bearer], func(t *testing.T) {
+					f := c02cAuthFixture(t)
+					f.authority.memberships[c02cTenant] = c02cMembership{UserID: c02cUser, TenantID: c02cTenant, Role: role}
+					key := f.authority.keys[c02cKeyID]
+					key.Scopes = []string{scope}
+					f.authority.keys[c02cKeyID] = key
+					status, kind, actor := 403, "user", c02cUser
+					if scope != "unknown:scope" && (role == "owner" || role == "admin" || role == "catalog_editor" && scope != "customers:privacy") {
+						status = 200
+					}
+					if bearer {
+						kind, actor = "api_key", c02cKeyID
+					}
+					c02cAssert(t, f, f.serve(t, c02cSpec(platform.AdminOrAPIKey, "GET", scope), f.request("GET", c02cTenant, !bearer, bearer)), status, kind, actor, c02cTenant)
+				})
+			}
+		}
+	}
+	for _, scope := range []string{"customers:privacy", "catalog:import", "catalog:export"} {
+		t.Run("cross_tenant_key/"+scope, func(t *testing.T) {
+			f := c02cAuthFixture(t)
+			f.authority.memberships[c02cOtherTenant] = c02cMembership{UserID: c02cUser, TenantID: c02cOtherTenant, Role: "owner"}
+			key := f.authority.keys[c02cKeyID]
+			key.Scopes = []string{scope}
+			f.authority.keys[c02cKeyID] = key
+			c02cAssert(t, f, f.serve(t, c02cSpec(platform.AdminOrAPIKey, "GET", scope), f.request("GET", c02cOtherTenant, false, true)), 404, "", "", "")
+		})
+	}
+}
+
 func TestC02cSessionTenantMembershipAndDatabaseFailures(t *testing.T) {
 	for _, name := range []string{"wrong_tenant", "suspended_membership", "suspended_tenant", "database_unavailable"} {
 		t.Run(name, func(t *testing.T) {

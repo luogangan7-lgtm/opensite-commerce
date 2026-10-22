@@ -325,7 +325,7 @@ BEGIN
   UPDATE app.stock_levels SET on_hand=on_hand+line.quantity WHERE tenant_id=t AND sku_id=line.sku_id RETURNING * INTO s;
   INSERT INTO app.inventory_movements(tenant_id,warehouse_id,sku_id,owner_type,owner_id,kind,quantity,
    on_hand_delta,reserved_delta,on_hand_after,reserved_after,reason)
-  VALUES(t,s.warehouse_id,s.sku_id,'return',p_return,'inbound',line.quantity,line.quantity,0,s.on_hand,s.reserved,r.reason);
+  VALUES(t,s.warehouse_id,s.sku_id,'return',p_return,'inbound',line.quantity,line.quantity,0,s.on_hand,s.reserved,'return_received');
  END LOOP;
 END $$;
 -- Exact integer intermediates avoid bigint-product overflow; no money is stored
@@ -501,13 +501,20 @@ BEGIN
  IF FOUND THEN
   IF r.request_hash<>h THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
   PERFORM app.orders_refund_budget(p_order,'freeze',r.id,NULL,NULL,NULL,0);
-  RETURN r.creation_response;
+  -- Erasure may have committed while the Order fence waited. Never replay
+  -- the receipt copied before that fence; read its current scrubbed value.
+  SELECT * INTO STRICT r FROM app.returns WHERE tenant_id=t AND creation_key=p_key;
+  -- Erased frozen receipts keep only a marker; return the scrubbed live
+  -- financial projection so public command callers still receive the RMA ID.
+  RETURN CASE WHEN r.creation_response='{"erased":true}'::jsonb THEN app.fulfillment_return_json(r.id) ELSE r.creation_response END;
  END IF;
  o:=app.orders_refund_budget(p_order,'freeze',NULL,NULL,NULL,NULL,0);
  SELECT * INTO r FROM app.returns WHERE tenant_id=t AND creation_key=p_key;
  IF FOUND THEN
   IF r.request_hash<>h THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
-  RETURN r.creation_response;
+  -- Erased frozen receipts keep only a marker; return the scrubbed live
+  -- financial projection so public command callers still receive the RMA ID.
+  RETURN CASE WHEN r.creation_response='{"erased":true}'::jsonb THEN app.fulfillment_return_json(r.id) ELSE r.creation_response END;
  END IF;
  IF o.version<>p_expected_version THEN RAISE EXCEPTION 'FULFILLMENT_VERSION_CONFLICT' USING ERRCODE='22023'; END IF;
  IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded','refunded') THEN
@@ -604,7 +611,9 @@ BEGIN
  o:=app.orders_fulfillment_advance(p_order,'return:'||r.id::text);
  UPDATE app.returns SET order_version=o.version WHERE tenant_id=t AND id=r.id;
  UPDATE app.returns SET creation_response=app.fulfillment_return_json(r.id) WHERE tenant_id=t AND id=r.id RETURNING * INTO r;
- RETURN r.creation_response;
+ -- Erased frozen receipts keep only a marker; return the scrubbed live
+  -- financial projection so public command callers still receive the RMA ID.
+  RETURN CASE WHEN r.creation_response='{"erased":true}'::jsonb THEN app.fulfillment_return_json(r.id) ELSE r.creation_response END;
 END $$;
 CREATE FUNCTION app.returns_receive(p_return uuid,p_expected_version bigint,p_key text,p_restock boolean)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
@@ -615,15 +624,14 @@ BEGIN
  h:=sha256(convert_to(jsonb_build_object('return_id',p_return,'expected_version',p_expected_version,'restock',p_restock)::text,'UTF8'));
  SELECT * INTO r FROM app.returns WHERE tenant_id=t AND id=p_return;
  IF NOT FOUND THEN RAISE EXCEPTION 'FULFILLMENT_RETURN_NOT_FOUND' USING ERRCODE='P0002'; END IF;
- IF r.receive_key IS NOT NULL THEN
-  IF r.receive_key<>p_key OR r.receive_hash<>h THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
-  RETURN r.receive_response;
- END IF;
+ -- Replays share erasure's Order fence and reload the receipt after waiting.
  o:=app.orders_fulfillment_fence(r.order_id,NULL);
  SELECT * INTO STRICT r FROM app.returns WHERE tenant_id=t AND id=p_return FOR UPDATE;
  IF r.receive_key IS NOT NULL THEN
   IF r.receive_key<>p_key OR r.receive_hash<>h THEN RAISE EXCEPTION 'FULFILLMENT_KEY_REUSED' USING ERRCODE='22023'; END IF;
-  RETURN r.receive_response;
+  -- Erased frozen receipts keep only a marker; return the scrubbed live
+  -- financial projection so public command callers still receive the RMA ID.
+  RETURN CASE WHEN r.receive_response='{"erased":true}'::jsonb THEN app.fulfillment_return_json(r.id) ELSE r.receive_response END;
  END IF;
  IF o.version<>p_expected_version THEN RAISE EXCEPTION 'FULFILLMENT_VERSION_CONFLICT' USING ERRCODE='22023'; END IF;
  IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded','refunded') THEN
@@ -637,7 +645,9 @@ BEGIN
  o:=app.orders_fulfillment_advance(r.order_id,'receive:'||r.id::text);
  UPDATE app.returns SET order_version=o.version WHERE tenant_id=t AND id=p_return;
  UPDATE app.returns SET receive_response=app.fulfillment_return_json(r.id) WHERE tenant_id=t AND id=p_return RETURNING * INTO r;
- RETURN r.receive_response;
+ -- Erased frozen receipts keep only a marker; return the scrubbed live
+  -- financial projection so public command callers still receive the RMA ID.
+  RETURN CASE WHEN r.receive_response='{"erased":true}'::jsonb THEN app.fulfillment_return_json(r.id) ELSE r.receive_response END;
 END $$;
 CREATE FUNCTION app.returns_refund_snapshot(p_return uuid,p_key text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$

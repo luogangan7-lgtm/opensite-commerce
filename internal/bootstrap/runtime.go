@@ -8,16 +8,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights"
+	rights "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
@@ -47,6 +52,13 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	// Bound all capability pool probes together, including explicit DSNs.
 	startup, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	if config.Media.Root == "" {
+		config.Media.Root = os.Getenv("OPENSITE_MEDIA_ROOT")
+	}
+	privacyURL := os.Getenv("OPENSITE_PRIVACY_DATABASE_URL")
+	if privacyURL != "" && (!filepath.IsAbs(config.Media.Root) || (os.Getenv("OPENSITE_PRIVACY_ROOT") != "" && filepath.Clean(os.Getenv("OPENSITE_PRIVACY_ROOT")) != filepath.Clean(config.Media.Root))) {
+		return Config{}, nil, errors.New("privacy root must equal the configured media root")
+	}
 	var runners []*pgxadapter.QueryRunner
 	var staff *identity.LoginModule
 	var tenantAuth *tenant.Module
@@ -106,6 +118,8 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		config.Catalog.Run = runner.RunAuthorized
 		config.Pricing.Run = runner.RunAuthorized
+		config.CatalogCSV.Run = runner.RunAuthorizedTx
+		config.CatalogCSV.Service = catalog.NewCSV()
 		config.CMS.Idempotency.Run = runner.RunAuthorizedTx
 		if encoded := os.Getenv("OPENSITE_CMS_PREVIEW_KEY"); encoded != "" && config.CMS.Writer == nil {
 			key, err := base64.RawURLEncoding.DecodeString(encoded)
@@ -181,8 +195,51 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		runners = append(runners, runner)
 	}
-	if config.Media.Root == "" {
-		config.Media.Root = os.Getenv("OPENSITE_MEDIA_ROOT")
+	if root := os.Getenv("OPENSITE_RESPONSE_ROOT"); root != "" {
+		store, err := idempotency.NewLocalResponseStore(root, 1<<20)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, err
+		}
+		config.Privacy.Responses, config.CatalogCSV.Responses = store, store
+	}
+	if privacyURL != "" {
+		runner, err := pgxadapter.OpenQueryRunner(startup, privacyURL)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, err
+		}
+		runners = append(runners, runner)
+		tokenKey, err := hex.DecodeString(os.Getenv("PRIVACY_TOKEN_KEY"))
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, errors.New("invalid privacy token key")
+		}
+		config.Privacy.Run = runner.RunAuthorizedTx
+		config.Privacy.Service, err = datarights.New(rights.Config{Run: runner.RunAuthorizedTx, Root: config.Media.Root, TokenKey: tokenKey})
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, errors.New("privacy configuration unavailable")
+		}
+		// Explicit deployment flag means the separately configured privacy worker is
+		// available. Without it exports fail before creating any unserviceable job.
+		if os.Getenv("PRIVACY_EXPORT_WORKER_ENABLED") == "true" {
+			config.Privacy.Enqueue, err = privacyEnqueue(os.Getenv("JOB_SIGNING_KEY"))
+			if err != nil {
+				closeRuntime()
+				return Config{}, nil, err
+			}
+		}
+	}
+	// CSV import and privacy commands share one replay store; the media-root
+	// fallback must not depend on privacy being configured (shipped compose).
+	if config.CatalogCSV.Responses == nil && config.Media.Root != "" {
+		store, err := idempotency.NewLocalResponseStore(filepath.Join(config.Media.Root, "command-responses"), 1<<20)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, err
+		}
+		config.Privacy.Responses, config.CatalogCSV.Responses = store, store
 	}
 	if root := os.Getenv("OPENSITE_IDEMPOTENCY_ROOT"); root != "" && (config.CMS.Idempotency.Store == nil || config.Fulfillment.Idempotency.Store == nil || config.Returns.Idempotency.Store == nil) {
 		store, err := idempotency.NewLocalResponseStore(root, contract.MaxWriteBytes)

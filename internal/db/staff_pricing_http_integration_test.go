@@ -3,12 +3,13 @@
 // Responsibilities: verify production price HTTP and sqlc against real PG18.
 // Dependencies: disposable CI admin and C07 runtime logins; caller: pgx CI gate.
 // Invariants: explicit settlement currency, persisted prices and list-wide CAS.
-package bootstrap_test
+package db_test
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -19,8 +20,15 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/pricing"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
+
+type pricingAdmission struct{}
+
+func (pricingAdmission) Authenticate(ctx context.Context, _ *http.Request, _ httpapi.RouteSpec) (context.Context, error) {
+	return ctx, nil
+}
 
 func TestPGStaffPricingPersistence(t *testing.T) {
 	dsn := os.Getenv("C07_DATABASE_URL")
@@ -59,7 +67,7 @@ func TestPGStaffPricingPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer runner.Close()
-	server, err := bootstrap.New(bootstrap.Config{Authenticator: pricingAuth("owner"), Pricing: pricing.Config{Run: runner.RunAuthorized}})
+	server, err := bootstrap.New(bootstrap.Config{Authenticator: pricingAdmission{}, Pricing: pricing.Config{Run: runner.RunAuthorized}})
 	if err != nil {
 		t.Fatal(err)
 	}

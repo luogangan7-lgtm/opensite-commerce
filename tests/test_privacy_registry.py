@@ -123,6 +123,38 @@ class PrivacyRegistryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "orders\\.new_unclassified_column"):
             self.gate.validate_catalog(registry, rows)
 
+    def test_financial_obligation_requires_explicit_retention_and_reason(self):
+        valid = {"classification": "financial_obligation", "retention": "financial-obligation",
+                 "reason": "Refund recovery/reconciliation and accounting"}
+        body = document()
+        body["tables"]["orders"]["columns"]["provider_ref"] = valid
+        registry = self.load({"orders": body})
+        self.assertNotIn("orders.provider_ref", self.gate.personal_fields(registry))
+        for key in ("retention", "reason", "classification"):
+            with self.subTest(key=key):
+                broken = copy.deepcopy(body)
+                del broken["tables"]["orders"]["columns"]["provider_ref"][key]
+                with self.assertRaises(ValueError):
+                    self.load({"orders": broken})
+        for invalid in (None, "", " ", 42):
+            broken = copy.deepcopy(body)
+            broken["tables"]["orders"]["columns"]["provider_ref"]["reason"] = invalid
+            with self.subTest(reason=invalid), self.assertRaises(ValueError):
+                self.load({"orders": broken})
+
+    def test_returns_retains_financial_authority_and_erases_personal_copies(self):
+        registry = self.gate.load_registry(ROOT)
+        provider = registry["returns.provider_ref"]
+        self.assertEqual(provider["classification"], "financial_obligation")
+        self.assertEqual(provider["retention"], "financial-obligation")
+        self.assertTrue(provider["reason"].strip())
+        for key in ("returns.reason", "returns.creation_response", "returns.receive_response",
+                    "shipments.carrier", "shipments.tracking_number", "inventory_movements.reason"):
+            with self.subTest(key=key):
+                self.assertIn(registry[key]["classification"], ("personal", "contact"))
+                self.assertEqual(registry[key]["erase"]["strategy"], "scrub")
+        self.assertIn("returns", registry["inventory_movements.reason"]["subject"]["identity_path"])
+
     def test_catalog_rejects_declared_nonexistent_column(self):
         with self.assertRaisesRegex(ValueError, "orders\\.receipt"):
             self.gate.validate_catalog(self.load(), catalog()[:-1])
