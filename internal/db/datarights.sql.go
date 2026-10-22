@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const dataRightsArtifactLive = `-- name: DataRightsArtifactLive :one
+SELECT app.data_rights_artifact_live($1::uuid)::boolean AS live
+`
+
+func (q *Queries) DataRightsArtifactLive(ctx context.Context, id pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, dataRightsArtifactLive, id)
+	var live bool
+	err := row.Scan(&live)
+	return live, err
+}
+
 const dataRightsBuildExport = `-- name: DataRightsBuildExport :one
 SELECT app.data_rights_build_export($1::uuid)::jsonb AS payload
 `
