@@ -36,3 +36,13 @@ export function formatAmount(amount: string, currency: string, locale: string): 
   const localizedFraction = [...fraction].map(digit => numbers.format(Number(digit))).join('');
   return formatter.formatToParts(minor / scale).map(part => part.type === 'fraction' ? localizedFraction : part.value).join('');
 }
+
+/** Display price: the lowest available SKU price (exact minor-unit compare); none when nothing is sellable. */
+export function lowestSellablePrice(skus: { price_minor: string; currency: string; available: boolean }[], locale: string): string | undefined {
+  let best: { price_minor: string; currency: string } | undefined;
+  for (const sku of skus) {
+    if (!sku.available) continue;
+    if (!best || BigInt(sku.price_minor) < BigInt(best.price_minor)) best = sku;
+  }
+  return best && formatAmount(best.price_minor, best.currency, locale);
+}

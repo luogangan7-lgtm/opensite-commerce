@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "desktop/storefront-commerce-completion.png",
   "scope": "storefront-commerce",
-  "sourceFingerprint": "af5be26531d8ba77244114d1368f43fa6698dd8b43434e038d5d51d800121f60",
+  "sourceFingerprint": "024ce87b5d6bae1f6d7839d3d1d23b60b2b786eef40056a056a6402e5b25d641",
   "pngSha256": "42a757cb711753f9e5767fc40a01f1aa1f371037d6517a766f942d5d820df025",
   "scopeSnapshots": [
     "desktop/storefront-commerce-account.png",
@@ -18,8 +18,8 @@
     "mobile/storefront-commerce-completion.png",
     "mobile/storefront-commerce-product.png"
   ],
-  "sourceSha": "d3f86c688a1479711abb91113deda66a89ec9033",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38451726222",
+  "sourceSha": "b7507979e09b9e2bf6ab4489f3e081a7b64e8651",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/39725216176",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",

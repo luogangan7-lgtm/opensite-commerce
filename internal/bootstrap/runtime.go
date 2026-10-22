@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -95,6 +96,24 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 				return Config{}, nil, errors.New("CMS writer configuration is invalid")
 			}
 			config.CMS.Writer = writer
+		}
+		// Storefront serving refresh (ADR_STOREFRONT_SERVING 2.6): deployment-authorized
+		// tenants only; without it serving rows degrade to their fallback, never to stale.
+		list := os.Getenv("OPENSITE_SERVING_REFRESH_TENANTS")
+		if list == "" && config.Logger != nil {
+			config.Logger.Warn("OPENSITE_SERVING_REFRESH_TENANTS is empty: storefront serving rows are not refreshed and fall back to no purchasable SKUs")
+		}
+		if list != "" {
+			refresher, err := publish.NewRefresher(publish.RefreshConfig{Run: runner.RunTrustedTx, Tenants: strings.Split(list, ","), Logger: config.Logger})
+			if err != nil {
+				closeRuntime()
+				return Config{}, nil, err
+			}
+			refreshCtx, stopRefresh := context.WithCancel(context.WithoutCancel(ctx))
+			done := make(chan struct{})
+			go func() { defer close(done); refresher.Run(refreshCtx) }()
+			previous := closeRuntime
+			closeRuntime = func() { stopRefresh(); <-done; previous() }
 		}
 		config.Orders.Read = runner.RunAuthorizedSnapshot
 		if config.Cart == nil {

@@ -462,7 +462,19 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: Public
       security: []
-      description: Current sealed public release for a verified DNS hostname. Version-1 public manifest seals product view models derived from catalog published listings and pinned content revisions.
+      description: >-
+        Current public storefront body for a verified DNS hostname, served as the precomputed
+        storefront serving row (docs/architecture/ADR_STOREFRONT_SERVING.md). Product content and
+        SKU membership (sku_id, sku_code, option_values) are sealed at publish. price_minor is the
+        anonymous default price (quantity 1, the product's release currency, active audience=all lists
+        in their time window, priority descending then list id ascending) computed when the serving row
+        was built; available is on-hand minus reserved > 0 at build time, never a count. Unpriced or
+        non-ready SKUs at publish are not members (adding them requires republish). Price, stock and
+        lifecycle changes invalidate the body in their own transaction and a refresher rebuilds it; a body
+        past its next price boundary, 15-minute lifetime or 30-second invalidation grace is replaced by the
+        fallback (skus []), never served stale. Products carry no product-level price: display prices come
+        from skus. Cart and checkout re-price and reserve authoritatively. The body is host-independent
+        (no hostname) and carries the host's tenant_id for tenant-scoped cart APIs.
       parameters:
         - name: host
           in: query
@@ -1920,7 +1932,7 @@ paths:
             X-Robots-Tag: {schema: {type: string, const: 'noindex, nofollow'}}
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/PublishedSite'}
+              schema: {$ref: '#/components/schemas/SitePreview'}
         '400': {$ref: '#/components/responses/Problem'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -3966,6 +3978,32 @@ components:
     PublishedSite:
       type: object
       additionalProperties: false
+      required: [tenant_id, site_id, release_id, locale, title, description, navigation, pages, products]
+      properties:
+        tenant_id:
+          type: string
+          description: Tenant resolved from the verified hostname; storefronts use it for tenant-scoped APIs such as /api/v1/t/{tenant_id}/carts.
+        site_id: {type: string}
+        release_id: {type: string}
+        locale: {type: string}
+        title: {type: string, minLength: 1, maxLength: 300}
+        description: {type: string, maxLength: 2000}
+        navigation:
+          type: array
+          maxItems: 50
+          items: {$ref: '#/components/schemas/PublishedNavigation'}
+        pages:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/PublishedPage'}
+        products:
+          type: array
+          maxItems: 500
+          items: {$ref: '#/components/schemas/PublicProduct'}
+    SitePreview:
+      description: CMS draft preview projection (never the public storefront body; no tenant_id or SKUs).
+      type: object
+      additionalProperties: false
       required: [site_id, release_id, hostname, locale, title, description, navigation, pages, products]
       properties:
         site_id: {type: string}
@@ -3986,6 +4024,47 @@ components:
           type: array
           maxItems: 500
           items: {$ref: '#/components/schemas/PublishedProduct'}
+    PublicProduct:
+      type: object
+      additionalProperties: false
+      description: Public product view. No product-level price; display prices come from the purchasable skus.
+      required: [id, slug, name, description, skus]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 128}
+        slug: {type: string, pattern: '^[a-zA-Z0-9_-]+$', maxLength: 502}
+        name: {type: string, minLength: 1, maxLength: 300}
+        description: {type: string, maxLength: 10000}
+        skus:
+          type: array
+          maxItems: 100
+          description: Purchasable SKUs; see getPublishedSite for membership, price and availability rules.
+          items: {$ref: '#/components/schemas/PublishedSku'}
+    PublishedSkuOptionValue:
+      type: object
+      additionalProperties: false
+      required: [name, value]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 255}
+        value: {type: string, maxLength: 255}
+    PublishedSku:
+      type: object
+      additionalProperties: false
+      required: [sku_id, sku_code, option_values, price_minor, currency, available]
+      properties:
+        sku_id: {type: string, minLength: 1, maxLength: 128}
+        sku_code: {type: string, minLength: 1, maxLength: 255}
+        option_values:
+          type: array
+          maxItems: 20
+          items: {$ref: '#/components/schemas/PublishedSkuOptionValue'}
+        price_minor:
+          type: string
+          description: Anonymous default unit price in minor units as a decimal string, as of the serving build.
+          pattern: '^(0|[1-9][0-9]{0,18})$'
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        available:
+          type: boolean
+          description: True when on-hand stock exceeded active reservations at the serving build; never a count.
     LoginChallenge:
       type: object
       required:

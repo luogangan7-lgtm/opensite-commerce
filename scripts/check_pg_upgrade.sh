@@ -160,12 +160,13 @@ PRICING_DB=""
 IDENTITY_DB=""
 LOGIN_DB=""
 CHECKOUT_DB=""
+SERVING_DB=""
 CUSTOMER_AUTH_DB=""
 PAYMENTS_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$PAYMENTS_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1301,6 +1302,30 @@ db "$CUSTOMER_AUTH_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $CUSTOMER_AUTH_DB" >/dev/null; CUSTOMER_AUTH_DB=""
 pass 'customer auth forward upgrade preserves legacy PHC/guest snapshot, rejects unsafe role atomically, then verifies and resets explicitly'
 
+# Storefront serving: a site published before the migration keeps its pointer and gets
+# no serving row (the public read serves its legacy projection until republish).
+serving_files=(migrations/[0-9][0-9][0-9]_storefront_serving.sql)
+[[ ${#serving_files[@]} == 1 ]] || { echo 'FAIL: exactly one storefront serving migration required'; exit 1; }
+SERVING_DB=upgrade_serving_$$
+admin -c "DROP DATABASE IF EXISTS $SERVING_DB" -c "CREATE DATABASE $SERVING_DB" 2>/dev/null
+river_db "$SERVING_DB"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${serving_files[0]} ]] || break
+ apply_forward "$SERVING_DB" "$f"
+done
+db "$SERVING_DB" < tests/fixtures/storefront_seed.sql >/dev/null
+apply_forward "$SERVING_DB" "${serving_files[0]}"
+result=$(db "$SERVING_DB" -c "SELECT 'SERVING_UPGRADE='||(SELECT count(*) FROM app.sites WHERE published_release_id IS NOT NULL)||'|'||(SELECT count(*) FROM app.storefront_serving)||'|'||(SELECT count(*) FROM app.site_release_skus)")
+[[ $result == *'SERVING_UPGRADE=2|0|0'* ]] || bad "storefront serving populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${serving_files[0]} ]] || continue
+ apply_forward "$SERVING_DB" "$f"
+done
+river_db "$SERVING_DB" --verify
+if ! db "$SERVING_DB" < tests/db_storefront.sql >/dev/null || ! db "$SERVING_DB" < tests/db_storefront_serving.sql >/dev/null || ! db "$SERVING_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'storefront serving RLS/role matrix after populated upgrade'
+else pass 'storefront serving upgrade keeps published sites and adds an empty serving projection'; fi
+admin -c "DROP DATABASE $SERVING_DB" >/dev/null; SERVING_DB=""
 # Signed payment facts are additive to existing ready checkouts. Preserve their
 # payable/provider identity and default refund accounting to zero, by suffix.
 payment_files=(migrations/[0-9][0-9][0-9]_payment_webhooks.sql)
@@ -1344,4 +1369,4 @@ pass 'payment upgrade preserves ready checkout snapshot and defaults bounded ref
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login, CMS, checkout and customer auth upgrade gates'
+echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login, CMS, checkout, customer auth and storefront serving upgrade gates'
