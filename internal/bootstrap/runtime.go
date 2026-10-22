@@ -5,6 +5,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -27,9 +28,21 @@ import (
 )
 
 func FromEnvironment(ctx context.Context, config Config) (Config, func(), error) {
+	fakeEnvironment, err := checkoutEnvironment(os.Getenv)
+	if err != nil {
+		return Config{}, nil, err
+	}
 	fakeEnabled, fakeKey, fakeErr := fakePaymentEnvironment()
 	if fakeErr != nil {
 		return Config{}, nil, fakeErr
+	}
+	if fakeEnvironment.enabled {
+		// Both optional entrypoints share one account-mapped ingress. Refuse two
+		// different verifier keys rather than silently choosing a signing authority.
+		if fakeEnabled && !bytes.Equal(fakeKey, fakeEnvironment.key) {
+			return Config{}, nil, errors.New("Fake checkout and payment signing keys conflict")
+		}
+		fakeEnabled, fakeKey = true, fakeEnvironment.key
 	}
 	// Bound all capability pool probes together, including explicit DSNs.
 	startup, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -38,7 +51,12 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	var staff *identity.LoginModule
 	var tenantAuth *tenant.Module
 	var customerRunner *pgxadapter.CustomerRunner
+	var quoteRuntime runtimeQuoteRunner
+	var closeQuoteRuntime func()
 	closeRuntime := func() {
+		if closeQuoteRuntime != nil {
+			closeQuoteRuntime()
+		}
 		if customerRunner != nil {
 			customerRunner.Close()
 		}
@@ -123,6 +141,8 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			closeRuntime = func() { stopRefresh(); <-done; previous() }
 		}
 		config.Orders.Read = runner.RunAuthorizedSnapshot
+		config.Fulfillment.Run = runner.RunAuthorizedTx
+		config.Returns.Run = runner.RunAuthorizedTx
 		if config.Cart == nil {
 			config.Cart = cart.NewPostgres(cart.Config{Run: runner.RunAuthorized, Read: runner.RunAuthorizedSnapshot}, nil)
 		}
@@ -162,13 +182,21 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	if config.Media.Root == "" {
 		config.Media.Root = os.Getenv("OPENSITE_MEDIA_ROOT")
 	}
-	if root := os.Getenv("OPENSITE_IDEMPOTENCY_ROOT"); root != "" && config.CMS.Idempotency.Store == nil {
+	if root := os.Getenv("OPENSITE_IDEMPOTENCY_ROOT"); root != "" && (config.CMS.Idempotency.Store == nil || config.Fulfillment.Idempotency.Store == nil || config.Returns.Idempotency.Store == nil) {
 		store, err := idempotency.NewLocalResponseStore(root, contract.MaxWriteBytes)
 		if err != nil {
 			closeRuntime()
 			return Config{}, nil, errors.New("command response storage is unavailable")
 		}
-		config.CMS.Idempotency.Store = store
+		if config.CMS.Idempotency.Store == nil {
+			config.CMS.Idempotency.Store = store
+		}
+		if config.Fulfillment.Idempotency.Store == nil {
+			config.Fulfillment.Idempotency.Store = store
+		}
+		if config.Returns.Idempotency.Store == nil {
+			config.Returns.Idempotency.Store = store
+		}
 	}
 	if staffEnabled {
 		staff, err = StaffLogin(ctx, authURL, origin, keyHex, proxies)
@@ -219,6 +247,22 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			return Config{}, nil, errors.New("customer authentication configuration is invalid")
 		}
 		config.CustomerOrigin, config.CustomerSecret = origin, secret
+	}
+	if fakeEnvironment.enabled {
+		if runtimeURL == "" || config.Customer == nil {
+			closeRuntime()
+			return Config{}, nil, errors.New("Fake checkout requires runtime and customer capabilities")
+		}
+		quoteRuntime, closeQuoteRuntime, err = openQuoteRuntime(startup, runtimeURL)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, err
+		}
+	}
+	config, err = composeFakeCheckout(config, quoteRuntime, fakeEnvironment)
+	if err != nil {
+		closeRuntime()
+		return Config{}, nil, err
 	}
 	return config, closeRuntime, nil
 }

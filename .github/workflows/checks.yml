@@ -2,7 +2,7 @@ name: foundation-contracts
 on: [push, pull_request]
 
 # PR commits are validated by the pull_request run only; push runs of non-main
-# branches exist solely for the [visual-baseline-update] producer job.
+# branches exist only for explicitly requested artifact producer jobs.
 concurrency:
   # main runs get unique groups so no queued main run is ever replaced.
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.event.pull_request.number || github.ref }}
@@ -10,6 +10,46 @@ concurrency:
 
 # One required CI job. No costly SKU/performance suite on every commit.
 jobs:
+  # Optional CI-only generator handoff; required drift gates remain unchanged.
+  codegen-handoff:
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[codegen-artifact]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.3.12'
+      - name: Generate pinned source in CI
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          go mod download
+          bun install --frozen-lockfile
+          go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+          bun packages/api-client/node_modules/openapi-typescript/bin/cli.js api/openapi.yaml -o packages/api-client/src/schema.d.ts
+          curl -fsSL --retry 3 https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz -o /tmp/sqlc.tar.gz
+          echo '497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354  /tmp/sqlc.tar.gz' | sha256sum -c -
+          mkdir -p /tmp/sqlc-bin
+          tar -xzf /tmp/sqlc.tar.gz -C /tmp/sqlc-bin
+          /tmp/sqlc-bin/sqlc generate
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: codegen-handoff-${{ github.run_id }}
+          path: |
+            api/openapi.yaml
+            sqlc.yaml
+            internal/platform/httpapi/generated/api.gen.go
+            internal/db/*.go
+            packages/api-client/src/schema.d.ts
+          if-no-files-found: error
+          retention-days: 7
+
   foundation:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
@@ -69,6 +109,22 @@ jobs:
           go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
           git diff --exit-code -- internal/platform/httpapi/generated/api.gen.go
           test -z "$(git status --porcelain --untracked-files=all -- internal/platform/httpapi/generated/api.gen.go)"
+      # CI-only development can retrieve the exact generator output after a
+      # deliberate drift failure. The required drift gate still fails normally.
+      - name: Generate requested OpenAPI handoff in CI
+        id: requested_openapi
+        if: failure() && github.event_name == 'push' && contains(github.event.head_commit.message, '[codegen-artifact]')
+        run: go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+      - name: Export requested OpenAPI generator output
+        if: failure() && steps.requested_openapi.conclusion == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: openapi-codegen-${{ github.run_id }}
+          path: |
+            api/openapi.yaml
+            internal/platform/httpapi/generated/api.gen.go
+          if-no-files-found: error
+          retention-days: 7
       - name: PostgreSQL 18 forward-only migrations and security
         run: |
           sudo apt-get update -qq

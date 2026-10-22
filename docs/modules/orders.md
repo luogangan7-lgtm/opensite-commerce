@@ -10,6 +10,19 @@ read-only `GetPayable` port. Every method accepts an already authorized
 tenant must match `app.tenant_id`. Orders opens no connection or pool, imports
 no payment provider, and issues SQL exclusively through generated sqlc queries.
 
+`NewQuoteCreator` exposes the optional `CreateFromQuote` transaction port. It
+accepts fixed negotiated money with `QuoteSource` (quote ID, immutable version,
+line number), requires one source quote and distinct line numbers, and forbids
+price-list/tier provenance and extra adjustments. The source joins the permanent
+creation hash; ordinary `Create` rejects it. The trusted caller must verify the
+approved quote and bind its durable conversion in this same transaction. Orders
+does not authenticate a quote from a constructed value or reprice it.
+
+`NewReservationValidator` exposes `ValidateReservations` before provider capture.
+It checks the matching tenant, pending sealed order and exact live holds through
+the database-owned function. Provider I/O follows after the transaction ends;
+the final paid transition still atomically rechecks and consumes reservations.
+
 Create accepts stable caller-assigned order and line IDs, an idempotency key,
 a customer UUID or a frozen guest contact, and previously authorized results
 from Pricing, Tax and Shipping. It validates checked Money arithmetic, quantity
@@ -44,8 +57,9 @@ accepted before any stock is reserved. The service limits reservation TTL to 1â€
 defaults it to 900 seconds.
 
 Cancellation is allowed only from `pending_payment`. Paid orders require refund
-transitions; cancellation after payment needs funds/stock compensation outside
-this card.
+transitions. The Returns module now coordinates paid unshipped cancellation,
+controlled restock and refund compensation; see `returns.md`. Shipment continues
+to allocate inventory already committed at payment; see `fulfillment.md`.
 
 State boundaries live in `contract.ValidateTransition` and independently in the
 database trigger/function. `Transition` validates command shape; the database

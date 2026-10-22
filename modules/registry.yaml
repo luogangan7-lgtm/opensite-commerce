@@ -57,9 +57,9 @@
         "tests/db_role_matrix.sql",
         "tests/db_identity_auth.sql",
         "tests/db_identity_login.sql",
+        "tests/test_identity_login_contract.py",
         "tests/db_identity_clock.sql",
-        "internal/modules/identity/h4_clock_pgx_test.go",
-        "tests/test_identity_login_contract.py"
+        "internal/modules/identity/h4_clock_pgx_test.go"
       ],
       "scopes": [],
       "note": "Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented. Four staff login/challenge/session/logout HTTP operations are implemented; the five admin-session management operations remain planned."
@@ -875,10 +875,11 @@
         "internal/db/checkout_cart_integration_test.go",
         "internal/modules/checkout/internal/store/cart_test.go",
         "internal/db/checkout_http_integration_test.go",
-        "internal/modules/checkout/internal/service/input_test.go"
+        "internal/modules/checkout/internal/service/input_test.go",
+        "internal/db/checkout_adoption_integration_test.go"
       ],
       "scopes": [],
-      "note": "C-18a Fake-only checkout orchestration. Optional strict HTTP composition uses a default-deny trusted storefront resolver seam classified Storefront until real customer/guest middleware; URL/Host never authorize. Fake webhook is signed and mounted only in explicit test/development configuration. Cart contract consumption uses the real locked IntentReader in the caller transaction, discards price projections and restores prior actor GUCs. Trusted guest/customer resolver wiring remains absent and default deny; no production payment provider wiring."
+      "note": "C-18a and FIX-57 share one durable checkout payment path for cart and sealed existing-order sources. Customer HTTP admission uses verified sessions plus exact Origin/CSRF. Explicit test/development Fake configuration only; no real PSP or implicit enablement. Orders #49 fences enforce hold ownership; C-20b holder primitive remains a follow-up integration dependency."
     },
     {
       "name": "quotes",
@@ -889,7 +890,8 @@
         "inquiries",
         "quotes",
         "quote_lines",
-        "quote_approvals"
+        "quote_approvals",
+        "quote_conversions"
       ],
       "operations": [
         {
@@ -931,6 +933,14 @@
         {
           "operation_id": "rejectQuote",
           "status": "implemented"
+        },
+        {
+          "operation_id": "createQuoteOrder",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getQuoteOrderConversion",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -942,19 +952,29 @@
         "pricing",
         "tax",
         "shipping",
-        "reliability"
+        "reliability",
+        "orders",
+        "checkout"
       ],
       "tests": [
         "internal/modules/quotes/module_test.go",
         "internal/modules/quotes/quotes_pgx_test.go",
         "internal/platform/httpapi/quotes/quotes_test.go",
-        "tests/db_quotes.sql"
+        "tests/db_quotes.sql",
+        "tests/db_quote_conversion.sql",
+        "internal/modules/quotes/conversion_test.go",
+        "internal/bootstrap/quoteorders_pgx_test.go",
+        "internal/platform/httpapi/quoteorders/quoteorders_test.go",
+        "internal/modules/quotes/conversion_key_test.go",
+        "internal/bootstrap/quote_conversion_test.go",
+        "internal/bootstrap/checkout_environment_test.go",
+        "internal/bootstrap/quoteorders_production_pgx_test.go"
       ],
       "scopes": [
         "quotes:read",
         "quotes:write"
       ],
-      "note": "C-17a contact collection and immutable quote lifecycle; buyer endpoints require an externally verified sealed customer actor, default denied. No customer authentication implementation or order/payment creation."
+      "note": "C-17a immutable approved quote snapshots; C-18b conversion receipts and scoped internal Orders keys. FIX-57 typed bootstrap composition adopts sealed Orders through unified checkout; only signed verified Confirm can capture/post Ledger/write order.paid. Unconfigured buyer admission remains closed; explicit development/test Fake only."
     },
     {
       "name": "notifications",
@@ -992,6 +1012,87 @@
         "notifications:write"
       ],
       "note": "Admin failure metadata and explicit idempotent dead-letter redrive. No recipient/body in public DTOs, uncertain SMTP acceptance cannot redrive; queue receipt is not email delivery. Uses lease-fenced outbox capability and stdlib fake/SMTP adapters; quotes event SQL is optional until integration."
+    },
+    {
+      "name": "fulfillment",
+      "status": "implemented",
+      "go_path": "internal/modules/fulfillment",
+      "go_status": "implemented",
+      "owns_tables": [
+        "shipments",
+        "shipment_lines"
+      ],
+      "operations": [
+        {
+          "operation_id": "createShipment",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "orders",
+        "inventory"
+      ],
+      "tests": [
+        "tests/db_fulfillment_returns.sql",
+        "tests/test_fulfillment_contract.py",
+        "internal/modules/fulfillment/http_test.go",
+        "internal/db/fulfillment_returns_integration_test.go",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh",
+        "tests/db_role_matrix.sql"
+      ],
+      "scopes": [
+        "fulfillment:write"
+      ],
+      "note": "Shipment allocation over committed paid order stock; no second inventory commit. Parent-order version fence serializes cumulative quantities."
+    },
+    {
+      "name": "returns",
+      "status": "implemented",
+      "go_path": "internal/modules/returns",
+      "go_status": "implemented",
+      "owns_tables": [
+        "returns",
+        "return_lines"
+      ],
+      "operations": [
+        {
+          "operation_id": "createReturn",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "receiveReturn",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "refundReturn",
+          "status": "implemented"
+        }
+      ],
+      "dependencies": [
+        "tenant",
+        "orders",
+        "fulfillment",
+        "inventory",
+        "payments",
+        "ledger",
+        "money"
+      ],
+      "tests": [
+        "tests/db_fulfillment_returns.sql",
+        "tests/test_fulfillment_contract.py",
+        "internal/modules/returns/http_test.go",
+        "internal/modules/returns/internal/service/refund_test.go",
+        "internal/db/fulfillment_returns_integration_test.go",
+        "scripts/check_pg_races.sh",
+        "scripts/check_pg_upgrade.sh",
+        "tests/db_role_matrix.sql"
+      ],
+      "scopes": [
+        "returns:write"
+      ],
+      "note": "Shipment returns and paid-unshipped cancellation restore stock through Inventory-owned commands. Trusted capture/account ports and app_returns_service capability own durable two-phase refunds; no client financial proof."
     }
   ],
   "migrations": [
@@ -1416,6 +1517,21 @@
       ]
     },
     {
+      "file": "migrations/pending/c20a-fulfillment_fulfillment_returns.sql",
+      "owner": "fulfillment",
+      "touches_tables": [
+        "shipments",
+        "shipment_lines",
+        "returns",
+        "return_lines",
+        "orders",
+        "order_lines",
+        "inventory_movements",
+        "stock_levels",
+        "idempotency_records"
+      ]
+    },
+    {
       "file": "migrations/pending/c20b-hold-owner_inventory_hold_owner.sql",
       "owner": "inventory",
       "touches_tables": [
@@ -1460,6 +1576,34 @@
         "tenant_memberships",
         "api_keys",
         "auth_sessions"
+      ]
+    },
+    {
+      "file": "migrations/pending/c20a-fulfillment-scopes_fulfillment_role_scopes.sql",
+      "owner": "tenant",
+      "touches_tables": []
+    },
+    {
+      "file": "migrations/pending/c18b-quote-conversion_quote_conversion.sql",
+      "owner": "quotes",
+      "touches_tables": [
+        "quote_conversions",
+        "quotes",
+        "orders",
+        "order_lines",
+        "order_adjustments",
+        "outbox_events",
+        "notification_deliveries"
+      ]
+    },
+    {
+      "file": "migrations/pending/c18b-checkout-source_checkout_source.sql",
+      "owner": "checkout",
+      "touches_tables": [
+        "checkout_sessions",
+        "checkout_attempts",
+        "orders",
+        "inventory_reservations"
       ]
     },
     {

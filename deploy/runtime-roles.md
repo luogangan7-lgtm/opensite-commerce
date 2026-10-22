@@ -134,6 +134,25 @@ login to the same exact application database as the other six component logins.
 The recovery drill includes real local proof/login/cart witnesses and restores
 the authentication tables with the all-table archive; see [README.md](README.md).
 
+### Fulfillment and refund coordinator
+
+`app_returns_service` is a separate NOLOGIN, NOINHERIT, NOBYPASSRLS capability.
+Only a trusted refund coordinator may receive a dedicated login with that role;
+never grant it to `app_runtime`, the Astro renderer or a public query identity.
+Migration grants permit frozen order/return reads and the controlled refund
+prepare/complete and ledger-post functions. They permit no direct return writes,
+inventory adjustment, DDL or role membership administration.
+
+To finish an already admitted C-04 refund atomically, it may SELECT only the
+claim identity/hash/token/state columns and UPDATE only the completion state,
+status, body reference and timestamp of `idempotency_records`. Its FORCE-RLS
+policies additionally require the current tenant and operation `refundReturn`.
+It cannot INSERT/claim requests, change claim tokens or complete another operation.
+
+The coordinator must use authenticated tenant transactions through `pgxadapter`
+and server-provided captured-payment/account bindings. Do not provision membership
+in an executor/DDL-owner role. Credentials and provider configuration remain
+out-of-band. A missing trusted binding leaves the refund HTTP operation unavailable.
 
 
 ### Tenant business authorization (C-02c)

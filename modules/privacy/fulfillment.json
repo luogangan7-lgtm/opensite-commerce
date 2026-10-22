@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "module": "fulfillment",
+  "note": "Carrier and tracking are caller-supplied free text and may identify a recipient. Scrubbing obligations require a controlled data-rights path through the existing immutable shipment guards; this declaration implements no erasure engine.",
+  "structures": {"Sha256Digest": "Opaque 32-byte request-integrity digest; never raw shipment/contact data or an exportable credential."},
+  "tables": {
+    "shipments": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "shipments.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest shipment inherits unverified order contact; do not establish registered customer ownership by matching carrier/tracking/email text."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "order_id": {"classification": "operational"},
+        "creation_key": {"classification": "operational"},
+        "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "carrier": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
+        "tracking_number": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
+        "status": {"classification": "operational"},
+        "order_version": {"classification": "operational"},
+        "sealed": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "shipment_lines": {
+      "subject": {"tenant_key": "tenant_id", "identity_path": "shipment_lines.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest shipment line inherits unverified order contact policy."},
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "shipment_id": {"classification": "operational"},
+        "order_id": {"classification": "operational"},
+        "order_line_id": {"classification": "operational"},
+        "quantity": {"classification": "operational"}
+      }
+    }
+  }
+}

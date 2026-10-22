@@ -132,8 +132,10 @@ expected = [
     'db_checkout.sql',
     'db_customer_auth.sql',
     'db_inventory_owner.sql',
-    'db_identity_clock.sql',
     'db_payments.sql',
+    'db_fulfillment_returns.sql',
+    'db_quote_conversion.sql',
+    'db_identity_clock.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
 races = (root / 'scripts/check_pg_races.sh').read_text()
@@ -191,7 +193,10 @@ def login_runner_contract(races, upgrade):
     assert 'pg_blocking_pids(second.pid)' in rotation, 'login rotation requires an observed blocker'
     assert "expect login_rotate_second 'no rows returned for'" in rotation
     assert 'LOGIN_ROTATION_RACE=1|1|1|0' in rotation, 'exactly one successor must remain'
-    login = upgrade[upgrade.index('# C-02b: start'):]
+    login_start = upgrade.index('# C-02b: start')
+    # Later module cases may also use DB; count only the login upgrade case.
+    login_end = upgrade.index('\nLOGIN_DB=""', login_start)
+    login = upgrade[login_start:login_end]
     assert 'login_files=(migrations/[0-9][0-9][0-9]_identity_login.sql)' in login
     assert '[[ $f < ${login_files[0]} ]] || break' in login
     assert '[[ $f > ${login_files[0]} ]] || continue' in login
@@ -199,7 +204,12 @@ def login_runner_contract(races, upgrade):
     assert 'LOGIN_UPGRADE=3|3|3|true|true|false' in login
 
 login_runner_contract(races, upgrade)
+# Appending an independent module must preserve the login case's exact two loops.
+login_runner_contract(races, upgrade + '\n# Later module upgrade\napply_forward "$DB" "$f"\n')
+login_end = upgrade.index('\nLOGIN_DB=""', upgrade.index('# C-02b: start'))
+extra_login_loop = upgrade[:login_end] + '\napply_forward "$DB" "$f"\n' + upgrade[login_end:]
 for bad_races, bad_upgrade in [
+    (races, extra_login_loop),
     (races.replace('RETURNING s.id AS rotated', 'REMOVED'), upgrade),
     (races.replace('LOGIN_ROTATION_RACE=1|1|1|0', 'LOGIN_ROTATION_RACE=1|2|1|1'), upgrade),
     (races, upgrade.replace('apply_forward "$DB" "$f"', 'true')),
@@ -342,13 +352,15 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('CART_EXPECTED_REFUSAL', 'db_cart.sql'),
                          ('QUOTES_SCHEMA_REQUIRED', 'db_quotes.sql'),
                          ('OPS_METRICS_GATE', 'db_ops_metrics.sql'),
+                         ('QUOTE_CONVERSION_', 'db_quote_conversion.sql'),
                          ('IDENTITY_GATE', 'db_identity_auth.sql'),
                          ('LOGIN_GATE', 'db_identity_login.sql'),
                          ('CMS_EXPECTED_REFUSAL', 'db_cms_publish.sql'),
                          ('checkout SQL PASS', 'db_checkout.sql'),
                          ('CUSTOMER_AUTH_GLOBAL_SCHEMA_MISSING', 'db_customer_auth.sql'),
                          ('C20B_GATE', 'db_inventory_owner.sql'),
-                         ('PAYMENTS_GATE', 'db_payments.sql')]:
+                         ('PAYMENTS_GATE', 'db_payments.sql'),
+                         ('FULFILLMENT_GATE', 'db_fulfillment_returns.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
         assert failed.returncode == 31, (failed.stdout, failed.stderr)

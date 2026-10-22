@@ -164,11 +164,13 @@ CHECKOUT_DB=""
 SERVING_DB=""
 CUSTOMER_AUTH_DB=""
 PAYMENTS_DB=""
+FULFILLMENT_DB=""
+CONVERSION_DB=""
 CLOCK_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$CLOCK_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1133,6 +1135,36 @@ db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"
 LOGIN_DB=""
 
+# Quote conversion is additive: already-approved immutable rows survive unchanged.
+conversions=(migrations/[0-9][0-9][0-9]_quote_conversion.sql)
+[[ ${#conversions[@]} == 1 ]] || { echo 'FAIL: exactly one quote conversion migration required' >&2; exit 1; }
+CONVERSION_DB=quote_conversion_upgrade_$$
+admin -c "CREATE DATABASE $CONVERSION_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${conversions[0]} ]] || break
+ apply_forward "$CONVERSION_DB" "$f"
+done
+# Reuse only the predecessor-compatible fixture before the conversion assertions.
+# It builds actual Create/Send/Accept/Approve commands under runtime authority.
+{
+ awk '/^BEGIN;/{copy=1} /^DO \$conversion\$/{exit} copy' tests/db_quote_conversion.sql
+ echo "SELECT pg_temp.qc_quote(); COMMIT;"
+} | db "$CONVERSION_DB" >/dev/null
+witness_sql="SELECT encode(sha256(jsonb_build_object('id',id,'status',status,'version',version,'snapshot',snapshot,'total',total,'expires_at',expires_at)::text::bytea),'hex') FROM app.quotes;"
+before=$(db "$CONVERSION_DB" -c "$witness_sql")
+[[ -n $before ]] || bad 'quote conversion upgrade has no approved snapshot witness'
+apply_forward "$CONVERSION_DB" "${conversions[0]}"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${conversions[0]} ]] || continue
+ apply_forward "$CONVERSION_DB" "$f"
+done
+result=$(db "$CONVERSION_DB" -c "$witness_sql")
+[[ $result == "$before" ]] || bad 'quote conversion migration changed existing approved snapshot'
+if ! db "$CONVERSION_DB" < tests/db_quote_conversion.sql >/dev/null || ! db "$CONVERSION_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'quote conversion populated upgrade commands or exact role matrix'
+else pass 'quote conversion preserves approved snapshot; conversion/expiry/authority and grants after upgrade'; fi
+admin -c "DROP DATABASE $CONVERSION_DB" >/dev/null; CONVERSION_DB=""
+
 # H4-clock: discover by suffix and apply every predecessor, never a fixed number.
 clock_files=(migrations/[0-9][0-9][0-9]_identity_db_clock.sql)
 [[ ${#clock_files[@]} -eq 1 && -f ${clock_files[0]} ]] || { echo 'FAIL: clock migration missing'; exit 1; }
@@ -1490,8 +1522,60 @@ db "$PAYMENTS_DB" -f tests/db_payments.sql >/dev/null
 db "$PAYMENTS_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $PAYMENTS_DB" >/dev/null; PAYMENTS_DB=""
 pass 'payment upgrade preserves ready checkout snapshot and defaults bounded refund counters'
+# C-20a: preserve a pre-module paid/committed order, then allocate shipment
+# and compensate its unshipped remainder. Module identity follows filename suffix.
+fulfillment_files=(migrations/[0-9][0-9][0-9]_fulfillment_returns.sql)
+[[ ${#fulfillment_files[@]} == 1 ]] || { bad 'exactly one fulfillment migration required'; exit 1; }
+FULFILLMENT_DB=upgrade_fulfillment_$$; DB=$FULFILLMENT_DB
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${fulfillment_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('fulfillment-existing') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','existing') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','existing','default') RETURNING id AS sku \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_inventory_manager;
+SELECT app.inventory_adjust(:'sku',5,'legacy stock',uuidv7(),'inbound');
+SET ROLE app_runtime;
+SELECT uuidv7() AS oid,uuidv7() AS lid \gset
+SELECT (app.inventory_reserve(:'sku',2,'order',:'oid','existing-reserve',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','existing-order',sha256('existing'::bytea),NULL,'{"email":"existing@example.invalid"}',
+ 'USD',2,'{"amount_minor":2,"currency":"USD","service":"fixture"}',
+ jsonb_build_array(jsonb_build_object('id',:'lid','sku_id',:'sku','sku','existing','quantity',2,'unit_price_minor',5,
+ 'line_net_minor',10,'line_tax_minor',2,'line_total_minor',12,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
+SELECT app.orders_transition(:'oid','paid','existing-paid',0);
+SQL
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${fulfillment_files[0]} ]] && continue
+ apply_forward "$DB" "$f"
+done
+result=$(db "$DB" <<'SQL'
+SELECT id AS t FROM app.tenants WHERE name='fulfillment-existing' \gset
+SELECT id AS oid FROM app.orders WHERE tenant_id=:'t' \gset
+SELECT id AS lid FROM app.order_lines WHERE tenant_id=:'t' \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_runtime;
+SELECT app.fulfillment_create_shipment(:'oid',2,'existing-shipment','manual','LEGACY',
+ jsonb_build_array(jsonb_build_object('order_line_id',:'lid','quantity',1)));
+SELECT app.returns_create(:'oid',3,'existing-cancel','unshipped_cancel','legacy remainder',
+ jsonb_build_array(jsonb_build_object('order_line_id',:'lid','quantity',1)));
+SELECT 'FULFILLMENT_UPGRADE='||o.state||'|'||o.version||'|'||s.on_hand||'|'||s.reserved||'|'||
+ (SELECT sum(quantity) FROM app.shipment_lines WHERE tenant_id=:'t')||'|'||
+ (SELECT refund_minor FROM app.returns WHERE tenant_id=:'t')||'|'||
+ (SELECT count(*) FROM app.inventory_movements WHERE tenant_id=:'t' AND owner_type='return')
+ FROM app.orders o JOIN app.stock_levels s USING(tenant_id) WHERE o.tenant_id=:'t';
+SQL
+)
+[[ $result == *'FULFILLMENT_UPGRADE=partially_fulfilled|4|4|0|1|7|1'* ]] || bad "fulfillment paid legacy upgrade: $result"
+db "$DB" -f tests/db_fulfillment_returns.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"; FULFILLMENT_DB=""
+pass 'fulfillment upgrade preserves paid inventory and compensates only unshipped quantities'
 
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory/holder authority, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront serving, ops metrics, notifications, quotes, identity auth/login, CMS, checkout, customer auth and payments upgrade gates'
+echo 'PASS: security, reliability, inventory/holder authority, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront serving, ops metrics, notifications, quotes, identity auth/login, CMS, checkout, customer auth payments and fulfillment/returns upgrade gates'
