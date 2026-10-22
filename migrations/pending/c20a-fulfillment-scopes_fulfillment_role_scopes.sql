@@ -13,6 +13,6 @@ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp A
  WHEN 'admin' THEN ARRAY['organization.create','site.create','catalog:read','catalog:write','media:write','cms:write','cms:publish','quotes:read','quotes:write','notifications:write','orders:read','apikeys:write','fulfillment:write','returns:write']
  WHEN 'catalog_editor' THEN ARRAY['catalog:read','catalog:write','media:write']
  WHEN 'content_editor' THEN ARRAY['catalog:read','cms:write','cms:publish','media:write']
- WHEN 'viewer' THEN ARRAY['catalog:read'] ELSE ARRAY[]::text[] END;
+ WHEN 'viewer' THEN ARRAY['catalog:read','fulfillment:write'] ELSE ARRAY[]::text[] END;
 $scope$;
 REVOKE ALL ON FUNCTION app.auth_role_scopes(text) FROM PUBLIC;

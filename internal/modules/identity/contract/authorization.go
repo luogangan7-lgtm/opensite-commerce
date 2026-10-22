@@ -58,7 +58,7 @@ func RoleScopes(role string) []string {
 	case "content_editor":
 		return []string{"catalog:read", "cms:write", "cms:publish", "media:write"}
 	case "viewer":
-		return []string{"catalog:read"}
+		return []string{"catalog:read", "returns:write"}
 	default:
 		return nil
 	}

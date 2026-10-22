@@ -5,7 +5,7 @@ on: pull_request
 # when an earlier required gate stops on a different tests-first failure.
 jobs:
   refund-regressions:
-    if: github.event.pull_request.number == 39
+    if: github.event.pull_request.number == 39 || startsWith(github.head_ref, 'probe/fix39-scope-')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
