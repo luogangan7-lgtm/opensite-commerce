@@ -71,8 +71,7 @@ FROM app.inventory_reservations WHERE tenant_id=sqlc.arg(tenant_id) AND id=ANY(s
 SELECT o.id,o.order_number,o.state,o.currency,o.total_minor,o.created_at
 FROM app.orders o
 WHERE o.tenant_id=sqlc.arg(tenant_id)
- AND (o.customer_id=sqlc.arg(customer_id) OR (o.customer_id IS NULL AND EXISTS(
-  SELECT 1 FROM app.customer_guest_order_links k WHERE k.tenant_id=o.tenant_id AND k.order_id=o.id AND k.customer_id=sqlc.arg(customer_id))))
+ AND sqlc.arg(customer_id)::uuid IS NOT NULL
  AND o.sealed
  AND (NOT sqlc.arg(has_cursor)::boolean OR (o.created_at,o.id)<(sqlc.arg(cursor_created_at)::timestamptz,sqlc.arg(cursor_id)::uuid))
 ORDER BY o.created_at DESC,o.id DESC LIMIT sqlc.arg(page_size)::integer;
