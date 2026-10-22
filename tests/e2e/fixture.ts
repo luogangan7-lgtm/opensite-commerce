@@ -71,7 +71,10 @@ export async function publishedSite(request: APIRequestContext): Promise<Publish
     title: fixture.title, locale: 'en' });
   expect(site).not.toHaveProperty('hostname');
   expect(site.products.find(product => product.slug === fixture.productSlug)).toMatchObject({
-    id: fixture.productId, name: fixture.productName, skus: [],
+    id: fixture.productId, name: fixture.productName, skus: expect.arrayContaining([{
+      sku_id: 'c2400008-0000-4000-8000-000000000001', sku_code: 'C24-CANVAS-TOTE',
+      option_values: [], price_minor: '2400', currency: 'USD', available: true,
+    }]),
   });
   return site;
 }
