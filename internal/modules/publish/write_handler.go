@@ -496,7 +496,7 @@ func (s *CMSHandler) GetSitePreview(ctx context.Context, r httpapi.GetSitePrevie
 	if err != nil {
 		return nil, cmsError(err)
 	}
-	dto, err := cmsDTO[httpapi.PublishedSite](site)
+	dto, err := cmsDTO[httpapi.SitePreview](site)
 	if err != nil {
 		return nil, cmsError(err)
 	}

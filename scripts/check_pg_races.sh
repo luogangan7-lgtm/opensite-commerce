@@ -1209,6 +1209,41 @@ SQL
  echo "customer auth $auth_case: 2 synchronized connections (gate 92), exactly one winner"
 done
 
+# C-19a gates93/94: actual inbox unique-key contention and public stream lock.
+# Separate connections must be observed blocked before release; no timed ordering.
+T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('payments-gate93') RETURNING id;" | tail -1)
+ACCOUNT="c19-race-$T"
+sql <<<"INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment,enabled) VALUES('$T','fake','$ACCOUNT','test',true);" >/dev/null
+inbox_insert="INSERT INTO app.webhook_inbox(tenant_id,provider,provider_account_id,environment,provider_event_id,payload_hash,payload_reference) VALUES('$T','fake','$ACCOUNT','test','race-event',sha256('same'::bytea),'payment:race') ON CONFLICT (tenant_id,provider,provider_account_id,environment,provider_event_id) DO NOTHING RETURNING 'C19_INBOX_INSERTED';"
+gate_close 93
+tx payment_inbox_first app_runtime "$T" "$inbox_insert $(park 93)" &
+await payment_inbox_first advisory
+tx payment_inbox_second app_runtime "$T" "$inbox_insert" &
+await payment_inbox_second "${ROWLOCK[@]}"
+gate_open 93; wait
+expect payment_inbox_first ok; expect payment_inbox_second ok
+result payment_inbox_first C19_INBOX_INSERTED
+if [[ $(cat "$ERRDIR/payment_inbox_second.out") == *C19_INBOX_INSERTED* ]]; then
+ echo 'FAIL: C19 duplicate inbox inserted twice'; fail=1
+fi
+got=$(sql <<<"SELECT count(*)||'|'||bool_and(payload_hash=sha256('same'::bytea)) FROM app.webhook_inbox WHERE tenant_id='$T' AND provider_account_id='$ACCOUNT' AND provider_event_id='race-event';")
+echo "payments gate93 duplicate inbox: $got (expected 1|true)"
+[[ $got == '1|true' ]] || fail=1
+# The production lock function is the single authority for stream lock identity.
+# A different provider intent progresses while an identical intent is blocked.
+gate_close 94
+tx payment_stream_first app_runtime "$T" "SELECT app.lock_payment_stream('$ACCOUNT','intent-one'); $(park 94)" &
+await payment_stream_first advisory
+tx payment_stream_second app_runtime "$T" "SELECT app.lock_payment_stream('$ACCOUNT','intent-one'); SELECT 'C19_STREAM_SECOND';" &
+await payment_stream_second advisory
+tx payment_stream_other app_runtime "$T" "SELECT app.lock_payment_stream('$ACCOUNT','intent-two'); SELECT 'C19_STREAM_OTHER';" &
+payment_other_pid=$!
+await_job payment_stream_other "$payment_other_pid"
+expect payment_stream_other ok; result payment_stream_other C19_STREAM_OTHER
+gate_open 94; wait
+expect payment_stream_first ok; expect payment_stream_second ok
+result payment_stream_second C19_STREAM_SECOND
+
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'

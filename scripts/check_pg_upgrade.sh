@@ -161,11 +161,13 @@ PRICING_DB=""
 IDENTITY_DB=""
 LOGIN_DB=""
 CHECKOUT_DB=""
+SERVING_DB=""
 CUSTOMER_AUTH_DB=""
+PAYMENTS_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1391,6 +1393,73 @@ db "$INVENTORY_OWNER_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $INVENTORY_OWNER_DB" >/dev/null; INVENTORY_OWNER_DB=""
 pass 'inventory holder upgrade preserves legacy hold, refuses owner finish, expires only via due queue authority and accepts new bearer'
 
+
+# Storefront serving: a site published before the migration keeps its pointer and gets
+# no serving row (the public read serves its legacy projection until republish).
+serving_files=(migrations/[0-9][0-9][0-9]_storefront_serving.sql)
+[[ ${#serving_files[@]} == 1 ]] || { echo 'FAIL: exactly one storefront serving migration required'; exit 1; }
+SERVING_DB=upgrade_serving_$$
+admin -c "DROP DATABASE IF EXISTS $SERVING_DB" -c "CREATE DATABASE $SERVING_DB" 2>/dev/null
+river_db "$SERVING_DB"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${serving_files[0]} ]] || break
+ apply_forward "$SERVING_DB" "$f"
+done
+db "$SERVING_DB" < tests/fixtures/storefront_seed.sql >/dev/null
+apply_forward "$SERVING_DB" "${serving_files[0]}"
+result=$(db "$SERVING_DB" -c "SELECT 'SERVING_UPGRADE='||(SELECT count(*) FROM app.sites WHERE published_release_id IS NOT NULL)||'|'||(SELECT count(*) FROM app.storefront_serving)||'|'||(SELECT count(*) FROM app.site_release_skus)")
+[[ $result == *'SERVING_UPGRADE=2|0|0'* ]] || bad "storefront serving populated upgrade witness: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${serving_files[0]} ]] || continue
+ apply_forward "$SERVING_DB" "$f"
+done
+river_db "$SERVING_DB" --verify
+if ! db "$SERVING_DB" < tests/db_storefront.sql >/dev/null || ! db "$SERVING_DB" < tests/db_storefront_serving.sql >/dev/null || ! db "$SERVING_DB" < tests/db_role_matrix.sql >/dev/null; then
+ bad 'storefront serving RLS/role matrix after populated upgrade'
+else pass 'storefront serving upgrade keeps published sites and adds an empty serving projection'; fi
+admin -c "DROP DATABASE $SERVING_DB" >/dev/null; SERVING_DB=""
+# Signed payment facts are additive to existing ready checkouts. Preserve their
+# payable/provider identity and default refund accounting to zero, by suffix.
+payment_files=(migrations/[0-9][0-9][0-9]_payment_webhooks.sql)
+[[ ${#payment_files[@]} == 1 ]] || { echo 'FAIL: exactly one payment webhook migration required'; exit 1; }
+PAYMENTS_DB=upgrade_payments_$$
+admin -c "CREATE DATABASE $PAYMENTS_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${payment_files[0]} ]] || break
+ apply_forward "$PAYMENTS_DB" "$f"
+done
+db "$PAYMENTS_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('payment-upgrade') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','payment-upgrade') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','payment-upgrade','default') RETURNING id AS sku \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_inventory_manager;
+SELECT app.inventory_adjust(:'sku',2,'payment upgrade stock',uuidv7(),'inbound');
+SET ROLE app_runtime;
+SELECT uuidv7() AS oid \gset
+SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','payment-upgrade-stock',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','payment-upgrade-order',sha256('payment-upgrade'::bytea),NULL,'{"email":"payment-upgrade@example.invalid"}','USD',0,'{}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','payment-upgrade','quantity',1,'unit_price_minor',100,
+ 'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
+INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
+VALUES(:'t',uuidv7(),'guest',repeat('a',64),'upgrade',sha256('upgrade'::bytea),uuidv7(),1,:'oid','{}','USD',100,100,0,0,1);
+UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake_upgrade',start_result='{}';
+RESET ROLE;
+CREATE TABLE public.payment_upgrade_witness AS SELECT to_jsonb(s) AS snapshot FROM app.checkout_sessions s;
+SQL
+apply_forward "$PAYMENTS_DB" "${payment_files[0]}"
+result=$(db "$PAYMENTS_DB" -c "SELECT (to_jsonb(s)-ARRAY['refunded_net_minor','refunded_tax_minor','refunded_shipping_minor']=w.snapshot) AND s.refunded_net_minor=0 AND s.refunded_tax_minor=0 AND s.refunded_shipping_minor=0 FROM app.checkout_sessions s CROSS JOIN public.payment_upgrade_witness w;")
+[[ $result == t ]] || bad "payment ready checkout upgrade changed identity: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${payment_files[0]} ]] || continue
+ apply_forward "$PAYMENTS_DB" "$f"
+done
+db "$PAYMENTS_DB" -f tests/db_payments.sql >/dev/null
+db "$PAYMENTS_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $PAYMENTS_DB" >/dev/null; PAYMENTS_DB=""
+pass 'payment upgrade preserves ready checkout snapshot and defaults bounded refund counters'
+
+
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory/holder authority, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login, CMS, checkout and customer auth upgrade gates'
+echo 'PASS: security, reliability, inventory/holder authority, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront serving, ops metrics, notifications, quotes, identity auth/login, CMS, checkout, customer auth and payments upgrade gates'

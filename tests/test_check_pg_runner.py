@@ -122,6 +122,7 @@ expected = [
     'db_reliability_limits.sql',
     'db_cart.sql',
     'db_storefront.sql',
+    'db_storefront_serving.sql',
     'db_ops_metrics.sql',
     'db_notifications.sql',
     'db_quotes.sql',
@@ -131,10 +132,32 @@ expected = [
     'db_checkout.sql',
     'db_customer_auth.sql',
     'db_inventory_owner.sql',
+    'db_payments.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
 races = (root / 'scripts/check_pg_races.sh').read_text()
 upgrade = (root / 'scripts/check_pg_upgrade.sh').read_text()
+
+def payments_runner_contract(source):
+    section = source[source.index('# C-19a gates93/94:'):source.index('if [[ $fail -ne 0 ]]; then')]
+    assert 'gate_close 93' in section and 'gate_close 94' in section
+    assert 'await payment_inbox_second "${ROWLOCK[@]}"' in section
+    assert 'await payment_stream_second advisory' in section
+    assert "app.lock_payment_stream('$ACCOUNT','intent-one')" in section
+    assert "app.lock_payment_stream('$ACCOUNT','intent-two')" in section
+    assert 'result payment_stream_other C19_STREAM_OTHER' in section
+    assert 'C19_INBOX_INSERTED' in section and "[[ $got == '1|true' ]]" in section
+
+payments_runner_contract(races)
+for broken in [races.replace('await payment_inbox_second "${ROWLOCK[@]}"', 'true'),
+               races.replace('await payment_stream_second advisory', 'true'),
+               races.replace('result payment_stream_other C19_STREAM_OTHER', 'true')]:
+    try:
+        payments_runner_contract(broken)
+    except (AssertionError, ValueError):
+        pass
+    else:
+        raise AssertionError('payments synchronization mutation escaped the runner guard')
 
 def identity_runner_contract(races, upgrade):
     assert 'BOOTSTRAP_RACE=' in races, 'first-owner concurrency case missing'
@@ -323,7 +346,8 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('CMS_EXPECTED_REFUSAL', 'db_cms_publish.sql'),
                          ('checkout SQL PASS', 'db_checkout.sql'),
                          ('CUSTOMER_AUTH_GLOBAL_SCHEMA_MISSING', 'db_customer_auth.sql'),
-                         ('C20B_GATE', 'db_inventory_owner.sql')]:
+                         ('C20B_GATE', 'db_inventory_owner.sql'),
+                         ('PAYMENTS_GATE', 'db_payments.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
         assert failed.returncode == 31, (failed.stdout, failed.stderr)

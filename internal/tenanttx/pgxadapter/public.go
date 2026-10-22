@@ -22,7 +22,7 @@ func OpenPublic(ctx context.Context, dsn string) (Runner, func(), error) {
    AND r.rolcanlogin AND r.rolinherit AND current_user=session_user
    AND EXISTS (SELECT FROM pg_roles p WHERE p.rolname='app_domain_resolver' AND NOT (p.rolcanlogin OR p.rolsuper OR p.rolbypassrls OR p.rolcreatedb OR p.rolcreaterole OR p.rolreplication OR p.rolinherit))
    AND NOT EXISTS (SELECT FROM pg_auth_members m WHERE m.member='app_domain_resolver'::regrole)
-   AND NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relname IN ('site_domains','sites','site_releases','site_release_routes','page_revisions') AND NOT (c.relrowsecurity AND c.relforcerowsecurity))
+   AND NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relname IN ('site_domains','sites','site_releases','site_release_routes','page_revisions','storefront_serving','serving_invalidations') AND NOT (c.relrowsecurity AND c.relforcerowsecurity))
    AND EXISTS (SELECT FROM pg_auth_members m JOIN pg_roles p ON p.oid=m.roleid WHERE m.member=r.oid AND p.rolname='app_domain_resolver' AND m.set_option AND NOT m.admin_option)
    AND NOT EXISTS (SELECT FROM pg_auth_members m WHERE m.member=r.oid AND m.admin_option)
    AND NOT EXISTS (SELECT FROM pg_auth_members m JOIN pg_roles p ON p.oid=m.roleid WHERE m.member=r.oid AND p.rolname<>'app_domain_resolver')
@@ -33,17 +33,19 @@ func OpenPublic(ctx context.Context, dsn string) (Runner, func(), error) {
      AND has_column_privilege(session_user,c.oid,a.attnum,'SELECT')
      AND NOT a.attname::text=ANY(CASE c.relname
       WHEN 'site_domains' THEN ARRAY['tenant_id','site_id','normalized_hostname','status','verified_at']
-      WHEN 'sites' THEN ARRAY['tenant_id','id','published_release_id','default_locale']
+      WHEN 'sites' THEN ARRAY['tenant_id','id','published_release_id','default_locale','publication_revision']
       WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','sealed','manifest']
       WHEN 'site_release_routes' THEN ARRAY['tenant_id','site_id','release_id','locale','path','page_id','page_revision']
       WHEN 'page_revisions' THEN ARRAY['tenant_id','site_id','page_id','locale','revision','document']
+      WHEN 'storefront_serving' THEN ARRAY['tenant_id','site_id','publication_revision','body','fallback_body','body_sha256','fallback_sha256','valid_until']
+      WHEN 'serving_invalidations' THEN ARRAY['tenant_id','site_id','created_at']
       ELSE ARRAY[]::text[] END))
    AND NOT has_schema_privilege(session_user,'app','CREATE')
    AND NOT EXISTS (SELECT FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace WHERE n.nspname='app' AND has_function_privilege(session_user,f.oid,'EXECUTE'))
    AND NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relkind IN ('r','p') AND
     (has_table_privilege(session_user,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
      OR has_any_column_privilege(session_user,c.oid,'INSERT,UPDATE,REFERENCES')
-     OR (c.relname NOT IN ('site_domains','sites','site_releases','site_release_routes','page_revisions') AND has_any_column_privilege(session_user,c.oid,'SELECT'))))
+     OR (c.relname NOT IN ('site_domains','sites','site_releases','site_release_routes','page_revisions','storefront_serving','serving_invalidations') AND has_any_column_privilege(session_user,c.oid,'SELECT'))))
    FROM pg_roles r WHERE r.rolname=session_user`).Scan(&safe)
 		if err != nil {
 			return err

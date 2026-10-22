@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "mobile/dialog-closed.png",
   "scope": "gallery",
-  "sourceFingerprint": "980929f29823c6c437a6c7d5205cd0673700342c24d56afd1504635dacd4a2b2",
+  "sourceFingerprint": "e8975753c860fbc192b20f7526dd91abfc1c869807e273a498d26b0662a4e436",
   "pngSha256": "8ebdf7a1f6183688cd72b2b1398bac7594ba6adddb30ec01a4ce2216a246fb32",
   "scopeSnapshots": [
     "desktop/badge-danger.png",
@@ -186,8 +186,8 @@
     "mobile/table-populated-hover.png",
     "mobile/table-populated.png"
   ],
-  "sourceSha": "423d4c069c68f82098ae1530d4aa8ae59aa8a68f",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38412793719",
+  "sourceSha": "d3f86c688a1479711abb91113deda66a89ec9033",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38451726222",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
@@ -204,6 +204,11 @@
     "mobile": [
       390,
       844
+    ],
+    "chromiumArgs": [
+      "--disable-partial-raster",
+      "--disable-gpu",
+      "--force-color-profile=srgb"
     ]
   }
 }

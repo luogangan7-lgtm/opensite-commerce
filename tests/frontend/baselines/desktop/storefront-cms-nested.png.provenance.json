@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "desktop/storefront-cms-nested.png",
   "scope": "storefront-published",
-  "sourceFingerprint": "9cbc8a5fa08e1e1c1bf7258cc97b7b257a74cb967726f0ff3564ccc03e658e5a",
+  "sourceFingerprint": "cdfffb8f8a1ec309435e1ed99da026f611a68013834543af81ed3cf3c5ba3665",
   "pngSha256": "7d0258be75516a4c3f1a646b33c2ba4570e7eb8bee3526dc34e8591a93d87cbf",
   "scopeSnapshots": [
     "desktop/storefront-404.png",
@@ -20,8 +20,8 @@
     "mobile/storefront-product.png",
     "mobile/storefront-products.png"
   ],
-  "sourceSha": "b56ca265b5ebe552e46d46a78674b33fd5fa40a5",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38420174308",
+  "sourceSha": "b7507979e09b9e2bf6ab4489f3e081a7b64e8651",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/39725216176",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
@@ -38,6 +38,11 @@
     "mobile": [
       390,
       844
+    ],
+    "chromiumArgs": [
+      "--disable-partial-raster",
+      "--disable-gpu",
+      "--force-color-profile=srgb"
     ]
   }
 }
