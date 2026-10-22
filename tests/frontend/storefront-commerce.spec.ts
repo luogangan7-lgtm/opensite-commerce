@@ -253,7 +253,7 @@ test('commerce upstream contract: private owner, If-Match, API pricing and idemp
   const restored = await upstream(request, unique, `${cartPath}/lines/${sku}`, 'PUT', { quantity: 2 }, { ...headers, 'If-Match': zero.headers().etag });
   expect(restored.status()).toBe(200);
   expect((await upstream(request, unique, `${cartPath}/lines/${sku}`, 'PUT', { quantity: 3 }, headers)).status()).toBe(412);
-  const shipping_address = { country: 'US', address1: '1 Test Way', city: 'Test City', postal_code: '10001' }, input = { cart_id: raw.cart.id, shipping_address, buyer_contact: { email: 'buyer@example.test' } };
+  const shipping_address = { country: 'US', address1: '1 Test Way', city: 'Test City', postal_code: '10001' }, input = { cart_id: raw.cart.id, shipping_address, buyer_contact: { email: 'buyer@example.test' }, accepted_total: { amount_minor: '5780', currency: 'USD' } };
   const preview = await upstream(request, unique, `${prefix}/checkout/preview`, 'POST', input, headers);
   expect(await preview.json()).toMatchObject({ subtotal_minor: '4800', tax_minor: '480', shipping_minor: '500', total_minor: '5780' });
   const checkoutHeaders = { ...headers, 'Idempotency-Key': `test-${crypto.randomUUID()}` };
