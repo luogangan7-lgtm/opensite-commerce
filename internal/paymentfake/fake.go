@@ -168,6 +168,7 @@ func (f *Fake) apply(ctx context.Context, op Operation, r payment.PaymentOperati
 	if queue := f.failures[op]; len(queue) > 0 {
 		f.failures[op] = queue[1:]
 		copied := *queue[0]
+		copied.NoSideEffect = copied.Code == payment.ErrorNonRetryable
 		if copied.Code == payment.ErrorNonRetryable {
 			cached := copied
 			f.bindings[key] = binding{fingerprint: fingerprint, failure: &cached, complete: true}

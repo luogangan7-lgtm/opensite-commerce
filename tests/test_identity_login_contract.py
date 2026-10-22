@@ -36,6 +36,7 @@ SCOPES = {
     'apikeys:write', 'catalog:read', 'catalog:write', 'cms:publish',
     'cms:write', 'media:write', 'notifications:write', 'orders:read',
     'quotes:read', 'quotes:write', 'organization.create', 'site.create',
+    'fulfillment:write', 'returns:write',
 }
 
 

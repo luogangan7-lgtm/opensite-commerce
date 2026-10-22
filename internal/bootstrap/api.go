@@ -1,4 +1,4 @@
-// Package bootstrap wires catalog, media, cart, customer, optional checkout, injected routes and operational telemetry.
+// Package bootstrap wires catalog, media, cart, customer, orders, CMS, fulfillment/returns, optional checkout, injected routes and operational telemetry.
 // Dependencies: module constructors, platform/httpapi and observability; caller: cmd/api.
 // It owns no business tables or pools. Registration errors refuse startup; request
 // contexts are bounded, route snapshots immutable and metric labels nonsensitive.
@@ -17,10 +17,12 @@ import (
 	cartcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	customercontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/catalogcsvhttp"
@@ -44,6 +46,8 @@ type Config struct {
 	Catalog                  catalog.Config
 	Media                    media.Config
 	Orders                   orders.HTTPConfig
+	Fulfillment              fulfillment.HTTPConfig
+	Returns                  returns.HTTPConfig
 	Cart                     *cart.Module
 	Quotes                   quoteshttp.QuotesService
 	QuoteOrders              quoteorders.Service
@@ -123,6 +127,8 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)
 	routes = append(routes, orders.NewHTTP(config.Orders).Routes()...)
+	routes = append(routes, fulfillment.NewHTTP(config.Fulfillment).Routes()...)
+	routes = append(routes, returns.NewHTTP(config.Returns).Routes()...)
 	routes = append(routes, carthttp.NewCartHandler(cartModule).Routes()...)
 	routes = append(routes, publish.NewCMSHandler(config.CMS).Routes()...)
 	routes = append(routes, checkoutRoutes...)

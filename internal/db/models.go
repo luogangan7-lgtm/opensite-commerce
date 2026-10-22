@@ -284,27 +284,6 @@ type AppCustomerSession struct {
 	RevokedAt         pgtype.Timestamptz `json:"revoked_at"`
 }
 
-type AppDataRightsErasure struct {
-	TenantID   pgtype.UUID        `json:"tenant_id"`
-	CustomerID pgtype.UUID        `json:"customer_id"`
-	ActorKind  string             `json:"actor_kind"`
-	ActorID    pgtype.UUID        `json:"actor_id"`
-	ErasedAt   pgtype.Timestamptz `json:"erased_at"`
-	Scope      string             `json:"scope"`
-}
-
-type AppDataRightsExport struct {
-	TenantID          pgtype.UUID        `json:"tenant_id"`
-	ID                pgtype.UUID        `json:"id"`
-	CustomerID        pgtype.UUID        `json:"customer_id"`
-	Status            string             `json:"status"`
-	TokenHash         []byte             `json:"token_hash"`
-	ContentHash       []byte             `json:"content_hash"`
-	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
-	DownloadExpiresAt pgtype.Timestamptz `json:"download_expires_at"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-}
-
 type AppDraftOperation struct {
 	TenantID       pgtype.UUID        `json:"tenant_id"`
 	SiteID         pgtype.UUID        `json:"site_id"`
@@ -792,12 +771,84 @@ type AppQuoteLine struct {
 	Snapshot    []byte      `json:"snapshot"`
 }
 
+type AppReturn struct {
+	TenantID              pgtype.UUID        `json:"tenant_id"`
+	ID                    pgtype.UUID        `json:"id"`
+	OrderID               pgtype.UUID        `json:"order_id"`
+	Kind                  string             `json:"kind"`
+	CreationKey           string             `json:"creation_key"`
+	RequestHash           []byte             `json:"request_hash"`
+	Reason                string             `json:"reason"`
+	Currency              string             `json:"currency"`
+	IncomeMinor           int64              `json:"income_minor"`
+	TaxMinor              int64              `json:"tax_minor"`
+	ShippingMinor         int64              `json:"shipping_minor"`
+	RefundMinor           int64              `json:"refund_minor"`
+	Status                string             `json:"status"`
+	OrderVersion          int64              `json:"order_version"`
+	Sealed                bool               `json:"sealed"`
+	Restocked             bool               `json:"restocked"`
+	ReceivedAt            pgtype.Timestamptz `json:"received_at"`
+	CreationResponse      []byte             `json:"creation_response"`
+	ReceiveResponse       []byte             `json:"receive_response"`
+	ReceiveKey            pgtype.Text        `json:"receive_key"`
+	ReceiveHash           []byte             `json:"receive_hash"`
+	RefundKey             pgtype.Text        `json:"refund_key"`
+	RefundHash            []byte             `json:"refund_hash"`
+	RefundExpectedVersion pgtype.Int8        `json:"refund_expected_version"`
+	ProviderRef           pgtype.Text        `json:"provider_ref"`
+	PaymentVersion        pgtype.Int8        `json:"payment_version"`
+	IncomeAccountID       pgtype.UUID        `json:"income_account_id"`
+	TaxAccountID          pgtype.UUID        `json:"tax_account_id"`
+	ShippingAccountID     pgtype.UUID        `json:"shipping_account_id"`
+	CashAccountID         pgtype.UUID        `json:"cash_account_id"`
+	LedgerTransactionID   pgtype.UUID        `json:"ledger_transaction_id"`
+	RefundedAt            pgtype.Timestamptz `json:"refunded_at"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppReturnLine struct {
+	TenantID       pgtype.UUID `json:"tenant_id"`
+	ID             pgtype.UUID `json:"id"`
+	ReturnID       pgtype.UUID `json:"return_id"`
+	OrderID        pgtype.UUID `json:"order_id"`
+	OrderLineID    pgtype.UUID `json:"order_line_id"`
+	ShipmentLineID pgtype.UUID `json:"shipment_line_id"`
+	Quantity       int64       `json:"quantity"`
+	IncomeMinor    int64       `json:"income_minor"`
+	TaxMinor       int64       `json:"tax_minor"`
+	ShippingMinor  int64       `json:"shipping_minor"`
+}
+
 type AppServingInvalidation struct {
 	TenantID  pgtype.UUID        `json:"tenant_id"`
 	SiteID    pgtype.UUID        `json:"site_id"`
 	Seq       int64              `json:"seq"`
 	Reason    string             `json:"reason"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppShipment struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	ID             pgtype.UUID        `json:"id"`
+	OrderID        pgtype.UUID        `json:"order_id"`
+	CreationKey    string             `json:"creation_key"`
+	RequestHash    []byte             `json:"request_hash"`
+	Carrier        string             `json:"carrier"`
+	TrackingNumber string             `json:"tracking_number"`
+	Status         string             `json:"status"`
+	OrderVersion   int64              `json:"order_version"`
+	Sealed         bool               `json:"sealed"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppShipmentLine struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	ID          pgtype.UUID `json:"id"`
+	ShipmentID  pgtype.UUID `json:"shipment_id"`
+	OrderID     pgtype.UUID `json:"order_id"`
+	OrderLineID pgtype.UUID `json:"order_line_id"`
+	Quantity    int64       `json:"quantity"`
 }
 
 type AppShippingProfile struct {

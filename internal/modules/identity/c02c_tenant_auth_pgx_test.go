@@ -534,14 +534,26 @@ func TestFIX44ScopeAuthorityPostgres(t *testing.T) {
 // Go admission and transactional SQL must use the same exact role allowlists.
 func TestC02cRoleScopesMirrorPostgres(t *testing.T) {
 	ctx, admin, _, _ := setupLoginPG(t)
-	for _, role := range []string{"owner", "admin", "catalog_editor", "content_editor", "viewer", "unknown", "OWNER"} {
+	// Discover every role admitted by the migrated membership CHECK, rather than
+	// silently omitting a newly introduced role from this gate.
+	var roles []string
+	if err := admin.QueryRow(ctx, `SELECT array_agg(DISTINCT m[1] ORDER BY m[1])
+ FROM pg_constraint c JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=ANY(c.conkey)
+ CROSS JOIN LATERAL regexp_matches(pg_get_constraintdef(c.oid), '''([^'']+)''', 'g') m
+ WHERE c.conrelid='app.tenant_memberships'::regclass AND c.contype='c' AND a.attname='role'`).Scan(&roles); err != nil || len(roles) == 0 {
+		t.Fatal("role-scope parity: migrated role inventory unavailable", safeCode(err))
+	}
+	for _, role := range append(roles, "unknown", "OWNER") {
 		t.Run(role, func(t *testing.T) {
 			var actual []string
 			if err := admin.QueryRow(ctx, `SELECT app.auth_role_scopes($1)`, role).Scan(&actual); err != nil {
 				t.Fatal("C02c SQL role scopes unavailable", safeCode(err))
 			}
-			if !slices.Equal(actual, authcontract.RoleScopes(role)) {
-				t.Fatal("C02c Go and SQL role scopes disagree", role)
+			want := authcontract.RoleScopes(role)
+			slices.Sort(actual)
+			slices.Sort(want)
+			if len(slices.Compact(slices.Clone(actual))) != len(actual) || !slices.Equal(actual, want) {
+				t.Fatalf("ROLE_SCOPE_PARITY role=%s Go=%v DB=%v", role, want, actual)
 			}
 		})
 	}

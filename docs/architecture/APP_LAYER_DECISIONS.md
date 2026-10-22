@@ -149,7 +149,7 @@ queries/<module>/*.sql
 
   | Role | Allowed scopes |
   | --- | --- |
-  | owner, admin | `apikeys:write`, `catalog:read`, `catalog:write`, `cms:publish`, `cms:write`, `media:write`, `notifications:write`, `orders:read`, `quotes:read`, `quotes:write`, `organization.create`, `site.create`, `customers:privacy`, `catalog:import`, `catalog:export` |
+  | owner, admin | `apikeys:write`, `catalog:read`, `catalog:write`, `cms:publish`, `cms:write`, `media:write`, `notifications:write`, `orders:read`, `quotes:read`, `quotes:write`, `organization.create`, `site.create`, `fulfillment:write`, `returns:write`, `customers:privacy`, `catalog:import`, `catalog:export` |
   | catalog_editor | `catalog:read`, `catalog:write`, `media:write`, `catalog:import`, `catalog:export` |
   | content_editor | `catalog:read`, `cms:write`, `cms:publish`, `media:write` |
   | viewer | `catalog:read` |
@@ -160,6 +160,8 @@ queries/<module>/*.sql
 
   A key's stored scopes cannot expand its issuer's current role. Membership, tenant status, credential expiry and
   revocation are checked on each request; business writes recheck them inside the transaction before mutation.
+  C-20a fulfillment and return/refund writes belong only to owner/admin. API keys carry those scopes only when
+  explicitly issued by an owner/admin; neither role mapping nor key admission accepts a wildcard.
   **Acceptance gate:** CI runs `tests/test_identity_login_contract.py` with exact scope and DTO checks plus injected
   bearer-management, missing-CSRF, unknown-scope, secret-leak and replay faults. Runtime acceptance additionally
   requires HTTP and real PostgreSQL witnesses for cross-tenant keys, issuer loss, role downgrade, revocation and
