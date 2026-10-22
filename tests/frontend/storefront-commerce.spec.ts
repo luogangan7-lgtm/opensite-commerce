@@ -126,6 +126,22 @@ test('commerce fixture absolute quantities, zero removes, stale version recovers
   await expect(page.locator('[data-cart-line]')).toHaveCount(0);
 });
 
+test('stale Start is rejected before intent and refreshed money requires another explicit consent',async({page,request})=>{
+  await add(page);await review(page);
+  const ownCart=await page.evaluate(async()=>(await(await fetch('/purchase/api/cart')).json()).cart);
+  expect((await request.post(`${fixture}/__fixture/scenario`,{data:{cart_id:ownCart.id,action:'conflict'}})).status()).toBe(200);
+  const stale=page.waitForResponse(r=>r.url()===`${api}/checkout`);
+  await page.getByRole('button',{name:'Start test checkout',exact:true}).click();
+  expect((await stale).status()).toBe(409);
+  await expect(page.getByRole('button',{name:'Confirm updated total',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Start test checkout',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Confirm updated total',exact:true}).click();
+  await start(page);
+  await page.getByRole('button',{name:'Fake payment: capture',exact:true}).click();
+  await expect(page.getByRole('link',{name:'View order confirmation',exact:true})).toBeVisible();
+});
+
 test('checkout requires confirmation of an updated server total and reuses ambiguous submission keys', async ({ page }) => {
   await add(page); await review(page);
   const keys: string[] = [];
@@ -146,8 +162,12 @@ test('checkout requires confirmation of an updated server total and reuses ambig
   await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toBeDisabled();
   await expect(page.locator('.payment-result')).toContainText('$99.99');
   expect(keys).toHaveLength(2); expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
+  let accepted: unknown;
+  await page.route(`${api}/payment`, async route => { accepted=route.request().postDataJSON().accepted_total; await route.fulfill({status:409,json:{code:'checkout_total_changed'}}); });
   await page.getByRole('button',{name:'Confirm updated total',exact:true}).click();
   await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'Fake payment: capture',exact:true}).click();
+  await expect.poll(()=>accepted).toEqual({amount_minor:'9999',currency:'USD'});
 });
 
 for (const outcome of ['fail', 'cancel'] as const) test(`commerce fixture Fake ${outcome} never opens paid confirmation`, async ({ page }) => {
@@ -247,7 +267,7 @@ test('commerce upstream contract: private owner, If-Match, API pricing and idemp
   const restored = await upstream(request, unique, `${cartPath}/lines/${sku}`, 'PUT', { quantity: 2 }, { ...headers, 'If-Match': zero.headers().etag });
   expect(restored.status()).toBe(200);
   expect((await upstream(request, unique, `${cartPath}/lines/${sku}`, 'PUT', { quantity: 3 }, headers)).status()).toBe(412);
-  const shipping_address = { country: 'US', address1: '1 Test Way', city: 'Test City', postal_code: '10001' }, input = { cart_id: raw.cart.id, shipping_address, buyer_contact: { email: 'buyer@example.test' } };
+  const shipping_address = { country: 'US', address1: '1 Test Way', city: 'Test City', postal_code: '10001' }, input = { cart_id: raw.cart.id, shipping_address, buyer_contact: { email: 'buyer@example.test' }, accepted_total: { amount_minor: '5780', currency: 'USD' } };
   const preview = await upstream(request, unique, `${prefix}/checkout/preview`, 'POST', input, headers);
   expect(await preview.json()).toMatchObject({ subtotal_minor: '4800', tax_minor: '480', shipping_minor: '500', total_minor: '5780' });
   const checkoutHeaders = { ...headers, 'Idempotency-Key': `test-${crypto.randomUUID()}` };

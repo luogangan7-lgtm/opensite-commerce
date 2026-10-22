@@ -1,0 +1,27 @@
+// Responsibility: expose staff pricing wire types through the HTTP platform port.
+// Dependency: generated OpenAPI types; caller: pricing. Modules never mount the generated server directly.
+package httpapi
+
+import "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+
+type ClearVariantPrice200JSONResponse = generated.ClearVariantPrice200JSONResponse
+type ClearVariantPriceRequestObject = generated.ClearVariantPriceRequestObject
+type ClearVariantPriceResponseObject = generated.ClearVariantPriceResponseObject
+type CreatePriceList201JSONResponse = generated.CreatePriceList201JSONResponse
+type CreatePriceListRequestObject = generated.CreatePriceListRequestObject
+type CreatePriceListResponseObject = generated.CreatePriceListResponseObject
+type GetPriceList200JSONResponse = generated.GetPriceList200JSONResponse
+type GetPriceListRequestObject = generated.GetPriceListRequestObject
+type GetPriceListResponseObject = generated.GetPriceListResponseObject
+type ListPriceLists200JSONResponse = generated.ListPriceLists200JSONResponse
+type ListPriceListsRequestObject = generated.ListPriceListsRequestObject
+type ListPriceListsResponseObject = generated.ListPriceListsResponseObject
+type SetVariantPrice200JSONResponse = generated.SetVariantPrice200JSONResponse
+type SetVariantPriceRequestObject = generated.SetVariantPriceRequestObject
+type SetVariantPriceResponseObject = generated.SetVariantPriceResponseObject
+type StaffPriceList = generated.StaffPriceList
+type StaffPriceListInput = generated.StaffPriceListInput
+type StaffPriceListPage = generated.StaffPriceListPage
+type UpdatePriceList200JSONResponse = generated.UpdatePriceList200JSONResponse
+type UpdatePriceListRequestObject = generated.UpdatePriceListRequestObject
+type UpdatePriceListResponseObject = generated.UpdatePriceListResponseObject

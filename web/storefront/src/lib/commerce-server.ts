@@ -15,6 +15,7 @@ import { CustomerError as HTTPError, readCustomer, changeCustomer, checkCustomer
 const COOKIE = '__Host-osc_storefront_fixture';
 const key = randomBytes(32);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const publicProblemCodes = new Set(['purchase_request_failed','unauthenticated','forbidden','not_found','validation_failed','idempotency_key_reused','checkout_conflict','checkout_total_changed','checkout_unavailable','stock_unavailable','payment_conflict','precondition_failed','cart_conflict','pricing_unavailable']);
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 type Session = { s: string; c?: string; t?: string; tenant?: string; checkout?: string; u?: string; a?: CustomerIdentity; x: number };
 type Configuration = {origin: string; site: string; fixture?: boolean};
@@ -44,7 +45,7 @@ function purchaseConfiguration(request: Request): Configuration | null {
     const site = readAPIOrigin(process.env.OSC_COMMERCE_SITE ?? '');
     const url = new URL(request.url);
     if (url.origin !== site || !requestCanonical({url,request}) ||
-        (url.protocol !== 'https:' && !(process.env.GITHUB_ACTIONS === 'true' && ['127.0.0.1','localhost'].includes(url.hostname)))) return null;
+        (url.protocol !== 'https:' && !(process.env.OSC_COMMERCE_TEST_HTTP === '1' && process.env.OPENSITE_ENVIRONMENT === 'test' && ['127.0.0.1','localhost'].includes(url.hostname)))) return null;
     signingKey();
     return {site,origin:readAPIOrigin(process.env.OSC_COMMERCE_API_ORIGIN ?? '')};
   } catch { return null; }
@@ -117,7 +118,7 @@ async function upstream(configuration: Configuration, session: Session, path: st
   if (!response.ok) {
     let code='purchase_request_failed';
     // Codes are stable public vocabulary; never relay raw detail/title/instance.
-    try { const problem=JSON.parse(text); if (typeof problem.code==='string' && /^[a-z][a-z0-9_]{0,63}$/.test(problem.code)) code=problem.code; } catch { /* generic failure */ }
+    try { const problem=JSON.parse(text); if (typeof problem.code==='string' && publicProblemCodes.has(problem.code)) code=problem.code; } catch { /* generic failure */ }
     throw new HTTPError([400,401,403,404,409,412,413,415,422,428,429,503].includes(response.status) ? response.status : 502,code);
   }
   return {value:parseIntegerJSON(text),etag:response.headers.get('ETag')};
@@ -186,6 +187,17 @@ function preview(value: unknown): Preview {
 function checkout(value: unknown): CheckoutResult {
   const raw = object(value), payment = object(raw.payment);
   return { checkout_id: uuid(raw.checkout_id), order_id: uuid(raw.order_id), state: string(raw.state), amount_minor: minorAmount(raw.amount_minor), currency: currency(raw.currency), order_version: minorAmount(raw.order_version), payment: { provider_ref: string(payment.provider_ref), status: string(payment.status) } };
+}
+function acceptedTotal(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HTTPError(409,'checkout_total_changed');
+  const total=value as Record<string,unknown>;
+  if (Object.keys(total).some(key=>!['amount_minor','currency'].includes(key))) throw new HTTPError(400);
+  try { return {amount_minor:minorAmount(total.amount_minor),currency:currency(total.currency)}; }
+  catch { throw new HTTPError(400); }
+}
+function requireAccepted(value: unknown, current: CheckoutResult) {
+  const accepted=acceptedTotal(value);
+  if (accepted.amount_minor!==current.amount_minor || accepted.currency!==current.currency) throw new HTTPError(409,'checkout_total_changed');
 }
 function paymentReceipt(value: unknown, eventID?: string) {
   const raw=object(value);
@@ -280,19 +292,25 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
     if (operation === 'checkout' && request.method === 'POST') {
       if (!session.c) throw new HTTPError(404);
       const idempotency = request.headers.get('Idempotency-Key'); if (!idempotency || !/^[!-~]{1,128}$/.test(idempotency)) throw new HTTPError(400);
-      const input = await body(request, ['shipping_address','buyer_contact']);
-      const response = await upstream(configuration, session, `${base}/checkout`, { method: 'POST', body: { ...input, cart_id: session.c }, headers: { 'Idempotency-Key': idempotency,...checkoutHeaders(configuration,session) } });
+      const input = await body(request, ['shipping_address','buyer_contact','accepted_total']);
+      const accepted=acceptedTotal(input.accepted_total);
+      const startBody={...input,cart_id:session.c,accepted_total:accepted};
+      const rawBody=JSON.stringify({...startBody,accepted_total:undefined}).slice(0,-1)+`,"accepted_total":{"amount_minor":${accepted.amount_minor},"currency":"${accepted.currency}"}}`;
+      const response = await upstream(configuration, session, `${base}/checkout`, { method: 'POST', body: startBody, rawBody, headers: { 'Idempotency-Key': idempotency,...checkoutHeaders(configuration,session) } });
       const result=checkout(response.value);session.checkout=result.checkout_id;writeSession(cookies,session);return json(result,201);
     }
     if (operation === 'payment' && request.method === 'POST') {
-      const input = await body(request, ['checkout_id','outcome']); uuid(input.checkout_id);
+      const input = await body(request, ['checkout_id','outcome','accepted_total']); uuid(input.checkout_id);
       if (!['captured','failed','canceled'].includes(String(input.outcome))) throw new HTTPError(400);
       if (configuration.fixture) {
+        const current=checkout((await upstream(configuration,session,'/__fixture/completion')).value);
+        if (input.outcome==='captured') requireAccepted(input.accepted_total,current);
         paymentReceipt((await upstream(configuration,session,'/__fixture/payment',{method:'POST',body:input})).value);
         return json(checkout((await upstream(configuration,session,'/__fixture/completion')).value));
       }
       if (!fakePaymentEnabled() || !session.checkout || input.checkout_id!==session.checkout) throw new HTTPError(404);
       const current=checkout((await upstream(configuration,session,`${base}/checkout/${session.checkout}`)).value);
+      if (input.outcome==='captured') requireAccepted(input.accepted_total,current);
       if (['captured','failed','canceled'].includes(current.payment.status)) return json(current);
       // Authoritative backend state supplies every event field; the browser chooses only a test outcome.
       const account=process.env.OPENSITE_FAKE_ACCOUNT_ID ?? '';
@@ -324,7 +342,7 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
     }
     throw new HTTPError(404);
   } catch (error) { const status=error instanceof HTTPError ? error.status : 502;
-    if (configuration.fixture) return json({code:'purchase_request_failed'},status);
+    if (configuration.fixture) return json({code:error instanceof HTTPError ? error.code : 'purchase_request_failed'},status);
     return new Response(JSON.stringify({type:'about:blank',status,code:error instanceof HTTPError ? error.code : 'purchase_request_failed'}),{status,headers:{'Content-Type':'application/problem+json','Cache-Control':'no-store','X-Robots-Tag':'noindex'}});
   }
 }

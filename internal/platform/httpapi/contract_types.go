@@ -170,12 +170,11 @@ type WithdrawQuote200ResponseHeaders = generated.WithdrawQuote200ResponseHeaders
 type WithdrawQuoteRequestObject = generated.WithdrawQuoteRequestObject
 type WithdrawQuoteResponseObject = generated.WithdrawQuoteResponseObject
 
-// NewStrictHandlerWithOptions and GetSwagger expose the pinned protocol adapter
+// NewStrictHandlerWithOptions exposes the pinned protocol adapter
 // to platform transports with resource-specific CAS admission. The shared
 // StrictRoutes version admission expects decimal ETags and cannot admit create *.
-// Neither helper supplies authority or registers routes.
+// This helper supplies no authority and registers no routes.
 var NewStrictHandlerWithOptions = generated.NewStrictHandlerWithOptions
-var GetSwagger = generated.GetSwagger
 
 type GetOrder200JSONResponse = generated.GetOrder200JSONResponse
 type GetOrder200ResponseHeaders = generated.GetOrder200ResponseHeaders

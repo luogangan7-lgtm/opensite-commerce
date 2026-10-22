@@ -54,12 +54,29 @@ UPDATE app.auth_sessions s SET revoked_at=clock_timestamp()
  AND s.created_at<=clock_timestamp() AND s.last_seen_at<=clock_timestamp()
  AND s.last_seen_at>clock_timestamp()-sqlc.arg(idle_seconds)::bigint*interval '1 second';
 
+-- name: LoginLockUser :one
+SELECT id FROM app.users WHERE id=sqlc.arg(user_id)::uuid
+ AND app.auth_lock_login_user(sqlc.arg(user_id)::uuid,sqlc.arg(verified_password_hash)::text);
+
+-- name: LoginLockSession :one
+SELECT id FROM app.auth_sessions WHERE token_hash=sqlc.arg(token_hash)::bytea FOR UPDATE;
+
+-- name: LoginRotationSession :one
+SELECT EXISTS(SELECT FROM app.auth_sessions s JOIN app.users u ON u.id=s.user_id
+ WHERE s.token_hash=sqlc.arg(token_hash)::bytea AND s.user_id=sqlc.arg(user_id)::uuid
+ AND u.status='active' AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
+ AND isfinite(s.expires_at) AND isfinite(s.created_at) AND isfinite(s.last_seen_at)
+ AND s.last_seen_at>=s.created_at AND s.expires_at>s.created_at
+ AND s.created_at<=clock_timestamp() AND s.last_seen_at<=clock_timestamp()
+ AND s.last_seen_at>clock_timestamp()-sqlc.arg(idle_seconds)::bigint*interval '1 second') AS allowed;
+
 -- name: LoginInsertSession :one
 WITH instant AS MATERIALIZED (SELECT clock_timestamp()::timestamptz AS at)
 INSERT INTO app.auth_sessions(user_id,token_hash,created_at,last_seen_at,expires_at)
  SELECT u.id,sqlc.arg(token_hash)::bytea,instant.at,instant.at,
  instant.at+(sqlc.arg(expires_at)::timestamptz-sqlc.arg(created_at)::timestamptz)
  FROM app.users u CROSS JOIN instant WHERE u.id=sqlc.arg(user_id)::uuid AND u.status='active'
+ AND u.password_hash=sqlc.arg(verified_password_hash)::text
  RETURNING id,user_id,created_at,last_seen_at,expires_at,clock_timestamp()::timestamptz AS database_now;
 
 -- name: LoginInsertDevice :exec

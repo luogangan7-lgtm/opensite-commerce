@@ -15,7 +15,7 @@ func TestCheckedInputUsesContractCharacterLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := contract.StartInput{CartID: cartID, IdempotencyKey: "k", BuyerContact: orders.Contact{Email: "b@example.test"},
+	base := contract.StartInput{AcceptedTotal: contract.AcceptedTotal{AmountMinor: 160, Currency: "USD"}, CartID: cartID, IdempotencyKey: "k", BuyerContact: orders.Contact{Email: "b@example.test"},
 		ShippingAddress: contract.ShippingAddress{Country: "US", Address1: "1 Road", City: "City", PostalCode: "1"}}
 	fields := []struct {
 		name  string

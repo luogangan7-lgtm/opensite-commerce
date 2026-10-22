@@ -10,6 +10,7 @@
         "tenant_id": {"classification": "operational"},
         "id": {"classification": "operational"},
         "currency": {"classification": "financial_non_contact"},
+        "version": {"classification": "operational"},
         "status": {"classification": "operational"},
         "starts_at": {"classification": "operational"},
         "ends_at": {"classification": "operational"},

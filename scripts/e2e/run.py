@@ -41,9 +41,10 @@ PURCHASE_TESTS = {"published guest purchase persists captured order", "pending r
 ACTIVE_TESTS |= PURCHASE_TESTS
 PAYMENT_TESTS = {"real signed payment webhook rejects forgery and deduplicates concurrent facts"}
 ACTIVE_TESTS |= PAYMENT_TESTS
+ADMIN_TESTS = {"real admin orders list and detail use persisted orders and staff scopes"}
+ACTIVE_TESTS |= ADMIN_TESTS
 GAP_TESTS = {
     "FIXME staff create SKU → media upload → publish",
-    "FIXME admin orders list and detail on the real orders read API",
 }
 
 
@@ -87,7 +88,7 @@ def verify_browser_report(report):
                         raise RuntimeError("MVP E2E duplicate browser assertion")
                     observed[key] = [item.get("status") for item in test.get("results", [])]
                     filename = Path(spec.get("file", "")).name
-                    expected_file = "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS else (
+                    expected_file = "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
                         "purchase.spec.ts" if spec.get("title") in PURCHASE_TESTS else (
                         "payments.spec.ts" if spec.get("title") in PAYMENT_TESTS else (
                         "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts")))
@@ -102,7 +103,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 32, "skipped": 4, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 34, "skipped": 2, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -287,6 +288,12 @@ def run(receipt_dir):
             os.environ["E2E_OWNER_TENANT_ID"] = owner_tenant
             receipt["owner_bootstrap"]["status"] = "PASS"
             receipt["publication"] = purchase.publish(ops_common.psql, credentials)
+            # Owned C19 SQL orders are read through real owner session authorization.
+            ops_common.psql("INSERT INTO app.tenant_memberships(tenant_id,user_id,role) "
+                            "SELECT t.id,m.user_id,'owner' FROM app.tenants t CROSS JOIN app.tenant_memberships m "
+                            f"WHERE m.tenant_id='{owner_tenant}' AND m.role='owner' "
+                            "AND t.id IN ('c1900010-0000-4000-8000-000000000001',"
+                            "'c1900010-0000-4000-8000-000000000002');")
             os.environ["E2E_RELEASE_ID"] = receipt["publication"]["release_id"]
             receipt["steps"].append("real-cms-builder-membership-and-serving")
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")

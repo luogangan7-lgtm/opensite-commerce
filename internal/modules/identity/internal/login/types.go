@@ -30,10 +30,11 @@ type Session struct {
 	CreatedAt, LastSeenAt, ExpiresAt time.Time
 }
 type SessionInput struct {
-	UserID                                string
-	TokenHash, DeviceHash                 [32]byte
+	UserID                               string
+	VerifiedPasswordHash                 string
+	TokenHash, DeviceHash                [32]byte
 	CreatedAt, ExpiresAt, DeviceExpiresAt time.Time
-	OldTokenHash                          *[32]byte
+	OldTokenHash                         *[32]byte
 }
 
 // Repository is implemented by the private sqlc store. SaveLogin must revoke the
@@ -44,6 +45,7 @@ type Repository interface {
 	RecordFailure(context.Context, string, netip.Addr) error
 	Device(context.Context, [32]byte) (Device, error)
 	FailDevice(context.Context, string) error
+	RotationSession(context.Context, [32]byte, string) (bool, error)
 	SaveLogin(context.Context, SessionInput) (Session, error)
 	LookupSession(context.Context, [32]byte, time.Time, time.Duration) (Session, error)
 	RevokeSession(context.Context, string, time.Time) error

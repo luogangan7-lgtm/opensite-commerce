@@ -54,6 +54,9 @@ func (f *fakeRepo) Device(context.Context, [32]byte) (login.Device, error) {
 	return login.Device{}, login.ErrNotFound
 }
 func (f *fakeRepo) FailDevice(context.Context, string) error { return nil }
+func (f *fakeRepo) RotationSession(_ context.Context, hash [32]byte, user string) (bool, error) {
+	return !f.dead && hash == f.hash && user == f.credential.UserID, nil
+}
 func (f *fakeRepo) SaveLogin(_ context.Context, in login.SessionInput) (login.Session, error) {
 	f.saved++
 	if in.OldTokenHash != nil {

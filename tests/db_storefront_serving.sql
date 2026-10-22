@@ -94,5 +94,21 @@ DO $stale$ BEGIN
  IF (SELECT count(*) FROM app.storefront_serving)<>0 THEN RAISE EXCEPTION 'SERVING_PUBLIC_STALE_ROW'; END IF;
 END $stale$;
 RESET ROLE;
+-- Staff writes reuse the existing invalidation triggers, without replacing serving.
+SELECT set_config('app.tenant_id',:'tenant',true),set_config('pricing.sku',:'sku',true);
+UPDATE app.tenants SET settlement_currency='USD' WHERE id=:'tenant';
+SET LOCAL ROLE app_runtime;
+DO $prices$ DECLARE l uuid; BEGIN
+ l:=(app.pricing_write_list(NULL,0,'{"currency":"USD","status":"active","starts_at":"2026-01-01T00:00:00Z","priority":0,"audience":"all"}')->>'id')::uuid;
+ PERFORM app.pricing_write_entry(l,current_setting('pricing.sku')::uuid,1,100,1);
+ PERFORM app.pricing_write_entry(l,current_setting('pricing.sku')::uuid,1,NULL,2);
+END $prices$;
+RESET ROLE;
+DO $price_invalidation$ BEGIN
+ IF (SELECT count(*) FROM app.serving_invalidations WHERE tenant_id=current_setting('test.tenant')::uuid AND reason='price_list')<>3
+  OR (SELECT count(*) FROM app.serving_invalidations WHERE tenant_id=current_setting('test.tenant')::uuid AND reason='price_entry')<>2
+  OR (SELECT serving_generation FROM app.storefront_serving WHERE tenant_id=current_setting('test.tenant')::uuid)<>1 THEN
+  RAISE EXCEPTION 'STAFF_PRICING_GATE serving invalidation'; END IF;
+END $price_invalidation$;
 ROLLBACK;
 SELECT 'PASS: storefront serving write-once SKUs, CAS, anonymous scope' AS result;

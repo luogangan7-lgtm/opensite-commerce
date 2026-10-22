@@ -27,6 +27,147 @@ tags:
   - name: Fulfillment
   - name: Returns
 paths:
+  /api/v1/t/{tenant_id}/price-lists:
+    parameters:
+      - {$ref: '#/components/parameters/TenantId'}
+    post:
+      tags: [Catalog]
+      operationId: createPriceList
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      parameters:
+        - {$ref: '#/components/parameters/OriginIfCookie'}
+        - {$ref: '#/components/parameters/CSRFTokenIfCookie'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StaffPriceListInput'}
+      responses:
+        '201':
+          description: Price list version fences the entire list and all its variant tiers.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StaffPriceList'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+    get:
+      tags: [Catalog]
+      operationId: listPriceLists
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      parameters:
+        - {name: after, in: query, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Price list version fences the entire list and all its variant tiers.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StaffPriceListPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/t/{tenant_id}/price-lists/{price_list_id}:
+    parameters:
+      - {$ref: '#/components/parameters/TenantId'}
+      - {$ref: '#/components/parameters/PriceListId'}
+    get:
+      tags: [Catalog]
+      operationId: getPriceList
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      responses: &StaffPriceListResponses
+        '200':
+          description: Price list version fences the entire list and all its variant tiers.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StaffPriceList'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+    put:
+      tags: [Catalog]
+      operationId: updatePriceList
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      parameters:
+        - {$ref: '#/components/parameters/OriginIfCookie'}
+        - {$ref: '#/components/parameters/CSRFTokenIfCookie'}
+        - {$ref: '#/components/parameters/IfMatch'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StaffPriceListInput'}
+      responses: *StaffPriceListResponses
+  /api/v1/t/{tenant_id}/price-lists/{price_list_id}/variants/{variant_id}/prices/{min_quantity}:
+    parameters:
+      - {$ref: '#/components/parameters/TenantId'}
+      - {$ref: '#/components/parameters/PriceListId'}
+      - {$ref: '#/components/parameters/VariantId'}
+      - {name: min_quantity, in: path, required: true, schema: {type: integer, format: int64, minimum: 1, maximum: 9223372036854775807}}
+    put:
+      tags: [Catalog]
+      operationId: setVariantPrice
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      parameters:
+        - {$ref: '#/components/parameters/OriginIfCookie'}
+        - {$ref: '#/components/parameters/CSRFTokenIfCookie'}
+        - {$ref: '#/components/parameters/IfMatch'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StaffUnitPrice'}
+      responses: *StaffPriceListResponses
+    delete:
+      tags: [Catalog]
+      operationId: clearVariantPrice
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      parameters:
+        - {$ref: '#/components/parameters/OriginIfCookie'}
+        - {$ref: '#/components/parameters/CSRFTokenIfCookie'}
+        - {$ref: '#/components/parameters/IfMatch'}
+      responses: *StaffPriceListResponses
   /api/v1/t/{tenant_id}/api-keys:
     post:
       tags: [Identity]
@@ -4273,6 +4414,11 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    PriceListId:
+      name: price_list_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     IfMatch:
       name: If-Match
       in: header
@@ -4433,6 +4579,46 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    StaffPriceListInput:
+      type: object
+      additionalProperties: false
+      description: Complete replacement; omitted optional fields are cleared. Windows use [starts_at,ends_at). Currency must equal tenant settlement currency; unset returns 409 settlement_currency_required. Archived lists are terminal.
+      required: [currency, status, starts_at, priority, audience]
+      properties:
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        status: {type: string, enum: [draft, active, archived]}
+        starts_at: {type: string, format: date-time}
+        ends_at: {type: string, format: date-time}
+        priority: {type: integer, format: int32}
+        audience: {type: string, enum: [all, customer_group, buyer_company]}
+        customer_group_id: {type: string, format: uuid}
+        buyer_company_id: {type: string, format: uuid}
+    StaffPriceList:
+      type: object
+      required: [id, version, currency, status, starts_at, priority, audience]
+      properties:
+        id: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 1}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        status: {type: string, enum: [draft, active, archived]}
+        starts_at: {type: string, format: date-time}
+        ends_at: {type: string, format: date-time}
+        priority: {type: integer, format: int32}
+        audience: {type: string, enum: [all, customer_group, buyer_company]}
+        customer_group_id: {type: string, format: uuid}
+        buyer_company_id: {type: string, format: uuid}
+    StaffUnitPrice:
+      type: object
+      additionalProperties: false
+      required: [unit_amount]
+      properties:
+        unit_amount: {type: integer, format: int64, minimum: 0, maximum: 9223372036854775807}
+    StaffPriceListPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/StaffPriceList'}}
+        next_cursor: {type: string, format: uuid}
     CheckoutPreviewInput:
       type: object
       additionalProperties: false
@@ -4557,11 +4743,21 @@ components:
             - $ref: '#/components/schemas/CustomerSessionView'
             - {type: 'null'}
         csrf_token: {type: string}
+    CheckoutAcceptedTotal:
+      description: Explicit buyer acceptance, checked against canonical pricing before any checkout effect. Changed money requires a new consent and request key.
+      type: object
+      additionalProperties: false
+      required: [amount_minor, currency]
+      properties:
+        amount_minor: {type: integer, format: int64, minimum: 1}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
     CheckoutStart:
       type: object
       additionalProperties: false
-      required: [cart_id, shipping_address]
+      required: [cart_id, shipping_address, accepted_total]
       properties:
+        accepted_total:
+          $ref: '#/components/schemas/CheckoutAcceptedTotal'
         cart_id: {type: string, format: uuid}
         quote_id: {type: string, format: uuid, description: Unsupported in C-18a; returns 422.}
         buyer_contact:

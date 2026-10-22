@@ -44,6 +44,12 @@ test('published guest purchase persists captured order', async ({ page, request 
   const site = await publishedSite(request);
   expect(site.release_id).not.toBe('c0900005-0000-4000-8000-000000000001');
   const checkout = await start(page);
+  const csrf=(await (await page.request.get(`${api}/context`)).json()).csrf;
+  for (const accepted_total of [undefined,{amount_minor:'3139',currency:'USD'},{amount_minor:'3140',currency:'EUR'}]) {
+    const response=await page.request.post(`${api}/payment`,{headers:{Origin:fixture.storefront,'X-CSRF-Token':csrf},data:{checkout_id:checkout.checkout_id,outcome:'captured',accepted_total}});
+    expect(response.status()).toBe(409);expect(await response.json()).toMatchObject({code:'checkout_total_changed'});
+    expect(await (await page.request.get(`${api}/completion`)).json()).toMatchObject({state:'ready',payment:{status:'authorized'}});
+  }
   await audit(page, info);
   const paid = page.waitForResponse(r => r.url() === `${api}/payment` && r.request().method() === 'POST');
   await page.getByRole('button', { name: 'Fake payment: capture', exact: true }).click();
@@ -58,6 +64,8 @@ test('published guest purchase persists captured order', async ({ page, request 
   expect(persisted.status()).toBe(200);
   expect(await persisted.json()).toMatchObject({ checkout_id: checkout.checkout_id,
     order_id: checkout.order_id, state: 'paid', payment: { status: 'captured' } });
+  const replay=await page.request.post(`${api}/payment`,{headers:{Origin:fixture.storefront,'X-CSRF-Token':csrf},data:{checkout_id:checkout.checkout_id,outcome:'captured',accepted_total:{amount_minor:'3140',currency:'USD'}}});
+  expect(replay.status()).toBe(200);expect(await replay.json()).toMatchObject({state:'paid',payment:{status:'captured'}});
   await info.attach('purchase-checkout', { body: JSON.stringify(await persisted.json()), contentType: 'application/json' });
   await audit(page, info);
 });

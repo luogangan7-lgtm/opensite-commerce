@@ -59,7 +59,9 @@
         "tests/db_identity_login.sql",
         "tests/test_identity_login_contract.py",
         "tests/db_identity_clock.sql",
-        "internal/modules/identity/h4_clock_pgx_test.go"
+        "internal/modules/identity/h4_clock_pgx_test.go",
+        "tests/db_identity_hardening.sql",
+        "internal/modules/identity/h4_fence_pgx_test.go"
       ],
       "scopes": [],
       "note": "Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented. Four staff login/challenge/session/logout HTTP operations are implemented; the five admin-session management operations remain planned."
@@ -503,12 +505,37 @@
       "name": "pricing",
       "status": "implemented",
       "go_path": "internal/modules/pricing",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "price_lists",
         "price_entries"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "createPriceList",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "listPriceLists",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getPriceList",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "updatePriceList",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "setVariantPrice",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "clearVariantPrice",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [
         "tenant",
         "catalog",
@@ -517,10 +544,15 @@
       "tests": [
         "internal/pricing/pricing_test.go",
         "internal/db/pricing_integration_test.go",
-        "tests/db_pricing.sql"
+        "tests/db_pricing.sql",
+        "tests/db_staff_pricing.sql",
+        "internal/bootstrap/pricing_contract_test.go",
+        "internal/db/staff_pricing_http_integration_test.go"
       ],
-      "scopes": [],
-      "note": "PR16 is merged on main at 9a17e2f. Owns price_lists and price_entries created by migrations/013_money_pricing.sql. Quote code exists at internal/pricing/pricing.go with generated queries at internal/db/pricing.sql.go; no HTTP operations are implemented. go_status describes the planned internal/modules/pricing target path, not the existing source packages.",
+      "scopes": [
+        "catalog:write"
+      ],
+      "note": "Staff list and tier writes use authorized transactions and a least-privilege pricing executor; list-wide CAS, settlement currency authority and existing serving invalidation. Quote selection remains in internal/pricing.",
       "legacy_go_paths": [
         "internal/pricing"
       ],
@@ -910,7 +942,8 @@
         "internal/modules/checkout/internal/store/cart_test.go",
         "internal/db/checkout_http_integration_test.go",
         "internal/modules/checkout/internal/service/input_test.go",
-        "internal/db/checkout_adoption_integration_test.go"
+        "internal/db/checkout_adoption_integration_test.go",
+        "internal/db/checkout_consent_integration_test.go"
       ],
       "scopes": [],
       "note": "C-18a and FIX-57 share one durable checkout payment path for cart and sealed existing-order sources. Customer HTTP admission uses verified sessions plus exact Origin/CSRF. Explicit test/development Fake configuration only; no real PSP or implicit enablement. Orders #49 fences enforce hold ownership; C-20b holder primitive remains a follow-up integration dependency."
@@ -1725,6 +1758,24 @@
         "auth_account_attempts",
         "auth_login_attempts",
         "known_devices"
+      ]
+    },
+    {
+      "file": "migrations/pending/h4-identity_hardening.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "users",
+        "auth_sessions"
+      ]
+    },
+    {
+      "file": "migrations/pending/admin-pricing-1_staff_pricing.sql",
+      "owner": "pricing",
+      "touches_tables": [
+        "price_lists",
+        "price_entries",
+        "tenants",
+        "product_variants"
       ]
     },
     {

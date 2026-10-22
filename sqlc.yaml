@@ -45,8 +45,10 @@ sql:
       - "migrations/pending/c18b-quote-conversion_quote_conversion.sql"
       - "migrations/pending/c18b-checkout-source_checkout_source.sql"
       - "migrations/pending/h4-clock_identity_db_clock.sql"
+      - "migrations/pending/h4-identity_hardening.sql"
+      - "migrations/pending/admin-pricing-1_staff_pricing.sql"
       - "migrations/pending/c09f-history_customer_history.sql"
-    queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant"]
+    queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant", "queries/pricing"]
     gen:
       go:
         package: "db"
