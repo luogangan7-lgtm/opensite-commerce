@@ -6,6 +6,7 @@ called only by mvp-e2e.yml. Guard precedes imports/IO, credentials stay private,
 all waits are bounded and finally destroys only this invocation's own project.
 """
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -35,6 +36,8 @@ ACTIVE_TESTS = {
     "real bootstrapped owner logs in, holds a session and signs out",
     "real API denies anonymous catalog reads and creation before data access",
 }
+PAYMENT_TESTS = {"real signed payment webhook rejects forgery and deduplicates concurrent facts"}
+ACTIVE_TESTS |= PAYMENT_TESTS
 GAP_TESTS = {
     "FIXME staff create SKU → media upload → publish",
     "FIXME authenticated admin catalog list and create",
@@ -84,7 +87,8 @@ def verify_browser_report(report):
                     observed[key] = [item.get("status") for item in test.get("results", [])]
                     filename = Path(spec.get("file", "")).name
                     expected_file = "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS else (
-                        "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts")
+                        "payments.spec.ts" if spec.get("title") in PAYMENT_TESTS else (
+                        "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts"))
                     is_gap = spec.get("title") in GAP_TESTS
                     if (filename != expected_file or test.get("expectedStatus") != ("skipped" if is_gap else "passed")
                             or (is_gap and not any(item.get("type") == "fixme" for item in test.get("annotations", [])))):
@@ -96,9 +100,54 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 22, "skipped": 8, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 24, "skipped": 8, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
+
+
+PAYMENT_WITNESS_SQL = """
+WITH fixtures(project,n) AS (VALUES('desktop',1),('mobile',2)),
+ids AS (SELECT project,n,('c1900010-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid AS tenant,
+ ('c1900003-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid AS order_id,
+ ('c1900002-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid AS sku,
+ ('c1900004-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid AS checkout FROM fixtures)
+SELECT jsonb_agg(jsonb_build_object('project',f.project,'order_state',o.state,'phase',c.phase,
+ 'on_hand',s.on_hand,'reserved',s.reserved,
+ 'inbox',(SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=f.tenant),
+ 'processed',(SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=f.tenant AND provider='fake' AND provider_account_id='c19-e2e-'||f.project AND environment='test' AND provider_event_id='c19-e2e-'||f.project||'-captured' AND status='processed' AND processed_at IS NOT NULL),
+ 'hash',(SELECT encode(payload_hash,'hex') FROM app.webhook_inbox WHERE tenant_id=f.tenant AND provider_event_id='c19-e2e-'||f.project||'-captured'),
+ 'events',(SELECT count(*) FROM app.payment_events WHERE tenant_id=f.tenant),
+ 'applied',(SELECT count(*) FROM app.payment_events WHERE tenant_id=f.tenant AND provider_account_id='c19-e2e-'||f.project AND claimed_order_id=f.order_id AND provider_ref='fake_c19_e2e_'||f.n AND status='captured' AND amount_minor=270 AND currency='USD' AND applied AND error_code IS NULL),
+ 'journals',(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=f.tenant AND source_id=f.order_id::text),
+ 'debits',(SELECT coalesce(sum(amount),0) FROM app.ledger_entries WHERE tenant_id=f.tenant AND side='debit'),
+ 'credits',(SELECT coalesce(sum(amount),0) FROM app.ledger_entries WHERE tenant_id=f.tenant AND side='credit'),
+ 'cash',(SELECT coalesce(sum(CASE WHEN e.side='debit' THEN e.amount ELSE -e.amount END),0) FROM app.ledger_entries e JOIN app.ledger_accounts a ON (a.tenant_id,a.id)=(e.tenant_id,e.account_id) WHERE e.tenant_id=f.tenant AND a.code='cash'),
+ 'receivable',(SELECT coalesce(sum(CASE WHEN e.side='debit' THEN e.amount ELSE -e.amount END),0) FROM app.ledger_entries e JOIN app.ledger_accounts a ON (a.tenant_id,a.id)=(e.tenant_id,e.account_id) WHERE e.tenant_id=f.tenant AND a.code='accounts_receivable'),
+ 'paid_outbox',(SELECT count(*) FROM app.outbox_events WHERE tenant_id=f.tenant AND event_type='order.paid' AND payload->>'order_id'=f.order_id::text)))
+FROM ids f LEFT JOIN app.orders o ON (o.tenant_id,o.id)=(f.tenant,f.order_id)
+LEFT JOIN app.checkout_sessions c ON (c.tenant_id,c.id)=(f.tenant,f.checkout)
+LEFT JOIN app.stock_levels s ON s.tenant_id=f.tenant AND s.sku_id=f.sku;
+"""
+
+
+def verify_payment_witness(rows):
+    """Require exactly one persisted payment per independently seeded project."""
+    if (not isinstance(rows, list) or len(rows) != 2 or any(not isinstance(r, dict) for r in rows)
+            or {r.get("project") for r in rows} != {"desktop", "mobile"}):
+        raise RuntimeError("MVP signed payment persistence witness inventory differs")
+    for row in rows:
+        project = row["project"]
+        n = 1 if project == "desktop" else 2
+        raw = json.dumps({"event_id": f"c19-e2e-{project}-captured", "account_id": f"c19-e2e-{project}",
+                          "order_id": f"c1900003-0000-4000-8000-{n:012d}", "order_version": 1,
+                          "provider_ref": f"fake_c19_e2e_{n}", "status": "captured",
+                          "amount_minor": 270, "currency": "USD"}, separators=(",", ":"))
+        expected = {"order_state": "paid", "phase": "paid", "on_hand": 8, "reserved": 0,
+                    "inbox": 1, "processed": 1, "hash": hashlib.sha256(raw.encode()).hexdigest(),
+                    "events": 1, "applied": 1, "journals": 1, "cash": 270, "receivable": 0, "paid_outbox": 1}
+        if any(row.get(key) != value for key, value in expected.items()) or not isinstance(row.get("debits"), int) or row["debits"] <= 0 or row["debits"] != row.get("credits"):
+            raise RuntimeError("MVP signed payment inbox/hash/order/stock/ledger witness differs")
+    return {"status": "PASS", "projects": rows}
 
 
 def run(receipt_dir):
@@ -126,6 +175,7 @@ def run(receipt_dir):
     receipt = {"schema": 1, "sha": os.environ.get("GITHUB_SHA"), "run_id": os.environ["GITHUB_RUN_ID"],
                "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"], "project": project,
                "status": "RUNNING", "steps": [], "browser_exit": None, "cleanup": "NOT_RUN",
+               "payment_webhook": {"status": "NOT_RUN"},
                "owner_bootstrap": {"status": "NOT_RUN", "available": (ROOT / "cmd/bootstrap-admin").is_dir()},
                "seed_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                for path in [ROOT / "tests/fixtures/storefront_seed.sql", ROOT / "scripts/e2e/seed.sql"]}}
@@ -165,6 +215,7 @@ def run(receipt_dir):
         env_file = Path(private) / ".env"
         credentials = {"POSTGRES_PASSWORD": secrets.token_hex(32), "JOB_SIGNING_KEY": secrets.token_hex(32),
                        "OPENSITE_AUTH_SIGNING_KEY": secrets.token_hex(32),
+                       "OPENSITE_FAKE_WEBHOOK_KEY": base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("="),
                        "OPENSITE_CUSTOMER_CSRF_SECRET": secrets.token_urlsafe(32),
                        "OPENSITE_E2E_OWNER_PASSWORD": secrets.token_hex(32),
                        "OPENSITE_E2E_BOOTSTRAP_PASSWORD": secrets.token_hex(32),
@@ -239,6 +290,12 @@ def run(receipt_dir):
             if receipt["browser_exit"] != 0:
                 raise RuntimeError("MVP E2E browser assertions failed")
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
+            # Independent persistence witness runs before declaring the browser run PASS.
+            payment_rows = json.loads(ops_common.psql(PAYMENT_WITNESS_SQL).strip())
+            receipt["payment_webhook"] = {"status": "FAIL", "projects": payment_rows}
+            persist()
+            receipt["payment_webhook"] = verify_payment_witness(payment_rows)
+            receipt["steps"].append("signed-webhook-account-inbox-ledger-order-witness")
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-and-accessibility-assertions")
         except BaseException:

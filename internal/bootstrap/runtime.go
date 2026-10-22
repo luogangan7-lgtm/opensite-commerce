@@ -26,6 +26,10 @@ import (
 )
 
 func FromEnvironment(ctx context.Context, config Config) (Config, func(), error) {
+	fakeEnabled, fakeKey, fakeErr := fakePaymentEnvironment()
+	if fakeErr != nil {
+		return Config{}, nil, fakeErr
+	}
 	// Bound all capability pool probes together, including explicit DSNs.
 	startup, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -59,6 +63,9 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	if err != nil {
 		return Config{}, nil, err
 	}
+	if fakeEnabled && runtimeURL == "" {
+		return Config{}, nil, errors.New("Fake payment requires the runtime database")
+	}
 	if url := runtimeURL; url != "" {
 		runner, err := pgxadapter.OpenQueryRunner(startup, url)
 		if err != nil {
@@ -66,6 +73,12 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			return Config{}, nil, err
 		}
 		runners = append(runners, runner)
+		if fakeEnabled {
+			if err := wireFakePayments(&config, runner, fakeKey); err != nil {
+				closeRuntime()
+				return Config{}, nil, err
+			}
+		}
 		config.Catalog.Run = runner.RunAuthorized
 		config.CMS.Idempotency.Run = runner.RunAuthorizedTx
 		if encoded := os.Getenv("OPENSITE_CMS_PREVIEW_KEY"); encoded != "" && config.CMS.Writer == nil {

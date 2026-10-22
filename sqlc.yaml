@@ -36,6 +36,7 @@ sql:
       - "migrations/033_customer_auth.sql"
       - "migrations/034_orders_guards.sql"
       - "migrations/pending/c15b-serving_storefront_serving.sql"
+      - "migrations/pending/c19a-webhook_payment_webhooks.sql"
     queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:
