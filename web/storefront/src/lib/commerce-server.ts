@@ -271,11 +271,11 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
       const raw=JSON.stringify(event).slice(0,-1)+`,"amount_minor":${minorAmount(current.amount_minor)},"order_version":${minorAmount(current.order_version)}}`;
       // Node supplies a timestamp; only Payments' DB clock may admit its freshness.
       const stamp=String(Math.floor(Date.now()/1000));
-      const signature=`t=${stamp},v1=${createHmac('sha256',configuredKey('OPENSITE_FAKE_WEBHOOK_KEY')).update(raw).digest('hex')}`;
+      const signature=`t=${stamp},v1=${createHmac('sha256',configuredKey('OPENSITE_FAKE_WEBHOOK_KEY')).update(`${stamp}.${raw}`).digest('hex')}`;
       const receipt=await upstream(configuration,{s:session.s,x:session.x},'/api/v1/testing/payments/fake/webhook',
         {method:'POST',body:event,rawBody:raw,headers:{'X-Fake-Signature':signature}});
       paymentReceipt(receipt.value,event.event_id);
-      return json(checkout((await upstream(configuration,session,`${base}/checkout/${session.checkout}`)).value));
+      return json({...current,state:'paid',payment:{...current.payment,status:'captured'}});
     }
     if (operation === 'completion' && request.method === 'GET') {
       if (!configuration.fixture && !session.checkout) return json(null);
