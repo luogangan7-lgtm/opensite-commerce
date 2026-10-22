@@ -33,6 +33,9 @@ type Service struct {
 	ips                            map[netip.Addr]ipWindow
 	knownIPs                       map[netip.Addr]ipWindow
 	global, knownGlobal            ipWindow
+	sessionSlots                   chan struct{}
+	sessionIPs                     map[netip.Addr]ipWindow
+	sessionGlobal                  ipWindow
 	deriveKey                      func([]byte, []byte, uint32, uint32, uint8, uint32) []byte
 }
 
@@ -78,7 +81,7 @@ func New(repo Repository, cfg Config) (*Service, error) {
 	}
 	cfg.TrustedProxies = append([]netip.Prefix(nil), cfg.TrustedProxies...)
 	cfg.SigningKey = append([]byte(nil), cfg.SigningKey...)
-	return &Service{repo: repo, cfg: cfg, hashSlots: make(chan struct{}, cfg.HashSlots), knownSlots: make(chan struct{}, cfg.KnownDeviceHashSlots), admissionSlots: make(chan struct{}, cfg.HashSlots), candidateSlots: make(chan struct{}, cfg.KnownDeviceHashSlots), ips: make(map[netip.Addr]ipWindow), knownIPs: make(map[netip.Addr]ipWindow), deriveKey: argon2.IDKey}, nil
+	return &Service{repo: repo, cfg: cfg, hashSlots: make(chan struct{}, cfg.HashSlots), knownSlots: make(chan struct{}, cfg.KnownDeviceHashSlots), admissionSlots: make(chan struct{}, cfg.HashSlots), candidateSlots: make(chan struct{}, cfg.KnownDeviceHashSlots), ips: make(map[netip.Addr]ipWindow), knownIPs: make(map[netip.Addr]ipWindow), deriveKey: argon2.IDKey, sessionSlots: make(chan struct{}, 2), sessionIPs: make(map[netip.Addr]ipWindow)}, nil
 }
 
 // ValidIdentifier is shared with schema admission to keep malformed identifiers out of DB work.
@@ -255,11 +258,27 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	return LoginResult{SessionToken: raw, DeviceToken: s.sign("device", deviceRaw), CSRFToken: s.SessionCSRF(raw), Session: session}, nil
 }
 
-func (s *Service) Authenticate(ctx context.Context, rawToken string) (Actor, Session, error) {
+// HTTP supplies a validated address; direct callers share the unknown bucket.
+func (s *Service) Authenticate(ctx context.Context, rawToken string, clientIP ...netip.Addr) (Actor, Session, error) {
 	hash, e := tokenHash(rawToken)
 	if e != nil {
 		return Actor{}, Session{}, ErrSession
 	}
+	var ip netip.Addr
+	if len(clientIP) > 0 {
+		ip = rateLimitIP(clientIP[0])
+	}
+	if !s.admitSession(ip, s.cfg.Now()) || ctx.Err() != nil {
+		return Actor{}, Session{}, ErrRateLimited
+	}
+	select {
+	case s.sessionSlots <- struct{}{}:
+	default:
+		return Actor{}, Session{}, ErrRateLimited
+	}
+	defer func() { <-s.sessionSlots }()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
 	now := s.cfg.Now()
 	session, e := s.repo.LookupSession(ctx, hash, now, s.cfg.IdleTimeout)
 	if e != nil {
@@ -276,6 +295,30 @@ func (s *Service) Authenticate(ctx context.Context, rawToken string) (Actor, Ses
 	}
 	return Actor{userID: session.UserID, sessionID: session.ID}, session, nil
 }
+
+// Fixed H4 defaults bound both traffic and memory independently of login limits.
+func (s *Service) admitSession(ip netip.Addr, now time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.sessionIPs[ip]; !exists && len(s.sessionIPs) >= 4096 {
+		for key, w := range s.sessionIPs {
+			if !now.Before(w.start.Add(time.Minute)) {
+				delete(s.sessionIPs, key)
+			}
+		}
+		if len(s.sessionIPs) >= 4096 {
+			return false
+		}
+	}
+	w, ok := takeWindow(s.sessionIPs[ip], now, 60)
+	s.sessionIPs[ip] = w
+	if !ok {
+		return false
+	}
+	s.sessionGlobal, ok = takeWindow(s.sessionGlobal, now, 600)
+	return ok
+}
+
 func (s *Service) Logout(ctx context.Context, a Actor) error {
 	if a.userID == "" || a.sessionID == "" {
 		return ErrSession

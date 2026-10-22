@@ -4,13 +4,41 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
+
+func TestH4ASessionConcurrencyAndDeadline(t *testing.T) {
+	_, _, repo, service, token := transportFixture(t)
+	repo.lookupBlock = make(chan struct{}, 2)
+	results := make(chan error, 2)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	started := time.Now()
+	for i := 0; i < cap(results); i++ {
+		go func() {
+			_, _, err := service.Authenticate(ctx, token)
+			results <- err
+		}()
+		<-repo.lookupBlock
+	}
+	if _, _, err := service.Authenticate(ctx, token); !errors.Is(err, login.ErrRateLimited) {
+		t.Fatal("third concurrent lookup must be rejected before storage")
+	}
+	for i := 0; i < cap(results); i++ {
+		if err := <-results; !errors.Is(err, login.ErrDatabase) || time.Since(started) > 2500*time.Millisecond {
+			t.Fatal("admitted lookup ignored internal deadline", err)
+		}
+	}
+}
 
 func TestH4ASelfReadsSessionOnce(t *testing.T) {
 	_, router, repo, _, token := transportFixture(t)
