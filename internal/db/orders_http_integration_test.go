@@ -322,9 +322,60 @@ func TestOrdersReadAPIPostgres(t *testing.T) {
 			t.Fatalf("forged cursor leaked row %v", id)
 		}
 	}
-	tampered := []byte(*p1.NextCursor)
-	tampered[len(tampered)/2] ^= 1
-	orderGet(t, h, base+"?limit=3&cursor="+url.QueryEscape(string(tampered)), 400)
+	// Invalid cursors are rejected deterministically: every witness below is
+	// either the real canonical cursor with a byte outside the base64url
+	// alphabet, a fixed literal, or another real cursor used under the wrong
+	// filter. None can drift into an accidentally valid cursor (see
+	// parseOrderCursor, internal/modules/orders/http.go:110-130).
+	canonical := *p1.NextCursor
+	nonBase64 := []byte(canonical)
+	nonBase64[len(nonBase64)/2] = '!' // '!' is never part of base64url.
+	canonicalJSON, err := base64.RawURLEncoding.DecodeString(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var canonicalFields struct {
+		Time  time.Time `json:"t"`
+		ID    uuid.UUID `json:"id"`
+		State string    `json:"s"`
+	}
+	if err := json.Unmarshal(canonicalJSON, &canonicalFields); err != nil {
+		t.Fatal(err)
+	}
+	malformedUUID, err := json.Marshal(struct {
+		Time  time.Time `json:"t"`
+		ID    string    `json:"id"`
+		State string    `json:"s"`
+	}{canonicalFields.Time, "not-a-uuid", canonicalFields.State})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// (e) A cursor minted for another tenant is not an invalid-cursor witness:
+	// the cursor carries no tenant, and the forged foreign-position block above
+	// asserts it is honoured as a seek key (200) while returning only the
+	// caller's rows. There is no 400 behaviour to pin without changing product
+	// code, so (e) is intentionally absent.
+	for _, tc := range []struct {
+		name   string
+		cursor string
+		query  string
+	}{
+		{"non-base64url character", string(nonBase64), ""},
+		{"base64url of non-JSON bytes", base64.RawURLEncoding.EncodeToString([]byte("not-json")), ""},
+		{"malformed UUID", base64.RawURLEncoding.EncodeToString(malformedUUID), ""},
+		{"filter mismatch", *pending.NextCursor, "state=paid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := orderGet(t, h, base+"?limit=3&"+tc.query+"cursor="+url.QueryEscape(tc.cursor), 400)
+			var problem struct {
+				Code   string `json:"code"`
+				Status int    `json:"status"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &problem); err != nil || problem.Status != 400 || problem.Code != "invalid_cursor" {
+				t.Fatalf("%s: problem %s", tc.name, w.Body.String())
+			}
+		})
+	}
 	orderGet(t, h, base+"?state=shipped", 400)
 
 	// Detail shape, ETag, money strings, adjustments and nulls.
