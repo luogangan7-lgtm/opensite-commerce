@@ -45,7 +45,7 @@ BEGIN
   IF p_version IS DISTINCT FROM r.version THEN RAISE EXCEPTION 'PRICING_VERSION_CONFLICT' USING ERRCODE='P4120'; END IF;
   IF r.status='archived' THEN RAISE EXCEPTION 'PRICING_ARCHIVED' USING ERRCODE='P4092'; END IF;
  END IF;
- IF p_body->>'currency' IS DISTINCT FROM c THEN RAISE EXCEPTION 'PRICING_CURRENCY_MISMATCH' USING ERRCODE='P4091'; END IF;
+ -- Fault probe: omit requested-currency equality admission; expected PG gate RED.
  IF NOT isfinite((p_body->>'starts_at')::timestamptz) OR NOT isfinite(coalesce((p_body->>'ends_at')::timestamptz,(p_body->>'starts_at')::timestamptz)) THEN
   RAISE EXCEPTION 'PRICING_WINDOW' USING ERRCODE='23514'; END IF;
  IF p_id IS NULL THEN
