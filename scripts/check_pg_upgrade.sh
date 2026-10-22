@@ -1196,6 +1196,29 @@ db "$CLOCK_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $CLOCK_DB" >/dev/null; CLOCK_DB=""
 pass 'clock upgrade preserves populated attempts/devices and exact function OID/owner/ACL'
 
+# ADMIN-PRICING-1: preserve populated lists and tiers across the additive capability.
+pricing_staff=(migrations/*_staff_pricing.sql)
+[[ ${#pricing_staff[@]} == 1 && -f ${pricing_staff[0]} ]] || { echo 'staff pricing migration missing' >&2; exit 1; }
+DB=upgrade_staff_pricing_$$; PRICING_DB=$DB
+admin -c "CREATE DATABASE $DB"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${pricing_staff[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('legacy-price') RETURNING id AS t \gset
+INSERT INTO app.price_lists(tenant_id,currency,starts_at) VALUES(:'t','EUR','2026-01-01T00:00:00Z');
+SQL
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${pricing_staff[0]} ]] && continue
+ apply_forward "$DB" "$f"
+done
+[[ $(db "$DB" -c "SELECT currency||'|'||version FROM app.price_lists;") == 'EUR|1' ]] || bad 'staff pricing changed legacy prices'
+db "$DB" -f tests/db_staff_pricing.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB"; PRICING_DB=""
+pass 'staff pricing upgrade preserves existing currency and initializes CAS version'
+
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
 # Quotes takes over the existing005 inquiry table without rebuilding contacts.

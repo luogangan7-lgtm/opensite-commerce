@@ -105,6 +105,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			}
 		}
 		config.Catalog.Run = runner.RunAuthorized
+		config.Pricing.Run = runner.RunAuthorized
 		config.CMS.Idempotency.Run = runner.RunAuthorizedTx
 		if encoded := os.Getenv("OPENSITE_CMS_PREVIEW_KEY"); encoded != "" && config.CMS.Writer == nil {
 			key, err := base64.RawURLEncoding.DecodeString(encoded)
