@@ -132,6 +132,7 @@ expected = [
     'db_checkout.sql',
     'db_customer_auth.sql',
     'db_inventory_owner.sql',
+    'db_identity_clock.sql',
     'db_payments.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.

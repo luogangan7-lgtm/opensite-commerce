@@ -807,6 +807,25 @@ got=$(sql <<<"SELECT a.failure_count||'|'||i.failure_count FROM app.auth_account
 echo "race auth account+IP failure increments: $got (expected 2|2)"
 [[ $got == '2|2' ]] || fail=1
 
+# H4-clock: failure time is taken after the witnessed advisory wait, within
+# production 500ms lock / 1500ms statement budgets (no sleep ordering).
+CLOCK_IDENTIFIER="${RACE_PREFIX}clock@example.test"
+gate_close 75
+tx clock_holder postgres "$T" "SELECT pg_advisory_xact_lock(hashtextextended('opensite:auth:$CLOCK_IDENTIFIER',0)); $(park 75)" &
+clock_holder_pid=$!
+await clock_holder advisory
+auth_tx clock_waiter "SET LOCAL lock_timeout='500ms'; SET LOCAL statement_timeout='1500ms'; SELECT app.auth_record_failure('$CLOCK_IDENTIFIER','192.0.2.75');" &
+clock_waiter_pid=$!
+await clock_waiter advisory
+blocked=$(sql <<<"SELECT h.pid=ANY(pg_blocking_pids(w.pid)) FROM pg_stat_activity h,pg_stat_activity w WHERE h.application_name='${RACE_PREFIX}clock_holder' AND w.application_name='${RACE_PREFIX}clock_waiter';")
+[[ $blocked == t ]] || { echo 'FAIL: clock waiter not blocked on holder'; fail=1; }
+clock_release=$(sql <<<"SELECT clock_timestamp();")
+gate_open 75
+wait "$clock_holder_pid" "$clock_waiter_pid"
+expect clock_holder ok; expect clock_waiter ok
+got=$(sql <<<"SELECT cooldown_until >= '$clock_release'::timestamptz+interval '1 second' AND last_failed_at >= '$clock_release'::timestamptz FROM app.auth_account_attempts WHERE identifier_normalized='$CLOCK_IDENTIFIER';")
+[[ $got == t ]] || { echo 'FAIL: post-wait DB clock lost full backoff'; fail=1; }
+
 # Cleanup must skip both stale rows while an ordinary failure waits for their
 # row locks, then preserve the renewed failures once the holder commits.
 PRUNE_IDENTIFIER="${RACE_PREFIX}prune@example.test"
