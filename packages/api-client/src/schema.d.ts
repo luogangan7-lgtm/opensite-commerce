@@ -1436,7 +1436,7 @@ export interface components {
             csrf_token: string;
         };
         CreateAPIKey: {
-            scopes: ("apikeys:write" | "catalog:read" | "catalog:write" | "cms:publish" | "cms:write" | "media:write" | "notifications:write" | "orders:read" | "quotes:read" | "quotes:write" | "organization.create" | "site.create")[];
+            scopes: ("apikeys:write" | "catalog:read" | "catalog:write" | "cms:publish" | "cms:write" | "media:write" | "notifications:write" | "orders:read" | "quotes:read" | "quotes:write" | "organization.create" | "site.create" | "fulfillment:write" | "returns:write")[];
             /**
              * Format: date-time
              * @description Optional future expiry; validated against the database clock.
