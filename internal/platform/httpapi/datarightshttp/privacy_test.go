@@ -126,6 +126,7 @@ func TestPrivacyHTTPReadOnlyStatusAndBoundedDownload(t *testing.T) {
 }
 
 // Metadata probes must never consume the single-use capability (FIX-44).
+// The shared router returns its existing 404 fallback for unregistered methods.
 func TestPrivacyHTTPHeadAndGetDoNotConsumeDownload(t *testing.T) {
 	svc := &service{body: []byte("{}")}
 	router := makeRouter(t, auth{scope: "customers:privacy"}, svc, subject, io.Discard)
@@ -133,7 +134,7 @@ func TestPrivacyHTTPHeadAndGetDoNotConsumeDownload(t *testing.T) {
 	for _, method := range []string{"HEAD", "GET"} {
 		rr := httptest.NewRecorder()
 		router.ServeHTTP(rr, httptest.NewRequest(method, uri, nil))
-		if rr.Code != 405 || svc.calls != 0 {
+		if rr.Code != 404 || svc.calls != 0 {
 			t.Fatalf("%s status=%d calls=%d", method, rr.Code, svc.calls)
 		}
 	}
