@@ -1,0 +1,52 @@
+name: fulfillment-money-regressions
+on: pull_request
+
+# Isolated receipts let all three review regressions reach their assertions even
+# when an earlier required gate stops on a different tests-first failure.
+jobs:
+  refund-regressions:
+    if: github.event.pull_request.number == 39
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      OPENSITE_REQUIRE_PGX_FIXTURES: '1'
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - name: Regenerate merged inputs with pinned generators
+        run: |
+          go mod download
+          go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+          curl -fsSL --retry 3 https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz -o /tmp/sqlc.tar.gz
+          echo '497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354  /tmp/sqlc.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/sqlc.tar.gz -C /tmp
+          /tmp/sqlc generate
+      - name: Disposable PostgreSQL migrations
+        run: |
+          python3 scripts/pending_migrations.py ci-normalize
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          bash scripts/migrate.sh
+      - name: All three independent money regressions
+        run: >-
+          go test -race -tags pgx -count=1 -v
+          -run 'TestRefundProviderFailureState|TestRefundFailurePersistenceErrorSurfaces|TestRefundUncertainFailureRetainsReservation|TestHTTPRefundMinorLosslessSerialization|TestRefundNegativeAdjustedIncomeCapacity|TestRefundFailedIntentGuard'
+          ./internal/modules/returns/internal/service ./internal/modules/returns ./internal/db

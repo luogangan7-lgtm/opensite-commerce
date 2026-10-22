@@ -6,6 +6,7 @@ package returns
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -106,11 +107,12 @@ func claimConfig(t *testing.T, c *httpClaims) httpapi.CommandConfig {
 }
 
 type httpService struct {
-	calls   int
-	request contract.RequestInput
-	receive contract.ReceiveInput
-	refund  contract.RefundInput
-	err     error
+	calls       int
+	refundMinor int64
+	request     contract.RequestInput
+	receive     contract.ReceiveInput
+	refund      contract.RefundInput
+	err         error
 }
 
 func (s *httpService) result(ctx context.Context, tenant string) (contract.Return, error) {
@@ -118,7 +120,7 @@ func (s *httpService) result(ctx context.Context, tenant string) (contract.Retur
 	if got, e := httpapi.AuthorizedTenant(ctx); e != nil || got != tenant || tenant != httpTenant {
 		panic("unauthorized command")
 	}
-	return contract.Return{ID: httpReturn, OrderID: httpOrder, OrderVersion: 5, Kind: contract.UnshippedCancel, Status: "received", Restocked: true, Lines: []contract.ReturnLine{{ID: httpReturn, OrderLineID: httpLine, Quantity: 1}}}, s.err
+	return contract.Return{ID: httpReturn, OrderID: httpOrder, OrderVersion: 5, Kind: contract.UnshippedCancel, Status: "received", Restocked: true, RefundMinor: s.refundMinor, Lines: []contract.ReturnLine{{ID: httpReturn, OrderLineID: httpLine, Quantity: 1}}}, s.err
 }
 func (s *httpService) Request(ctx context.Context, _ pgx.Tx, tenant string, in contract.RequestInput) (contract.Return, error) {
 	s.request = in
@@ -216,6 +218,50 @@ func TestHTTPAdmissionAndCommands(t *testing.T) {
 						t.Fatal("refund input lost")
 					}
 				}
+			}
+		})
+	}
+}
+
+// Amounts beyond JavaScript's safe-integer range must survive every command
+// response and its durable idempotency replay as canonical decimal strings.
+func TestHTTPRefundMinorLosslessSerialization(t *testing.T) {
+	for _, tc := range []struct {
+		operation, body string
+		status          int
+	}{
+		{operation: "request", body: returnBody, status: http.StatusCreated},
+		{operation: "receive", body: `{"restock":true}`, status: http.StatusOK},
+		{operation: "refund", body: `{}`, status: http.StatusOK},
+	} {
+		t.Run(tc.operation, func(t *testing.T) {
+			service := &httpService{refundMinor: 9007199254740993}
+			s := NewHTTP(HTTPConfig{Idempotency: claimConfig(t, &httpClaims{}), Service: service, Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error {
+				return fn(ctx, nil)
+			}})
+			router := httpRouter(t, s, httpAuth{})
+			var first []byte
+			for attempt := 0; attempt < 2; attempt++ {
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, commandRequest(tc.operation, tc.body, `"4"`, "lossless-refund"))
+				if w.Code != tc.status {
+					t.Fatalf("attempt=%d status=%d body=%s", attempt, w.Code, w.Body.String())
+				}
+				var body map[string]json.RawMessage
+				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if got := string(body["refund_minor"]); got != `"9007199254740993"` {
+					t.Fatalf("attempt=%d refund_minor=%s want exact JSON string %q", attempt, got, "9007199254740993")
+				}
+				if attempt == 0 {
+					first = bytes.Clone(w.Body.Bytes())
+				} else if !bytes.Equal(first, w.Body.Bytes()) {
+					t.Fatal("idempotency replay changed the response bytes")
+				}
+			}
+			if service.calls != 1 {
+				t.Fatalf("service calls=%d want 1 across original and replay", service.calls)
 			}
 		})
 	}
