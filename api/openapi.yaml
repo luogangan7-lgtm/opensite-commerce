@@ -4270,11 +4270,21 @@ components:
             - $ref: '#/components/schemas/CustomerSessionView'
             - {type: 'null'}
         csrf_token: {type: string}
+    CheckoutAcceptedTotal:
+      description: Explicit buyer acceptance, checked against canonical pricing before any checkout effect. Changed money requires a new consent and request key.
+      type: object
+      additionalProperties: false
+      required: [amount_minor, currency]
+      properties:
+        amount_minor: {type: integer, format: int64, minimum: 1}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
     CheckoutStart:
       type: object
       additionalProperties: false
-      required: [cart_id, shipping_address]
+      required: [cart_id, shipping_address, accepted_total]
       properties:
+        accepted_total:
+          $ref: '#/components/schemas/CheckoutAcceptedTotal'
         cart_id: {type: string, format: uuid}
         quote_id: {type: string, format: uuid, description: Unsupported in C-18a; returns 422.}
         buyer_contact:

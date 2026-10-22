@@ -85,7 +85,7 @@ jobs:
         run: bun run build:storefront
       - name: Explicit changed-total browser consent
         if: success() || failure()
-        run: bun run visual:test tests/frontend/storefront-commerce.spec.ts --grep 'checkout requires confirmation|stale preview requires' --project desktop
+        run: bun run visual:test tests/frontend/storefront-commerce.spec.ts --grep 'checkout requires confirmation|stale Start' --project desktop
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: failure()
         with:

@@ -22,13 +22,14 @@ import (
 )
 
 var (
-	ErrInvalid     = errors.New("checkout: invalid input")
-	ErrForbidden   = errors.New("checkout: unauthorized actor")
-	ErrNotFound    = errors.New("checkout: not found")
-	ErrConflict    = errors.New("checkout: state conflict")
-	ErrKeyReused   = errors.New("checkout: idempotency content conflict")
-	ErrUnavailable = errors.New("checkout: unavailable")
-	ErrRetry       = errors.New("checkout: retry required")
+	ErrTotalChanged = errors.New("checkout: accepted total changed")
+	ErrInvalid      = errors.New("checkout: invalid input")
+	ErrForbidden    = errors.New("checkout: unauthorized actor")
+	ErrNotFound     = errors.New("checkout: not found")
+	ErrConflict     = errors.New("checkout: state conflict")
+	ErrKeyReused    = errors.New("checkout: idempotency content conflict")
+	ErrUnavailable  = errors.New("checkout: unavailable")
+	ErrRetry        = errors.New("checkout: retry required")
 )
 
 // AuthorizedActor is produced only by a trusted resolver AFTER capability/session
@@ -68,7 +69,13 @@ type ShippingAddress struct {
 	City        string `json:"city"`
 	PostalCode  string `json:"postal_code"`
 }
+type AcceptedTotal struct {
+	AmountMinor int64  `json:"amount_minor"`
+	Currency    string `json:"currency"`
+}
+
 type StartInput struct {
+	AcceptedTotal   AcceptedTotal   `json:"accepted_total"`
 	CartID          string          `json:"cart_id"`
 	QuoteID         string          `json:"quote_id,omitempty"`
 	BuyerContact    orders.Contact  `json:"buyer_contact"`

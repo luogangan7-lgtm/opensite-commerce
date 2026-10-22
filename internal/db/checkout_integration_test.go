@@ -206,7 +206,7 @@ func (f *checkoutPGFixture) run(ctx context.Context, tenant string, fn func(cont
 }
 
 func (f *checkoutPGFixture) input() checkoutcontract.StartInput {
-	return checkoutcontract.StartInput{CartID: f.cart.cart.ID, BuyerContact: orderscontract.Contact{Email: "buyer@example.test", Name: "Fixture buyer"}, ShippingAddress: checkoutcontract.ShippingAddress{Country: "US", Address1: "100 Test Avenue", City: "Test City", PostalCode: "10000"}, IdempotencyKey: "start:" + uuid.NewString()}
+	return checkoutcontract.StartInput{AcceptedTotal: checkoutcontract.AcceptedTotal{AmountMinor: 110*f.cart.cart.Lines[0].Quantity + 50, Currency: "USD"}, CartID: f.cart.cart.ID, BuyerContact: orderscontract.Contact{Email: "buyer@example.test", Name: "Fixture buyer"}, ShippingAddress: checkoutcontract.ShippingAddress{Country: "US", Address1: "100 Test Avenue", City: "Test City", PostalCode: "10000"}, IdempotencyKey: "start:" + uuid.NewString()}
 }
 func (f *checkoutPGFixture) start(t *testing.T) checkoutcontract.Result {
 	t.Helper()
@@ -673,6 +673,7 @@ func TestCheckoutPGShippingZonesScopedToProfile(t *testing.T) {
 			}
 			in := f.input()
 			in.ShippingAddress.Subdivision = "US-CA"
+			in.AcceptedTotal.AmountMinor = tc.expected
 			got, err := f.service.Start(checkoutRequestContext(f.ctx), f.actor, in)
 			if err != nil || got.AmountMinor != tc.expected {
 				t.Fatalf("profile-scoped shipping Start %#v %v, want amount %d", got, err, tc.expected)

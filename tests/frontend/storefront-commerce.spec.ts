@@ -126,6 +126,22 @@ test('commerce fixture absolute quantities, zero removes, stale version recovers
   await expect(page.locator('[data-cart-line]')).toHaveCount(0);
 });
 
+test('stale Start is rejected before intent and refreshed money requires another explicit consent',async({page,request})=>{
+  await add(page);await review(page);
+  const ownCart=await page.evaluate(async()=>(await(await fetch('/purchase/api/cart')).json()).cart);
+  expect((await request.post(`${fixture}/__fixture/scenario`,{data:{cart_id:ownCart.id,action:'conflict'}})).status()).toBe(200);
+  const stale=page.waitForResponse(r=>r.url()===`${api}/checkout`);
+  await page.getByRole('button',{name:'Start test checkout',exact:true}).click();
+  expect((await stale).status()).toBe(409);
+  await expect(page.getByRole('button',{name:'Confirm updated total',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Start test checkout',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Confirm updated total',exact:true}).click();
+  await start(page);
+  await page.getByRole('button',{name:'Fake payment: capture',exact:true}).click();
+  await expect(page.getByRole('link',{name:'View order confirmation',exact:true})).toBeVisible();
+});
+
 test('checkout requires confirmation of an updated server total and reuses ambiguous submission keys', async ({ page }) => {
   await add(page); await review(page);
   const keys: string[] = [];

@@ -114,6 +114,8 @@ export const commerceFixtureServer = createServer(async (req, res) => {
       if (session.actor === 'guest') { if (!guestContact(input.buyer_contact)) return reject(res, 422, 'buyer_contact_required'); }
       if (session.checkout?.state === 'paid') return reject(res, 409, 'cart_consumed');
       const ordinal = String(session.idempotency.size + 1).padStart(12, '0');
+      const accepted=input.accepted_total as {amount_minor?:string;currency?:string}|undefined;
+      if (!accepted || String(accepted.amount_minor)!==String(totals(cart).total_minor) || accepted.currency!=='USD') return reject(res,409,'checkout_total_changed');
       const result: Checkout = { checkout_id: `c09c0010-0000-4000-8000-${ordinal}`, order_id: `c09c0011-0000-4000-8000-${ordinal}`, state: 'ready', amount_minor: Number(totals(cart).total_minor), currency: 'USD', order_version: 1, payment: { provider_ref: `fake:${ordinal}`, status: 'authorized' } };
       session.checkout = result; session.idempotency.set(key, { fingerprint, result: structuredClone(result) }); return reply(res, 201, result);
     }

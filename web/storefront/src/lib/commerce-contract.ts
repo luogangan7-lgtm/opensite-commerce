@@ -15,3 +15,5 @@ export type Preview = { subtotal_minor: string; tax_minor: string; shipping_mino
 export type CheckoutInput = { shipping_address: ShippingAddress; buyer_contact?: BuyerContact };
 export type CheckoutResult = { checkout_id: string; order_id: string; state: string; amount_minor: string; currency: string; order_version: string; payment: { provider_ref: string; status: string } };
 export type PaymentOutcome = 'captured' | 'failed' | 'canceled';
+
+export type AcceptedTotal = {amount_minor: string; currency: string};

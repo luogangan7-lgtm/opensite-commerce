@@ -30,7 +30,7 @@ const cart = "20000000-0000-4000-8000-000000000001"
 const checkoutID = "30000000-0000-4000-8000-000000000001"
 const orderID = "40000000-0000-4000-8000-000000000001"
 const origin = "https://store.example.invalid"
-const body = `{"cart_id":"` + cart + `","buyer_contact":{"email":"guest@example.invalid"},"shipping_address":{"country":"US","address1":"Fixture road","city":"Fixture city","postal_code":"00001"}}`
+const body = `{"accepted_total":{"amount_minor":160,"currency":"USD"},"cart_id":"` + cart + `","buyer_contact":{"email":"guest@example.invalid"},"shipping_address":{"country":"US","address1":"Fixture road","city":"Fixture city","postal_code":"00001"}}`
 const eventBody = `{"event_id":"evt-fixture","account_id":"fake-account-fixture","order_id":"` + orderID + `","order_version":1,"provider_ref":"fake-fixture","status":"captured","amount_minor":1200,"currency":"USD"}`
 
 type service struct {
