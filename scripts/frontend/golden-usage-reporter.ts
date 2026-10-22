@@ -13,11 +13,11 @@ export default class GoldenUsageReporter implements Reporter {
     if (name) this.used.add(`${test.parent.project()?.name}/${name}`);
   }
 
-  onEnd(result: FullResult) {
+  async onEnd(result: FullResult): Promise<{ status?: FullResult['status'] } | void> {
     if (process.env.OPENSITE_ORPHAN_CHECK !== '1' || result.status !== 'passed') return;
     const orphans = Object.keys(pngHashes()).filter(snapshot => !this.used.has(snapshot));
     if (orphans.length === 0) return;
     console.error(`FAIL: ${orphans.length} committed golden(s) never compared; delete them with their records:\n  ${orphans.join('\n  ')}`);
-    return { status: 'failed' as const };
+    return { status: 'failed' };
   }
 }
