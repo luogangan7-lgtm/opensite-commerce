@@ -95,3 +95,10 @@ test('missing account and production Fake are closed before webhook IO',async()=
   process.env.OPENSITE_FAKE_ACCOUNT_ID='acct_bff_test';process.env.OPENSITE_ENVIRONMENT='production';
   expect((await f.send()).status).toBe(404);expect(f.events).toHaveLength(0);
 });
+
+for (const accepted_total of [undefined,{amount_minor:'159',currency:'USD'},{amount_minor:'9223372036854775807',currency:'EUR'}]) test(`server rejects missing or stale capture consent ${JSON.stringify(accepted_total)}`,async()=>{
+  const f=await setup();
+  const response=await f.send('captured',accepted_total ? {accepted_total} : {});
+  expect(response.status).toBe(409);expect(await response.json()).toMatchObject({code:'checkout_total_changed'});
+  expect(f.events).toHaveLength(0);
+});

@@ -146,8 +146,12 @@ test('checkout requires confirmation of an updated server total and reuses ambig
   await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toBeDisabled();
   await expect(page.locator('.payment-result')).toContainText('$99.99');
   expect(keys).toHaveLength(2); expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
+  let accepted: unknown;
+  await page.route(`${api}/payment`, async route => { accepted=route.request().postDataJSON().accepted_total; await route.fulfill({status:409,json:{code:'checkout_total_changed'}}); });
   await page.getByRole('button',{name:'Confirm updated total',exact:true}).click();
   await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'Fake payment: capture',exact:true}).click();
+  await expect.poll(()=>accepted).toEqual({amount_minor:'9999',currency:'USD'});
 });
 
 for (const outcome of ['fail', 'cancel'] as const) test(`commerce fixture Fake ${outcome} never opens paid confirmation`, async ({ page }) => {
