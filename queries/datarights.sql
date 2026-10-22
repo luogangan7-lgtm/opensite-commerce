@@ -22,3 +22,6 @@ SELECT app.data_rights_download_deadline(sqlc.arg(id)::uuid)::timestamptz AS dea
 
 -- name: DataRightsWorkerInfo :one
 SELECT app.data_rights_worker_info(sqlc.arg(id)::uuid)::jsonb AS payload;
+
+-- name: DataRightsArtifactLive :one
+SELECT app.data_rights_artifact_live(sqlc.arg(id)::uuid)::boolean AS live;

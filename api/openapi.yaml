@@ -3230,7 +3230,7 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
   /api/v1/t/{tenant_id}/customers/{customer_id}/data-exports/{request_id}/download:
-    get:
+    post:
       operationId: downloadCustomerDataExport
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey

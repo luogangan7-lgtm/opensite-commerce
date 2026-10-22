@@ -284,11 +284,16 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 	if json.Unmarshal(status.Body.Bytes(), &view) != nil || view.DownloadURL == "" || view.DownloadExpiresAt.IsZero() || time.Until(view.DownloadExpiresAt) > 15*time.Minute {
 		t.Fatal("short-lived capability not projected")
 	}
-	download := request("GET", view.DownloadURL, "")
+	for _, method := range []string{"HEAD", "GET"} {
+		if probe := request(method, view.DownloadURL, ""); probe.Code != 405 {
+			t.Fatalf("%s consumed or admitted download: %d", method, probe.Code)
+		}
+	}
+	download := request("POST", view.DownloadURL, "")
 	if download.Code != 200 || !strings.Contains(download.Body.String(), "synthetic-c22a@example.invalid") {
 		t.Fatalf("download=%d", download.Code)
 	}
-	if again := request("GET", view.DownloadURL, ""); again.Code != 409 {
+	if again := request("POST", view.DownloadURL, ""); again.Code != 409 {
 		t.Fatalf("once-only download=%d", again.Code)
 	}
 	// Cleanup failure occurs after commit; replay retries deletion from the

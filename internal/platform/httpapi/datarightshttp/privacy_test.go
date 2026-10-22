@@ -100,9 +100,13 @@ func TestPrivacyHTTPReadOnlyStatusAndBoundedDownload(t *testing.T) {
 	svc := &service{body: bytes.Repeat([]byte("z"), 2<<20)}
 	var logs bytes.Buffer
 	router := makeRouter(t, auth{scope: "customers:privacy"}, svc, subject, &logs)
-	for _, uri := range []string{path + "/" + requestID, path + "/" + requestID + "/download?token=" + strings.Repeat("a", 43)} {
+	for i, uri := range []string{path + "/" + requestID, path + "/" + requestID + "/download?token=" + strings.Repeat("a", 43)} {
+		method := "GET"
+		if i == 1 {
+			method = "POST"
+		}
 		rr := httptest.NewRecorder()
-		router.ServeHTTP(rr, httptest.NewRequest("GET", uri, nil))
+		router.ServeHTTP(rr, httptest.NewRequest(method, uri, nil))
 		if rr.Code != 200 {
 			t.Fatalf("status=%d %s", rr.Code, rr.Body.String())
 		}
@@ -115,7 +119,7 @@ func TestPrivacyHTTPReadOnlyStatusAndBoundedDownload(t *testing.T) {
 	}
 	svc.body = bytes.Repeat([]byte("s"), (10<<20)+1)
 	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, httptest.NewRequest("GET", path+"/"+requestID+"/download?token="+strings.Repeat("a", 43), nil))
+	router.ServeHTTP(rr, httptest.NewRequest("POST", path+"/"+requestID+"/download?token="+strings.Repeat("a", 43), nil))
 	if rr.Code != 500 || rr.Body.Len() > 1024 || strings.Contains(rr.Body.String(), strings.Repeat("s", 100)) {
 		t.Fatalf("overflow leaked: %d %d", rr.Code, rr.Body.Len())
 	}

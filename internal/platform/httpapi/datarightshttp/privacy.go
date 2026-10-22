@@ -36,20 +36,20 @@ func (h *Handler) Routes() []httpapi.Route {
 	routes := httpapi.StrictRoutes(h, []httpapi.RouteSpec{
 		{OperationID: "requestCustomerDataExport", Method: "POST", Pattern: base + "/data-exports", Access: httpapi.AdminOrAPIKey, Scope: "customers:privacy"},
 		{OperationID: "getCustomerDataExport", Method: "GET", Pattern: base + "/data-exports/{request_id}", Access: httpapi.AdminOrAPIKey, Scope: "customers:privacy"},
-		{OperationID: "downloadCustomerDataExport", Method: "GET", Pattern: base + "/data-exports/{request_id}/download", MaxResponseSize: contract.MaxBytes, Access: httpapi.AdminOrAPIKey, Scope: "customers:privacy"},
+		{OperationID: "downloadCustomerDataExport", Method: "POST", Pattern: base + "/data-exports/{request_id}/download", MaxResponseSize: contract.MaxBytes, Access: httpapi.AdminOrAPIKey, Scope: "customers:privacy"},
 		{OperationID: "eraseCustomerData", Method: "POST", Pattern: base + "/data-erasure", Access: httpapi.AdminOrAPIKey, Scope: "customers:privacy"},
 	})
 	for i := range routes {
-		if routes[i].Spec.Method == "POST" {
+		if routes[i].Spec.Method == "POST" && routes[i].Spec.OperationID != "downloadCustomerDataExport" {
 			routes[i] = httpapi.AdmitCommand(routes[i])
 		} else {
+			method := routes[i].Spec.Method
 			next := routes[i].Handler
 			routes[i].Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Cache-Control", "no-store")
-				// ServeMux routes HEAD to GET patterns; a metadata probe must not
-				// consume the single-use download capability.
-				if r.Method != http.MethodGet {
-					w.Header().Set("Allow", http.MethodGet)
+				// Only the declared method may reach a capability operation.
+				if r.Method != method {
+					w.Header().Set("Allow", method)
 					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 					return
 				}

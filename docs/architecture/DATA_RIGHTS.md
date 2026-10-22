@@ -59,7 +59,7 @@ checkout `address_snapshot`/`start_result`/`final_result` and attempt results
 (via `checkout_sessions.order_id -> orders.customer_id`), the snapshot and line
 text of quotes the customer accepted (`quotes.accepted_by`), order adjustment
 reasons, response bodies/references of the customer's own command receipts
-(`idempotency_records` with `actor_kind='customer'`), and deletes pending
+and derived staff quote receipts (verified through the quote's `accepted_by`), and deletes pending
 customer-auth tokens (email copy and pending PHC), sessions and mailbox-proven
 guest-order links. Account admission counters have no owner and stay. Each
 scrub writes a fixed marker (`{"erased":true}`, `[erased]`, `erased`); quote
@@ -113,7 +113,7 @@ resurrecting PII for an erased customer. Retry of erasure is safe; an old export
 job cannot make a revoked request ready again. Files are cleaned by ID after
 database erasure. If unlink fails, access remains revoked; retry cleanup before
 retiring the storage volume. Pending and expired artifacts also require storage
-retention cleanup; SQL deadlines alone do not delete physical files.
+retention cleanup by the configured periodic tenant worker; SQL deadlines alone do not delete physical files.
 
 Order notifications are owned through `(tenant_id, orders.customer_id)` and
 `reference_id`, never through email equality. Erasure replaces their frozen
@@ -189,3 +189,23 @@ export escape for round trips. This is not a general arbitrary-schema importer.
 
 Focused red/green probes and full Go/PG gate receipts are listed in the PR body;
 production identity wiring and external storage delivery are outside this card.
+
+## Artifact reclamation and derived receipts (FIX-44 round 3)
+
+The database row is the download capability; rollback, expiry and erasure never
+leave reachable files. Physical deletion is idempotent and may follow revocation.
+The signed periodic tenant worker sweeps final and temporary files using
+`JOB_TENANTS`, every configured inventory expiry interval (one minute by default).
+It shares an export-ID advisory transaction lock with construction, before the
+customer/request locks. An uncommitted build cannot be mistaken for an orphan.
+Only ready, unexpired, non-erased DB capabilities retain final files; temporary,
+missing-row, pending rollback, consumed and revoked copies are reclaimed. Each
+unlink syncs its parent directory, including idempotent cleanup retries. Configure
+all export tenants in `JOB_TENANTS`; without that configured periodic producer,
+physical background reclamation does not run. GET/HEAD never consume a download;
+the explicit authorized POST remains the single-use operation.
+
+Staff `quotes.*` replay snapshots are derived personal copies: their verified
+subject follows `response_body.id -> quotes.id -> accepted_by`, including a
+create receipt written before acceptance. Erasure scrubs these without changing
+quote ownership or associating contacts by email.

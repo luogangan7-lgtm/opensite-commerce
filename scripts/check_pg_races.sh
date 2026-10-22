@@ -1393,6 +1393,26 @@ gate_open 94; wait
 expect payment_stream_first ok; expect payment_stream_second ok
 result payment_stream_second C19_STREAM_SECOND
 
+# FIX-44 artifact sweep/build serialize before customer/request locks, including
+# a pending (rolled-back build) capability. No sleep-based ordering.
+read -r T CUSTOMER REQUEST ACTOR <<<"$(privacy_fixture)"
+gate_close 95
+tx privacy_artifact_build app_runtime "$T" "SELECT app.data_rights_worker_info('$REQUEST'); $(park 95) SELECT app.data_rights_complete_export('$REQUEST',sha256('token'::bytea),sha256('content'::bytea),date_trunc('second',clock_timestamp())+interval '10 minutes');" &
+await privacy_artifact_build advisory
+tx privacy_artifact_sweep app_runtime "$T" "SELECT 'PRIVACY_ARTIFACT_LIVE='||app.data_rights_artifact_live('$REQUEST');" &
+await privacy_artifact_sweep advisory
+gate_open 95; wait
+expect privacy_artifact_build ok; expect privacy_artifact_sweep ok
+result privacy_artifact_sweep PRIVACY_ARTIFACT_LIVE=true
+gate_close 96
+tx privacy_artifact_sweep_hold app_runtime "$T" "SELECT app.data_rights_artifact_live('$REQUEST'); $(park 96)" &
+await privacy_artifact_sweep_hold advisory
+tx privacy_artifact_build_wait app_runtime "$T" "SELECT app.data_rights_worker_info('$REQUEST'); SELECT 'PRIVACY_BUILD_AFTER_SWEEP';" &
+await privacy_artifact_build_wait advisory
+gate_open 96; wait
+expect privacy_artifact_sweep_hold ok; expect privacy_artifact_build_wait ok
+result privacy_artifact_build_wait PRIVACY_BUILD_AFTER_SWEEP
+
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'

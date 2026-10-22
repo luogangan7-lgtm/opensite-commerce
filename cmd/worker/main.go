@@ -219,6 +219,7 @@ func composeWorkers(ctx context.Context, getenv func(string) string, sender outb
 			return nil, nil, nil, errors.New("privacy worker configuration unavailable")
 		}
 		cfg.ExportService = permanentExports{exports}
+		cfg.ExportSweeper = exports
 	}
 	worker, err := jobs.NewWorker(pool, signer, cfg)
 	if err != nil {

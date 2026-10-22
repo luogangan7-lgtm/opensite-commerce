@@ -138,39 +138,87 @@ func TestExportLifecycleAndErasure(t *testing.T) {
 	rollbackErr := errors.New("injected commit rollback")
 	rolled, err := datarights.New(contract.Config{Root: root, TokenKey: []byte("01234567890123456789012345678901"), Run: func(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
 		return run(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
-			if err := fn(ctx, tx); err != nil { return err }
+			if err := fn(ctx, tx); err != nil {
+				return err
+			}
 			return rollbackErr
 		})
 	}})
-	if err != nil { t.Fatal(err) }
-	if err = rolled.BuildExport(ctx, tenant, rollbackID); !errors.Is(err, rollbackErr) { t.Fatal("rollback injection", err) }
-	if _, err = s.Download(ctx, tenant, rollbackID, customer, "uncommitted"); err == nil { t.Fatal("rolled-back export reachable") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = rolled.BuildExport(ctx, tenant, rollbackID); !errors.Is(err, rollbackErr) {
+		t.Fatal("rollback injection", err)
+	}
+	if _, err = s.Download(ctx, tenant, rollbackID, customer, "uncommitted"); err == nil {
+		t.Fatal("rolled-back export reachable")
+	}
 	// Final and temporary artifacts with no row, including a rolled-back request.
 	missing := uuid.NewString()
-	for _, name := range []string{missing+".json", missing+"."+uuid.NewString()+".tmp"} {
-		if err := os.WriteFile(filepath.Join(root,"data-rights",tenant,name), []byte("orphan PII"),0600); err != nil { t.Fatal(err) }
+	for _, name := range []string{missing + ".json", missing + ".json." + uuid.NewString() + ".tmp"} {
+		if err := os.WriteFile(filepath.Join(root, "data-rights", tenant, name), []byte("orphan PII"), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	sweeper, ok := s.(interface { Sweep(context.Context, string) error })
-	if !ok { t.Fatal("privacy artifact sweep missing") }
-	for range 2 { if err := sweeper.Sweep(ctx,tenant); err != nil { t.Fatal("idempotent sweep",err) } }
-	for _, orphan := range []string{rollbackID,missing} {
-		if _,err := os.Stat(filepath.Join(root,"data-rights",tenant,orphan+".json")); !os.IsNotExist(err) { t.Fatal("orphan PII retained",err) }
+	sweeper, ok := s.(interface {
+		Sweep(context.Context, string) error
+	})
+	if !ok {
+		t.Fatal("privacy artifact sweep missing")
 	}
-	entries, err := os.ReadDir(filepath.Join(root,"data-rights",tenant))
-	if err != nil { t.Fatal(err) }
-	for _,entry := range entries { if filepath.Ext(entry.Name())==".tmp" { t.Fatal("temporary PII retained") } }
+	for range 2 {
+		if err := sweeper.Sweep(ctx, tenant); err != nil {
+			t.Fatal("idempotent sweep", err)
+		}
+	}
+	for _, orphan := range []string{rollbackID, missing} {
+		if _, err := os.Stat(filepath.Join(root, "data-rights", tenant, orphan+".json")); !os.IsNotExist(err) {
+			t.Fatal("orphan PII retained", err)
+		}
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "data-rights", tenant))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if filepath.Ext(entry.Name()) == ".tmp" {
+			t.Fatal("temporary PII retained")
+		}
+	}
 	expired := uuid.NewString()
 	create(expired)
-	if err = s.BuildExport(ctx,tenant,expired); err != nil { t.Fatal(err) }
+	if err = s.BuildExport(ctx, tenant, expired); err != nil {
+		t.Fatal(err)
+	}
+	if err = sweeper.Sweep(ctx, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(root, "data-rights", tenant, expired+".json")); err != nil {
+		t.Fatal("live artifact removed", err)
+	}
 	var expiredStatus contract.Request
-	if err = run(ctx,tenant,func(ctx context.Context,tx pgx.Tx) error { var err error; expiredStatus,err=s.Status(ctx,tx,tenant,expired,customer);return err }); err != nil { t.Fatal(err) }
-	if err = r.InMaintenance(ctx,func(ctx context.Context,tx pgx.Tx) error {
-		_,err := tx.Exec(ctx,"UPDATE app.data_rights_exports SET download_expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND id=$2",tenant,expired)
+	if err = run(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var err error
+		expiredStatus, err = s.Status(ctx, tx, tenant, expired, customer)
 		return err
-	}); err != nil { t.Fatal(err) }
-	if _,err=s.Download(ctx,tenant,expired,customer,expiredStatus.DownloadToken); !errors.Is(err,contract.ErrConflict) { t.Fatal("expired export reachable",err) }
-	if err=sweeper.Sweep(ctx,tenant); err != nil { t.Fatal(err) }
-	if _,err=os.Stat(filepath.Join(root,"data-rights",tenant,expired+".json")); !os.IsNotExist(err) { t.Fatal("expired PII retained",err) }
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "UPDATE app.data_rights_exports SET download_expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND id=$2", tenant, expired)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Download(ctx, tenant, expired, customer, expiredStatus.DownloadToken); !errors.Is(err, contract.ErrConflict) {
+		t.Fatal("expired export reachable", err)
+	}
+	if err = sweeper.Sweep(ctx, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(root, "data-rights", tenant, expired+".json")); !os.IsNotExist(err) {
+		t.Fatal("expired PII retained", err)
+	}
 	second := uuid.NewString()
 	create(second)
 	if e = s.BuildExport(ctx, tenant, second); e != nil {

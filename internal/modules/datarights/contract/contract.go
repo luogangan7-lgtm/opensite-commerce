@@ -47,5 +47,6 @@ type Service interface {
 	Download(context.Context, string, string, string, string) ([]byte, error)
 	Erase(context.Context, string, EraseInput) (Erasure, error)
 	EraseTx(context.Context, pgx.Tx, string, EraseInput) (Erasure, error)
+	Sweep(context.Context, string) error
 	Cleanup(context.Context, string, []string) error
 }

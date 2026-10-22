@@ -199,7 +199,8 @@ BEGIN
    'quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
    'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','surcharge','amount_minor',1,
-   'reason',{{canary:order_adjustments.reason}})));
+   'reason',{{canary:order_adjustments.reason}}),
+   jsonb_build_object('id',uuidv7(),'kind','discount','amount_minor',-1,'reason','fixture balancing discount')));
  -- The same column canaries must be removed from BOTH ownership paths. A
  -- linked guest checkout exercises all immutable result/address copies too.
  INSERT INTO app.carts(tenant_id,id,guest_token_hash,currency)
@@ -243,6 +244,15 @@ BEGIN
  WHERE tenant_id=t AND actor_kind='user' AND actor_id=staff
   AND operation='quotes.create' AND idempotency_key='staff-snapshot';
 
+ -- An unrelated staff receipt must survive; no quote ID ownership is inferred.
+ PERFORM app.idempotency_claim(t,'user',staff,'quotes.create','staff-unrelated',
+  sha256('privacy-unrelated-staff'::bytea),interval '1 hour',uuidv7());
+ PERFORM set_config('app.idempotency_claim',(SELECT claim_token::text FROM app.idempotency_records
+  WHERE tenant_id=t AND actor_id=staff AND operation='quotes.create' AND idempotency_key='staff-unrelated'),true);
+ UPDATE app.idempotency_records SET state='completed',response_status=201,
+  response_body=jsonb_build_object('id',uuidv7(),'snapshot','privacy-unrelated-staff-control'),completed_at=clock_timestamp()
+ WHERE tenant_id=t AND actor_kind='user' AND actor_id=staff
+  AND operation='quotes.create' AND idempotency_key='staff-unrelated';
  PERFORM app.transition_quote(t,quote,1,'send','staff',staff);
  PERFORM app.transition_quote(t,quote,2,'accept','customer',customer);
  PERFORM app.transition_quote(t,quote,3,'approve','customer',approver);

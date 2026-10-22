@@ -254,9 +254,24 @@ BEGIN
  IF octet_length(j::text)>10485760 THEN RAISE EXCEPTION 'PRIVACY_EXPORT_BYTES_LIMIT' USING ERRCODE='22023'; END IF;
  RETURN j;
 END $fn$;
+-- Build and sweep serialize even when the capability row is absent/rolled back.
+-- This lock precedes the existing customer -> request lock order.
+CREATE FUNCTION app.data_rights_artifact_live(p_id uuid) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
+DECLARE t uuid:=app.data_rights_context();
+BEGIN
+ PERFORM pg_advisory_xact_lock(hashtextextended('privacy-artifact/'||t::text||'/'||p_id::text,0));
+ RETURN EXISTS(SELECT FROM app.data_rights_exports r JOIN app.customers c ON(c.tenant_id,c.id)=(r.tenant_id,r.customer_id)
+  WHERE r.tenant_id=t AND r.id=p_id AND r.status='ready' AND c.status='active'
+   AND r.expires_at>clock_timestamp() AND r.download_expires_at>clock_timestamp()
+   AND NOT EXISTS(SELECT FROM app.data_rights_erasures e WHERE(e.tenant_id,e.customer_id)=(t,r.customer_id)));
+END $fn$;
 CREATE FUNCTION app.data_rights_worker_info(p_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
-DECLARE r app.data_rights_exports:=app.data_rights_lock_export(p_id);
-BEGIN RETURN (to_jsonb(r)-ARRAY['tenant_id','token_hash','content_hash'])||jsonb_build_object('content_hash',encode(r.content_hash,'hex')); END $fn$;
+DECLARE r app.data_rights_exports;
+BEGIN
+ PERFORM app.data_rights_artifact_live(p_id);
+ r:=app.data_rights_lock_export(p_id);
+ RETURN (to_jsonb(r)-ARRAY['tenant_id','token_hash','content_hash'])||jsonb_build_object('content_hash',encode(r.content_hash,'hex'));
+END $fn$;
 CREATE FUNCTION app.data_rights_download_deadline(p_id uuid) RETURNS timestamptz LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
 DECLARE r app.data_rights_exports:=app.data_rights_lock_export(p_id);
 BEGIN RETURN least(r.expires_at,date_trunc('second',clock_timestamp())+interval '15 minutes'); END $fn$;
@@ -284,6 +299,13 @@ BEGIN
  UPDATE app.data_rights_exports SET status='consumed' WHERE tenant_id=r.tenant_id AND id=r.id;
  RETURN jsonb_build_object('id',r.id,'status','consumed');
 END $fn$;
+-- Staff quote replay snapshots are DERIVED COPIES of the accepted quote,
+-- including receipts created before acceptance. Actor/email never assigns ownership.
+CREATE FUNCTION app.data_rights_receipt_owned(p_customer uuid,p_kind text,p_actor uuid,p_operation text,p_body jsonb) RETURNS boolean LANGUAGE sql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
+ SELECT (p_kind='customer' AND p_actor=p_customer) OR
+  (starts_with(p_operation,'quotes.') AND EXISTS(SELECT FROM app.quotes q
+   WHERE q.tenant_id=app.data_rights_context() AND q.accepted_by=p_customer AND q.id::text=p_body->>'id'));
+$fn$;
 CREATE FUNCTION app.data_rights_erase_customer(p_customer uuid,p_actor_kind text,p_actor_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
 DECLARE t uuid:=app.data_rights_context();c app.customers; owned uuid[]; requests jsonb; naddr integer;ncred integer;nb2b integer;norder integer;nline integer;nnotification integer;ncheckout integer;nattempt integer;nquote integer;nquoteline integer;nadjust integer;nreceipt integer;nauth integer;n integer;
 BEGIN
@@ -329,7 +351,7 @@ BEGIN
  PERFORM a.event_key FROM app.checkout_attempts a JOIN app.checkout_sessions s ON(s.tenant_id,s.id)=(a.tenant_id,a.checkout_id)
   WHERE s.tenant_id=t AND s.order_id =ANY(owned) ORDER BY a.event_kind,a.event_key FOR UPDATE OF a NOWAIT;
  PERFORM id FROM app.quotes WHERE tenant_id=t AND accepted_by=p_customer ORDER BY id FOR UPDATE NOWAIT;
- PERFORM operation FROM app.idempotency_records WHERE tenant_id=t AND actor_kind='customer' AND actor_id=p_customer ORDER BY operation,idempotency_key FOR UPDATE NOWAIT;
+ PERFORM operation FROM app.idempotency_records WHERE tenant_id=t AND app.data_rights_receipt_owned(p_customer,actor_kind,actor_id,operation,response_body) ORDER BY operation,idempotency_key FOR UPDATE NOWAIT;
  UPDATE app.checkout_attempts a SET result='{"erased":true}' FROM app.checkout_sessions s WHERE (s.tenant_id,s.id)=(a.tenant_id,a.checkout_id)
   AND s.tenant_id=t AND s.order_id =ANY(owned) AND a.result IS NOT NULL;GET DIAGNOSTICS nattempt=ROW_COUNT;
  UPDATE app.checkout_sessions SET address_snapshot='{"erased":true}',
@@ -343,7 +365,7 @@ BEGIN
  UPDATE app.idempotency_records SET
   response_body=CASE WHEN response_body IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END,
   response_body_reference=CASE WHEN response_body_reference IS NULL THEN NULL ELSE 'erased' END
-  WHERE tenant_id=t AND actor_kind='customer' AND actor_id=p_customer AND (response_body IS NOT NULL OR response_body_reference IS NOT NULL);GET DIAGNOSTICS nreceipt=ROW_COUNT;
+  WHERE tenant_id=t AND app.data_rights_receipt_owned(p_customer,actor_kind,actor_id,operation,response_body) AND (response_body IS NOT NULL OR response_body_reference IS NOT NULL);GET DIAGNOSTICS nreceipt=ROW_COUNT;
  -- Customer-auth artifacts: pending tokens (email copy, pending PHC), sessions
  -- and mailbox-proven guest links. Account admission counters are unowned.
  DELETE FROM app.customer_auth_tokens WHERE tenant_id=t AND customer_id=p_customer;GET DIAGNOSTICS nauth=ROW_COUNT;
@@ -533,4 +555,4 @@ BEGIN
  END LOOP;
 END $functions$;
 REVOKE CREATE ON SCHEMA app FROM app_data_rights_executor;
-GRANT EXECUTE ON FUNCTION app.data_rights_request_export(uuid,uuid,text,uuid),app.data_rights_status(uuid,uuid),app.data_rights_build_export(uuid),app.data_rights_complete_export(uuid,bytea,bytea,timestamptz),app.data_rights_download_deadline(uuid),app.data_rights_worker_info(uuid),app.data_rights_download_info(uuid,uuid),app.data_rights_consume_export(uuid,uuid,bytea),app.data_rights_erase_customer(uuid,text,uuid) TO app_runtime;
+GRANT EXECUTE ON FUNCTION app.data_rights_artifact_live(uuid),app.data_rights_request_export(uuid,uuid,text,uuid),app.data_rights_status(uuid,uuid),app.data_rights_build_export(uuid),app.data_rights_complete_export(uuid,bytea,bytea,timestamptz),app.data_rights_download_deadline(uuid),app.data_rights_worker_info(uuid),app.data_rights_download_info(uuid,uuid),app.data_rights_consume_export(uuid,uuid,bytea),app.data_rights_erase_customer(uuid,text,uuid) TO app_runtime;

@@ -113,6 +113,10 @@ END $linked_future$;
 DO $after$ DECLARE leaked text; lost text; BEGIN
  SELECT string_agg(key||'@'||hits,'; ') INTO leaked FROM pg_temp.privacy_hits() WHERE expect='erase' AND hits IS NOT NULL;
  SELECT string_agg(key,', ') INTO lost FROM pg_temp.privacy_hits() WHERE expect='retain' AND hits IS NULL;
+ IF NOT EXISTS(SELECT FROM app.idempotency_records WHERE idempotency_key='staff-unrelated'
+  AND response_body->>'snapshot'='privacy-unrelated-staff-control') THEN
+  RAISE EXCEPTION 'PRIVACY_GATE erased unrelated staff receipt';
+ END IF;
  IF leaked IS NOT NULL THEN RAISE EXCEPTION 'PRIVACY_GATE leftover subject PII: %',leaked; END IF;
  IF lost IS NOT NULL THEN RAISE EXCEPTION 'PRIVACY_GATE erased another subject or retained field: %',lost; END IF;
 END $after$;
