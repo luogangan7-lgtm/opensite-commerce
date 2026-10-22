@@ -3,6 +3,17 @@
 -- Depends on customers/orders/cart/notifications/quotes. Trusted services call capability functions.
 -- Invariants: tenant/customer locks before request locks; no credentials exported;
 -- snapshot privacy exception changes no financial/identity/state/version columns.
+-- FIX-44: forward extension of A4 grants; CREATE OR REPLACE retains the
+-- credential-writer owner and existing exact EXECUTE ACL from C-02c.
+CREATE OR REPLACE FUNCTION app.auth_role_scopes(p_role text) RETURNS text[]
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $scope$
+ SELECT CASE p_role
+ WHEN 'owner' THEN ARRAY['organization.create','site.create','catalog:read','catalog:write','media:write','cms:write','cms:publish','quotes:read','quotes:write','notifications:write','orders:read','apikeys:write','customers:privacy','catalog:import','catalog:export']
+ WHEN 'admin' THEN ARRAY['organization.create','site.create','catalog:read','catalog:write','media:write','cms:write','cms:publish','quotes:read','quotes:write','notifications:write','orders:read','apikeys:write','customers:privacy','catalog:import','catalog:export']
+ WHEN 'catalog_editor' THEN ARRAY['catalog:read','catalog:write','media:write','catalog:import','catalog:export']
+ WHEN 'content_editor' THEN ARRAY['catalog:read','cms:write','cms:publish','media:write']
+ WHEN 'viewer' THEN ARRAY['catalog:read'] ELSE ARRAY[]::text[] END;
+$scope$;
 DO $role$
 DECLARE m record;
 BEGIN

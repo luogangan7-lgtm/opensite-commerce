@@ -4413,11 +4413,11 @@ components:
       properties:
         scopes:
           type: array
-          maxItems: 12
+          maxItems: 15
           uniqueItems: true
           items:
             type: string
-            enum: [apikeys:write, catalog:read, catalog:write, cms:publish, cms:write, media:write, notifications:write, orders:read, quotes:read, quotes:write, organization.create, site.create]
+            enum: [apikeys:write, catalog:read, catalog:write, cms:publish, cms:write, media:write, notifications:write, orders:read, quotes:read, quotes:write, organization.create, site.create, customers:privacy, catalog:import, catalog:export]
         expires_at:
           type: string
           format: date-time

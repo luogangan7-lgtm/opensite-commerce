@@ -98,6 +98,7 @@ def assert_contract(registry, source):
     assert set(create['properties']) == {'scopes', 'expires_at'}
     assert create['properties']['expires_at']['format'] == 'date-time'
     assert create['properties']['scopes']['type'] == 'array'
+    assert create['properties']['scopes']['maxItems'] == len(SCOPES), 'every known scope fits in one key'
     assert set(create['properties']['scopes']['items']['enum']) == SCOPES, 'unknown scopes must fail closed'
     assert {body['x-required-scope'] for body in blocks.values() if 'x-required-scope' in body} == SCOPES
     view = schemas['APIKeyView']

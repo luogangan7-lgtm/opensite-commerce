@@ -52,9 +52,9 @@ type TransactionAuthorizer interface {
 func RoleScopes(role string) []string {
 	switch role {
 	case "owner", "admin":
-		return []string{"organization.create", "site.create", "catalog:read", "catalog:write", "media:write", "cms:write", "cms:publish", "quotes:read", "quotes:write", "notifications:write", "orders:read", "apikeys:write"}
+		return []string{"organization.create", "site.create", "catalog:read", "catalog:write", "media:write", "cms:write", "cms:publish", "quotes:read", "quotes:write", "notifications:write", "orders:read", "apikeys:write", "customers:privacy", "catalog:import", "catalog:export"}
 	case "catalog_editor":
-		return []string{"catalog:read", "catalog:write", "media:write"}
+		return []string{"catalog:read", "catalog:write", "media:write", "catalog:import", "catalog:export"}
 	case "content_editor":
 		return []string{"catalog:read", "cms:write", "cms:publish", "media:write"}
 	case "viewer":
