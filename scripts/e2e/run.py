@@ -300,6 +300,12 @@ def run(receipt_dir):
             result.unlink(missing_ok=True)  # only this CI harness's own stale result
             receipt["browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "browser"]), "browser", timeout=900, check=False)
             if receipt["browser_exit"] != 0:
+                # Counts only: locate dependency failures without persisting proof tokens or credentials.
+                receipt["customer_registration_diagnostic"] = json.loads(ops_common.psql(
+                    "SELECT jsonb_build_object('customers',count(*),'verified',count(verified_at),"
+                    "'tokens',(SELECT count(*) FROM app.customer_auth_tokens WHERE tenant_id='" + TENANT + "')) "
+                    "FROM app.customers WHERE tenant_id='" + TENANT + "' AND email LIKE 'c09f2-%';"))
+                persist()
                 raise RuntimeError("MVP E2E browser assertions failed")
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
             # Independent persistence witness runs before declaring the browser run PASS.
