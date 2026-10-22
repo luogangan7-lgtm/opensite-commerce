@@ -43,7 +43,7 @@ export const fixture = {
   productSlug: seeded('E2E_PRODUCT_SLUG', 'canvas-tote'),
   cmsSlug: seeded('E2E_CMS_SLUG', 'about'),
   siteId: 'c0900003-0000-4000-8000-000000000001',
-  releaseId: 'c0900005-0000-4000-8000-000000000001',
+  releaseId: required('E2E_RELEASE_ID'),
   productId: 'c0900007-0000-4000-8000-000000000001',
   title: 'OpenSite sample shop',
   productName: 'Canvas tote',
@@ -57,6 +57,14 @@ export function assertPublicOnly(text: string): void {
 
 export async function publishedSite(request: APIRequestContext): Promise<PublishedSite> {
   const host = new URL(fixture.storefront).hostname;
+  // Writes invalidate the serving row; wait for the real background refresher,
+  // retaining the non-empty assertion instead of accepting fallback data.
+  await expect.poll(async () => {
+    const response = await request.get(`${fixture.api}/api/v1/public/sites/current`, { params: { host }, maxRedirects: 0 });
+    if (response.status() !== 200) return 0;
+    const site = await response.json() as PublishedSite;
+    return site.products.find(product => product.slug === fixture.productSlug)?.skus.length ?? 0;
+  }, { timeout: 20_000 }).toBeGreaterThan(0);
   const response = await request.get(`${fixture.api}/api/v1/public/sites/current`, {
     params: { host }, maxRedirects: 0,
   });

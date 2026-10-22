@@ -37,12 +37,13 @@ ACTIVE_TESTS = {
     "real API denies anonymous catalog reads and creation before data access",
     "real owner session reads and creates tenant catalog through production authorization",
 }
+PURCHASE_TESTS = {"published guest purchase persists captured order", "pending receipt alone never shows paid"}
+ACTIVE_TESTS |= PURCHASE_TESTS
 PAYMENT_TESTS = {"real signed payment webhook rejects forgery and deduplicates concurrent facts"}
 ACTIVE_TESTS |= PAYMENT_TESTS
 GAP_TESTS = {
     "FIXME staff create SKU → media upload → publish",
     "FIXME admin orders list and detail on the real orders read API",
-    "FIXME guest storefront buy → cart → checkout → Fakepay",
 }
 
 
@@ -87,8 +88,9 @@ def verify_browser_report(report):
                     observed[key] = [item.get("status") for item in test.get("results", [])]
                     filename = Path(spec.get("file", "")).name
                     expected_file = "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS else (
+                        "purchase.spec.ts" if spec.get("title") in PURCHASE_TESTS else (
                         "payments.spec.ts" if spec.get("title") in PAYMENT_TESTS else (
-                        "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts"))
+                        "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts")))
                     is_gap = spec.get("title") in GAP_TESTS
                     if (filename != expected_file or test.get("expectedStatus") != ("skipped" if is_gap else "passed")
                             or (is_gap and not any(item.get("type") == "fixme" for item in test.get("annotations", [])))):
@@ -100,7 +102,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 26, "skipped": 6, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 30, "skipped": 4, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -162,6 +164,7 @@ def run(receipt_dir):
 
     ops_common.compose_command = compose_command
     import ops_drill
+    from e2e import purchase
     from ops_deploy import LOGIN_ROLES
 
     receipt_dir = receipt_dir.resolve()
@@ -176,6 +179,7 @@ def run(receipt_dir):
                "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"], "project": project,
                "status": "RUNNING", "steps": [], "browser_exit": None, "cleanup": "NOT_RUN",
                "payment_webhook": {"status": "NOT_RUN"},
+               "purchase": {"status": "NOT_RUN"},
                "owner_bootstrap": {"status": "NOT_RUN", "available": (ROOT / "cmd/bootstrap-admin").is_dir()},
                "seed_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                for path in [ROOT / "tests/fixtures/storefront_seed.sql", ROOT / "scripts/e2e/seed.sql"]}}
@@ -217,6 +221,9 @@ def run(receipt_dir):
                        "OPENSITE_AUTH_SIGNING_KEY": secrets.token_hex(32),
                        "OPENSITE_FAKE_WEBHOOK_KEY": base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("="),
                        "OPENSITE_CUSTOMER_CSRF_SECRET": secrets.token_urlsafe(32),
+                       "OPENSITE_CMS_PREVIEW_KEY": secrets.token_urlsafe(32),
+                       "OPENSITE_STOREFRONT_KEY": secrets.token_urlsafe(32),
+                       "OSC_COMMERCE_COOKIE_KEY": secrets.token_urlsafe(32),
                        "OPENSITE_E2E_OWNER_PASSWORD": secrets.token_hex(32),
                        "OPENSITE_E2E_BOOTSTRAP_PASSWORD": secrets.token_hex(32),
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
@@ -227,7 +234,9 @@ def run(receipt_dir):
                          # exact value to the API (CI-only), see scripts/e2e/admin.vite.config.ts.
                          OPENSITE_ADMIN_ORIGIN="https://admin.e2e.test",
                          OPENSITE_STOREFRONT_ORIGIN="https://store.e2e.test",
-                         OPENSITE_E2E_OWNER_EMAIL="c24-owner@example.test")
+                         OPENSITE_E2E_OWNER_EMAIL="c24-owner@example.test",
+                         OPENSITE_CHECKOUT_RULE_METADATA=json.dumps({"Profiles": {TENANT: "c2400014-0000-4000-8000-000000000001"},
+                           "SKUs": {TENANT: {f"c2400008-0000-4000-8000-{n:012d}": {"TaxCategory": "standard", "WeightG": 100} for n in (1, 2)}}}, separators=(",", ":")))
         env_file.write_text("".join(f"{key}={value}\n" for key, value in variables.items()))
         env_file.chmod(0o600)
         os.environ.update(variables, OPENSITE_ENV_FILE=str(env_file), OPENSITE_OPS_TIMEOUT="900")
@@ -277,6 +286,9 @@ def run(receipt_dir):
                 raise RuntimeError("MVP E2E owner bootstrap did not create exactly one owner tenant")
             os.environ["E2E_OWNER_TENANT_ID"] = owner_tenant
             receipt["owner_bootstrap"]["status"] = "PASS"
+            receipt["publication"] = purchase.publish(ops_common.psql, credentials)
+            os.environ["E2E_RELEASE_ID"] = receipt["publication"]["release_id"]
+            receipt["steps"].append("real-cms-builder-membership-and-serving")
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
             persist()
             command(compose_command(["up", "-d", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
@@ -296,9 +308,14 @@ def run(receipt_dir):
             persist()
             receipt["payment_webhook"] = verify_payment_witness(payment_rows)
             receipt["steps"].append("signed-webhook-account-inbox-ledger-order-witness")
+            purchase_row = json.loads(ops_common.psql(purchase.WITNESS_SQL))
+            receipt["purchase"] = {"status": "FAIL", "facts": purchase_row}
+            persist()
+            receipt["purchase"] = purchase.verify(purchase_row)
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-and-accessibility-assertions")
-        except BaseException:
+        except BaseException as exc:
+            receipt["error"] = redact(str(exc).encode()).decode(errors="replace")[:1000]
             receipt["status"] = "FAIL"
             raise
         finally:

@@ -12,7 +12,7 @@ const pages = [
   { name: 'products', path: '/products', title: 'Products',
     description: 'A published example of pages and products.', text: fixture.productName },
   { name: 'product detail', path: `/products/${fixture.productSlug}`, title: fixture.productName,
-    description: 'A reusable cotton tote for daily essentials.', text: 'Currently unavailable' },
+    description: 'A reusable cotton tote for daily essentials.', text: 'Add to cart' },
   { name: 'CMS', path: `/${fixture.cmsSlug}`, title: 'About this shop',
     description: 'About this published shop.', text: 'This page belongs to the published release.' },
 ] as const;
@@ -28,7 +28,7 @@ for (const item of pages) {
     expect(html.headers()['cache-control']).toContain('no-store');
     const source = await html.text();
     expect(source).toContain(item.title);
-    expect(source).toContain(fixture.releaseId);
+    expect(source).toContain(site.release_id);
     assertPublicOnly(source);
     const response = await page.goto(url);
     expect(response?.status()).toBe(200);
@@ -62,7 +62,7 @@ test('published navigation and keyboard skip follow real CMS/product routes', as
   await audit(page, info);
   await page.getByRole('link', { name: fixture.productName, exact: true }).click();
   await expect(page).toHaveURL(`${fixture.storefront}/products/${fixture.productSlug}`);
-  await expect(page.getByRole('main')).toContainText('Currently unavailable');
+  await expect(page.getByRole('main')).toContainText('Add to cart');
   await audit(page, info);
   await page.getByRole('link', { name: 'Back to products' }).click();
   await expect(page).toHaveURL(`${fixture.storefront}/products`);
