@@ -233,6 +233,16 @@ BEGIN
    'description',{{canary:quote_lines.description}},'quantity',1,'unit_price',100,'line_total',100,
    'snapshot',jsonb_build_object('contact',{{canary:quote_lines.snapshot}}))));
  PERFORM set_config('privacy.fixture.quote_id',quote::text,true);
+ -- DERIVED COPY: a staff create receipt predates the verified customer's acceptance.
+ PERFORM app.idempotency_claim(t,'user',staff,'quotes.create','staff-snapshot',
+  sha256('privacy-staff-quote-receipt'::bytea),interval '1 hour',inline_claim);
+ PERFORM set_config('app.idempotency_claim',inline_claim::text,true);
+ UPDATE app.idempotency_records SET state='completed',response_status=201,
+  response_body=jsonb_build_object('id',quote,'snapshot',jsonb_build_object(
+   'contact',{{canary:idempotency_records.response_body}})),completed_at=clock_timestamp()
+ WHERE tenant_id=t AND actor_kind='user' AND actor_id=staff
+  AND operation='quotes.create' AND idempotency_key='staff-snapshot';
+
  PERFORM app.transition_quote(t,quote,1,'send','staff',staff);
  PERFORM app.transition_quote(t,quote,2,'accept','customer',customer);
  PERFORM app.transition_quote(t,quote,3,'approve','customer',approver);
