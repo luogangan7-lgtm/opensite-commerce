@@ -285,7 +285,7 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 		t.Fatal("short-lived capability not projected")
 	}
 	for _, method := range []string{"HEAD", "GET"} {
-		if probe := request(method, view.DownloadURL, ""); probe.Code != 405 {
+		if probe := request(method, view.DownloadURL, ""); probe.Code != 404 {
 			t.Fatalf("%s consumed or admitted download: %d", method, probe.Code)
 		}
 	}
