@@ -32,6 +32,7 @@ KEY_OPERATIONS = {
     (KEY_PATH + '/{key_id}', 'delete'): 'revokeAPIKey',
 }
 SCOPES = {
+    'customers:privacy', 'catalog:import', 'catalog:export',
     'apikeys:write', 'catalog:read', 'catalog:write', 'cms:publish',
     'cms:write', 'media:write', 'notifications:write', 'orders:read',
     'quotes:read', 'quotes:write', 'organization.create', 'site.create',
@@ -98,7 +99,7 @@ def assert_contract(registry, source):
     assert set(create['properties']) == {'scopes', 'expires_at'}
     assert create['properties']['expires_at']['format'] == 'date-time'
     assert create['properties']['scopes']['type'] == 'array'
-    assert create['properties']['scopes']['maxItems'] == len(SCOPES)
+    assert create['properties']['scopes']['maxItems'] == len(SCOPES), 'every known scope fits in one key'
     assert set(create['properties']['scopes']['items']['enum']) == SCOPES, 'unknown scopes must fail closed'
     # Buyer capabilities are not scopes that a staff administrator can issue.
     staff_blocks = [body for body in blocks.values()

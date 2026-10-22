@@ -103,3 +103,21 @@ func TestRuntimeDurableCommandResponseRoot(t *testing.T) {
 		t.Fatal("response root must not fabricate database, payment or auth ports")
 	}
 }
+
+// Shipped compose sets a media root but neither OPENSITE_RESPONSE_ROOT nor a
+// privacy DSN; CSV import replay must still have a store (thread T1).
+func TestMediaRootResponseStoreWithoutPrivacy(t *testing.T) {
+	t.Setenv("OPENSITE_DATABASE_URL", "")
+	t.Setenv("OPENSITE_MEDIA_DATABASE_URL", "")
+	t.Setenv("OPENSITE_RESPONSE_ROOT", "")
+	t.Setenv("OPENSITE_PRIVACY_DATABASE_URL", "")
+	t.Setenv("OPENSITE_MEDIA_ROOT", t.TempDir())
+	config, closeRuntime, err := bootstrap.FromEnvironment(context.Background(), bootstrap.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeRuntime()
+	if config.CatalogCSV.Responses == nil || config.Privacy.Responses == nil {
+		t.Fatal("CSV/privacy replay store missing without privacy configuration")
+	}
+}

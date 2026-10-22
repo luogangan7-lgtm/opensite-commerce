@@ -59,7 +59,7 @@
         "reserved_delta": {"classification": "operational"},
         "on_hand_after": {"classification": "operational"},
         "reserved_after": {"classification": "operational"},
-        "reason": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
+        "reason": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include", "subject": {"tenant_key": "tenant_id", "identity_path": "inventory_movements(owner_type='return').owner_id -> returns.id -> returns.order_id -> orders.id -> orders.customer_id -> customers.id; mailbox-proven guest links follow data_rights_customer_orders", "null_subject_policy": "Other movement producers have no verified customer path; retain operator-authored reasons outside the return-derived copy."}},
         "created_at": {"classification": "operational"}
       }
     }

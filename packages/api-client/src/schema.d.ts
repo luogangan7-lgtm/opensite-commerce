@@ -1103,18 +1103,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/t/{tenant_id}/customer/orders": {
+    "/api/v1/t/{tenant_id}/customers/{customer_id}/data-exports": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-            };
+            path?: never;
             cookie?: never;
         };
-        /** @description Live server-validated customer session only; no staff, API key or guest bearer. SQL restricts sealed orders to tenant_id and the authenticated customer_id. Guest orders appear only after the verified mailbox ownership link; email matching alone grants nothing. Other customers' orders return 404. No staff-only fields. */
-        get: operations["listCustomerOrders"];
+        get?: never;
+        put?: never;
+        post: operations["requestCustomerDataExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/customers/{customer_id}/data-exports/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCustomerDataExport"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1123,19 +1135,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/t/{tenant_id}/customer/orders/{order_id}": {
+    "/api/v1/t/{tenant_id}/customers/{customer_id}/data-exports/{request_id}/download": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                order_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        /** @description Live server-validated customer session only; no staff, API key or guest bearer. SQL restricts sealed orders to tenant_id and the authenticated customer_id. Guest orders appear only after the verified mailbox ownership link; email matching alone grants nothing. Other customers' orders return 404. No staff-only fields. */
-        get: operations["getCustomerOrder"];
+        get?: never;
+        put?: never;
+        post: operations["downloadCustomerDataExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/customers/{customer_id}/data-erasure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["eraseCustomerData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/catalog/csv/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["preflightCatalogCSV"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/catalog/csv/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["importCatalogCSV"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/catalog/csv/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exportCatalogCSV"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1567,7 +1638,7 @@ export interface components {
             csrf_token: string;
         };
         CreateAPIKey: {
-            scopes: ("apikeys:write" | "catalog:read" | "catalog:write" | "cms:publish" | "cms:write" | "media:write" | "notifications:write" | "orders:read" | "quotes:read" | "quotes:write" | "organization.create" | "site.create" | "fulfillment:write" | "returns:write")[];
+            scopes: ("apikeys:write" | "catalog:read" | "catalog:write" | "cms:publish" | "cms:write" | "media:write" | "notifications:write" | "orders:read" | "quotes:read" | "quotes:write" | "organization.create" | "site.create" | "fulfillment:write" | "returns:write" | "customers:privacy" | "catalog:import" | "catalog:export")[];
             /**
              * Format: date-time
              * @description Optional future expiry; validated against the database clock.
@@ -2025,6 +2096,37 @@ export interface components {
             /** Format: int32 */
             sort_order: number;
         };
+        DataExportRequest: {
+            /** Format: uuid */
+            request_id: string;
+            status: string;
+        };
+        DataExportStatus: {
+            /** Format: uuid */
+            request_id: string;
+            status: string;
+            /** Format: date-time */
+            expires_at: string;
+            download_url?: string;
+            /** Format: date-time */
+            download_expires_at?: string;
+        };
+        DataErasureResult: {
+            counts: {
+                [key: string]: number;
+            };
+            revoked_exports?: string[];
+        };
+        CatalogCSVReport: {
+            rows: number;
+            imported: number;
+            errors: {
+                row: number;
+                field: string;
+                code: string;
+                message: string;
+            }[];
+        };
         CreateQuoteOrder: Record<string, never>;
         QuoteOrderConversion: {
             /** Format: uuid */
@@ -2149,27 +2251,6 @@ export interface components {
         };
         /** @description Signed integer minor units as a canonical decimal string (exact in JavaScript). */
         MinorAmount: string;
-        CustomerOrderSummary: {
-            /** Format: uuid */
-            id: string;
-            /** Format: int64 */
-            order_number: number;
-            state: components["schemas"]["OrderState"];
-            currency: string;
-            total_minor: components["schemas"]["MinorAmount"];
-            /** Format: date-time */
-            created_at: string;
-        };
-        CustomerOrderPage: {
-            items: components["schemas"]["CustomerOrderSummary"][];
-            next_cursor?: string;
-        };
-        CustomerOrderDetail: {
-            order: components["schemas"]["CustomerOrderSummary"];
-            lines: components["schemas"]["OrderLine"][];
-            shipping_minor: components["schemas"]["MinorAmount"];
-            tax_minor: components["schemas"]["MinorAmount"];
-        };
         /** @enum {string} */
         OrderState: "pending_payment" | "paid" | "partially_fulfilled" | "fulfilled" | "cancelled" | "partially_refunded" | "refunded";
         OrderSummary: {
@@ -5624,29 +5705,33 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
-    listCustomerOrders: {
+    requestCustomerDataExport: {
         parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string;
+            query?: never;
+            header: {
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
-            header?: never;
             path: {
                 /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
                 tenant_id: components["parameters"]["TenantId"];
+                customer_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Customer-owned sealed snapshot; no-store. */
-            200: {
+            /** @description Success */
+            202: {
                 headers: {
-                    "Cache-Control": "no-store";
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CustomerOrderPage"];
+                    "application/json": components["schemas"]["DataExportRequest"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -5661,29 +5746,30 @@ export interface operations {
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];
+            default: components["responses"]["Problem"];
         };
     };
-    getCustomerOrder: {
+    getCustomerDataExport: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
                 tenant_id: components["parameters"]["TenantId"];
-                order_id: string;
+                customer_id: string;
+                request_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Customer-owned sealed snapshot; no-store. */
+            /** @description Success */
             200: {
                 headers: {
-                    "Cache-Control": "no-store";
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CustomerOrderDetail"];
+                    "application/json": components["schemas"]["DataExportStatus"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -5698,6 +5784,224 @@ export interface operations {
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    downloadCustomerDataExport: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: {
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                customer_id: string;
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    eraseCustomerData: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataErasureResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    preflightCatalogCSV: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogCSVReport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    importCatalogCSV: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogCSVReport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    exportCatalogCSV: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+            default: components["responses"]["Problem"];
         };
     };
     listOrders: {
