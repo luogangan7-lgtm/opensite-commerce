@@ -8,10 +8,14 @@ import (
 	"context"
 	"encoding/base64"
 	"github.com/jackc/pgx/v5"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	cc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	pc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -117,5 +121,40 @@ func TestQuoteFakeConflictingSigningAuthoritiesFailBeforeIO(t *testing.T) {
 	}
 	if err == nil || err.Error() != "Fake checkout and payment signing keys conflict" {
 		t.Fatalf("conflicting signing authorities were not refused before IO: %v", err)
+	}
+}
+
+// Buyer capability admission must never delegate to staff cookie or scope hooks.
+type quoteStaffAuthority struct {
+	httpapi.Authenticator
+	rechecks, responses int
+}
+
+func (a *quoteStaffAuthority) ResolveTransactionAuthorization(context.Context, *http.Request, httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
+	a.rechecks++
+	return nil, nil
+}
+
+func (a *quoteStaffAuthority) AuthenticationResponse(context.Context, http.ResponseWriter, *http.Request, httpapi.RouteSpec) {
+	a.responses++
+}
+
+func TestQuoteBuyerDoesNotAcquireStaffAuthority(t *testing.T) {
+	for _, access := range []httpapi.Access{httpapi.Storefront, httpapi.BuyerCompany, httpapi.AdminOrAPIKey} {
+		t.Run(string(access), func(t *testing.T) {
+			staff := &quoteStaffAuthority{}
+			auth := routeAuthenticator{staff: staff}
+			spec := httpapi.RouteSpec{Access: access}
+			request := httptest.NewRequest(http.MethodPost, "/", nil)
+			check, err := auth.ResolveTransactionAuthorization(request.Context(), request, spec)
+			auth.AuthenticationResponse(request.Context(), httptest.NewRecorder(), request, spec)
+			want := 0
+			if access == httpapi.AdminOrAPIKey {
+				want = 1
+			}
+			if err != nil || check != nil || staff.rechecks != want || staff.responses != want {
+				t.Fatalf("QUOTE_BUYER_STAFF_AUTHORITY_LEAK rechecks=%d responses=%d want=%d error=%v", staff.rechecks, staff.responses, want, err)
+			}
+		})
 	}
 }
