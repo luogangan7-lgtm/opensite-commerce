@@ -88,9 +88,9 @@ type loginFakeRunner struct {
 	closeErr error
 }
 
-func (r *loginFakeRunner) InMaintenance(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
+func (r *loginFakeRunner) RunAuthentication(ctx context.Context, fn func(context.Context, *db.Queries) error) error {
 	r.calls++
-	if err := fn(ctx, r.tx); err != nil {
+	if err := fn(ctx, db.New(r.tx)); err != nil {
 		_ = r.tx.Rollback(ctx)
 		return err
 	}
@@ -106,7 +106,7 @@ func loginFixture() (*LoginRepository, *loginFakeTx, login.SessionInput) {
 	u, _ := uuid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 	tx := &loginFakeTx{user: u, at: at}
 	runner := &loginFakeRunner{tx: tx}
-	r := &LoginRepository{runner: runner, gate: make(chan struct{}, 1), idle: 30 * time.Minute}
+	r := &LoginRepository{runner: runner, sessionRunner: runner, idle: 30 * time.Minute}
 	old := [32]byte{1}
 	in := login.SessionInput{UserID: u.String(), TokenHash: [32]byte{2}, DeviceHash: [32]byte{3}, CreatedAt: at, ExpiresAt: at.Add(time.Hour), DeviceExpiresAt: at.Add(24 * time.Hour), OldTokenHash: &old}
 	return r, tx, in
@@ -158,30 +158,6 @@ func TestRunnerAndCloseErrorsAreRedacted(t *testing.T) {
 		t.Fatal("runner close details escaped error boundary")
 	}
 }
-func TestConnectionQueueCancellation(t *testing.T) {
-	r, _, _ := loginFixture()
-	r.gate <- struct{}{}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
-	defer cancel()
-	if err := r.enter(ctx); !errors.Is(err, login.ErrDatabase) {
-		t.Fatal("busy connection ignored deadline")
-	}
-	r.leave()
-}
-
-func TestConnectionQueueHasInternalOperationBound(t *testing.T) {
-	r, _, _ := loginFixture()
-	r.gate <- struct{}{}
-	defer r.leave()
-	started := time.Now()
-	err := r.run(context.Background(), func(context.Context, *db.Queries) error {
-		t.Fatal("blocked staff queue entered a transaction")
-		return nil
-	})
-	if !errors.Is(err, login.ErrDatabase) || time.Since(started) > 2500*time.Millisecond || r.runner.(*loginFakeRunner).calls != 0 {
-		t.Fatal("staff queue lacks an internal two-second operation bound")
-	}
-}
 func TestAuthConnectionErrorsRedacted(t *testing.T) {
 	for _, dsn := range []string{"postgres://user:private-sentinel@[invalid", "postgres://user:private-sentinel@127.0.0.1:1/missing?sslmode=disable"} {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -208,7 +184,7 @@ func (c *counterTx) Exec(_ context.Context, sql string, args ...any) (pgxadapter
 func TestCounterWritesHaveNoCallerClock(t *testing.T) {
 	c := &counterTx{}
 	runner := &loginFakeRunner{tx: c}
-	r := &LoginRepository{runner: runner, gate: make(chan struct{}, 1)}
+	r := &LoginRepository{runner: runner, sessionRunner: runner}
 	if err := r.RecordFailure(context.Background(), "missing@example.test", netip.MustParseAddr("192.0.2.9")); err != nil {
 		t.Fatal(err)
 	}

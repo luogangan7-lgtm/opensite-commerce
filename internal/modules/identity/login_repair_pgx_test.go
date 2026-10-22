@@ -109,7 +109,7 @@ func TestLoginReconnectsAfterBackendTerminationPostgres(t *testing.T) {
 	}
 	role := parsed.User.Username()
 	var killed int
-	if err = db.QueryRow(ctx, "SELECT count(pg_terminate_backend(pid))::integer FROM pg_stat_activity WHERE usename=$1", role).Scan(&killed); err != nil || killed != 1 {
+	if err = db.QueryRow(ctx, "SELECT count(pg_terminate_backend(pid))::integer FROM pg_stat_activity WHERE usename=$1", role).Scan(&killed); err != nil || killed != 2 {
 		t.Fatal("auth backend termination fixture failed", killed, safeCode(err))
 	}
 	for alive := 1; alive != 0; {
