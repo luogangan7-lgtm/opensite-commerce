@@ -65,7 +65,7 @@ func TestStaffPricingAdmission(t *testing.T) {
 				want = 403
 			}
 			if w.Code != want {
-				t.Fatalf("PRICING_ADMISSION %s %s %s: got %d want %d: %s", role, tc.method, tc.path, w.Code, want, w.Body.String())
+				t.Errorf("PRICING_ADMISSION %s %s %s: got %d want %d: %s", role, tc.method, tc.path, w.Code, want, w.Body.String())
 			}
 		}
 	}

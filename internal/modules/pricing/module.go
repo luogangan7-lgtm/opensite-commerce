@@ -38,6 +38,9 @@ func invalid() error {
 	return apperrors.New(422, "invalid_pricing", "Invalid price list or tier")
 }
 func version(raw string) (int64, error) {
+	if raw == "" {
+		return 0, apperrors.New(428, "precondition_required", "If-Match is required")
+	}
 	if len(raw) >= 3 && raw[0] == '"' && raw[len(raw)-1] == '"' {
 		n, err := strconv.ParseInt(raw[1:len(raw)-1], 10, 64)
 		if err == nil && n > 0 && strconv.Quote(strconv.FormatInt(n, 10)) == raw {
