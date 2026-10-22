@@ -34,7 +34,7 @@ func TestComposedGuestCustomerAllBrowserOperations(t *testing.T) {
 		{"preview", "POST", "/preview", `{"cart_id":"44444444-4444-4444-8444-444444444444","shipping_address":{"country":"US","postal_code":"00001"}}`, 200},
 		{"get", "GET", "/55555555-5555-4555-8555-555555555555", "", 200},
 	} {
-		for _, mode := range []string{"guest", "customer", "invalid_cookie", "staff"} {
+		for _, mode := range []string{"guest", "customer", "invalid_cookie", "invalid_cookie_no_port", "staff"} {
 			t.Run(op.name+"/"+mode, func(t *testing.T) {
 				_, port, svc, cookie := checkoutWiringFixture(t)
 				key := []byte(strings.Repeat("k", 32))
@@ -44,32 +44,33 @@ func TestComposedGuestCustomerAllBrowserOperations(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				server, err := bootstrap.New(bootstrap.Config{Customer: port, CustomerOrigin: checkoutWiringOrigin, CustomerSecret: []byte(strings.Repeat("c", 32)), Authenticator: rejectStaffAuth{t: t}, Checkout: &checkouthttp.Config{Service: svc, Resolver: resolver, Origin: checkoutWiringOrigin}})
+				config := bootstrap.Config{Customer: port, CustomerOrigin: checkoutWiringOrigin, CustomerSecret: []byte(strings.Repeat("c", 32)), Authenticator: rejectStaffAuth{t: t}, Checkout: &checkouthttp.Config{Service: svc, Resolver: resolver, Origin: checkoutWiringOrigin}}
+				if mode == "invalid_cookie_no_port" {
+					config.Customer = nil
+				}
+				server, err := bootstrap.New(config)
 				if err != nil {
 					t.Fatal(err)
 				}
-				csrf := checkoutWiringCSRF(t, server.Handler, cookie, checkoutWiringTenant)
-				port.calls = 0
 				mac := hmac.New(sha256.New, key)
 				_, _ = mac.Write([]byte("checkout:" + checkoutWiringTenant + ":" + token + ":" + checkoutWiringOrigin))
 				r := checkoutWiringRequest(checkoutWiringTenant, base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil)
 				r.Header.Set("X-Cart-ID", "44444444-4444-4444-8444-444444444444")
 				r.Header.Set("X-Cart-Token", token)
-				if mode == "customer" {
+				switch mode {
+				case "customer":
 					r.AddCookie(cookie)
 					r.Header.Del("X-Cart-Token")
-					r.Header.Set("X-CSRF-Token", csrf)
-				}
-				if mode == "invalid_cookie" {
+					r.Header.Set("X-CSRF-Token", checkoutWiringCSRF(t, server.Handler, cookie, checkoutWiringTenant))
+				case "invalid_cookie", "invalid_cookie_no_port":
 					r.AddCookie(cookie)
 					delete(port.sessions, checkoutWiringTenant)
-				}
-				if mode == "staff" {
+				case "staff":
 					r.Header.Del("X-Cart-Token")
 					r.Header.Set("Authorization", "Bearer staff")
 					r.AddCookie(&http.Cookie{Name: "__Host-osc_admin_session", Value: token})
 				}
-
+				port.calls = 0
 				r.URL.Path += op.path
 				r.Method, r.Body = op.method, ioBody(op.body)
 				if op.name == "start" && mode != "customer" {
