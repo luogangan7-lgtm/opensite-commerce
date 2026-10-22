@@ -7,6 +7,9 @@ INSERT INTO app.tenants(name,settlement_currency) VALUES('staff-pricing','USD') 
 INSERT INTO app.tenants(name) VALUES('staff-pricing-unset') RETURNING id AS other \gset
 INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','STAFF-PRICING') RETURNING id AS p \gset
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','STAFF-PRICE','') RETURNING id AS sku \gset
+INSERT INTO app.price_lists(tenant_id,currency,starts_at) VALUES(:'t','EUR','2026-01-01T00:00:00Z') RETURNING id AS legacy \gset
+INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) VALUES(:'t',:'legacy',:'sku',1,789);
+SELECT set_config('pricing.legacy',:'legacy',true);
 SELECT set_config('app.tenant_id',:'t',true),set_config('pricing.sku',:'sku',true),set_config('pricing.other',:'other',true);
 CREATE FUNCTION pg_temp.pricing_reject(command text,expected text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
@@ -14,7 +17,7 @@ BEGIN
   IF SQLSTATE=expected THEN RETURN; END IF;
   RAISE EXCEPTION 'STAFF_PRICING_GATE unexpected % want %: %',SQLSTATE,expected,SQLERRM;
  END;
- RAISE EXCEPTION 'STAFF_PRICING_GATE expected refusal %',expected;
+ RAISE EXCEPTION 'STAFF_PRICING_GATE expected refusal %: %',expected,command;
 END $$;
 SET LOCAL ROLE app_runtime;
 DO $test$
@@ -24,6 +27,9 @@ BEGIN
  l:=app.pricing_write_list(NULL,0,body); list_key:=(l->>'id')::uuid;
  IF (l->>'version')::bigint<>1 OR l->>'currency'<>'USD' THEN RAISE EXCEPTION 'STAFF_PRICING_GATE create'; END IF;
  PERFORM set_config('pricing.list',list_key::text,true);
+ PERFORM pg_temp.pricing_reject(format('SELECT app.pricing_write_list(%L,1,%L)',current_setting('pricing.legacy'),body),'P4091');
+ IF (SELECT currency FROM app.price_lists WHERE id=current_setting('pricing.legacy')::uuid)<>'EUR'
+  OR (SELECT unit_amount FROM app.price_entries WHERE price_list_id=current_setting('pricing.legacy')::uuid)<>789 THEN RAISE EXCEPTION 'STAFF_PRICING_GATE currency reinterpretation'; END IF;
  PERFORM pg_temp.pricing_reject(format('SELECT app.pricing_write_list(NULL,0,%L)',body||'{"currency":"EUR"}'::jsonb),'P4091');
  PERFORM pg_temp.pricing_reject(format('SELECT app.pricing_write_list(NULL,0,%L)',body||'{"ends_at":"2026-01-01T00:00:00Z"}'::jsonb),'23514');
  PERFORM pg_temp.pricing_reject(format('SELECT app.pricing_write_list(NULL,0,%L)',body||'{"starts_at":"infinity","ends_at":null}'::jsonb),'23514');

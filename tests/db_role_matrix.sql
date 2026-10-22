@@ -377,7 +377,7 @@ BEGIN
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
-  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
@@ -412,7 +412,7 @@ BEGIN
  END LOOP;
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
-  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
@@ -1409,8 +1409,11 @@ BEGIN
  IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names))<>cardinality(names) THEN RAISE EXCEPTION 'PRICING_MATRIX_ROUTINES'; END IF;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
   IF f.proname=ANY(names) THEN
-   IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM (f.proname<>'pricing_currency') OR cardinality(f.proconfig)<>1
-    OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
+   IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM (f.proname<>'pricing_currency') OR cardinality(f.proconfig) IS DISTINCT FROM 1
+    OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+    OR f.oid IS DISTINCT FROM to_regprocedure(CASE f.proname WHEN 'pricing_currency' THEN 'app.pricing_currency()'
+     WHEN 'pricing_write_list' THEN 'app.pricing_write_list(uuid,bigint,jsonb)'
+     WHEN 'pricing_write_entry' THEN 'app.pricing_write_entry(uuid,uuid,bigint,bigint,bigint)' END)
     OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN RAISE EXCEPTION 'PRICING_MATRIX_FUNCTION'; END IF;
    FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
     expected:=role_name='app_pricing_executor' OR role_name='app_runtime' AND f.proname<>'pricing_currency';
