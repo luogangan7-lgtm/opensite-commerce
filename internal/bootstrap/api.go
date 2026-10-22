@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	cartcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
@@ -185,6 +186,14 @@ type routeAuthenticator struct {
 	buyer    httpapi.Authenticator
 }
 
+func (a routeAuthenticator) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec httpapi.RouteSpec) {
+	if spec.Access != httpapi.Storefront {
+		if responder, ok := a.staff.(httpapi.AuthenticationResponder); ok {
+			responder.AuthenticationResponse(ctx, w, r, spec)
+		}
+	}
+}
+
 func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
 	if spec.Access == httpapi.BuyerCompany {
 		if a.buyer == nil {
@@ -218,4 +227,16 @@ func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, s
 		return resolver.ResolveActor(ctx, r, spec)
 	}
 	return httpapi.Actor{}, nil
+}
+
+// ResolveTransactionAuthorization forwards only staff write admission. Storefront
+// commands retain their own capability checks and must never acquire staff scope.
+func (a routeAuthenticator) ResolveTransactionAuthorization(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
+	if spec.Access == httpapi.Storefront {
+		return nil, nil
+	}
+	if resolver, ok := a.staff.(httpapi.TransactionAuthorizationResolver); ok {
+		return resolver.ResolveTransactionAuthorization(ctx, r, spec)
+	}
+	return nil, nil
 }

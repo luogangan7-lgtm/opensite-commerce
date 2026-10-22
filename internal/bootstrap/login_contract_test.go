@@ -16,6 +16,7 @@ import (
 	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
@@ -25,7 +26,8 @@ func TestConfiguredIdentityRouteContract(t *testing.T) {
 	// needs no database; this test inspects registrations without invoking handlers.
 	handler := testfixture.LoginHandler("https://admin.example.test", 30*time.Minute)
 	// Route registration uses a receiver fixture; this test never admits events.
-	server, err := bootstrap.New(bootstrap.Config{Routes: append(handler.Routes(), publish.StorefrontRoute(nil)), Authenticator: handler, Quotes: quotes.NewApplication(nil),
+	routes := append(handler.Routes(), new(tenant.Module).Routes()...)
+	server, err := bootstrap.New(bootstrap.Config{Routes: append(routes, publish.StorefrontRoute(nil)), Authenticator: handler, Quotes: quotes.NewApplication(nil),
 		Checkout: &checkout.Config{FakeEnabled: true, Environment: "test", Events: routeContractReceiver{}}})
 	if err != nil {
 		t.Fatal(err)

@@ -11,15 +11,16 @@ import (
 )
 
 type AppApiKey struct {
-	TenantID  pgtype.UUID        `json:"tenant_id"`
-	ID        pgtype.UUID        `json:"id"`
-	IssuedBy  pgtype.UUID        `json:"issued_by"`
-	KeyPrefix string             `json:"key_prefix"`
-	KeyHash   []byte             `json:"key_hash"`
-	Scopes    []string           `json:"scopes"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
-	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	TenantID   pgtype.UUID        `json:"tenant_id"`
+	ID         pgtype.UUID        `json:"id"`
+	IssuedBy   pgtype.UUID        `json:"issued_by"`
+	KeyPrefix  string             `json:"key_prefix"`
+	KeyHash    []byte             `json:"key_hash"`
+	Scopes     []string           `json:"scopes"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
 }
 
 type AppAttributeDefinition struct {

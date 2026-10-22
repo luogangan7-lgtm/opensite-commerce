@@ -5,6 +5,7 @@ package identity
 
 import (
 	"context"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	transport "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/store"
@@ -14,6 +15,7 @@ import (
 
 type LoginConfig = login.Config
 type AuthorizedActor = login.Actor
+type AuthorizationSnapshot = transport.AuthorizationSnapshot
 type LoginModule struct {
 	repository *store.LoginRepository
 	handler    *transport.Handler
@@ -37,7 +39,18 @@ func OpenLogin(ctx context.Context, dsn string, cfg LoginConfig) (*LoginModule, 
 }
 func (m *LoginModule) Routes() []platform.Route              { return m.handler.Routes() }
 func (m *LoginModule) Authenticator() platform.Authenticator { return m.handler }
-func (m *LoginModule) Close(ctx context.Context) error       { return m.repository.Close(ctx) }
+
+// WithAuthorization injects tenant-owned authority during bootstrap, before serving.
+func (m *LoginModule) WithAuthorization(repo contract.AuthorizationRepository) *LoginModule {
+	m.handler.WithAuthorization(repo)
+	return m
+}
+func (m *LoginModule) Close(ctx context.Context) error { return m.repository.Close(ctx) }
 func ActorFromContext(ctx context.Context) (AuthorizedActor, bool) {
 	return login.ActorFromContext(ctx)
+}
+
+// AuthorizationFromContext returns a copy of admitted tenant/subject/scopes.
+func AuthorizationFromContext(ctx context.Context) (AuthorizationSnapshot, bool) {
+	return transport.AuthorizationFromContext(ctx)
 }
