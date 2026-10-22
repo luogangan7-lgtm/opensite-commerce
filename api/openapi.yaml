@@ -3342,6 +3342,8 @@ paths:
       x-opensite-access: AdminOrAPIKey
       x-required-scope: customers:privacy
       parameters:
+        - $ref: '#/components/parameters/OriginIfCookie'
+        - $ref: '#/components/parameters/CSRFTokenIfCookie'
         - $ref: "#/components/parameters/TenantId"
         - {name: customer_id, in: path, required: true, schema: {type: string, format: uuid}}
         - {name: request_id, in: path, required: true, schema: {type: string, format: uuid}}
