@@ -178,7 +178,7 @@ func (r *LoginRepository) LookupSession(ctx context.Context, hash [32]byte, at t
 		return login.Session{}, login.ErrSession
 	}
 	var row db.LoginLookupSessionRow
-	err := r.runLane(ctx, r.sessionRunner, func(ctx context.Context, q *db.Queries) error {
+	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
 		var err error
 		row, err = q.LoginLookupSession(ctx, db.LoginLookupSessionParams{At: stamp(at), TokenHash: hash[:], IdleSeconds: int64(idle / time.Second)})
 		if errors.Is(err, pgx.ErrNoRows) {
