@@ -157,7 +157,7 @@ type AppCheckoutSession struct {
 	RequestKey            string             `json:"request_key"`
 	RequestHash           []byte             `json:"request_hash"`
 	CartID                pgtype.UUID        `json:"cart_id"`
-	CartVersion           int64              `json:"cart_version"`
+	CartVersion           pgtype.Int8        `json:"cart_version"`
 	OrderID               pgtype.UUID        `json:"order_id"`
 	AddressSnapshot       []byte             `json:"address_snapshot"`
 	Currency              string             `json:"currency"`
@@ -177,6 +177,7 @@ type AppCheckoutSession struct {
 	RefundedNetMinor      int64              `json:"refunded_net_minor"`
 	RefundedTaxMinor      int64              `json:"refunded_tax_minor"`
 	RefundedShippingMinor int64              `json:"refunded_shipping_minor"`
+	SourceKind            string             `json:"source_kind"`
 }
 
 type AppCompanyContact struct {
@@ -738,6 +739,21 @@ type AppQuoteApproval struct {
 	RequestedBy    pgtype.UUID        `json:"requested_by"`
 	DecidedBy      pgtype.UUID        `json:"decided_by"`
 	Decision       string             `json:"decision"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppQuoteConversion struct {
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	QuoteID        pgtype.UUID        `json:"quote_id"`
+	BuyerCompanyID pgtype.UUID        `json:"buyer_company_id"`
+	CustomerID     pgtype.UUID        `json:"customer_id"`
+	OrderID        pgtype.UUID        `json:"order_id"`
+	QuoteVersion   int64              `json:"quote_version"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	RequestHash    []byte             `json:"request_hash"`
+	OrderNumber    int64              `json:"order_number"`
+	Currency       string             `json:"currency"`
+	TotalMinor     int64              `json:"total_minor"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
