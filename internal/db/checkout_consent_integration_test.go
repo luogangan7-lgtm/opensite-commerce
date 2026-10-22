@@ -28,6 +28,7 @@ func TestCheckoutPGChangedTotalConsent(t *testing.T) {
 			if err := json.Unmarshal(raw, &in); err != nil {
 				t.Fatal(err)
 			}
+			in.IdempotencyKey = input.IdempotencyKey
 			if _, err := f.service.Start(checkoutRequestContext(f.ctx), f.actor, in); err == nil {
 				t.Fatal("Start accepted missing/stale/currency-mismatched buyer consent")
 			}
