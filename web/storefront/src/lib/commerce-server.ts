@@ -11,14 +11,14 @@ import { readPublishedSite } from '@opensite/api-client';
 import { readAPIOrigin } from './presentation';
 import { requestCanonical } from './host-policy';
 import { backendRequest } from './commerce-backend';
+import { CustomerError as HTTPError, readCustomer, changeCustomer, checkCustomerCookies, type CustomerIdentity } from './customer-server';
 const COOKIE = '__Host-osc_storefront_fixture';
 const key = randomBytes(32);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
-type Session = { s: string; c?: string; t?: string; tenant?: string; checkout?: string; x: number };
+type Session = { s: string; c?: string; t?: string; tenant?: string; checkout?: string; u?: string; a?: CustomerIdentity; x: number };
 type Configuration = {origin: string; site: string; fixture?: boolean};
 type Jar = Pick<AstroCookies, 'get' | 'set'>;
-class HTTPError extends Error { constructor(readonly status: number, readonly code = 'purchase_request_failed') { super(code); } }
 function signingKey() {
   if (process.env.OSC_COMMERCE_MODE !== 'backend') return key;
   const encoded = process.env.OSC_COMMERCE_COOKIE_KEY ?? '';
@@ -57,12 +57,13 @@ function readSession(cookies: Jar): Session | null {
   try {
     const session = JSON.parse(Buffer.from(encoded, 'base64url').toString()) as Session;
     if (!TOKEN.test(session.s) || !Number.isSafeInteger(session.x) || session.x <= Date.now() || session.x > Date.now() + 3_600_000 ||
-        (session.tenant !== undefined && !UUID.test(session.tenant)) || (session.checkout !== undefined && !UUID.test(session.checkout)) || (session.c !== undefined && !UUID.test(session.c)) || (session.t !== undefined && !TOKEN.test(session.t)) || !!session.c !== !!session.t) return null;
+        (session.u !== undefined && !UUID.test(session.u)) || (session.tenant !== undefined && !UUID.test(session.tenant)) || (session.checkout !== undefined && !UUID.test(session.checkout)) || (session.c !== undefined && !UUID.test(session.c)) || (session.t !== undefined && !TOKEN.test(session.t)) || (!!session.t && !session.c)) return null;
     return session;
   } catch { return null; }
 }
 function writeSession(cookies: Jar, session: Session) {
-  const encoded = Buffer.from(JSON.stringify(session)).toString('base64url');
+  const {a: _serverOnly, ...stored}=session;
+  const encoded = Buffer.from(JSON.stringify(stored)).toString('base64url');
   cookies.set(cookieName(), `${encoded}.${mac(encoded)}`, { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 3600 });
 }
 function csrf(session: Session) { return mac(`csrf:${session.s}`); }
@@ -88,6 +89,7 @@ function fakePaymentEnabled() {
 }
 function checkoutHeaders(configuration: Configuration, session: Session): Record<string,string> {
   if (configuration.fixture) return {Origin:configuration.site,'X-CSRF-Token':csrf(session)};
+  if(session.a) { if(!session.c)throw new HTTPError(404);return {...session.a.headers,'X-Cart-ID':session.c}; }
   const origin=readAPIOrigin(process.env.OPENSITE_STOREFRONT_ORIGIN ?? '');
   if (!origin.startsWith('https://') || !session.t || !session.c || !session.tenant) throw new HTTPError(503);
   const proof=createHmac('sha256',configuredKey('OPENSITE_STOREFRONT_KEY')).update(`checkout:${session.tenant}:${session.t}:${origin}`).digest('base64url');
@@ -104,7 +106,7 @@ async function boundedText(response: Response) {
 async function upstream(configuration: Configuration, session: Session, path: string, options: { method?: string; body?: unknown; rawBody?: string; headers?: Record<string,string> } = {}) {
   let response: Response, text: string;
   if (!configuration.fixture) {
-    const result = await backendRequest(configuration.origin,path,session.t,{...options,headers:{...(path.includes('/checkout') ? checkoutHeaders(configuration,session) : {}),...options.headers}});
+    const result = await backendRequest(configuration.origin,path,session.a?undefined:session.t,{...options,headers:{...session.a?.headers,...(path.includes('/checkout') ? checkoutHeaders(configuration,session) : {}),...options.headers}});
     response=result.response; text=result.text;
   } else {
     response=await fetch(`${configuration.origin}${path}`, {method:options.method ?? 'GET',redirect:'error',signal:AbortSignal.timeout(5000),
@@ -133,7 +135,7 @@ function products(value: unknown): PurchaseProduct[] {
     }) };
   });
 }
-async function context(configuration: Configuration, session: Session) {
+async function context(configuration: Configuration, session: Session, cookies: Jar) {
   if (configuration.fixture) {
     const raw = object((await upstream(configuration,session,'/__fixture/context')).value);
     if (raw.actor !== 'guest' && raw.actor !== 'customer') throw new HTTPError(502);
@@ -143,17 +145,21 @@ async function context(configuration: Configuration, session: Session) {
   const tenant=uuid(raw.tenant_id);
   if (session.tenant && session.tenant !== tenant) throw new HTTPError(404);
   session.tenant=tenant;
+  const customer=await readCustomer(configuration.origin,tenant,cookies);
+  if(session.u!==customer?.id){delete session.c;delete session.t;delete session.checkout;}
+  session.u=customer?.id;session.a=customer??undefined;
   if (!Array.isArray(raw.products)) throw new HTTPError(502);
   const catalogue=products(raw.products.map(value=>{const product=object(value);return {...product,product_id:product.id};}));
-  return {tenant,view:{enabled:true,fixture:false,csrf:csrf(session),actor:'guest',products:catalogue,...(fakePaymentEnabled() ? {fakePayment:true} : {})} satisfies PurchaseContext};
+  return {tenant,view:{enabled:true,fixture:false,csrf:csrf(session),actor:customer?'customer':'guest',products:catalogue,...(fakePaymentEnabled() ? {fakePayment:true} : {})} satisfies PurchaseContext};
 }
 const disabled: PurchaseContext = { enabled: false, fixture: false, csrf: '', actor: 'guest', products: [] };
 export async function readPurchaseContext(request: Request, cookies: Jar): Promise<PurchaseContext> {
   const config=purchaseConfiguration(request);
   if (!config) return disabled;
   try {
+    if(!config.fixture)checkCustomerCookies(request);
     const session=readSession(cookies) ?? {s:randomBytes(32).toString('base64url'),x:Date.now()+3_600_000};
-    const result=await context(config,session);writeSession(cookies,session);return result.view;
+    const result=await context(config,session,cookies);writeSession(cookies,session);return result.view;
   } catch { return {...disabled,fixture:!!config.fixture}; }
 }
 function cartEnvelope(value: unknown, etag: string | null, catalogue: PurchaseProduct[]): CartEnvelope {
@@ -206,10 +212,26 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
   if (!config) return request.method === 'GET' && operation === 'context' ? json(disabled) : json({ code: 'purchase_unavailable' }, 503);
   const configuration = config;
   try {
+    if(!configuration.fixture)checkCustomerCookies(request);
     if (request.method === 'GET' && operation === 'context') return json(await readPurchaseContext(request, cookies));
     const session = readSession(cookies); if (!session) throw new HTTPError(configuration.fixture ? 403 : 401);
     if (!['GET','HEAD'].includes(request.method)) verifyPurchaseWrite(request, configuration.site, csrf(session));
-    const current = await context(configuration, session), base = `/api/v1/t/${current.tenant}`;
+    const current = await context(configuration, session, cookies), base = `/api/v1/t/${current.tenant}`;
+    if(!configuration.fixture&&operation.startsWith('customer/')){
+      if(operation==='customer/session'&&request.method==='GET')return json(current.view);
+      const path=operation==='customer/register'?'registrations':operation==='customer/verify'?'verifications':operation==='customer/session'?'session':null;
+      if(!path||!(request.method==='POST'||(path==='session'&&request.method==='DELETE')))throw new HTTPError(404);
+      const input=request.method==='POST'?await body(request,path==='verifications'?['token']:['email','password']):undefined;
+      await changeCustomer(configuration.origin,current.tenant,cookies,path,request.method,input);
+      if(path==='session'){
+        // A new identity must never inherit another buyer's cart, checkout or anonymous capability.
+        delete session.c;delete session.t;delete session.checkout;delete session.u;delete session.a;
+        session.s=randomBytes(32).toString('base64url');
+        const view=request.method==='DELETE'?{...current.view,actor:'guest' as const,csrf:csrf(session)}:(await context(configuration,session,cookies)).view;
+        writeSession(cookies,session);return json(view);
+      }
+      return json({status:path==='registrations'?'verification_pending':'verified'},path==='registrations'?202:200);
+    }
     if (operation === 'cart' && request.method === 'GET') {
       if (!session.c) return json(null);
       const response = await upstream(configuration, session, `${base}/carts/${session.c}`);
@@ -221,8 +243,9 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
       if (!sku?.available || amount < 1) throw new HTTPError(422);
       if (!session.c) {
         const created = object((await upstream(configuration, session, `${base}/carts`, { method: 'POST', body: { currency: sku.currency } })).value);
-        session.c = uuid(object(created.cart).id); session.t = string(created.cart_token);
-        if (!TOKEN.test(session.t)) throw new HTTPError(502);
+        session.c = uuid(object(created.cart).id);
+        if(!session.a){session.t = string(created.cart_token);if (!TOKEN.test(session.t)) throw new HTTPError(502);}
+        else if(created.cart_token!==undefined)throw new HTTPError(502);
         // Persist the capability before a subsequent line write: an ambiguous write is never retried as cart creation.
         writeSession(cookies, session);
       }
@@ -284,7 +307,7 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
     if (configuration.fixture && operation === 'customer/session' && ['POST','DELETE'].includes(request.method)) {
       const input = request.method === 'POST' ? await body(request, ['email','password']) : undefined;
       await upstream(configuration, session, `${base}/customer/session`, { method: request.method, ...(input ? { body: input } : {}) });
-      return json((await context(configuration, session)).view);
+      return json((await context(configuration, session, cookies)).view);
     }
     if (configuration.fixture && operation === 'customer/register' && request.method === 'POST') {
       const input = await body(request, ['email','password']);
