@@ -144,8 +144,10 @@ class APIContractTests(unittest.TestCase):
         data_rights = {"requestCustomerDataExport", "getCustomerDataExport",
                        "downloadCustomerDataExport", "eraseCustomerData"}
         csv = {"preflightCatalogCSV", "importCatalogCSV", "exportCatalogCSV"}
+        pricing = {"createPriceList", "listPriceLists", "getPriceList", "updatePriceList",
+                   "setVariantPrice", "clearVariantPrice"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | cms | data_rights | csv |
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | cms | data_rights | csv | pricing |
                          {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
                           "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession",
                           "createAPIKey", "listAPIKeys", "revokeAPIKey"} | contract.CUSTOMER_OPERATIONS)

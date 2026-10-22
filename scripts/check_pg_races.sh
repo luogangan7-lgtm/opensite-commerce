@@ -1711,6 +1711,24 @@ expect conversion_expiry_holder ok; expect conversion_expiry_waiter QUOTE_CONVER
 quote_conversion_count expiry_after_lock_wait '0|0|0|0|0'
 # End C-18b quote conversion gates.
 
+# ADMIN-PRICING-1 gate110: list CAS must be rechecked after an actual row-lock wait.
+read -r PT PL PS <<<"$(sql <<'SQL'
+INSERT INTO app.tenants(name,settlement_currency) VALUES('staff-price-race','USD') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','STAFF-RACE') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','STAFF-RACE','') RETURNING id AS sku \gset
+INSERT INTO app.price_lists(tenant_id,currency,starts_at) VALUES(:'t','USD',clock_timestamp()) RETURNING id AS l \gset
+SELECT :'t'||' '||:'l'||' '||:'sku';
+SQL
+)"
+gate_close 110
+tx staff_price_first app_runtime "$PT" "SELECT app.pricing_write_entry('$PL','$PS',1,111,1); $(park 110)" &
+await staff_price_first advisory
+tx staff_price_stale app_runtime "$PT" "SELECT app.pricing_write_entry('$PL','$PS',1,222,1);" &
+await staff_price_stale "${ROWLOCK[@]}"
+gate_open 110; wait
+expect staff_price_first ok; expect staff_price_stale PRICING_VERSION_CONFLICT
+[[ $(sql <<<"SELECT p.version||'|'||e.unit_amount FROM app.price_lists p JOIN app.price_entries e ON e.tenant_id=p.tenant_id AND e.price_list_id=p.id WHERE p.tenant_id='$PT' AND p.id='$PL';") == '2|111' ]] || fail=1
+
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth/fulfillment/returns contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'

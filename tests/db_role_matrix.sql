@@ -379,7 +379,7 @@ BEGIN
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
-  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
@@ -414,7 +414,7 @@ BEGIN
  END LOOP;
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
-  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
@@ -1385,3 +1385,44 @@ BEGIN
 END $tenant_auth$;
 SELECT 'PASS: tenant API-key execute-only and transaction authority capability matrix' AS result;
 
+
+-- Pricing has an unreachable writer; runtime receives only two write capabilities.
+DO $pricing_matrix$
+DECLARE r record; t record; a record; p text; expected boolean; col boolean; f record; role_name text;
+ names text[]:=ARRAY['pricing_currency','pricing_write_list','pricing_write_entry'];
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_pricing_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+ OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+ OR NOT has_schema_privilege(r.oid,'app','USAGE') OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'PRICING_MATRIX_ROLE'; END IF;
+ FOR t IN SELECT oid,relname FROM pg_class WHERE relnamespace='app'::regnamespace AND relkind IN('r','p') LOOP
+  FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=t.relname IN('price_lists','price_entries') AND (p IN('SELECT','INSERT','UPDATE') OR t.relname='price_entries' AND p='DELETE');
+   IF has_table_privilege(r.oid,t.oid,p) IS DISTINCT FROM expected OR has_table_privilege(r.oid,t.oid,p||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'PRICING_MATRIX_TABLE % %',t.relname,p; END IF;
+   IF p IN('SELECT','INSERT','UPDATE','REFERENCES') THEN
+    FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     col:=expected OR t.relname='tenants' AND (p='SELECT' AND a.attname IN('id','settlement_currency') OR p='UPDATE' AND a.attname='settlement_currency')
+      OR t.relname='product_variants' AND p='SELECT' AND a.attname IN('tenant_id','id');
+     IF has_column_privilege(r.oid,t.oid,a.attnum,p) IS DISTINCT FROM col OR has_column_privilege(r.oid,t.oid,a.attnum,p||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'PRICING_MATRIX_COLUMN % % %',t.relname,a.attname,p; END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names))<>cardinality(names) THEN RAISE EXCEPTION 'PRICING_MATRIX_ROUTINES'; END IF;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  IF f.proname=ANY(names) THEN
+   IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM (f.proname<>'pricing_currency') OR cardinality(f.proconfig) IS DISTINCT FROM 1
+    OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+    OR f.oid IS DISTINCT FROM to_regprocedure(CASE f.proname WHEN 'pricing_currency' THEN 'app.pricing_currency()'
+     WHEN 'pricing_write_list' THEN 'app.pricing_write_list(uuid,bigint,jsonb)'
+     WHEN 'pricing_write_entry' THEN 'app.pricing_write_entry(uuid,uuid,bigint,bigint,bigint)' END)
+    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN RAISE EXCEPTION 'PRICING_MATRIX_FUNCTION'; END IF;
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+    expected:=role_name='app_pricing_executor' OR role_name='app_runtime' AND f.proname<>'pricing_currency';
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected OR role_name<>'app_pricing_executor' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN RAISE EXCEPTION 'PRICING_MATRIX_EXECUTE % %',role_name,f.proname; END IF;
+   END LOOP;
+  ELSIF has_function_privilege(r.oid,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'PRICING_MATRIX_UNRELATED_FUNCTION %',f.proname;
+  END IF;
+ END LOOP;
+END $pricing_matrix$;
+SELECT 'PASS: pricing exact executor table/column/routine matrix';

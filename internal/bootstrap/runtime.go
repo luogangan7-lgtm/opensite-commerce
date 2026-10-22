@@ -117,6 +117,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			}
 		}
 		config.Catalog.Run = runner.RunAuthorized
+		config.Pricing.Run = runner.RunAuthorized
 		config.CatalogCSV.Run = runner.RunAuthorizedTx
 		config.CatalogCSV.Service = catalog.NewCSV()
 		config.CMS.Idempotency.Run = runner.RunAuthorizedTx

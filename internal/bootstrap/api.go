@@ -21,6 +21,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/pricing"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
@@ -44,6 +45,7 @@ type Config struct {
 	Authenticator            httpapi.Authenticator
 	Routes                   []httpapi.Route
 	Catalog                  catalog.Config
+	Pricing                  pricing.Config
 	Media                    media.Config
 	Orders                   orders.HTTPConfig
 	Fulfillment              fulfillment.HTTPConfig
@@ -134,6 +136,7 @@ func New(config Config) (server *http.Server, err error) {
 	health := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "health", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })}
 	routes := []httpapi.Route{health}
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
+	routes = append(routes, pricing.New(config.Pricing).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)
 	routes = append(routes, orders.NewHTTP(config.Orders).Routes()...)
 	routes = append(routes, fulfillment.NewHTTP(config.Fulfillment).Routes()...)
