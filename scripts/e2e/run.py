@@ -37,7 +37,7 @@ ACTIVE_TESTS = {
     "real API denies anonymous catalog reads and creation before data access",
     "real owner session reads and creates tenant catalog through production authorization",
 }
-PURCHASE_TESTS = {"published guest purchase persists captured order", "pending receipt alone never shows paid"}
+PURCHASE_TESTS = {"published guest purchase persists captured order", "pending receipt alone never shows paid", "registered purchase appears only in owned history"}
 ACTIVE_TESTS |= PURCHASE_TESTS
 PAYMENT_TESTS = {"real signed payment webhook rejects forgery and deduplicates concurrent facts"}
 ACTIVE_TESTS |= PAYMENT_TESTS
@@ -102,7 +102,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 30, "skipped": 4, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 32, "skipped": 4, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -254,7 +254,7 @@ def run(receipt_dir):
             command(["bun", "run", "build:admin"], "admin-build", env=clean_env)
             receipt["steps"].append("locked-frontends-built")
             persist()
-            command(compose_command(["up", "-d", "--build", "--wait", "--wait-timeout", "120", "api", "worker"]), "stack-start")
+            command(compose_command(["up", "-d", "--build", "--wait", "--wait-timeout", "120", "api", "worker", "mailpit"]), "stack-start")
             if ops_common.psql("SHOW server_version_num;").strip() != "180006":
                 raise RuntimeError("MVP E2E requires PostgreSQL 18.6")
             ops_drill.healthy("http://127.0.0.1:8080")
@@ -312,6 +312,7 @@ def run(receipt_dir):
             receipt["purchase"] = {"status": "FAIL", "facts": purchase_row}
             persist()
             receipt["purchase"] = purchase.verify(purchase_row)
+            receipt["registered_purchase"] = purchase.verify_registered(json.loads(ops_common.psql(purchase.REGISTERED_SQL)))
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-and-accessibility-assertions")
         except BaseException as exc:

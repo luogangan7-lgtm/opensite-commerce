@@ -79,6 +79,8 @@ BEGIN
      IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices']) THEN
       allowed_columns := all_columns;
       expected_table := true;
+     ELSIF privilege='SELECT' AND t.relname='customer_guest_order_links' THEN
+      allowed_columns := ARRAY['tenant_id','customer_id','order_id'];
      ELSIF privilege='INSERT' THEN
       IF t.relname=ANY(mutable_tables || append_tables) AND t.relname NOT IN ('idempotency_records','site_drafts') THEN
        allowed_columns := all_columns;

@@ -202,7 +202,7 @@ type routeAuthenticator struct {
 }
 
 func (a routeAuthenticator) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec httpapi.RouteSpec) {
-	if spec.Access != httpapi.Storefront && spec.Access != httpapi.BuyerCompany {
+	if spec.Access != httpapi.Storefront && spec.Access != httpapi.BuyerCompany && spec.Access != httpapi.CustomerSession {
 		if responder, ok := a.staff.(httpapi.AuthenticationResponder); ok {
 			responder.AuthenticationResponse(ctx, w, r, spec)
 		}
@@ -210,6 +210,16 @@ func (a routeAuthenticator) AuthenticationResponse(ctx context.Context, w http.R
 }
 
 func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	if spec.Access == httpapi.CustomerSession {
+		actor, err := a.customer.Resolve(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+		if actor.CustomerID == "" || actor.TenantID != r.PathValue("tenant_id") {
+			return nil, checkoutCustomerRequired()
+		}
+		return customercontract.WithActor(ctx, actor), nil
+	}
 	if spec.Access == httpapi.BuyerCompany {
 		if a.buyer == nil {
 			return (httpapi.DenyAuthenticator{}).Authenticate(ctx, r, spec)
@@ -235,7 +245,7 @@ func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, s
 // ResolveActor preserves the identity projection of the selected staff
 // authenticator. It never manufactures an actor from an HTTP field.
 func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
-	if spec.Access == httpapi.Storefront || spec.Access == httpapi.BuyerCompany {
+	if spec.Access == httpapi.Storefront || spec.Access == httpapi.BuyerCompany || spec.Access == httpapi.CustomerSession {
 		return httpapi.Actor{}, nil
 	}
 	if resolver, ok := a.staff.(httpapi.ActorResolver); ok {
@@ -247,7 +257,7 @@ func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, s
 // ResolveTransactionAuthorization forwards only staff write admission. Storefront
 // and buyer commands retain their capability checks and never acquire staff scope.
 func (a routeAuthenticator) ResolveTransactionAuthorization(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
-	if spec.Access == httpapi.Storefront || spec.Access == httpapi.BuyerCompany {
+	if spec.Access == httpapi.Storefront || spec.Access == httpapi.BuyerCompany || spec.Access == httpapi.CustomerSession {
 		return nil, nil
 	}
 	if resolver, ok := a.staff.(httpapi.TransactionAuthorizationResolver); ok {

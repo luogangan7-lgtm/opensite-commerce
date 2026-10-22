@@ -772,6 +772,14 @@
         {
           "operation_id": "getOrder",
           "status": "implemented"
+        },
+        {
+          "operation_id": "listCustomerOrders",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getCustomerOrder",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -794,12 +802,14 @@
         "tests/db_orders_guards.sql",
         "internal/db/orders_guards_integration_test.go",
         "internal/modules/orders/http_test.go",
-        "internal/db/orders_http_integration_test.go"
+        "internal/db/orders_http_integration_test.go",
+        "internal/db/customer_history_integration_test.go",
+        "internal/bootstrap/customer_history_test.go"
       ],
       "scopes": [
         "orders:read"
       ],
-      "note": "Tenant-bound immutable order snapshots and caller-transaction financial state transitions. Customer references use the integrated tenant/customer foreign key. Admin read API (orders:read) serves sealed snapshots from a read-only snapshot transaction, money as decimal strings and no guest contact. Checkout orchestration and real payment adapters remain separate."
+      "note": "Tenant-bound immutable order snapshots and caller-transaction financial state transitions. Customer references use the integrated tenant/customer foreign key. Admin read API (orders:read) serves sealed snapshots from a read-only snapshot transaction, money as decimal strings and no guest contact. Checkout orchestration and real payment adapters remain separate. CustomerSession history uses separate customer-owned SQL, including only persisted verified guest links, and omits staff-only fields."
     },
     {
       "name": "payments",
@@ -850,8 +860,14 @@
           "operation_id": "createCheckout",
           "status": "implemented"
         },
-        {"operation_id": "previewCheckout", "status": "implemented"},
-        {"operation_id": "getCheckout", "status": "implemented"}
+        {
+          "operation_id": "previewCheckout",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getCheckout",
+          "status": "implemented"
+        }
       ],
       "dependencies": [
         "tenant",
@@ -1615,6 +1631,13 @@
         "auth_account_attempts",
         "auth_login_attempts",
         "known_devices"
+      ]
+    },
+    {
+      "file": "migrations/pending/c09f-history_customer_history.sql",
+      "owner": "customer",
+      "touches_tables": [
+        "customer_guest_order_links"
       ]
     }
   ]

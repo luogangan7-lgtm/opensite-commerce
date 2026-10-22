@@ -217,6 +217,14 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
     const session = readSession(cookies); if (!session) throw new HTTPError(configuration.fixture ? 403 : 401);
     if (!['GET','HEAD'].includes(request.method)) verifyPurchaseWrite(request, configuration.site, csrf(session));
     const current = await context(configuration, session, cookies), base = `/api/v1/t/${current.tenant}`;
+    if(!configuration.fixture && request.method==='GET' && (operation==='history'||operation.startsWith('history/'))){
+      if(!session.a)throw new HTTPError(401,'unauthenticated');
+      const id=operation==='history'?'':uuid(operation.slice(8));
+      const cursor=new URL(request.url).searchParams.get('cursor');
+      if(cursor!==null&&(cursor.length>512||! /^[A-Za-z0-9_-]+$/.test(cursor)))throw new HTTPError(400,'invalid_cursor');
+      const path=`${base}/customer/orders${id?`/${id}`:cursor?`?cursor=${encodeURIComponent(cursor)}`:''}`;
+      return json((await upstream(configuration,session,path)).value);
+    }
     if(!configuration.fixture&&operation.startsWith('customer/')){
       if(operation==='customer/session'&&request.method==='GET')return json(current.view);
       const path=operation==='customer/register'?'registrations':operation==='customer/verify'?'verifications':operation==='customer/session'?'session':null;

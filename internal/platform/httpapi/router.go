@@ -20,8 +20,9 @@ import (
 type Access string
 
 const (
-	Public             Access = "Public"
-	Storefront         Access = "Storefront"
+	Public          Access = "Public"
+	Storefront      Access = "Storefront"
+	CustomerSession Access = "CustomerSession"
 	// BuyerCompany admits only a verified customer session and company scope.
 	BuyerCompany       Access = "BuyerCompany"
 	AuthenticatedSelf  Access = "AuthenticatedSelf"
@@ -112,7 +113,7 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 		ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
 		ctx = context.WithValue(ctx, authorizedActorKey{}, Actor{})
 		ctx = context.WithValue(ctx, transactionAuthorizationKey{}, (func(context.Context, *db.Queries) error)(nil))
-		if spec.Access == Storefront || spec.Access == BuyerCompany {
+		if spec.Access == Storefront || spec.Access == BuyerCompany || spec.Access == CustomerSession {
 			w.Header().Set("Cache-Control", "no-store")
 		}
 		if spec.Access != Public {
@@ -204,7 +205,7 @@ func validateRoute(s RouteSpec) error {
 		return fail("negative body size")
 	}
 	switch s.Access {
-	case Public, Storefront, BuyerCompany, AuthenticatedSelf, AdminSession, APIKey, AdminOrAPIKey, InternalService:
+	case Public, Storefront, CustomerSession, BuyerCompany, AuthenticatedSelf, AdminSession, APIKey, AdminOrAPIKey, InternalService:
 	default:
 		return fail("unknown access class")
 	}
@@ -236,13 +237,13 @@ func validateRoute(s RouteSpec) error {
 	if s.Access == Public && s.Scope != "" {
 		return fail("public route cannot declare a scope")
 	}
-	if s.Access == Storefront && (!tenant || s.Scope != "" || !strings.HasPrefix(s.Pattern, "/api/v1/t/{tenant_id}/")) {
+	if (s.Access == Storefront || s.Access == CustomerSession) && (!tenant || s.Scope != "" || !strings.HasPrefix(s.Pattern, "/api/v1/t/{tenant_id}/")) {
 		return fail("Storefront requires canonical tenant path and no staff scope")
 	}
 	if s.Access == BuyerCompany && (!tenant || s.Scope != "quotes:convert" || !strings.HasPrefix(s.Pattern, "/api/v1/t/{tenant_id}/")) {
 		return fail("BuyerCompany requires canonical tenant path and quotes:convert scope")
 	}
-	if s.Access != Public && s.Access != Storefront && tenant && strings.TrimSpace(s.Scope) == "" {
+	if s.Access != Public && s.Access != Storefront && s.Access != CustomerSession && tenant && strings.TrimSpace(s.Scope) == "" {
 		return fail("private tenant route requires scope")
 	}
 	return nil

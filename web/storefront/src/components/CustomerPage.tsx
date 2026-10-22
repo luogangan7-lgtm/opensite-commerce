@@ -45,7 +45,7 @@ export default function CustomerPage({ context: initialContext, locale = 'en' }:
     <PurchaseNotice context={context} locale={locale} />
     {context.enabled && <>
       <p className="purchase-muted">{ui.accountHelp}</p>
-      {context.actor === 'customer' ? <><p>{ui.signedIn}</p><div className="purchase-actions"><Button variant="secondary" loading={busy} onClick={logout}>{ui.signOut}</Button><a href="/cart">{ui.viewCart}</a></div></> : <>
+      {context.actor === 'customer' ? <><p>{ui.signedIn}</p><div className="purchase-actions"><Button variant="secondary" loading={busy} onClick={logout}>{ui.signOut}</Button><a href="/cart">{ui.viewCart}</a><a href="/account/orders">Order history</a></div></> : <>
         <p>{ui.guestSession}</p><form onSubmit={signIn} noValidate className="customer-form">
           <FormField id="customer-email" label={ui.email} error={emailError}><TextInput type="email" autoComplete="email" maxLength={254} value={email} disabled={busy} required onChange={event => { setEmail(event.target.value); setEmailError(''); }} /></FormField>
           <FormField id="customer-password" label={ui.password} help={ui.passwordHelp} error={passwordError}><TextInput type="password" autoComplete="current-password" minLength={context.fixture?8:1} maxLength={context.fixture?128:1024} value={password} disabled={busy} required onChange={event => { setPassword(event.target.value); setPasswordError(''); }} /></FormField>
