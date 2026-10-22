@@ -8,13 +8,16 @@ package db_test
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type historyReadAuth struct{ tenant, customer string }
@@ -24,6 +27,31 @@ func (a historyReadAuth) Authenticate(ctx context.Context, _ *http.Request, _ ht
 }
 func TestCustomerHistorySQLIsolation(t *testing.T) {
 	f := newOrderReadFixture(t)
+	// The shared fixture uses a maintenance DSN. Pin the read pools to the real
+	// runtime role rather than accidentally exercising ownership as a superuser.
+	scoped, err := url.Parse(f.runtimeDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := scoped.Query()
+	params.Set("role", "app_runtime")
+	scoped.RawQuery = params.Encode()
+	role, closeRole, err := pgxadapter.Open(f.ctx, scoped.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(closeRole)
+	var current string
+	if err = role.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "SELECT current_user").Scan(&current)
+	}); err != nil || current != "app_runtime" {
+		t.Fatalf("runtime role: %q %v", current, err)
+	}
+	read, err := pgxadapter.OpenQueryRunner(f.ctx, scoped.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(read.Close)
 	var owner, email string
 	f.scan("SELECT customer_id::text FROM app.orders WHERE tenant_id=$1 AND id=$2", []any{f.tenant, f.customer}, &owner)
 	f.scan("SELECT guest_contact->>'email' FROM app.orders WHERE tenant_id=$1 AND id=$2", []any{f.tenant, f.guest}, &email)
@@ -31,7 +59,7 @@ func TestCustomerHistorySQLIsolation(t *testing.T) {
 	f.scan("UPDATE app.customers SET email=$2 WHERE tenant_id=$1 AND id=$3 RETURNING id::text", []any{f.tenant, email, owner}, &changed)
 	handler := func(customer string) http.Handler {
 		r := httpapi.New(historyReadAuth{f.tenant, customer}, nil)
-		for _, route := range orders.NewHTTP(orders.HTTPConfig{Read: f.runtime.RunAuthorizedSnapshot}).Routes() {
+		for _, route := range orders.NewHTTP(orders.HTTPConfig{Read: read.RunAuthorizedSnapshot}).Routes() {
 			if err := r.Register(route.Spec, route.Handler); err != nil {
 				t.Fatal(err)
 			}
