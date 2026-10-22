@@ -74,7 +74,8 @@ func TestPGStaffPricingPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer runner.Close()
-	server, err := bootstrap.New(bootstrap.Config{Authenticator: pricingAdmission("owner"), Pricing: pricing.Config{Run: runner.RunAuthorized}})
+	role := pricingAdmission("owner")
+	server, err := bootstrap.New(bootstrap.Config{Authenticator: &role, Pricing: pricing.Config{Run: runner.RunAuthorized}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,16 +111,12 @@ func TestPGStaffPricingPersistence(t *testing.T) {
 	if request("GET", path, "", "", 200)["version"] != float64(2) {
 		t.Fatal("list CAS not persisted")
 	}
-	ownerServer := server
-	for _, role := range []pricingAdmission{"viewer", "content_editor"} {
-		server, err = bootstrap.New(bootstrap.Config{Authenticator: role, Pricing: pricing.Config{Run: runner.RunAuthorized}})
-		if err != nil {
-			t.Fatal(err)
-		}
+	for _, name := range []pricingAdmission{"viewer", "content_editor"} {
+		role = name
 		request("GET", base, "", "", 403)
 		request("PUT", tier, `{"unit_amount":300}`, `"2"`, 403)
 	}
-	server = ownerServer
+	role = "owner"
 	var amount int64
 	if err := root.QueryRow(ctx, "SELECT unit_amount FROM app.price_entries WHERE tenant_id=$1", tenant).Scan(&amount); err != nil || amount != 125 {
 		t.Fatalf("price persistence %d %v", amount, err)

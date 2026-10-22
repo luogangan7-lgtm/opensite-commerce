@@ -32,11 +32,13 @@ func TestStaffPricingAdmission(t *testing.T) {
 	list := base + "/22222222-2222-4222-8222-222222222222"
 	tier := list + "/variants/33333333-3333-4333-8333-333333333333/prices/1"
 	body := `{"currency":"USD","status":"active","starts_at":"2026-01-01T00:00:00Z","priority":0,"audience":"all"}`
-	for _, role := range []string{"owner", "admin", "catalog_editor", "viewer", "content_editor"} {
-		server, err := bootstrap.New(bootstrap.Config{Authenticator: pricingAuth(role)})
-		if err != nil {
-			t.Fatal(err)
-		}
+	role := pricingAuth("owner")
+	server, err := bootstrap.New(bootstrap.Config{Authenticator: &role})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"owner", "admin", "catalog_editor", "viewer", "content_editor"} {
+		role = pricingAuth(name)
 		for _, tc := range []struct {
 			method, path, body, version string
 			want                       int
