@@ -44,6 +44,7 @@ jobs:
           python3 scripts/pending_migrations.py ci-normalize
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client
+          bash scripts/migrate_river.sh
           bash scripts/migrate.sh
       - name: All three independent money regressions
         run: >-
