@@ -27,12 +27,25 @@ import (
 type Service struct{}
 
 var _ contract.Service = Service{}
+var _ contract.QuoteCreator = Service{}
 
 func (Service) Create(ctx context.Context, tx pgx.Tx, tenantID string, in contract.CreateInput) (contract.Order, error) {
 	p, err := prepare(in)
 	if err != nil {
 		return contract.Order{}, err
 	}
+	return create(ctx, tx, tenantID, in, p)
+}
+
+func (Service) CreateFromQuote(ctx context.Context, tx pgx.Tx, tenantID string, in contract.CreateInput) (contract.Order, error) {
+	p, err := prepareQuoted(in)
+	if err != nil {
+		return contract.Order{}, err
+	}
+	return create(ctx, tx, tenantID, in, p)
+}
+
+func create(ctx context.Context, tx pgx.Tx, tenantID string, in contract.CreateInput, p prepared) (contract.Order, error) {
 	q, err := store.Tenant(ctx, tx, tenantID)
 	if err != nil {
 		return contract.Order{}, err
@@ -154,7 +167,9 @@ func (Service) GetPayable(ctx context.Context, tx pgx.Tx, tenantID, orderID stri
 	}
 	tenant, _ := store.UUID(tenantID)
 	id, _ := store.UUID(orderID)
-	row, err := q.GetPayableOrder(ctx, db.GetPayableOrderParams{TenantID: tenant, ID: id})
+	// The existing sealed-order projection owns both buyer identity and frozen
+	// ledger components; callers must never rebuild them from live pricing.
+	row, err := q.GetOrder(ctx, db.GetOrderParams{TenantID: tenant, ID: id})
 	if err != nil {
 		return contract.Payable{}, store.MapError(err)
 	}
@@ -162,12 +177,17 @@ func (Service) GetPayable(ctx context.Context, tx pgx.Tx, tenantID, orderID stri
 		return contract.Payable{}, contract.ErrConflict
 	}
 	amount := money.Money{Amount: row.TotalMinor, Currency: row.Currency}
-	if err := amount.Validate(); err != nil || amount.Amount < 0 || row.Version <= 0 {
+	if err := amount.Validate(); err != nil || amount.Amount < 0 || row.Version <= 0 || row.ItemsNetMinor < 0 || row.TaxMinor < 0 || row.ShippingMinor < 0 {
 		return contract.Payable{}, contract.ErrUnavailable
 	}
 	canonicalTenant := uuid.UUID(tenant.Bytes).String()
 	canonicalID := uuid.UUID(row.ID.Bytes).String()
-	return contract.Payable{OrderID: canonicalID, Amount: amount, IntentKey: fmt.Sprintf("payable:v1:%s:%s:%s", canonicalTenant, canonicalID, strconv.FormatInt(row.Version, 10)), Version: row.Version}, nil
+	customerID := ""
+	if row.CustomerID.Valid {
+		customerID = uuid.UUID(row.CustomerID.Bytes).String()
+	}
+	return contract.Payable{OrderID: canonicalID, CustomerID: customerID, Amount: amount, IntentKey: fmt.Sprintf("payable:v1:%s:%s:%s", canonicalTenant, canonicalID, strconv.FormatInt(row.Version, 10)), Version: row.Version,
+		ItemsNetMinor: row.ItemsNetMinor, TaxMinor: row.TaxMinor, ShippingMinor: row.ShippingMinor}, nil
 }
 func (Service) LockLiveReservations(ctx context.Context, tx pgx.Tx, tenantID, orderID string, minRemainingSeconds int32) error {
 	if !validID(orderID) || minRemainingSeconds < 0 {
@@ -186,7 +206,8 @@ func (Service) LockLiveReservations(ctx context.Context, tx pgx.Tx, tenantID, or
 	if len(ids) == 0 {
 		return contract.ErrNotFound
 	}
-	// Same global lock order (reservation id) as create, transition and expiry.
+	// The same public DB fence locks the existing parent order first, then holds
+	// by id, as transition does. Create's absent-parent prelock remains permitted.
 	if err = q.LockOrderReservations(ctx, db.LockOrderReservationsParams{OrderID: id, ReservationIds: ids}); err != nil {
 		return store.MapError(err)
 	}

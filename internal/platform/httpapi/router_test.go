@@ -301,3 +301,21 @@ func TestStorefrontAccessIsTenantBoundDefaultDeny(t *testing.T) {
 		}
 	}
 }
+
+func TestBuyerCompanyRequiresScopedTenantAndDefaultsDeny(t *testing.T) {
+	spec := httpapi.RouteSpec{OperationID: "createQuoteOrder", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/quotes/{quote_id}/orders", Access: httpapi.Access("BuyerCompany"), Scope: "quotes:convert"}
+	r := httpapi.New(nil, nil)
+	if err := r.Register(spec, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("default-denied buyer reached handler") })); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/t/11111111-1111-1111-1111-111111111111/quotes/22222222-2222-2222-2222-222222222222/orders", nil))
+	assertProblem(t, w, 401)
+	for _, change := range []func(*httpapi.RouteSpec){func(s *httpapi.RouteSpec) { s.Scope = "" }, func(s *httpapi.RouteSpec) { s.Scope = "quotes:write" }, func(s *httpapi.RouteSpec) { s.Pattern = "/auth/whoami" }, func(s *httpapi.RouteSpec) { s.Pattern = "/t/{tenant_id}/quotes" }} {
+		bad := spec
+		change(&bad)
+		if httpapi.New(nil, nil).Register(bad, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})) == nil {
+			t.Fatal("invalid buyer company policy accepted")
+		}
+	}
+}

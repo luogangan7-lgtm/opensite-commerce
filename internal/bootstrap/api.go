@@ -26,6 +26,7 @@ import (
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/notificationhttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quoteorders"
 	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
@@ -40,6 +41,8 @@ type Config struct {
 	Orders                   orders.HTTPConfig
 	Cart                     *cart.Module
 	Quotes                   quoteshttp.QuotesService
+	QuoteOrders              quoteorders.Service
+	QuoteConversion          *QuoteConversionConfig
 	QuotesBuyerAuthenticator httpapi.Authenticator
 	QuotesInquiryResolver    quoteshttp.QuotesInquiryResolver
 	CMS                      publish.CMSHTTPConfig
@@ -62,6 +65,21 @@ func New(config Config) (server *http.Server, err error) {
 		cartModule = cart.New(nil, nil)
 	}
 	customerHTTP := customerhttp.New(customerhttp.Config{Service: config.Customer, Origin: config.CustomerOrigin, Secret: config.CustomerSecret})
+	if config.QuoteConversion != nil {
+		if config.QuoteOrders != nil || config.Checkout == nil || config.Customer == nil {
+			return nil, errors.New("typed quote conversion requires customer and checkout capabilities and excludes QuoteOrders injection")
+		}
+		config.QuoteOrders, err = NewQuoteConversion(*config.QuoteConversion, config.Checkout.Service)
+		if err != nil {
+			return nil, err
+		}
+		if config.QuotesBuyerAuthenticator == nil {
+			config.QuotesBuyerAuthenticator = quoteBuyerAdmission{customer: customerHTTP, runner: config.QuoteConversion.Runner}
+		}
+	}
+	if config.QuotesBuyerAuthenticator != nil && config.QuoteOrders == nil {
+		return nil, errors.New("quote buyer admission requires a configured conversion service")
+	}
 	if config.Customer != nil {
 		cartModule = cartModule.WithActorResolver(func(ctx context.Context, _ *http.Request) (cartcontract.AuthorizedActor, error) {
 			actor, ok := customercontract.ActorFromContext(ctx)
@@ -71,7 +89,7 @@ func New(config Config) (server *http.Server, err error) {
 			return cartcontract.AuthorizedActor{TenantID: actor.TenantID, CustomerID: actor.CustomerID}, nil
 		})
 	}
-	baseAuthenticator := routeAuthenticator{cart: cartModule, staff: config.Authenticator, customer: customerHTTP}
+	baseAuthenticator := routeAuthenticator{cart: cartModule, staff: config.Authenticator, customer: customerHTTP, buyer: config.QuotesBuyerAuthenticator}
 	var authenticator httpapi.Authenticator = baseAuthenticator
 	var checkoutRoutes []httpapi.Route
 	if config.Checkout != nil {
@@ -106,6 +124,7 @@ func New(config Config) (server *http.Server, err error) {
 	if config.Quotes != nil {
 		routes = append(routes, quoteshttp.NewQuotesHandler(config.Quotes, config.QuotesBuyerAuthenticator, config.QuotesInquiryResolver).Routes()...)
 	}
+	routes = append(routes, quoteorders.New(config.QuoteOrders).Routes()...)
 	routes = append(routes, notificationhttp.New(config.Notifications).Routes()...)
 	routes = append(routes, customerHTTP.Routes()...)
 	routes = append(routes, config.Routes...)
@@ -164,10 +183,11 @@ type routeAuthenticator struct {
 	cart     *cart.Module
 	staff    httpapi.Authenticator
 	customer *customerhttp.Handler
+	buyer    httpapi.Authenticator
 }
 
 func (a routeAuthenticator) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec httpapi.RouteSpec) {
-	if spec.Access != httpapi.Storefront {
+	if spec.Access != httpapi.Storefront && spec.Access != httpapi.BuyerCompany {
 		if responder, ok := a.staff.(httpapi.AuthenticationResponder); ok {
 			responder.AuthenticationResponse(ctx, w, r, spec)
 		}
@@ -175,6 +195,12 @@ func (a routeAuthenticator) AuthenticationResponse(ctx context.Context, w http.R
 }
 
 func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	if spec.Access == httpapi.BuyerCompany {
+		if a.buyer == nil {
+			return (httpapi.DenyAuthenticator{}).Authenticate(ctx, r, spec)
+		}
+		return a.buyer.Authenticate(ctx, r, spec)
+	}
 	if spec.Access == httpapi.Storefront {
 		actor, err := a.customer.Resolve(ctx, r)
 		if err != nil {
@@ -194,7 +220,7 @@ func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, s
 // ResolveActor preserves the identity projection of the selected staff
 // authenticator. It never manufactures an actor from an HTTP field.
 func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
-	if spec.Access == httpapi.Storefront {
+	if spec.Access == httpapi.Storefront || spec.Access == httpapi.BuyerCompany {
 		return httpapi.Actor{}, nil
 	}
 	if resolver, ok := a.staff.(httpapi.ActorResolver); ok {
@@ -204,9 +230,9 @@ func (a routeAuthenticator) ResolveActor(ctx context.Context, r *http.Request, s
 }
 
 // ResolveTransactionAuthorization forwards only staff write admission. Storefront
-// commands retain their own capability checks and must never acquire staff scope.
+// and buyer commands retain their capability checks and never acquire staff scope.
 func (a routeAuthenticator) ResolveTransactionAuthorization(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
-	if spec.Access == httpapi.Storefront {
+	if spec.Access == httpapi.Storefront || spec.Access == httpapi.BuyerCompany {
 		return nil, nil
 	}
 	if resolver, ok := a.staff.(httpapi.TransactionAuthorizationResolver); ok {

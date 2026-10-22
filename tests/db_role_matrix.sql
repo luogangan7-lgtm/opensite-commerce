@@ -28,7 +28,7 @@ DECLARE
   'customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits',
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
-  'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals',
+  'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals','quote_conversions',
   'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events',
   'site_release_skus','storefront_serving','serving_invalidations'];
  role_name text;
@@ -383,8 +383,8 @@ BEGIN
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
    'auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
-   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard',
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
    'customer_session','customer_revoke_session','customer_admit','customer_failed',
@@ -414,8 +414,8 @@ BEGIN
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
    'auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
-   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard',
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
    'customer_session','customer_revoke_session','customer_admit','customer_failed',
@@ -864,7 +864,7 @@ SELECT 'PASS: outbox broker exact discovery/aggregate table-column-routine/RLS m
 -- Notifications executor has only exact frozen-envelope and fenced-state columns.
 DO $notifications$
 DECLARE r record;t record;a record;f record; privilege text;cols text[]; expected boolean; role_name text;
- names text[]:=ARRAY['notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive']; BEGIN
+ names text[]:=ARRAY['notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive']; BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_notifications_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
  OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid) OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_UNSAFE_ROLE'; END IF;
@@ -878,6 +878,7 @@ DECLARE r record;t record;a record;f record; privilege text;cols text[]; expecte
    ELSIF privilege='SELECT' AND t.relname='customers' THEN cols:=ARRAY['tenant_id','id','email_normalized'];
    ELSIF privilege='SELECT' AND t.relname='quotes' THEN cols:=ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','accepted_by','status','version'];
    ELSIF privilege='SELECT' AND t.relname='inquiries' THEN cols:=ARRAY['tenant_id','id','site_id','buyer_company_id','buyer_email'];
+   ELSIF privilege='SELECT' AND t.relname='quote_conversions' THEN cols:=ARRAY['tenant_id','quote_id','order_id','quote_version','customer_id'];
    ELSIF privilege='INSERT' AND t.relname='notification_deliveries' THEN cols:=ARRAY['tenant_id','id','source_event_id','dispatch_event_id','recipient','locale','template_key','reference_id','status','last_error'];
    ELSIF privilege='INSERT' AND t.relname='notification_redrive_requests' THEN cols:=ARRAY['tenant_id','notification_id','idempotency_key','generation','dispatch_event_id'];
    ELSIF privilege='INSERT' AND t.relname='outbox_events' THEN cols:=ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key'];
@@ -908,8 +909,8 @@ SELECT 'PASS: notifications exact column/function privileges and FORCE RLS' AS r
 DO $quotes$
 DECLARE r record; t record; a record; f record; privilege text; role_name text;
  expected_table boolean; expected_column boolean; allowed text[];
- names text[]:=ARRAY['quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote'];
- public_names text[]:=ARRAY['quote_actor_access','create_quote','transition_quote'];
+ names text[]:=ARRAY['quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get'];
+ public_names text[]:=ARRAY['quote_actor_access','create_quote','transition_quote','quote_conversion_lock','quote_conversion_bind','quote_conversion_get'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_quotes_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -919,9 +920,9 @@ BEGIN
   RAISE EXCEPTION 'QUOTES_UNSAFE_EXECUTOR'; END IF;
  FOR t IN SELECT c.oid,c.relname,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
  WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
-  IF t.relname=ANY(ARRAY['inquiries','quotes','quote_lines','quote_approvals']) AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN RAISE EXCEPTION 'QUOTES_FORCE_RLS %',t.relname; END IF;
+  IF t.relname=ANY(ARRAY['inquiries','quotes','quote_lines','quote_approvals','quote_conversions']) AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN RAISE EXCEPTION 'QUOTES_FORCE_RLS %',t.relname; END IF;
   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
-   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['quotes','quote_lines','quote_approvals']);
+   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['quotes','quote_lines','quote_approvals','quote_conversions']);
    allowed:=ARRAY[]::text[];
    IF expected_table THEN
     SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
@@ -930,9 +931,12 @@ BEGIN
      WHEN 'tenant_memberships' THEN ARRAY['tenant_id','user_id','role','status']
      WHEN 'inquiries' THEN ARRAY['tenant_id','site_id','id','buyer_company_id']
      WHEN 'buyer_companies' THEN ARRAY['tenant_id','id','status'] WHEN 'customers' THEN ARRAY['tenant_id','id','status']
-     WHEN 'buyer_company_members' THEN ARRAY['tenant_id','buyer_company_id','customer_id','role_code','status'] ELSE allowed END;
+     WHEN 'buyer_company_members' THEN ARRAY['tenant_id','buyer_company_id','customer_id','role_code','status']
+     WHEN 'orders' THEN ARRAY['tenant_id','id','customer_id','order_number','currency','items_net_minor','tax_minor','shipping_minor','shipping_snapshot','total_minor','sealed','state']
+     WHEN 'order_lines' THEN ARRAY['tenant_id','order_id','sku_id','quantity','unit_price_minor','line_net_minor','line_tax_minor','line_total_minor','tax_snapshot']
+     WHEN 'order_adjustments' THEN ARRAY['tenant_id','order_id'] ELSE allowed END;
    ELSIF privilege='INSERT' THEN
-    allowed:=CASE t.relname WHEN 'quotes' THEN ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','created_by','currency','subtotal','tax','shipping','total','snapshot','expires_at']
+    allowed:=CASE t.relname WHEN 'quote_conversions' THEN ARRAY['tenant_id','quote_id','buyer_company_id','customer_id','order_id','quote_version','idempotency_key','request_hash','order_number','currency','total_minor'] WHEN 'quotes' THEN ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','created_by','currency','subtotal','tax','shipping','total','snapshot','expires_at']
      WHEN 'quote_lines' THEN ARRAY['tenant_id','quote_id','line_no','product_id','variant_id','description','quantity','unit_price','line_total','snapshot']
      WHEN 'quote_approvals' THEN ARRAY['tenant_id','quote_id','buyer_company_id','requested_by','decided_by','decision']
      WHEN 'outbox_events' THEN ARRAY['tenant_id','event_type','payload','delivery_target','dedup_key'] ELSE allowed END;
