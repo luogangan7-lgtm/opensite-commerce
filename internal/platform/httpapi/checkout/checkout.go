@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	contract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
@@ -89,7 +90,7 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 	if fallback == nil {
 		fallback = httpapi.DenyAuthenticator{}
 	}
-	authenticate := authFunc(func(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	return composedAuth{fallback: fallback, authenticate: authFunc(func(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
 		if spec.OperationID != StartOperation {
 			return fallback.Authenticate(ctx, r, spec)
 		}
@@ -111,18 +112,19 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 			return nil, notFound()
 		}
 		return context.WithValue(ctx, actorKey{}, actor), nil
-	})
-	return actorAuthenticator{authFunc: authenticate, fallback: fallback}
+	})}
 }
 
-// actorAuthenticator preserves fallback identity projection after admission.
-// Storefront capabilities and public fake events never acquire staff actors.
-type actorAuthenticator struct {
-	authFunc
-	fallback httpapi.Authenticator
+// Preserve the staff projection and transaction guard through this wrapper.
+type composedAuth struct {
+	fallback     httpapi.Authenticator
+	authenticate authFunc
 }
 
-func (a actorAuthenticator) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
+func (a composedAuth) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
+	return a.authenticate(ctx, r, spec)
+}
+func (a composedAuth) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
 	if spec.Access == httpapi.Storefront || spec.Access == httpapi.Public || spec.OperationID == StartOperation || spec.OperationID == FakeOperation {
 		return httpapi.Actor{}, nil
 	}
@@ -130,6 +132,15 @@ func (a actorAuthenticator) ResolveActor(ctx context.Context, r *http.Request, s
 		return resolver.ResolveActor(ctx, r, spec)
 	}
 	return httpapi.Actor{}, nil
+}
+func (a composedAuth) ResolveTransactionAuthorization(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
+	if spec.Access == httpapi.Storefront || spec.Access == httpapi.Public || spec.OperationID == StartOperation || spec.OperationID == FakeOperation {
+		return nil, nil
+	}
+	if resolver, ok := a.fallback.(httpapi.TransactionAuthorizationResolver); ok {
+		return resolver.ResolveTransactionAuthorization(ctx, r, spec)
+	}
+	return nil, nil
 }
 
 type authFunc func(context.Context, *http.Request, httpapi.RouteSpec) (context.Context, error)

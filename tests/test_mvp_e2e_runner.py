@@ -90,7 +90,7 @@ class BrowserReceiptTests(unittest.TestCase):
                  'annotations': [{'type': 'fixme'}] if gap else [],
                  'results': [{'status': 'skipped' if gap else 'passed'}]}
                 for project in ('desktop', 'mobile')]})
-        return {'stats': {'expected': 24, 'skipped': 8, 'unexpected': 0, 'flaky': 0},
+        return {'stats': {'expected': 26, 'skipped': 6, 'unexpected': 0, 'flaky': 0},
                 'suites': [{'specs': specs}]}
 
     def rows(self):
@@ -109,7 +109,7 @@ class BrowserReceiptTests(unittest.TestCase):
     def test_payment_is_required_in_both_projects_and_exact_spec(self):
         module = self.runner()
         report = self.browser_report(module)
-        self.assertEqual(module.verify_browser_report(report)['expected'], 24)
+        self.assertEqual(module.verify_browser_report(report)['expected'], 26)
         for mutation in ('remove', 'wrong_file', 'skip'):
             changed = json.loads(json.dumps(report))
             payment = next(s for s in changed['suites'][0]['specs'] if s['title'] in module.PAYMENT_TESTS)

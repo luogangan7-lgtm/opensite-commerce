@@ -240,15 +240,19 @@ BEGIN
    FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
     allowed:=ARRAY[]::text[];
     IF role_name='app_credential_writer' THEN
-     IF p='SELECT' THEN allowed:=CASE t.relname WHEN 'users' THEN ARRAY['id'] WHEN 'tenants' THEN ARRAY['id']
-      WHEN 'tenant_memberships' THEN ARRAY['role'] WHEN 'api_keys' THEN ARRAY['id']
+     IF p='SELECT' THEN allowed:=CASE t.relname WHEN 'users' THEN ARRAY['id','status'] WHEN 'tenants' THEN ARRAY['id','status']
+      WHEN 'tenant_memberships' THEN ARRAY['tenant_id','user_id','role','status']
+      WHEN 'api_keys' THEN ARRAY['tenant_id','id','issued_by','key_prefix','key_hash','scopes','expires_at','revoked_at','created_at','last_used_at']
+      WHEN 'auth_sessions' THEN ARRAY['id','user_id','expires_at','revoked_at','created_at','last_seen_at']
       WHEN 'auth_account_attempts' THEN ARRAY['identifier_normalized','window_started_at','cooldown_until','last_failed_at']
       WHEN 'auth_login_attempts' THEN ARRAY['identifier_normalized','ip','window_started_at','cooldown_until','last_failed_at'] ELSE allowed END;
      ELSIF p='INSERT' THEN allowed:=CASE t.relname WHEN 'users' THEN ARRAY['email','password_hash'] WHEN 'tenants' THEN ARRAY['id','name']
       WHEN 'tenant_memberships' THEN ARRAY['tenant_id','user_id','role']
       WHEN 'buyer_roles' THEN ARRAY['tenant_id','code']
       WHEN 'api_keys' THEN ARRAY['tenant_id','id','issued_by','key_prefix','key_hash','scopes','expires_at'] ELSE allowed END;
-     ELSIF p='UPDATE' AND t.relname='users' THEN allowed:=ARRAY['password_hash']; END IF;
+     ELSIF p='UPDATE' THEN allowed:=CASE t.relname WHEN 'users' THEN ARRAY['password_hash']
+      WHEN 'tenants' THEN ARRAY['status'] WHEN 'tenant_memberships' THEN ARRAY['status']
+      WHEN 'api_keys' THEN ARRAY['revoked_at','last_used_at'] WHEN 'auth_sessions' THEN ARRAY['revoked_at'] ELSE allowed END; END IF;
     END IF;
     IF has_table_privilege(role_name,t.oid,p) IS DISTINCT FROM
      (role_name='app_credential_writer' AND p='DELETE' AND t.relname IN ('auth_account_attempts','auth_login_attempts'))
@@ -298,7 +302,8 @@ BEGIN
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>5 THEN
   RAISE EXCEPTION 'identity function contract incomplete'; END IF;
  -- New capability roles cannot execute older business service functions either.
- FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND NOT p.proname=ANY(names) LOOP
+ FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND NOT p.proname=ANY(names)
+  AND p.proname NOT IN ('auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant') LOOP
   IF has_function_privilege('app_admin_bootstrap',f.oid,'EXECUTE') OR has_function_privilege('app_credential_writer',f.oid,'EXECUTE') THEN
    RAISE EXCEPTION 'identity role has unrelated function authority: %',f.proname; END IF;
  END LOOP;
@@ -380,6 +385,7 @@ BEGIN
    'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund',
    'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
+   'auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
    'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
@@ -413,6 +419,7 @@ BEGIN
    'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund',
    'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
+   'auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
    'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
@@ -1266,3 +1273,48 @@ BEGIN
  END IF;
 END $refund_budget_matrix$;
 SELECT 'PASS: shared Orders refund budget and closed Returns lock exact signatures/owners/full-role ACL' AS result;
+
+-- Tenant capabilities expose no runtime credential reads or arbitrary key DML.
+DO $tenant_auth$
+DECLARE f record; role_name text; expected boolean;
+ names text[]:=ARRAY['auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant'];
+BEGIN
+ IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names))<>5 THEN
+  RAISE EXCEPTION 'TENANT_AUTH_ROUTINES_INCOMPLETE'; END IF;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names) LOOP
+  IF f.proowner IS DISTINCT FROM 'app_credential_writer'::regrole OR f.prosecdef IS DISTINCT FROM (f.proname<>'auth_role_scopes')
+   OR cardinality(f.proconfig) IS DISTINCT FROM (CASE WHEN f.proname IN ('auth_create_api_key','auth_revoke_api_key','auth_touch_api_key') THEN 2 ELSE 1 END)
+   OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR cardinality(f.proconfig)=2 AND f.proconfig[2] IS DISTINCT FROM 'app.tenant_id='
+   OR f.oid IS DISTINCT FROM to_regprocedure(CASE f.proname
+    WHEN 'auth_role_scopes' THEN 'app.auth_role_scopes(text)'
+    WHEN 'auth_create_api_key' THEN 'app.auth_create_api_key(uuid,uuid,uuid,text,bytea,text[],timestamptz)'
+    WHEN 'auth_revoke_api_key' THEN 'app.auth_revoke_api_key(uuid,uuid,uuid)'
+    WHEN 'auth_touch_api_key' THEN 'app.auth_touch_api_key(uuid)'
+    WHEN 'auth_revalidate_tenant' THEN 'app.auth_revalidate_tenant(uuid,uuid,text,uuid,text)' END)
+   OR f.prorettype IS DISTINCT FROM (CASE f.proname WHEN 'auth_role_scopes' THEN 'text[]'::regtype WHEN 'auth_create_api_key' THEN 'uuid'::regtype ELSE 'boolean'::regtype END)
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+   RAISE EXCEPTION 'TENANT_AUTH_UNSAFE_ROUTINE %',f.proname; END IF;
+  FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+   expected:=role_name='app_credential_writer'
+    OR role_name='app_auth' AND f.proname IN ('auth_create_api_key','auth_revoke_api_key','auth_touch_api_key')
+    OR role_name IN ('app_runtime','app_auth') AND f.proname='auth_revalidate_tenant';
+   IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
+    OR role_name<>'app_credential_writer' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'TENANT_AUTH_ROUTINE_ACL % %',role_name,f.proname; END IF;
+  END LOOP;
+ END LOOP;
+ IF NOT EXISTS(SELECT FROM pg_policy WHERE polrelid='app.tenant_memberships'::regclass
+  AND polname='credential_membership_lock' AND polcmd='w' AND polpermissive
+  AND polroles=ARRAY['app_credential_writer'::regrole::oid] AND polqual IS NOT NULL AND polwithcheck IS NOT NULL
+  AND pg_get_expr(polqual,polrelid)=pg_get_expr(polwithcheck,polrelid)
+  AND pg_get_expr(polqual,polrelid)=(SELECT pg_get_expr(i.polwithcheck,i.polrelid) FROM pg_policy i
+   WHERE i.polrelid='app.tenant_memberships'::regclass AND i.polname='credential_membership_insert')) THEN
+  RAISE EXCEPTION 'TENANT_AUTH_MEMBERSHIP_LOCK_POLICY'; END IF;
+ IF has_table_privilege('app_auth','app.api_keys','INSERT') OR has_any_column_privilege('app_auth','app.api_keys','INSERT')
+  OR has_table_privilege('app_auth','app.api_keys','UPDATE') OR has_any_column_privilege('app_auth','app.api_keys','UPDATE')
+  OR has_table_privilege('app_auth','app.api_keys','DELETE')
+  OR has_any_column_privilege('app_runtime','app.api_keys','SELECT') THEN RAISE EXCEPTION 'TENANT_AUTH_KEY_DML_OR_SECRET_READ'; END IF;
+END $tenant_auth$;
+SELECT 'PASS: tenant API-key execute-only and transaction authority capability matrix' AS result;
+

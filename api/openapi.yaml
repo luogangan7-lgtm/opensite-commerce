@@ -5,7 +5,7 @@ info:
   description: >-
     Contract-first first-vertical-slice API. Declared operations are not all implemented in this increment. Tenant
     business targets come from the URL path; credentials authorize them. Health, catalog, media, cart, notifications,
-    published-site read and staff login operations are implemented; other operations are planned contracts. Checkout composition is opt-in;
+    published-site read, staff login and tenant API key management operations are implemented; other operations are planned contracts. Checkout composition is opt-in;
     its trusted storefront resolver is deferred and Fake callback transport is restricted to explicit test/development mode.
 servers:
   - url: /
@@ -27,6 +27,112 @@ tags:
   - name: Fulfillment
   - name: Returns
 paths:
+  /api/v1/t/{tenant_id}/api-keys:
+    post:
+      tags: [Identity]
+      operationId: createAPIKey
+      x-opensite-status: implemented
+      x-opensite-access: AdminSession
+      x-required-scope: apikeys:write
+      description: >-
+        An active owner or admin creates a key for this tenant with scopes no wider than their current role.
+        The 256-bit secret is returned once. No Idempotency-Key replay is provided because plaintext
+        secrets must never be retained to reproduce a response. A lost response requires revocation and a new key.
+        Unknown scopes are rejected; tenant, issuer and hash are server-derived.
+      security: [{adminSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateAPIKey'}
+      responses:
+        '201':
+          description: New key with its one-time plaintext credential; never cache this response.
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/APIKeyCreated'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+    get:
+      tags: [Identity]
+      operationId: listAPIKeys
+      x-opensite-status: implemented
+      x-opensite-access: AdminSession
+      x-required-scope: apikeys:write
+      description: Lists the newest 100 keys owned by this tenant, including revoked keys, ordered by creation time then ID; plaintext and hashes are never returned. Older keys can still be revoked by ID.
+      security: [{adminSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Key metadata only.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/APIKeyList'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/t/{tenant_id}/api-keys/{key_id}:
+    delete:
+      tags: [Identity]
+      operationId: revokeAPIKey
+      x-opensite-status: implemented
+      x-opensite-access: AdminSession
+      x-required-scope: apikeys:write
+      description: >-
+        Revokes a key owned by this tenant. Repeating revocation of an existing key succeeds;
+        a missing or cross-tenant key returns 404. Revocation is effective on the next authorization check.
+      security: [{adminSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: key_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '204': {description: Key revoked; no response body.}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
   /api/v1/t/{tenant_id}/customer/registrations:
     post:
       operationId: registerCustomer
@@ -4338,6 +4444,55 @@ components:
           type: string
           minLength: 1
       additionalProperties: false
+    CreateAPIKey:
+      type: object
+      additionalProperties: false
+      required: [scopes]
+      properties:
+        scopes:
+          type: array
+          maxItems: 12
+          uniqueItems: true
+          items:
+            type: string
+            enum: [apikeys:write, catalog:read, catalog:write, cms:publish, cms:write, media:write, notifications:write, orders:read, quotes:read, quotes:write, organization.create, site.create]
+        expires_at:
+          type: string
+          format: date-time
+          description: Optional future expiry; validated against the database clock.
+    APIKeyView:
+      type: object
+      additionalProperties: false
+      required: [id, key_prefix, scopes, issued_by, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        key_prefix: {type: string}
+        scopes:
+          type: array
+          items: {type: string}
+        issued_by: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        revoked_at: {type: string, format: date-time}
+        last_used_at: {type: string, format: date-time}
+    APIKeyCreated:
+      type: object
+      additionalProperties: false
+      required: [key, api_key]
+      properties:
+        key:
+          type: string
+          description: Public UUID plus one-time 256-bit secret; never log, persist plaintext or replay this value.
+        api_key: {$ref: '#/components/schemas/APIKeyView'}
+    APIKeyList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/APIKeyView'}
     AdminLogin:
       type: object
       required:
