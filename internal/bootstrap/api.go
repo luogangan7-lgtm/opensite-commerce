@@ -95,21 +95,23 @@ func New(config Config) (server *http.Server, err error) {
 	if config.Checkout != nil {
 		checkoutConfig := *config.Checkout
 		var admissionCustomer *customerhttp.Handler
-		if checkoutConfig.Resolver == nil && config.Customer != nil {
+		guestResolver, hasGuest := checkoutConfig.Resolver.(*checkout.GuestResolver)
+		if hasGuest && guestResolver == nil { return nil, errors.New("checkout guest resolver unavailable") }
+		if config.Customer != nil && (checkoutConfig.Resolver == nil || hasGuest) {
 			if checkoutConfig.Origin == "" {
 				checkoutConfig.Origin = config.CustomerOrigin
 			}
 			if checkoutConfig.Origin != config.CustomerOrigin {
 				return nil, errors.New("customer checkout requires the configured customer origin")
 			}
-			checkoutConfig.Resolver = customerCheckoutResolver{}
+			if hasGuest { checkoutConfig.Resolver = customerGuestCheckoutResolver{guest: guestResolver} } else { checkoutConfig.Resolver = customerCheckoutResolver{} }
 			admissionCustomer = customerHTTP
 		}
 		handler, err := checkout.New(checkoutConfig)
 		if err != nil {
 			return nil, err
 		}
-		authenticator = checkoutAdmission{next: handler.Authenticator(baseAuthenticator), actors: baseAuthenticator, customer: admissionCustomer, cart: cartModule}
+		authenticator = checkoutAdmission{next: handler.Authenticator(baseAuthenticator), actors: baseAuthenticator, customer: admissionCustomer, cart: cartModule, guest: hasGuest}
 		checkoutRoutes = handler.Routes()
 	}
 	router := httpapi.New(authenticator, config.Logger)

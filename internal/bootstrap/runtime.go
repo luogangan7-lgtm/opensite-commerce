@@ -140,6 +140,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			previous := closeRuntime
 			closeRuntime = func() { stopRefresh(); <-done; previous() }
 		}
+		if err := wireStorefrontCheckout(&config,runner); err != nil { closeRuntime(); return Config{},nil,err }
 		config.Orders.Read = runner.RunAuthorizedSnapshot
 		if config.Cart == nil {
 			config.Cart = cart.NewPostgres(cart.Config{Run: runner.RunAuthorized, Read: runner.RunAuthorizedSnapshot}, nil)

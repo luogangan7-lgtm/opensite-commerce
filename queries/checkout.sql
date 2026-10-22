@@ -8,6 +8,8 @@ SELECT * FROM app.checkout_sessions WHERE tenant_id=$1 AND actor_kind=$2 AND act
 SELECT * FROM app.checkout_sessions WHERE tenant_id=$1 AND order_id=$2 FOR UPDATE;
 -- name: GetCheckoutByID :one
 SELECT * FROM app.checkout_sessions WHERE tenant_id=$1 AND id=$2 FOR UPDATE;
+-- name: GetCheckoutByIDSnapshot :one
+SELECT * FROM app.checkout_sessions WHERE tenant_id=$1 AND id=$2;
 -- name: InsertCheckout :one
 INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version,address_snapshot,source_kind)
 VALUES(sqlc.arg(tenant_id),sqlc.arg(id),sqlc.arg(actor_kind),sqlc.arg(actor_id),sqlc.arg(request_key),sqlc.arg(request_hash),sqlc.narg(cart_id),sqlc.narg(cart_version),sqlc.arg(order_id),sqlc.arg(currency),sqlc.arg(amount_minor),sqlc.arg(items_net_minor),sqlc.arg(tax_minor),sqlc.arg(shipping_minor),sqlc.arg(payable_version),sqlc.arg(address_snapshot),sqlc.arg(source_kind)) RETURNING *;

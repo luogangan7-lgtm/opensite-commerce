@@ -94,10 +94,34 @@ type Result struct {
 	OrderVersion int64  `json:"order_version"`
 	Payment      Intent `json:"payment"`
 }
+type PreviewInput struct {
+	CartID     string
+	Country    string
+	Region     string
+	PostalCode string
+}
+type ShippingOption struct {
+	RateID      string `json:"rate_id"`
+	Method      string `json:"method"`
+	AmountMinor int64  `json:"amount_minor"`
+}
+type Preview struct {
+	SubtotalMinor   int64            `json:"subtotal_minor"`
+	TaxMinor        int64            `json:"tax_minor"`
+	ShippingMinor   int64            `json:"shipping_minor"`
+	TotalMinor      int64            `json:"total_minor"`
+	Currency        string           `json:"currency"`
+	ShippingOptions []ShippingOption `json:"shipping_options"`
+}
 type Service interface {
 	Start(context.Context, AuthorizedActor, StartInput) (Result, error)
 	Confirm(context.Context, payment.VerifiedEvent) (Result, error)
 	Cancel(context.Context, AuthorizedActor, CancelInput) (Result, error)
+}
+
+type BrowserReader interface {
+	Preview(context.Context, AuthorizedActor, PreviewInput) (Preview, error)
+	Get(context.Context, AuthorizedActor, string, string) (Result, error)
 }
 
 // ExistingOrderService adopts an already sealed customer order without carts or
@@ -152,6 +176,8 @@ type RulesReader interface {
 // the callback; this module never elevates or opens a connection itself.
 type Run func(context.Context, string, func(context.Context, pgx.Tx) error) error
 type Config struct {
+	Read Run
+	SnapshotCart CartReader
 	Run     Run
 	Cart    CartReader
 	Rules   RulesReader

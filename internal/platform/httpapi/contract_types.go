@@ -205,3 +205,11 @@ type CreateCheckout201JSONResponse = generated.CreateCheckout201JSONResponse
 type ReceiveFakePaymentEventRequestObject = generated.ReceiveFakePaymentEventRequestObject
 type ReceiveFakePaymentEventResponseObject = generated.ReceiveFakePaymentEventResponseObject
 type ReceiveFakePaymentEvent200JSONResponse = generated.ReceiveFakePaymentEvent200JSONResponse
+
+type CheckoutPreview = generated.CheckoutPreview
+type PreviewCheckoutRequestObject = generated.PreviewCheckoutRequestObject
+type PreviewCheckoutResponseObject = generated.PreviewCheckoutResponseObject
+type PreviewCheckout200JSONResponse = generated.PreviewCheckout200JSONResponse
+type GetCheckoutRequestObject = generated.GetCheckoutRequestObject
+type GetCheckoutResponseObject = generated.GetCheckoutResponseObject
+type GetCheckout200JSONResponse = generated.GetCheckout200JSONResponse

@@ -7,6 +7,8 @@ package checkout
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"strconv"
 	"errors"
 	"fmt"
 	"io"
@@ -24,12 +26,16 @@ import (
 )
 
 const (
-	StartOperation = "createCheckout"
-	FakeOperation  = "receiveFakePaymentEvent"
-	StartPattern   = "/api/v1/t/{tenant_id}/checkout"
-	FakePattern    = "/api/v1/testing/payments/fake/webhook"
-	startBodyLimit = 256 << 10
-	fakeBodyLimit  = 64 << 10
+	StartOperation   = "createCheckout"
+	PreviewOperation = "previewCheckout"
+	GetOperation     = "getCheckout"
+	FakeOperation    = "receiveFakePaymentEvent"
+	StartPattern     = "/api/v1/t/{tenant_id}/checkout"
+	PreviewPattern   = "/api/v1/t/{tenant_id}/checkout/preview"
+	GetPattern       = "/api/v1/t/{tenant_id}/checkout/{checkout_id}"
+	FakePattern      = "/api/v1/testing/payments/fake/webhook"
+	startBodyLimit   = 256 << 10
+	fakeBodyLimit    = 64 << 10
 )
 
 // StorefrontResolver must verify customer session or opaque guest capability,
@@ -59,6 +65,7 @@ type Handler struct {
 	config Config
 }
 type actorKey struct{}
+type cartIDKey struct{}
 type rawEventKey struct{}
 type rawEvent struct {
 	body      []byte
@@ -91,10 +98,10 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 		fallback = httpapi.DenyAuthenticator{}
 	}
 	return composedAuth{fallback: fallback, authenticate: authFunc(func(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
-		if spec.OperationID != StartOperation {
+		if !browserOperation(spec.OperationID) {
 			return fallback.Authenticate(ctx, r, spec)
 		}
-		if spec.Access != httpapi.Storefront || spec.Scope != "" || spec.Method != http.MethodPost || spec.Pattern != StartPattern || s.config.Resolver == nil {
+		if spec.Access != httpapi.Storefront || spec.Scope != "" || !browserSpec(spec) || s.config.Resolver == nil {
 			return nil, unauthenticated()
 		}
 		origins, tokens := r.Header.Values("Origin"), r.Header.Values("X-CSRF-Token")
@@ -111,7 +118,8 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 		if actor.TenantID() != r.PathValue("tenant_id") {
 			return nil, notFound()
 		}
-		return context.WithValue(ctx, actorKey{}, actor), nil
+		ctx = context.WithValue(ctx, actorKey{}, actor)
+		return context.WithValue(ctx, cartIDKey{}, singleHeader(r, "X-Cart-ID")), nil
 	})}
 }
 
@@ -125,7 +133,7 @@ func (a composedAuth) Authenticate(ctx context.Context, r *http.Request, spec ht
 	return a.authenticate(ctx, r, spec)
 }
 func (a composedAuth) ResolveActor(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (httpapi.Actor, error) {
-	if spec.OperationID == StartOperation {
+	if browserOperation(spec.OperationID) {
 		return httpapi.Actor{}, nil
 	}
 	if resolver, ok := a.fallback.(httpapi.ActorResolver); ok {
@@ -134,7 +142,7 @@ func (a composedAuth) ResolveActor(ctx context.Context, r *http.Request, spec ht
 	return httpapi.Actor{}, nil
 }
 func (a composedAuth) ResolveTransactionAuthorization(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (func(context.Context, *db.Queries) error, error) {
-	if spec.OperationID == StartOperation {
+	if browserOperation(spec.OperationID) {
 		return nil, nil
 	}
 	if resolver, ok := a.fallback.(httpapi.TransactionAuthorizationResolver); ok {
@@ -149,7 +157,11 @@ func (f authFunc) Authenticate(ctx context.Context, r *http.Request, s httpapi.R
 	return f(ctx, r, s)
 }
 func (s *Handler) Routes() []httpapi.Route {
-	specs := []httpapi.RouteSpec{{OperationID: StartOperation, Method: http.MethodPost, Pattern: StartPattern, Access: httpapi.Storefront, MaxBodySize: startBodyLimit}}
+	specs := []httpapi.RouteSpec{
+		{OperationID: StartOperation, Method: http.MethodPost, Pattern: StartPattern, Access: httpapi.Storefront, MaxBodySize: startBodyLimit},
+		{OperationID: PreviewOperation, Method: http.MethodPost, Pattern: PreviewPattern, Access: httpapi.Storefront, MaxBodySize: startBodyLimit},
+		{OperationID: GetOperation, Method: http.MethodGet, Pattern: GetPattern, Access: httpapi.Storefront},
+	}
 	if s.config.FakeEnabled {
 		specs = append(specs, httpapi.RouteSpec{OperationID: FakeOperation, Method: http.MethodPost, Pattern: FakePattern, Access: httpapi.Public, MaxBodySize: fakeBodyLimit})
 	}
@@ -160,6 +172,85 @@ func (s *Handler) Routes() []httpapi.Route {
 		}
 	}
 	return routes
+}
+func (s *Handler) browserReader(ctx context.Context, target string) (contract.AuthorizedActor, contract.BrowserReader, error) {
+	actor, ok := ctx.Value(actorKey{}).(contract.AuthorizedActor)
+	tenant, err := httpapi.AuthorizedTenant(ctx)
+	if !ok || !actor.Valid() || err != nil {
+		return contract.AuthorizedActor{}, nil, unauthenticated()
+	}
+	if tenant != actor.TenantID() || tenant != target {
+		return contract.AuthorizedActor{}, nil, notFound()
+	}
+	reader, ok := s.config.Service.(contract.BrowserReader)
+	if !ok {
+		return contract.AuthorizedActor{}, nil, apperrors.New(503, "checkout_unavailable", "Checkout is unavailable")
+	}
+	return actor, reader, nil
+}
+
+type previewOptionJSON struct {
+	RateID      string `json:"rate_id"`
+	Method      string `json:"method"`
+	AmountMinor string `json:"amount_minor"`
+}
+type previewJSON struct {
+	SubtotalMinor   string              `json:"subtotal_minor"`
+	TaxMinor        string              `json:"tax_minor"`
+	ShippingMinor   string              `json:"shipping_minor"`
+	TotalMinor      string              `json:"total_minor"`
+	Currency        string              `json:"currency"`
+	ShippingOptions []previewOptionJSON `json:"shipping_options"`
+}
+
+func (s *Handler) PreviewCheckout(ctx context.Context, r httpapi.PreviewCheckoutRequestObject) (httpapi.PreviewCheckoutResponseObject, error) {
+	actor, reader, err := s.browserReader(ctx, r.TenantId.String())
+	if err != nil {
+		return nil, err
+	}
+	if r.Body == nil {
+		return nil, apperrors.New(400, "invalid_json", "Checkout preview body required")
+	}
+	if cartID, _ := ctx.Value(cartIDKey{}).(string); (actor.Kind() == "guest" || cartID != "") && cartID != r.Body.CartId.String() {
+		return nil, notFound()
+	}
+	result, err := reader.Preview(ctx, actor, contract.PreviewInput{CartID: r.Body.CartId.String(), Country: r.Body.ShippingAddress.Country, Region: value(r.Body.ShippingAddress.Region), PostalCode: r.Body.ShippingAddress.PostalCode})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	options := make([]previewOptionJSON, 0, len(result.ShippingOptions))
+	for _, option := range result.ShippingOptions {
+		options = append(options, previewOptionJSON{option.RateID, option.Method, strconv.FormatInt(option.AmountMinor, 10)})
+	}
+	wire := previewJSON{strconv.FormatInt(result.SubtotalMinor, 10), strconv.FormatInt(result.TaxMinor, 10), strconv.FormatInt(result.ShippingMinor, 10), strconv.FormatInt(result.TotalMinor, 10), result.Currency, options}
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		return nil, err
+	}
+	var dto httpapi.CheckoutPreview
+	if err := json.Unmarshal(encoded, &dto); err != nil {
+		return nil, err
+	}
+	return httpapi.PreviewCheckout200JSONResponse(dto), nil
+}
+func (s *Handler) GetCheckout(ctx context.Context, r httpapi.GetCheckoutRequestObject) (httpapi.GetCheckoutResponseObject, error) {
+	actor, reader, err := s.browserReader(ctx, r.TenantId.String())
+	if err != nil {
+		return nil, err
+	}
+	cartID, ok := ctx.Value(cartIDKey{}).(string)
+	if !ok || cartID == "" {
+		return nil, notFound()
+	}
+	result, err := reader.Get(ctx, actor, r.CheckoutId.String(), cartID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	dto, err := representation(result)
+	if err != nil {
+		return nil, err
+	}
+	return httpapi.GetCheckout200JSONResponse(dto), nil
 }
 func (s *Handler) captureWebhook(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -212,6 +303,7 @@ func (s *Handler) CreateCheckout(ctx context.Context, r httpapi.CreateCheckoutRe
 		contact = orders.Contact{Email: body.BuyerContact.Email, Name: value(body.BuyerContact.Name), Phone: value(body.BuyerContact.Phone)}
 	}
 	input := contract.StartInput{CartID: body.CartId.String(), IdempotencyKey: string(r.Params.IdempotencyKey), BuyerContact: contact, ShippingAddress: contract.ShippingAddress{Country: body.ShippingAddress.Country, Subdivision: value(body.ShippingAddress.Subdivision), Address1: body.ShippingAddress.Address1, Address2: value(body.ShippingAddress.Address2), City: body.ShippingAddress.City, PostalCode: body.ShippingAddress.PostalCode}}
+	if cartID, _ := ctx.Value(cartIDKey{}).(string); cartID != "" && cartID != input.CartID { return nil, notFound() }
 	result, err := s.config.Service.Start(ctx, actor, input)
 	if err != nil {
 		return nil, mapError(err)
@@ -299,4 +391,14 @@ func mapError(err error) error {
 	default:
 		return err
 	}
+}
+
+// Browser operations have one admission path; employee extensions only forward elsewhere.
+func browserOperation(op string) bool { return op == StartOperation || op == PreviewOperation || op == GetOperation }
+func browserSpec(s httpapi.RouteSpec) bool {
+ return s.OperationID == StartOperation && s.Method == http.MethodPost && s.Pattern == StartPattern || s.OperationID == PreviewOperation && s.Method == http.MethodPost && s.Pattern == PreviewPattern || s.OperationID == GetOperation && s.Method == http.MethodGet && s.Pattern == GetPattern
+}
+func (a composedAuth) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec httpapi.RouteSpec) {
+ if browserOperation(spec.OperationID) { return }
+ if responder, ok := a.fallback.(httpapi.AuthenticationResponder); ok { responder.AuthenticationResponse(ctx,w,r,spec) }
 }
