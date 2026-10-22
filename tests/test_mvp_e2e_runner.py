@@ -83,7 +83,7 @@ class BrowserReceiptTests(unittest.TestCase):
         specs = []
         for title in module.ACTIVE_TESTS | module.GAP_TESTS:
             gap = title in module.GAP_TESTS
-            filename = ('mvp-gaps.spec.ts' if gap else 'purchase.spec.ts' if title in module.PURCHASE_TESTS
+            filename = ('mvp-gaps.spec.ts' if gap or title in module.ADMIN_TESTS else 'purchase.spec.ts' if title in module.PURCHASE_TESTS
                         else 'payments.spec.ts' if title in module.PAYMENT_TESTS
                         else 'admin.spec.ts' if title.startswith('real ') else 'storefront.spec.ts')
             specs.append({'title': title, 'file': filename, 'tests': [
@@ -91,7 +91,7 @@ class BrowserReceiptTests(unittest.TestCase):
                  'annotations': [{'type': 'fixme'}] if gap else [],
                  'results': [{'status': 'skipped' if gap else 'passed'}]}
                 for project in ('desktop', 'mobile')]})
-        return {'stats': {'expected': 30, 'skipped': 4, 'unexpected': 0, 'flaky': 0},
+        return {'stats': {'expected': 32, 'skipped': 2, 'unexpected': 0, 'flaky': 0},
                 'suites': [{'specs': specs}]}
 
     def rows(self):
@@ -110,7 +110,7 @@ class BrowserReceiptTests(unittest.TestCase):
     def test_payment_is_required_in_both_projects_and_exact_spec(self):
         module = self.runner()
         report = self.browser_report(module)
-        self.assertEqual(module.verify_browser_report(report)['expected'], 30)
+        self.assertEqual(module.verify_browser_report(report)['expected'], 32)
         for mutation in ('remove', 'wrong_file', 'skip'):
             changed = json.loads(json.dumps(report))
             payment = next(s for s in changed['suites'][0]['specs'] if s['title'] in module.PAYMENT_TESTS)
