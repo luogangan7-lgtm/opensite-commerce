@@ -121,19 +121,21 @@ func TestPrivacyHTTPReadOnlyStatusAndBoundedDownload(t *testing.T) {
 	}
 }
 
-// HEAD matches GET patterns in ServeMux; it must not reach Download (thread T6).
-func TestPrivacyHTTPHeadDoesNotConsumeDownload(t *testing.T) {
+// Metadata probes must never consume the single-use capability (FIX-44).
+func TestPrivacyHTTPHeadAndGetDoNotConsumeDownload(t *testing.T) {
 	svc := &service{body: []byte("{}")}
 	router := makeRouter(t, auth{scope: "customers:privacy"}, svc, subject, io.Discard)
 	uri := path + "/" + requestID + "/download?token=" + strings.Repeat("a", 43)
-	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, httptest.NewRequest("HEAD", uri, nil))
-	if rr.Code != 405 || svc.calls != 0 {
-		t.Fatalf("HEAD status=%d calls=%d", rr.Code, svc.calls)
+	for _, method := range []string{"HEAD", "GET"} {
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, httptest.NewRequest(method, uri, nil))
+		if rr.Code != 405 || svc.calls != 0 {
+			t.Fatalf("%s status=%d calls=%d", method, rr.Code, svc.calls)
+		}
 	}
-	rr = httptest.NewRecorder()
-	router.ServeHTTP(rr, httptest.NewRequest("GET", uri, nil))
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, httptest.NewRequest("POST", uri, nil))
 	if rr.Code != 200 || svc.calls != 1 {
-		t.Fatalf("GET after HEAD status=%d calls=%d", rr.Code, svc.calls)
+		t.Fatalf("POST after probes status=%d calls=%d", rr.Code, svc.calls)
 	}
 }
