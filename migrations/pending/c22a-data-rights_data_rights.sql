@@ -303,7 +303,7 @@ END $fn$;
 -- including receipts created before acceptance. Actor/email never assigns ownership.
 CREATE FUNCTION app.data_rights_receipt_owned(p_customer uuid,p_kind text,p_actor uuid,p_operation text,p_body jsonb) RETURNS boolean LANGUAGE sql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
  SELECT (p_kind='customer' AND p_actor=p_customer) OR
-  (starts_with(p_operation,'quotes.') AND EXISTS(SELECT FROM app.quotes q
+  (false AND starts_with(p_operation,'quotes.') AND EXISTS(SELECT FROM app.quotes q
    WHERE q.tenant_id=app.data_rights_context() AND q.accepted_by=p_customer AND q.id::text=p_body->>'id'));
 $fn$;
 CREATE FUNCTION app.data_rights_erase_customer(p_customer uuid,p_actor_kind text,p_actor_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
