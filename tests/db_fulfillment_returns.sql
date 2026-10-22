@@ -514,7 +514,7 @@ BEGIN
    n:=(r->>'income_minor')::bigint;tx:=(r->>'tax_minor')::bigint;sh:=(r->>'shipping_minor')::bigint;
    IF n<0 OR tx<0 OR sh<0 THEN RAISE EXCEPTION 'FULFILLMENT_GATE nonmonotone tiny entitlement';END IF;
    IF case_i=4 AND ARRAY[n,tx,sh]<>(CASE unit_i WHEN 1 THEN ARRAY[0,0,6] WHEN 2 THEN ARRAY[0,3,15]
-     WHEN 3 THEN ARRAY[0,0,7] ELSE ARRAY[0,4,15] END) THEN
+     WHEN 3 THEN ARRAY[0,0,7] ELSE ARRAY[0,4,15] END)::bigint[] THEN
     RAISE EXCEPTION 'FULFILLMENT_GATE excess discount tuple order or cumulative rounding unit % actual %',unit_i,ARRAY[n,tx,sh];END IF;
    actual:=ARRAY[actual[1]+n,actual[2]+tx,actual[3]+sh];
    SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
