@@ -14,7 +14,3 @@ test('FIXME admin orders list and detail on the real orders read API', async () 
   throw new Error('Replace this gap with real orders list/detail assertions against seeded orders before removing FIXME');
 });
 
-test('FIXME guest storefront buy → cart → checkout → Fakepay', async () => {
-  test.fixme(true, 'PR #55 public SKU wiring and PR #38 checkout are OPEN (storefront purchase pages #53 are merged)');
-  throw new Error('Replace this gap with the complete real browser journey and captured payment/order assertions before removing FIXME');
-});

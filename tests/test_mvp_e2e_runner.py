@@ -83,14 +83,15 @@ class BrowserReceiptTests(unittest.TestCase):
         specs = []
         for title in module.ACTIVE_TESTS | module.GAP_TESTS:
             gap = title in module.GAP_TESTS
-            filename = ('mvp-gaps.spec.ts' if gap else 'payments.spec.ts' if title in module.PAYMENT_TESTS
+            filename = ('mvp-gaps.spec.ts' if gap else 'purchase.spec.ts' if title in module.PURCHASE_TESTS
+                        else 'payments.spec.ts' if title in module.PAYMENT_TESTS
                         else 'admin.spec.ts' if title.startswith('real ') else 'storefront.spec.ts')
             specs.append({'title': title, 'file': filename, 'tests': [
                 {'projectName': project, 'expectedStatus': 'skipped' if gap else 'passed',
                  'annotations': [{'type': 'fixme'}] if gap else [],
                  'results': [{'status': 'skipped' if gap else 'passed'}]}
                 for project in ('desktop', 'mobile')]})
-        return {'stats': {'expected': 26, 'skipped': 6, 'unexpected': 0, 'flaky': 0},
+        return {'stats': {'expected': 30, 'skipped': 4, 'unexpected': 0, 'flaky': 0},
                 'suites': [{'specs': specs}]}
 
     def rows(self):
@@ -109,7 +110,7 @@ class BrowserReceiptTests(unittest.TestCase):
     def test_payment_is_required_in_both_projects_and_exact_spec(self):
         module = self.runner()
         report = self.browser_report(module)
-        self.assertEqual(module.verify_browser_report(report)['expected'], 26)
+        self.assertEqual(module.verify_browser_report(report)['expected'], 30)
         for mutation in ('remove', 'wrong_file', 'skip'):
             changed = json.loads(json.dumps(report))
             payment = next(s for s in changed['suites'][0]['specs'] if s['title'] in module.PAYMENT_TESTS)
@@ -131,6 +132,37 @@ class BrowserReceiptTests(unittest.TestCase):
                 module.verify_payment_witness(rows)
         for rows in ([], self.rows()[:1], [self.rows()[0], self.rows()[0]]):
             with self.assertRaises(RuntimeError): module.verify_payment_witness(rows)
+
+
+
+class PurchaseWitnessTests(unittest.TestCase):
+    def test_browser_pass_cannot_replace_owned_order_stock_inbox_and_ledger(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/purchase.py'
+        spec = importlib.util.spec_from_file_location('mvp_purchase', source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        row = {'sessions': 4, 'paid': 2, 'receipt_only': 2, 'committed_owned': 2,
+               'active_owned': 2, 'on_hand': 18, 'reserved': 2, 'inbox': 4,
+               'captured': 2, 'pending_refund': 2, 'processed': 2, 'pending': 2,
+               'journals': 2, 'cash': 6280, 'paid_outbox': 2, 'debits': 6280, 'credits': 6280}
+        self.assertEqual(module.verify(row)['status'], 'PASS')
+        for key in row:
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                module.verify({**row, key: row[key] + 1})
+        for bad in (None, {}, [], {**row, 'debits': 0, 'credits': 0}):
+            with self.assertRaises(RuntimeError):
+                module.verify(bad)
+
+    def test_purchase_cannot_be_removed_skipped_or_reclassified(self):
+        module = BrowserReceiptTests().runner()
+        for mutation in ('remove', 'wrong_file', 'skip'):
+            report = BrowserReceiptTests().browser_report(module)
+            purchase = next(s for s in report['suites'][0]['specs'] if s['title'] in module.PURCHASE_TESTS)
+            if mutation == 'remove': report['suites'][0]['specs'].remove(purchase)
+            elif mutation == 'wrong_file': purchase['file'] = 'mvp-gaps.spec.ts'
+            else: purchase['tests'][0]['results'] = [{'status': 'skipped'}]
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                module.verify_browser_report(report)
 
 
 if __name__ == '__main__':
