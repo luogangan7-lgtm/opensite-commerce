@@ -922,10 +922,13 @@ def query(name, token_hash):
     sql = match[1].strip()
     values = {'at': "clock_timestamp()", 'user_id': "'"+user_id+"'",
               'token_hash': "decode('"+token_hash+"','hex')", 'idle_seconds': '1800',
+              'verified_password_hash': "'fixture-only'",
               'created_at': "clock_timestamp()", 'expires_at': "(clock_timestamp()+interval '1 hour')"}
     sql = re.sub(r'sqlc.arg\((\w+)\)', lambda m: values[m[1]], sql)
     assert 'sqlc.' not in sql
     return sql
+print(query('LoginLockUser', old_hash).rstrip(';') + ' \\gset')
+print(query('LoginLockSession', old_hash).rstrip(';') + ' \\gset')
 rotate = query('LoginRotateOldSession', old_hash)
 assert rotate.endswith(';')
 print(rotate[:-1] + ' RETURNING s.id AS rotated \\gset')
@@ -943,10 +946,10 @@ SQL
 LOGIN_FIRST_SQL=$(login_rotation_sql "$LOGIN_USER" "$LOGIN_OLD_HASH" "$LOGIN_NEW_A")
 LOGIN_SECOND_SQL=$(login_rotation_sql "$LOGIN_USER" "$LOGIN_OLD_HASH" "$LOGIN_NEW_B")
 gate_close 74
-auth_tx login_rotate_first "$LOGIN_FIRST_SQL $(park 74)" &
+auth_tx login_rotate_first "SET LOCAL lock_timeout='500ms'; SET LOCAL statement_timeout='1500ms'; $LOGIN_FIRST_SQL $(park 74)" &
 login_first_pid=$!
 await login_rotate_first advisory
-auth_tx login_rotate_second "$LOGIN_SECOND_SQL" &
+auth_tx login_rotate_second "SET LOCAL lock_timeout='500ms'; SET LOCAL statement_timeout='1500ms'; $LOGIN_SECOND_SQL" &
 login_second_pid=$!
 await login_rotate_second "${ROWLOCK[@]}"
 blocked=$(sql <<<"SELECT first.pid=ANY(pg_blocking_pids(second.pid)) FROM pg_stat_activity first,pg_stat_activity second WHERE first.application_name='${RACE_PREFIX}login_rotate_first' AND second.application_name='${RACE_PREFIX}login_rotate_second';")

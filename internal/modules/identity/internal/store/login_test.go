@@ -31,6 +31,9 @@ func (r loginFakeRow) Scan(dest ...any) error {
 	}
 	id, _ := uuid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	*dest[0].(*pgtype.UUID) = id
+	if len(dest) == 1 {
+		return nil
+	}
 	*dest[1].(*pgtype.UUID) = r.user
 	*dest[2].(*pgtype.Timestamptz) = stamp(r.at)
 	*dest[3].(*pgtype.Timestamptz) = stamp(r.at)
@@ -43,7 +46,7 @@ type loginFakeTx struct {
 	pgx.Tx
 	writes                   []string
 	rotated                  bool
-	rejectDevice, failCommit bool
+	rejectDevice, failCommit, rejectUser bool
 	noRow                    bool
 	user                     pgtype.UUID
 	at                       time.Time
@@ -66,7 +69,18 @@ func (tx *loginFakeTx) Exec(_ context.Context, sql string, _ ...any) (pgxadapter
 	}
 	return pgxadapter.NewCommandTag("INSERT 0 1"), nil
 }
-func (tx *loginFakeTx) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
+func (tx *loginFakeTx) QueryRow(_ context.Context, sql string, _ ...any) pgx.Row {
+	if strings.Contains(sql, "LoginLockUser") {
+		tx.writes = append(tx.writes, "user")
+		if tx.rejectUser {
+			return loginFakeRow{err: pgx.ErrNoRows}
+		}
+		return loginFakeRow{}
+	}
+	if strings.Contains(sql, "LoginLockSession") {
+		tx.writes = append(tx.writes, "old")
+		return loginFakeRow{}
+	}
 	tx.writes = append(tx.writes, "session")
 	if tx.noRow {
 		return loginFakeRow{err: pgx.ErrNoRows}
@@ -109,14 +123,14 @@ func loginFixture() (*LoginRepository, *loginFakeTx, login.SessionInput) {
 	runner := &loginFakeRunner{tx: tx}
 	r := &LoginRepository{runner: runner, sessionRunner: runner, idle: 30 * time.Minute}
 	old := [32]byte{1}
-	in := login.SessionInput{UserID: u.String(), TokenHash: [32]byte{2}, DeviceHash: [32]byte{3}, CreatedAt: at, ExpiresAt: at.Add(time.Hour), DeviceExpiresAt: at.Add(24 * time.Hour), OldTokenHash: &old}
+	in := login.SessionInput{UserID: u.String(), VerifiedPasswordHash: "fixture-only", TokenHash: [32]byte{2}, DeviceHash: [32]byte{3}, CreatedAt: at, ExpiresAt: at.Add(time.Hour), DeviceExpiresAt: at.Add(24 * time.Hour), OldTokenHash: &old}
 	return r, tx, in
 }
 func TestLostRotationNeverInsertsSuccessor(t *testing.T) {
 	r, tx, in := loginFixture()
 	tx.rotated = true
 	_, err := r.SaveLogin(context.Background(), in)
-	if !errors.Is(err, login.ErrSession) || strings.Join(tx.writes, ",") != "rotate" || tx.commitCalls != 0 || tx.committed || !tx.rolledBack || r.runner.(*loginFakeRunner).calls != 1 {
+	if !errors.Is(err, login.ErrSession) || strings.Join(tx.writes, ",") != "user,old,rotate" || tx.commitCalls != 0 || tx.committed || !tx.rolledBack || r.runner.(*loginFakeRunner).calls != 1 {
 		t.Fatalf("lost rotation must rollback before successor: err=%v writes=%v commit=%v rollback=%v", err, tx.writes, tx.committed, tx.rolledBack)
 	}
 }
@@ -129,7 +143,7 @@ func TestSaveLoginTransactionAtomicity(t *testing.T) {
 			tx.noRow = failure == "disabled"
 			got, err := r.SaveLogin(context.Background(), in)
 			if failure == "" {
-				if err != nil || got.UserID != in.UserID || !tx.committed || tx.commitCalls != 1 || r.runner.(*loginFakeRunner).calls != 1 || strings.Join(tx.writes, ",") != "rotate,session,device" {
+				if err != nil || got.UserID != in.UserID || !tx.committed || tx.commitCalls != 1 || r.runner.(*loginFakeRunner).calls != 1 || strings.Join(tx.writes, ",") != "user,old,rotate,session,device" {
 					t.Fatalf("transaction failed: %v %#v", err, tx)
 				}
 			} else {
@@ -140,11 +154,19 @@ func TestSaveLoginTransactionAtomicity(t *testing.T) {
 				if !errors.Is(err, want) || got.ID != "" || tx.committed || !tx.rolledBack {
 					t.Fatalf("unsafe failure: %v %#v", err, tx)
 				}
-				if failure == "disabled" && strings.Join(tx.writes, ",") != "rotate,session" {
+				if failure == "disabled" && strings.Join(tx.writes, ",") != "user,old,rotate,session" {
 					t.Fatal("disabled user inserted device")
 				}
 			}
 		})
+	}
+}
+
+func TestPasswordFenceRejectsBeforeSessionLock(t *testing.T) {
+	r, tx, in := loginFixture()
+	tx.rejectUser = true
+	if _, err := r.SaveLogin(context.Background(), in); !errors.Is(err, login.ErrCredentials) || strings.Join(tx.writes, ",") != "user" || tx.committed || !tx.rolledBack {
+		t.Fatal("credential fence failed before session mutation", err, tx.writes)
 	}
 }
 

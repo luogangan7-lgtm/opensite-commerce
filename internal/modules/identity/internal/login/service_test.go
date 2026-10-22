@@ -208,6 +208,9 @@ func (f *fakeRepo) FailDevice(context.Context, string) error {
 	f.deviceFailures++
 	return f.deviceFailureErr
 }
+func (f *fakeRepo) RotationSession(context.Context, [32]byte, string) (bool, error) {
+	return true, nil
+}
 func (f *fakeRepo) SaveLogin(_ context.Context, i SessionInput) (Session, error) {
 	f.saves++
 	f.saved = i
@@ -455,14 +458,14 @@ func TestSessionLifecycleAndRotationInput(t *testing.T) {
 		t.Fatal("idle expired admitted")
 	}
 	in.OldSessionToken = old + "="
-	if _, e := s.Login(context.Background(), in); !errors.Is(e, ErrSession) || r.saves != 1 {
-		t.Fatal("invalid old token admitted", e)
+	if _, e := s.Login(context.Background(), in); e != nil || r.saves != 2 || r.saved.OldTokenHash != nil {
+		t.Fatal("malformed cookie obstructed fresh credential login", e)
 	}
 }
 
 func TestConfigOriginAndKeyCopy(t *testing.T) {
 	now := time.Unix(10000, 0)
-	for _, origin := range []string{"http://admin.example.com", "https://admin.example.com/", "https://user@admin.example.com", "https://admin.example.com?", "https://:443", "https://admin.example.com:"} {
+	for _, origin := range []string{"http://admin.example.com", "https://admin.example.com/", "https://user@admin.example.com", "https://admin.example.com?", "https://:443", "https://admin.example.com:", "https://admin.example.com:443"} {
 		cfg := testConfig(&now)
 		cfg.Origin = origin
 		if _, e := New(&fakeRepo{}, cfg); e == nil {

@@ -34,10 +34,13 @@ Both in-memory IP admission and durable account-IP counters group IPv6 clients b
 account and account-IP failure counters are durable database state. Multiple
 application instances need a deployment-level admission policy.
 
-A login creates a new session. If an explicit old-session token is invalid, stale
-or belongs to another account, the login returns HTTP 401 and clears that cookie;
-the next credential submission can recover without a manual cookie clear.
-Other failures do not clear the session cookie. When a valid same-user old token is supplied, the private
+A login creates a new session. An invalid, stale or other-account old-session cookie does not block a fresh
+credential login. A read-only preflight before KDF preserves an observed active
+old token for the transaction CAS; losing rotation returns HTTP 401 and emits no
+cookies, so it cannot overwrite a concurrent winner. Password login locks the user
+before sessions and rechecks the verified PHC after any user-row wait. Every
+password change revokes all sessions in the writer transaction; a same-value
+write preserves them. The pending H4 hardening migration owns these functions. When a valid same-user old token is supplied, the private
 store conditionally revokes only the same user's active, unexpired, non-idle
 session, then inserts its successor in the same transaction. Zero updated rows
 roll back before insertion. Admission checks active user status, finite clocks,

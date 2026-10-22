@@ -245,6 +245,7 @@ func TestF28StaleCookieRecovery(t *testing.T) {
 			_, r, f, s, raw := transportFixture(t)
 			f.credential = successfulCredential()
 			f.saveErr = login.ErrSession
+			f.dead = true // Preflight observes stale authority, so SaveLogin receives no old token.
 			if kind == "malformed" {
 				raw = "malformed"
 			}
@@ -252,8 +253,8 @@ func TestF28StaleCookieRecovery(t *testing.T) {
 			q.AddCookie(&http.Cookie{Name: SessionCookie, Value: raw})
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, q)
-			if w.Code != 401 {
-				t.Fatal("invalid old token admitted", w.Code)
+			if w.Code != 201 {
+				t.Fatal("stale cookie blocked fresh credential login", w.Code)
 			}
 			var cleared bool
 			for _, c := range w.Result().Cookies() {
@@ -261,10 +262,10 @@ func TestF28StaleCookieRecovery(t *testing.T) {
 					cleared = true
 				}
 			}
-			if !cleared {
-				t.Fatal("old session cookie retained")
+			if cleared {
+				t.Fatal("credential login emitted a deletion cookie")
 			}
-			// A browser honoring the clearing response sends no old cookie on retry.
+			// Successful credential login also works without an old cookie.
 			q = signedLogin(t, s, "a@example.test", "correct-password")
 			w = httptest.NewRecorder()
 			r.ServeHTTP(w, q)

@@ -226,7 +226,7 @@ SELECT 'PASS: four internal roles; exact contracted-table and every-column privi
 -- Bootstrap is execute-only; its unreachable owner has minimal credential DML.
 DO $identity$
 DECLARE role_name text; r record; t record; a record; p text; allowed text[]; f record;
- names text[]:=ARRAY['auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts'];
+ names text[]:=ARRAY['auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts','auth_lock_login_user','auth_revoke_user_sessions'];
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['app_credential_writer','app_admin_bootstrap'] LOOP
   SELECT * INTO STRICT r FROM pg_roles WHERE rolname=role_name;
@@ -240,7 +240,7 @@ BEGIN
    FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
     allowed:=ARRAY[]::text[];
     IF role_name='app_credential_writer' THEN
-     IF p='SELECT' THEN allowed:=CASE t.relname WHEN 'users' THEN ARRAY['id','status'] WHEN 'tenants' THEN ARRAY['id','status']
+     IF p='SELECT' THEN allowed:=CASE t.relname WHEN 'users' THEN ARRAY['id','password_hash','status'] WHEN 'tenants' THEN ARRAY['id','status']
       WHEN 'tenant_memberships' THEN ARRAY['tenant_id','user_id','role','status']
       WHEN 'api_keys' THEN ARRAY['tenant_id','id','issued_by','key_prefix','key_hash','scopes','expires_at','revoked_at','created_at','last_used_at']
       WHEN 'auth_sessions' THEN ARRAY['id','user_id','expires_at','revoked_at','created_at','last_seen_at']
@@ -279,27 +279,29 @@ BEGIN
  END LOOP;
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname='app' AND p.proname=ANY(names) LOOP
-  IF f.proowner<>'app_credential_writer'::regrole OR f.prosecdef IS DISTINCT FROM (f.proname IN ('bootstrap_admin','auth_prune_attempts'))
+  IF f.proowner<>'app_credential_writer'::regrole OR f.prosecdef IS DISTINCT FROM (f.proname IN ('bootstrap_admin','auth_prune_attempts','auth_lock_login_user','auth_revoke_user_sessions'))
    OR cardinality(f.proconfig) IS DISTINCT FROM (CASE WHEN f.proname='bootstrap_admin' THEN 2 ELSE 1 END)
    OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
    OR (f.proname='bootstrap_admin' AND f.proconfig[2]<>'app.tenant_id=')
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE
-    grantee<>f.proowner AND NOT (grantee='app_auth'::regrole AND f.proname IN ('auth_record_failure','auth_fail_known_device','auth_prune_attempts')
+    grantee<>f.proowner AND NOT (grantee='app_auth'::regrole AND f.proname IN ('auth_record_failure','auth_fail_known_device','auth_prune_attempts','auth_lock_login_user')
     OR grantee='app_admin_bootstrap'::regrole AND f.proname='bootstrap_admin'))
    OR f.oid<>to_regprocedure(CASE f.proname WHEN 'auth_record_failure' THEN 'app.auth_record_failure(text,inet)'
     WHEN 'guard_known_device' THEN 'app.guard_known_device()' WHEN 'auth_fail_known_device' THEN 'app.auth_fail_known_device(uuid)'
     WHEN 'bootstrap_admin' THEN 'app.bootstrap_admin(text,text,text)'
-    WHEN 'auth_prune_attempts' THEN 'app.auth_prune_attempts(integer)' END) THEN RAISE EXCEPTION 'unsafe identity function %',f.proname; END IF;
+    WHEN 'auth_prune_attempts' THEN 'app.auth_prune_attempts(integer)'
+    WHEN 'auth_lock_login_user' THEN 'app.auth_lock_login_user(uuid,text)'
+    WHEN 'auth_revoke_user_sessions' THEN 'app.auth_revoke_user_sessions()' END) THEN RAISE EXCEPTION 'unsafe identity function %',f.proname; END IF;
   FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service','app_publisher',
    'app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_ledger_executor','app_orders_executor','app_queue_worker','app_outbox_tenant_broker','app_credential_writer','app_admin_bootstrap','app_fulfillment_executor','app_returns_service'] LOOP
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM
-    (role_name='app_credential_writer' OR role_name='app_auth' AND f.proname=ANY(ARRAY['auth_record_failure','auth_fail_known_device','auth_prune_attempts'])
+    (role_name='app_credential_writer' OR role_name='app_auth' AND f.proname=ANY(ARRAY['auth_record_failure','auth_fail_known_device','auth_prune_attempts','auth_lock_login_user'])
      OR role_name='app_admin_bootstrap' AND f.proname='bootstrap_admin') THEN RAISE EXCEPTION 'identity function role mismatch: % %',role_name,f.proname; END IF;
    IF role_name<>'app_credential_writer' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'identity function grant option: % %',role_name,f.proname; END IF;
   END LOOP;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>5 THEN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
   RAISE EXCEPTION 'identity function contract incomplete'; END IF;
  -- New capability roles cannot execute older business service functions either.
  FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND NOT p.proname=ANY(names)
@@ -499,7 +501,7 @@ BEGIN
    RAISE EXCEPTION 'inventory role has foreign routine capability: %',f.proname;
   END IF;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>5 THEN
   RAISE EXCEPTION 'inventory function contract incomplete';
  END IF;
 END $inventory$;
@@ -511,7 +513,7 @@ DECLARE f record; role_name text; owner_role record;
  names text[]:=ARRAY['buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at'];
 BEGIN
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-  WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
+  WHERE n.nspname='app' AND p.proname=ANY(names))<>5 THEN
   RAISE EXCEPTION 'CUSTOMERS_TRIGGER_FUNCTION_CONTRACT_INCOMPLETE';
  END IF;
  FOR f IN SELECT p.oid,p.proname,p.proowner,p.prosecdef,p.proconfig,p.proacl,p.prorettype,p.pronargs,p.prokind
@@ -732,7 +734,7 @@ BEGIN
    END LOOP;
   END IF;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>5 THEN
   RAISE EXCEPTION 'orders function contract incomplete';
  END IF;
 END $orders$;
@@ -910,7 +912,7 @@ DECLARE r record;t record;a record;f record; privilege text;cols text[]; expecte
    END LOOP;
   ELSIF has_function_privilege(r.oid,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_FOREIGN_FUNCTION %',f.proname; END IF;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace='app'::regnamespace AND p.proname=ANY(names))<>cardinality(names) THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_INCOMPLETE'; END IF;
+ IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace='app'::regnamespace AND p.proname=ANY(names))<>5 THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_INCOMPLETE'; END IF;
 END $notifications$;
 SELECT 'PASS: notifications exact column/function privileges and FORCE RLS' AS result;
 
@@ -969,7 +971,7 @@ BEGIN
    END LOOP;
   ELSIF has_function_privilege(r.oid,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'QUOTES_FOREIGN_ROUTINE %',f.proname; END IF;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN RAISE EXCEPTION 'QUOTES_ROUTINE_CONTRACT_INCOMPLETE'; END IF;
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>5 THEN RAISE EXCEPTION 'QUOTES_ROUTINE_CONTRACT_INCOMPLETE'; END IF;
 END $quotes$;
 SELECT 'PASS: quotes exact table/column/function grants, bounded definer authority and FORCE RLS' AS result;
 -- CMS controlled functions and capability flag must have exact effective ACLs.
@@ -1226,7 +1228,7 @@ BEGIN
    (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund','post_ledger')) THEN
    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_SERVICE_FUNCTION %',f.proname; END IF;
  END LOOP;
- IF(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
+ IF(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>5 THEN
   RAISE EXCEPTION 'FULFILLMENT_MATRIX_FUNCTION_SET'; END IF;
  IF has_table_privilege('app_runtime','app.audit_events','UPDATE') OR has_table_privilege('app_runtime','app.audit_events','DELETE')
   OR EXISTS(SELECT FROM pg_roles audit_role WHERE pg_has_role('app_runtime',audit_role.oid,'SET') AND audit_role.rolname<>'app_runtime'

@@ -1196,6 +1196,35 @@ db "$CLOCK_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $CLOCK_DB" >/dev/null; CLOCK_DB=""
 pass 'clock upgrade preserves populated attempts/devices and exact function OID/owner/ACL'
 
+# H4: install the password fence over populated identity rows, by suffix.
+hardening_files=(migrations/[0-9][0-9][0-9]_hardening.sql)
+[[ ${#hardening_files[@]} == 1 && -f ${hardening_files[0]} ]] || { echo 'FAIL: exactly one H4 hardening migration required'; exit 1; }
+DB=upgrade_h4_$$
+admin -c "CREATE DATABASE $DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${hardening_files[0]} ]] || break
+ apply_forward "$DB" "$f"
+done
+db "$DB" <<'SQL' >/dev/null
+INSERT INTO app.users(email,password_hash) VALUES('h4-upgrade@example.test','preserve') RETURNING id AS u \gset
+INSERT INTO app.auth_sessions(user_id,token_hash,expires_at) VALUES(:'u',sha256('h4-upgrade'::bytea),clock_timestamp()+interval '1 hour');
+INSERT INTO app.known_devices(user_id,cookie_hash,expires_at) VALUES(:'u',sha256('h4-device'::bytea),clock_timestamp()+interval '1 day');
+CREATE VIEW public.h4_rows AS SELECT 'user' kind,to_jsonb(u) payload FROM app.users u
+ UNION ALL SELECT 'session',to_jsonb(s) FROM app.auth_sessions s
+ UNION ALL SELECT 'device',to_jsonb(d) FROM app.known_devices d;
+CREATE TABLE public.h4_expected AS SELECT * FROM public.h4_rows;
+SQL
+apply_forward "$DB" "${hardening_files[0]}"
+[[ $(db "$DB" -c "SELECT NOT EXISTS((TABLE public.h4_rows EXCEPT TABLE public.h4_expected) UNION ALL (TABLE public.h4_expected EXCEPT TABLE public.h4_rows))") == t ]] || bad 'H4 upgrade changed existing identity rows'
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${hardening_files[0]} ]] || continue
+ apply_forward "$DB" "$f"
+done
+db "$DB" -f tests/db_identity_hardening.sql >/dev/null
+db "$DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $DB" >/dev/null
+pass 'H4 upgrade preserves users/sessions/devices and enforces password fence with exact ACL'
+
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
 # Quotes takes over the existing005 inquiry table without rebuilding contacts.
