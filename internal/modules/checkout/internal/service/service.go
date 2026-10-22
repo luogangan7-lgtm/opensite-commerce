@@ -98,6 +98,80 @@ func decodeResult(b []byte) (contract.Result, error) {
 func snapshot(row db.AppCheckoutSession, status payment.PaymentStatus) contract.Result {
 	return contract.Result{CheckoutID: row.ID.String(), OrderID: row.OrderID.String(), State: row.Phase, AmountMinor: row.AmountMinor, Currency: row.Currency, OrderVersion: row.PayableVersion, Payment: contract.Intent{ProviderRef: row.ProviderRef, Status: status}}
 }
+
+// Preview uses only a read-only snapshot; it never reserves stock or creates an order.
+func (s *Service) Preview(ctx context.Context, actor contract.AuthorizedActor, in contract.PreviewInput) (contract.Preview, error) {
+	var out contract.Preview
+	if !actor.Valid() || !tenanttx.ValidTenantID(in.CartID) || len(in.Country) != 2 || in.Country[0] < 'A' || in.Country[0] > 'Z' || in.Country[1] < 'A' || in.Country[1] > 'Z' || !within(in.Region, 100) || in.PostalCode == "" || !within(in.PostalCode, 32) || strings.ContainsFunc(in.PostalCode, func(c rune) bool { return c < ' ' }) {
+		return out, contract.ErrInvalid
+	}
+	if s.config.Read == nil || s.config.SnapshotCart == nil || s.config.Rules == nil {
+		return out, contract.ErrUnavailable
+	}
+	err := s.config.Read(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
+		cart, err := s.config.SnapshotCart.Read(ctx, tx, actor, in.CartID)
+		if err != nil {
+			return err
+		}
+		address := contract.ShippingAddress{Country: in.Country, Subdivision: in.Region, PostalCode: in.PostalCode}
+		rules, err := s.config.Rules.Load(ctx, tx, actor, cart, address)
+		if err != nil {
+			return err
+		}
+		quoted, err := calculate(cart, rules, address)
+		if err != nil {
+			return err
+		}
+		total, err := (money.Money{Amount: quoted.Net, Currency: rules.Currency}).Add(money.Money{Amount: quoted.Tax, Currency: rules.Currency})
+		if err != nil {
+			return err
+		}
+		total, err = total.Add(quoted.Shipping.Charge)
+		if err != nil {
+			return err
+		}
+		out = contract.Preview{SubtotalMinor: quoted.Net, TaxMinor: quoted.Tax, ShippingMinor: quoted.Shipping.Charge.Amount, TotalMinor: total.Amount, Currency: rules.Currency, ShippingOptions: []contract.ShippingOption{{RateID: quoted.Shipping.RateID, Method: quoted.Shipping.Method, AmountMinor: quoted.Shipping.Charge.Amount}}}
+		return nil
+	})
+	return out, err
+}
+
+// Get returns only the checkout owned by the verified actor and cart capability.
+func (s *Service) Get(ctx context.Context, actor contract.AuthorizedActor, checkoutID, cartID string) (contract.Result, error) {
+	var out contract.Result
+	if !actor.Valid() || !tenanttx.ValidTenantID(checkoutID) || !tenanttx.ValidTenantID(cartID) {
+		return out, contract.ErrInvalid
+	}
+	if s.config.Read == nil {
+		return out, contract.ErrUnavailable
+	}
+	err := s.config.Read(ctx, actor.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
+		q, err := store.Queries(ctx, tx, actor.TenantID())
+		if err != nil {
+			return err
+		}
+		row, err := q.GetCheckoutByIDSnapshot(ctx, db.GetCheckoutByIDSnapshotParams{TenantID: store.UUID(actor.TenantID()), ID: store.UUID(checkoutID)})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return contract.ErrNotFound
+		}
+		if err != nil {
+			return store.MapError(err)
+		}
+		if row.ActorKind != actor.Kind() || row.ActorID != actor.ID() || row.CartID.String() != cartID {
+			return contract.ErrNotFound
+		}
+		saved := row.FinalResult
+		if saved == nil {
+			saved = row.StartResult
+		}
+		if saved != nil {
+			out, err = decodeResult(saved)
+			return err
+		}
+		return contract.ErrUnavailable
+	})
+	return out, err
+}
 func operation(row db.AppCheckoutSession, action string) payment.PaymentOperation {
 	return payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: row.TenantID.String(), OrderID: row.OrderID.String(), Amount: money.Money{Amount: row.AmountMinor, Currency: row.Currency}, OrderVersion: row.PayableVersion, IdempotencyKey: "checkout:v1:" + row.ID.String() + ":" + action}, ProviderRef: row.ProviderRef}
 }

@@ -13,3 +13,8 @@ import (
 func ReadIntent(ctx context.Context, tx pgx.Tx, actor contract.AuthorizedActor, id string) (contract.Intent, error) {
 	return store.ReadIntent(ctx, tx, actor, id)
 }
+
+// ReadIntentSnapshot verifies the same owner inside a read-only repeatable snapshot.
+func ReadIntentSnapshot(ctx context.Context, tx pgx.Tx, actor contract.AuthorizedActor, id string) (contract.Intent, error) {
+	return store.ReadIntentSnapshot(ctx, tx, actor, id)
+}
