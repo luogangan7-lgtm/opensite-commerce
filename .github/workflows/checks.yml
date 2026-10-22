@@ -102,9 +102,9 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: ci-speed-1-final-${{ runner.os }}-${{ runner.arch }}-go1.27.2-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: ci-speed-1-r2-final-${{ runner.os }}-${{ runner.arch }}-go1.27.2-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            ci-speed-1-final-${{ runner.os }}-${{ runner.arch }}-go1.27.2-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-
+            ci-speed-1-r2-final-${{ runner.os }}-${{ runner.arch }}-go1.27.2-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-
       - name: Download pinned Go modules
         run: go mod download
       - name: Prepare independent pgx and sqlc databases
@@ -130,6 +130,7 @@ jobs:
         if: matrix.lane == 'offline' || matrix.lane == 'pg'
         run: python -m pip install --quiet --require-hashes -r requirements-ci.txt
       - name: All-migration Go and DB role-scope parity
+        if: matrix.lane == 'pgx'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client
@@ -180,6 +181,7 @@ jobs:
         if: matrix.lane == 'pg'
         run: python3 scripts/privacy_registry.py --database --fixture
       - name: Data-rights erasure over every registry canary
+        if: matrix.lane == 'pg'
         run: python3 scripts/check_data_rights_canaries.py
       - name: Catalog/media real HTTP gates with isolated role logins
         if: matrix.lane == 'pgx' || matrix.lane == 'sqlc'
@@ -344,7 +346,7 @@ jobs:
         with:
           go-version: '1.27.2'
       - name: Bun archive extraction prerequisite
-        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends unzip postgresql-client
+        run: apt-get -o Acquire::Retries=3 update -qq && apt-get -o Acquire::Retries=3 install -y -qq --no-install-recommends unzip postgresql-client
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: '1.3.12'
