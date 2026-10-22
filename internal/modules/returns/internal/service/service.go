@@ -8,7 +8,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
@@ -25,6 +27,7 @@ type Repository interface {
 	Prepared(context.Context, pgx.Tx, string, contract.RefundInput) (contract.PreparedRefund, bool, error)
 	LockPrepared(context.Context, pgx.Tx, string, contract.RefundInput) (contract.PreparedRefund, bool, error)
 	Prepare(context.Context, pgx.Tx, string, contract.RefundInput, contract.CapturedPayment, contract.RefundAccounts) (contract.PreparedRefund, error)
+	Fail(context.Context, pgx.Tx, string, contract.PreparedRefund, bool) error
 	Complete(context.Context, pgx.Tx, string, contract.PreparedRefund, string) (contract.Return, error)
 }
 type Service struct {
@@ -129,10 +132,10 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	request := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: tenant, OrderID: prepared.OrderID, OrderVersion: prepared.PaymentVersion, Amount: money.Money{Amount: prepared.RefundMinor, Currency: prepared.Currency}, IdempotencyKey: "return:" + prepared.ID + ":" + prepared.RefundKey}, ProviderRef: prepared.ProviderRef}
 	result, err := s.config.Payments.Refund(ctx, request)
 	if err != nil {
-		return contract.Return{}, err
+		return contract.Return{}, s.recordProviderFailure(ctx, tenant, prepared, err)
 	}
 	if result.ProviderRef != prepared.ProviderRef || (result.Status != payment.StatusPartiallyRefunded && result.Status != payment.StatusRefunded) {
-		return contract.Return{}, contract.ErrUnavailable
+		return contract.Return{}, s.recordProviderFailure(ctx, tenant, prepared, contract.ErrUnavailable)
 	}
 	var out contract.Return
 	err = s.config.Runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
@@ -176,6 +179,22 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	return out, nil
 }
 
+// Only an adapter's explicit no-effect proof may release a prepared reservation.
+// Timeouts, unknown results and unmarked errors need reconciliation with the
+// same frozen PSP key. Persist even if the caller disconnected, but bound I/O.
+func (s *Service) recordProviderFailure(ctx context.Context, tenant string, prepared contract.PreparedRefund, cause error) error {
+	var providerError *payment.PaymentError
+	rejected := errors.As(cause, &providerError) && providerError.NoSideEffect && !providerError.Retryable()
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := s.config.Runner.InTenant(persistCtx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		return s.repo.Fail(ctx, tx, tenant, prepared, rejected)
+	}); err != nil {
+		return err
+	}
+	return cause
+}
+
 func validCapture(capture, total contract.CapturedPayment, tenant, orderID string) bool {
 	return capture.TenantID == tenant && capture.OrderID == orderID && capture.OrderVersion > 0 && strings.TrimSpace(capture.ProviderRef) != "" && len(capture.ProviderRef) <= 256 && !strings.ContainsAny(capture.ProviderRef, "\x00\r\n") && capture.Paid.Amount > 0 && capture.Paid.Validate() == nil && total.TenantID == tenant && total.OrderID == orderID && capture.Paid == total.Paid
 }
@@ -196,7 +215,7 @@ func validatePrepared(tenant string, in contract.RefundInput, p contract.Prepare
 	if p.ID != in.ReturnID || !contract.ValidID(p.OrderID) || p.OrderVersion <= 0 || p.RefundKey != in.IdempotencyKey || p.RefundMinor <= 0 || p.PaymentVersion <= 0 || strings.TrimSpace(p.ProviderRef) == "" || !validAccounts(contract.RefundAccounts{Income: p.IncomeAccountID, Tax: p.TaxAccountID, Shipping: p.ShippingAccountID, Cash: p.CashAccountID}) {
 		return contract.ErrUnavailable
 	}
-	if p.Status != "refund_pending" && p.Status != "refunded" {
+	if p.Status != "refund_pending" && p.Status != "refund_reconcile" && p.Status != "refunded" {
 		return contract.ErrConflict
 	}
 	if p.Status == "refunded" && !contract.ValidID(p.LedgerTransactionID) {

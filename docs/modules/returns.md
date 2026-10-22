@@ -32,9 +32,17 @@ their receipts never change. This also permits a legacy refund between completed
 RMAs without making refunded money available again. Active RMAs continue to
 exclude new direct Orders refunds, while existing event replay remains available.
 
+When a discount exceeds item net but the order total remains nonnegative,
+item income becomes zero. The excess consumes tax then shipping in order-line
+UUID order before any frozen RMA or legacy-credit subtraction. These normalized
+original caps retain cumulative integer rounding, never become negative, and
+sum to the authoritative order total. For example, items100 + shipping60 -
+discount150 refunds10 as shipping; it does not reject the order or refund60.
+
 Stored amounts use bigint minor units and one currency; intermediate integer
-products use exact numeric arithmetic. Invalid negative net budgets fail before
-contacting a payment provider. No new tax, promotion, currency conversion or
+products use exact numeric arithmetic. HTTP `refund_minor` uses the canonical
+`MinorAmount` decimal string, including values above JavaScript's safe integer
+range; internal SQL/Go amounts remain bigint/int64. No new tax, promotion, currency conversion or
 shipping-price calculation is performed.
 
 Zero-value cancellations enter terminal `completed` after immediate receipt and
@@ -50,8 +58,8 @@ Port. Positive refunds retain `received` → `refund_pending` → `refunded`.
 This is the mandatory design contract for plan item 7, recorded before production
 implementation. Earlier conservation tests do not establish that this shared
 command exists. Implementation and current-source CI evidence are required.
-The integration remains migration `035_fulfillment_returns.sql`, after main's
-`034_orders_guards.sql`; neither applied main migration is renumbered.
+The integration source is `migrations/pending/c20a-fulfillment_fulfillment_returns.sql`;
+INF-MIG assigns the continuous deployment number without changing applied migrations.
 
 Orders owns the single internal command with this frozen SQL identity:
 
@@ -59,7 +67,7 @@ Orders owns the single internal command with this frozen SQL identity:
 app.orders_refund_budget(uuid,text,uuid,bigint,text,text,bigint) RETURNS app.orders
 ```
 
-Its closed modes are `freeze`, `reserve`, `lock`, `complete` and `legacy`.
+Its closed modes are `freeze`, `reserve`, `lock`, `fail`, `complete` and `legacy`.
 Its authority is the tenant-scoped sealed order total and confirmed
 `refunded_minor`, immutable RMA receipts, and durable `refund_pending` intents.
 The command rejects unsupported modes, missing authority, inconsistent receipts,
@@ -83,7 +91,7 @@ Every mode validates the same envelope using exact numeric intermediate sums:
 `confirmed + pending <= total`,
 `legacy = confirmed - sum(refunded RMA amounts) >= 0`, and
 `legacy + sum(ALL sealed RMA amounts) <= total`. Confirmed means the Orders
-counter; pending means durable `refund_pending` receipts, not an additional
+counter; pending means durable `refund_pending` or `refund_reconcile` receipts, not an additional
 copy of an already confirmed refund. Invalid authority fails before mutation.
 
 `freeze` validates quantity/quota and this available-money envelope both before
@@ -109,7 +117,7 @@ same transaction as the Orders counter, version and event changes. Orders and
 Returns cannot split these changes into separately committed operations.
 
 The existing frozen-RMA policy remains: `requested`, `received` and
-`refund_pending` RMAs prevent a new legacy direct refund. This additional fence
+`refund_pending`, `refund_reconcile` and `refund_failed` RMAs prevent a new legacy direct refund. This additional fence
 lives inside the shared command; adopting it does not authorize weakening the
 policy. A valid previously recorded legacy event may still replay. Zero-value
 RMAs keep the existing once-only restoration and `completed` receipt behavior,
@@ -196,3 +204,31 @@ returning the remaining shipped units conserves the original total and stock.
 Provider recovery, quantity bounds, tenant isolation and illegal transitions have
 independent negative tests. No carrier integration, exchange, return label or
 real payment-provider adapter is included.
+
+## Provider rejection and reconciliation
+
+The Payment Port's `PaymentError.NoSideEffect` is an explicit trusted-adapter
+proof about the exact frozen operation, including prior attempts. Error codes
+alone, including non-retryable codes, do not provide this proof. The default is
+unknown. This small shared-contract change is inseparable from the Returns
+state change: releasing quota based only on an error code would be unsafe.
+
+After a provider error the service persists the outcome in a separate bounded
+transaction even when the caller disconnected. Explicit non-retryable no-effect
+proof transitions pending/reconcile to `refund_failed`, releasing the pending
+reservation but retaining the frozen RMA entitlement. Same-key replay cannot
+revive a failed intent. A new key with the current order version may prepare a
+corrected intent after trusted capture/account validation; old-key completion
+or rejection cannot affect the replacement. Prepare/failure event identities
+include the key hash so separate corrected attempts do not collide.
+
+All unmarked errors, timeouts, retryable errors and unconfirmed provider results
+transition to `refund_reconcile`. They retain quota and the original provider
+fingerprint/key; only the identical operation may resume and complete. Marking
+is idempotent and cannot regress a completed refund. If marking fails, the
+service reports that persistence error while the original pending reservation
+remains authoritative. Only trusted Returns service can execute the closed
+`returns_fail_refund` command; runtime cannot choose a financial outcome.
+Both failure paths use the existing Order → UUID-ordered RMAs lock discipline,
+DB timestamps and exact role matrix. No external PSP or new authentication is
+introduced.

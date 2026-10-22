@@ -464,19 +464,29 @@ DECLARE
  oid uuid; lid uuid; other_lid uuid;chosen_id uuid;sku2 uuid:=current_setting('test.fulfillment_sku2')::uuid;res app.inventory_reservations;res2 app.inventory_reservations;ord app.orders;r jsonb;
  income uuid:=uuidv7();tax uuid:=uuidv7();shipping uuid:=uuidv7();cash uuid:=uuidv7();journal uuid;
  keys uuid[];lines jsonb;accounts uuid[];sides text[];amounts bigint[];
- case_i int;unit_i int;n bigint;tx bigint;sh bigint;expected bigint[];actual bigint[];
+ case_i int;unit_i int;n bigint;tx bigint;sh bigint;expected bigint[];actual bigint[];raw_shipping bigint;
 BEGIN
  EXECUTE 'SET LOCAL ROLE app_runtime';
  INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
   (t,income,'allocation-income','USD','revenue'),(t,tax,'allocation-tax','USD','liability'),
   (t,shipping,'allocation-shipping','USD','revenue'),(t,cash,'allocation-cash','USD','asset');
- FOR case_i IN 1..3 LOOP
+ FOR case_i IN 1..4 LOOP
   oid:=uuidv7();lid:=uuidv7();other_lid:=uuidv7();
   IF case_i=1 THEN
    expected:=ARRAY[5,3,1];
    res:=app.inventory_reserve(sku,9,'order',oid,'tiny-reserve',900);
    lines:=jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',9,
     'unit_price_minor',1,'line_net_minor',9,'line_tax_minor',3,'line_total_minor',12,'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb));
+  ELSIF case_i=4 THEN
+   -- UUID order matters: excess discount20 consumes first-line tax3 then shipping17.
+   lid:='00000000-0000-4000-8000-000000000411';other_lid:='00000000-0000-4000-8000-000000000412';
+   expected:=ARRAY[0,7,43];
+   res:=app.inventory_reserve(sku,2,'order',oid,'allocation-reserve-4a',900);
+   res2:=app.inventory_reserve(sku2,2,'order',oid,'allocation-reserve-4b',900);
+   lines:=jsonb_build_array(jsonb_build_object('id',other_lid,'sku_id',sku2,'sku','fulfillment-sku-2','quantity',2,
+    'unit_price_minor',25,'line_net_minor',50,'line_tax_minor',7,'line_total_minor',57,'reservation_id',res2.id,'tax_snapshot','{"category":"standard"}'::jsonb),
+    jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
+    'unit_price_minor',25,'line_net_minor',50,'line_tax_minor',3,'line_total_minor',53,'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb));
   ELSE
    expected:=CASE case_i WHEN 2 THEN ARRAY[25,8,5] ELSE ARRAY[0,0,4] END;
    IF case_i=2 THEN
@@ -492,16 +502,20 @@ BEGIN
      'unit_price_minor',0,'line_net_minor',0,'line_tax_minor',0,'line_total_minor',0,'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb));
    END IF;
   END IF;
+  raw_shipping:=CASE case_i WHEN 4 THEN 60 ELSE expected[3] END;
   ord:=app.orders_create(oid,'allocation-order-'||case_i,sha256(('allocation'||case_i)::bytea),NULL,
-   '{"email":"allocation@example.invalid"}','USD',expected[3],jsonb_build_object('currency','USD','amount_minor',expected[3],'service','fixture'),
-   lines,CASE WHEN case_i IN(1,2) THEN jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','discount','amount_minor',CASE case_i WHEN 1 THEN -4 ELSE -3 END,'reason','fixture discount')) ELSE '[]'::jsonb END);
+   '{"email":"allocation@example.invalid"}','USD',raw_shipping,jsonb_build_object('currency','USD','amount_minor',raw_shipping,'service','fixture'),
+   lines,CASE WHEN case_i IN(1,2,4) THEN jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','discount','amount_minor',CASE case_i WHEN 1 THEN -4 WHEN 4 THEN -120 ELSE -3 END,'reason','fixture discount')) ELSE '[]'::jsonb END);
   ord:=app.orders_transition(oid,'paid','allocation-paid-'||case_i,0);actual:=ARRAY[0,0,0]::bigint[];
   FOR unit_i IN 1..CASE case_i WHEN 1 THEN 9 ELSE 4 END LOOP
-   chosen_id:=CASE WHEN case_i=2 AND unit_i%2=0 THEN other_lid ELSE lid END;
+   chosen_id:=CASE WHEN case_i IN(2,4) AND unit_i%2=0 THEN other_lid ELSE lid END;
    r:=app.returns_create(oid,ord.version,'allocation-return-'||case_i||'-'||unit_i,'unshipped_cancel','unit entitlement',
     jsonb_build_array(jsonb_build_object('order_line_id',chosen_id,'quantity',1)));
    n:=(r->>'income_minor')::bigint;tx:=(r->>'tax_minor')::bigint;sh:=(r->>'shipping_minor')::bigint;
    IF n<0 OR tx<0 OR sh<0 THEN RAISE EXCEPTION 'FULFILLMENT_GATE nonmonotone tiny entitlement';END IF;
+   IF case_i=4 AND ARRAY[n,tx,sh]<>CASE unit_i WHEN 1 THEN ARRAY[0,0,6] WHEN 2 THEN ARRAY[0,3,15]
+     WHEN 3 THEN ARRAY[0,0,7] ELSE ARRAY[0,4,15] END THEN
+    RAISE EXCEPTION 'FULFILLMENT_GATE excess discount tuple order or cumulative rounding unit % actual %',unit_i,ARRAY[n,tx,sh];END IF;
    actual:=ARRAY[actual[1]+n,actual[2]+tx,actual[3]+sh];
    SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
    IF (r->>'refund_minor')::bigint>0 THEN
@@ -520,6 +534,8 @@ BEGIN
   END LOOP;
   IF actual<>expected OR ord.refunded_minor<>ord.total_minor OR ord.state<>'refunded' THEN
    RAISE EXCEPTION 'FULFILLMENT_GATE financial conservation case % actual % expected %',case_i,actual,expected;END IF;
+  IF case_i=4 AND ord.total_minor<>50 THEN
+   RAISE EXCEPTION 'FULFILLMENT_GATE excess discount total % expected 50',ord.total_minor;END IF;
  END LOOP;
  -- Exact integer intermediates at 64-bit limits: division must never round up.
  EXECUTE 'SET LOCAL ROLE app_fulfillment_executor';

@@ -2059,8 +2059,7 @@ export interface components {
             kind: "shipment_return" | "unshipped_cancel";
             status: string;
             restocked: boolean;
-            /** Format: int64 */
-            refund_minor: number;
+            refund_minor: components["schemas"]["MinorAmount"];
             lines: components["schemas"]["ReturnRecordLine"][];
         };
         ReceiveReturn: {

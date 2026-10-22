@@ -33,3 +33,7 @@ SELECT app.returns_prepare_refund(sqlc.arg(return_id)::uuid,sqlc.arg(expected_ve
 -- name: CompleteReturnRefund :one
 SELECT app.returns_complete_refund(sqlc.arg(return_id)::uuid,sqlc.arg(idempotency_key)::text,
  sqlc.arg(provider_ref)::text,sqlc.arg(ledger_transaction_id)::uuid)::jsonb AS result;
+
+-- name: FailReturnRefund :one
+SELECT app.returns_fail_refund(sqlc.arg(return_id)::uuid,sqlc.arg(idempotency_key)::text,
+ sqlc.arg(rejected)::boolean)::jsonb AS result;

@@ -377,7 +377,7 @@ BEGIN
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json','fulfillment_header_guard','fulfillment_line_guard',
-   'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund',
+   'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund',
    'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
@@ -410,7 +410,7 @@ BEGIN
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json','fulfillment_header_guard','fulfillment_line_guard',
-   'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund',
+   'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund',
    'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
@@ -1145,7 +1145,7 @@ DECLARE r record;t record;a record;f record;role_name text;privilege text;
  tables text[]:=ARRAY['shipments','shipment_lines','returns','return_lines'];
  names text[]:=ARRAY['fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json',
   'fulfillment_header_guard','fulfillment_line_guard','fulfillment_create_shipment','returns_create',
-  'returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund'];
+  'returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund'];
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['app_fulfillment_executor','app_returns_service'] LOOP
   SELECT * INTO STRICT r FROM pg_roles WHERE rolname=role_name;
@@ -1202,7 +1202,7 @@ BEGIN
     RAISE EXCEPTION 'FULFILLMENT_MATRIX_FUNCTION %',f.proname; END IF;
    FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') AND rolname<>'app_fulfillment_executor' LOOP
     expected:=role_name='app_runtime' AND f.proname IN('fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot')
-     OR role_name='app_returns_service' AND f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund');
+     OR role_name='app_returns_service' AND f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund');
     IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
      RAISE EXCEPTION 'FULFILLMENT_MATRIX_ROUTINE % %',role_name,f.proname; END IF;
@@ -1212,7 +1212,7 @@ BEGIN
    (f.proname=ANY(names) OR f.proname IN('orders_context','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return')) THEN
    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_EXECUTOR_FUNCTION %',f.proname; END IF;
   IF has_function_privilege('app_returns_service',f.oid,'EXECUTE') IS DISTINCT FROM
-   (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','post_ledger')) THEN
+   (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund','post_ledger')) THEN
    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_SERVICE_FUNCTION %',f.proname; END IF;
  END LOOP;
  IF(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
@@ -1232,7 +1232,8 @@ DECLARE signature text; command oid; f record; role_name text;
  owner_role oid; allowed_roles oid[];
  signatures text[]:=ARRAY[
   'app.orders_refund_budget(uuid,text,uuid,bigint,text,text,bigint)',
-  'app.returns_lock_refund(uuid,text)'];
+  'app.returns_lock_refund(uuid,text)',
+  'app.returns_fail_refund(uuid,text,boolean)'];
 BEGIN
  FOREACH signature IN ARRAY signatures LOOP
   command:=to_regprocedure(signature);
@@ -1260,7 +1261,7 @@ BEGIN
   END LOOP;
  END LOOP;
  IF(SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace
-  AND proname IN('orders_refund_budget','returns_lock_refund'))<>cardinality(signatures) THEN
+  AND proname IN('orders_refund_budget','returns_lock_refund','returns_fail_refund'))<>cardinality(signatures) THEN
   RAISE EXCEPTION 'REFUND_BUDGET_MATRIX_ROUTINE_SET';
  END IF;
 END $refund_budget_matrix$;

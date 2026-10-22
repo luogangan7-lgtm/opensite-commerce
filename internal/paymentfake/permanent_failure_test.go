@@ -75,3 +75,55 @@ func TestPermanentFailureReplayHasNoEffects(t *testing.T) {
 		})
 	}
 }
+
+func TestRefundNoSideEffectEvidenceAndSuccessfulReplay(t *testing.T) {
+	f := paymentfake.New()
+	r := request()
+	created, err := f.CreateIntent(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.Capture(context.Background(), operation(r, created.ProviderRef, "capture")); err != nil {
+		t.Fatal(err)
+	}
+	refund := operation(r, created.ProviderRef, "rejected-refund")
+	refund.Amount.Amount = 400
+	rejection := &payment.PaymentError{Code: payment.ErrorNonRetryable, Message: "definitive rejection"}
+	if rejection.NoSideEffect {
+		t.Fatal("non-retryable code alone asserted no side effect")
+	}
+	f.FailNext(paymentfake.Refund, rejection)
+	for attempt := 0; attempt < 2; attempt++ {
+		_, err = f.Refund(context.Background(), refund)
+		var provider *payment.PaymentError
+		if !errors.As(err, &provider) || provider.Code != payment.ErrorNonRetryable || !provider.NoSideEffect {
+			t.Fatalf("attempt=%d rejected refund lacks no-side-effect evidence: %v", attempt, err)
+		}
+		provider.NoSideEffect = false // Caller mutation cannot weaken the cached evidence.
+	}
+	if len(f.Events()) != 2 {
+		t.Fatal("rejected refund or replay caused a provider effect")
+	}
+	changed := refund
+	changed.Amount.Amount++
+	_, err = f.Refund(context.Background(), changed)
+	var provider *payment.PaymentError
+	if !errors.As(err, &provider) || provider.Code != payment.ErrorIdempotencyConflict || provider.NoSideEffect {
+		t.Fatalf("key conflict asserted no side effect: %v", err)
+	}
+	refund.IdempotencyKey = "successful-refund"
+	first, err := f.Refund(context.Background(), refund)
+	if err != nil || first.Status != payment.StatusPartiallyRefunded {
+		t.Fatalf("refund result=%+v err=%v", first, err)
+	}
+	changed = refund
+	changed.Amount.Amount++
+	_, err = f.Refund(context.Background(), changed)
+	if !errors.As(err, &provider) || provider.Code != payment.ErrorIdempotencyConflict || provider.NoSideEffect {
+		t.Fatalf("key conflict after provider effect asserted no side effect: %v", err)
+	}
+	replay, err := f.Refund(context.Background(), refund)
+	if err != nil || replay != first || len(f.Events()) != 3 {
+		t.Fatalf("successful refund replay changed result/effects: result=%+v err=%v events=%d", replay, err, len(f.Events()))
+	}
+}

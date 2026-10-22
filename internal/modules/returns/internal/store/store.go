@@ -145,6 +145,18 @@ func (Repository) Complete(ctx context.Context, tx pgx.Tx, tenant string, in con
 	}
 	return decode(raw)
 }
+
+// Fail records the provider outcome under the same Order/RMA budget locks.
+// The trusted adapter alone supplies proof that no side effect occurred.
+func (Repository) Fail(ctx context.Context, tx pgx.Tx, tenant string, in contract.PreparedRefund, rejected bool) error {
+	q, err := Tenant(ctx, tx, tenant)
+	if err != nil {
+		return err
+	}
+	_, err = q.FailReturnRefund(ctx, db.FailReturnRefundParams{ReturnID: UUID(in.ID), IdempotencyKey: in.RefundKey, Rejected: rejected})
+	return MapError(err)
+}
+
 func MapError(err error) error {
 	if err == nil {
 		return nil
