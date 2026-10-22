@@ -140,7 +140,7 @@ class APIContractTests(unittest.TestCase):
                "updateDraftPage", "deleteDraftPage", "updateDraftNavigation", "applyPageOperations",
                "validateSiteDraft", "publishSiteDraft", "createSitePreviewToken", "getSiteReleaseHistory",
                "restoreSiteRelease", "getSitePreview"}
-        orders = {"listOrders", "getOrder"}
+        orders = {"listOrders", "getOrder", "listCustomerOrders", "getCustomerOrder"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
                           if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | cms |
                          {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
