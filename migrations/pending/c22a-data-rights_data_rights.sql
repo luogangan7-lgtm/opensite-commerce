@@ -3,17 +3,25 @@
 -- Depends on customers/orders/cart/notifications/quotes. Trusted services call capability functions.
 -- Invariants: tenant/customer locks before request locks; no credentials exported;
 -- snapshot privacy exception changes no financial/identity/state/version columns.
--- FIX-44: forward extension of A4 grants; CREATE OR REPLACE retains the
--- credential-writer owner and existing exact EXECUTE ACL from C-02c.
-CREATE OR REPLACE FUNCTION app.auth_role_scopes(p_role text) RETURNS text[]
-LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $scope$
- SELECT CASE p_role
- WHEN 'owner' THEN ARRAY['organization.create','site.create','catalog:read','catalog:write','media:write','cms:write','cms:publish','quotes:read','quotes:write','notifications:write','orders:read','apikeys:write','customers:privacy','catalog:import','catalog:export']
- WHEN 'admin' THEN ARRAY['organization.create','site.create','catalog:read','catalog:write','media:write','cms:write','cms:publish','quotes:read','quotes:write','notifications:write','orders:read','apikeys:write','customers:privacy','catalog:import','catalog:export']
- WHEN 'catalog_editor' THEN ARRAY['catalog:read','catalog:write','media:write','catalog:import','catalog:export']
- WHEN 'content_editor' THEN ARRAY['catalog:read','cms:write','cms:publish','media:write']
- WHEN 'viewer' THEN ARRAY['catalog:read'] ELSE ARRAY[]::text[] END;
-$scope$;
+-- FIX-44: auth_role_scopes is a function, not a table. Freeze its existing
+-- SQL expression and add only this module's grants. Never enumerate/replace
+-- another module's grants; CREATE OR REPLACE preserves the exact owner/ACL.
+DO $add_scopes$
+DECLARE inherited text; body text;
+BEGIN
+ SELECT regexp_replace(p.prosrc,'[[:space:];]+$','') INTO STRICT inherited
+ FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang
+ WHERE p.oid='app.auth_role_scopes(text)'::regprocedure AND l.lanname='sql'
+  AND p.provolatile='i' AND NOT p.prosecdef;
+ body:='SELECT ARRAY(SELECT scope FROM (SELECT unnest(('||inherited||')) AS scope
+ UNION SELECT scope FROM (VALUES
+  (''owner'',''customers:privacy''),(''admin'',''customers:privacy''),
+  (''owner'',''catalog:import''),(''admin'',''catalog:import''),(''catalog_editor'',''catalog:import''),
+  (''owner'',''catalog:export''),(''admin'',''catalog:export''),(''catalog_editor'',''catalog:export'')
+ ) AS grants(role,scope) WHERE role=p_role) all_grants ORDER BY scope)';
+ EXECUTE format('CREATE OR REPLACE FUNCTION app.auth_role_scopes(p_role text) RETURNS text[]
+ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS %L',body);
+END $add_scopes$;
 DO $role$
 DECLARE m record;
 BEGIN

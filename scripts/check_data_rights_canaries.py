@@ -31,6 +31,8 @@ ERASED = {
     "idempotency_records.response_body", "idempotency_records.response_body_reference",
     # Guest order linked to the customer by mailbox proof (customer_guest_order_links).
     "orders.guest_contact", "order_adjustments.reason",
+    "shipments.carrier", "shipments.tracking_number", "returns.reason",
+    "returns.creation_response", "returns.receive_response", "returns.provider_ref",
 }
 # Retain strategy, a different subject (staff, merchant, guest, inquiry contact),
 # or no verified owner (null_subject_policy): customer erasure must not touch them.
@@ -77,6 +79,11 @@ BEGIN;
 -- Match privacy_registry.py's escaped-byte representation; data stays unchanged.
 SET LOCAL bytea_output='escape';
 {fixture.read_text()}
+-- Capture every non-PII financial/state/identity cell before controlled erasure.
+CREATE TEMP TABLE privacy_fulfillment_before AS
+ SELECT 'shipments' tab,id,to_jsonb(s)-ARRAY['carrier','tracking_number'] facts FROM app.shipments s
+ UNION ALL SELECT 'returns',id,to_jsonb(r)-ARRAY['reason','provider_ref','creation_response','receive_response'] FROM app.returns r
+ UNION ALL SELECT 'inventory_movements',id,to_jsonb(m)-'reason' FROM app.inventory_movements m;
 CREATE TEMP TABLE privacy_canary(key text PRIMARY KEY,val text NOT NULL,expect text NOT NULL) ON COMMIT DROP;
 INSERT INTO privacy_canary VALUES {rows};
 CREATE FUNCTION pg_temp.privacy_hits() RETURNS TABLE(key text,expect text,hits text) LANGUAGE plpgsql AS $f$
@@ -114,6 +121,12 @@ DO $linked_future$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid; eid u
   RAISE EXCEPTION 'PRIVACY_GATE linked guest future fanout revived'; END IF;
 END $linked_future$;
 DO $after$ DECLARE leaked text; lost text; BEGIN
+ IF EXISTS(SELECT FROM privacy_fulfillment_before b LEFT JOIN (
+  SELECT 'shipments' tab,id,to_jsonb(s)-ARRAY['carrier','tracking_number'] facts FROM app.shipments s
+  UNION ALL SELECT 'returns',id,to_jsonb(r)-ARRAY['reason','provider_ref','creation_response','receive_response'] FROM app.returns r
+  UNION ALL SELECT 'inventory_movements',id,to_jsonb(m)-'reason' FROM app.inventory_movements m
+ ) a USING(tab,id) WHERE a.facts IS DISTINCT FROM b.facts) THEN
+  RAISE EXCEPTION 'PRIVACY_GATE fulfillment financial/state/identity cells changed'; END IF;
  SELECT string_agg(key||'@'||hits,'; ') INTO leaked FROM pg_temp.privacy_hits() WHERE expect='erase' AND hits IS NOT NULL;
  SELECT string_agg(key,', ') INTO lost FROM pg_temp.privacy_hits() WHERE expect='retain' AND hits IS NULL;
  IF NOT EXISTS(SELECT FROM app.idempotency_records WHERE idempotency_key='staff-unrelated'
