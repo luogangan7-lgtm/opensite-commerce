@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import source from '../../packages/design-tokens/tokens.json';
 import { contrastRatio } from './check-contrast';
 
-const css = readFileSync(new URL('../../packages/ui/styles.css', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../../packages/ui/styles.css', import.meta.url), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '');
 function declarations(selector: string) {
   const rule = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .find(match => match[1].trim() === selector);

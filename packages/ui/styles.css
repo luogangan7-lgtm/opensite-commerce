@@ -32,7 +32,10 @@
   text-align: center;
   transition: background-color var(--duration-fast), border-color var(--duration-fast);
 }
-.os-button--primary { background: var(--color-brand); color: var(--color-on-brand); }
+/* Text switches immediately on pending→idle; animating only the background can
+ * cross a low-contrast frame. Keep every primary state opaque and instantaneous,
+ * including when reduced motion is requested. */
+.os-button--primary { background: var(--color-brand); color: var(--color-on-brand); transition: none; }
 .os-button--primary:hover:not(:disabled) { background: var(--color-brand-hover); }
 .os-button--secondary { background: var(--color-surface); border-color: var(--color-border); }
 .os-button--secondary:hover:not(:disabled),
@@ -45,6 +48,11 @@
 .os-button:disabled,
 .os-input:disabled,
 .os-select:disabled { background: var(--color-disabled-bg); color: var(--color-disabled); border-color: var(--color-border); cursor: not-allowed; }
+.os-button--primary:is(:disabled, [aria-disabled="true"], [aria-busy="true"]) {
+  background: var(--color-disabled);
+  color: var(--color-on-brand);
+}
+.os-button--primary[aria-disabled="true"] { cursor: not-allowed; }
 .os-button[aria-busy="true"] { cursor: progress; }
 
 .os-button:focus-visible,
