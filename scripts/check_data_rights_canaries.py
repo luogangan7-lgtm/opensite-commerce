@@ -73,6 +73,9 @@ def main():
                         for k, v in sorted(canaries.items()))
         sql = f"""\\set ON_ERROR_STOP on
 BEGIN;
+-- Whole-row text must expose ASCII canaries inside bytea as well as JSON/text.
+-- Match privacy_registry.py's escaped-byte representation; data stays unchanged.
+SET LOCAL bytea_output='escape';
 {fixture.read_text()}
 CREATE TEMP TABLE privacy_canary(key text PRIMARY KEY,val text NOT NULL,expect text NOT NULL) ON COMMIT DROP;
 INSERT INTO privacy_canary VALUES {rows};
