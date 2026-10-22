@@ -90,8 +90,7 @@ jobs:
       - name: Go / PageGraph / LocalFS / Tenant Transaction
         run: |
           go mod download
-          # Full bootstrap schema/admission coverage now reaches the default
-          # package timeout (39813163871); keep the same bound as the pgx suite.
+          # Guard slow runners; shared OAS loading removes repeated parse work.
           go test -race -count=1 -timeout=15m ./...
           go vet ./...
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2

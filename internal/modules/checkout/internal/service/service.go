@@ -77,6 +77,9 @@ func checkedInput(actor contract.AuthorizedActor, in contract.StartInput) error 
 	if strings.TrimSpace(a.Address1) == "" || strings.TrimSpace(a.City) == "" || strings.TrimSpace(a.PostalCode) == "" {
 		return contract.ErrInvalid
 	}
+	if in.AcceptedTotal.AmountMinor <= 0 || len(in.AcceptedTotal.Currency) != 3 {
+		return contract.ErrTotalChanged
+	}
 	return nil
 }
 func (s *Service) run(ctx context.Context, tenantID string, fn func(context.Context, pgx.Tx, *db.Queries) error) error {
@@ -240,6 +243,9 @@ func (s *Service) Start(ctx context.Context, actor contract.AuthorizedActor, in 
 		if e != nil {
 			return e
 		}
+		if in.AcceptedTotal.AmountMinor != total.Amount || in.AcceptedTotal.Currency != total.Currency {
+			return contract.ErrTotalChanged
+		}
 		if e = preflight(ctx, q, db.AppCheckoutSession{TenantID: store.UUID(actor.TenantID()), OrderID: store.UUID(oid), Currency: total.Currency, AmountMinor: total.Amount, ItemsNetMinor: quoted.Net, TaxMinor: quoted.Tax, ShippingMinor: quoted.Shipping.Charge.Amount}); e != nil {
 			return e
 		}
@@ -258,7 +264,12 @@ func (s *Service) Start(ctx context.Context, actor contract.AuthorizedActor, in 
 		if payable.OrderID != oid || payable.Amount != total || payable.Amount.Amount <= 0 || payable.Version <= 0 {
 			return contract.ErrConflict
 		}
-		addressSnapshot, _ := json.Marshal(in.ShippingAddress)
+		// Existing immutable snapshot is also the durable consent receipt. Older
+		// cart sessions lack this field and cannot dispatch a new capture.
+		addressSnapshot, _ := json.Marshal(struct {
+			contract.ShippingAddress
+			AcceptedTotal contract.AcceptedTotal `json:"accepted_total"`
+		}{in.ShippingAddress, in.AcceptedTotal})
 		row, e = q.InsertCheckout(ctx, db.InsertCheckoutParams{SourceKind: "cart", AddressSnapshot: addressSnapshot, TenantID: store.UUID(actor.TenantID()), ID: store.UUID(id), ActorKind: actor.Kind(), ActorID: actor.ID(), RequestKey: in.IdempotencyKey, RequestHash: requestHash, CartID: store.UUID(cart.ID), CartVersion: pgtype.Int8{Int64: cart.Version, Valid: true}, OrderID: store.UUID(oid), Currency: total.Currency, AmountMinor: total.Amount, ItemsNetMinor: quoted.Net, TaxMinor: quoted.Tax, ShippingMinor: quoted.Shipping.Charge.Amount, PayableVersion: payable.Version})
 		return store.MapError(e)
 	})
@@ -467,6 +478,14 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 		}
 		if actor.Valid() && (row.ActorKind != actor.Kind() || row.ActorID != actor.ID()) {
 			return contract.ErrNotFound
+		}
+		if claimPhase == "confirming" && row.SourceKind == "cart" {
+			var receipt struct {
+				AcceptedTotal contract.AcceptedTotal `json:"accepted_total"`
+			}
+			if json.Unmarshal(row.AddressSnapshot, &receipt) != nil || receipt.AcceptedTotal.AmountMinor != row.AmountMinor || receipt.AcceptedTotal.Currency != row.Currency {
+				return contract.ErrTotalChanged
+			}
 		}
 		if event != nil && (row.OrderID.String() != event.OrderID || row.Currency != event.Amount.Currency || row.AmountMinor != event.Amount.Amount || row.PayableVersion != event.OrderVersion || row.ProviderRef != event.ProviderRef) {
 			return contract.ErrConflict

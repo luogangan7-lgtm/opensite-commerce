@@ -44,8 +44,8 @@ async function setup(fixture=false) {
   const context=await readPurchaseContext(new Request(site,{headers:{Host:new URL(site).host}}),jar);
   expect(context.enabled).toBe(true);
   expect((await handlePurchaseRequest(req('cart',{sku_id:sku,quantity:1}),jar,'cart')).status).toBe(200);
-  expect((await handlePurchaseRequest(req('checkout',{shipping_address:{country:'US',address1:'1 Test',city:'City',postal_code:'10001'},buyer_contact:{email:'buyer@example.test'}}),jar,'checkout')).status).toBe(201);
-  return {calls,events,result,context,send:(outcome='captured',extra={})=>handlePurchaseRequest(req('payment',{checkout_id:checkoutID,outcome,...extra}),jar,'payment'),completion:()=>handlePurchaseRequest(req('completion'),jar,'completion'),pending:()=>{receiptStatus='pending';},receipt:(status:string,id?:string)=>{receiptStatus=status;receiptID=id;},reject:(status:number)=>{rejection=status;},malformed:()=>{malformed=true;},apply:()=>{applied=true;}};
+  expect((await handlePurchaseRequest(req('checkout',{shipping_address:{country:'US',address1:'1 Test',city:'City',postal_code:'10001'},buyer_contact:{email:'buyer@example.test'},accepted_total:{amount_minor:result.amount_minor,currency:result.currency}}),jar,'checkout')).status).toBe(201);
+  return {calls,events,result,context,send:(outcome='captured',extra={})=>handlePurchaseRequest(req('payment',{checkout_id:checkoutID,outcome,accepted_total:{amount_minor:result.amount_minor,currency:result.currency},...extra}),jar,'payment'),completion:()=>handlePurchaseRequest(req('completion'),jar,'completion'),pending:()=>{receiptStatus='pending';},receipt:(status:string,id?:string)=>{receiptStatus=status;receiptID=id;},reject:(status:number)=>{rejection=status;},malformed:()=>{malformed=true;},apply:()=>{applied=true;}};
 }
 test('BFF signs timestamp and account-bearing exact bytes with captured, never tenant or authorized',async()=>{
   const f=await setup();const before=Math.floor(Date.now()/1000);
@@ -73,7 +73,7 @@ test('ambiguous fact retry keeps event identity and payload; terminal persisted 
 });
 test('browser cannot inject legacy tenant/account/time/signature or an authorized outcome',async()=>{
   const f=await setup();
-  for(const extra of [{tenant_id:tenant},{account_id:'foreign'},{timestamp:0},{signature:'forged'}])expect((await f.send('captured',extra)).status).toBe(400);
+  for(const extra of [{accepted:true},{accepted_total:{amount_minor:'9223372036854775807',currency:'USD',accepted:true}},{accepted_total:{amount_minor:9223372036854775807,currency:'USD'}},{tenant_id:tenant},{account_id:'foreign'},{timestamp:0},{signature:'forged'}])expect((await f.send('captured',extra)).status).toBe(400);
   expect((await f.send('authorized')).status).toBe(400);expect(f.events).toHaveLength(0);
 });
 test('rejected, malformed and mismatched receipts fail closed without promoting checkout',async()=>{
@@ -94,4 +94,20 @@ test('missing account and production Fake are closed before webhook IO',async()=
   expect((await f.send()).status).toBe(503);expect(f.events).toHaveLength(0);
   process.env.OPENSITE_FAKE_ACCOUNT_ID='acct_bff_test';process.env.OPENSITE_ENVIRONMENT='production';
   expect((await f.send()).status).toBe(404);expect(f.events).toHaveLength(0);
+});
+
+for (const accepted_total of [undefined,{amount_minor:'159',currency:'USD'},{amount_minor:'9223372036854775807',currency:'EUR'}]) test(`server rejects missing or stale capture consent ${JSON.stringify(accepted_total)}`,async()=>{
+  const f=await setup();
+  const response=await f.send('captured',{accepted_total});
+  expect(response.status).toBe(409);expect(await response.json()).toMatchObject({code:'checkout_total_changed'});
+  expect(f.events).toHaveLength(0);
+});
+
+test('matching accepted total replays exact capture bytes; changed acceptance never replays',async()=>{
+  const f=await setup();await f.send();await f.send();
+  expect(f.events[0]!.raw).toBe(f.events[1]!.raw);
+  const rejected=await f.send('captured',{accepted_total:{amount_minor:'1',currency:'USD'}});
+  expect(rejected.status).toBe(409);expect(f.events).toHaveLength(2);
+  const start=f.calls.find(call=>call.url.endsWith('/checkout') && call.method==='POST')!;
+  expect(await start.text()).toContain('"amount_minor":9223372036854775807');
 });

@@ -1525,7 +1525,14 @@ export interface components {
             customer: components["schemas"]["CustomerSessionView"] | null;
             csrf_token: string;
         };
+        /** @description Explicit buyer acceptance, checked against canonical pricing before any checkout effect. Changed money requires a new consent and request key. */
+        CheckoutAcceptedTotal: {
+            /** Format: int64 */
+            amount_minor: number;
+            currency: string;
+        };
         CheckoutStart: {
+            accepted_total: components["schemas"]["CheckoutAcceptedTotal"];
             /** Format: uuid */
             cart_id: string;
             /**

@@ -31,7 +31,7 @@ const checkoutWiringTenant = "11111111-1111-4111-8111-111111111111"
 const checkoutWiringOtherTenant = "33333333-3333-4333-8333-333333333333"
 const checkoutWiringCustomer = "22222222-2222-4222-8222-222222222222"
 const checkoutWiringOrigin = "https://shop.example.test"
-const checkoutWiringBody = `{"cart_id":"44444444-4444-4444-8444-444444444444","shipping_address":{"country":"US","address1":"Fixture road","city":"Fixture city","postal_code":"00001"}}`
+const checkoutWiringBody = `{"accepted_total":{"amount_minor":160,"currency":"USD"},"cart_id":"44444444-4444-4444-8444-444444444444","shipping_address":{"country":"US","address1":"Fixture road","city":"Fixture city","postal_code":"00001"}}`
 
 type checkoutWiringCustomerPort struct {
 	wiringCustomer

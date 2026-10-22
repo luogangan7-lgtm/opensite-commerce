@@ -90,3 +90,15 @@ test('CONTRACT FIXTURE (orders read API pending PR): uppercase ids are accepted 
   await api.list(upper);
   expect(calls[0]).toBe(`/api/v1/t/${upper.toLowerCase()}/orders?limit=25`);
 });
+
+// The UI represents the first page as an empty cursor; the API rejects cursor=.
+test('first orders page omits an empty cursor from the generated query', async () => {
+  const {AdminAPI} = await import('./api');
+  const {OrdersAPI} = await import('./orders');
+  const calls: string[] = [];
+  const api = new OrdersAPI(new AdminAPI({fetch: (async (path: string | URL | Request) => {
+    calls.push(String(path)); return Response.json({items: []});
+  }) as typeof fetch}));
+  await api.list(id, {cursor: ''});
+  expect(calls).toEqual([`/api/v1/t/${id}/orders?limit=25`]);
+});

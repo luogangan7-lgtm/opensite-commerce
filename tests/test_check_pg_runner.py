@@ -137,6 +137,7 @@ expected = [
     'db_fulfillment_returns.sql',
     'db_quote_conversion.sql',
     'db_identity_clock.sql',
+    'db_identity_hardening.sql',
     'db_staff_pricing.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.

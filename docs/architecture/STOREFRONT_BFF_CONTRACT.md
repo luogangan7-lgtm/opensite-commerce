@@ -45,7 +45,11 @@ API/site origins, a cookie signing key and the existing storefront proof key.
 
 The BFF reads the persisted checkout bound to its signed session. That read
 supplies order, provider reference, amount, currency and payable version; the
-browser chooses only `captured`, `failed` or `canceled`. The flat envelope contains
+browser chooses `captured`, `failed` or `canceled` and supplies explicit
+`accepted_total` (decimal amount string and currency). Capture compares this
+acceptance to the persisted checkout before dispatch and rejects absent or
+different money with `checkout_total_changed` (409). Unknown acceptance fields
+and non-string amounts are rejected; a client assertion never sets event money. The flat envelope contains
 `event_id`, `account_id`, `order_id`, `order_version`, `provider_ref`, `status`,
 `amount_minor` and `currency`. It never contains `tenant_id`, and capture is
 `captured`, never `authorized`. Integer lexemes remain exact through int64 max.
@@ -72,9 +76,15 @@ ambiguous response. Fact retries retain the event ID and exact payload while
 the checkout remains pending; a new signature timestamp does not create a new
 fact. Terminal persisted payment state avoids another delivery. Payments owns
 durable replay deduplication and rejects same-identity/different-content facts.
-When Start returns a changed amount or currency, capture stays disabled until
+Start forwards the accepted Preview money losslessly as int64 JSON. Backend
+Start compares it with canonical DB pricing before any effect and binds it to
+the immutable checkout receipt. A 409 refreshes Preview and requires explicit
+consent plus a new Start key. When a response shows a changed amount or currency,
+capture stays disabled until
 the user explicitly confirms the displayed updated total. Upstream error detail
-is never UI copy; public problem codes are bounded and messages remain local.
+is never UI copy; public problem codes use an explicit allowlist and messages remain local.
+Loopback HTTP backend tests require `OSC_COMMERCE_TEST_HTTP=1` together with
+`OPENSITE_ENVIRONMENT=test`; `GITHUB_ACTIONS` grants no HTTP exception.
 
 ## Acceptance boundary
 

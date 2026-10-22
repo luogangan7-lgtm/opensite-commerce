@@ -59,7 +59,9 @@
         "tests/db_identity_login.sql",
         "tests/test_identity_login_contract.py",
         "tests/db_identity_clock.sql",
-        "internal/modules/identity/h4_clock_pgx_test.go"
+        "internal/modules/identity/h4_clock_pgx_test.go",
+        "tests/db_identity_hardening.sql",
+        "internal/modules/identity/h4_fence_pgx_test.go"
       ],
       "scopes": [],
       "note": "Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented. Four staff login/challenge/session/logout HTTP operations are implemented; the five admin-session management operations remain planned."
@@ -930,7 +932,8 @@
         "internal/modules/checkout/internal/store/cart_test.go",
         "internal/db/checkout_http_integration_test.go",
         "internal/modules/checkout/internal/service/input_test.go",
-        "internal/db/checkout_adoption_integration_test.go"
+        "internal/db/checkout_adoption_integration_test.go",
+        "internal/db/checkout_consent_integration_test.go"
       ],
       "scopes": [],
       "note": "C-18a and FIX-57 share one durable checkout payment path for cart and sealed existing-order sources. Customer HTTP admission uses verified sessions plus exact Origin/CSRF. Explicit test/development Fake configuration only; no real PSP or implicit enablement. Orders #49 fences enforce hold ownership; C-20b holder primitive remains a follow-up integration dependency."
@@ -1745,6 +1748,14 @@
         "auth_account_attempts",
         "auth_login_attempts",
         "known_devices"
+      ]
+    },
+    {
+      "file": "migrations/pending/h4-identity_hardening.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "users",
+        "auth_sessions"
       ]
     },
     {

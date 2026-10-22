@@ -289,7 +289,7 @@ func (s *Handler) CreateCheckout(ctx context.Context, r httpapi.CreateCheckoutRe
 	if body.BuyerContact != nil {
 		contact = orders.Contact{Email: body.BuyerContact.Email, Name: value(body.BuyerContact.Name), Phone: value(body.BuyerContact.Phone)}
 	}
-	input := contract.StartInput{CartID: body.CartId.String(), IdempotencyKey: string(r.Params.IdempotencyKey), BuyerContact: contact, ShippingAddress: contract.ShippingAddress{Country: body.ShippingAddress.Country, Subdivision: value(body.ShippingAddress.Subdivision), Address1: body.ShippingAddress.Address1, Address2: value(body.ShippingAddress.Address2), City: body.ShippingAddress.City, PostalCode: body.ShippingAddress.PostalCode}}
+	input := contract.StartInput{AcceptedTotal: contract.AcceptedTotal{AmountMinor: body.AcceptedTotal.AmountMinor, Currency: body.AcceptedTotal.Currency}, CartID: body.CartId.String(), IdempotencyKey: string(r.Params.IdempotencyKey), BuyerContact: contact, ShippingAddress: contract.ShippingAddress{Country: body.ShippingAddress.Country, Subdivision: value(body.ShippingAddress.Subdivision), Address1: body.ShippingAddress.Address1, Address2: value(body.ShippingAddress.Address2), City: body.ShippingAddress.City, PostalCode: body.ShippingAddress.PostalCode}}
 	if cartID, _ := ctx.Value(cartIDKey{}).(string); cartID != "" && cartID != input.CartID {
 		return nil, notFound()
 	}
@@ -367,6 +367,8 @@ func mapError(err error) error {
 		return apperrors.New(409, "checkout_conflict", "Checkout state conflict")
 	case errors.Is(err, orders.ErrRetry), errors.Is(err, orders.ErrUnavailable):
 		return apperrors.New(503, "checkout_unavailable", "Checkout is unavailable")
+	case errors.Is(err, contract.ErrTotalChanged):
+		return apperrors.New(409, "checkout_total_changed", "Explicit consent to the current total is required")
 	case errors.Is(err, contract.ErrInvalid):
 		return apperrors.New(422, "validation_failed", "Invalid checkout request")
 	case errors.Is(err, contract.ErrForbidden), errors.Is(err, contract.ErrNotFound):
