@@ -304,6 +304,13 @@ class GovernanceTests(unittest.TestCase):
                 self.assert_red("MODULE_TRUSTED_TX")
                 (self.root / name).unlink()
 
+    def test_trusted_tx_in_export_review_list_green(self):
+        # The #153 export-surface review list must name every adapter export, including this seam.
+        self.source("internal/tenanttx/pgxadapter/export_surface_test.go",
+                    "package pgxadapter\n\nvar reviewed = []string{\"method:QueryRunner.RunTrustedTx\"}\n")
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_trusted_tx_in_refresher_composition_green(self):
         self.source("internal/bootstrap/runtime.go", "package bootstrap\n\n// composes runner.RunTrustedTx for the refresher\nconst Seam = \"RunTrustedTx\"\n")
         result = self.run_gate()
