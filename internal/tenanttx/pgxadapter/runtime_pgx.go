@@ -76,6 +76,16 @@ func (r *QueryRunner) RunCapabilitySnapshot(ctx context.Context, tenant string, 
 	return r.runner.InTenantSnapshot(ctx, tenant, fn)
 }
 
+// RunTrustedTx is only composed behind the storefront serving refresher, whose tenants
+// come from trusted deployment configuration (never a request). It is an ordinary tenant
+// write transaction under runtime RLS; request paths must use RunAuthorizedTx.
+func (r *QueryRunner) RunTrustedTx(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+	if r == nil || fn == nil {
+		return errors.New("runtime database is unavailable")
+	}
+	return r.runner.InTenant(ctx, tenant, fn)
+}
+
 func (r *QueryRunner) run(ctx context.Context, tenant string, snapshot bool, fn func(*db.Queries) error) error {
 	if err := authorizedTenant(ctx, tenant); err != nil {
 		return err

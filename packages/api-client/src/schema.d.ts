@@ -4,41 +4,6 @@
  */
 
 export interface paths {
-    "/api/v1/t/{tenant_id}/api-keys": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Lists the newest 100 keys owned by this tenant, including revoked keys, ordered by creation time then ID; plaintext and hashes are never returned. Older keys can still be revoked by ID. */
-        get: operations["listAPIKeys"];
-        put?: never;
-        /** @description An active owner or admin creates a key for this tenant with scopes no wider than their current role. The 256-bit secret is returned once. No Idempotency-Key replay is provided because plaintext secrets must never be retained to reproduce a response. A lost response requires revocation and a new key. Unknown scopes are rejected; tenant, issuer and hash are server-derived. */
-        post: operations["createAPIKey"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/t/{tenant_id}/api-keys/{key_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** @description Revokes a key owned by this tenant. Repeating revocation of an existing key succeeds; a missing or cross-tenant key returns 404. Revocation is effective on the next authorization check. */
-        delete: operations["revokeAPIKey"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/t/{tenant_id}/customer/registrations": {
         parameters: {
             query?: never;
@@ -152,7 +117,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Explicit test/development configuration only; never mounted in production. The verifier authenticates exact raw bytes before a trusted event reaches checkout. Checkout rechecks persisted tenant/order, amount, currency, version and provider binding and deduplicates delivery inside a transaction. */
+        /** @description Explicit test/development configuration only; never mounted in production. Payments authenticates timestamp plus exact raw bytes and derives tenant authority from a trusted account binding. The durable receipt reports pending or processed; external facts never reissue provider commands. */
         post: operations["receiveFakePaymentEvent"];
         delete?: never;
         options?: never;
@@ -167,7 +132,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Current sealed public release for a verified DNS hostname. Version-1 public manifest seals product view models derived from catalog published listings and pinned content revisions. */
+        /** @description Current public storefront body for a verified DNS hostname, served as the precomputed storefront serving row (docs/architecture/ADR_STOREFRONT_SERVING.md). Product content and SKU membership (sku_id, sku_code, option_values) are sealed at publish. price_minor is the anonymous default price (quantity 1, the product's release currency, active audience=all lists in their time window, priority descending then list id ascending) computed when the serving row was built; available is on-hand minus reserved > 0 at build time, never a count. Unpriced or non-ready SKUs at publish are not members (adding them requires republish). Price, stock and lifecycle changes invalidate the body in their own transaction and a refresher rebuilds it; a body past its next price boundary, 15-minute lifetime or 30-second invalidation grace is replaced by the fallback (skus []), never served stale. Products carry no product-level price: display prices come from skus. Cart and checkout re-price and reserve authoritatively. The body is host-independent (no hostname) and carries the host's tenant_id for tenant-scoped cart APIs. */
         get: operations["getPublishedSite"];
         put?: never;
         post?: never;
@@ -1174,18 +1139,22 @@ export interface components {
         };
         FakePaymentEvent: {
             event_id: string;
-            /** Format: uuid */
-            tenant_id: string;
+            account_id: string;
             /** Format: uuid */
             order_id: string;
             /** Format: int64 */
             order_version: number;
             provider_ref: string;
             /** @enum {string} */
-            status: "authorized" | "captured" | "failed" | "canceled";
+            status: "captured" | "failed" | "canceled" | "partially_refunded" | "refunded";
             /** Format: int64 */
             amount_minor: number;
             currency: string;
+        };
+        FakePaymentReceipt: {
+            event_id: string;
+            /** @enum {string} */
+            status: "pending" | "processed" | "rejected";
         };
         NotificationFailure: {
             /** Format: uuid */
@@ -1298,6 +1267,19 @@ export interface components {
             currency: string;
         };
         PublishedSite: {
+            /** @description Tenant resolved from the verified hostname; storefronts use it for tenant-scoped APIs such as /api/v1/t/{tenant_id}/carts. */
+            tenant_id: string;
+            site_id: string;
+            release_id: string;
+            locale: string;
+            title: string;
+            description: string;
+            navigation: components["schemas"]["PublishedNavigation"][];
+            pages: components["schemas"]["PublishedPage"][];
+            products: components["schemas"]["PublicProduct"][];
+        };
+        /** @description CMS draft preview projection (never the public storefront body; no tenant_id or SKUs). */
+        SitePreview: {
             site_id: string;
             release_id: string;
             hostname: string;
@@ -1308,40 +1290,31 @@ export interface components {
             pages: components["schemas"]["PublishedPage"][];
             products: components["schemas"]["PublishedProduct"][];
         };
+        /** @description Public product view. No product-level price; display prices come from the purchasable skus. */
+        PublicProduct: {
+            id: string;
+            slug: string;
+            name: string;
+            description: string;
+            /** @description Purchasable SKUs; see getPublishedSite for membership, price and availability rules. */
+            skus: components["schemas"]["PublishedSku"][];
+        };
+        PublishedSkuOptionValue: {
+            name: string;
+            value: string;
+        };
+        PublishedSku: {
+            sku_id: string;
+            sku_code: string;
+            option_values: components["schemas"]["PublishedSkuOptionValue"][];
+            /** @description Anonymous default unit price in minor units as a decimal string, as of the serving build. */
+            price_minor: string;
+            currency: string;
+            /** @description True when on-hand stock exceeded active reservations at the serving build; never a count. */
+            available: boolean;
+        };
         LoginChallenge: {
             csrf_token: string;
-        };
-        CreateAPIKey: {
-            scopes: ("apikeys:write" | "catalog:read" | "catalog:write" | "cms:publish" | "cms:write" | "media:write" | "notifications:write" | "orders:read" | "quotes:read" | "quotes:write" | "organization.create" | "site.create")[];
-            /**
-             * Format: date-time
-             * @description Optional future expiry; validated against the database clock.
-             */
-            expires_at?: string;
-        };
-        APIKeyView: {
-            /** Format: uuid */
-            id: string;
-            key_prefix: string;
-            scopes: string[];
-            /** Format: uuid */
-            issued_by: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            expires_at?: string;
-            /** Format: date-time */
-            revoked_at?: string;
-            /** Format: date-time */
-            last_used_at?: string;
-        };
-        APIKeyCreated: {
-            /** @description Public UUID plus one-time 256-bit secret; never log, persist plaintext or replay this value. */
-            key: string;
-            api_key: components["schemas"]["APIKeyView"];
-        };
-        APIKeyList: {
-            items: components["schemas"]["APIKeyView"][];
         };
         AdminLogin: {
             email: string;
@@ -2121,127 +2094,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    listAPIKeys: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Key metadata only. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["APIKeyList"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalServerError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    createAPIKey: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
-                Origin: components["parameters"]["Origin"];
-                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateAPIKey"];
-            };
-        };
-        responses: {
-            /** @description New key with its one-time plaintext credential; never cache this response. */
-            201: {
-                headers: {
-                    "Cache-Control"?: "no-store";
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["APIKeyCreated"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalServerError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    revokeAPIKey: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
-                Origin: components["parameters"]["Origin"];
-                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
-                tenant_id: components["parameters"]["TenantId"];
-                key_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Key revoked; no response body. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            422: components["responses"]["UnprocessableEntity"];
-            428: components["responses"]["PreconditionRequired"];
-            429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalServerError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
     registerCustomer: {
         parameters: {
             query?: never;
@@ -2581,13 +2433,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Stable result after payment event admission or replay. */
+            /** @description Durable payment fact receipt after admission or replay. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CheckoutResult"];
+                    "application/json": components["schemas"]["FakePaymentReceipt"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -4022,7 +3874,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublishedSite"];
+                    "application/json": components["schemas"]["SitePreview"];
                 };
             };
             400: components["responses"]["Problem"];

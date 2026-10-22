@@ -5,7 +5,6 @@ package bootstrap_test
 
 import (
 	"context"
-	"crypto/rand"
 	"os/exec"
 	"strings"
 	"testing"
@@ -14,6 +13,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/testfixture"
+	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant"
@@ -25,18 +25,10 @@ func TestConfiguredIdentityRouteContract(t *testing.T) {
 	// Construct the production transport without a repository. Route registration
 	// needs no database; this test inspects registrations without invoking handlers.
 	handler := testfixture.LoginHandler("https://admin.example.test", 30*time.Minute)
-	// Optional checkout is composed explicitly with a per-test isolated Fake key.
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatal(err)
-	}
-	verifier, err := checkout.NewFakeHMACVerifier(key)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Route registration uses a receiver fixture; this test never admits events.
 	routes := append(handler.Routes(), new(tenant.Module).Routes()...)
 	server, err := bootstrap.New(bootstrap.Config{Routes: append(routes, publish.StorefrontRoute(nil)), Authenticator: handler, Quotes: quotes.NewApplication(nil),
-		Checkout: &checkout.Config{FakeEnabled: true, Environment: "test", Verifier: verifier}})
+		Checkout: &checkout.Config{FakeEnabled: true, Environment: "test", Events: routeContractReceiver{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,4 +82,12 @@ func TestLoginFixtureExcludedFromProductionDependencies(t *testing.T) {
 			}
 		})
 	}
+}
+
+// routeContractReceiver only makes explicit nonproduction composition inspectable.
+// Any accidental invocation fails closed rather than claiming payment evidence.
+type routeContractReceiver struct{}
+
+func (routeContractReceiver) Receive(context.Context, []byte, string) (payments.Receipt, error) {
+	return payments.Receipt{}, context.Canceled
 }

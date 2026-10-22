@@ -58,7 +58,7 @@ func (q *Queries) GetCheckoutAttempt(ctx context.Context, arg GetCheckoutAttempt
 }
 
 const getCheckoutByID = `-- name: GetCheckoutByID :one
-SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at FROM app.checkout_sessions WHERE tenant_id=$1 AND id=$2 FOR UPDATE
+SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, refunded_net_minor, refunded_tax_minor, refunded_shipping_minor FROM app.checkout_sessions WHERE tenant_id=$1 AND id=$2 FOR UPDATE
 `
 
 type GetCheckoutByIDParams struct {
@@ -94,12 +94,15 @@ func (q *Queries) GetCheckoutByID(ctx context.Context, arg GetCheckoutByIDParams
 		&i.ClaimKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RefundedNetMinor,
+		&i.RefundedTaxMinor,
+		&i.RefundedShippingMinor,
 	)
 	return i, err
 }
 
 const getCheckoutByKey = `-- name: GetCheckoutByKey :one
-SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at FROM app.checkout_sessions WHERE tenant_id=$1 AND actor_kind=$2 AND actor_id=$3 AND request_key=$4 FOR UPDATE
+SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, refunded_net_minor, refunded_tax_minor, refunded_shipping_minor FROM app.checkout_sessions WHERE tenant_id=$1 AND actor_kind=$2 AND actor_id=$3 AND request_key=$4 FOR UPDATE
 `
 
 type GetCheckoutByKeyParams struct {
@@ -142,12 +145,15 @@ func (q *Queries) GetCheckoutByKey(ctx context.Context, arg GetCheckoutByKeyPara
 		&i.ClaimKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RefundedNetMinor,
+		&i.RefundedTaxMinor,
+		&i.RefundedShippingMinor,
 	)
 	return i, err
 }
 
 const getCheckoutByOrder = `-- name: GetCheckoutByOrder :one
-SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at FROM app.checkout_sessions WHERE tenant_id=$1 AND order_id=$2 FOR UPDATE
+SELECT tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, refunded_net_minor, refunded_tax_minor, refunded_shipping_minor FROM app.checkout_sessions WHERE tenant_id=$1 AND order_id=$2 FOR UPDATE
 `
 
 type GetCheckoutByOrderParams struct {
@@ -183,6 +189,9 @@ func (q *Queries) GetCheckoutByOrder(ctx context.Context, arg GetCheckoutByOrder
 		&i.ClaimKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RefundedNetMinor,
+		&i.RefundedTaxMinor,
+		&i.RefundedShippingMinor,
 	)
 	return i, err
 }
@@ -267,7 +276,7 @@ func (q *Queries) GetCheckoutSettings(ctx context.Context, tenantID pgtype.UUID)
 
 const insertCheckout = `-- name: InsertCheckout :one
 INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version,address_snapshot)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, refunded_net_minor, refunded_tax_minor, refunded_shipping_minor
 `
 
 type InsertCheckoutParams struct {
@@ -334,6 +343,9 @@ func (q *Queries) InsertCheckout(ctx context.Context, arg InsertCheckoutParams) 
 		&i.ClaimKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RefundedNetMinor,
+		&i.RefundedTaxMinor,
+		&i.RefundedShippingMinor,
 	)
 	return i, err
 }
@@ -560,7 +572,7 @@ func (q *Queries) LockCheckoutStart(ctx context.Context, lockKey string) error {
 }
 
 const updateCheckout = `-- name: UpdateCheckout :one
-UPDATE app.checkout_sessions SET phase=$3,provider_ref=$4,start_result=$5,final_result=$6,claim_kind=$7,claim_key=$8,updated_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2 RETURNING tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at
+UPDATE app.checkout_sessions SET phase=$3,provider_ref=$4,start_result=$5,final_result=$6,claim_kind=$7,claim_key=$8,updated_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2 RETURNING tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, refunded_net_minor, refunded_tax_minor, refunded_shipping_minor
 `
 
 type UpdateCheckoutParams struct {
@@ -611,6 +623,66 @@ func (q *Queries) UpdateCheckout(ctx context.Context, arg UpdateCheckoutParams) 
 		&i.ClaimKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RefundedNetMinor,
+		&i.RefundedTaxMinor,
+		&i.RefundedShippingMinor,
+	)
+	return i, err
+}
+
+const updateCheckoutRefundTotals = `-- name: UpdateCheckoutRefundTotals :one
+UPDATE app.checkout_sessions SET refunded_net_minor=$1,
+ refunded_tax_minor=$2,refunded_shipping_minor=$3,
+ updated_at=clock_timestamp() WHERE tenant_id=$4 AND id=$5 RETURNING tenant_id, id, actor_kind, actor_id, request_key, request_hash, cart_id, cart_version, order_id, address_snapshot, currency, amount_minor, items_net_minor, tax_minor, shipping_minor, payable_version, phase, provider_ref, start_result, final_result, claim_kind, claim_key, created_at, updated_at, refunded_net_minor, refunded_tax_minor, refunded_shipping_minor
+`
+
+type UpdateCheckoutRefundTotalsParams struct {
+	RefundedNetMinor      int64       `json:"refunded_net_minor"`
+	RefundedTaxMinor      int64       `json:"refunded_tax_minor"`
+	RefundedShippingMinor int64       `json:"refunded_shipping_minor"`
+	TenantID              pgtype.UUID `json:"tenant_id"`
+	ID                    pgtype.UUID `json:"id"`
+}
+
+// Responsibility: checkout's cumulative applied refund components; caller holds
+// its session lock and commits this with Orders/Ledger/payment Inbox completion.
+func (q *Queries) UpdateCheckoutRefundTotals(ctx context.Context, arg UpdateCheckoutRefundTotalsParams) (AppCheckoutSession, error) {
+	row := q.db.QueryRow(ctx, updateCheckoutRefundTotals,
+		arg.RefundedNetMinor,
+		arg.RefundedTaxMinor,
+		arg.RefundedShippingMinor,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i AppCheckoutSession
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.ActorKind,
+		&i.ActorID,
+		&i.RequestKey,
+		&i.RequestHash,
+		&i.CartID,
+		&i.CartVersion,
+		&i.OrderID,
+		&i.AddressSnapshot,
+		&i.Currency,
+		&i.AmountMinor,
+		&i.ItemsNetMinor,
+		&i.TaxMinor,
+		&i.ShippingMinor,
+		&i.PayableVersion,
+		&i.Phase,
+		&i.ProviderRef,
+		&i.StartResult,
+		&i.FinalResult,
+		&i.ClaimKind,
+		&i.ClaimKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RefundedNetMinor,
+		&i.RefundedTaxMinor,
+		&i.RefundedShippingMinor,
 	)
 	return i, err
 }

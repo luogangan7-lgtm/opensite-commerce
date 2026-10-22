@@ -35,6 +35,7 @@
         "owner_id": {"classification": "operational"},
         "idempotency_key": {"classification": "operational"},
         "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "holder_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
         "ttl_seconds": {"classification": "operational"},
         "state": {"classification": "operational"},
         "expires_at": {"classification": "operational"},

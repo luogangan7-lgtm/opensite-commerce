@@ -5,6 +5,8 @@ negative cases. A fake Docker executable witnesses any attempted side effect.
 """
 import os
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -68,6 +70,67 @@ class BrowserReceiptTests(unittest.TestCase):
                                          'results': [{'status': 'skipped'}]}]}]}]}
         with self.assertRaises(RuntimeError):
             self.verify(report)
+
+    # Imported by tests.test_ops_drill, so these witnesses run in foundation CI.
+    def runner(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('mvp_signed_payment_runner', source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def browser_report(self, module):
+        specs = []
+        for title in module.ACTIVE_TESTS | module.GAP_TESTS:
+            gap = title in module.GAP_TESTS
+            filename = ('mvp-gaps.spec.ts' if gap else 'payments.spec.ts' if title in module.PAYMENT_TESTS
+                        else 'admin.spec.ts' if title.startswith('real ') else 'storefront.spec.ts')
+            specs.append({'title': title, 'file': filename, 'tests': [
+                {'projectName': project, 'expectedStatus': 'skipped' if gap else 'passed',
+                 'annotations': [{'type': 'fixme'}] if gap else [],
+                 'results': [{'status': 'skipped' if gap else 'passed'}]}
+                for project in ('desktop', 'mobile')]})
+        return {'stats': {'expected': 26, 'skipped': 6, 'unexpected': 0, 'flaky': 0},
+                'suites': [{'specs': specs}]}
+
+    def rows(self):
+        rows = []
+        for n, project in enumerate(('desktop', 'mobile'), 1):
+            raw = json.dumps({'event_id': f'c19-e2e-{project}-captured', 'account_id': f'c19-e2e-{project}',
+                              'order_id': f'c1900003-0000-4000-8000-{n:012d}', 'order_version': 1,
+                              'provider_ref': f'fake_c19_e2e_{n}', 'status': 'captured',
+                              'amount_minor': 270, 'currency': 'USD'}, separators=(',', ':'))
+            rows.append({'project': project, 'order_state': 'paid', 'phase': 'paid', 'on_hand': 8,
+                         'reserved': 0, 'inbox': 1, 'processed': 1, 'hash': hashlib.sha256(raw.encode()).hexdigest(),
+                         'events': 1, 'applied': 1, 'journals': 1, 'debits': 540, 'credits': 540,
+                         'cash': 270, 'receivable': 0, 'paid_outbox': 1})
+        return rows
+
+    def test_payment_is_required_in_both_projects_and_exact_spec(self):
+        module = self.runner()
+        report = self.browser_report(module)
+        self.assertEqual(module.verify_browser_report(report)['expected'], 26)
+        for mutation in ('remove', 'wrong_file', 'skip'):
+            changed = json.loads(json.dumps(report))
+            payment = next(s for s in changed['suites'][0]['specs'] if s['title'] in module.PAYMENT_TESTS)
+            if mutation == 'remove': changed['suites'][0]['specs'].remove(payment)
+            elif mutation == 'wrong_file': payment['file'] = 'admin.spec.ts'
+            else: payment['tests'][0]['results'] = [{'status': 'skipped'}]
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                module.verify_browser_report(changed)
+
+    def test_browser_green_cannot_replace_persisted_payment_witness(self):
+        module = self.runner()
+        self.assertEqual(module.verify_payment_witness(self.rows())['status'], 'PASS')
+        for key, bad in [('order_state', 'pending_payment'), ('phase', 'ready'), ('inbox', 2),
+                         ('processed', 0), ('hash', '0' * 64), ('applied', 0), ('journals', 2),
+                         ('cash', 540), ('credits', 539), ('reserved', 2), ('paid_outbox', 2)]:
+            rows = self.rows()
+            rows[0][key] = bad
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                module.verify_payment_witness(rows)
+        for rows in ([], self.rows()[:1], [self.rows()[0], self.rows()[0]]):
+            with self.assertRaises(RuntimeError): module.verify_payment_witness(rows)
 
 
 if __name__ == '__main__':

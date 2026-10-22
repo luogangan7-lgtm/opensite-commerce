@@ -217,6 +217,370 @@ func (q *Queries) LoadCMSReleaseSnapshot(ctx context.Context, arg LoadCMSRelease
 	return i, err
 }
 
+const putServing = `-- name: PutServing :one
+SELECT app.cms_serving_put($1::uuid,$2::uuid,$3::uuid,
+ $4::bigint,$5::bigint,$6::bytea,
+ $7::bytea,$8::timestamptz,$9::bigint[])::bigint
+`
+
+type PutServingParams struct {
+	TenantID            pgtype.UUID        `json:"tenant_id"`
+	SiteID              pgtype.UUID        `json:"site_id"`
+	ReleaseID           pgtype.UUID        `json:"release_id"`
+	PublicationRevision int64              `json:"publication_revision"`
+	ExpectedGeneration  int64              `json:"expected_generation"`
+	Body                []byte             `json:"body"`
+	FallbackBody        []byte             `json:"fallback_body"`
+	ValidUntil          pgtype.Timestamptz `json:"valid_until"`
+	Folded              []int64            `json:"folded"`
+}
+
+func (q *Queries) PutServing(ctx context.Context, arg PutServingParams) (int64, error) {
+	row := q.db.QueryRow(ctx, putServing,
+		arg.TenantID,
+		arg.SiteID,
+		arg.ReleaseID,
+		arg.PublicationRevision,
+		arg.ExpectedGeneration,
+		arg.Body,
+		arg.FallbackBody,
+		arg.ValidUntil,
+		arg.Folded,
+	)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const sealReleaseSKUs = `-- name: SealReleaseSKUs :one
+SELECT app.cms_seal_skus($1::uuid,$2::uuid,$3::uuid,$4::jsonb)::integer
+`
+
+type SealReleaseSKUsParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	SiteID    pgtype.UUID `json:"site_id"`
+	ReleaseID pgtype.UUID `json:"release_id"`
+	Skus      []byte      `json:"skus"`
+}
+
+func (q *Queries) SealReleaseSKUs(ctx context.Context, arg SealReleaseSKUsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, sealReleaseSKUs,
+		arg.TenantID,
+		arg.SiteID,
+		arg.ReleaseID,
+		arg.Skus,
+	)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const servingAvailability = `-- name: ServingAvailability :many
+SELECT sku_id::text AS sku_id,bool_or(on_hand>reserved)::boolean AS available
+FROM app.stock_levels WHERE tenant_id=$1::uuid AND sku_id::text=ANY($2::text[])
+GROUP BY sku_id
+`
+
+type ServingAvailabilityParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	SkuIds   []string    `json:"sku_ids"`
+}
+
+type ServingAvailabilityRow struct {
+	SkuID     string `json:"sku_id"`
+	Available bool   `json:"available"`
+}
+
+func (q *Queries) ServingAvailability(ctx context.Context, arg ServingAvailabilityParams) ([]ServingAvailabilityRow, error) {
+	rows, err := q.db.Query(ctx, servingAvailability, arg.TenantID, arg.SkuIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ServingAvailabilityRow
+	for rows.Next() {
+		var i ServingAvailabilityRow
+		if err := rows.Scan(&i.SkuID, &i.Available); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const servingDue = `-- name: ServingDue :many
+SELECT s.id::text AS site_id FROM app.sites s
+LEFT JOIN app.storefront_serving sv ON (sv.tenant_id,sv.site_id)=(s.tenant_id,s.id)
+WHERE s.tenant_id=$1::uuid AND s.published_release_id IS NOT NULL
+ AND (sv.site_id IS NULL OR sv.publication_revision<>s.publication_revision OR sv.valid_until<now()+interval '60 seconds'
+  OR EXISTS(SELECT FROM app.serving_invalidations i WHERE (i.tenant_id,i.site_id)=(s.tenant_id,s.id)))
+ORDER BY s.id LIMIT $2::integer
+`
+
+type ServingDueParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	RowLimit int32       `json:"row_limit"`
+}
+
+// Refresh sweep for one tenant: published sites with no current serving row, a dirty row,
+// unfolded invalidations, or a row within 60 s of valid_until (backfill, invalidation and
+// max-lifetime refresh).
+func (q *Queries) ServingDue(ctx context.Context, arg ServingDueParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, servingDue, arg.TenantID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var site_id string
+		if err := rows.Scan(&site_id); err != nil {
+			return nil, err
+		}
+		items = append(items, site_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const servingFolded = `-- name: ServingFolded :many
+SELECT seq FROM app.serving_invalidations
+WHERE tenant_id=$1::uuid AND site_id=$2::uuid ORDER BY seq LIMIT 10000
+`
+
+type ServingFoldedParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	SiteID   pgtype.UUID `json:"site_id"`
+}
+
+// The folded set: invalidations visible before the build reads its inputs (ADR 2.6).
+func (q *Queries) ServingFolded(ctx context.Context, arg ServingFoldedParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, servingFolded, arg.TenantID, arg.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var seq int64
+		if err := rows.Scan(&seq); err != nil {
+			return nil, err
+		}
+		items = append(items, seq)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const servingLiveCandidates = `-- name: ServingLiveCandidates :many
+SELECT v.product_id::text AS product_id,v.id::text AS sku_id,v.sku,
+ coalesce((SELECT jsonb_agg(jsonb_build_object('name',o.code,'value',ov.label) ORDER BY o.code)
+  FROM app.variant_option_values vo
+  JOIN app.product_options o ON (o.tenant_id,o.product_id,o.id)=(vo.tenant_id,vo.product_id,vo.option_id)
+  JOIN app.product_option_values ov ON (ov.tenant_id,ov.product_id,ov.option_id,ov.id)=(vo.tenant_id,vo.product_id,vo.option_id,vo.value_id)
+  WHERE (vo.tenant_id,vo.product_id,vo.variant_id)=(v.tenant_id,v.product_id,v.id)),'[]'::jsonb)::jsonb AS option_values
+FROM app.product_variants v JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
+WHERE v.tenant_id=$1::uuid AND v.product_id::text=ANY($2::text[])
+ AND v.lifecycle_status='ready' AND p.lifecycle_status='ready'
+ORDER BY v.product_id,v.sku,v.id LIMIT $3::integer
+`
+
+type ServingLiveCandidatesParams struct {
+	TenantID   pgtype.UUID `json:"tenant_id"`
+	ProductIds []string    `json:"product_ids"`
+	RowLimit   int32       `json:"row_limit"`
+}
+
+type ServingLiveCandidatesRow struct {
+	ProductID    string `json:"product_id"`
+	SkuID        string `json:"sku_id"`
+	Sku          string `json:"sku"`
+	OptionValues []byte `json:"option_values"`
+}
+
+// Publish: ready SKUs of ready released products (input scan budget via row_limit).
+func (q *Queries) ServingLiveCandidates(ctx context.Context, arg ServingLiveCandidatesParams) ([]ServingLiveCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, servingLiveCandidates, arg.TenantID, arg.ProductIds, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ServingLiveCandidatesRow
+	for rows.Next() {
+		var i ServingLiveCandidatesRow
+		if err := rows.Scan(
+			&i.ProductID,
+			&i.SkuID,
+			&i.Sku,
+			&i.OptionValues,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const servingPriceRows = `-- name: ServingPriceRows :many
+SELECT l.id::text AS list_id,l.currency::text AS currency,l.status,l.priority,l.starts_at,l.ends_at,l.audience,
+ e.sku_id::text AS sku_id,e.min_quantity,e.unit_amount
+FROM app.price_entries e JOIN app.price_lists l ON (l.tenant_id,l.id)=(e.tenant_id,e.price_list_id)
+WHERE e.tenant_id=$1::uuid AND e.sku_id::text=ANY($2::text[]) AND e.min_quantity=1
+ AND l.status='active' AND l.audience='all' AND (l.ends_at IS NULL OR l.ends_at>$3::timestamptz)
+ORDER BY l.id,e.sku_id LIMIT $4::integer
+`
+
+type ServingPriceRowsParams struct {
+	TenantID pgtype.UUID        `json:"tenant_id"`
+	SkuIds   []string           `json:"sku_ids"`
+	At       pgtype.Timestamptz `json:"at"`
+	RowLimit int32              `json:"row_limit"`
+}
+
+type ServingPriceRowsRow struct {
+	ListID      string             `json:"list_id"`
+	Currency    string             `json:"currency"`
+	Status      string             `json:"status"`
+	Priority    int32              `json:"priority"`
+	StartsAt    pgtype.Timestamptz `json:"starts_at"`
+	EndsAt      pgtype.Timestamptz `json:"ends_at"`
+	Audience    string             `json:"audience"`
+	SkuID       string             `json:"sku_id"`
+	MinQuantity int64              `json:"min_quantity"`
+	UnitAmount  int64              `json:"unit_amount"`
+}
+
+// Quantity-1 rows of active audience=all lists that have not ended (window applied in Go).
+func (q *Queries) ServingPriceRows(ctx context.Context, arg ServingPriceRowsParams) ([]ServingPriceRowsRow, error) {
+	rows, err := q.db.Query(ctx, servingPriceRows,
+		arg.TenantID,
+		arg.SkuIds,
+		arg.At,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ServingPriceRowsRow
+	for rows.Next() {
+		var i ServingPriceRowsRow
+		if err := rows.Scan(
+			&i.ListID,
+			&i.Currency,
+			&i.Status,
+			&i.Priority,
+			&i.StartsAt,
+			&i.EndsAt,
+			&i.Audience,
+			&i.SkuID,
+			&i.MinQuantity,
+			&i.UnitAmount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const servingPublication = `-- name: ServingPublication :one
+SELECT s.publication_revision,s.published_release_id::text AS release_id,now()::timestamptz AS at,
+ coalesce((SELECT sv.serving_generation FROM app.storefront_serving sv WHERE sv.tenant_id=s.tenant_id AND sv.site_id=s.id),0)::bigint AS generation
+FROM app.sites s WHERE s.tenant_id=$1::uuid AND s.id=$2::uuid AND s.published_release_id IS NOT NULL
+FOR NO KEY UPDATE OF s
+`
+
+type ServingPublicationParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	SiteID   pgtype.UUID `json:"site_id"`
+}
+
+type ServingPublicationRow struct {
+	PublicationRevision int64              `json:"publication_revision"`
+	ReleaseID           string             `json:"release_id"`
+	At                  pgtype.Timestamptz `json:"at"`
+	Generation          int64              `json:"generation"`
+}
+
+// Storefront serving build (ADR_STOREFRONT_SERVING): locks the publication row first, so a
+// refresh waits for an in-flight publish, then reads epoch, DB clock and generation.
+func (q *Queries) ServingPublication(ctx context.Context, arg ServingPublicationParams) (ServingPublicationRow, error) {
+	row := q.db.QueryRow(ctx, servingPublication, arg.TenantID, arg.SiteID)
+	var i ServingPublicationRow
+	err := row.Scan(
+		&i.PublicationRevision,
+		&i.ReleaseID,
+		&i.At,
+		&i.Generation,
+	)
+	return i, err
+}
+
+const servingSealedCandidates = `-- name: ServingSealedCandidates :many
+SELECT k.product_id::text AS product_id,k.sku_id::text AS sku_id,k.sku_code,k.option_values,
+ coalesce(v.lifecycle_status='ready' AND p.lifecycle_status='ready',false)::boolean AS ready
+FROM app.site_release_skus k
+LEFT JOIN app.product_variants v ON (v.tenant_id,v.id)=(k.tenant_id,k.sku_id)
+LEFT JOIN app.products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
+WHERE k.tenant_id=$1::uuid AND k.site_id=$2::uuid AND k.release_id=$3::uuid
+ORDER BY k.ordinal
+`
+
+type ServingSealedCandidatesParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	SiteID    pgtype.UUID `json:"site_id"`
+	ReleaseID pgtype.UUID `json:"release_id"`
+}
+
+type ServingSealedCandidatesRow struct {
+	ProductID    string `json:"product_id"`
+	SkuID        string `json:"sku_id"`
+	SkuCode      string `json:"sku_code"`
+	OptionValues []byte `json:"option_values"`
+	Ready        bool   `json:"ready"`
+}
+
+// Restore: the release's sealed membership in order, with live readiness.
+func (q *Queries) ServingSealedCandidates(ctx context.Context, arg ServingSealedCandidatesParams) ([]ServingSealedCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, servingSealedCandidates, arg.TenantID, arg.SiteID, arg.ReleaseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ServingSealedCandidatesRow
+	for rows.Next() {
+		var i ServingSealedCandidatesRow
+		if err := rows.Scan(
+			&i.ProductID,
+			&i.SkuID,
+			&i.SkuCode,
+			&i.OptionValues,
+			&i.Ready,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setCMSActor = `-- name: SetCMSActor :one
 SELECT set_config('app.actor_kind',$1::text,true)::text AS actor_kind,
  set_config('app.actor_id',$2::text,true)::text AS actor_id

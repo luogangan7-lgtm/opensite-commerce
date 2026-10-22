@@ -324,6 +324,11 @@ func TestCMSHTTPPreviewSignedReadOnly(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("X-Robots-Tag") != "noindex, nofollow" || writer.previewReads != 1 || writer.calls != 0 {
 		t.Fatalf("preview %d %s reads=%d", w.Code, w.Body, writer.previewReads)
 	}
+	// G6: the preview DTO is not the public storefront body (no tenant_id, no SKUs).
+	var preview map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &preview); err != nil || preview["tenant_id"] != nil || preview["hostname"] == nil || strings.Contains(w.Body.String(), `"skus"`) {
+		t.Fatalf("preview DTO: %s %v", w.Body, err)
+	}
 	now = now.Add(time.Minute)
 	w = send(cmsPreviewPath, token)
 	if w.Code != 403 || writer.previewReads != 1 {
