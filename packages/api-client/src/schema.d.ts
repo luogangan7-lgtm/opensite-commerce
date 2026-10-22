@@ -878,6 +878,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/quotes/{quote_id}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Convert an approved quote to exactly one order from its immutable payable snapshot. The router's injected buyer authenticator must verify the separate customer session, exact storefront Origin, session-bound CSRF and active company membership; without it this endpoint returns 401. Tenant/company mismatch returns 404. Identity, amount, price, currency and snapshot fields are never accepted from the client. Requires one visible ASCII Idempotency-Key of 1 to 128 bytes, without whitespace. Retrying the same key returns the original conversion; competing different keys return 409, and reusing a key for a different quote returns 422. Conversion does not claim payment success. Customer authentication and real checkout remain separate gates. */
+        post: operations["createQuoteOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/quotes/{quote_id}/order-conversion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read a quote conversion receipt using trusted seller identity and quotes:read scope. Foreign tenants return 404. */
+        get: operations["getQuoteOrderConversion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/t/{tenant_id}/quotes/{quote_id}/send": {
         parameters: {
             query?: never;
@@ -1309,7 +1343,7 @@ export interface components {
             /** Format: uuid */
             event_id: string;
             /** @enum {string} */
-            template_key: "order.paid" | "order.shipped" | "order.refund" | "quote.sent" | "quote.approved";
+            template_key: "order.paid" | "order.shipped" | "order.refund" | "quote.sent" | "quote.approved" | "quote.converted";
             /** @enum {string} */
             status: "failed" | "dead_letter" | "uncertain";
             /** Format: int32 */
@@ -1952,6 +1986,23 @@ export interface components {
                 code: string;
                 message: string;
             }[];
+        };
+        CreateQuoteOrder: Record<string, never>;
+        QuoteOrderConversion: {
+            /** Format: uuid */
+            quote_id: string;
+            quote_version: string;
+            /** Format: uuid */
+            order_id: string;
+            order_number: string;
+            /** @description Exact positive payable amount in currency minor units from the approved quote snapshot. */
+            amount: string;
+            currency: string;
+            /** @enum {string} */
+            state: "pending_payment" | "paid" | "partially_fulfilled" | "fulfilled" | "cancelled" | "partially_refunded" | "refunded";
+            provider_ref?: string;
+            /** Format: date-time */
+            created_at: string;
         };
         QuoteTransition: Record<string, never>;
         QuoteDestination: {
@@ -4847,6 +4898,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Quote"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createQuoteOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description Exact configured storefront origin; never the admin origin. */
+                Origin: components["parameters"]["CheckoutOrigin"];
+                /** @description Verified by the trusted resolver against the customer session or guest capability. */
+                "X-CSRF-Token": components["parameters"]["CheckoutCSRFToken"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                quote_id: components["parameters"]["QuoteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateQuoteOrder"];
+            };
+        };
+        responses: {
+            /** @description Original conversion receipt, including idempotent replay */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteOrderConversion"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getQuoteOrderConversion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                quote_id: components["parameters"]["QuoteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Quote conversion receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteOrderConversion"];
                 };
             };
             400: components["responses"]["BadRequest"];
