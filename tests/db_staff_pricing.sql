@@ -17,7 +17,7 @@ BEGIN
   IF SQLSTATE=expected THEN RETURN; END IF;
   RAISE EXCEPTION 'STAFF_PRICING_GATE unexpected % want %: %',SQLSTATE,expected,SQLERRM;
  END;
- RAISE EXCEPTION 'STAFF_PRICING_GATE expected refusal %',expected;
+ RAISE EXCEPTION 'STAFF_PRICING_GATE expected refusal %: %',expected,command;
 END $$;
 SET LOCAL ROLE app_runtime;
 DO $test$

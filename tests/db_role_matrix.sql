@@ -1409,8 +1409,11 @@ BEGIN
  IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names))<>cardinality(names) THEN RAISE EXCEPTION 'PRICING_MATRIX_ROUTINES'; END IF;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
   IF f.proname=ANY(names) THEN
-   IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM (f.proname<>'pricing_currency') OR cardinality(f.proconfig)<>1
-    OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
+   IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM (f.proname<>'pricing_currency') OR cardinality(f.proconfig) IS DISTINCT FROM 1
+    OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+    OR f.oid IS DISTINCT FROM to_regprocedure(CASE f.proname WHEN 'pricing_currency' THEN 'app.pricing_currency()'
+     WHEN 'pricing_write_list' THEN 'app.pricing_write_list(uuid,bigint,jsonb)'
+     WHEN 'pricing_write_entry' THEN 'app.pricing_write_entry(uuid,uuid,bigint,bigint,bigint)' END)
     OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN RAISE EXCEPTION 'PRICING_MATRIX_FUNCTION'; END IF;
    FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
     expected:=role_name='app_pricing_executor' OR role_name='app_runtime' AND f.proname<>'pricing_currency';
