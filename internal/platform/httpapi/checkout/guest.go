@@ -55,7 +55,7 @@ func (g *GuestResolver) Resolve(ctx context.Context, r *http.Request) (contract.
 	parsed, err := uuid.Parse(cartID)
 	rawToken, tokenErr := base64.RawURLEncoding.DecodeString(token)
 	rawProof, proofErr := base64.RawURLEncoding.DecodeString(proof)
-	if origin != g.config.Origin || err != nil || parsed == uuid.Nil || parsed.String() != cartID || tokenErr != nil || base64.RawURLEncoding.EncodeToString(rawToken) != token || proofErr != nil || len(rawProof) != sha256.Size || base64.RawURLEncoding.EncodeToString(rawProof) != proof {
+	if origin != g.config.Origin || err != nil || parsed == uuid.Nil || parsed.String() != cartID || tokenErr != nil || len(rawToken) != 32 || base64.RawURLEncoding.EncodeToString(rawToken) != token || proofErr != nil || len(rawProof) != sha256.Size || base64.RawURLEncoding.EncodeToString(rawProof) != proof {
 		return zero, notFound()
 	}
 	mac := hmac.New(sha256.New, g.config.Key)

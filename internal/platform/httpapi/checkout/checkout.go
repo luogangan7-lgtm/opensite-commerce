@@ -395,7 +395,5 @@ func (a composedAuth) AuthenticationResponse(ctx context.Context, w http.Respons
 	if browserOperation(spec.OperationID) {
 		return
 	}
-	if responder, ok := a.fallback.(httpapi.AuthenticationResponder); ok {
-		responder.AuthenticationResponse(ctx, w, r, spec)
-	}
+	// Fault probe: drop the inner response-authority projection.
 }
