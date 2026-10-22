@@ -140,9 +140,10 @@ class APIContractTests(unittest.TestCase):
                "updateDraftPage", "deleteDraftPage", "updateDraftNavigation", "applyPageOperations",
                "validateSiteDraft", "publishSiteDraft", "createSitePreviewToken", "getSiteReleaseHistory",
                "restoreSiteRelease", "getSitePreview"}
-        orders = {"listOrders", "getOrder", "listCustomerOrders", "getCustomerOrder"}
+        orders = {"listOrders", "getOrder"}
+        customer_orders = {"listCustomerOrders", "getCustomerOrder"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | cms |
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | customer_orders | cms |
                          {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
                           "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession",
                           "createAPIKey", "listAPIKeys", "revokeAPIKey"} | contract.CUSTOMER_OPERATIONS)
@@ -151,6 +152,13 @@ class APIContractTests(unittest.TestCase):
             self.assertTrue(path.startswith("/api/v1/t/{tenant_id}/orders"))
             self.assertEqual((method, operation["x-opensite-access"], operation["x-required-scope"]),
                              ("get", "AdminOrAPIKey", "orders:read"))
+        for name in customer_orders:
+            path, method, operation = ops[name]
+            self.assertEqual(path, "/api/v1/t/{tenant_id}/customer/orders" +
+                             ("/{order_id}" if name == "getCustomerOrder" else ""))
+            self.assertEqual((method, operation["x-opensite-access"], operation["security"]),
+                             ("get", "CustomerSession", [{"customerSession": []}]))
+            self.assertNotIn("x-required-scope", operation)
         for name in cms - {"getSitePreview"}:
             _, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
