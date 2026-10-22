@@ -204,11 +204,11 @@ BEGIN
  -- The same column canaries must be removed from BOTH ownership paths. A
  -- linked guest checkout exercises all immutable result/address copies too.
  INSERT INTO app.carts(tenant_id,id,guest_token_hash,currency)
- VALUES(t,guest_cart,sha256(uuidv7()::text::bytea),'USD');
+ VALUES(t,guest_cart,sha256('privacy-guest-fixture-token'::bytea),'USD');
  INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,
   cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,
   shipping_minor,payable_version)
- SELECT t,guest_checkout,'guest','privacy-guest','privacy-guest-checkout',sha256('privacy-guest-checkout'::bytea),
+ SELECT t,guest_checkout,'guest',encode(sha256('privacy-guest-fixture-token'::bytea),'hex'),'privacy-guest-checkout',sha256('privacy-guest-checkout'::bytea),
   guest_cart,1,id,jsonb_build_object('recipient',{{canary:checkout_sessions.address_snapshot}}),
   currency,total_minor,items_net_minor,tax_minor,shipping_minor,version
  FROM app.orders WHERE tenant_id=t AND id=guest_order;
