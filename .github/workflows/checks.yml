@@ -72,6 +72,22 @@ jobs:
           go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
           git diff --exit-code -- internal/platform/httpapi/generated/api.gen.go
           test -z "$(git status --porcelain --untracked-files=all -- internal/platform/httpapi/generated/api.gen.go)"
+      # CI-only development can retrieve the exact generator output after a
+      # deliberate drift failure. The required drift gate still fails normally.
+      - name: Generate requested OpenAPI handoff in CI
+        id: requested_openapi
+        if: failure() && github.event_name == 'push' && contains(github.event.head_commit.message, '[codegen-artifact]')
+        run: go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+      - name: Export requested OpenAPI generator output
+        if: failure() && steps.requested_openapi.conclusion == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: openapi-codegen-${{ github.run_id }}
+          path: |
+            api/openapi.yaml
+            internal/platform/httpapi/generated/api.gen.go
+          if-no-files-found: error
+          retention-days: 7
       - name: PostgreSQL 18 forward-only migrations and security
         run: |
           sudo apt-get update -qq

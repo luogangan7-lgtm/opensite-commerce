@@ -889,10 +889,11 @@
         "internal/db/checkout_cart_integration_test.go",
         "internal/modules/checkout/internal/store/cart_test.go",
         "internal/db/checkout_http_integration_test.go",
-        "internal/modules/checkout/internal/service/input_test.go"
+        "internal/modules/checkout/internal/service/input_test.go",
+        "internal/db/checkout_adoption_integration_test.go"
       ],
       "scopes": [],
-      "note": "C-18a Fake-only checkout orchestration. Optional strict HTTP composition uses a default-deny trusted storefront resolver seam classified Storefront until real customer/guest middleware; URL/Host never authorize. Fake webhook is signed and mounted only in explicit test/development configuration. Cart contract consumption uses the real locked IntentReader in the caller transaction, discards price projections and restores prior actor GUCs. Trusted guest/customer resolver wiring remains absent and default deny; no production payment provider wiring."
+      "note": "C-18a and FIX-57 share one durable checkout payment path for cart and sealed existing-order sources. Customer HTTP admission uses verified sessions plus exact Origin/CSRF. Explicit test/development Fake configuration only; no real PSP or implicit enablement. Orders #49 fences enforce hold ownership; C-20b holder primitive remains a follow-up integration dependency."
     },
     {
       "name": "quotes",
@@ -903,7 +904,8 @@
         "inquiries",
         "quotes",
         "quote_lines",
-        "quote_approvals"
+        "quote_approvals",
+        "quote_conversions"
       ],
       "operations": [
         {
@@ -945,6 +947,14 @@
         {
           "operation_id": "rejectQuote",
           "status": "implemented"
+        },
+        {
+          "operation_id": "createQuoteOrder",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getQuoteOrderConversion",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -956,19 +966,29 @@
         "pricing",
         "tax",
         "shipping",
-        "reliability"
+        "reliability",
+        "orders",
+        "checkout"
       ],
       "tests": [
         "internal/modules/quotes/module_test.go",
         "internal/modules/quotes/quotes_pgx_test.go",
         "internal/platform/httpapi/quotes/quotes_test.go",
-        "tests/db_quotes.sql"
+        "tests/db_quotes.sql",
+        "tests/db_quote_conversion.sql",
+        "internal/modules/quotes/conversion_test.go",
+        "internal/bootstrap/quoteorders_pgx_test.go",
+        "internal/platform/httpapi/quoteorders/quoteorders_test.go",
+        "internal/modules/quotes/conversion_key_test.go",
+        "internal/bootstrap/quote_conversion_test.go",
+        "internal/bootstrap/checkout_environment_test.go",
+        "internal/bootstrap/quoteorders_production_pgx_test.go"
       ],
       "scopes": [
         "quotes:read",
         "quotes:write"
       ],
-      "note": "C-17a contact collection and immutable quote lifecycle; buyer endpoints require an externally verified sealed customer actor, default denied. No customer authentication implementation or order/payment creation."
+      "note": "C-17a immutable approved quote snapshots; C-18b conversion receipts and scoped internal Orders keys. FIX-57 typed bootstrap composition adopts sealed Orders through unified checkout; only signed verified Confirm can capture/post Ledger/write order.paid. Unconfigured buyer admission remains closed; explicit development/test Fake only."
     },
     {
       "name": "notifications",
@@ -1549,6 +1569,29 @@
         "tenant_memberships",
         "api_keys",
         "auth_sessions"
+      ]
+    },
+    {
+      "file": "migrations/pending/c18b-quote-conversion_quote_conversion.sql",
+      "owner": "quotes",
+      "touches_tables": [
+        "quote_conversions",
+        "quotes",
+        "orders",
+        "order_lines",
+        "order_adjustments",
+        "outbox_events",
+        "notification_deliveries"
+      ]
+    },
+    {
+      "file": "migrations/pending/c18b-checkout-source_checkout_source.sql",
+      "owner": "checkout",
+      "touches_tables": [
+        "checkout_sessions",
+        "checkout_attempts",
+        "orders",
+        "inventory_reservations"
       ]
     }
   ]

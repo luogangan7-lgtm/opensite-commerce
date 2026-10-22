@@ -208,6 +208,27 @@ This card does not wire checkout's production composition root or create a SQL
 order in place of the missing real flow. The receipt explicitly records the
 customer order-association gate as `NOT_RUN` until that follow-up.
 
+## Optional development quote checkout
+
+Optional quote-order checkout uses the real Quotes/Orders/Checkout/Ledger source
+composition with the neutral development Fake. Opt in with
+`OPENSITE_ENVIRONMENT=test` or `development`,
+`OPENSITE_CHECKOUT_FAKE_ENABLED=true`, and an independent
+`OPENSITE_CHECKOUT_FAKE_SIGNING_KEY` containing 32-128 random bytes encoded as
+unpadded base64url. Runtime and customer-auth database capabilities, exact HTTPS
+storefront origin, and the customer CSRF secret are required. Production or
+partial Fake configuration refuses startup; omitted flags keep buyer conversion
+default denied. The signing key configures the same account-mapped Payments
+receiver used by `OPENSITE_FAKE_PSP`; if both toggles are enabled their keys must
+match. Provision an enabled Fake/test account mapping before delivering events.
+Payment progresses through timestamp-signed completed Fake facts (`account_id`,
+not a client-supplied tenant); the callback never issues Capture. Conversion
+only creates/adopts the pending sealed order. Trusted checkout Confirm owns
+capture commands and their reservation preflight. Cart checkout still needs explicit
+trusted canonical rule metadata and is not enabled by this adoption capability.
+The Compose API environment passes these optional variables. Direct API runs
+must pass them explicitly in the process environment.
+
 ## Rotate local passwords
 
 Stop API and worker, edit the private `.env`, then run

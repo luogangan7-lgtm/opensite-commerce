@@ -5,6 +5,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/hex"
@@ -32,9 +33,21 @@ import (
 )
 
 func FromEnvironment(ctx context.Context, config Config) (Config, func(), error) {
+	fakeEnvironment, err := checkoutEnvironment(os.Getenv)
+	if err != nil {
+		return Config{}, nil, err
+	}
 	fakeEnabled, fakeKey, fakeErr := fakePaymentEnvironment()
 	if fakeErr != nil {
 		return Config{}, nil, fakeErr
+	}
+	if fakeEnvironment.enabled {
+		// Both optional entrypoints share one account-mapped ingress. Refuse two
+		// different verifier keys rather than silently choosing a signing authority.
+		if fakeEnabled && !bytes.Equal(fakeKey, fakeEnvironment.key) {
+			return Config{}, nil, errors.New("Fake checkout and payment signing keys conflict")
+		}
+		fakeEnabled, fakeKey = true, fakeEnvironment.key
 	}
 	// Bound all capability pool probes together, including explicit DSNs.
 	startup, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -50,7 +63,12 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	var staff *identity.LoginModule
 	var tenantAuth *tenant.Module
 	var customerRunner *pgxadapter.CustomerRunner
+	var quoteRuntime runtimeQuoteRunner
+	var closeQuoteRuntime func()
 	closeRuntime := func() {
+		if closeQuoteRuntime != nil {
+			closeQuoteRuntime()
+		}
 		if customerRunner != nil {
 			customerRunner.Close()
 		}
@@ -276,6 +294,22 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			return Config{}, nil, errors.New("customer authentication configuration is invalid")
 		}
 		config.CustomerOrigin, config.CustomerSecret = origin, secret
+	}
+	if fakeEnvironment.enabled {
+		if runtimeURL == "" || config.Customer == nil {
+			closeRuntime()
+			return Config{}, nil, errors.New("Fake checkout requires runtime and customer capabilities")
+		}
+		quoteRuntime, closeQuoteRuntime, err = openQuoteRuntime(startup, runtimeURL)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, err
+		}
+	}
+	config, err = composeFakeCheckout(config, quoteRuntime, fakeEnvironment)
+	if err != nil {
+		closeRuntime()
+		return Config{}, nil, err
 	}
 	return config, closeRuntime, nil
 }
