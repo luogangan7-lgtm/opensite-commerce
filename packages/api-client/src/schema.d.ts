@@ -1103,6 +1103,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/customer/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** @description Live server-validated customer session only; no staff, API key or guest bearer. SQL restricts sealed orders to tenant_id and the authenticated customer_id. Guest orders appear only after the verified mailbox ownership link; email matching alone grants nothing. Other customers' orders return 404. No staff-only fields. */
+        get: operations["listCustomerOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/customer/orders/{order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Live server-validated customer session only; no staff, API key or guest bearer. SQL restricts sealed orders to tenant_id and the authenticated customer_id. Guest orders appear only after the verified mailbox ownership link; email matching alone grants nothing. Other customers' orders return 404. No staff-only fields. */
+        get: operations["getCustomerOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/t/{tenant_id}/orders": {
         parameters: {
             query?: never;
@@ -2108,6 +2149,27 @@ export interface components {
         };
         /** @description Signed integer minor units as a canonical decimal string (exact in JavaScript). */
         MinorAmount: string;
+        CustomerOrderSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            order_number: number;
+            state: components["schemas"]["OrderState"];
+            currency: string;
+            total_minor: components["schemas"]["MinorAmount"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        CustomerOrderPage: {
+            items: components["schemas"]["CustomerOrderSummary"][];
+            next_cursor?: string;
+        };
+        CustomerOrderDetail: {
+            order: components["schemas"]["CustomerOrderSummary"];
+            lines: components["schemas"]["OrderLine"][];
+            shipping_minor: components["schemas"]["MinorAmount"];
+            tax_minor: components["schemas"]["MinorAmount"];
+        };
         /** @enum {string} */
         OrderState: "pending_payment" | "paid" | "partially_fulfilled" | "fulfilled" | "cancelled" | "partially_refunded" | "refunded";
         OrderSummary: {
@@ -5559,6 +5621,82 @@ export interface operations {
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listCustomerOrders: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Customer-owned sealed snapshot; no-store. */
+            200: {
+                headers: {
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerOrderPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCustomerOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Customer-owned sealed snapshot; no-store. */
+            200: {
+                headers: {
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerOrderDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };
