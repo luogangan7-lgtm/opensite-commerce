@@ -46,7 +46,10 @@ test('real admin orders list and detail use persisted orders and staff scopes', 
   // Membership in this tenant cannot expose an order through a different tenant path.
   expect((await page.request.get(`${fixture.admin}/api/v1/t/${fixture.ownerTenantId}/orders/${orderId}`)).status()).toBe(404);
   expect((await page.request.get(`${fixture.admin}/api/v1/t/${fixture.tenantId}/orders`)).status()).toBe(404);
+  const loggedOut = page.waitForResponse(r => r.url() === `${fixture.admin}/api/v1/auth/logout` && r.request().method() === 'POST');
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  expect((await loggedOut).status()).toBe(204);
+  await expect(page).toHaveURL(`${fixture.admin}/login`);
   expect((await page.request.get(base)).status()).toBe(401);
   await info.attach('admin-order-read', { body: JSON.stringify({ tenant, list, order }), contentType: 'application/json' });
 });
