@@ -38,7 +38,6 @@
       844
     ],
     "chromiumArgs": [
-      "--disable-partial-raster",
       "--disable-gpu",
       "--force-color-profile=srgb"
     ]
