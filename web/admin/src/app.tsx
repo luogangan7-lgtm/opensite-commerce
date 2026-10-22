@@ -1,5 +1,5 @@
 /** Composes guarded admin workflows from UI primitives and domain clients.
- * Depends on Router/session/catalog/orders; production excludes galleries and pending order reads. */
+ * Depends on Router/session/catalog/orders; production excludes galleries and fixture labels. */
 import {Component,lazy,Suspense,useEffect,useMemo,useRef,useState,type FormEvent,type ReactNode} from 'react';
 import {Link,Navigate,Outlet,Route,Routes,useLocation,useNavigate,useParams} from 'react-router';
 import {Button,EmptyState,FormField,TextInput} from '@opensite/ui';
@@ -9,9 +9,8 @@ import {SessionProvider,useSession} from './session';
 import {ProductCreatePage,ProductEditPage,ProductListPage} from './products';
 import {OrdersAPI,OrderDetailPage,OrderListPage} from './orders';
 const Gallery=import.meta.env.DEV||import.meta.env.MODE==='gallery'?lazy(()=>import('./gallery')):null;
-// Owner contract is pending a backend PR. Only the isolated gallery/test build
-// renders labelled contract fixtures; production has no runtime enable switch.
-const ordersReadAvailable=import.meta.env.DEV||import.meta.env.MODE==='gallery';
+// Contract fixtures are supplied only by the isolated test runner's interception.
+const ordersFixture=import.meta.env.DEV||import.meta.env.MODE==='gallery';
 export class ErrorBoundary extends Component<{children:ReactNode},{failed:boolean}>{
  state={failed:false};static getDerivedStateFromError(){return {failed:true};}
  render(){return this.state.failed?<main id="main" className="admin-page"><EmptyState headingLevel={1} title="This page could not be displayed" description="Reload to try again. Your saved changes are safe." action={<Button onClick={()=>window.location.reload()}>Reload page</Button>}/></main>:this.props.children;}
@@ -43,7 +42,7 @@ function Frame(){const {tenantId=''}=useParams();const {signOut}=useSession();co
 function DomainPage({kind}:{kind:'list'|'create'|'edit'|'orders'|'order'}){const {api}=useSession();const {tenantId='',productId='',orderId=''}=useParams();const valid=validateUUID(tenantId);
  const catalog=useMemo(()=>valid?new CatalogAPI(api,tenantId):null,[api,tenantId,valid]);const orders=useMemo(()=>valid?new OrdersAPI(api):null,[api,tenantId,valid]);
  if(!catalog||!orders)return <main id="main" className="admin-page"><EmptyState headingLevel={1} title="Store unavailable" description="Check the store link with your administrator."/></main>;
- if(kind==='orders'||kind==='order'){if(!ordersReadAvailable)return <main id="main" className="admin-page"><h1 tabIndex={-1}>Orders</h1><EmptyState headingLevel={2} title="Orders are not available yet" description="Order read API is pending. This page will become available after the backend is integrated."/></main>;return <main id="main" key={tenantId+orderId}>{kind==='orders'?<OrderListPage api={orders} tenantId={tenantId} fixture/>:<OrderDetailPage api={orders} tenantId={tenantId} fixture/>}</main>;}
+ if(kind==='orders'||kind==='order')return <main id="main" key={tenantId+orderId}>{kind==='orders'?<OrderListPage api={orders} tenantId={tenantId} fixture={ordersFixture}/>:<OrderDetailPage api={orders} tenantId={tenantId} fixture={ordersFixture}/>}</main>;
  return <main id="main" key={tenantId+productId+kind}>{kind==='list'?<ProductListPage api={catalog} tenantId={tenantId}/>:kind==='create'?<ProductCreatePage api={catalog} tenantId={tenantId}/>:<ProductEditPage api={catalog} tenantId={tenantId}/>}</main>;
 }
 export function App(){return <ErrorBoundary><SessionProvider><FocusRoute/><Suspense fallback={<p role="status">Loading…</p>}><Routes>

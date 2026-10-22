@@ -32,3 +32,4 @@ export const getCompletion = () => purchaseRequest<CheckoutResult | null>('compl
 export const customerSession = (email: string, password: string, csrf: string) => purchaseRequest<PurchaseContext>('customer/session', { method: 'POST', body: { email, password }, csrf });
 export const registerCustomer = (email: string, password: string, csrf: string) => purchaseRequest<{ status: 'verification_pending' }>('customer/register', { method: 'POST', body: { email, password }, csrf });
 export const logoutCustomer = (csrf: string) => purchaseRequest<PurchaseContext>('customer/session', { method: 'DELETE', csrf });
+export const verifyCustomerEmail = (token: string, csrf: string) => purchaseRequest<{status:'verified'}>('customer/verify',{method:'POST',body:{token},csrf});
