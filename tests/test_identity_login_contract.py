@@ -35,6 +35,7 @@ SCOPES = {
     'apikeys:write', 'catalog:read', 'catalog:write', 'cms:publish',
     'cms:write', 'media:write', 'notifications:write', 'orders:read',
     'quotes:read', 'quotes:write', 'organization.create', 'site.create',
+    'fulfillment:write', 'returns:write',
 }
 
 
@@ -97,6 +98,7 @@ def assert_contract(registry, source):
     assert set(create['properties']) == {'scopes', 'expires_at'}
     assert create['properties']['expires_at']['format'] == 'date-time'
     assert create['properties']['scopes']['type'] == 'array'
+    assert create['properties']['scopes']['maxItems'] == len(SCOPES)
     assert set(create['properties']['scopes']['items']['enum']) == SCOPES, 'unknown scopes must fail closed'
     assert {body['x-required-scope'] for body in blocks.values() if 'x-required-scope' in body} == SCOPES
     view = schemas['APIKeyView']

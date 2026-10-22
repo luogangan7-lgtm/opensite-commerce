@@ -1555,6 +1555,11 @@
         "api_keys",
         "auth_sessions"
       ]
+    },
+    {
+      "file": "migrations/pending/c20a-fulfillment-scopes_fulfillment_role_scopes.sql",
+      "owner": "tenant",
+      "touches_tables": []
     }
   ]
 }
