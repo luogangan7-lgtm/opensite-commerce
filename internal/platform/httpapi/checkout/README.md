@@ -5,14 +5,24 @@ Default configuration has no checkout transport. Explicit checkout composition
 without a storefront resolver returns 401 before the service runs. Checkout uses
 the tenant-bound `Storefront` RouteSpec access class with no employee scope.
 
-A future resolver must verify the guest capability or customer session, exact
-storefront/site and tenant binding, and session-bound CSRF. This increment
-checks the configured exact HTTPS Origin, CSRF header admission and actor/URL
-agreement, then consumes the resolver's private-field `AuthorizedActor`.
+Start, Preview and Get share exact HTTPS Origin and CSRF header admission,
+actor/URL agreement and the resolver's private-field `AuthorizedActor`.
+The concrete guest resolver verifies a canonical 32-byte capability, its
+tenant/origin-bound proof and current cart ownership before issuing an actor.
+Bootstrap selects a configured live customer session when its cookie is present;
+an invalid cookie cannot fall back to guest authority, including when customer
+authentication is unconfigured. Customer writes retain signed session CSRF.
 It never authenticates an admin cookie or infers authority from Host/URL/body.
-The test resolver is a test substitute; real customer/guest middleware remains
-integration work. Guest contact is a snapshot;
+Staff actor, response and transaction-authority extensions forward on staff routes.
+Preview and Get use read-only repeatable-read snapshots; Start retains canonical
+rules, cart version checks and holder-bearing Orders/Inventory transitions.
+Guest contact is a snapshot;
 customer identity comes only from the actor and customer contact is omitted.
+
+Runtime cart checkout is opt-in through `OPENSITE_STOREFRONT_KEY`, tenant/origin
+and trusted `OPENSITE_CHECKOUT_RULE_METADATA`, with the isolated Fake Payments
+receiver already configured. It preserves that receiver and uses authorized
+transactions; only capability verification uses a read-only pre-admission snapshot.
 
 The Fake callback route exists only with `FakeEnabled`, explicit `test` or
 `development` environment and a trusted Payments `Receiver`. Enabling it in any
@@ -32,7 +42,7 @@ fail-closed retirement guard, preserving the timestamp-free replay regression.
 Signature and transactional correctness belong to Payments tests; HTTP tests
 prove raw handoff, strict rejection before receive and nonproduction composition.
 
-Both routes reuse strict generated OpenAPI decoding, bounded body admission and
+All routes reuse strict generated OpenAPI decoding, bounded write-body admission and
 RFC 9457 errors. Full route-contract reconciliation uses actual composed
 handlers; the default unconfigured composition fails the full implemented
-contract, and its separate witness excludes only these two optional routes.
+contract, and its separate witness excludes these four optional routes.
