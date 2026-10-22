@@ -16,22 +16,27 @@ class FoundationLanes(unittest.TestCase):
     def test_existing_gate_inventory_and_fixture_order(self):
         parts = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']['foundation-lane']
         steps = parts['steps']
-        # Existing serial boundaries remain whole; no command sampling/filtering.
+        # Authoritative serial inventory: checks.yml@be0a6413 (including #44).
+        # Existing boundaries remain whole; no command sampling/filtering.
         inventory = {
             'go test -race -count=1 ./...': "matrix.lane == 'go'",
             'go vet ./...': "matrix.lane == 'go'",
             'bash scripts/check_all.sh': "matrix.lane == 'offline'",
+            'python3 scripts/check_ci_pins.py': "matrix.lane == 'offline'",
             'python scripts/check_contract.py': "matrix.lane == 'offline'",
             'openapi-spec-validator api/openapi.yaml': "matrix.lane == 'offline'",
+            'python3 scripts/check_oapi_codegen.py': "matrix.lane == 'offline'",
             'go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml': "matrix.lane == 'offline'",
             './scripts/check_pg.sh': "matrix.lane == 'pg'",
             'python3 tests/test_inventory_race_sync.py': "matrix.lane == 'pg'",
             './scripts/check_pg_races.sh': "matrix.lane == 'pg'",
             './scripts/check_pg_upgrade.sh': "matrix.lane == 'pg'",
             'python3 scripts/privacy_registry.py --database --fixture': "matrix.lane == 'pg'",
+            'python3 scripts/check_data_rights_canaries.py': "matrix.lane == 'pg'",
+            "go test -tags pgx -count=1 -timeout=5m -v -run '^TestC02cRoleScopesMirrorPostgres$' ./internal/modules/identity": "matrix.lane == 'pgx'",
             './scripts/check_catalog_api.sh': "matrix.lane == 'pgx' || matrix.lane == 'sqlc'",
             'go vet -tags pgx ./...': "matrix.lane == 'pgx'",
-            'go test -race -tags pgx -count=1 ./...': "matrix.lane == 'pgx'",
+            'go test -race -tags pgx -count=1 -timeout=15m ./...': "matrix.lane == 'pgx'",
             './scripts/check_codegen.sh': "matrix.lane == 'sqlc'",
         }
         for command, condition in inventory.items():
@@ -39,7 +44,7 @@ class FoundationLanes(unittest.TestCase):
             # The original failure-only OpenAPI handoff is deliberately retained too.
             matches = [s for s in matches if 'failure()' not in s.get('if', '')]
             self.assertEqual(len(matches), 1, command)
-            self.assertEqual(matches[0]['if'], condition, command)
+            self.assertEqual(matches[0].get('if'), condition, command)
         for key in ('JOBS_REQUIRE_PG', 'IDEMPOTENCY_REQUIRE_PG', 'OUTBOX_REQUIRE_PG',
                     'OPENSITE_REQUIRE_PGX_FIXTURES', 'CUSTOMER_AUTH_REQUIRE_PG'):
             self.assertEqual(parts['env'][key], '1', key)
@@ -53,6 +58,30 @@ class FoundationLanes(unittest.TestCase):
         self.assertIn('go clean -testcache', bodies[sqlc])
         self.assertIn('git diff --exit-code -- go.mod go.sum internal/db', bodies[sqlc])
         self.assertIn('git diff --exit-code -- internal/platform/httpapi/generated/api.gen.go', '\n'.join(bodies))
+
+    def test_integrated_pg_dependencies_and_frontend_download_retry(self):
+        jobs = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']
+        parts = jobs['foundation-lane']
+        steps = parts['steps']
+        bodies = [s.get('run', '') for s in steps]
+        parity = next(i for i, body in enumerate(bodies) if '^TestC02cRoleScopesMirrorPostgres$' in body)
+        prepare = next(i for i, body in enumerate(bodies) if './scripts/migrate.sh' in body)
+        privacy = next(i for i, body in enumerate(bodies) if 'privacy_registry.py --database --fixture' in body)
+        canary = next(i for i, body in enumerate(bodies) if 'scripts/check_data_rights_canaries.py' in body)
+        pg = next(i for i, body in enumerate(bodies) if './scripts/check_pg.sh' in body)
+        self.assertLess(prepare, parity)
+        self.assertLess(pg, privacy)
+        self.assertLess(privacy, canary)
+        self.assertIn('postgresql-client', bodies[prepare])
+        self.assertIn('postgresql-client', bodies[pg])
+        # Job env reaches every matrix lane, including all pgx/codegen consumers.
+        self.assertEqual(parts['env']['C22A_DATABASE_URL'], parts['env']['C07_DATABASE_URL'])
+        self.assertEqual(parts['env']['C22A_MAINTENANCE_DATABASE_URL'], parts['env']['DATABASE_URL'])
+        for step in steps:
+            for key in ('C22A_DATABASE_URL', 'C22A_MAINTENANCE_DATABASE_URL'):
+                self.assertNotIn(key, step.get('env', {}), 'no per-step fixture override')
+        prerequisite = next(s for s in jobs['frontend']['steps'] if s.get('name') == 'Bun archive extraction prerequisite')
+        self.assertIn('Acquire::Retries=3', prerequisite['run'])
 
     def test_required_context_and_all_lane_results(self):
         jobs = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']
