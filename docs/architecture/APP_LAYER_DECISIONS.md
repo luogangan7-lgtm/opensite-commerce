@@ -149,10 +149,14 @@ queries/<module>/*.sql
 
   | Role | Allowed scopes |
   | --- | --- |
-  | owner, admin | `apikeys:write`, `catalog:read`, `catalog:write`, `cms:publish`, `cms:write`, `media:write`, `notifications:write`, `orders:read`, `quotes:read`, `quotes:write`, `organization.create`, `site.create`, `fulfillment:write`, `returns:write` |
-  | catalog_editor | `catalog:read`, `catalog:write`, `media:write` |
+  | owner, admin | `apikeys:write`, `catalog:read`, `catalog:write`, `cms:publish`, `cms:write`, `media:write`, `notifications:write`, `orders:read`, `quotes:read`, `quotes:write`, `organization.create`, `site.create`, `fulfillment:write`, `returns:write`, `customers:privacy`, `catalog:import`, `catalog:export` |
+  | catalog_editor | `catalog:read`, `catalog:write`, `media:write`, `catalog:import`, `catalog:export` |
   | content_editor | `catalog:read`, `cms:write`, `cms:publish`, `media:write` |
   | viewer | `catalog:read` |
+
+  FIX-44 (orchestrator role-grant decision, 2026-10-22): customer PII export/erasure is
+  owner/admin only; catalog CSV import/export follows catalog write holders. API-key
+  management remains owner/admin only; unknown scope denial remains exact.
 
   A key's stored scopes cannot expand its issuer's current role. Membership, tenant status, credential expiry and
   revocation are checked on each request; business writes recheck them inside the transaction before mutation.

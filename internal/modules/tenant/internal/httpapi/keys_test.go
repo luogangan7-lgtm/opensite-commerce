@@ -106,6 +106,14 @@ func TestAPIKeySecretOnlyAtCreate(t *testing.T) {
 		}
 	}
 }
+
+func TestFIX44APIKeyScopeInventory(t *testing.T) {
+	repo := &repository{}
+	w := call(testRouter(t, repo, "user"), "POST", "/api/v1/t/"+testTenant+"/api-keys", `{"scopes":["customers:privacy","catalog:import","catalog:export"]}`)
+	if w.Code != 201 || repo.created != 1 || len(repo.material.Scopes) != 3 {
+		t.Fatal("FIX-44 approved key scopes refused", w.Code)
+	}
+}
 func TestAPIKeyInputAndActorAdmission(t *testing.T) {
 	for _, body := range []string{`{}`, `{"scopes":null}`, `{"scopes":[],"expires_at":null}`, `{"scopes":["unknown:write"]}`, `{"scopes":["catalog:read","catalog:read"]}`, `{"scopes":[],"name":"unexpected"}`} {
 		t.Run(body, func(t *testing.T) {

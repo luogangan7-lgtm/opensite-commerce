@@ -24,9 +24,21 @@ SELECT set_config('test.cart_tenant',:'ta',true),set_config('test.cart_customer'
 DO $constraints$
 DECLARE t uuid:=current_setting('test.cart_tenant')::uuid; c uuid:=current_setting('test.cart_id')::uuid; s uuid:=current_setting('test.cart_sku')::uuid;
 BEGIN
- IF (SELECT count(*) FROM pg_policy WHERE polrelid IN ('app.carts'::regclass,'app.cart_lines'::regclass))<>2
-  OR (SELECT count(*) FROM pg_policy WHERE polrelid IN ('app.carts'::regclass,'app.cart_lines'::regclass) AND polname='tenant_scope')<>2 THEN
+ -- Privacy migration adds one tenant-only policy per table for its non-login
+ -- executor. Runtime must retain the original owner policy and no other policy.
+ IF (SELECT count(*) FROM pg_policy WHERE polrelid IN ('app.carts'::regclass,'app.cart_lines'::regclass))<>
+    (CASE WHEN to_regclass('app.data_rights_exports') IS NULL THEN 2 ELSE 4 END)
+  OR (SELECT count(*) FROM pg_policy WHERE polrelid IN ('app.carts'::regclass,'app.cart_lines'::regclass)
+      AND polname='tenant_scope' AND polcmd='*' AND polpermissive
+      AND polroles=ARRAY['app_runtime'::regrole::oid])<>2 THEN
   RAISE EXCEPTION 'CART_EXACT_OWNER_POLICIES_REQUIRED'; END IF;
+ IF to_regclass('app.data_rights_exports') IS NOT NULL AND
+   (SELECT count(*) FROM pg_policy WHERE polrelid IN ('app.carts'::regclass,'app.cart_lines'::regclass)
+      AND polname='data_rights_scope' AND polcmd='*' AND polpermissive
+      AND polroles=ARRAY['app_data_rights_executor'::regrole::oid]
+      AND pg_get_expr(polqual,polrelid)=$expr$(tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)$expr$
+      AND pg_get_expr(polwithcheck,polrelid)=pg_get_expr(polqual,polrelid))<>2 THEN
+  RAISE EXCEPTION 'CART_PRIVACY_EXECUTOR_POLICY_REQUIRED'; END IF;
  IF EXISTS(SELECT FROM pg_class WHERE oid IN ('app.carts'::regclass,'app.cart_lines'::regclass) AND NOT(relrowsecurity AND relforcerowsecurity)) THEN
   RAISE EXCEPTION 'CART_RLS_FORCE_REQUIRED'; END IF;
  BEGIN INSERT INTO app.carts(tenant_id,customer_id,currency) VALUES(t,current_setting('test.cart_foreign_customer')::uuid,'USD');

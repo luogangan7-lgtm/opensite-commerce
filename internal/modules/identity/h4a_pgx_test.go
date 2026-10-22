@@ -54,7 +54,10 @@ func TestH4ARealSessionQueueIsolationPostgres(t *testing.T) {
 	}
 	// The held valid session must still be readable on the independent lane.
 	results := make(chan error, 8)
-	floodCtx, cancelFlood := context.WithTimeout(ctx, 200*time.Millisecond)
+	// The credential lock stays held until release() below, so a lookup queued behind it would
+	// still time out; the window only has to absorb slow runners serialising 8 lookups on one lane
+	// (200ms flaked on main run 39789408706).
+	floodCtx, cancelFlood := context.WithTimeout(ctx, 3*time.Second)
 	defer cancelFlood()
 	for i := 0; i < cap(results); i++ {
 		go func() {

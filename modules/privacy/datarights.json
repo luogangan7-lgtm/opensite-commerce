@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "module": "datarights",
+  "note": "Export request metadata and the immutable erasure receipt hold only IDs, state, times and capability/content digests. Export artifact bytes live in the private media-root file named by the request id: they are a full customer-data copy (customer profile, addresses, order/cart summaries), are removed by erasure cleanup for every request id of the subject, and otherwise expire with the DB capability; the signed periodic tenant worker sweeps final and temporary files with no live committed row under the same advisory lock as construction, including rollback orphans. Response-store bodies for privacy commands contain counts and request ids only.",
+  "structures": {"Sha256Digest": "Opaque 32-byte digest of a single-use download capability or of exported artifact bytes; never the token or content itself."},
+  "tables": {
+    "data_rights_exports": {
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "status": {"classification": "operational"},
+        "token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "content_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
+        "expires_at": {"classification": "operational"},
+        "download_expires_at": {"classification": "operational"},
+        "created_at": {"classification": "operational"}
+      }
+    },
+    "data_rights_erasures": {
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"},
+        "actor_kind": {"classification": "operational"},
+        "actor_id": {"classification": "operational"},
+        "erased_at": {"classification": "operational"},
+        "scope": {"classification": "operational"}
+      }
+    }
+  }
+}

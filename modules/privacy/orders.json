@@ -5,7 +5,7 @@
   "structures": {"OrderGuestContact": "Unverified guest contact object, including email and optional contact/address keys.", "OrderLineTaxSnapshot": "Frozen per-line tax basis/rate snapshot; arbitrary appended contact keys must not survive erase.", "OrderShippingSnapshot": "Frozen shipping rule/address-related object; arbitrary personal keys are conservatively covered.", "Sha256Digest": "Opaque 32-byte cryptographic digest for integrity/request identity/capability verification; never raw token, body or contact data."},
   "tables": {
     "orders": {
-      "subject": {"tenant_key": "tenant_id", "identity_path": "orders.customer_id -> customers.id", "null_subject_policy": "Guest email is unverified contact; do not associate it with a registered customer solely by matching email."},
+      "subject": {"tenant_key": "tenant_id", "identity_path": "orders.customer_id -> customers.id | or (mailbox-verified) customer_guest_order_links.order_id=orders.id -> customer_id -> customers.id", "null_subject_policy": "Unlinked guest email is unverified contact; do not associate it with a registered customer solely by matching email. A mailbox-proven customer_guest_order_links row does establish ownership."},
       "columns": {
         "tenant_id": {"classification": "operational"},
         "id": {"classification": "operational"},
@@ -30,7 +30,7 @@
       }
     },
     "order_lines": {
-      "subject": {"tenant_key": "tenant_id", "identity_path": "order_lines.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest order inherits unverified guest contact policy."},
+      "subject": {"tenant_key": "tenant_id", "identity_path": "order_lines.order_id -> orders.id -> orders.customer_id -> customers.id | or (mailbox-verified) customer_guest_order_links.order_id -> customer_id -> customers.id", "null_subject_policy": "Guest order inherits unverified guest contact policy."},
       "columns": {
         "tenant_id": {"classification": "operational"},
         "id": {"classification": "operational"},
@@ -47,7 +47,7 @@
       }
     },
     "order_adjustments": {
-      "subject": {"tenant_key": "tenant_id", "identity_path": "order_adjustments.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest order inherits unverified guest contact policy."},
+      "subject": {"tenant_key": "tenant_id", "identity_path": "order_adjustments.order_id -> orders.id -> orders.customer_id -> customers.id | or (mailbox-verified) customer_guest_order_links.order_id -> customer_id -> customers.id", "null_subject_policy": "Guest order inherits unverified guest contact policy."},
       "columns": {
         "tenant_id": {"classification": "operational"},
         "id": {"classification": "operational"},

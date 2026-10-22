@@ -32,7 +32,6 @@ var ErrInvalidRecord = errors.New("invalid idempotency record")
 
 // Scope MUST be derived from the authorized actor and registered operation,
 // never client JSON. The complete existing 007 primary key scopes every claim.
-type Scope struct{ TenantID, ActorKind, ActorID, Operation, Key string }
 
 // Claim has private ownership fields: callers cannot construct a fenced owner.
 type Claim struct {
