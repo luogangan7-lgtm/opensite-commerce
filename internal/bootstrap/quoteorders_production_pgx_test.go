@@ -1,14 +1,17 @@
 //go:build pgx
 
 // Responsibility: gate the production quote composition through customer HTTP
-// admission and signed payment confirmation. Dependencies: public module ports;
+// admission and signed completed payment facts. Dependencies: public module ports;
 // invariants: real customer capability, real checkout, no test business writes.
 package bootstrap_test
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,10 +25,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
+	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer"
 	cc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	oc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
+	pc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
@@ -103,17 +110,112 @@ func quoteCustomer(t *testing.T, f *quoteOrderFixture) (cc.Service, []byte, *htt
 	return service, secret, &http.Cookie{Name: customerhttp.SessionCookie, Value: session.Token}
 }
 
+// Use the same immutable DB account resolver and runtime role as payment PG
+// tests. Only the fixture mapping is seeded; the real consumer owns all effects.
+func (f *quoteOrderFixture) factReceiver(t *testing.T) (pc.Receiver, string) {
+	t.Helper()
+	account := "acct_" + uuid.NewString()
+	f.maintenance(t, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment,enabled) VALUES($1,'fake',$2,'test',true)", f.tenant, account)
+		return err
+	})
+	run := func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+		return f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			var tenant string
+			var at time.Time
+			if err := tx.QueryRow(ctx, "SELECT tenant_id::text,at_time FROM app.resolve_fake_payment_account($1)", account).Scan(&tenant, &at); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", tenant); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+				return err
+			}
+			return fn(ctx, tx, tenant, at)
+		})
+	}
+	applier, ok := f.checkout.(checkoutcontract.PaymentEventApplier)
+	if !ok {
+		t.Fatal("real checkout lacks completed-fact consumer")
+	}
+	receiver, err := payments.New(payments.Config{Key: f.signingKey, Run: run, Apply: applier.ApplyPaymentEvent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return receiver, account
+}
+
+// Capture through the actual external Fake once, then deliver its generated
+// completed fact over HTTP. Application provider commands remain observable.
+func (f *quoteOrderFixture) deliverFact(t *testing.T, account, orderID string) *httptest.ResponseRecorder {
+	t.Helper()
+	captured := false
+	for _, event := range f.fake.Events() {
+		if event.OrderID == orderID && event.Status == payment.StatusCaptured {
+			captured = true
+		}
+	}
+	if !captured {
+		for _, event := range f.fake.Events() {
+			if event.OrderID != orderID || event.Status != payment.StatusAuthorized {
+				continue
+			}
+			_, err := f.fake.Capture(f.ctx, payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{
+				TenantID: event.TenantID, OrderID: event.OrderID, OrderVersion: event.OrderVersion,
+				Amount: event.Amount, IdempotencyKey: "external-capture:" + orderID,
+			}, ProviderRef: event.ProviderRef})
+			if err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+	for _, event := range f.fake.Events() {
+		if event.OrderID != orderID || event.Status != payment.StatusCaptured {
+			continue
+		}
+		raw, err := json.Marshal(map[string]any{"event_id": event.EventID, "account_id": account, "order_id": event.OrderID, "order_version": event.OrderVersion, "provider_ref": event.ProviderRef, "status": string(event.Status), "amount_minor": event.Amount.Amount, "currency": event.Amount.Currency})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var at time.Time
+		f.maintenance(t, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&at)
+		})
+		stamp := fmt.Sprint(at.Unix())
+		mac := hmac.New(sha256.New, f.signingKey)
+		_, _ = mac.Write([]byte(stamp + "."))
+		_, _ = mac.Write(raw)
+		request := httptest.NewRequest(http.MethodPost, checkouthttp.FakePattern, strings.NewReader(string(raw))).WithContext(quoteObserved(f.ctx))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("X-Fake-Signature", "t="+stamp+",v1="+hex.EncodeToString(mac.Sum(nil)))
+		creates, captures, cancels := f.prepay.createCalls, f.prepay.captureCalls, f.prepay.cancelCalls
+		response := httptest.NewRecorder()
+		f.confirm.ServeHTTP(response, request)
+		if response.Code == http.StatusOK {
+			var receipt pc.Receipt
+			if json.Unmarshal(response.Body.Bytes(), &receipt) != nil || receipt.EventID != event.EventID || receipt.Status != "processed" {
+				t.Fatalf("HTTP receipt is not the captured provider event: %s", response.Body.String())
+			}
+		}
+		if f.prepay.createCalls != creates || f.prepay.captureCalls != captures || f.prepay.cancelCalls != cancels {
+			t.Fatal("completed-fact HTTP delivery issued a provider command")
+		}
+		return response
+	}
+	t.Fatal("actual provider captured event absent")
+	return nil
+}
+
 func TestQuoteOrdersPGProductionCompositionAdmissionAndConfirm(t *testing.T) {
 	f := quoteOrdersDB(t, time.Hour)
 	foreign := quoteOrdersDB(t, time.Hour)
 	service, secret, cookie := quoteCustomer(t, f)
 	const origin = "https://store.example.invalid"
-	verifier, err := checkouthttp.NewFakeHMACVerifier(f.signingKey)
-	if err != nil {
-		t.Fatal(err)
-	}
+	receiver, account := f.factReceiver(t)
 	server, err := bootstrap.New(bootstrap.Config{Customer: service, CustomerOrigin: origin, CustomerSecret: secret, Authenticator: quoteSellerReadAuth{tenant: f.tenant, staff: f.staff},
-		Checkout:        &checkouthttp.Config{Service: f.checkout, Origin: origin, FakeEnabled: true, Environment: "test", Verifier: verifier},
+		Checkout:        &checkouthttp.Config{Service: f.checkout, Origin: origin, FakeEnabled: true, Environment: "test", Events: receiver},
 		QuoteConversion: &bootstrap.QuoteConversionConfig{Runner: f.runner, Quotes: quotes.New(), Orders: orders.NewQuoteCreator()}})
 	if err != nil {
 		t.Fatal(err)
@@ -206,10 +308,17 @@ func TestQuoteOrdersPGProductionCompositionAdmissionAndConfirm(t *testing.T) {
 		t.Fatal("pending replay or seller status repeated provider effect")
 	}
 	f.assertEffects(t, receipt.OrderID, "pending_payment", 1, 0, 0, 100, 2)
+	var admittedEvent string
 	for i := 0; i < 2; i++ {
-		if confirmed := f.deliver(t, receipt.OrderID); confirmed.Code != 200 {
-			t.Fatalf("actual signed Confirm replay: %d %s", confirmed.Code, confirmed.Body.String())
+		confirmed := f.deliverFact(t, account, receipt.OrderID)
+		var factReceipt pc.Receipt
+		if confirmed.Code != 200 || json.Unmarshal(confirmed.Body.Bytes(), &factReceipt) != nil || factReceipt.EventID == "" || factReceipt.Status != "processed" {
+			t.Fatalf("actual signed completed-fact replay: %d %s", confirmed.Code, confirmed.Body.String())
 		}
+		if admittedEvent != "" && factReceipt.EventID != admittedEvent {
+			t.Fatal("completed-fact replay changed event identity")
+		}
+		admittedEvent = factReceipt.EventID
 	}
 	w = post(f.quote.ID, session.CSRF, origin, "{}", cookie)
 	var replay struct {
@@ -224,11 +333,27 @@ func TestQuoteOrdersPGProductionCompositionAdmissionAndConfirm(t *testing.T) {
 		assertRef(post(f.quote.ID, session.CSRF, origin, "{}", cookie), http.StatusCreated, "paid")
 		sellerStatus("paid")
 	}
-	if f.prepay.createCalls != 1 || f.prepay.captureCalls != 1 || f.prepay.cancelCalls != 0 {
-		t.Fatal("provider effect repeated")
+	if f.prepay.createCalls != 1 || f.prepay.captureCalls != 0 || f.prepay.cancelCalls != 0 {
+		t.Fatal("completed-fact callback issued a provider command")
 	}
 	f.assertEffects(t, receipt.OrderID, "paid", 1, 1, 1, 98, 0)
+	capturedFacts := 0
+	for _, event := range f.fake.Events() {
+		if event.OrderID == receipt.OrderID && event.Status == payment.StatusCaptured {
+			capturedFacts++
+		}
+	}
+	if capturedFacts != 1 {
+		t.Fatalf("external capture effects after HTTP replay: %d", capturedFacts)
+	}
 	f.maintenance(t, func(ctx context.Context, tx pgx.Tx) error {
+		var facts int64
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM app.payment_events WHERE tenant_id=$1 AND provider_account_id=$2 AND applied", f.tenant, account).Scan(&facts); err != nil {
+			return err
+		}
+		if facts != 1 {
+			return fmt.Errorf("completed-fact replay stored %d applied facts", facts)
+		}
 		_, err := tx.Exec(ctx, `UPDATE app.buyer_company_members SET status='revoked' WHERE tenant_id=$1 AND customer_id=$2`, f.tenant, f.buyer)
 		return err
 	})

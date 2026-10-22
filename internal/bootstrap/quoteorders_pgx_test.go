@@ -1,6 +1,6 @@
 //go:build pgx
 
-// Responsibility: exercise approved quote -> real checkout -> signed Confirm in PG.
+// Responsibility: exercise approved quote -> real checkout -> trusted Confirm in PG.
 // Dependencies: bootstrap typed composition and public modules; pgxadapter owns pools.
 // Invariants: expendable fixtures, effective app_runtime, provider IO at tx depth zero;
 // tests never implement order transitions, captures or business journals themselves.
@@ -8,17 +8,12 @@ package bootstrap_test
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -36,8 +31,6 @@ import (
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tax"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
@@ -202,21 +195,6 @@ func quoteOrdersDB(t *testing.T, expiry time.Duration) *quoteOrderFixture {
 	if _, err := rand.Read(f.signingKey); err != nil {
 		t.Fatal(err)
 	}
-	verifier, err := checkouthttp.NewFakeHMACVerifier(f.signingKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler, err := checkouthttp.New(checkouthttp.Config{Service: f.checkout, FakeEnabled: true, Environment: "test", Verifier: verifier})
-	if err != nil {
-		t.Fatal(err)
-	}
-	router := httpapi.New(nil, nil)
-	for _, route := range handler.Routes() {
-		if err := router.Register(route.Spec, route.Handler); err != nil {
-			t.Fatal(err)
-		}
-	}
-	f.confirm = router
 	t.Cleanup(func() {
 		if f.prepay.violations != 0 {
 			t.Errorf("provider IO in transactions: %d", f.prepay.violations)
@@ -305,24 +283,27 @@ func quoteObserved(ctx context.Context) context.Context {
 	return context.WithValue(ctx, quoteOrderDepthKey{}, &quoteOrderDepth{})
 }
 
-// Sign the actual neutral provider event, then enter the production HTTP verifier.
+// Exercise the trusted private command, including provider capture and recovery.
+// Public callbacks consume completed facts separately in deliverFact.
 func (f *quoteOrderFixture) deliver(t *testing.T, orderID string) *httptest.ResponseRecorder {
 	t.Helper()
 	for _, event := range f.fake.Events() {
 		if event.OrderID != orderID || event.Status != payment.StatusAuthorized {
 			continue
 		}
-		raw, err := json.Marshal(map[string]any{"event_id": event.EventID, "tenant_id": event.TenantID, "order_id": event.OrderID, "order_version": event.OrderVersion, "provider_ref": event.ProviderRef, "status": string(event.Status), "amount_minor": event.Amount.Amount, "currency": event.Amount.Currency})
-		if err != nil {
-			t.Fatal(err)
-		}
-		mac := hmac.New(sha256.New, f.signingKey)
-		_, _ = mac.Write(raw)
-		request := httptest.NewRequest(http.MethodPost, checkouthttp.FakePattern, strings.NewReader(string(raw))).WithContext(quoteObserved(f.ctx))
-		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("X-Fake-Signature", hex.EncodeToString(mac.Sum(nil)))
+		_, err := f.checkout.Confirm(quoteObserved(f.ctx), payment.VerifiedEvent(event))
 		response := httptest.NewRecorder()
-		f.confirm.ServeHTTP(response, request)
+		if err != nil {
+			var providerError *payment.PaymentError
+			retryable := errors.As(err, &providerError) && providerError.Code == payment.ErrorRetryable
+			if !retryable && !errors.Is(err, checkoutcontract.ErrRetry) && !errors.Is(err, checkoutcontract.ErrUnavailable) {
+				t.Fatalf("trusted Confirm unexpected error: %v", err)
+			}
+			response.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = fmt.Fprint(response, err)
+		} else {
+			response.WriteHeader(http.StatusOK)
+		}
 		return response
 	}
 	t.Fatal("actual provider authorized event absent")
@@ -337,14 +318,14 @@ func (f *quoteOrderFixture) convertAndPay(t *testing.T, ctx context.Context, quo
 		return out, err
 	}
 	if f.prepay.captureCalls != captures {
-		t.Fatal("conversion captured before signed Confirm")
+		t.Fatal("conversion captured before trusted Confirm")
 	}
 	if out.ProviderRef == "" {
 		t.Fatal("conversion did not adopt a pending provider intent")
 	}
 	response := f.deliver(t, out.OrderID)
 	if response.Code != http.StatusOK {
-		t.Fatalf("signed Confirm: %d %s", response.Code, response.Body.String())
+		t.Fatalf("trusted Confirm: %d %s", response.Code, response.Body.String())
 	}
 	return f.app.Convert(quoteObserved(ctx), quoteID, key)
 }
@@ -583,7 +564,7 @@ func TestQuoteOrdersPGConcurrentReplay(t *testing.T) {
 		}
 	}
 	if response := f.deliver(t, id); response.Code != http.StatusOK {
-		t.Fatalf("concurrent signed Confirm: %d %s", response.Code, response.Body.String())
+		t.Fatalf("concurrent trusted Confirm: %d %s", response.Code, response.Body.String())
 	}
 	if f.prepay.createCalls < 1 || f.prepay.captureCalls != 1 {
 		t.Fatalf("provider transport create/capture %d/%d", f.prepay.createCalls, f.prepay.captureCalls)
@@ -690,7 +671,7 @@ func TestQuoteOrdersPGDefinitiveFailureAndExpiredHold(t *testing.T) {
 				})
 			}
 			if response := f.deliver(t, c.OrderID); response.Code != http.StatusOK {
-				t.Fatalf("failure signed Confirm: %d %s", response.Code, response.Body.String())
+				t.Fatalf("failure trusted Confirm: %d %s", response.Code, response.Body.String())
 			}
 			c, e = f.app.Convert(f.buyerCtx, f.quote.ID, key)
 			if e != nil {
@@ -742,7 +723,7 @@ func TestQuoteOrdersPGAmbiguousFailureRetainsReservation(t *testing.T) {
 	}
 	f.assertEffects(t, c.OrderID, "pending_payment", 1, 0, 0, 100, 2)
 	if response := f.deliver(t, c.OrderID); response.Code != http.StatusOK {
-		t.Fatalf("resume signed Confirm: %d %s", response.Code, response.Body.String())
+		t.Fatalf("resume trusted Confirm: %d %s", response.Code, response.Body.String())
 	}
 	retried, e := f.app.Convert(f.buyerCtx, f.quote.ID, key)
 	if e != nil || retried.OrderID != c.OrderID || retried.State != "paid" {

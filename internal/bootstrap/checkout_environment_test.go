@@ -4,11 +4,14 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"github.com/jackc/pgx/v5"
 	cc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
+	pc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
+	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"testing"
 )
 
@@ -77,5 +80,26 @@ func TestQuoteRuntimeAdmissionRequiresVerifiedActor(t *testing.T) {
 	}
 	if err := r.InTenant(admittedBuyer, buyer, fn); err == nil {
 		t.Fatal("actor tenant mismatch accepted")
+	}
+}
+
+// The mapped receiver is composed first; adding quote commands must preserve it.
+type quoteCompositionCustomer struct{ cc.Service }
+type quoteCompositionReceiver struct{ pc.Receiver }
+
+func TestQuoteFakeCompositionPreservesMappedReceiver(t *testing.T) {
+	receiver := &quoteCompositionReceiver{}
+	run := func(context.Context, string, func(context.Context, pgx.Tx) error) error { return nil }
+	out, err := composeFakeCheckout(Config{
+		Customer: &quoteCompositionCustomer{}, CustomerSecret: bytes.Repeat([]byte{1}, 32),
+		Checkout: &checkouthttp.Config{Events: receiver, FakeEnabled: true, Environment: "test"},
+	}, runtimeQuoteRunner{run: run, snapshot: run}, fakeCheckoutEnvironment{
+		enabled: true, key: bytes.Repeat([]byte{2}, 32), environment: "test",
+	})
+	if err != nil {
+		t.Fatalf("mapped receiver rejected during quote composition: %v", err)
+	}
+	if out.Checkout == nil || out.Checkout.Service == nil || out.Checkout.Events != receiver || !out.Checkout.FakeEnabled || out.Checkout.Environment != "test" || out.QuoteConversion == nil || out.Quotes == nil {
+		t.Fatal("quote commands and mapped payment receiver were not composed together")
 	}
 }
