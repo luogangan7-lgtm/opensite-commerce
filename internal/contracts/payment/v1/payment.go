@@ -76,6 +76,12 @@ const (
 type PaymentError struct {
 	Code    ErrorCode
 	Message string
+
+	// NoSideEffect is true only when the trusted adapter establishes that this
+	// exact operation/key is permanently sealed without side effects: no prior
+	// effect and no concurrent or future replay can succeed. The default false
+	// means unknown; a non-retryable code alone does not prove absence.
+	NoSideEffect bool
 }
 
 func (e *PaymentError) Error() string   { return string(e.Code) + ": " + e.Message }

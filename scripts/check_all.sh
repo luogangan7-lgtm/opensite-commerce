@@ -20,6 +20,7 @@ python3 tests/test_sqlc_contract_static.py
 python3 tests/test_shipping_contract_static.py
 python3 tests/test_api_contract.py
 python3 tests/test_customer_auth_contract.py
+python3 tests/test_fulfillment_contract.py
 python3 tests/test_quotes_contract.py
 python3 tests/test_notifications_contract_static.py
 python3 tests/test_notifications_api.py

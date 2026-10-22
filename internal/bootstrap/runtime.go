@@ -141,6 +141,8 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			closeRuntime = func() { stopRefresh(); <-done; previous() }
 		}
 		config.Orders.Read = runner.RunAuthorizedSnapshot
+		config.Fulfillment.Run = runner.RunAuthorizedTx
+		config.Returns.Run = runner.RunAuthorizedTx
 		if config.Cart == nil {
 			config.Cart = cart.NewPostgres(cart.Config{Run: runner.RunAuthorized, Read: runner.RunAuthorizedSnapshot}, nil)
 		}
@@ -180,13 +182,21 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	if config.Media.Root == "" {
 		config.Media.Root = os.Getenv("OPENSITE_MEDIA_ROOT")
 	}
-	if root := os.Getenv("OPENSITE_IDEMPOTENCY_ROOT"); root != "" && config.CMS.Idempotency.Store == nil {
+	if root := os.Getenv("OPENSITE_IDEMPOTENCY_ROOT"); root != "" && (config.CMS.Idempotency.Store == nil || config.Fulfillment.Idempotency.Store == nil || config.Returns.Idempotency.Store == nil) {
 		store, err := idempotency.NewLocalResponseStore(root, contract.MaxWriteBytes)
 		if err != nil {
 			closeRuntime()
 			return Config{}, nil, errors.New("command response storage is unavailable")
 		}
-		config.CMS.Idempotency.Store = store
+		if config.CMS.Idempotency.Store == nil {
+			config.CMS.Idempotency.Store = store
+		}
+		if config.Fulfillment.Idempotency.Store == nil {
+			config.Fulfillment.Idempotency.Store = store
+		}
+		if config.Returns.Idempotency.Store == nil {
+			config.Returns.Idempotency.Store = store
+		}
 	}
 	if staffEnabled {
 		staff, err = StaffLogin(ctx, authURL, origin, keyHex, proxies)
