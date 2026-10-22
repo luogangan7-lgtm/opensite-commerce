@@ -199,6 +199,20 @@ test('commerce fixture customer and registration explicitly remain synthetic', a
   await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
 });
 
+test('mailbox proof is cleared from the URL and never rendered or submitted by GET',async({page})=>{
+  const token='Z'.repeat(43),writes:string[]=[];
+  page.on('request',request=>{if(request.method()==='POST')writes.push(request.url());});
+  const response=await page.goto(`${site}/customer/verify#token=${token}`);
+  expect(response?.headers()['cache-control']).toContain('no-store');
+  expect(response?.headers()['referrer-policy']).toBe('no-referrer');
+  await expect(page.getByRole('button',{name:'Verify email',exact:true})).toBeEnabled();
+  expect(new URL(page.url()).hash).toBe('');
+  expect(await page.locator('body').innerHTML()).not.toContain(token);
+  expect(writes).toEqual([]);
+  const report=await new AxeBuilder({page}).analyze();
+  expect(report.violations.filter(item=>['serious','critical'].includes(item.impact??''))).toEqual([]);
+});
+
 test('production storefront keeps purchasing disabled and makes no fixture requests', async ({ page }) => {
   const calls: string[] = [];
   page.on('request', request => { if (request.url().includes('4176') || request.url().includes('/purchase/api/')) calls.push(request.url()); });

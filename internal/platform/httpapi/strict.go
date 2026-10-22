@@ -24,7 +24,7 @@ import (
 // StrictRoutes is static composition. Invalid embedded contracts panic and are
 // recovered by bootstrap.New as startup errors, rather than a serving fallback.
 func StrictRoutes(service generated.StrictServerInterface, specs []RouteSpec) []Route {
-	doc, err := generated.GetSwagger()
+	doc, err := GetSwagger()
 	if err != nil {
 		panic(fmt.Errorf("load API contract: %w", err))
 	}
