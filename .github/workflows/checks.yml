@@ -117,6 +117,8 @@ jobs:
       - name: Go / PageGraph / LocalFS / Tenant Transaction
         if: matrix.lane == 'go'
         run: |
+          echo intentional-single-lane-failure
+          exit 73
           go mod download
           go test -race -count=1 ./...
           go vet ./...
