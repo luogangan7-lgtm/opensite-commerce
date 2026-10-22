@@ -104,5 +104,5 @@ SELECT v.id,v.user_id,v.created_at,coalesce(t.last_seen_at,v.last_seen_at)::time
 -- name: LoginRevokeSession :execrows
 -- Retain the caller timestamp port, but only DB time mutates state.
 WITH input AS MATERIALIZED (SELECT sqlc.arg(at)::timestamptz AS caller_at)
-UPDATE app.auth_sessions SET revoked_at=clock_timestamp()
+UPDATE app.auth_sessions SET revoked_at=(SELECT caller_at FROM input)
  WHERE id=sqlc.arg(id)::uuid AND revoked_at IS NULL;
