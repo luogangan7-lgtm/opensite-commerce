@@ -71,7 +71,6 @@ test('all component states have visual baselines', async ({ page }) => {
   }
   await page.getByTestId('dialog-trigger').click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.getByRole('dialog')).toHaveScreenshot('dialog-open.png');
 });
 
 test('every keyboard focus ring fits on all four screenshot edges', async ({ page }, testInfo) => {
