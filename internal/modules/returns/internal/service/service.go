@@ -179,7 +179,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	return out, nil
 }
 
-// Only an adapter's explicit no-effect proof may release a prepared reservation.
+// Only an adapter's permanently sealed no-effect proof may release a reservation.
 // Timeouts, unknown results and unmarked errors need reconciliation with the
 // same frozen PSP key. Persist even if the caller disconnected, but bound I/O.
 func (s *Service) recordProviderFailure(ctx context.Context, tenant string, prepared contract.PreparedRefund, cause error) error {

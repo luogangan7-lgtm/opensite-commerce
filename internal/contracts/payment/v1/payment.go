@@ -78,8 +78,9 @@ type PaymentError struct {
 	Message string
 
 	// NoSideEffect is true only when the trusted adapter establishes that this
-	// exact operation has no prior or current provider side effect. The default
-	// false means unknown; a non-retryable code alone does not prove absence.
+	// exact operation/key is permanently sealed without side effects: no prior
+	// effect and no concurrent or future replay can succeed. The default false
+	// means unknown; a non-retryable code alone does not prove absence.
 	NoSideEffect bool
 }
 

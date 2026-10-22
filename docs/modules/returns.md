@@ -208,8 +208,10 @@ real payment-provider adapter is included.
 ## Provider rejection and reconciliation
 
 The Payment Port's `PaymentError.NoSideEffect` is an explicit trusted-adapter
-proof about the exact frozen operation, including prior attempts. Error codes
-alone, including non-retryable codes, do not provide this proof. The default is
+proof that the exact frozen operation/key is permanently sealed without effects:
+no prior effect and no concurrent or future replay may succeed. Uncached
+state-dependent rejections cannot provide this proof. Error codes alone,
+including non-retryable codes, do not provide this proof. The default is
 unknown. This small shared-contract change is inseparable from the Returns
 state change: releasing quota based only on an error code would be unsafe.
 

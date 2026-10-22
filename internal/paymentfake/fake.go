@@ -88,7 +88,7 @@ func digest(value any) string {
 	return hex.EncodeToString(sum[:])
 }
 func failure(code payment.ErrorCode, message string) error {
-	return &payment.PaymentError{Code: code, Message: message, NoSideEffect: true}
+	return &payment.PaymentError{Code: code, Message: message}
 }
 
 func (f *Fake) apply(ctx context.Context, op Operation, r payment.PaymentOperation) (payment.PaymentIntentResult, error) {
