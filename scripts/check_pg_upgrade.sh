@@ -156,6 +156,7 @@ QUEUE_DB=""
 LIMITS_DB=""
 OPS_METRICS_DB=""
 INVENTORY_DB=""
+INVENTORY_OWNER_DB=""
 PRICING_DB=""
 IDENTITY_DB=""
 LOGIN_DB=""
@@ -166,7 +167,7 @@ PAYMENTS_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1302,6 +1303,97 @@ db "$CUSTOMER_AUTH_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $CUSTOMER_AUTH_DB" >/dev/null; CUSTOMER_AUTH_DB=""
 pass 'customer auth forward upgrade preserves legacy PHC/guest snapshot, rejects unsafe role atomically, then verifies and resets explicitly'
 
+# C-20b: legacy non-order holds have no bearer. Discover the logical migration
+# and apply every predecessor, including River authorization when encountered.
+# No migration number or history count is part of this populated upgrade gate.
+inventory_owner=(migrations/[0-9][0-9][0-9]_inventory_hold_owner.sql)
+[[ ${#inventory_owner[@]} == 1 && -f ${inventory_owner[0]} ]] || { bad 'exactly one inventory hold owner migration required'; exit 1; }
+INVENTORY_OWNER_DB=inventory_owner_upgrade_$$
+admin -c "CREATE DATABASE $INVENTORY_OWNER_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${inventory_owner[0]} ]] || break
+ apply_forward "$INVENTORY_OWNER_DB" "$f"
+done
+db "$INVENTORY_OWNER_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('inventory-owner-upgrade') RETURNING id AS t \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','legacy-holder') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
+ VALUES(:'t',:'p','legacy-holder','default') RETURNING id AS sku \gset
+SELECT uuidv7() AS owner \gset
+SELECT set_config('app.tenant_id',:'t',false);
+SET ROLE app_inventory_manager;
+SELECT app.inventory_adjust(:'sku',2,'legacy holder receipt',uuidv7(),'inbound');
+RESET ROLE;
+SET ROLE app_runtime;
+SELECT (app.inventory_reserve(:'sku',1,'checkout',:'owner','legacy-holder-key',900)).id AS rid \gset
+RESET ROLE;
+CREATE TABLE public.inventory_owner_upgrade_witness AS
+ SELECT to_jsonb(r) AS snapshot FROM app.inventory_reservations r WHERE r.id=:'rid';
+SQL
+apply_forward "$INVENTORY_OWNER_DB" "${inventory_owner[0]}"
+result=$(db "$INVENTORY_OWNER_DB" <<'SQL'
+DO $proof$
+DECLARE legacy app.inventory_reservations; new_hold app.inventory_reservations;
+ bearer bytea:=sha256((gen_random_uuid()::text||gen_random_uuid()::text)::bytea); denied boolean;
+BEGIN
+ SELECT r.* INTO STRICT legacy FROM app.inventory_reservations r
+ WHERE r.id=(SELECT (snapshot->>'id')::uuid FROM public.inventory_owner_upgrade_witness);
+ IF legacy.holder_hash IS NOT NULL OR legacy.state<>'active'
+ OR (to_jsonb(legacy)-'holder_hash') IS DISTINCT FROM (SELECT snapshot FROM public.inventory_owner_upgrade_witness)
+ THEN RAISE EXCEPTION 'INVENTORY_HOLDER_UPGRADE_LEGACY_CHANGED'; END IF;
+ PERFORM set_config('app.tenant_id',legacy.tenant_id::text,false);
+ EXECUTE 'SET LOCAL ROLE app_runtime';
+ denied:=false;
+ BEGIN PERFORM app.inventory_release_non_order(legacy.id,legacy.owner_type,legacy.owner_id,bearer);
+ EXCEPTION WHEN SQLSTATE '42501' THEN denied:=true; END;
+ IF NOT denied THEN RAISE EXCEPTION 'INVENTORY_HOLDER_UPGRADE_LEGACY_RELEASE_ACCEPTED'; END IF;
+ denied:=false;
+ BEGIN PERFORM app.inventory_commit_non_order(legacy.id,legacy.owner_type,legacy.owner_id,bearer);
+ EXCEPTION WHEN SQLSTATE '42501' THEN denied:=true; END;
+ IF NOT denied THEN RAISE EXCEPTION 'INVENTORY_HOLDER_UPGRADE_LEGACY_COMMIT_ACCEPTED'; END IF;
+ denied:=false;
+ BEGIN PERFORM app.inventory_expire_due(100);
+ EXCEPTION WHEN SQLSTATE '42501' THEN denied:=true; END;
+ IF NOT denied THEN RAISE EXCEPTION 'INVENTORY_HOLDER_UPGRADE_RUNTIME_SWEEP_ACCEPTED'; END IF;
+ EXECUTE 'RESET ROLE';
+ EXECUTE 'SET LOCAL ROLE app_queue_worker';
+ IF app.inventory_expire_due(100)<>0 THEN RAISE EXCEPTION 'INVENTORY_HOLDER_UPGRADE_EARLY_EXPIRE'; END IF;
+ EXECUTE 'RESET ROLE';
+ UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE id=legacy.id;
+ EXECUTE 'SET LOCAL ROLE app_queue_worker';
+ IF app.inventory_expire_due(100)<>1 THEN RAISE EXCEPTION 'INVENTORY_HOLDER_UPGRADE_LEGACY_SWEEP'; END IF;
+ EXECUTE 'RESET ROLE';
+ EXECUTE 'SET LOCAL ROLE app_runtime';
+ new_hold:=app.inventory_reserve_non_order(legacy.sku_id,1,'checkout',legacy.owner_id,'new-holder-key',900,bearer);
+ new_hold:=app.inventory_commit_non_order(new_hold.id,'checkout',legacy.owner_id,bearer);
+ IF new_hold.state<>'committed' OR new_hold.holder_hash IS DISTINCT FROM sha256(bearer)
+ THEN RAISE EXCEPTION 'INVENTORY_HOLDER_UPGRADE_NEW_CAPABILITY'; END IF;
+ -- Authorized terminal replay must not add a second movement.
+ PERFORM app.inventory_commit_non_order(new_hold.id,'checkout',legacy.owner_id,bearer);
+ EXECUTE 'RESET ROLE';
+ IF (SELECT state FROM app.inventory_reservations WHERE id=legacy.id)<>'expired'
+ OR (SELECT count(*) FROM app.inventory_movements WHERE reservation_id=legacy.id AND kind='expire')<>1
+ OR (SELECT count(*) FROM app.inventory_movements WHERE reservation_id=new_hold.id AND kind='commit')<>1
+ THEN RAISE EXCEPTION 'INVENTORY_HOLDER_UPGRADE_TERMINAL_WITNESS'; END IF;
+END $proof$;
+SELECT 'HOLDER_UPGRADE='||s.on_hand||'|'||s.reserved||'|'||
+ (SELECT count(*) FROM app.inventory_movements m WHERE m.tenant_id=s.tenant_id)||'|'||
+ (SELECT count(*) FROM app.inventory_reservations r WHERE r.tenant_id=s.tenant_id AND r.state='active')
+ FROM app.stock_levels s JOIN app.tenants t ON t.id=s.tenant_id WHERE t.name='inventory-owner-upgrade';
+SQL
+)
+[[ $result == *'HOLDER_UPGRADE=1|0|5|0'* ]] || bad "inventory holder populated upgrade: $result"
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f > ${inventory_owner[0]} ]] || continue
+ apply_forward "$INVENTORY_OWNER_DB" "$f"
+done
+river_db "$INVENTORY_OWNER_DB" --verify
+db "$INVENTORY_OWNER_DB" -f tests/db_inventory.sql >/dev/null
+db "$INVENTORY_OWNER_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $INVENTORY_OWNER_DB" >/dev/null; INVENTORY_OWNER_DB=""
+pass 'inventory holder upgrade preserves legacy hold, refuses owner finish, expires only via due queue authority and accepts new bearer'
+
+
 # Storefront serving: a site published before the migration keeps its pointer and gets
 # no serving row (the public read serves its legacy projection until republish).
 serving_files=(migrations/[0-9][0-9][0-9]_storefront_serving.sql)
@@ -1367,6 +1459,7 @@ db "$PAYMENTS_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $PAYMENTS_DB" >/dev/null; PAYMENTS_DB=""
 pass 'payment upgrade preserves ready checkout snapshot and defaults bounded refund counters'
 
+
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
-echo 'PASS: security, reliability, inventory, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront, ops metrics, notifications, quotes, identity auth/login, CMS, checkout, customer auth and storefront serving upgrade gates'
+echo 'PASS: security, reliability, inventory/holder authority, pricing, shipping, tax, customers/B2B, ledger, catalog, orders, queue, reliability limits, cart, storefront serving, ops metrics, notifications, quotes, identity auth/login, CMS, checkout, customer auth and payments upgrade gates'

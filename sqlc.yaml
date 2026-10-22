@@ -37,6 +37,7 @@ sql:
       - "migrations/034_orders_guards.sql"
       - "migrations/pending/c15b-serving_storefront_serving.sql"
       - "migrations/pending/c19a-webhook_payment_webhooks.sql"
+      - "migrations/pending/c20b-hold-owner_inventory_hold_owner.sql"
     queries: ["queries", "queries/reliability", "queries/identity"]
     gen:
       go:

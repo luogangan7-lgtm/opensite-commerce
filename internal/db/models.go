@@ -377,6 +377,7 @@ type AppInventoryReservation struct {
 	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
+	HolderHash     []byte             `json:"holder_hash"`
 }
 
 type AppKnownDevice struct {
