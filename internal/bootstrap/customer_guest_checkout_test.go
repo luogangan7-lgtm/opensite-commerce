@@ -26,9 +26,16 @@ func (s *checkoutWiringService) Get(ctx context.Context, a checkoutcontract.Auth
 	return s.Start(ctx, a, checkoutcontract.StartInput{})
 }
 func TestComposedGuestCustomerAllBrowserOperations(t *testing.T) {
-	for _, op := range []string{"start", "preview", "get"} {
+	for _, op := range []struct {
+		name, method, path, body string
+		status                   int
+	}{
+		{"start", "POST", "", checkoutWiringBody, 201},
+		{"preview", "POST", "/preview", `{"cart_id":"44444444-4444-4444-8444-444444444444","shipping_address":{"country":"US","postal_code":"00001"}}`, 200},
+		{"get", "GET", "/55555555-5555-4555-8555-555555555555", "", 200},
+	} {
 		for _, mode := range []string{"guest", "customer", "invalid_cookie", "staff"} {
-			t.Run(op+"/"+mode, func(t *testing.T) {
+			t.Run(op.name+"/"+mode, func(t *testing.T) {
 				_, port, svc, cookie := checkoutWiringFixture(t)
 				key := []byte(strings.Repeat("k", 32))
 				token := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("g", 32)))
@@ -62,26 +69,16 @@ func TestComposedGuestCustomerAllBrowserOperations(t *testing.T) {
 					r.Header.Set("Authorization", "Bearer staff")
 					r.AddCookie(&http.Cookie{Name: "__Host-osc_admin_session", Value: token})
 				}
-				if op == "preview" {
-					r.URL.Path += "/preview"
-					r.Body = ioBody(`{"cart_id":"44444444-4444-4444-8444-444444444444","shipping_address":{"country":"US","postal_code":"00001"}}`)
-				}
-				if op == "get" {
-					r.URL.Path += "/55555555-5555-4555-8555-555555555555"
-					r.Method = "GET"
-					r.Body = nil
-				}
-				if op == "start" && mode != "customer" {
+
+				r.URL.Path += op.path
+				r.Method, r.Body = op.method, ioBody(op.body)
+				if op.name == "start" && mode != "customer" {
 					r.Body = ioBody(strings.TrimSuffix(checkoutWiringBody, "}") + `,"buyer_contact":{"email":"guest@example.test"}}`)
 				}
 				w := httptest.NewRecorder()
 				server.Handler.ServeHTTP(w, r)
 				if mode == "guest" || mode == "customer" {
-					want := 200
-					if op == "start" {
-						want = 201
-					}
-					if w.Code != want || svc.calls != 1 || svc.actor.Kind() != mode {
+					if w.Code != op.status || svc.calls != 1 || svc.actor.Kind() != mode {
 						t.Fatalf("status=%d calls=%d actor=%s body=%s", w.Code, svc.calls, svc.actor.Kind(), w.Body.String())
 					}
 					if mode == "guest" && reads != 1 || mode == "customer" && (reads != 0 || port.calls != 1) {

@@ -39,7 +39,7 @@ func (a checkoutAdmission) AuthenticationResponse(ctx context.Context, w http.Re
 }
 
 func (a checkoutAdmission) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
-	if a.customer != nil && checkoutBrowserSpec(spec) {
+	if a.customer != nil && checkouthttp.BrowserRoute(spec) {
 		if a.guest && !hasCheckoutCustomerCookie(r) {
 			return a.next.Authenticate(ctx, r, spec)
 		}
@@ -133,7 +133,4 @@ func hasCheckoutCustomerCookie(r *http.Request) bool {
 		}
 	}
 	return false
-}
-func checkoutBrowserSpec(s httpapi.RouteSpec) bool {
-	return s.Access == httpapi.Storefront && s.Scope == "" && (s.OperationID == checkouthttp.StartOperation && s.Method == http.MethodPost && s.Pattern == checkouthttp.StartPattern || s.OperationID == checkouthttp.PreviewOperation && s.Method == http.MethodPost && s.Pattern == checkouthttp.PreviewPattern || s.OperationID == checkouthttp.GetOperation && s.Method == http.MethodGet && s.Pattern == checkouthttp.GetPattern)
 }

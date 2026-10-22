@@ -100,7 +100,7 @@ func (s *Handler) Authenticator(fallback httpapi.Authenticator) httpapi.Authenti
 		if !browserOperation(spec.OperationID) {
 			return fallback.Authenticate(ctx, r, spec)
 		}
-		if spec.Access != httpapi.Storefront || spec.Scope != "" || !browserSpec(spec) || s.config.Resolver == nil {
+		if !BrowserRoute(spec) || s.config.Resolver == nil {
 			return nil, unauthenticated()
 		}
 		origins, tokens := r.Header.Values("Origin"), r.Header.Values("X-CSRF-Token")
@@ -386,8 +386,10 @@ func mapError(err error) error {
 func browserOperation(op string) bool {
 	return op == StartOperation || op == PreviewOperation || op == GetOperation
 }
-func browserSpec(s httpapi.RouteSpec) bool {
-	return s.OperationID == StartOperation && s.Method == http.MethodPost && s.Pattern == StartPattern || s.OperationID == PreviewOperation && s.Method == http.MethodPost && s.Pattern == PreviewPattern || s.OperationID == GetOperation && s.Method == http.MethodGet && s.Pattern == GetPattern
+
+// BrowserRoute is the exact scope-free admission contract shared by bootstrap.
+func BrowserRoute(s httpapi.RouteSpec) bool {
+	return s.Access == httpapi.Storefront && s.Scope == "" && (s.OperationID == StartOperation && s.Method == http.MethodPost && s.Pattern == StartPattern || s.OperationID == PreviewOperation && s.Method == http.MethodPost && s.Pattern == PreviewPattern || s.OperationID == GetOperation && s.Method == http.MethodGet && s.Pattern == GetPattern)
 }
 func (a composedAuth) AuthenticationResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, spec httpapi.RouteSpec) {
 	if browserOperation(spec.OperationID) {

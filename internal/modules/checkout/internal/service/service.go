@@ -98,6 +98,7 @@ func decodeResult(b []byte) (contract.Result, error) {
 func snapshot(row db.AppCheckoutSession, status payment.PaymentStatus) contract.Result {
 	return contract.Result{CheckoutID: row.ID.String(), OrderID: row.OrderID.String(), State: row.Phase, AmountMinor: row.AmountMinor, Currency: row.Currency, OrderVersion: row.PayableVersion, Payment: contract.Intent{ProviderRef: row.ProviderRef, Status: status}}
 }
+
 // Preview uses only a read-only snapshot; it never reserves stock or creates an order.
 func (s *Service) Preview(ctx context.Context, actor contract.AuthorizedActor, in contract.PreviewInput) (contract.Preview, error) {
 	var out contract.Preview
@@ -159,12 +160,12 @@ func (s *Service) Get(ctx context.Context, actor contract.AuthorizedActor, check
 		if row.ActorKind != actor.Kind() || row.ActorID != actor.ID() || row.CartID.String() != cartID {
 			return contract.ErrNotFound
 		}
-		if row.FinalResult != nil {
-			out, err = decodeResult(row.FinalResult)
-			return err
+		saved := row.FinalResult
+		if saved == nil {
+			saved = row.StartResult
 		}
-		if row.StartResult != nil {
-			out, err = decodeResult(row.StartResult)
+		if saved != nil {
+			out, err = decodeResult(saved)
 			return err
 		}
 		return contract.ErrUnavailable

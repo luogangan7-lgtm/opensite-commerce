@@ -95,23 +95,16 @@ type Result struct {
 	Payment      Intent `json:"payment"`
 }
 type PreviewInput struct {
-	CartID     string
-	Country    string
-	Region     string
-	PostalCode string
+	CartID, Country, Region, PostalCode string
 }
 type ShippingOption struct {
-	RateID      string `json:"rate_id"`
-	Method      string `json:"method"`
-	AmountMinor int64  `json:"amount_minor"`
+	RateID, Method string
+	AmountMinor    int64
 }
 type Preview struct {
-	SubtotalMinor   int64            `json:"subtotal_minor"`
-	TaxMinor        int64            `json:"tax_minor"`
-	ShippingMinor   int64            `json:"shipping_minor"`
-	TotalMinor      int64            `json:"total_minor"`
-	Currency        string           `json:"currency"`
-	ShippingOptions []ShippingOption `json:"shipping_options"`
+	SubtotalMinor, TaxMinor, ShippingMinor, TotalMinor int64
+	Currency                                           string
+	ShippingOptions                                    []ShippingOption
 }
 type Service interface {
 	Start(context.Context, AuthorizedActor, StartInput) (Result, error)
