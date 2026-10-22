@@ -18,7 +18,7 @@ import sys
 
 
 PII = {"personal", "contact"}
-CLASSES = PII | {"financial_non_contact", "operational", "secret_hash"}
+CLASSES = PII | {"financial_non_contact", "financial_obligation", "operational", "secret_hash"}
 IDENTIFIER = re.compile(r"[a-z][a-z0-9_]*\Z")
 PLACEHOLDER = re.compile(r"\{\{canary:([a-z0-9_.]+)\}\}")
 
@@ -99,6 +99,14 @@ def load_registry(root):
                 if "subject" not in field and "subject" in body:
                     field["subject"] = body["subject"]
                 require(field.get("classification") in CLASSES, "PRIVACY_CLASSIFICATION_MISSING", key)
+                if field["classification"] == "financial_obligation":
+                    require(field.get("retention") == "financial-obligation",
+                            "PRIVACY_FINANCIAL_RETENTION_MISSING", key)
+                    require(isinstance(field.get("reason"), str) and field["reason"].strip(),
+                            "PRIVACY_RETAIN_REASON_MISSING", key)
+                if "retention" in field:
+                    require(field["classification"] == "financial_obligation",
+                            "PRIVACY_FINANCIAL_CLASSIFICATION_MISSING", key)
                 if "structure" in field:
                     require(isinstance(field["structure"], str) and field["structure"] in structures,
                             "PRIVACY_STRUCTURE_MISSING", key)

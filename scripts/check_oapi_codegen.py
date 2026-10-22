@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Check the pinned strict generator against committed output without changing it.
 Depends on Go tool declarations, api/oapi-codegen.yaml and api/openapi.yaml.
-Called by check_all/CI; manual generated edits and contract drift always fail.
+Called by check_all/CI; manual generated edits and contract drift always fail,
+printing the unified diff to the generated output.
 """
+import difflib
 import json
 from pathlib import Path
 import subprocess
@@ -34,6 +36,11 @@ def main():
         subprocess.run(["go", "tool", "oapi-codegen", "-config", str(config_path),
                         "api/openapi.yaml"], cwd=ROOT, check=True, timeout=120)
         if not OUTPUT.exists() or candidate.read_bytes() != OUTPUT.read_bytes():
+            # Print the exact repair so CI-only integrators can apply it verbatim.
+            committed = OUTPUT.read_text().splitlines(True) if OUTPUT.exists() else []
+            print("".join(difflib.unified_diff(committed, candidate.read_text().splitlines(True),
+                                               "a/internal/platform/httpapi/generated/api.gen.go",
+                                               "b/internal/platform/httpapi/generated/api.gen.go")))
             raise SystemExit("FAIL: generated OpenAPI server differs; regenerate and commit api.gen.go")
     print("PASS: oapi-codegen v2.8.0 strict net/http server regeneration is clean")
 
