@@ -13,6 +13,47 @@ LANES = {'go', 'offline', 'pg', 'pgx', 'sqlc'}
 
 
 class FoundationLanes(unittest.TestCase):
+    def test_existing_gate_inventory_and_fixture_order(self):
+        parts = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']['foundation-lane']
+        steps = parts['steps']
+        # Existing serial boundaries remain whole; no command sampling/filtering.
+        inventory = {
+            'go test -race -count=1 ./...': "matrix.lane == 'go'",
+            'go vet ./...': "matrix.lane == 'go'",
+            'bash scripts/check_all.sh': "matrix.lane == 'offline'",
+            'python scripts/check_contract.py': "matrix.lane == 'offline'",
+            'openapi-spec-validator api/openapi.yaml': "matrix.lane == 'offline'",
+            'go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml': "matrix.lane == 'offline'",
+            './scripts/check_pg.sh': "matrix.lane == 'pg'",
+            'python3 tests/test_inventory_race_sync.py': "matrix.lane == 'pg'",
+            './scripts/check_pg_races.sh': "matrix.lane == 'pg'",
+            './scripts/check_pg_upgrade.sh': "matrix.lane == 'pg'",
+            'python3 scripts/privacy_registry.py --database --fixture': "matrix.lane == 'pg'",
+            './scripts/check_catalog_api.sh': "matrix.lane == 'pgx' || matrix.lane == 'sqlc'",
+            'go vet -tags pgx ./...': "matrix.lane == 'pgx'",
+            'go test -race -tags pgx -count=1 ./...': "matrix.lane == 'pgx'",
+            './scripts/check_codegen.sh': "matrix.lane == 'sqlc'",
+        }
+        for command, condition in inventory.items():
+            matches = [s for s in steps if command in s.get('run', '').splitlines()]
+            # The original failure-only OpenAPI handoff is deliberately retained too.
+            matches = [s for s in matches if 'failure()' not in s.get('if', '')]
+            self.assertEqual(len(matches), 1, command)
+            self.assertEqual(matches[0]['if'], condition, command)
+        for key in ('JOBS_REQUIRE_PG', 'IDEMPOTENCY_REQUIRE_PG', 'OUTBOX_REQUIRE_PG',
+                    'OPENSITE_REQUIRE_PGX_FIXTURES', 'CUSTOMER_AUTH_REQUIRE_PG'):
+            self.assertEqual(parts['env'][key], '1', key)
+        bodies = [s.get('run', '') for s in steps]
+        prepare = next(i for i, body in enumerate(bodies) if './scripts/migrate.sh' in body)
+        http = next(i for i, body in enumerate(bodies) if './scripts/check_catalog_api.sh' in body)
+        auth = next(i for i, body in enumerate(bodies) if 'tests/fixtures/customer_auth.sql' in body)
+        race = next(i for i, body in enumerate(bodies) if 'go test -race -tags pgx' in body)
+        sqlc = next(i for i, body in enumerate(bodies) if './scripts/check_codegen.sh' in body)
+        self.assertTrue(prepare < http < auth < race < sqlc)
+        self.assertIn('go clean -testcache', bodies[sqlc])
+        self.assertIn('git diff --exit-code -- go.mod go.sum internal/db', bodies[sqlc])
+        self.assertIn('git diff --exit-code -- internal/platform/httpapi/generated/api.gen.go', '\n'.join(bodies))
+
     def test_required_context_and_all_lane_results(self):
         jobs = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']
         parts = jobs['foundation-lane']
@@ -32,6 +73,10 @@ class FoundationLanes(unittest.TestCase):
                                     env={'LANE_RESULTS': json.dumps({'foundation-lane': {'result': state}})},
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode == 0, state == 'success', (state, result.stderr))
+            print(f'AGGREGATOR PROBE result={state!r} exit={result.returncode}', flush=True)
+        empty = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', step['run']],
+                               env={'LANE_RESULTS': '{}'}, capture_output=True, text=True)
+        self.assertNotEqual(empty.returncode, 0, 'empty dependency set must fail closed')
         for step in parts['steps']:
             self.assertNotIn('continue-on-error', step)
             if 'run' in step:

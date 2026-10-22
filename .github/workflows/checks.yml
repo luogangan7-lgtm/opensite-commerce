@@ -8,7 +8,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# One required CI job. No costly SKU/performance suite on every commit.
+# One required foundation context aggregates parallel lanes without dropping gates.
 jobs:
   # Optional CI-only generator handoff; required drift gates remain unchanged.
   codegen-handoff:
@@ -50,10 +50,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  foundation:
+  foundation-lane:
+    name: foundation-${{ matrix.lane }}
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45  # was 30; slow runners cancelled main 39762728486 and #204 at ~30m20s (issue #214)
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [go, offline, pg, pgx, sqlc]
+    # Default Go tests use real PG TEMP transactions too (also inside check_all).
+    # Every lane therefore needs its own server; no lane shares mutable fixtures.
     services:
       postgres:
         image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
@@ -84,26 +91,52 @@ jobs:
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: '1.27.2'
+          cache: false
+      # Separate tag lanes; immutable source-key caches contain no DB or test fixtures.
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ci-speed-1-${{ runner.os }}-${{ runner.arch }}-go1.27.2-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            ci-speed-1-${{ runner.os }}-${{ runner.arch }}-go1.27.2-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-
+      - name: Download pinned Go modules
+        run: go mod download
+      - name: Prepare independent pgx and sqlc databases
+        if: matrix.lane == 'pgx' || matrix.lane == 'sqlc'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          ./scripts/migrate_river.sh
+          ./scripts/migrate.sh
       - name: Go / PageGraph / LocalFS / Tenant Transaction
+        if: matrix.lane == 'go'
         run: |
           go mod download
           go test -race -count=1 ./...
           go vet ./...
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: matrix.lane == 'offline'
         with:
           bun-version: '1.3.12'
       - run: bun install --frozen-lockfile
+        if: matrix.lane == 'offline'
       - name: Python tools (hash-locked)
+        if: matrix.lane == 'offline' || matrix.lane == 'pg'
         run: python -m pip install --quiet --require-hashes -r requirements-ci.txt
       - name: CI pin policy and offline gates
+        if: matrix.lane == 'offline'
         run: |
           python3 scripts/check_ci_pins.py
           bash scripts/check_all.sh
       - name: OpenAPI structural checks
+        if: matrix.lane == 'offline'
         run: |
           python scripts/check_contract.py
           openapi-spec-validator api/openapi.yaml
       - name: Pinned strict OpenAPI generation and drift gate
+        if: matrix.lane == 'offline'
         run: |
           python3 scripts/check_oapi_codegen.py
           go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
@@ -113,10 +146,10 @@ jobs:
       # deliberate drift failure. The required drift gate still fails normally.
       - name: Generate requested OpenAPI handoff in CI
         id: requested_openapi
-        if: failure() && github.event_name == 'push' && contains(github.event.head_commit.message, '[codegen-artifact]')
+        if: matrix.lane == 'offline' && failure() && github.event_name == 'push' && contains(github.event.head_commit.message, '[codegen-artifact]')
         run: go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
       - name: Export requested OpenAPI generator output
-        if: failure() && steps.requested_openapi.conclusion == 'success'
+        if: matrix.lane == 'offline' && failure() && steps.requested_openapi.conclusion == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: openapi-codegen-${{ github.run_id }}
@@ -126,6 +159,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: PostgreSQL 18 forward-only migrations and security
+        if: matrix.lane == 'pg'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client
@@ -134,12 +168,15 @@ jobs:
           ./scripts/check_pg_races.sh
           ./scripts/check_pg_upgrade.sh
       - name: Privacy column registry and persisted canary coverage
+        if: matrix.lane == 'pg'
         run: python3 scripts/privacy_registry.py --database --fixture
       - name: Catalog/media real HTTP gates with isolated role logins
+        if: matrix.lane == 'pgx' || matrix.lane == 'sqlc'
         env:
           OPENSITE_DISPOSABLE_PG: '1'
         run: ./scripts/check_catalog_api.sh
       - name: Go pgx-tagged vet and race tests
+        if: matrix.lane == 'pgx' || matrix.lane == 'sqlc'
         run: |
           # Restore the committed isolated fixture after its HTTP mutation tests.
           psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f tests/fixtures/catalog_api.sql
@@ -149,9 +186,13 @@ jobs:
           psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f tests/fixtures/customer_auth.sql
           export CUSTOMER_AUTH_TEST_DATABASE_URL="postgresql://c05b_customer:$auth_secret@localhost:5432/opensite?sslmode=disable"
           printf '%s\n' "CUSTOMER_AUTH_TEST_DATABASE_URL=$CUSTOMER_AUTH_TEST_DATABASE_URL" >> "$GITHUB_ENV"
+      - name: Go pgx-tagged vet and race tests (all packages)
+        if: matrix.lane == 'pgx'
+        run: |
           go vet -tags pgx ./...
           go test -race -tags pgx -count=1 ./...
       - name: sqlc v1.31.1 (verified release artifact)
+        if: matrix.lane == 'sqlc'
         run: |
           curl -fsSL --retry 3 \
             https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz -o /tmp/sqlc.tar.gz
@@ -161,8 +202,11 @@ jobs:
           sudo install -m 0755 /tmp/sqlc-bin/sqlc /usr/local/bin/sqlc
           sqlc version
       - name: Typechecked pgx v5/sqlc integration and generated-code cleanliness
+        if: matrix.lane == 'sqlc'
         run: |
           psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f tests/fixtures/catalog_api.sql
+          # Cached compilation must never reuse a successful test result.
+          go clean -testcache
           ./scripts/check_codegen.sh
           # Generated code and module files must be committed, not regenerated differently per build.
           git diff --exit-code -- go.mod go.sum internal/db
@@ -171,6 +215,26 @@ jobs:
             git status --short --untracked-files=all -- internal/db
             exit 1
           fi
+
+  # Required branch-protection context: skipped/cancelled is never success.
+  foundation:
+    if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    needs: [foundation-lane]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require every foundation lane to succeed
+        env:
+          LANE_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, sys
+          results = json.loads(os.environ['LANE_RESULTS'])
+          print(json.dumps(results, sort_keys=True))
+          sys.exit(0 if results and all(x.get('result') == 'success' for x in results.values()) else 1)
+          PYTHON
 
   # Generated code is never hand-merged: on drift this job uploads the exact patch
   # produced by the pinned generators; apply it with scripts/apply_generated_patch.sh.
