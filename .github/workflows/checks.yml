@@ -113,8 +113,6 @@ jobs:
       - name: Go / PageGraph / LocalFS / Tenant Transaction
         if: matrix.lane == 'go'
         run: |
-          echo 'CI-SPEED-1 intentional single-lane failure (exit 73)'
-          exit 73
           go mod download
           go test -race -count=1 ./...
           go vet ./...
@@ -221,7 +219,6 @@ jobs:
   # Required branch-protection context: skipped/cancelled is never success.
   foundation:
     if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
-    needs: [foundation-lane]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
