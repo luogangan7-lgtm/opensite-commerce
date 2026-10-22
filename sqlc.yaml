@@ -35,6 +35,9 @@ sql:
       - "migrations/032_checkout.sql"
       - "migrations/033_customer_auth.sql"
       - "migrations/034_orders_guards.sql"
+      - "migrations/pending/c15b-serving_storefront_serving.sql"
+      - "migrations/pending/c19a-webhook_payment_webhooks.sql"
+      - "migrations/pending/c20b-hold-owner_inventory_hold_owner.sql"
       - "migrations/pending/c18b-quote-conversion_quote_conversion.sql"
       - "migrations/pending/c18b-checkout-source_checkout_source.sql"
     queries: ["queries", "queries/reliability", "queries/identity"]

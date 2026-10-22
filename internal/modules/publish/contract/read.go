@@ -1,6 +1,7 @@
 // Package contract defines the anonymous current sealed-release read port.
 // Dependencies: stdlib; callers: publish service and HTTP transport.
-// Invariants: text-only blocks, local canonical paths, exact decimal amount strings.
+// Invariants: text-only blocks, local canonical paths, exact decimal amount strings;
+// the public body is host-independent and served as stored bytes.
 package contract
 
 import (
@@ -68,6 +69,49 @@ type Site struct {
 	Pages       []Page       `json:"pages"`
 	Products    []Product    `json:"products"`
 }
+
+// OptionValue is one sealed option name/label pair of a purchasable SKU.
+type OptionValue struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// SKU is a purchasable SKU on the public wire: membership, code and options are sealed
+// at publish; price and availability come from the serving build. Never a stock count.
+type SKU struct {
+	SKUID        string        `json:"sku_id"`
+	SKUCode      string        `json:"sku_code"`
+	OptionValues []OptionValue `json:"option_values"`
+	PriceMinor   string        `json:"price_minor"`
+	Currency     string        `json:"currency"`
+	Available    bool          `json:"available"`
+}
+
+// PublicProduct is the public product view: sealed content plus purchasable SKUs. It has
+// no product-level price: displayed prices come only from the refreshed SKUs.
+type PublicProduct struct {
+	ID          string `json:"id"`
+	Slug        string `json:"slug"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	SKUs        []SKU  `json:"skus"`
+}
+
+// PublicSite is the exact getPublishedSite body. It is host-independent (a site has many
+// verified hostnames), so one serving row per (tenant, site) is valid for all of them.
+type PublicSite struct {
+	TenantID    string          `json:"tenant_id"`
+	SiteID      string          `json:"site_id"`
+	ReleaseID   string          `json:"release_id"`
+	Locale      string          `json:"locale"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	Navigation  []Navigation    `json:"navigation"`
+	Pages       []Page          `json:"pages"`
+	Products    []PublicProduct `json:"products"`
+}
+
+// Reader returns the exact public wire body (JSON plus trailing newline) for a host.
 type Reader interface {
-	Current(context.Context, string) (Site, error)
+	Serve(context.Context, string) ([]byte, error)
 }

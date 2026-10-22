@@ -1,6 +1,7 @@
 // Responsibilities: execute sqlc controlled CMS routines within scoped transactions.
 // Dependencies: generated db, publish service/contract and trusted platform stamps.
 // Callers: publish write facade; invariants: no raw SQL, actor stamped per TX;
+// publish/restore also write the storefront serving row in the same transaction;
 // mutation, validation and HTTP receipt completion commit or roll back together.
 package store
 
@@ -153,7 +154,9 @@ func (s *WriteStore) Execute(ctx context.Context, c contract.Command, actor http
 			if e = decodeCMS(raw, &r); e != nil {
 				return e
 			}
-			if e = projectSealed(ctx, q, c.TenantID, c.SiteID, r.ReleaseID); e != nil {
+			// The serving build re-projects the sealed release (validation) and writes the
+			// public row in this transaction; failure rolls the whole publish back.
+			if e = buildServing(ctx, q, c.TenantID, c.SiteID, r.ReleaseID, servingPublish); e != nil {
 				return e // this case shadows e; return explicitly
 			}
 		case "restore_release":
@@ -162,8 +165,9 @@ func (s *WriteStore) Execute(ctx context.Context, c contract.Command, actor http
 				return e
 			}
 			// Legacy releases may satisfy SQL shape checks but fail the public
-			// renderer (for example duplicate locale variants).
-			e = projectSealed(ctx, q, c.TenantID, c.SiteID, c.ReleaseID)
+			// renderer (for example duplicate locale variants); the serving build
+			// re-projects and rebuilds from the release's sealed SKU membership.
+			e = buildServing(ctx, q, c.TenantID, c.SiteID, c.ReleaseID, servingRestore)
 		case "list_releases", "get_release":
 			raw, e = q.CMSReleaseHistory(ctx, db.CMSReleaseHistoryParams{TenantID: cmsID(c.TenantID), SiteID: cmsID(c.SiteID)})
 			if e != nil {
@@ -279,18 +283,19 @@ func (s *WriteStore) Execute(ctx context.Context, c contract.Command, actor http
 // projectSealed renders the just-sealed or restored release exactly as the public
 // reader will (longest hostname budget) inside the mutating transaction, so an
 // unrenderable release never commits its pointer, audit or receipt.
-func projectSealed(ctx context.Context, q *db.Queries, tenant, site, release string) error {
+func projectSealed(ctx context.Context, q *db.Queries, tenant, site, release string) (contract.Site, error) {
 	snapshot, err := q.LoadCMSReleaseSnapshot(ctx, db.LoadCMSReleaseSnapshotParams{TenantID: cmsID(tenant), SiteID: cmsID(site), ReleaseID: cmsID(release)})
 	if err != nil {
-		return err
+		return contract.Site{}, err
 	}
 	if snapshot.SiteID != site || snapshot.ReleaseID != release {
-		return contract.ErrNotFound
+		return contract.Site{}, contract.ErrNotFound
 	}
-	if _, err = service.Project(snapshot.SiteID, snapshot.ReleaseID, service.BudgetHost, snapshot.Locale, snapshot.Manifest, snapshot.Pages); err != nil {
-		return contract.ErrInvalid
+	view, err := service.Project(snapshot.SiteID, snapshot.ReleaseID, service.BudgetHost, snapshot.Locale, snapshot.Manifest, snapshot.Pages)
+	if err != nil {
+		return contract.Site{}, contract.ErrInvalid
 	}
-	return nil
+	return view, nil
 }
 func validateDraft(d contract.Draft) error {
 	if d.Status != "open" {

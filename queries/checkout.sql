@@ -40,3 +40,10 @@ SELECT d.zone_id,d.country_code,d.subdivision_code FROM app.shipping_zone_destin
 SELECT * FROM app.shipping_rates WHERE tenant_id=$1 AND profile_id=$2 ORDER BY id;
 -- name: GetCheckoutServerTime :one
 SELECT transaction_timestamp()::timestamptz AS at_time;
+
+-- Responsibility: checkout's cumulative applied refund components; caller holds
+-- its session lock and commits this with Orders/Ledger/payment Inbox completion.
+-- name: UpdateCheckoutRefundTotals :one
+UPDATE app.checkout_sessions SET refunded_net_minor=sqlc.arg(refunded_net_minor),
+ refunded_tax_minor=sqlc.arg(refunded_tax_minor),refunded_shipping_minor=sqlc.arg(refunded_shipping_minor),
+ updated_at=clock_timestamp() WHERE tenant_id=sqlc.arg(tenant_id) AND id=sqlc.arg(id) RETURNING *;

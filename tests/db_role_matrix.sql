@@ -29,7 +29,8 @@ DECLARE
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals','quote_conversions',
-  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts'];
+  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events',
+  'site_release_skus','storefront_serving','serving_invalidations'];
  role_name text;
  r record;
  t record;
@@ -75,7 +76,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='INSERT' THEN
@@ -85,6 +86,7 @@ BEGIN
       ELSE
        IF t.relname=ANY(ARRAY['checkout_sessions','checkout_attempts']) THEN expected_table := true; END IF;
        allowed_columns := CASE t.relname
+        WHEN 'payment_events' THEN ARRAY['tenant_id','id','provider_account_id','provider_ref','event_key','claimed_order_id','order_version','status','amount_minor','currency']
         WHEN 'checkout_sessions' THEN all_columns
         WHEN 'checkout_attempts' THEN all_columns
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
@@ -116,7 +118,8 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
-        WHEN 'checkout_sessions' THEN ARRAY['phase','provider_ref','start_result','final_result','claim_kind','claim_key','updated_at']
+        WHEN 'checkout_sessions' THEN ARRAY['phase','provider_ref','start_result','final_result','claim_kind','claim_key','updated_at','refunded_net_minor','refunded_tax_minor','refunded_shipping_minor']
+        WHEN 'payment_events' THEN ARRAY['applied','error_code']
         WHEN 'checkout_attempts' THEN ARRAY['result']
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
         WHEN 'carts' THEN ARRAY['version']
@@ -160,8 +163,11 @@ BEGIN
     ELSIF role_name='app_domain_resolver' AND privilege='SELECT' THEN
      allowed_columns := CASE t.relname
       WHEN 'site_domains' THEN ARRAY['tenant_id','site_id','normalized_hostname','status','verified_at']
-      WHEN 'sites' THEN ARRAY['tenant_id','id','published_release_id','default_locale']
+      WHEN 'sites' THEN ARRAY['tenant_id','id','published_release_id','default_locale','publication_revision']
       WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','sealed','manifest']
+      -- Storefront serving (ADR_STOREFRONT_SERVING): the current serving row only.
+      WHEN 'storefront_serving' THEN ARRAY['tenant_id','site_id','publication_revision','body','fallback_body','body_sha256','fallback_sha256','valid_until']
+      WHEN 'serving_invalidations' THEN ARRAY['tenant_id','site_id','created_at']
       WHEN 'site_release_routes' THEN ARRAY['tenant_id','site_id','release_id','locale','path','page_id','page_revision']
       WHEN 'page_revisions' THEN ARRAY['tenant_id','site_id','page_id','locale','revision','document']
       ELSE ARRAY[]::text[] END;
@@ -326,6 +332,8 @@ BEGIN
     OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['sites','site_releases','site_release_routes','site_release_templates','site_release_media','media_assets','media_blobs','site_drafts','draft_pages','draft_operations','pages','page_revisions','products','product_variants','product_listings','product_content_revisions','price_lists','price_entries','draft_page_media']) AND privilege='SELECT'
     OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['draft_pages','draft_page_media','pages','page_revisions','site_release_routes','site_release_media','draft_operations','audit_events']) AND privilege='INSERT'
     OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['draft_pages','draft_page_media']) AND privilege='DELETE'
+    OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['site_release_skus','storefront_serving']) AND privilege=ANY(ARRAY['SELECT','INSERT'])
+    OR role_name='app_publish_executor' AND t.relname='serving_invalidations' AND privilege=ANY(ARRAY['SELECT','DELETE'])
     OR role_name='app_reliability_executor' AND t.relname='outbox_events' AND privilege='SELECT' THEN
      expected_table := true;
      SELECT array_agg(attname::text) INTO allowed FROM pg_attribute
@@ -333,14 +341,15 @@ BEGIN
     ELSIF role_name='app_media_service' AND t.relname='product_media' AND privilege='UPDATE' THEN
      allowed := ARRAY['sort_order'];
     ELSIF role_name='app_publish_executor' AND privilege='INSERT' THEN
-     allowed:=CASE t.relname WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','is_cms','locale','title','description','navigation'] WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','release_no','renderer_build_id','manifest','manifest_hash'] ELSE allowed END;
+     allowed:=CASE t.relname WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','is_cms','locale','title','description','navigation'] WHEN 'site_releases' THEN ARRAY['tenant_id','site_id','id','release_no','renderer_build_id','manifest','manifest_hash'] WHEN 'serving_invalidations' THEN ARRAY['tenant_id','site_id','reason'] ELSE allowed END;
     ELSIF role_name='app_publish_executor' AND privilege='UPDATE' THEN
      allowed := CASE t.relname WHEN 'sites' THEN ARRAY['published_release_id','publication_revision']
                               WHEN 'site_drafts' THEN ARRAY['revision','status','locale','title','description','navigation']
                               WHEN 'draft_pages' THEN ARRAY['path','document']
                               WHEN 'site_releases' THEN ARRAY['sealed']
                               WHEN 'media_assets' THEN ARRAY['visibility']
-                              WHEN 'media_blobs' THEN ARRAY['status'] ELSE allowed END;
+                              WHEN 'media_blobs' THEN ARRAY['status']
+                              WHEN 'storefront_serving' THEN ARRAY['release_id','publication_revision','serving_generation','body','fallback_body','body_sha256','fallback_sha256','valid_until','built_through_seq','built_at'] ELSE allowed END;
     ELSIF role_name='app_reliability_executor' AND t.relname='outbox_events' AND privilege='UPDATE' THEN
      allowed:=ARRAY['status','lease_owner','lease_until','attempts','next_attempt_at','last_error','delivered_at'];
     END IF;
@@ -363,16 +372,18 @@ BEGIN
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
-   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+   'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
-   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get','checkout_guard',
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
-   'customer_session','customer_revoke_session','customer_admit','customer_failed') LOOP
+   'customer_session','customer_revoke_session','customer_admit','customer_failed',
+   'resolve_fake_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox',
+   'guard_payment_fact','guard_checkout_refund') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -391,16 +402,18 @@ BEGIN
  END LOOP;
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
-   'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+   'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts',
-   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
-   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get','checkout_guard',
+   'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
+   'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
-   'customer_session','customer_revoke_session','customer_admit','customer_failed'))<>10 THEN
+   'customer_session','customer_revoke_session','customer_admit','customer_failed',
+   'resolve_fake_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox',
+   'guard_payment_fact','guard_checkout_refund'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -410,9 +423,9 @@ SELECT 'PASS: isolated service matrix and SECURITY DEFINER owner/search_path/EXE
 DO $inventory$
 DECLARE role_name text; r record; t record; a record; privilege text; f record;
  expected boolean; allowed_tables text[]:=ARRAY['warehouses','stock_levels','inventory_reservations','inventory_movements'];
- public_commands text[]:=ARRAY['inventory_reserve','inventory_expire_due','inventory_release_non_order','inventory_commit_non_order'];
+ public_commands text[]:=ARRAY['inventory_reserve','inventory_reserve_non_order','inventory_release_non_order','inventory_commit_non_order'];
  names text[]:=ARRAY['inventory_context','inventory_immutable_movement','inventory_adjust',
-  'inventory_reserve','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
+  'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
   'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order'];
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['app_inventory_manager','app_inventory_executor'] LOOP
@@ -844,7 +857,7 @@ SELECT 'PASS: outbox broker exact discovery/aggregate table-column-routine/RLS m
 -- Notifications executor has only exact frozen-envelope and fenced-state columns.
 DO $notifications$
 DECLARE r record;t record;a record;f record; privilege text;cols text[]; expected boolean; role_name text;
- names text[]:=ARRAY['notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive']; BEGIN
+ names text[]:=ARRAY['notification_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive']; BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_notifications_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
  OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid) OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'NOTIFICATIONS_MATRIX_UNSAFE_ROLE'; END IF;
@@ -858,7 +871,6 @@ DECLARE r record;t record;a record;f record; privilege text;cols text[]; expecte
    ELSIF privilege='SELECT' AND t.relname='customers' THEN cols:=ARRAY['tenant_id','id','email_normalized'];
    ELSIF privilege='SELECT' AND t.relname='quotes' THEN cols:=ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','accepted_by','status','version'];
    ELSIF privilege='SELECT' AND t.relname='inquiries' THEN cols:=ARRAY['tenant_id','id','site_id','buyer_company_id','buyer_email'];
-   ELSIF privilege='SELECT' AND t.relname='quote_conversions' THEN cols:=ARRAY['tenant_id','quote_id','order_id','quote_version','customer_id'];
    ELSIF privilege='INSERT' AND t.relname='notification_deliveries' THEN cols:=ARRAY['tenant_id','id','source_event_id','dispatch_event_id','recipient','locale','template_key','reference_id','status','last_error'];
    ELSIF privilege='INSERT' AND t.relname='notification_redrive_requests' THEN cols:=ARRAY['tenant_id','notification_id','idempotency_key','generation','dispatch_event_id'];
    ELSIF privilege='INSERT' AND t.relname='outbox_events' THEN cols:=ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key'];
@@ -889,8 +901,8 @@ SELECT 'PASS: notifications exact column/function privileges and FORCE RLS' AS r
 DO $quotes$
 DECLARE r record; t record; a record; f record; privilege text; role_name text;
  expected_table boolean; expected_column boolean; allowed text[];
- names text[]:=ARRAY['quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get'];
- public_names text[]:=ARRAY['quote_actor_access','create_quote','transition_quote','quote_conversion_lock','quote_conversion_bind','quote_conversion_get'];
+ names text[]:=ARRAY['quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote'];
+ public_names text[]:=ARRAY['quote_actor_access','create_quote','transition_quote'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_quotes_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -900,9 +912,9 @@ BEGIN
   RAISE EXCEPTION 'QUOTES_UNSAFE_EXECUTOR'; END IF;
  FOR t IN SELECT c.oid,c.relname,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
  WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
-  IF t.relname=ANY(ARRAY['inquiries','quotes','quote_lines','quote_approvals','quote_conversions']) AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN RAISE EXCEPTION 'QUOTES_FORCE_RLS %',t.relname; END IF;
+  IF t.relname=ANY(ARRAY['inquiries','quotes','quote_lines','quote_approvals']) AND (NOT t.relrowsecurity OR NOT t.relforcerowsecurity) THEN RAISE EXCEPTION 'QUOTES_FORCE_RLS %',t.relname; END IF;
   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
-   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['quotes','quote_lines','quote_approvals','quote_conversions']);
+   expected_table:=privilege='SELECT' AND t.relname=ANY(ARRAY['quotes','quote_lines','quote_approvals']);
    allowed:=ARRAY[]::text[];
    IF expected_table THEN
     SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
@@ -911,12 +923,9 @@ BEGIN
      WHEN 'tenant_memberships' THEN ARRAY['tenant_id','user_id','role','status']
      WHEN 'inquiries' THEN ARRAY['tenant_id','site_id','id','buyer_company_id']
      WHEN 'buyer_companies' THEN ARRAY['tenant_id','id','status'] WHEN 'customers' THEN ARRAY['tenant_id','id','status']
-     WHEN 'buyer_company_members' THEN ARRAY['tenant_id','buyer_company_id','customer_id','role_code','status']
-     WHEN 'orders' THEN ARRAY['tenant_id','id','customer_id','order_number','currency','items_net_minor','tax_minor','shipping_minor','shipping_snapshot','total_minor','sealed','state']
-     WHEN 'order_lines' THEN ARRAY['tenant_id','order_id','sku_id','quantity','unit_price_minor','line_net_minor','line_tax_minor','line_total_minor','tax_snapshot']
-     WHEN 'order_adjustments' THEN ARRAY['tenant_id','order_id'] ELSE allowed END;
+     WHEN 'buyer_company_members' THEN ARRAY['tenant_id','buyer_company_id','customer_id','role_code','status'] ELSE allowed END;
    ELSIF privilege='INSERT' THEN
-    allowed:=CASE t.relname WHEN 'quote_conversions' THEN ARRAY['tenant_id','quote_id','buyer_company_id','customer_id','order_id','quote_version','idempotency_key','request_hash','order_number','currency','total_minor'] WHEN 'quotes' THEN ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','created_by','currency','subtotal','tax','shipping','total','snapshot','expires_at']
+    allowed:=CASE t.relname WHEN 'quotes' THEN ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','created_by','currency','subtotal','tax','shipping','total','snapshot','expires_at']
      WHEN 'quote_lines' THEN ARRAY['tenant_id','quote_id','line_no','product_id','variant_id','description','quantity','unit_price','line_total','snapshot']
      WHEN 'quote_approvals' THEN ARRAY['tenant_id','quote_id','buyer_company_id','requested_by','decided_by','decision']
      WHEN 'outbox_events' THEN ARRAY['tenant_id','event_type','payload','delivery_target','dedup_key'] ELSE allowed END;
@@ -946,13 +955,14 @@ SELECT 'PASS: quotes exact table/column/function grants, bounded definer authori
 -- CMS controlled functions and capability flag must have exact effective ACLs.
 DO $cms_matrix$
 DECLARE f record; role_name text; expected boolean;
- names text[]:=ARRAY['cms_context','cms_revision_immutable','cms_draft_guard','cms_validate_document','cms_products','cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history'];
- public_names text[]:=ARRAY['cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history'];
+ names text[]:=ARRAY['cms_context','cms_revision_immutable','cms_draft_guard','cms_validate_document','cms_products','cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history',
+  'cms_release_skus_immutable','cms_seal_skus','cms_serving_put','cms_serving_invalidate'];
+ public_names text[]:=ARRAY['cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history','cms_seal_skus','cms_serving_put'];
 BEGIN
  IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname LIKE 'cms_%')<>cardinality(names) THEN RAISE EXCEPTION 'CMS_MATRIX_ROUTINE_SET'; END IF;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname LIKE 'cms_%' LOOP
   IF NOT f.proname=ANY(names) OR f.proowner<>'app_publish_executor'::regrole
-   OR f.prosecdef IS DISTINCT FROM (f.proname=ANY(public_names)) OR cardinality(f.proconfig)<>1
+   OR f.prosecdef IS DISTINCT FROM (f.proname=ANY(public_names) OR f.proname='cms_serving_invalidate') OR cardinality(f.proconfig)<>1
    OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN RAISE EXCEPTION 'CMS_MATRIX_ROUTINE_DEFINITION'; END IF;
   -- Every app_* role (including later capabilities) has an exact expectation.
@@ -963,7 +973,7 @@ BEGIN
  END LOOP;
  IF has_column_privilege('app_runtime','app.site_drafts','is_cms','INSERT') OR has_column_privilege('app_runtime','app.site_drafts','is_cms','UPDATE')
   OR has_column_privilege('app_runtime','app.sites','publication_revision','INSERT') OR has_column_privilege('app_runtime','app.sites','publication_revision','UPDATE') THEN RAISE EXCEPTION 'CMS_MATRIX_FLAG_AUTHORITY'; END IF;
- IF NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='app.draft_page_media'::regclass) THEN RAISE EXCEPTION 'CMS_MATRIX_FORCE_RLS'; END IF;
+ IF EXISTS(SELECT FROM pg_class WHERE oid IN ('app.draft_page_media'::regclass,'app.site_release_skus'::regclass,'app.storefront_serving'::regclass,'app.serving_invalidations'::regclass) AND NOT (relrowsecurity AND relforcerowsecurity)) THEN RAISE EXCEPTION 'CMS_MATRIX_FORCE_RLS'; END IF;
 END $cms_matrix$;
 SELECT 'PASS: CMS exact routine/capability flag/FORCE RLS matrix' AS result;
 -- Checkout uses an invoker trigger, not a new capability role: nobody in the
@@ -1062,3 +1072,59 @@ BEGIN
  END LOOP;
 END $customer_executor$;
 SELECT 'PASS: exact customer function signatures, executor isolation and column privileges';
+
+-- Payment resolver is a NOLOGIN account-directory capability only. Check every
+-- table/column and every function, including inherited/PUBLIC privileges.
+DO $payments_matrix$
+DECLARE r record; t record; c record; f record; privilege text; expected boolean; role_name text;
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_payment_resolver';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+ OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+ OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_UNSAFE_ROLE'; END IF;
+ FOR t IN SELECT oid,relname FROM pg_class WHERE relnamespace='app'::regnamespace AND relkind IN('r','p') LOOP
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=t.relname='payment_provider_accounts' AND privilege='SELECT';
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_TABLE % %',t.relname,privilege; END IF;
+  END LOOP;
+  FOR c IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
+    expected:=t.relname='payment_provider_accounts' AND (privilege='SELECT' OR privilege='UPDATE' AND c.attname='enabled');
+    IF has_column_privilege(r.oid,t.oid,c.attnum,privilege) IS DISTINCT FROM expected THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_COLUMN % % %',t.relname,c.attname,privilege; END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM (f.proname='resolve_fake_payment_account') THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_FUNCTION %',f.proname; END IF;
+  IF f.proname='resolve_fake_payment_account' THEN
+   IF NOT f.prosecdef OR f.proowner<>r.oid OR NOT f.proconfig @> ARRAY['search_path=pg_catalog, app, pg_temp'] THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_RESOLVER'; END IF;
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+    expected:=role_name IN('app_runtime','app_payment_resolver');
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_RESOLVE_GRANT %',role_name; END IF;
+   END LOOP;
+  END IF;
+ END LOOP;
+ -- The generic legacy capability inventory above excludes exactly this list;
+ -- retain exact signatures, invoker/definer, owner, search_path and ACL assertions.
+ FOR f IN SELECT p.*, n.expected_signature FROM (VALUES
+  ('resolve_fake_payment_account(text)'),('lock_payment_stream(text,text)'),
+  ('admit_payment_inbox(text,text,bytea)'),('finish_payment_inbox(uuid,boolean)'),
+  ('guard_payment_fact()'),('guard_checkout_refund()')) AS n(expected_signature)
+ LEFT JOIN pg_proc p ON p.oid=to_regprocedure('app.'||n.expected_signature) LOOP
+  IF f.oid IS NULL OR f.prosecdef IS DISTINCT FROM (f.proname='resolve_fake_payment_account')
+   OR f.proowner IS DISTINCT FROM (CASE WHEN f.proname='resolve_fake_payment_account' THEN r.oid
+      ELSE (SELECT relowner FROM pg_class WHERE oid='app.payment_events'::regclass) END)
+   OR cardinality(f.proconfig) IS DISTINCT FROM 1
+   OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE')
+  THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_ROUTINE %',f.expected_signature; END IF;
+  FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+   expected:=(role_name='app_runtime' AND f.proname IN
+    ('resolve_fake_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox'))
+    OR (role_name='app_payment_resolver' AND f.proname='resolve_fake_payment_account');
+   IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
+    OR (role_name<>'app_payment_resolver' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION'))
+   THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_ROUTINE_ACL % %',role_name,f.proname; END IF;
+  END LOOP;
+ END LOOP;
+END $payments_matrix$;

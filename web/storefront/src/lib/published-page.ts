@@ -21,7 +21,7 @@ export async function preparePublishedPage(
     const read = await readPublishedSite(readAPIOrigin(apiOrigin), normalizeHostname(context.url.hostname));
     // Intl rejects some well-formed-looking locales; fail as 502 here, not mid-stream in render.
     Intl.getCanonicalLocales(read.locale);
-    for (const item of read.products) formatAmount(item.unit_amount, item.currency, read.locale);
+    for (const item of read.products) for (const sku of item.skus) formatAmount(sku.price_minor, sku.currency, read.locale);
     site = read;
   } catch (error) {
     status = error instanceof PublicSiteNotFoundError ? 404 : 502;

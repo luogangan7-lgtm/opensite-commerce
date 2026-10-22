@@ -10,7 +10,7 @@ const seed = [
   { path: '/about', title: 'About this shop', description: 'About this published shop.', text: 'This page belongs to the published release.', screenshot: 'cms' },
   { path: '/guides/setup', title: 'About this shop', description: 'About this published shop.', text: 'This page belongs to the published release.', screenshot: 'cms-nested' },
   { path: '/products', title: 'Products', description: 'A published example of pages and products.', text: 'Canvas tote', screenshot: 'products' },
-  { path: '/products/canvas-tote', title: 'Canvas tote', description: 'A reusable cotton tote for daily essentials.', text: '$24.00', screenshot: 'product' },
+  { path: '/products/canvas-tote', title: 'Canvas tote', description: 'A reusable cotton tote for daily essentials.', text: 'Currently unavailable', screenshot: 'product' },
 ] as const;
 async function quality(page: Page) {
   await page.evaluate(async () => { await document.fonts.ready; });
@@ -48,7 +48,7 @@ test('storefront published navigation, product link and keyboard skip', async ({
   await page.getByRole('navigation').getByRole('link', { name: 'Products', exact: true }).click();
   await page.getByRole('link', { name: 'Canvas tote', exact: true }).click();
   await expect(page).toHaveURL(`${origin}/products/canvas-tote`);
-  await expect(page.getByRole('main')).toContainText('$24.00');
+  await expect(page.getByRole('main')).toContainText('Currently unavailable');
   await page.getByRole('link', { name: 'Back to products' }).click();
   await expect(page).toHaveURL(`${origin}/products`);
 });
