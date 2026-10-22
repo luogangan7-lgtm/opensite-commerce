@@ -2,6 +2,11 @@
  * Invariants: fixture claims are explicit; unavailable production actions never promise fulfillment or real authentication.
  */
 const english = {
+  orderHistory:'Order history', historyDescription:'Your purchases and order details.',
+  historySignIn:'Sign in to view your orders.', orderNotFound:'Order not found.',
+  historyUnavailable:'Orders could not be loaded. Try again.', loadingOrders:'Loading orders…',
+  yourAccount:'Your account', noOrders:'No orders yet.', orderNumber:'Order #', nextOrders:'Next orders',
+  orderDetails:'Order details', backOrders:'Back to orders',
   cart: 'Cart', account: 'Account', checkout: 'Checkout', orderConfirmation: 'Order confirmation',
   purchaseDescription: 'Review your items and checkout details.', accountDescription: 'Manage your customer session.',
   fixtureNotice: 'Contract fixture — test data only. No real purchase, payment, or customer account is created.',

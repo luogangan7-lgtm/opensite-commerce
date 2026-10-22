@@ -2,13 +2,15 @@
 /** Responsibility: private order history shell. Dependencies: shared Shell and BFF island.
  * Invariant: no account data in static cache; customer cookie never enters page props.
  */
+import { commerceCopy } from '../../lib/commerce-copy';
 import Shell from '../../layouts/Shell.astro';
 import OrderHistory from '../../components/OrderHistory';
 import { readPurchaseContext } from '../../lib/commerce-server';
 import { requestCanonical } from '../../lib/host-policy';
+const ui=commerceCopy();
 await readPurchaseContext(Astro.request, Astro.cookies);
 Astro.response.headers.set('Cache-Control','no-store');
 ---
-<Shell title="Order history" description="Your purchases and order details." canonical={requestCanonical(Astro)} noindex navigation={[{label:'Your account',href:'/account'}]}>
-  <h1>Order history</h1><OrderHistory client:load />
+<Shell title={ui.orderHistory} description={ui.historyDescription} canonical={requestCanonical(Astro)} noindex navigation={[{label:ui.yourAccount,href:'/account'}]}>
+  <h1>{ui.orderHistory}</h1><OrderHistory client:load />
 </Shell>
