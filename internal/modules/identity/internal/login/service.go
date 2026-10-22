@@ -161,7 +161,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return LoginResult{}, ErrDatabase
 		}
-		known = err == nil && device.ID != "" && device.UserID == credential.UserID && !device.Revoked && device.ExpiresAt.After(arrival)
+		known = err == nil && device.ID != "" && device.UserID == credential.UserID && !device.Revoked
 	}
 	if candidate && !s.admitGlobal(known, arrival) {
 		return LoginResult{}, ErrRateLimited
@@ -184,10 +184,10 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	if e != nil {
 		return LoginResult{}, ErrDatabase
 	}
-	if accountIP.After(arrival) {
+	if !accountIP.IsZero() {
 		return LoginResult{}, ErrRateLimited
 	}
-	if !known && account.After(arrival) {
+	if !known && !account.IsZero() {
 		return LoginResult{}, ErrRateLimited
 	}
 	if ctx.Err() != nil {
@@ -287,10 +287,10 @@ func (s *Service) Authenticate(ctx context.Context, rawToken string, clientIP ..
 		}
 		return Actor{}, Session{}, ErrDatabase
 	}
-	// A queued lookup may finish after another request advanced last_seen_at.
-	// Validate the returned record against completion, not the earlier arrival.
-	now = s.cfg.Now()
-	if session.ID == "" || session.UserID == "" || !session.ExpiresAt.After(now) || session.CreatedAt.After(now) || session.LastSeenAt.After(now) || !session.CreatedAt.Add(s.cfg.AbsoluteTimeout).After(now) || !session.LastSeenAt.Add(s.cfg.IdleTimeout).After(now) {
+	// Durable admission follows the database execution clock, including
+	// activity advanced by a concurrent optional touch.
+	now = session.DatabaseNow
+	if now.IsZero() || session.ID == "" || session.UserID == "" || !session.ExpiresAt.After(now) || session.CreatedAt.After(now) || session.LastSeenAt.After(now) || !session.CreatedAt.Add(s.cfg.AbsoluteTimeout).After(now) || !session.LastSeenAt.Add(s.cfg.IdleTimeout).After(now) {
 		return Actor{}, Session{}, ErrSession
 	}
 	return Actor{userID: session.UserID, sessionID: session.ID}, session, nil

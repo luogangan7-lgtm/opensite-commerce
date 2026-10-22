@@ -63,33 +63,76 @@ INSERT INTO app.known_devices(user_id,cookie_hash,expires_at,created_at)
 SELECT set_config('test.identity_device',:'device',true);
 SET LOCAL ROLE app_auth;
 DO $counter$
-DECLARE t timestamptz:=now(); a app.auth_account_attempts; ip app.auth_login_attempts; i int;
+DECLARE t timestamptz; before_call timestamptz; after_call timestamptz;
+ a app.auth_account_attempts; ip app.auth_login_attempts; i int;
+ first_cooldown timestamptz; ip_cooldown timestamptz;
 BEGIN
+ -- Bound each server sample by DB wall time; transaction now() is not authority.
+ before_call:=clock_timestamp();
  a:=app.auth_record_failure('  C02A-MISSING@example.test  ','192.0.2.1');
+ after_call:=clock_timestamp();
+ first_cooldown:=a.cooldown_until;
+ IF a.failure_count IS DISTINCT FROM 1 OR
+  (a.last_failed_at BETWEEN before_call AND after_call) IS NOT TRUE OR
+  a.cooldown_until-a.last_failed_at IS DISTINCT FROM interval '1 second' THEN
+  RAISE EXCEPTION 'IDENTITY_GATE first failure/server-clock/full backoff'; END IF;
+ before_call:=clock_timestamp();
  a:=app.auth_record_failure('c02a-missing@example.test','192.0.2.1');
+ after_call:=clock_timestamp();
  SELECT * INTO STRICT ip FROM app.auth_login_attempts WHERE identifier_normalized=a.identifier_normalized;
- IF a.failure_count<>2 OR ip.failure_count<>2 OR a.cooldown_until<>t+interval '1 second' OR a.last_failed_at<>t THEN
+ IF a.failure_count IS DISTINCT FROM 2 OR ip.failure_count IS DISTINCT FROM 2 OR
+  a.cooldown_until IS DISTINCT FROM first_cooldown OR
+  (a.last_failed_at BETWEEN before_call AND after_call) IS NOT TRUE OR
+  ip.last_failed_at IS DISTINCT FROM a.last_failed_at THEN
   RAISE EXCEPTION 'IDENTITY_GATE atomic two failures/server-clock/non-sliding cooldown'; END IF;
  IF EXISTS(SELECT FROM app.users WHERE email_normalized=a.identifier_normalized) THEN
   RAISE EXCEPTION 'IDENTITY_GATE missing account fixture unexpectedly exists'; END IF;
  -- Advance state, never the production callable clock.
- UPDATE app.auth_account_attempts SET cooldown_until=t-interval '1 second' WHERE identifier_normalized=a.identifier_normalized;
+ UPDATE app.auth_account_attempts SET cooldown_until=clock_timestamp()-interval '1 second' WHERE identifier_normalized=a.identifier_normalized;
+ before_call:=clock_timestamp();
  a:=app.auth_record_failure('c02a-missing@example.test','192.0.2.1');
- IF a.cooldown_until<>t+interval '4 seconds' THEN RAISE EXCEPTION 'IDENTITY_GATE progressive backoff'; END IF;
+ after_call:=clock_timestamp();
+ IF a.failure_count IS DISTINCT FROM 3 OR
+  (a.last_failed_at BETWEEN before_call AND after_call) IS NOT TRUE OR
+  a.cooldown_until-a.last_failed_at IS DISTINCT FROM interval '4 seconds' THEN
+  RAISE EXCEPTION 'IDENTITY_GATE progressive backoff'; END IF;
  FOR i IN 1..9 LOOP
-  UPDATE app.auth_account_attempts SET cooldown_until=t-interval '1 second' WHERE identifier_normalized='c02a-cap@example.test';
+  UPDATE app.auth_account_attempts SET cooldown_until=clock_timestamp()-interval '1 second' WHERE identifier_normalized='c02a-cap@example.test';
+  before_call:=clock_timestamp();
   a:=app.auth_record_failure('c02a-cap@example.test','192.0.2.2');
-  IF a.cooldown_until>t+interval '60 seconds' THEN RAISE EXCEPTION 'IDENTITY_GATE backoff cap'; END IF;
+  after_call:=clock_timestamp();
+  IF a.failure_count IS DISTINCT FROM i OR
+   (a.last_failed_at BETWEEN before_call AND after_call) IS NOT TRUE OR
+   a.cooldown_until-a.last_failed_at IS DISTINCT FROM least(60,1 << least(6,i-1))*interval '1 second' THEN
+   RAISE EXCEPTION 'IDENTITY_GATE backoff cap/progression'; END IF;
  END LOOP;
- IF a.cooldown_until<>t+interval '60 seconds' THEN RAISE EXCEPTION 'IDENTITY_GATE cap reached'; END IF;
- UPDATE app.auth_account_attempts SET failure_count=1000000,cooldown_until=t-interval '1 second' WHERE identifier_normalized=a.identifier_normalized;
+ IF a.cooldown_until-a.last_failed_at IS DISTINCT FROM interval '60 seconds' THEN
+  RAISE EXCEPTION 'IDENTITY_GATE cap reached'; END IF;
+ UPDATE app.auth_account_attempts SET failure_count=1000000,cooldown_until=clock_timestamp()-interval '1 second' WHERE identifier_normalized=a.identifier_normalized;
+ before_call:=clock_timestamp();
  a:=app.auth_record_failure(a.identifier_normalized,'192.0.2.2');
- IF a.failure_count<>1000000 OR a.cooldown_until<>t+interval '60 seconds' THEN
+ after_call:=clock_timestamp();
+ IF a.failure_count IS DISTINCT FROM 1000000 OR
+  (a.last_failed_at BETWEEN before_call AND after_call) IS NOT TRUE OR
+  a.cooldown_until-a.last_failed_at IS DISTINCT FROM interval '60 seconds' THEN
   RAISE EXCEPTION 'IDENTITY_GATE saturating count/backoff'; END IF;
- FOR i IN 1..6 LOOP PERFORM app.auth_record_failure('c02a-ip@example.test','192.0.2.3'); END LOOP;
- SELECT * INTO STRICT ip FROM app.auth_login_attempts WHERE identifier_normalized='c02a-ip@example.test';
- IF ip.failure_count<>6 OR ip.cooldown_until<>t+interval '60 seconds' THEN
+ FOR i IN 1..6 LOOP
+  before_call:=clock_timestamp();
+  a:=app.auth_record_failure('c02a-ip@example.test','192.0.2.3');
+  after_call:=clock_timestamp();
+  SELECT * INTO STRICT ip FROM app.auth_login_attempts WHERE identifier_normalized=a.identifier_normalized;
+  IF ip.failure_count IS DISTINCT FROM i OR
+   (ip.last_failed_at BETWEEN before_call AND after_call) IS NOT TRUE OR
+   ip.last_failed_at IS DISTINCT FROM a.last_failed_at THEN
+   RAISE EXCEPTION 'IDENTITY_GATE atomic IP accounting/server-clock'; END IF;
+  IF i<=5 AND ip.cooldown_until-ip.last_failed_at IS DISTINCT FROM
+   (CASE WHEN i<5 THEN interval '0 seconds' ELSE interval '60 seconds' END) THEN
+   RAISE EXCEPTION 'IDENTITY_GATE IP threshold/full backoff'; END IF;
+  IF i=5 THEN ip_cooldown:=ip.cooldown_until; END IF;
+ END LOOP;
+ IF ip.failure_count IS DISTINCT FROM 6 OR ip.cooldown_until IS DISTINCT FROM ip_cooldown THEN
   RAISE EXCEPTION 'IDENTITY_GATE IP lockout must not slide'; END IF;
+ t:=clock_timestamp();
  UPDATE app.auth_account_attempts SET window_started_at=t-interval '16 minutes',cooldown_until=t-interval '1 second' WHERE identifier_normalized=ip.identifier_normalized;
  UPDATE app.auth_login_attempts SET window_started_at=t-interval '16 minutes',cooldown_until=t-interval '1 second' WHERE identifier_normalized=ip.identifier_normalized;
  a:=app.auth_record_failure('c02a-ip@example.test','192.0.2.3');
@@ -97,6 +140,7 @@ BEGIN
  IF a.failure_count<>1 OR ip.failure_count<>1 THEN RAISE EXCEPTION 'IDENTITY_GATE counter window reset'; END IF;
  -- Crossing the counting window cannot shorten an already-active cooldown.
  PERFORM app.auth_record_failure('c02a-window@example.test','192.0.2.5');
+ t:=clock_timestamp();
  UPDATE app.auth_account_attempts SET window_started_at=t-interval '16 minutes',cooldown_until=t+interval '60 seconds' WHERE identifier_normalized='c02a-window@example.test';
  UPDATE app.auth_login_attempts SET window_started_at=t-interval '16 minutes',cooldown_until=t+interval '60 seconds' WHERE identifier_normalized='c02a-window@example.test';
  a:=app.auth_record_failure('c02a-window@example.test','192.0.2.5');

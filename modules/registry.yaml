@@ -57,7 +57,9 @@
         "tests/db_role_matrix.sql",
         "tests/db_identity_auth.sql",
         "tests/db_identity_login.sql",
-        "tests/test_identity_login_contract.py"
+        "tests/test_identity_login_contract.py",
+        "tests/db_identity_clock.sql",
+        "internal/modules/identity/h4_clock_pgx_test.go"
       ],
       "scopes": [],
       "note": "Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented. Four staff login/challenge/session/logout HTTP operations are implemented; the five admin-session management operations remain planned."
@@ -1604,6 +1606,15 @@
         "checkout_attempts",
         "orders",
         "inventory_reservations"
+      ]
+    },
+    {
+      "file": "migrations/pending/h4-clock_identity_db_clock.sql",
+      "owner": "identity",
+      "touches_tables": [
+        "auth_account_attempts",
+        "auth_login_attempts",
+        "known_devices"
       ]
     }
   ]

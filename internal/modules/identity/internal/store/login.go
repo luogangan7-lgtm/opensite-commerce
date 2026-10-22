@@ -73,8 +73,8 @@ func (r *LoginRepository) Close(ctx context.Context) error {
 }
 func uuid(s string) (pgtype.UUID, error)   { var u pgtype.UUID; err := u.Scan(s); return u, err }
 func stamp(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }
-func session(id, user pgtype.UUID, created, last, expires pgtype.Timestamptz) login.Session {
-	return login.Session{ID: id.String(), UserID: user.String(), CreatedAt: created.Time, LastSeenAt: last.Time, ExpiresAt: expires.Time}
+func session(id, user pgtype.UUID, created, last, expires, databaseNow pgtype.Timestamptz) login.Session {
+	return login.Session{DatabaseNow: databaseNow.Time, ID: id.String(), UserID: user.String(), CreatedAt: created.Time, LastSeenAt: last.Time, ExpiresAt: expires.Time}
 }
 func (r *LoginRepository) Credential(ctx context.Context, identifier string) (login.Credential, error) {
 	var result login.Credential
@@ -165,7 +165,7 @@ func (r *LoginRepository) SaveLogin(ctx context.Context, in login.SessionInput) 
 		if err = q.LoginInsertDevice(ctx, db.LoginInsertDeviceParams{UserID: u, CookieHash: in.DeviceHash[:], CreatedAt: stamp(in.CreatedAt), ExpiresAt: stamp(in.DeviceExpiresAt)}); err != nil {
 			return err
 		}
-		result = session(row.ID, row.UserID, row.CreatedAt, row.LastSeenAt, row.ExpiresAt)
+		result = session(row.ID, row.UserID, row.CreatedAt, row.LastSeenAt, row.ExpiresAt, row.DatabaseNow)
 		return nil
 	})
 	if err != nil {
@@ -189,7 +189,7 @@ func (r *LoginRepository) LookupSession(ctx context.Context, hash [32]byte, at t
 	if err != nil {
 		return login.Session{}, err
 	}
-	return session(row.ID, row.UserID, row.CreatedAt, row.LastSeenAt, row.ExpiresAt), nil
+	return session(row.ID, row.UserID, row.CreatedAt, row.LastSeenAt, row.ExpiresAt, row.DatabaseNow), nil
 }
 func (r *LoginRepository) RevokeSession(ctx context.Context, id string, at time.Time) error {
 	u, err := uuid(id)
