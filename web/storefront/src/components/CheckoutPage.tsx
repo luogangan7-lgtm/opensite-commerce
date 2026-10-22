@@ -4,8 +4,8 @@
  */
 import { useEffect, useRef, useState, type SubmitEvent } from 'react';
 import { Button, EmptyState, FormField, TextInput } from '@opensite/ui';
-import { getCart, previewCheckout, startCheckout, confirmFixturePayment } from '../lib/commerce-client';
-import type { CartEnvelope, CheckoutResult, PaymentOutcome, Preview, PurchaseContext } from '../lib/commerce-contract';
+import { getCart, previewCheckout, startCheckout, confirmFixturePayment, CommerceError } from '../lib/commerce-client';
+import type { AcceptedTotal, CartEnvelope, CheckoutResult, PaymentOutcome, Preview, PurchaseContext } from '../lib/commerce-contract';
 import { commerceCopy } from '../lib/commerce-copy';
 import { checkoutInput, validateCheckout, type CheckoutErrors, type CheckoutFields } from '../lib/checkout-validation';
 import { PurchaseNotice, PurchaseTotals } from './PurchaseShared';
@@ -22,6 +22,7 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
   const [confirmUpdatedTotal, setConfirmUpdatedTotal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const acceptedTotal = useRef<AcceptedTotal | undefined>(undefined);
   const idempotencyKey = useRef<string | null>(null);
   async function load() {
     setLoading(true); setError('');
@@ -30,7 +31,7 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
   }
   useEffect(() => { if (context.enabled) void load(); }, []);
   function edit(key: keyof CheckoutFields, value: string) {
-    setFields(current => ({ ...current, [key]: value })); setPreview(null); idempotencyKey.current = null;
+    setFields(current => ({ ...current, [key]: value })); setPreview(null); setConfirmUpdatedTotal(false); acceptedTotal.current=undefined; idempotencyKey.current = null;
     setErrors(current => ({ ...current, [key]: undefined }));
   }
   async function review(event: SubmitEvent<HTMLFormElement>) {
@@ -44,25 +45,32 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
     finally { setBusy(false); }
   }
   async function start() {
-    if (!preview || busy || !context.enabled) return;
+    if (!preview || busy || !context.enabled || confirmUpdatedTotal) return;
     const invalid = validateCheckout(fields, context.actor); setErrors(invalid);
     if (Object.keys(invalid).length) return;
     setBusy(true); setError('');
     idempotencyKey.current ??= crypto.randomUUID();
+    acceptedTotal.current ??= {amount_minor:preview.total_minor,currency:preview.currency};
     try {
-      const received=await startCheckout(checkoutInput(fields, context.actor), idempotencyKey.current, context.csrf);
+      const received=await startCheckout(checkoutInput(fields, context.actor), idempotencyKey.current, context.csrf, acceptedTotal.current);
       setResult(received);
       const changed=received.amount_minor!==preview.total_minor || received.currency!==preview.currency;
       setConfirmUpdatedTotal(changed);
       if(changed)setError(ui.priceChanged);
     }
-    catch { setError(ui.requestFailed); }
+    catch (error) {
+      if (error instanceof CommerceError && error.code==='checkout_total_changed') {
+        idempotencyKey.current=null; acceptedTotal.current=undefined;
+        try { setPreview(await previewCheckout(checkoutInput(fields,context.actor).shipping_address,context.csrf)); setConfirmUpdatedTotal(true); setError(ui.priceChanged); }
+        catch { setError(ui.requestFailed); }
+      } else setError(ui.requestFailed);
+    }
     finally { setBusy(false); }
   }
   async function confirm(outcome: PaymentOutcome) {
     if (!(context.fixture || context.fakePayment) || !result || busy || (outcome==='captured' && confirmUpdatedTotal)) return;
     setBusy(true); setError('');
-    try { setResult(await confirmFixturePayment(result.checkout_id, outcome, context.csrf)); }
+    try { setResult(await confirmFixturePayment(result.checkout_id, outcome, context.csrf, acceptedTotal.current)); }
     catch { setError(ui.requestFailed); }
     finally { setBusy(false); }
   }
@@ -93,14 +101,15 @@ export default function CheckoutPage({ context, locale = 'en' }: { context: Purc
         <aside className="purchase-summary"><h2>{ui.total}</h2><p className="purchase-muted">{ui.totalsDescription}</p>
           {preview && <><PurchaseTotals preview={preview} locale={locale} />
             <h3>{ui.shippingMethods}</h3><ul className="shipping-methods">{preview.shipping_options.map(option => <li key={option.rate_id}>{option.method}</li>)}</ul>
-            <Button loading={busy} onClick={start}>{ui.startCheckout}</Button></>}
+            <Button loading={busy} disabled={confirmUpdatedTotal} onClick={start}>{ui.startCheckout}</Button>
+            {confirmUpdatedTotal && <Button onClick={()=>{acceptedTotal.current={amount_minor:preview.total_minor,currency:preview.currency};setConfirmUpdatedTotal(false);setError('');}}>{ui.acceptUpdatedTotal}</Button>}</>}
         </aside>
       </div>}
       {result && <section className="payment-result" data-payment-status={result.payment.status}>
         <h2>{captured ? ui.paymentCaptured : failed ? ui.paymentFailed : canceled ? ui.paymentCanceled : ui.paymentPending}</h2>
         {captured ? <a className="purchase-primary-link" href="/order-complete">{ui.viewConfirmation}</a> : failed || canceled ? <><p>{ui.paymentRetry}</p><a href="/cart">{ui.backCart}</a></> : <>
           <p>{ui.paymentPendingDescription}</p>
-          {confirmUpdatedTotal && <><p className="product-price">{formatAmount(result.amount_minor,result.currency,locale)}</p><Button onClick={()=>{setConfirmUpdatedTotal(false);setError('');}}>{ui.acceptUpdatedTotal}</Button></>}
+          {confirmUpdatedTotal && <><p className="product-price">{formatAmount(result.amount_minor,result.currency,locale)}</p><Button onClick={()=>{acceptedTotal.current={amount_minor:result.amount_minor,currency:result.currency};setConfirmUpdatedTotal(false);setError('');}}>{ui.acceptUpdatedTotal}</Button></>}
           {(context.fixture || context.fakePayment) && <div className="purchase-actions"><Button loading={busy} disabled={confirmUpdatedTotal} onClick={() => confirm('captured')}>{ui.fakeCapture}</Button><Button variant="secondary" disabled={busy} onClick={() => confirm('failed')}>{ui.fakeFail}</Button><Button variant="ghost" disabled={busy} onClick={() => confirm('canceled')}>{ui.fakeCancel}</Button></div>}
         </>}
       </section>}

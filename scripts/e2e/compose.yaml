@@ -23,7 +23,7 @@ services:
       HOST: 0.0.0.0
       PORT: "4321"
       OSC_READ_API_ORIGIN: http://api:8080
-      GITHUB_ACTIONS: "true"
+      OSC_COMMERCE_TEST_HTTP: "1"
       OSC_COMMERCE_MODE: backend
       OSC_COMMERCE_API_ORIGIN: http://api:8080
       OSC_COMMERCE_SITE: http://127.0.0.1:4321

@@ -32,6 +32,23 @@ request JSON. Cart currency must equal the tenant settlement currency before any
 order, reservation or provider effect; checkout performs no implicit conversion.
 No authenticated customer group pricing is wired by this card.
 
+Start requires explicit `accepted_total.amount_minor` (int64) and `currency`.
+It compares both against canonical recomputation inside the Start transaction,
+before creating Orders, reservations or provider intents. Mismatch returns
+`checkout_total_changed` (409), with no effects; the caller must refresh Preview,
+obtain explicit consent and use a new request key. Accepted money is part of the
+permanent request fingerprint. Same-key/same-consent retries retain the original
+payable even if live prices change; changed consent cannot reuse that key.
+
+The immutable `address_snapshot.accepted_total` is the durable consent receipt,
+written with the existing snapshot and protected by the existing guard/grants.
+No new table or migration is needed. The provider Capture command rechecks this
+receipt against the locked immutable amount/currency. Legacy cart sessions with
+no receipt cannot issue a new Capture; uncertain old claims stay preserved for
+recovery, never implicitly canceled. Existing sealed-order adoption remains its
+separate contract. Completed provider facts still record actual money facts,
+without invoking Capture or treating a browser assertion as a payment fact.
+
 Start persists the immutable address, quote, order, stock reservation and original
 payable before `CreateIntent`. Provider I/O holds no database transaction or lock.
 The first result and original payable version/amount/currency remain immutable.

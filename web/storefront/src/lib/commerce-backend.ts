@@ -58,7 +58,7 @@ export async function backendRequest(origin: string, path: string, token: string
   } else if (cart_id && !options.method) {
     result = await client.GET('/api/v1/t/{tenant_id}/checkout/{checkout_id}', {...common,params:{path:{tenant_id,checkout_id:cart_id},header:checkoutHeader}});
   } else if (!cart_id && options.method === 'POST') {
-    result = await client.POST('/api/v1/t/{tenant_id}/checkout', {...common,params:{path:{tenant_id},header:{...checkoutHeader,'Idempotency-Key':headers['Idempotency-Key']!}},body:options.body as APIComponents['schemas']['CheckoutStart']});
+    result = await client.POST('/api/v1/t/{tenant_id}/checkout', {...common,params:{path:{tenant_id},header:{...checkoutHeader,'Idempotency-Key':headers['Idempotency-Key']!}},body:options.body as APIComponents['schemas']['CheckoutStart'],bodySerializer:()=>options.rawBody ?? JSON.stringify(options.body)});
   }
   if (!result) throw new Error('Unsupported commerce method');
   return {response:result.response, text:result.data ?? JSON.stringify(result.error)};

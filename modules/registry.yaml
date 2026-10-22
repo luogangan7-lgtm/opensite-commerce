@@ -896,7 +896,8 @@
         "internal/modules/checkout/internal/store/cart_test.go",
         "internal/db/checkout_http_integration_test.go",
         "internal/modules/checkout/internal/service/input_test.go",
-        "internal/db/checkout_adoption_integration_test.go"
+        "internal/db/checkout_adoption_integration_test.go",
+        "internal/db/checkout_consent_integration_test.go"
       ],
       "scopes": [],
       "note": "C-18a and FIX-57 share one durable checkout payment path for cart and sealed existing-order sources. Customer HTTP admission uses verified sessions plus exact Origin/CSRF. Explicit test/development Fake configuration only; no real PSP or implicit enablement. Orders #49 fences enforce hold ownership; C-20b holder primitive remains a follow-up integration dependency."

@@ -58,7 +58,7 @@ func checkoutHTTPConfiguredRouter(t *testing.T, config checkouthttp.Config) *htt
 }
 
 func checkoutHTTPStart(router http.Handler, f *checkoutPGFixture, address1, key string) *httptest.ResponseRecorder {
-	body, _ := json.Marshal(map[string]any{"cart_id": f.cart.cart.ID, "buyer_contact": map[string]string{"email": "buyer@example.test"},
+	body, _ := json.Marshal(map[string]any{"accepted_total": f.input().AcceptedTotal, "cart_id": f.cart.cart.ID, "buyer_contact": map[string]string{"email": "buyer@example.test"},
 		"shipping_address": map[string]string{"country": "US", "address1": address1, "city": "Test City", "postal_code": "10000"}})
 	q := httptest.NewRequest(http.MethodPost, "/api/v1/t/"+f.tenant+"/checkout", strings.NewReader(string(body)))
 	q.Header.Set("Content-Type", "application/json")
