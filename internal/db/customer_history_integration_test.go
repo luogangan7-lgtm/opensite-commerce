@@ -40,6 +40,11 @@ func TestCustomerHistorySQLIsolation(t *testing.T) {
 	}
 	base := "/api/v1/t/" + f.tenant + "/customer/orders"
 	h := handler(owner)
+	other := handler(uuid.NewString())
+	if p := decodePage(t, orderGet(t, other, base, 200)); len(p.Items) != 0 {
+		t.Fatalf("CUSTOMER_CROSS_LIST_RED: %+v", p)
+	}
+	orderGet(t, other, base+"/"+f.customer, 404)
 	page := decodePage(t, orderGet(t, h, base, 200))
 	if len(page.Items) != 1 || page.Items[0]["id"] != f.customer || len(page.Items[0]) != 6 {
 		t.Fatalf("CUSTOMER_OWNERSHIP_RED: %+v", page)
@@ -53,11 +58,6 @@ func TestCustomerHistorySQLIsolation(t *testing.T) {
 			t.Fatalf("staff/PII field leaked: %s", private)
 		}
 	}
-	other := handler(uuid.NewString())
-	if p := decodePage(t, orderGet(t, other, base, 200)); len(p.Items) != 0 {
-		t.Fatalf("CUSTOMER_CROSS_LIST_RED: %+v", p)
-	}
-	orderGet(t, other, base+"/"+f.customer, 404)
 	orderGet(t, h, base+"?limit=0", 400)
 	orderGet(t, h, base+"?cursor=bad", 400)
 	var claimed int64

@@ -113,10 +113,10 @@ REGISTERED_SQL = f"""
 SELECT jsonb_agg(jsonb_build_object('customer',u.id,'order',o.id,'email',u.email,
  'actor',c.actor_kind='customer' AND c.actor_id=u.id::text,'paid',c.phase='paid' AND o.state='paid' AND o.sealed AND o.total_minor=3140,
  'stock',(SELECT count(*) FROM app.order_lines l JOIN app.inventory_reservations r ON r.tenant_id=l.tenant_id AND r.id=l.reservation_id WHERE l.tenant_id=o.tenant_id AND l.order_id=o.id AND r.state='committed' AND r.owner_type='order' AND r.owner_id=o.id AND r.holder_hash IS NULL AND r.sku_id='{SKU}' AND r.quantity=1),
- 'journal',(SELECT count(*) FROM app.ledger_transactions t WHERE t.tenant_id=o.tenant_id AND t.source_id=o.id::text),
- 'debits',(SELECT sum(e.amount) FROM app.ledger_entries e JOIN app.ledger_transactions t ON t.tenant_id=e.tenant_id AND t.id=e.transaction_id WHERE t.tenant_id=o.tenant_id AND t.source_id=o.id::text AND e.side='debit'),
- 'credits',(SELECT sum(e.amount) FROM app.ledger_entries e JOIN app.ledger_transactions t ON t.tenant_id=e.tenant_id AND t.id=e.transaction_id WHERE t.tenant_id=o.tenant_id AND t.source_id=o.id::text AND e.side='credit'),
- 'capture',(SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON i.tenant_id=e.tenant_id AND i.id=e.id WHERE e.tenant_id=o.tenant_id AND e.claimed_order_id=o.id AND e.provider_account_id='c09d-e2e' AND e.status='captured' AND e.applied AND i.provider_account_id=e.provider_account_id AND i.status='processed' AND i.processed_at IS NOT NULL)))
+ 'journal',(SELECT count(*) FROM app.ledger_transactions t WHERE t.tenant_id=o.tenant_id AND t.source_id=o.id::text AND t.source_type='order' AND t.status='posted'),
+ 'debits',(SELECT sum(e.amount) FROM app.ledger_entries e JOIN app.ledger_transactions t ON t.tenant_id=e.tenant_id AND t.id=e.transaction_id WHERE t.tenant_id=o.tenant_id AND t.source_id=o.id::text AND t.source_type='order' AND t.status='posted' AND e.side='debit'),
+ 'credits',(SELECT sum(e.amount) FROM app.ledger_entries e JOIN app.ledger_transactions t ON t.tenant_id=e.tenant_id AND t.id=e.transaction_id WHERE t.tenant_id=o.tenant_id AND t.source_id=o.id::text AND t.source_type='order' AND t.status='posted' AND e.side='credit'),
+ 'capture',(SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON i.tenant_id=e.tenant_id AND i.id=e.id WHERE e.tenant_id=o.tenant_id AND e.claimed_order_id=o.id AND e.provider_ref=c.provider_ref AND e.amount_minor=3140 AND e.currency='USD' AND e.provider_account_id='c09d-e2e' AND e.status='captured' AND e.applied AND i.provider_account_id=e.provider_account_id AND i.status='processed' AND i.processed_at IS NOT NULL)))
 FROM app.customers u JOIN app.orders o ON o.tenant_id=u.tenant_id AND o.customer_id=u.id
 JOIN app.checkout_sessions c ON c.tenant_id=o.tenant_id AND c.order_id=o.id
 WHERE u.tenant_id='{TENANT}' AND u.email IN ('c09f2-desktop@example.test','c09f2-mobile@example.test');
