@@ -255,6 +255,17 @@ class APIContractTests(unittest.TestCase):
             self.assertEqual(op["x-opensite-access"], "AuthenticatedSelf")
             self.assertEqual(op["security"], [{"adminSession": []}])
 
+    def test_customer_history_cannot_admit_staff_guest_or_scope_credentials(self):
+        for ident in ('listCustomerOrders', 'getCustomerOrder'):
+            for changes in ({'x-opensite-access': 'Storefront'},
+                            {'x-opensite-access': 'AdminOrAPIKey', 'x-required-scope': 'orders:read'},
+                            {'security': [{'adminSession': []}]},
+                            {'security': [{'cartBearer': []}]}, {'x-required-scope': ''}):
+                candidate = copy.deepcopy(self.api)
+                operations(candidate)[ident][2].update(changes)
+                with self.subTest(ident=ident, changes=changes), self.assertRaises(ValueError):
+                    contract.validate_contract(candidate)
+
     def test_checkout_auth_and_test_webhook_policy(self):
         contract.validate_contract(self.api)
         ops = operations(self.api)
