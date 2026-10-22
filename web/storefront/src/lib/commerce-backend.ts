@@ -24,13 +24,13 @@ export async function backendRequest(origin: string, path: string, token: string
   if (customer) {
     const params={path:{tenant_id:customer[1]!},header:{Origin:headers.Origin!,'X-CSRF-Token':headers['X-CSRF-Token']!}};
     let result;
-    if(customer[2]==='session'&&!options.method) result=await client.GET('/api/v1/t/{tenant_id}/customer/session',{...common,params});
+    if(customer[2]==='session'&&!options.method) result=await client.GET('/api/v1/t/{tenant_id}/customer/session',{...common,params:{path:params.path}});
     else if(customer[2]==='session'&&options.method==='POST') result=await client.POST('/api/v1/t/{tenant_id}/customer/session',{...common,params,body:options.body as APIComponents['schemas']['CustomerCredentialsInput']});
     else if(customer[2]==='session'&&options.method==='DELETE') result=await client.DELETE('/api/v1/t/{tenant_id}/customer/session',{...common,params});
     else if(customer[2]==='registrations'&&options.method==='POST') result=await client.POST('/api/v1/t/{tenant_id}/customer/registrations',{...common,params,body:options.body as APIComponents['schemas']['CustomerRegistrationInput']});
     else if(customer[2]==='verifications'&&options.method==='POST') result=await client.POST('/api/v1/t/{tenant_id}/customer/verifications',{...common,params,body:options.body as APIComponents['schemas']['CustomerTokenInput']});
     if(!result) throw new Error('Unsupported customer method');
-    return {response:result.response,text:result.data ?? JSON.stringify(result.error) ?? ''};
+    return {response:result.response,text:typeof result.data==='string'?result.data:JSON.stringify(result.data??result.error)??''};
   }
   if (path === '/api/v1/testing/payments/fake/webhook' && options.method === 'POST' && options.rawBody) {
     const result = await client.POST('/api/v1/testing/payments/fake/webhook', {...common,
