@@ -220,6 +220,9 @@ var reviewedAdapterExports = []string{
 	// Fake admission lends only a mapped app_runtime transaction plus DB time;
 	// both build variants return error only and never export the private pool.
 	"method:QueryRunner.RunFakePaymentTx",
+	// Serving refresher seam: a tenant-scoped app_runtime tx under FORCE RLS (tenant from
+	// deployment config); callers are pinned by check_modules TRUSTED_TX_ALLOWED.
+	"method:QueryRunner.RunTrustedTx",
 	"method:QueueDB.Begin",
 	"method:QueueDB.Exec",
 	"method:QueueDB.Query",
