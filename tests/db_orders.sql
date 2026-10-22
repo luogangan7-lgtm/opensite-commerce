@@ -78,7 +78,8 @@ BEGIN
   RAISE EXCEPTION 'ORDERS_GATE illegal transition accepted';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
  -- Wrong owner fails before any order/line/event is persisted.
- r:=app.inventory_reserve(sku,1,'checkout',uuidv7(),'orders-forged-reserve',900);
+ r:=app.inventory_reserve_non_order(sku,1,'checkout',uuidv7(),'orders-forged-reserve',900,
+  sha256(convert_to(uuidv4()::text||uuidv4()::text||uuidv4()::text,'UTF8')));
  foreign_reservation:=r.id;
  BEGIN
   PERFORM app.orders_create(other_id,'orders-forged-create',sha256('forged'::bytea),NULL,guest,'USD',20,shipping,
@@ -263,7 +264,9 @@ BEGIN
   PERFORM app.orders_transition(order_id_v,'paid','expired-pay',0);
   RAISE EXCEPTION 'ORDERS_GATE expired order reservation paid';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ SET LOCAL ROLE app_queue_worker;
  PERFORM app.inventory_expire_due(100);
+ SET LOCAL ROLE app_runtime;
  o:=app.orders_transition(order_id_v,'cancelled','expired-cancel',0);
  IF o.state<>'cancelled' OR (SELECT state FROM app.inventory_reservations
   WHERE app.inventory_reservations.id=current_setting('test.orders_res_3')::uuid)<>'expired' THEN

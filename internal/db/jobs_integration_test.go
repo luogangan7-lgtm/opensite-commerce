@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -151,7 +152,11 @@ func (f *jobsPG) seed() (string, string) {
 	if _, err := tx.Exec(f.ctx, "SET LOCAL ROLE app_runtime"); err != nil {
 		f.t.Fatal(err)
 	}
-	if err := tx.QueryRow(f.ctx, "SELECT (app.inventory_reserve($1::text::uuid,1,'checkout',uuidv7(),'jobs-expire',900)).id::text", sku).Scan(&res); err != nil {
+	bearer := make([]byte, 32)
+	if _, err := rand.Read(bearer); err != nil {
+		f.t.Fatal("generate inventory holder capability")
+	}
+	if err := tx.QueryRow(f.ctx, "SELECT (app.inventory_reserve_non_order($1::text::uuid,1,'checkout',uuidv7(),'jobs-expire',900,$2)).id::text", sku, bearer).Scan(&res); err != nil {
 		f.t.Fatal(err)
 	}
 	if err := tx.Commit(f.ctx); err != nil {

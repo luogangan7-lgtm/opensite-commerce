@@ -15,6 +15,14 @@ FORCE RLS remains in force. Unknown, unverified, disabled and unpublished hosts
 return the same 404. Malformed hostname authorities are 400; unavailable or
 invalid snapshots are 503. Forwarded host headers are ignored.
 
+Storefront serving (C-15b, `docs/architecture/ADR_STOREFRONT_SERVING.md`): CMS publish and
+restore build the exact public body in the same tenant transaction. It is stored in
+`storefront_serving` together with a fallback without SKUs, and SKU membership is sealed
+in `site_release_skus`. `getPublishedSite` serves those stored bytes as-is. The public
+role reads only the domain map, the publication epoch and that row; it has no catalog,
+pricing or inventory grants. Releases published outside the CMS path have no serving
+row and are projected with `skus: []`.
+
 Version 1 release manifests contain only `version`, `locale`, `title`,
 `description`, `navigation` and `products`. Navigation is `{label,href}` and
 products are `{id,slug,name,description,unit_amount,currency}`. Amounts are decimal

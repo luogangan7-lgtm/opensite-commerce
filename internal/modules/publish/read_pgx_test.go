@@ -98,9 +98,13 @@ func TestPublicPublishedReadPG(t *testing.T) {
 	if err != nil || got.Title != "OpenSite sample shop" || len(got.Pages) != 3 || len(got.Products) != 2 {
 		t.Fatalf("public snapshot: %+v %v", got, err)
 	}
-	wantProducts := []contract.Product{
-		{ID: "c0900007-0000-4000-8000-000000000001", Slug: "canvas-tote", Name: "Canvas tote", Description: "A reusable cotton tote for daily essentials.", UnitAmount: "2400", Currency: "USD"},
-		{ID: "c0900007-0000-4000-8000-000000000002", Slug: "ceramic-mug", Name: "Ceramic mug", Description: "A simple mug for your morning routine.", UnitAmount: "1800", Currency: "USD"},
+	wantProducts := []contract.PublicProduct{
+		{ID: "c0900007-0000-4000-8000-000000000001", Slug: "canvas-tote", Name: "Canvas tote", Description: "A reusable cotton tote for daily essentials.", SKUs: []contract.SKU{}},
+		{ID: "c0900007-0000-4000-8000-000000000002", Slug: "ceramic-mug", Name: "Ceramic mug", Description: "A simple mug for your morning routine.", SKUs: []contract.SKU{}},
+	}
+	// Legacy (SQL-published) releases have no serving row: projected with no purchasable SKUs.
+	if got.TenantID != "c0900001-0000-4000-8000-000000000001" {
+		t.Fatalf("host-resolved tenant id: %q", got.TenantID)
 	}
 	if !reflect.DeepEqual(got.Products, wantProducts) {
 		t.Fatalf("published catalog snapshot: %+v", got.Products)

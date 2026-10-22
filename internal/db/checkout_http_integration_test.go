@@ -2,7 +2,7 @@
 
 // Responsibility: drive the real checkout HTTP adapter over real Checkout,
 // Orders, Ledger, Fake and PostgreSQL. Dependencies: checkout PG fixture in
-// checkout_integration_test.go and the generated strict routes; the resolver is
+// checkout_integration_test.go, paymentFactFixture and generated strict routes; the resolver is
 // an explicit test seam. Invariants: sold-out is a 409 problem, never 500;
 // Fake's own canceled callback after Cancel is an idempotent no-op; address
 // limits are OpenAPI characters on the actual HTTP -> Start path.
@@ -10,10 +10,6 @@ package db_test
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
+	paymentcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 )
@@ -39,17 +36,15 @@ func (r checkoutHTTPResolver) Resolve(context.Context, *http.Request) (checkoutc
 	return r.actor, nil
 }
 
-func checkoutHTTPRouter(t *testing.T, f *checkoutPGFixture) (*httpapi.Router, []byte) {
+// Start-only fixtures do not need payment account/signature composition.
+func checkoutHTTPRouter(t *testing.T, f *checkoutPGFixture) *httpapi.Router {
 	t.Helper()
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatal(err)
-	}
-	verifier, err := checkouthttp.NewFakeHMACVerifier(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h, err := checkouthttp.New(checkouthttp.Config{Service: f.service, Resolver: checkoutHTTPResolver{f.actor}, Origin: checkoutHTTPOrigin, FakeEnabled: true, Environment: "test", Verifier: verifier})
+	return checkoutHTTPConfiguredRouter(t, checkouthttp.Config{Service: f.service, Resolver: checkoutHTTPResolver{f.actor}, Origin: checkoutHTTPOrigin})
+}
+
+func checkoutHTTPConfiguredRouter(t *testing.T, config checkouthttp.Config) *httpapi.Router {
+	t.Helper()
+	h, err := checkouthttp.New(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +54,7 @@ func checkoutHTTPRouter(t *testing.T, f *checkoutPGFixture) (*httpapi.Router, []
 			t.Fatal(err)
 		}
 	}
-	return router, key
+	return router
 }
 
 func checkoutHTTPStart(router http.Handler, f *checkoutPGFixture, address1, key string) *httptest.ResponseRecorder {
@@ -88,7 +83,7 @@ func checkoutHTTPProblem(t *testing.T, w *httptest.ResponseRecorder, status int,
 
 func TestCheckoutPGHTTPSoldOutIs409(t *testing.T) {
 	f := newCheckoutPGFixture(t, 1, 2)
-	router, _ := checkoutHTTPRouter(t, f)
+	router := checkoutHTTPRouter(t, f)
 	checkoutHTTPProblem(t, checkoutHTTPStart(router, f, "100 Test Avenue", "sold-out:"+uuid.NewString()), 409, "stock_unavailable")
 	var onHand, reserved, orders int64
 	if err := f.runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
@@ -100,7 +95,7 @@ func TestCheckoutPGHTTPSoldOutIs409(t *testing.T) {
 
 func TestCheckoutPGHTTPLastItemRaceOne201One409(t *testing.T) {
 	f := newCheckoutPGFixture(t, 1, 1)
-	router, _ := checkoutHTTPRouter(t, f)
+	router := checkoutHTTPRouter(t, f)
 	var wg sync.WaitGroup
 	codes := make([]*httptest.ResponseRecorder, 2)
 	for i := range codes {
@@ -128,7 +123,7 @@ func TestCheckoutPGHTTPLastItemRaceOne201One409(t *testing.T) {
 // OpenAPI address1 maxLength and must succeed through HTTP -> Start.
 func TestCheckoutPGHTTPAddressCharacterLimit(t *testing.T) {
 	f := newCheckoutPGFixture(t, 10, 1)
-	router, _ := checkoutHTTPRouter(t, f)
+	router := checkoutHTTPRouter(t, f)
 	if w := checkoutHTTPStart(router, f, strings.Repeat("路", 500), "addr:"+uuid.NewString()); w.Code != 201 {
 		t.Fatalf("500-character address rejected: %d %s", w.Code, w.Body.String())
 	}
@@ -136,11 +131,15 @@ func TestCheckoutPGHTTPAddressCharacterLimit(t *testing.T) {
 }
 
 func TestCheckoutPGHTTPFakeCanceledCallbackAfterCancel(t *testing.T) {
-	f := newCheckoutPGFixture(t, 10, 2)
-	router, key := checkoutHTTPRouter(t, f)
+	p := newPaymentFactFixture(t)
+	f, start := p.f, p.start
 	ctx := checkoutRequestContext(f.ctx)
-	start := f.start(t)
+	// Cancel is the one intended provider command; restore the fact-consumer
+	// command tripwire before admitting its callback. No request runs in flight.
+	guard := f.provider.before
+	f.provider.before = nil
 	cancelled, err := f.service.Cancel(ctx, f.actor, checkoutcontract.CancelInput{CheckoutID: start.CheckoutID, IdempotencyKey: "cancel:" + uuid.NewString()})
+	f.provider.before = guard
 	if err != nil || cancelled.State != "cancelled" {
 		t.Fatalf("Cancel %#v %v", cancelled, err)
 	}
@@ -154,32 +153,43 @@ func TestCheckoutPGHTTPFakeCanceledCallbackAfterCancel(t *testing.T) {
 	if event == nil {
 		t.Fatal("Fake produced no canceled event for the order")
 	}
-	raw, _ := json.Marshal(map[string]any{"event_id": event.EventID, "tenant_id": event.TenantID, "order_id": event.OrderID, "order_version": event.OrderVersion,
+	// Keep the callback sourced from Fake's actual canceled event. Only authority
+	// moves from wire tenant_id to the configured provider account.
+	raw, err := json.Marshal(map[string]any{"event_id": event.EventID, "account_id": p.account, "order_id": event.OrderID, "order_version": event.OrderVersion,
 		"provider_ref": event.ProviderRef, "status": string(event.Status), "amount_minor": event.Amount.Amount, "currency": event.Amount.Currency})
-	mac := hmac.New(sha256.New, key)
-	mac.Write(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := checkoutHTTPConfiguredRouter(t, checkouthttp.Config{Service: f.service, FakeEnabled: true, Environment: "test", Events: p.module})
 	before := f.witness(t, start.OrderID)
+	captures, cancels := f.provider.captures.Load(), f.provider.cancels.Load()
+	if captures != 0 || cancels != 1 {
+		t.Fatalf("Cancel provider effects captures=%d cancels=%d", captures, cancels)
+	}
 	for i := range 3 {
 		q := httptest.NewRequest(http.MethodPost, checkouthttp.FakePattern, strings.NewReader(string(raw)))
 		q.Header.Set("Content-Type", "application/json")
-		q.Header.Set("X-Fake-Signature", hex.EncodeToString(mac.Sum(nil)))
+		q.Header.Set("X-Fake-Signature", p.signature(raw, p.at))
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, q)
-		var got struct{ State string }
-		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.State != "cancelled" {
+		var got paymentcontract.Receipt
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.EventID != event.EventID || got.Status != "processed" {
 			t.Fatalf("delivery %d: %d %s", i, w.Code, w.Body.String())
 		}
 	}
 	if after := f.witness(t, start.OrderID); after != before || after.state != "cancelled" || after.journals != 0 || after.onHand != 10 || after.reserved != 0 {
 		t.Fatalf("canceled callback changed effects: before %+v after %+v", before, after)
 	}
-	var receipts int
+	var receipts, inboxes, events int
 	if err := f.runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-		return tx.QueryRow(ctx, "SELECT count(*) FROM app.checkout_attempts WHERE tenant_id=$1 AND event_kind='payment' AND event_key=$2 AND result IS NOT NULL", f.tenant, event.EventID).Scan(&receipts)
-	}); err != nil || receipts != 1 {
-		t.Fatalf("canceled callback receipt persisted=%d %v", receipts, err)
+		return tx.QueryRow(ctx, `SELECT
+		 (SELECT count(*) FROM app.checkout_attempts a JOIN app.payment_events e ON (a.tenant_id,a.event_key)=(e.tenant_id,e.event_key) JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE a.tenant_id=$1 AND a.event_kind='payment' AND a.result IS NOT NULL AND e.provider_account_id=$3 AND i.provider_event_id=$2),
+		 (SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider='fake' AND provider_account_id=$3 AND environment='test' AND provider_event_id=$2 AND status='processed'),
+		 (SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE e.tenant_id=$1 AND e.provider_account_id=$3 AND i.provider_event_id=$2 AND e.applied)`, f.tenant, event.EventID, p.account).Scan(&receipts, &inboxes, &events)
+	}); err != nil || receipts != 1 || inboxes != 1 || events != 1 {
+		t.Fatalf("canceled callback receipts checkout=%d inbox=%d events=%d %v", receipts, inboxes, events, err)
 	}
-	if f.provider.captures.Load() != 0 {
-		t.Fatal("canceled callback captured")
+	if p.providerCommands.Load() != 0 || f.provider.captures.Load() != captures || f.provider.cancels.Load() != cancels {
+		t.Fatal("canceled callback issued another provider command")
 	}
 }

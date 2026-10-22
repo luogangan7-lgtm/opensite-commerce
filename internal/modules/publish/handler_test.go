@@ -18,10 +18,16 @@ type publishedReader struct {
 	err   error
 }
 
-func (r *publishedReader) Current(_ context.Context, host string) (contract.Site, error) {
+// servedBody is deliberately spaced: the transport must write stored bytes as-is.
+const servedBody = `{"tenant_id":"t", "site_id":"s","release_id":"r","locale":"en","title":"Shop","description":"Text","navigation":[],"pages":[],"products":[{"id":"p","slug":"aid","name":"Aid","description":"Text","skus":[{"sku_id":"s","sku_code":"S","option_values":[],"price_minor":"9007199254740993","currency":"USD","available":true}]}]}` + "\n"
+
+func (r *publishedReader) Serve(_ context.Context, host string) ([]byte, error) {
 	r.calls++
 	r.host = host
-	return contract.Site{SiteID: "s", ReleaseID: "r", Hostname: host, Locale: "en", Title: "Shop", Description: "Text", Navigation: []contract.Navigation{}, Pages: []contract.Page{}, Products: []contract.Product{{ID: "p", Slug: "aid", Name: "Aid", Description: "Text", UnitAmount: "9007199254740993", Currency: "USD"}}}, r.err
+	if r.err != nil {
+		return nil, r.err
+	}
+	return []byte(servedBody), nil
 }
 func TestStorefrontAdmission(t *testing.T) {
 	reader := &publishedReader{}
@@ -44,12 +50,15 @@ func TestStorefrontAdmission(t *testing.T) {
 	if w.Code != 200 || reader.host != "shop.example" {
 		t.Fatalf("public read %d %s", w.Code, w.Body)
 	}
+	if w.Body.String() != servedBody || w.Header().Get("ETag") == "" || w.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("serving bytes not written as-is: %q %v", w.Body.String(), w.Header())
+	}
 	var result map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
 	products := result["products"].([]any)
-	if products[0].(map[string]any)["unit_amount"] != "9007199254740993" {
+	if products[0].(map[string]any)["skus"].([]any)[0].(map[string]any)["price_minor"] != "9007199254740993" {
 		t.Fatal("amount lost precision")
 	}
 	reader.err = contract.ErrNotFound
