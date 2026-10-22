@@ -5,6 +5,8 @@ services:
   api:
     environment:
       OSC_PUBLIC_DATABASE_URL: "host=postgres port=5432 dbname=${OPENSITE_DB} user=opensite_domain_login password=${OPENSITE_DOMAIN_DB_PASSWORD} sslmode=disable"
+      # Existing minimum idle policy; only this disposable browser fixture is shortened.
+      OSC_AUTH_SESSION_IDLE: "1m"
       OPENSITE_FAKE_PSP: "1"
       OPENSITE_ENVIRONMENT: test
       OPENSITE_FAKE_WEBHOOK_KEY: ${OPENSITE_FAKE_WEBHOOK_KEY:?set isolated CI Fake key}

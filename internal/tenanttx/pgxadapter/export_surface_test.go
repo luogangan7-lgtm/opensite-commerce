@@ -193,11 +193,15 @@ var reviewedAdapterExports = []string{
 	"type:QueuePool",
 	"func:InQueueTenant",
 	"func:NewCommandTag",
+	// Bounded authority runner keeps its connection pool private.
+	"func:OpenAuthorization",
 	"func:OpenCustomerRunner",
 	"func:OpenIdentity",
 	"func:OpenMigrationPool",
 	"func:OpenQueryRunner",
 	"func:OpenQueuePool",
+	// Dedicated bounded staff lane exposes a runner, never a raw connection.
+	"func:OpenStaffAuthentication",
 	"method:CommandTag.Delete",
 	"method:CommandTag.Insert",
 	"method:CommandTag.RowsAffected",
@@ -208,6 +212,8 @@ var reviewedAdapterExports = []string{
 	"method:CustomerRunner.InTenant",
 	"method:IdentityRunner.Close",
 	"method:IdentityRunner.InMaintenance",
+	// Exact-role admission lends generated queries only, never the private connection.
+	"method:IdentityRunner.RunAuthentication",
 	"method:PgError.Error",
 	"method:PgError.SQLState",
 	"method:QueryRunner.Close",
