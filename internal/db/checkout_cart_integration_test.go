@@ -56,7 +56,14 @@ func realCheckoutCart(t *testing.T, f *checkoutPGFixture, customer bool, currenc
 		t.Fatal(err)
 	}
 	rules := checkout.NewSQLRules(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 100}}}})
-	f.service = checkout.New(checkout.Config{Run: f.run, Cart: checkout.NewSQLCart(cart.ReadIntent), Rules: rules, Orders: orders.New(), Ledger: ledger.New(), Payment: f.provider})
+	f.service = checkout.New(checkout.Config{Read: func(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+		return f.runner.InTenantSnapshot(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+			if err := db.New(tx).SetCartRuntimeRole(ctx); err != nil {
+				return err
+			}
+			return fn(ctx, tx)
+		})
+	}, SnapshotCart: checkout.NewSQLCart(cart.ReadIntentSnapshot), Run: f.run, Cart: checkout.NewSQLCart(cart.ReadIntent), Rules: rules, Orders: orders.New(), Ledger: ledger.New(), Payment: f.provider})
 }
 
 func TestCheckoutPGRealCartGuestAndCustomer(t *testing.T) {
@@ -97,6 +104,24 @@ func TestCheckoutPGRealCartGuestAndCustomer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
+			reader := f.service.(checkoutcontract.BrowserReader)
+			preview, err := reader.Preview(f.ctx, f.actor, checkoutcontract.PreviewInput{CartID: f.cart.cart.ID, Country: "US", PostalCode: "10000"})
+			if err != nil || preview.TotalMinor != 270 {
+				t.Fatalf("readonly preview: %#v %v", preview, err)
+			}
+			if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				var count int
+				if err := tx.QueryRow(ctx, "SELECT (SELECT count(*) FROM app.orders WHERE tenant_id=$1)+(SELECT count(*) FROM app.checkout_sessions WHERE tenant_id=$1)+(SELECT count(*) FROM app.inventory_reservations WHERE tenant_id=$1)", f.tenant).Scan(&count); err != nil {
+					return err
+				}
+				if count != 0 {
+					t.Fatalf("preview persisted %d writes", count)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
 			in := f.input()
 			if customer {
 				in.BuyerContact = orderscontract.Contact{}
@@ -109,6 +134,14 @@ func TestCheckoutPGRealCartGuestAndCustomer(t *testing.T) {
 			paid, err := f.service.Confirm(ctx, f.event(start, payment.StatusAuthorized))
 			if err != nil || paid.State != "paid" {
 				t.Fatalf("real cart paid %#v %v", paid, err)
+			}
+
+			saved, err := reader.Get(f.ctx, f.actor, start.CheckoutID, f.cart.cart.ID)
+			if err != nil || saved.State != "paid" {
+				t.Fatalf("saved result: %#v %v", saved, err)
+			}
+			if _, err := reader.Get(f.ctx, f.actor, start.CheckoutID, uuid.NewString()); !errors.Is(err, checkoutcontract.ErrNotFound) {
+				t.Fatalf("foreign cart read: %v", err)
 			}
 			w := f.witness(t, start.OrderID)
 			if w.state != "paid" || w.onHand != 8 || w.reserved != 0 || w.journals != 1 || w.debits != 540 || w.credits != 540 || w.cash != 270 || w.receivable != 0 || w.paidEvents != 1 {

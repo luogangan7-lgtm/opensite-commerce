@@ -1,12 +1,13 @@
 // Responsibility: read frozen shopping intent inside an existing authorized tx.
 // Dependencies: generated SQL and cart contract; caller: cart.ReadIntent.
-// Invariants: matching tenant/runtime stamp, actor RLS, row lock before lines,
+// Invariants: matching tenant/runtime stamp, actor RLS, command row lock or
+// read-only snapshot before lines,
 // exact restoration of caller actor GUCs; no transaction/pool or projected prices.
 package store
 
 import (
-	"bytes"
 	"context"
+	"crypto/hmac"
 	"encoding/hex"
 	"errors"
 
@@ -24,6 +25,15 @@ func canonicalID(value string) bool {
 // and restores all three actor GUCs even on a failed read. Any failure, including
 // context restoration, requires the caller to roll back the borrowed transaction.
 func ReadIntent(ctx context.Context, tx pgx.Tx, actor contract.AuthorizedActor, cartID string) (out contract.Intent, err error) {
+	return readIntent(ctx, tx, actor, cartID, true)
+}
+
+// ReadIntentSnapshot verifies ownership without a row lock in a read-only snapshot.
+func ReadIntentSnapshot(ctx context.Context, tx pgx.Tx, actor contract.AuthorizedActor, cartID string) (out contract.Intent, err error) {
+	return readIntent(ctx, tx, actor, cartID, false)
+}
+
+func readIntent(ctx context.Context, tx pgx.Tx, actor contract.AuthorizedActor, cartID string, lock bool) (out contract.Intent, err error) {
 	guest := actor.CustomerID == "" && len(actor.GuestTokenHash) == 32
 	customer := canonicalID(actor.CustomerID) && len(actor.GuestTokenHash) == 0
 	if tx == nil || !canonicalID(actor.TenantID) || !canonicalID(cartID) || (!guest && !customer) {
@@ -42,7 +52,12 @@ func ReadIntent(ctx context.Context, tx pgx.Tx, actor contract.AuthorizedActor, 
 	if err = q.SetCartContext(ctx, db.SetCartContextParams{TenantContext: actor.TenantID, CustomerContext: actor.CustomerID, TokenContext: hex.EncodeToString(actor.GuestTokenHash)}); err != nil {
 		return out, unavailable()
 	}
-	row, err := q.GetCartForUpdate(ctx, db.GetCartForUpdateParams{TenantID: uuid(actor.TenantID), ID: uuid(cartID)})
+	var row db.AppCart
+	if lock {
+		row, err = q.GetCartForUpdate(ctx, db.GetCartForUpdateParams{TenantID: uuid(actor.TenantID), ID: uuid(cartID)})
+	} else {
+		row, err = q.GetCart(ctx, db.GetCartParams{TenantID: uuid(actor.TenantID), ID: uuid(cartID)})
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, missing()
 	}
@@ -51,7 +66,7 @@ func ReadIntent(ctx context.Context, tx pgx.Tx, actor contract.AuthorizedActor, 
 	}
 	if id(row.TenantID) != actor.TenantID || id(row.ID) != cartID || row.Version <= 0 ||
 		(customer && (id(row.CustomerID) != actor.CustomerID || len(row.GuestTokenHash) != 0)) ||
-		(guest && (row.CustomerID.Valid || !bytes.Equal(row.GuestTokenHash, actor.GuestTokenHash))) {
+		(guest && (row.CustomerID.Valid || !hmac.Equal(row.GuestTokenHash, actor.GuestTokenHash))) {
 		return out, missing()
 	}
 	lines, err := q.ListCartLines(ctx, db.ListCartLinesParams{TenantID: row.TenantID, CartID: row.ID})

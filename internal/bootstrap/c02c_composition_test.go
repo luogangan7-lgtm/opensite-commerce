@@ -28,6 +28,20 @@ func (c02cGuardAuth) ResolveTransactionAuthorization(context.Context, *http.Requ
 	return nil, apperrors.New(403, "forbidden", "Write authority unavailable")
 }
 func TestC02cCheckoutPreservesStaffExtensions(t *testing.T) {
+	// Pin the inner wrapper too; the outer customer wrapper has a separate projection.
+	h, err := checkout.New(checkout.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	responder, ok := h.Authenticator(c02cGuardAuth{}).(httpapi.AuthenticationResponder)
+	if !ok {
+		t.Fatal("STAFF_RESPONSE_RED: inner response projection lost")
+	}
+	response := httptest.NewRecorder()
+	responder.AuthenticationResponse(context.Background(), response, httptest.NewRequest("GET", "/", nil), httpapi.RouteSpec{OperationID: "staffProbe"})
+	if response.Header().Get("X-C02c-Response-Witness") != "admitted" {
+		t.Fatal("inner response projection lost")
+	}
 	for _, method := range []string{"GET", "POST"} {
 		t.Run(method, func(t *testing.T) {
 			called := false

@@ -140,6 +140,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			previous := closeRuntime
 			closeRuntime = func() { stopRefresh(); <-done; previous() }
 		}
+		if err := wireStorefrontCheckout(&config,runner); err != nil { closeRuntime(); return Config{},nil,err }
 		config.Orders.Read = runner.RunAuthorizedSnapshot
 		config.Fulfillment.Run = runner.RunAuthorizedTx
 		config.Returns.Run = runner.RunAuthorizedTx
