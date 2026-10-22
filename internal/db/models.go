@@ -150,30 +150,33 @@ type AppCheckoutAttempt struct {
 }
 
 type AppCheckoutSession struct {
-	TenantID        pgtype.UUID        `json:"tenant_id"`
-	ID              pgtype.UUID        `json:"id"`
-	ActorKind       string             `json:"actor_kind"`
-	ActorID         string             `json:"actor_id"`
-	RequestKey      string             `json:"request_key"`
-	RequestHash     []byte             `json:"request_hash"`
-	CartID          pgtype.UUID        `json:"cart_id"`
-	CartVersion     int64              `json:"cart_version"`
-	OrderID         pgtype.UUID        `json:"order_id"`
-	AddressSnapshot []byte             `json:"address_snapshot"`
-	Currency        string             `json:"currency"`
-	AmountMinor     int64              `json:"amount_minor"`
-	ItemsNetMinor   int64              `json:"items_net_minor"`
-	TaxMinor        int64              `json:"tax_minor"`
-	ShippingMinor   int64              `json:"shipping_minor"`
-	PayableVersion  int64              `json:"payable_version"`
-	Phase           string             `json:"phase"`
-	ProviderRef     string             `json:"provider_ref"`
-	StartResult     []byte             `json:"start_result"`
-	FinalResult     []byte             `json:"final_result"`
-	ClaimKind       pgtype.Text        `json:"claim_kind"`
-	ClaimKey        pgtype.Text        `json:"claim_key"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	TenantID              pgtype.UUID        `json:"tenant_id"`
+	ID                    pgtype.UUID        `json:"id"`
+	ActorKind             string             `json:"actor_kind"`
+	ActorID               string             `json:"actor_id"`
+	RequestKey            string             `json:"request_key"`
+	RequestHash           []byte             `json:"request_hash"`
+	CartID                pgtype.UUID        `json:"cart_id"`
+	CartVersion           int64              `json:"cart_version"`
+	OrderID               pgtype.UUID        `json:"order_id"`
+	AddressSnapshot       []byte             `json:"address_snapshot"`
+	Currency              string             `json:"currency"`
+	AmountMinor           int64              `json:"amount_minor"`
+	ItemsNetMinor         int64              `json:"items_net_minor"`
+	TaxMinor              int64              `json:"tax_minor"`
+	ShippingMinor         int64              `json:"shipping_minor"`
+	PayableVersion        int64              `json:"payable_version"`
+	Phase                 string             `json:"phase"`
+	ProviderRef           string             `json:"provider_ref"`
+	StartResult           []byte             `json:"start_result"`
+	FinalResult           []byte             `json:"final_result"`
+	ClaimKind             pgtype.Text        `json:"claim_kind"`
+	ClaimKey              pgtype.Text        `json:"claim_key"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	RefundedNetMinor      int64              `json:"refunded_net_minor"`
+	RefundedTaxMinor      int64              `json:"refunded_tax_minor"`
+	RefundedShippingMinor int64              `json:"refunded_shipping_minor"`
 }
 
 type AppCompanyContact struct {
@@ -577,6 +580,33 @@ type AppPageRevision struct {
 	Document  []byte             `json:"document"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	MediaIds  []pgtype.UUID      `json:"media_ids"`
+}
+
+type AppPaymentEvent struct {
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	ID                pgtype.UUID        `json:"id"`
+	Provider          string             `json:"provider"`
+	ProviderAccountID string             `json:"provider_account_id"`
+	Environment       string             `json:"environment"`
+	ProviderRef       string             `json:"provider_ref"`
+	EventKey          string             `json:"event_key"`
+	ClaimedOrderID    pgtype.UUID        `json:"claimed_order_id"`
+	OrderVersion      int64              `json:"order_version"`
+	Status            string             `json:"status"`
+	AmountMinor       int64              `json:"amount_minor"`
+	Currency          string             `json:"currency"`
+	Applied           bool               `json:"applied"`
+	ErrorCode         pgtype.Text        `json:"error_code"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppPaymentProviderAccount struct {
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	Provider          string             `json:"provider"`
+	ProviderAccountID string             `json:"provider_account_id"`
+	Environment       string             `json:"environment"`
+	Enabled           bool               `json:"enabled"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
 type AppPriceEntry struct {
