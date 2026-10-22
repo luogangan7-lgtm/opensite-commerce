@@ -16,7 +16,6 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	api "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -24,7 +23,7 @@ type Config struct {
 	Run func(context.Context, string, func(*db.Queries) error) error
 }
 type Service struct {
-	api.StrictServerInterface
+	httpapi.StrictServerInterface
 	run func(context.Context, string, func(*db.Queries) error) error
 }
 
@@ -94,70 +93,70 @@ func decode[T any](b []byte, err error) (result T, e error) {
 	}
 	return result, json.Unmarshal(b, &result)
 }
-func (s *Service) writeList(ctx context.Context, tenant uuid.UUID, key pgtype.UUID, v int64, body *api.StaffPriceListInput) (api.StaffPriceList, error) {
+func (s *Service) writeList(ctx context.Context, tenant uuid.UUID, key pgtype.UUID, v int64, body *httpapi.StaffPriceListInput) (httpapi.StaffPriceList, error) {
 	if body == nil || (money.Money{Currency: body.Currency}).Validate() != nil {
-		return api.StaffPriceList{}, invalid()
+		return httpapi.StaffPriceList{}, invalid()
 	}
 	b, err := json.Marshal(body)
 	if err != nil {
-		return api.StaffPriceList{}, err
+		return httpapi.StaffPriceList{}, err
 	}
-	return decode[api.StaffPriceList](s.query(ctx, tenant, func(q *db.Queries) ([]byte, error) {
+	return decode[httpapi.StaffPriceList](s.query(ctx, tenant, func(q *db.Queries) ([]byte, error) {
 		return q.WriteStaffPriceList(ctx, db.WriteStaffPriceListParams{ID: key, Version: v, Body: b})
 	}))
 }
-func (s *Service) CreatePriceList(ctx context.Context, r api.CreatePriceListRequestObject) (api.CreatePriceListResponseObject, error) {
+func (s *Service) CreatePriceList(ctx context.Context, r httpapi.CreatePriceListRequestObject) (httpapi.CreatePriceListResponseObject, error) {
 	p, err := s.writeList(ctx, r.TenantId, pgtype.UUID{}, 0, r.Body)
-	return api.CreatePriceList201JSONResponse(p), err
+	return httpapi.CreatePriceList201JSONResponse(p), err
 }
-func (s *Service) UpdatePriceList(ctx context.Context, r api.UpdatePriceListRequestObject) (api.UpdatePriceListResponseObject, error) {
+func (s *Service) UpdatePriceList(ctx context.Context, r httpapi.UpdatePriceListRequestObject) (httpapi.UpdatePriceListResponseObject, error) {
 	v, err := version(r.Params.IfMatch)
 	if err != nil {
 		return nil, err
 	}
 	p, err := s.writeList(ctx, r.TenantId, id(r.PriceListId), v, r.Body)
-	return api.UpdatePriceList200JSONResponse(p), err
+	return httpapi.UpdatePriceList200JSONResponse(p), err
 }
-func (s *Service) GetPriceList(ctx context.Context, r api.GetPriceListRequestObject) (api.GetPriceListResponseObject, error) {
-	p, err := decode[api.StaffPriceList](s.query(ctx, r.TenantId, func(q *db.Queries) ([]byte, error) {
+func (s *Service) GetPriceList(ctx context.Context, r httpapi.GetPriceListRequestObject) (httpapi.GetPriceListResponseObject, error) {
+	p, err := decode[httpapi.StaffPriceList](s.query(ctx, r.TenantId, func(q *db.Queries) ([]byte, error) {
 		return q.GetStaffPriceList(ctx, db.GetStaffPriceListParams{TenantID: id(r.TenantId), ID: id(r.PriceListId)})
 	}))
-	return api.GetPriceList200JSONResponse(p), err
+	return httpapi.GetPriceList200JSONResponse(p), err
 }
-func (s *Service) ListPriceLists(ctx context.Context, r api.ListPriceListsRequestObject) (api.ListPriceListsResponseObject, error) {
+func (s *Service) ListPriceLists(ctx context.Context, r httpapi.ListPriceListsRequestObject) (httpapi.ListPriceListsResponseObject, error) {
 	after := uuid.Nil
 	if r.Params.After != nil {
 		after = *r.Params.After
 	}
-	items, err := decode[[]api.StaffPriceList](s.query(ctx, r.TenantId, func(q *db.Queries) ([]byte, error) {
+	items, err := decode[[]httpapi.StaffPriceList](s.query(ctx, r.TenantId, func(q *db.Queries) ([]byte, error) {
 		return q.ListStaffPriceLists(ctx, db.ListStaffPriceListsParams{TenantID: id(r.TenantId), AfterID: id(after)})
 	}))
-	page := api.StaffPriceListPage{Items: items}
+	page := httpapi.StaffPriceListPage{Items: items}
 	if len(items) > 100 {
 		page.Items = items[:100]
 		page.NextCursor = &items[99].Id
 	}
-	return api.ListPriceLists200JSONResponse(page), err
+	return httpapi.ListPriceLists200JSONResponse(page), err
 }
-func (s *Service) entry(ctx context.Context, tenant, list, variant uuid.UUID, min int64, amount pgtype.Int8, raw string) (api.StaffPriceList, error) {
+func (s *Service) entry(ctx context.Context, tenant, list, variant uuid.UUID, min int64, amount pgtype.Int8, raw string) (httpapi.StaffPriceList, error) {
 	v, err := version(raw)
 	if err != nil {
-		return api.StaffPriceList{}, err
+		return httpapi.StaffPriceList{}, err
 	}
-	return decode[api.StaffPriceList](s.query(ctx, tenant, func(q *db.Queries) ([]byte, error) {
+	return decode[httpapi.StaffPriceList](s.query(ctx, tenant, func(q *db.Queries) ([]byte, error) {
 		return q.WriteStaffPriceEntry(ctx, db.WriteStaffPriceEntryParams{ListID: id(list), SkuID: id(variant), MinQuantity: min, Amount: amount, Version: v})
 	}))
 }
-func (s *Service) SetVariantPrice(ctx context.Context, r api.SetVariantPriceRequestObject) (api.SetVariantPriceResponseObject, error) {
+func (s *Service) SetVariantPrice(ctx context.Context, r httpapi.SetVariantPriceRequestObject) (httpapi.SetVariantPriceResponseObject, error) {
 	if r.Body == nil || r.Body.UnitAmount < 0 || r.MinQuantity < 1 {
 		return nil, invalid()
 	}
 	p, err := s.entry(ctx, r.TenantId, r.PriceListId, r.VariantId, r.MinQuantity, pgtype.Int8{Int64: r.Body.UnitAmount, Valid: true}, r.Params.IfMatch)
-	return api.SetVariantPrice200JSONResponse(p), err
+	return httpapi.SetVariantPrice200JSONResponse(p), err
 }
-func (s *Service) ClearVariantPrice(ctx context.Context, r api.ClearVariantPriceRequestObject) (api.ClearVariantPriceResponseObject, error) {
+func (s *Service) ClearVariantPrice(ctx context.Context, r httpapi.ClearVariantPriceRequestObject) (httpapi.ClearVariantPriceResponseObject, error) {
 	p, err := s.entry(ctx, r.TenantId, r.PriceListId, r.VariantId, r.MinQuantity, pgtype.Int8{}, r.Params.IfMatch)
-	return api.ClearVariantPrice200JSONResponse(p), err
+	return httpapi.ClearVariantPrice200JSONResponse(p), err
 }
 func (s *Service) Routes() []httpapi.Route {
 	base := "/api/v1/t/{tenant_id}/price-lists"
