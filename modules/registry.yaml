@@ -863,7 +863,9 @@
         {
           "operation_id": "createCheckout",
           "status": "implemented"
-        }
+        },
+        {"operation_id": "previewCheckout", "status": "implemented"},
+        {"operation_id": "getCheckout", "status": "implemented"}
       ],
       "dependencies": [
         "tenant",

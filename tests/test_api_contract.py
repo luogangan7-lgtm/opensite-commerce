@@ -130,7 +130,7 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(ops["health"][:2], ("/healthz", "get"))
         self.assertEqual(set(ops["health"][2]["responses"]), {"204"})
         self.assertNotIn("content", ops["health"][2]["responses"]["204"])
-        expected = {"createCheckout", "receiveFakePaymentEvent", "health", "getPublishedSite", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
+        expected = {"createCheckout", "previewCheckout", "getCheckout", "receiveFakePaymentEvent", "health", "getPublishedSite", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia",
                     "createShipment", "createReturn", "receiveReturn", "refundReturn"}
@@ -172,7 +172,7 @@ class APIContractTests(unittest.TestCase):
                 self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, operation["parameters"])
                 if name != "createSiteDraft":
                     self.assertIn({"$ref": "#/components/parameters/IfMatch"}, operation["parameters"])
-        for name in expected - {"health", "getPublishedSite", "createCheckout", "receiveFakePaymentEvent"}:
+        for name in expected - {"health", "getPublishedSite", "createCheckout", "previewCheckout", "getCheckout", "receiveFakePaymentEvent"}:
             path, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
             self.assertIn(operation["x-required-scope"], {"catalog:read", "catalog:write", "media:write", "fulfillment:write", "returns:write"})

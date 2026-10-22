@@ -259,16 +259,17 @@ def validate_contract(api):
             require(ident == "createQuoteOrder" and tenant and scope == "quotes:convert" and
                     security == [{"customerSession": []}], f"buyer company session/tenant/scope required: {ident}")
         elif access == "Storefront":
-            if ident == "createCheckout":
-                require((path, method) == ("/api/v1/t/{tenant_id}/checkout", "post") and tenant and
+            if ident in {"createCheckout", "previewCheckout", "getCheckout"}:
+                expected_path, expected_method = {"createCheckout": ("/api/v1/t/{tenant_id}/checkout", "post"), "previewCheckout": ("/api/v1/t/{tenant_id}/checkout/preview", "post"), "getCheckout": ("/api/v1/t/{tenant_id}/checkout/{checkout_id}", "get")}[ident]
+                require((path, method) == (expected_path, expected_method) and tenant and
                         "x-required-scope" not in op and op["x-opensite-status"] == "implemented" and
                         security == [{"StorefrontSession": []}, {"GuestCapability": []}],
                         "checkout requires the exact scope-free storefront resolver contract")
-                for name, cookie_name in (("StorefrontSession", "__Host-osc_customer_session"),
-                                          ("GuestCapability", "__Host-osc_guest_capability")):
+                for name, location, credential_name in (("StorefrontSession", "cookie", "__Host-osc_customer_session"),
+                                          ("GuestCapability", "header", "X-Cart-Token")):
                     scheme = schemes.get(name, {})
                     require((scheme.get("type"), scheme.get("in"), scheme.get("name")) ==
-                            ("apiKey", "cookie", cookie_name), "storefront credential scheme drift")
+                            ("apiKey", location, credential_name), "storefront credential scheme drift")
                 headers = {p["name"]: p for p in parameters if p["in"] == "header"}
                 for header, schema in {
                         "Origin": {"type": "string", "format": "uri"},
@@ -276,7 +277,7 @@ def validate_contract(api):
                     require(header in headers and headers[header].get("required") is True and
                             headers[header].get("schema") == schema,
                             f"checkout {header} admission contract missing/incorrect")
-                require("Idempotency-Key" in headers and headers["Idempotency-Key"].get("required") is True,
+                require(ident != "createCheckout" or ("Idempotency-Key" in headers and headers["Idempotency-Key"].get("required") is True),
                         "checkout idempotency header required")
             else:
                 require(ident in CART_OPERATIONS and tenant and path.startswith("/api/v1/t/{tenant_id}/carts") and
@@ -301,7 +302,7 @@ def validate_contract(api):
             require(security in (COOKIE_OR_KEY, list(reversed(COOKIE_OR_KEY))), f"cookie OR API key required: {ident}")
         else:
             raise ValueError(f"access policy missing or unsupported: {ident}")
-        if ident == "createCheckout":
+        if ident in {"createCheckout", "previewCheckout", "getCheckout"}:
             require(access == "Storefront", "checkout cannot use employee or service authentication")
         if ident in QUOTE_OPERATIONS:
             require(op["x-opensite-status"] == "implemented", f"quote operation status drift: {ident}")

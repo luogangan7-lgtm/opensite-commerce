@@ -601,3 +601,22 @@ func TestDuplicateSecurityHeadersRejected(t *testing.T) {
 		t.Fatal("duplicate headers reached service")
 	}
 }
+
+func TestBrowserCompositionRoutesAndStaffAuthority(t *testing.T) {
+	h, err := checkout.New(checkout.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"createCheckout": "POST /api/v1/t/{tenant_id}/checkout", "previewCheckout": "POST /api/v1/t/{tenant_id}/checkout/preview", "getCheckout": "GET /api/v1/t/{tenant_id}/checkout/{checkout_id}"}
+	for _, route := range h.Routes() {
+		spec := route.Spec
+		if want[spec.OperationID] != spec.Method+" "+spec.Pattern || spec.Access != httpapi.Storefront || spec.Scope != "" {
+			t.Fatalf("unexpected browser route: %+v", spec)
+		}
+		delete(want, spec.OperationID)
+
+	}
+	if len(want) != 0 {
+		t.Fatalf("BROWSER_ROUTES_RED: missing %v", want)
+	}
+}

@@ -94,10 +94,27 @@ type Result struct {
 	OrderVersion int64  `json:"order_version"`
 	Payment      Intent `json:"payment"`
 }
+type PreviewInput struct {
+	CartID, Country, Region, PostalCode string
+}
+type ShippingOption struct {
+	RateID, Method string
+	AmountMinor    int64
+}
+type Preview struct {
+	SubtotalMinor, TaxMinor, ShippingMinor, TotalMinor int64
+	Currency                                           string
+	ShippingOptions                                    []ShippingOption
+}
 type Service interface {
 	Start(context.Context, AuthorizedActor, StartInput) (Result, error)
 	Confirm(context.Context, payment.VerifiedEvent) (Result, error)
 	Cancel(context.Context, AuthorizedActor, CancelInput) (Result, error)
+}
+
+type BrowserReader interface {
+	Preview(context.Context, AuthorizedActor, PreviewInput) (Preview, error)
+	Get(context.Context, AuthorizedActor, string, string) (Result, error)
 }
 
 // ExistingOrderService adopts an already sealed customer order without carts or
@@ -152,10 +169,12 @@ type RulesReader interface {
 // the callback; this module never elevates or opens a connection itself.
 type Run func(context.Context, string, func(context.Context, pgx.Tx) error) error
 type Config struct {
-	Run     Run
-	Cart    CartReader
-	Rules   RulesReader
-	Orders  orders.Service
-	Ledger  ledger.Poster
-	Payment payment.Port
+	Read         Run
+	SnapshotCart CartReader
+	Run          Run
+	Cart         CartReader
+	Rules        RulesReader
+	Orders       orders.Service
+	Ledger       ledger.Poster
+	Payment      payment.Port
 }
