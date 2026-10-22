@@ -32,6 +32,7 @@ KEY_OPERATIONS = {
     (KEY_PATH + '/{key_id}', 'delete'): 'revokeAPIKey',
 }
 SCOPES = {
+    'customers:privacy', 'catalog:import', 'catalog:export',
     'apikeys:write', 'catalog:read', 'catalog:write', 'cms:publish',
     'cms:write', 'media:write', 'notifications:write', 'orders:read',
     'quotes:read', 'quotes:write', 'organization.create', 'site.create',
