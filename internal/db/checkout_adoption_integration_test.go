@@ -1,7 +1,7 @@
 //go:build pgx
 
 // Responsibility: require production checkout adoption of an already sealed
-// customer order, then exercise the same signed Confirm and durable effects.
+// customer order, then exercise trusted Confirm commands and durable effects.
 // Dependencies: existing checkout/order PG fixtures and neutral Payment probe.
 // Callers: CI pgx gate after copying this file to internal/db. Invariants: no
 // Cart, Rules, order recreation, provider IO in TX, or test-owned payment state.
@@ -9,15 +9,10 @@ package db_test
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -30,7 +25,6 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	orderscontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
-	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -147,7 +141,7 @@ func (a checkoutAdoptionPG) assertSnapshot(t *testing.T, r checkoutcontract.Resu
 func TestCheckoutPGAdoptionUncertainCaptureExpiredHoldStaysPending(t *testing.T) {
 	a := newCheckoutAdoptionPG(t)
 	start := a.adopt(t, "uncertain:"+uuid.NewString())
-	_, _, _, event := a.signedEventProof(t, start)
+	event := a.commandEvent(t, start)
 	a.f.rollbackPaid.Store(true)
 	if _, err := a.f.service.Confirm(checkoutRequestContext(a.f.ctx), event); !errors.Is(err, errCheckoutInjectedCommit) {
 		t.Fatalf("capture/finalize fault not reached: %v", err)
@@ -253,55 +247,28 @@ func TestCheckoutPGAdoptionSourceAdmissionAndImmutableSnapshot(t *testing.T) {
 	a.assertSnapshot(t, start)
 }
 
-// The event comes from the neutral provider's actual durable-operation result;
-// the production signature verifier admits its wire envelope before Confirm.
-func (a checkoutAdoptionPG) signedEvent(t *testing.T, r checkoutcontract.Result) (http.Handler, []byte, string) {
+// These command tests use Fake's actual authorized intent. Public callbacks
+// admit completed account-mapped facts, never requests to Capture. Their HTTP
+// signature/admission path is covered by quoteorders_production_pgx_test.go.
+func (a checkoutAdoptionPG) commandEvent(t *testing.T, r checkoutcontract.Result) payment.VerifiedEvent {
 	t.Helper()
-	router, raw, signature, _ := a.signedEventProof(t, r)
-	return router, raw, signature
-}
-
-func (a checkoutAdoptionPG) signedEventProof(t *testing.T, r checkoutcontract.Result) (http.Handler, []byte, string, payment.VerifiedEvent) {
-	t.Helper()
-	router, key := checkoutHTTPRouter(t, a.f)
 	for _, e := range a.f.provider.fake.Events() {
 		if e.OrderID != r.OrderID || e.Status != payment.StatusAuthorized {
 			continue
 		}
-		raw, err := json.Marshal(map[string]any{"event_id": e.EventID, "tenant_id": e.TenantID, "order_id": e.OrderID, "order_version": e.OrderVersion,
-			"provider_ref": e.ProviderRef, "status": string(e.Status), "amount_minor": e.Amount.Amount, "currency": e.Amount.Currency})
-		if err != nil {
-			t.Fatal(err)
-		}
-		mac := hmac.New(sha256.New, key)
-		_, _ = mac.Write(raw)
-		signature := hex.EncodeToString(mac.Sum(nil))
-		verifier, err := checkouthttp.NewFakeHMACVerifier(key)
-		if err != nil {
-			t.Fatal(err)
-		}
-		proof, err := verifier.Verify(checkoutRequestContext(a.f.ctx), raw, signature)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return router, raw, signature, proof
+		return payment.VerifiedEvent(e)
 	}
 	t.Fatal("provider did not emit an authorized event for the adopted order")
-	return nil, nil, "", payment.VerifiedEvent{}
+	return payment.VerifiedEvent{}
 }
 
-func (a checkoutAdoptionPG) deliver(t *testing.T, router http.Handler, raw []byte, signature, state string) string {
+func (a checkoutAdoptionPG) confirm(t *testing.T, event payment.VerifiedEvent, state string) checkoutcontract.Result {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, checkouthttp.FakePattern, strings.NewReader(string(raw))).WithContext(checkoutRequestContext(a.f.ctx))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Fake-Signature", signature)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	var result struct{ State string }
-	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &result) != nil || result.State != state {
-		t.Fatalf("signed Confirm expected %s: %d %s", state, w.Code, w.Body.String())
+	result, err := a.f.service.Confirm(checkoutRequestContext(a.f.ctx), event)
+	if err != nil || result.State != state {
+		t.Fatalf("trusted Confirm expected %s: %#v %v", state, result, err)
 	}
-	return w.Body.String()
+	return result
 }
 
 func TestCheckoutPGAdoptExistingCustomerOrderPaidBalancedReplay(t *testing.T) {
@@ -309,15 +276,15 @@ func TestCheckoutPGAdoptExistingCustomerOrderPaidBalancedReplay(t *testing.T) {
 	key := "adopt:" + uuid.NewString()
 	start := a.adopt(t, key)
 	a.assertSnapshot(t, start)
-	router, raw, signature := a.signedEvent(t, start)
-	body := a.deliver(t, router, raw, signature, "paid")
+	event := a.commandEvent(t, start)
+	result := a.confirm(t, event, "paid")
 	w := a.f.witness(t, a.order.ID)
 	if w.state != "paid" || w.phase != "paid" || w.onHand != 8 || w.reserved != 0 || w.journals != 1 || w.entries != 6 || w.debits != 540 || w.credits != 540 || w.receivable != 0 || w.cash != 270 || w.paidEvents != 1 || w.cancelEvents != 0 {
 		t.Fatalf("adopted paid effects: %+v", w)
 	}
 	for range 3 {
-		if got := a.deliver(t, router, raw, signature, "paid"); got != body {
-			t.Fatalf("signed event replay changed response: %s -> %s", body, got)
+		if got := a.confirm(t, event, "paid"); got != result {
+			t.Fatalf("trusted event replay changed response: %#v -> %#v", result, got)
 		}
 		if replay := a.adopt(t, key); replay != start {
 			t.Fatalf("adoption must replay original payable/intent: %#v -> %#v", start, replay)
@@ -372,8 +339,8 @@ func TestCheckoutPGAdoptExistingOrderExpiredHoldNeverCaptures(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	router, raw, signature := a.signedEvent(t, start)
-	a.deliver(t, router, raw, signature, "failed")
+	event := a.commandEvent(t, start)
+	a.confirm(t, event, "failed")
 	w := a.f.witness(t, a.order.ID)
 	if w.state != "cancelled" || w.phase != "failed" || w.onHand != 10 || w.reserved != 0 || w.journals != 0 || w.entries != 0 || w.paidEvents != 0 || w.cancelEvents != 1 || a.f.provider.captures.Load() != 0 || a.f.provider.cancels.Load() != 1 {
 		t.Fatalf("adoption expired hold effects: %+v captures=%d cancels=%d", w, a.f.provider.captures.Load(), a.f.provider.cancels.Load())
