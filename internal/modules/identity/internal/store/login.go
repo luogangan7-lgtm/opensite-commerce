@@ -59,7 +59,7 @@ func (r *LoginRepository) run(ctx context.Context, fn func(context.Context, *db.
 }
 func (r *LoginRepository) runLane(ctx context.Context, runner authRunner, fn func(context.Context, *db.Queries) error) error {
 	err := runner.RunAuthentication(ctx, fn)
-	if err == nil || errors.Is(err, login.ErrNotFound) || errors.Is(err, login.ErrSession) {
+	if err == nil || errors.Is(err, login.ErrNotFound) || errors.Is(err, login.ErrSession) || errors.Is(err, login.ErrCredentials) {
 		return err
 	}
 	return login.ErrDatabase
@@ -139,6 +139,19 @@ func (r *LoginRepository) FailDevice(ctx context.Context, id string) error {
 	}
 	return r.run(ctx, func(ctx context.Context, q *db.Queries) error { return q.LoginFailDevice(ctx, u) })
 }
+func (r *LoginRepository) RotationSession(ctx context.Context, hash [32]byte, userID string) (bool, error) {
+	u, err := uuid(userID)
+	if err != nil {
+		return false, login.ErrDatabase
+	}
+	var allowed bool
+	err = r.run(ctx, func(ctx context.Context, q *db.Queries) error {
+		var err error
+		allowed, err = q.LoginRotationSession(ctx, db.LoginRotationSessionParams{TokenHash: hash[:], UserID: u, IdleSeconds: int64(r.idle / time.Second)})
+		return err
+	})
+	return allowed, err
+}
 func (r *LoginRepository) SaveLogin(ctx context.Context, in login.SessionInput) (login.Session, error) {
 	u, err := uuid(in.UserID)
 	if err != nil || in.CreatedAt.IsZero() || !in.ExpiresAt.After(in.CreatedAt) || !in.DeviceExpiresAt.After(in.CreatedAt) {
@@ -146,7 +159,21 @@ func (r *LoginRepository) SaveLogin(ctx context.Context, in login.SessionInput) 
 	}
 	var result login.Session
 	err = r.run(ctx, func(ctx context.Context, q *db.Queries) error {
+		// Reset already owns the user row before touching sessions. Match its
+		// lock order, then compare the PHC after any concurrent writer commits.
+		if _, err := q.LoginLockUser(ctx, db.LoginLockUserParams{UserID: u, VerifiedPasswordHash: in.VerifiedPasswordHash}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return login.ErrCredentials
+			}
+			return err
+		}
 		if in.OldTokenHash != nil {
+			if _, err := q.LoginLockSession(ctx, in.OldTokenHash[:]); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return login.ErrSession
+				}
+				return err
+			}
 			n, err := q.LoginRotateOldSession(ctx, db.LoginRotateOldSessionParams{TokenHash: in.OldTokenHash[:], UserID: u, IdleSeconds: int64(r.idle / time.Second)})
 			if err != nil {
 				return err
@@ -155,7 +182,7 @@ func (r *LoginRepository) SaveLogin(ctx context.Context, in login.SessionInput) 
 				return login.ErrSession
 			}
 		}
-		row, err := q.LoginInsertSession(ctx, db.LoginInsertSessionParams{UserID: u, TokenHash: in.TokenHash[:], CreatedAt: stamp(in.CreatedAt), ExpiresAt: stamp(in.ExpiresAt)})
+		row, err := q.LoginInsertSession(ctx, db.LoginInsertSessionParams{UserID: u, VerifiedPasswordHash: in.VerifiedPasswordHash, TokenHash: in.TokenHash[:], CreatedAt: stamp(in.CreatedAt), ExpiresAt: stamp(in.ExpiresAt)})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return login.ErrSession
 		}

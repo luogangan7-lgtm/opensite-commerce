@@ -137,6 +137,7 @@ expected = [
     'db_fulfillment_returns.sql',
     'db_quote_conversion.sql',
     'db_identity_clock.sql',
+    'db_identity_hardening.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
 races = (root / 'scripts/check_pg_races.sh').read_text()

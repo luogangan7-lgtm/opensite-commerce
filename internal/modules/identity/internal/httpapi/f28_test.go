@@ -89,6 +89,12 @@ func TestF28LoginSessionCookies(t *testing.T) {
 			if w.Code != want {
 				t.Fatal(w.Code, w.Body.String())
 			}
+			if fail {
+				if len(w.Result().Cookies()) != 0 {
+					t.Fatal("rotation loser overwrote winner cookies", w.Header())
+				}
+				return
+			}
 			var session *http.Cookie
 			for _, c := range w.Result().Cookies() {
 				if c.Name == SessionCookie {
@@ -98,11 +104,7 @@ func TestF28LoginSessionCookies(t *testing.T) {
 			if session == nil {
 				t.Fatal("session cookie missing")
 			}
-			if fail {
-				if session.Value != "" || session.MaxAge != -1 {
-					t.Fatal("invalid session retained", session)
-				}
-			} else if session.MaxAge != 1800 || session.Value == "" {
+			if session.MaxAge != 1800 || session.Value == "" {
 				t.Fatal("live cookie lacks relative idle lifespan", session)
 			}
 		})
@@ -245,6 +247,7 @@ func TestF28StaleCookieRecovery(t *testing.T) {
 			_, r, f, s, raw := transportFixture(t)
 			f.credential = successfulCredential()
 			f.saveErr = login.ErrSession
+			f.dead = true // Preflight observes stale authority, so SaveLogin receives no old token.
 			if kind == "malformed" {
 				raw = "malformed"
 			}
@@ -252,8 +255,8 @@ func TestF28StaleCookieRecovery(t *testing.T) {
 			q.AddCookie(&http.Cookie{Name: SessionCookie, Value: raw})
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, q)
-			if w.Code != 401 {
-				t.Fatal("invalid old token admitted", w.Code)
+			if w.Code != 201 {
+				t.Fatal("stale cookie blocked fresh credential login", w.Code)
 			}
 			var cleared bool
 			for _, c := range w.Result().Cookies() {
@@ -261,10 +264,10 @@ func TestF28StaleCookieRecovery(t *testing.T) {
 					cleared = true
 				}
 			}
-			if !cleared {
-				t.Fatal("old session cookie retained")
+			if cleared {
+				t.Fatal("credential login emitted a deletion cookie")
 			}
-			// A browser honoring the clearing response sends no old cookie on retry.
+			// Successful credential login also works without an old cookie.
 			q = signedLogin(t, s, "a@example.test", "correct-password")
 			w = httptest.NewRecorder()
 			r.ServeHTTP(w, q)
