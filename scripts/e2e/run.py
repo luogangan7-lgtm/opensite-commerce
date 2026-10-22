@@ -291,9 +291,12 @@ def run(receipt_dir):
             receipt["steps"].append("real-cms-builder-membership-and-serving")
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
             persist()
-            command(compose_command(["up", "-d", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
+            # API/worker/mailpit are already healthy. Recreating API here strands
+            # its loopback SMTP sidecar in the old network namespace.
+            command(compose_command(["up", "-d", "--no-deps", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
             wait_http("http://127.0.0.1:4321/", 200, b"Made for everyday use")
             wait_http("http://127.0.0.1:4173/", 200, b"<div id=\"root\"")
+            wait_http("http://127.0.0.1:8025/api/v1/messages?limit=1", 200)
             receipt["steps"].append("real-ssr-and-admin-positive-readiness")
             persist()
             result = ROOT / "test-results/e2e/results.json"
