@@ -217,6 +217,9 @@ var reviewedAdapterExports = []string{
 	"method:QueryRunner.RunAuthorizedTx",
 	"method:QueryRunner.RunAuthorizedTxSnapshot",
 	"method:QueryRunner.RunCapabilitySnapshot",
+	// Fake admission lends only a mapped app_runtime transaction plus DB time;
+	// both build variants return error only and never export the private pool.
+	"method:QueryRunner.RunFakePaymentTx",
 	"method:QueueDB.Begin",
 	"method:QueueDB.Exec",
 	"method:QueueDB.Query",
