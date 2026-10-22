@@ -111,7 +111,7 @@ async function registerAndLogin(page: Page, email: string) {
   await expect(page.getByRole('button',{name:'Verify email',exact:true})).toBeEnabled();
   await expect(page).toHaveURL(`${fixture.storefront}/customer/verify`);
   await page.getByRole('button',{name:'Verify email',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('Email verified.');
+  await expect(page.getByRole('status').filter({hasText:'Email verified.'})).toBeVisible();
   await page.goto(`${fixture.storefront}/account`);
   await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
@@ -130,9 +130,11 @@ test('registered purchase appears only in owned history',async({page,request},in
   const list=await page.request.get(backend);expect(list.status()).toBe(200);
   const history=await list.json();expect(history.items).toHaveLength(1);expect(history.items[0]).toMatchObject({id:checkout.order_id,state:'paid',total_minor:'3140'});
   await page.goto(`${fixture.storefront}/account/orders`);
+  await expect(page.getByRole('button',{name:`Order #${history.items[0].order_number}`,exact:true})).toBeVisible();
+  await audit(page,info);await info.attach('history-list',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
   await page.getByRole('button',{name:`Order #${history.items[0].order_number}`,exact:true}).click();
   await expect(page.getByRole('region',{name:'Order details'})).toContainText('C24-CANVAS-TOTE');
-  await audit(page,info);
+  await audit(page,info);await info.attach('history-detail',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
   const oldSession=(await page.context().cookies()).find(c=>c.name==='__Host-osc_customer_session');
   expect(oldSession).toBeDefined();
   await page.goto(`${fixture.storefront}/account`);await page.getByRole('button',{name:'Sign out',exact:true}).click();
@@ -142,6 +144,8 @@ test('registered purchase appears only in owned history',async({page,request},in
   // A revoked, formerly valid session must not fall through to the guest checkout.
   await page.context().addCookies([oldSession!]);
   expect((await page.request.get(`${api}/history`)).status()).toBe(401);
+  // Invalid-session reads clear the cookie; replay it on each protected request.
+  await page.context().addCookies([oldSession!]);
   expect((await page.request.get(`${api}/completion`)).status()).toBe(401);
   await registerAndLogin(page,`c09f2-other-${info.project.name}@example.test`);
   expect(await (await page.request.get(backend)).json()).toMatchObject({items:[]});
