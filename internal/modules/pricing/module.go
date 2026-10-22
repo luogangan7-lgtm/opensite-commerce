@@ -91,7 +91,8 @@ func decode[T any](b []byte, err error) (result T, e error) {
 	if err != nil {
 		return result, err
 	}
-	return result, json.Unmarshal(b, &result)
+	e = json.Unmarshal(b, &result)
+	return result, e
 }
 func (s *Service) writeList(ctx context.Context, tenant uuid.UUID, key pgtype.UUID, v int64, body *httpapi.StaffPriceListInput) (httpapi.StaffPriceList, error) {
 	if body == nil || (money.Money{Currency: body.Currency}).Validate() != nil {

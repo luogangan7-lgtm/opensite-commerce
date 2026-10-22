@@ -37,7 +37,7 @@ func (role pricingAdmission) Authenticate(ctx context.Context, _ *http.Request, 
 	return nil, apperrors.New(403, "forbidden", "Scope denied")
 }
 
-func TestPGStaffPricingPersistence(t *testing.T) {
+func TestStaffPricingPersistencePG(t *testing.T) {
 	dsn := os.Getenv("C07_DATABASE_URL")
 	if dsn == "" {
 		pgxtest.Skip(t, "C07_DATABASE_URL requires disposable migrated PG18")

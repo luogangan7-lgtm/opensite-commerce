@@ -377,7 +377,7 @@ BEGIN
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
-  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
@@ -412,7 +412,7 @@ BEGIN
  END LOOP;
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
-  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
