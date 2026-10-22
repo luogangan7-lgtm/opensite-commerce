@@ -143,7 +143,7 @@ func (s *HTTP) transaction(ctx context.Context, tenant string, fn func(context.C
 	})
 }
 func returnDTO(value contract.Return) httpapi.ReturnRecord {
-	result := httpapi.ReturnRecord{Id: uuid.MustParse(value.ID), OrderId: uuid.MustParse(value.OrderID), OrderVersion: value.OrderVersion, Status: value.Status, Kind: httpapi.ReturnRecordKind(value.Kind), RefundMinor: value.RefundMinor, Restocked: value.Restocked, Lines: []httpapi.ReturnRecordLine{}}
+	result := httpapi.ReturnRecord{Id: uuid.MustParse(value.ID), OrderId: uuid.MustParse(value.OrderID), OrderVersion: value.OrderVersion, Status: value.Status, Kind: httpapi.ReturnRecordKind(value.Kind), RefundMinor: strconv.FormatInt(value.RefundMinor, 10), Restocked: value.Restocked, Lines: []httpapi.ReturnRecordLine{}}
 	for _, line := range value.Lines {
 		item := httpapi.ReturnRecordLine{Id: uuid.MustParse(line.ID), OrderLineId: uuid.MustParse(line.OrderLineID), Quantity: line.Quantity}
 		if line.ShipmentLineID != "" {

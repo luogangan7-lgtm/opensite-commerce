@@ -5631,9 +5631,7 @@ components:
         restocked:
           type: boolean
         refund_minor:
-          type: integer
-          format: int64
-          minimum: 0
+          $ref: '#/components/schemas/MinorAmount'
         lines:
           type: array
           items:

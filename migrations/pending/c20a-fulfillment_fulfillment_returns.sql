@@ -484,7 +484,8 @@ CREATE FUNCTION app.returns_create(p_order uuid,p_expected_version bigint,p_key 
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
 DECLARE t uuid:=app.orders_context(); o app.orders; r app.returns; h bytea; line record; ol app.order_lines;
  ids uuid[]; weights bigint[]; income_parts bigint[]; tax_parts bigint[]:=ARRAY[]::bigint[]; shipping_parts bigint[];
- original_income bigint[]; original_shipping bigint[]; index_v integer; income bigint;
+ original_income bigint[]; original_tax bigint[]:=ARRAY[]::bigint[]; original_shipping bigint[];
+ index_v integer; income numeric; deficit numeric;
  frozen record; legacy numeric; has_legacy boolean; credit bigint;
  prior numeric; n bigint; tax bigint; ship bigint; total_income bigint;total_tax bigint;total_shipping bigint;
 BEGIN
@@ -508,13 +509,13 @@ BEGIN
  IF o.version<>p_expected_version THEN RAISE EXCEPTION 'FULFILLMENT_VERSION_CONFLICT' USING ERRCODE='22023'; END IF;
  IF NOT o.sealed OR o.state NOT IN('paid','partially_fulfilled','fulfilled','partially_refunded','refunded') THEN
   RAISE EXCEPTION 'FULFILLMENT_ORDER_STATE' USING ERRCODE='55000'; END IF;
- income:=o.items_net_minor+o.adjustment_minor;
- IF income<0 THEN RAISE EXCEPTION 'FULFILLMENT_NEGATIVE_ADJUSTED_INCOME' USING ERRCODE='22023'; END IF;
+ income:=o.items_net_minor::numeric+o.adjustment_minor;
+ deficit:=greatest(-income,0);
  SELECT array_agg(id ORDER BY id),array_agg(line_net_minor ORDER BY id) INTO ids,weights FROM app.order_lines WHERE tenant_id=t AND order_id=p_order;
  IF NOT EXISTS(SELECT FROM unnest(weights) x WHERE x>0) THEN
   SELECT array_agg(quantity ORDER BY id) INTO weights FROM app.order_lines WHERE tenant_id=t AND order_id=p_order;
  END IF;
- income_parts:=app.fulfillment_allocate(income,weights);
+ income_parts:=app.fulfillment_allocate(greatest(income,0)::bigint,weights);
  SELECT array_agg(quantity ORDER BY id) INTO weights FROM app.order_lines WHERE tenant_id=t AND order_id=p_order;
  shipping_parts:=app.fulfillment_allocate(o.shipping_minor,weights);
  original_income:=income_parts; original_shipping:=shipping_parts;
@@ -529,13 +530,23 @@ BEGIN
  has_legacy:=legacy>0;
  FOR ol IN SELECT * FROM app.order_lines WHERE tenant_id=t AND order_id=p_order ORDER BY id LOOP
   index_v:=array_position(ids,ol.id);
+  -- An order-level discount first consumes item income. Any excess consumes
+  -- tax then shipping capacities in stable UUID line order. Normalize these
+  -- original caps before frozen RMAs or legacy credits, preserving total money.
+  tax:=ol.line_tax_minor;
+  credit:=least(deficit,tax)::bigint;
+  tax:=tax-credit; deficit:=deficit-credit;
+  credit:=least(deficit,shipping_parts[index_v])::bigint;
+  shipping_parts[index_v]:=shipping_parts[index_v]-credit; deficit:=deficit-credit;
+  original_tax:=array_append(original_tax,tax);
+  original_shipping[index_v]:=shipping_parts[index_v];
   SELECT coalesce(sum(rl.income_minor),0) AS income,coalesce(sum(rl.tax_minor),0) AS tax,
    coalesce(sum(rl.shipping_minor),0) AS shipping INTO frozen
   FROM app.return_lines rl WHERE rl.tenant_id=t AND rl.order_line_id=ol.id;
-  IF frozen.income>income_parts[index_v] OR frozen.tax>ol.line_tax_minor OR frozen.shipping>shipping_parts[index_v] THEN
+  IF frozen.income>income_parts[index_v] OR frozen.tax>tax OR frozen.shipping>shipping_parts[index_v] THEN
    RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
   income_parts[index_v]:=(income_parts[index_v]::numeric-frozen.income)::bigint;
-  tax_parts:=array_append(tax_parts,(ol.line_tax_minor::numeric-frozen.tax)::bigint);
+  tax_parts:=array_append(tax_parts,(tax::numeric-frozen.tax)::bigint);
   shipping_parts[index_v]:=(shipping_parts[index_v]::numeric-frozen.shipping)::bigint;
   credit:=least(legacy,income_parts[index_v])::bigint;
   income_parts[index_v]:=income_parts[index_v]-credit; legacy:=legacy-credit;
@@ -544,7 +555,7 @@ BEGIN
   credit:=least(legacy,shipping_parts[index_v])::bigint;
   shipping_parts[index_v]:=shipping_parts[index_v]-credit; legacy:=legacy-credit;
  END LOOP;
- IF legacy<>0 THEN RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
+ IF legacy<>0 OR deficit<>0 THEN RAISE EXCEPTION 'FULFILLMENT_REFUND_ALLOCATION_CORRUPT' USING ERRCODE='23514'; END IF;
  INSERT INTO app.returns(tenant_id,order_id,kind,creation_key,request_hash,reason,currency,status,restocked,received_at)
  VALUES(t,p_order,p_kind,p_key,h,p_reason,o.currency,CASE p_kind WHEN 'unshipped_cancel' THEN 'received' ELSE 'requested' END,
   p_kind='unshipped_cancel',CASE WHEN p_kind='unshipped_cancel' THEN clock_timestamp() END) RETURNING * INTO r;
@@ -566,7 +577,7 @@ BEGIN
   ELSE
    -- CUMULATIVE_ENTITLEMENT: retain the original no-legacy per-unit rounding.
    n:=(div(original_income[index_v]::numeric*(prior+line.quantity),ol.quantity)-div(original_income[index_v]::numeric*prior,ol.quantity))::bigint;
-   tax:=(div(ol.line_tax_minor::numeric*(prior+line.quantity),ol.quantity)-div(ol.line_tax_minor::numeric*prior,ol.quantity))::bigint;
+   tax:=(div(original_tax[index_v]::numeric*(prior+line.quantity),ol.quantity)-div(original_tax[index_v]::numeric*prior,ol.quantity))::bigint;
    ship:=(div(original_shipping[index_v]::numeric*(prior+line.quantity),ol.quantity)-div(original_shipping[index_v]::numeric*prior,ol.quantity))::bigint;
   END IF;
   IF n>income_parts[index_v] OR tax>tax_parts[index_v] OR ship>shipping_parts[index_v] THEN
