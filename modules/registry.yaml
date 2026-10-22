@@ -66,13 +66,26 @@
       "name": "tenant",
       "status": "implemented",
       "go_path": "internal/modules/tenant",
-      "go_status": "planned",
+      "go_status": "implemented",
       "owns_tables": [
         "tenants",
         "tenant_memberships",
         "api_keys"
       ],
-      "operations": [],
+      "operations": [
+        {
+          "operation_id": "createAPIKey",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "listAPIKeys",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "revokeAPIKey",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [
         "identity"
       ],
@@ -81,8 +94,10 @@
         "tests/db_isolation.sql",
         "tests/db_connection_reuse.sql"
       ],
-      "scopes": [],
-      "note": "Tenant membership and tenant-bound API keys reference global users. Tenant-scoped key storage belongs here; credential verification will use the identity public contract."
+      "scopes": [
+        "apikeys:write"
+      ],
+      "note": "Tenant owns membership and API key storage and management HTTP; identity consumes its authorization port through the public identity contract injected by bootstrap. Key management requires an admin session; one-time secrets are never retained for response replay."
     },
     {
       "name": "site",
@@ -1524,6 +1539,17 @@
         "customer_guest_order_links"
       ],
       "note": "Controlled privacy functions preserve other modules money and snapshot invariants."
+    },
+    {
+      "file": "migrations/pending/c02c-tenant-auth_tenant_auth.sql",
+      "owner": "tenant",
+      "touches_tables": [
+        "users",
+        "tenants",
+        "tenant_memberships",
+        "api_keys",
+        "auth_sessions"
+      ]
     }
   ]
 }

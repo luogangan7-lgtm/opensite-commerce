@@ -133,3 +133,32 @@ before migration or target-database writes. Fresh Compose HBA rules fence this
 login to the same exact application database as the other six component logins.
 The recovery drill includes real local proof/login/cart witnesses and restores
 the authentication tables with the all-table archive; see [README.md](README.md).
+
+
+
+### Tenant business authorization (C-02c)
+
+The API composes staff authentication with the tenant module's private `app_auth`
+repository. Session and bearer-key requests must pass current user, tenant,
+membership and exact role/scope checks. Keys are bound to one tenant; only a
+SHA-256 digest of their random 32-byte secret is stored. Key listing omits both
+the secret and digest; creation returns the plaintext only once with no-store.
+The fixed role map is in `APP_LAYER_DECISIONS.md` A3; unknown roles/scopes deny.
+
+`app_auth` receives EXECUTE on create/revoke/touch key capabilities and the
+boolean transaction-authorization capability, without INSERT/UPDATE/DELETE on
+`api_keys`. `app_runtime` receives only the latter boolean capability, and
+continues to have no key/session credential reads. Each admitted tenant write
+checks that capability within its own transaction before domain work. The
+NOLOGIN, memberless `app_credential_writer` owns these functions and has only
+exactly tested columns plus tenant-scoped membership/key lock policies. These
+locks keep a concurrent membership/session/key revocation from overtaking an
+already-authorized write transaction. `tests/db_role_matrix.sql` asserts grants,
+function owners/EXECUTE/search paths and the membership lock policy.
+
+The database recheck uses database expiration and revocation state. Existing
+session idle-time policy remains in the login service; the deferred H-4 card owns
+DB-clock idle/absolute policy and flooding hardening. The default 30-minute idle
+window exceeds the production request deadline; custom shorter idle policies
+still need H-4 transaction-level policy alignment.
+

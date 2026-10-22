@@ -80,7 +80,7 @@ func transportFixture(t *testing.T) (*Handler, *platform.Router, *fakeRepo, *log
 	// Intentionally historical: browser MaxAge must follow service time, not wall time.
 	now := time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 	raw := strings.Repeat("A", 43)
-	f := &fakeRepo{session: login.Session{ID: "session", UserID: "user", CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(time.Hour)}, hash: sha256.Sum256(make([]byte, 32))}
+	f := &fakeRepo{session: login.Session{ID: c02cSession, UserID: c02cUser, CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(time.Hour)}, hash: sha256.Sum256(make([]byte, 32))}
 	s, e := login.New(f, login.Config{Origin: "https://admin.example.test", SigningKey: []byte(strings.Repeat("k", 32)), Now: func() time.Time { return now }})
 	if e != nil {
 		t.Fatal(e)

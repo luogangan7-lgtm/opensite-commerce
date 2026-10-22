@@ -39,7 +39,8 @@ sql:
       - "migrations/pending/c19a-webhook_payment_webhooks.sql"
       - "migrations/pending/c20b-hold-owner_inventory_hold_owner.sql"
       - "migrations/pending/c22a-data-rights_data_rights.sql"
-    queries: ["queries", "queries/reliability", "queries/identity"]
+      - "migrations/pending/c02c-tenant-auth_tenant_auth.sql"
+    queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant"]
     gen:
       go:
         package: "db"
