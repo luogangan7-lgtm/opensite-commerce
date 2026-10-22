@@ -190,6 +190,47 @@ func (q *Queries) GetAdminOrder(ctx context.Context, arg GetAdminOrderParams) (G
 	return i, err
 }
 
+const getCustomerOrder = `-- name: GetCustomerOrder :one
+SELECT o.id,o.order_number,o.state,o.currency,o.total_minor,o.created_at,o.shipping_minor,o.tax_minor
+FROM app.orders o
+WHERE o.tenant_id=$1 AND o.id=$2 AND o.sealed
+ AND (o.customer_id=$3 OR (o.customer_id IS NULL AND EXISTS(
+  SELECT 1 FROM app.customer_guest_order_links k WHERE k.tenant_id=o.tenant_id AND k.order_id=o.id AND k.customer_id=$3)))
+`
+
+type GetCustomerOrderParams struct {
+	TenantID   pgtype.UUID `json:"tenant_id"`
+	ID         pgtype.UUID `json:"id"`
+	CustomerID pgtype.UUID `json:"customer_id"`
+}
+
+type GetCustomerOrderRow struct {
+	ID            pgtype.UUID        `json:"id"`
+	OrderNumber   int64              `json:"order_number"`
+	State         string             `json:"state"`
+	Currency      string             `json:"currency"`
+	TotalMinor    int64              `json:"total_minor"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	ShippingMinor int64              `json:"shipping_minor"`
+	TaxMinor      int64              `json:"tax_minor"`
+}
+
+func (q *Queries) GetCustomerOrder(ctx context.Context, arg GetCustomerOrderParams) (GetCustomerOrderRow, error) {
+	row := q.db.QueryRow(ctx, getCustomerOrder, arg.TenantID, arg.ID, arg.CustomerID)
+	var i GetCustomerOrderRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrderNumber,
+		&i.State,
+		&i.Currency,
+		&i.TotalMinor,
+		&i.CreatedAt,
+		&i.ShippingMinor,
+		&i.TaxMinor,
+	)
+	return i, err
+}
+
 const getOrder = `-- name: GetOrder :one
 SELECT tenant_id, id, order_number, creation_key, request_hash, customer_id, guest_contact, currency, items_net_minor, tax_minor, shipping_minor, shipping_snapshot, adjustment_minor, total_minor, refunded_minor, state, version, sealed, created_at, updated_at FROM app.orders WHERE tenant_id=$1 AND id=$2 AND sealed
 `
@@ -419,6 +460,121 @@ func (q *Queries) ListAdminOrders(ctx context.Context, arg ListAdminOrdersParams
 			&i.Currency,
 			&i.TotalMinor,
 			&i.IsCustomer,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCustomerOrderLines = `-- name: ListCustomerOrderLines :many
+SELECT l.id,l.sku,l.quantity,l.unit_price_minor,l.line_tax_minor,l.line_total_minor
+FROM app.order_lines l JOIN app.orders o ON o.tenant_id=l.tenant_id AND o.id=l.order_id
+WHERE o.tenant_id=$1 AND o.id=$2 AND o.sealed
+ AND (o.customer_id=$3 OR (o.customer_id IS NULL AND EXISTS(
+  SELECT 1 FROM app.customer_guest_order_links k WHERE k.tenant_id=o.tenant_id AND k.order_id=o.id AND k.customer_id=$3)))
+ORDER BY l.id
+`
+
+type ListCustomerOrderLinesParams struct {
+	TenantID   pgtype.UUID `json:"tenant_id"`
+	OrderID    pgtype.UUID `json:"order_id"`
+	CustomerID pgtype.UUID `json:"customer_id"`
+}
+
+type ListCustomerOrderLinesRow struct {
+	ID             pgtype.UUID `json:"id"`
+	Sku            string      `json:"sku"`
+	Quantity       int64       `json:"quantity"`
+	UnitPriceMinor int64       `json:"unit_price_minor"`
+	LineTaxMinor   int64       `json:"line_tax_minor"`
+	LineTotalMinor int64       `json:"line_total_minor"`
+}
+
+func (q *Queries) ListCustomerOrderLines(ctx context.Context, arg ListCustomerOrderLinesParams) ([]ListCustomerOrderLinesRow, error) {
+	rows, err := q.db.Query(ctx, listCustomerOrderLines, arg.TenantID, arg.OrderID, arg.CustomerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCustomerOrderLinesRow
+	for rows.Next() {
+		var i ListCustomerOrderLinesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Sku,
+			&i.Quantity,
+			&i.UnitPriceMinor,
+			&i.LineTaxMinor,
+			&i.LineTotalMinor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCustomerOrders = `-- name: ListCustomerOrders :many
+SELECT o.id,o.order_number,o.state,o.currency,o.total_minor,o.created_at
+FROM app.orders o
+WHERE o.tenant_id=$1
+ AND (o.customer_id=$2 OR (o.customer_id IS NULL AND EXISTS(
+  SELECT 1 FROM app.customer_guest_order_links k WHERE k.tenant_id=o.tenant_id AND k.order_id=o.id AND k.customer_id=$2)))
+ AND o.sealed
+ AND (NOT $3::boolean OR (o.created_at,o.id)<($4::timestamptz,$5::uuid))
+ORDER BY o.created_at DESC,o.id DESC LIMIT $6::integer
+`
+
+type ListCustomerOrdersParams struct {
+	TenantID        pgtype.UUID        `json:"tenant_id"`
+	CustomerID      pgtype.UUID        `json:"customer_id"`
+	HasCursor       bool               `json:"has_cursor"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        pgtype.UUID        `json:"cursor_id"`
+	PageSize        int32              `json:"page_size"`
+}
+
+type ListCustomerOrdersRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	OrderNumber int64              `json:"order_number"`
+	State       string             `json:"state"`
+	Currency    string             `json:"currency"`
+	TotalMinor  int64              `json:"total_minor"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+// Customer history: the authenticated actor is a SQL predicate, never a Go filter.
+func (q *Queries) ListCustomerOrders(ctx context.Context, arg ListCustomerOrdersParams) ([]ListCustomerOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listCustomerOrders,
+		arg.TenantID,
+		arg.CustomerID,
+		arg.HasCursor,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCustomerOrdersRow
+	for rows.Next() {
+		var i ListCustomerOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderNumber,
+			&i.State,
+			&i.Currency,
+			&i.TotalMinor,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
