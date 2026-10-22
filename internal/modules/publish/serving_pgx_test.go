@@ -244,7 +244,8 @@ func TestStorefrontServingPG(t *testing.T) {
 		c1 := make(chan error, 1)
 		go func() {
 			c1 <- a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
-				if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve($1::uuid,7331,'checkout',gen_random_uuid(),'g12-c1-'||$2::text)`, ids.ready, a.tenant); err != nil {
+				if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve_non_order($1::uuid,7331,'checkout',gen_random_uuid(),'g12-c1-'||$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.ready, a.tenant); err != nil {
+					close(c1Held) // unblock the test so the error surfaces instead of a 10m hang
 					return err
 				}
 				close(c1Held)
@@ -255,7 +256,7 @@ func TestStorefrontServingPG(t *testing.T) {
 		<-c1Held
 		c2ctx, c2cancel := context.WithTimeout(ctx, 5*time.Second)
 		err = a.admin.InTenant(c2ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
-			if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve($1::uuid,2,'checkout',gen_random_uuid(),'g12-c2-'||$2::text)`, ids.archived, a.tenant); err != nil {
+			if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve_non_order($1::uuid,2,'checkout',gen_random_uuid(),'g12-c2-'||$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.archived, a.tenant); err != nil {
 				return err
 			}
 			return rollback
@@ -302,11 +303,11 @@ func TestStorefrontServingPG(t *testing.T) {
 			t.Fatalf("refresh did not serve the new price: %+v", site.Products[0].SKUs)
 		}
 		// A reservation that keeps the SKU available appends nothing; one that sells out does.
-		mutate(`SELECT app.inventory_reserve($1::uuid,1,'serving_test',gen_random_uuid(),'serving-a-'||$2::text)`, ids.ready, a.tenant)
+		mutate(`SELECT app.inventory_reserve_non_order($1::uuid,1,'serving_test',gen_random_uuid(),'serving-a-'||$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.ready, a.tenant)
 		if pending() != 0 {
 			t.Fatal("availability-preserving reservation appended an invalidation")
 		}
-		mutate(`SELECT app.inventory_reserve($1::uuid,7330,'serving_test',gen_random_uuid(),'serving-b-'||$2::text)`, ids.ready, a.tenant)
+		mutate(`SELECT app.inventory_reserve_non_order($1::uuid,7330,'serving_test',gen_random_uuid(),'serving-b-'||$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.ready, a.tenant)
 		if pending() == 0 {
 			t.Fatal("sell-out reservation did not append an invalidation")
 		}
