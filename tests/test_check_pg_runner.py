@@ -136,6 +136,7 @@ expected = [
     'db_fulfillment_returns.sql',
     'db_quote_conversion.sql',
     'db_identity_clock.sql',
+    'db_staff_pricing.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
 races = (root / 'scripts/check_pg_races.sh').read_text()
@@ -360,7 +361,8 @@ if [[ "${FAKE_GO_FAIL_ON:-}" == "$kind" ]]; then exit 32; fi
                          ('CUSTOMER_AUTH_GLOBAL_SCHEMA_MISSING', 'db_customer_auth.sql'),
                          ('C20B_GATE', 'db_inventory_owner.sql'),
                          ('PAYMENTS_GATE', 'db_payments.sql'),
-                         ('FULFILLMENT_GATE', 'db_fulfillment_returns.sql')]:
+                         ('FULFILLMENT_GATE', 'db_fulfillment_returns.sql'),
+                         ('STAFF_PRICING_GATE', 'db_staff_pricing.sql')]:
         env['FAKE_FAIL_ON'] = marker
         failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
         assert failed.returncode == 31, (failed.stdout, failed.stderr)
