@@ -49,12 +49,13 @@ func middleware(logger *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
-// ponytail: this JSON skeleton buffers at most 1 MiB per response. Streaming,
-// hijacking and larger downloads need a separate transport in their own card.
+// Responses default to a 1 MiB bound; a registered private download may opt
+// into at most 10 MiB. Panic recovery still prevents partial response leaks.
 type bufferedResponse struct {
 	header http.Header
 	status int
 	body   bytes.Buffer
+	limit  int64
 }
 
 func (w *bufferedResponse) Header() http.Header { return w.header }
@@ -74,7 +75,11 @@ func (w *bufferedResponse) Write(body []byte) (int, error) {
 	if w.body.Len() == 0 && w.header.Get("Content-Type") == "" && w.header.Get("Transfer-Encoding") == "" && len(body) > 0 {
 		w.header.Set("Content-Type", http.DetectContentType(body))
 	}
-	if len(body) > (1<<20)-w.body.Len() {
+	limit := w.limit
+	if limit == 0 {
+		limit = 1 << 20
+	}
+	if int64(len(body)) > limit-int64(w.body.Len()) {
 		panic("response limit exceeded")
 	}
 	return w.body.Write(body)
