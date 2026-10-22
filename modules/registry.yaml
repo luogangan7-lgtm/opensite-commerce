@@ -776,17 +776,28 @@
     },
     {
       "name": "payments",
-      "status": "planned",
+      "status": "implemented",
       "go_path": "internal/modules/payments",
-      "go_status": "planned",
-      "owns_tables": [],
-      "operations": [],
+      "go_status": "implemented",
+      "owns_tables": [
+        "payment_provider_accounts",
+        "payment_events"
+      ],
+      "operations": [
+        {
+          "operation_id": "receiveFakePaymentEvent",
+          "status": "implemented"
+        }
+      ],
       "dependencies": [
-        "money"
+        "money",
+        "reliability"
       ],
       "tests": [
         "internal/contracts/payment/v1/payment_test.go",
-        "internal/paymentfake/fake_test.go"
+        "internal/paymentfake/fake_test.go",
+        "internal/db/payments_webhook_integration_test.go",
+        "tests/db_payments.sql"
       ],
       "scopes": [],
       "legacy_go_paths": [
@@ -796,7 +807,7 @@
       "approved_public_ports": [
         "internal/contracts/payment/v1"
       ],
-      "note": "C-15a freezes the neutral Payment Port v1 and test-only Fake. Real payment storage, service and Stripe are deferred to C-19; no production payment capability exists."
+      "note": "Fake-only raw signed webhook admission, trusted immutable account mapping, existing inbox and atomic caller-transaction fact consumption. No Stripe or external PSP. Runtime cannot provision account bindings."
     },
     {
       "name": "checkout",
@@ -810,10 +821,6 @@
       "operations": [
         {
           "operation_id": "createCheckout",
-          "status": "implemented"
-        },
-        {
-          "operation_id": "receiveFakePaymentEvent",
           "status": "implemented"
         }
       ],
@@ -1379,6 +1386,16 @@
         "outbox_events",
         "order_lines",
         "inventory_reservations"
+      ]
+    },
+    {
+      "file": "migrations/pending/c19a-webhook_payment_webhooks.sql",
+      "owner": "payments",
+      "touches_tables": [
+        "payment_provider_accounts",
+        "payment_events",
+        "webhook_inbox",
+        "checkout_sessions"
       ]
     }
   ]

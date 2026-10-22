@@ -270,6 +270,29 @@ class APIContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             contract.validate_contract(candidate)
 
+    def test_fake_webhook_timestamp_signature_contract(self):
+        contract.validate_contract(self.api)
+        signature = next(p for p in operations(self.api)["receiveFakePaymentEvent"][2]["parameters"]
+                         if p.get("name") == "X-Fake-Signature")
+        self.assertEqual(signature["schema"],
+                         {"type": "string", "pattern": "^t=[0-9]{1,12},v1=[0-9a-f]{64}$"})
+        for fault in ("timestamp-free", "unbounded timestamp", "optional header", "old scheme"):
+            with self.subTest(fault=fault):
+                candidate = copy.deepcopy(self.api)
+                header = next(p for p in operations(candidate)["receiveFakePaymentEvent"][2]["parameters"]
+                              if p.get("name") == "X-Fake-Signature")
+                if fault == "timestamp-free":
+                    header["schema"]["pattern"] = "^[0-9a-f]{64}$"
+                elif fault == "unbounded timestamp":
+                    header["schema"]["pattern"] = "^t=[0-9]+,v1=[0-9a-f]{64}$"
+                elif fault == "optional header":
+                    header["required"] = False
+                else:
+                    candidate["components"]["securitySchemes"]["FakeWebhookSignature"]["description"] = (
+                        "HMAC SHA256 of exact request bytes with isolated test key; test/development only.")
+                with self.assertRaisesRegex(ValueError, "Fake signature"):
+                    contract.validate_contract(candidate)
+
     def test_checker_accepts_current_contract(self):
         contract.validate_contract(self.api)
 
