@@ -69,7 +69,7 @@ export class OrdersAPI {
   async list(tenantId: string, options: {cursor?: string; limit?: number; state?: OrderState; signal?: AbortSignal} = {}): Promise<OrderPage> {
     const limit = options.limit ?? 25; if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Error('Order page limit must be 1–100.');
     const { data } = await this.client.GET('/api/v1/t/{tenant_id}/orders', {
-      params: { path: { tenant_id: uuid(tenantId) }, query: { limit, cursor: options.cursor,
+      params: { path: { tenant_id: uuid(tenantId) }, query: { limit, cursor: options.cursor || undefined,
         state: options.state ? state(options.state) : undefined } }, signal: options.signal,
     });
     return parseOrderPage(data);
@@ -96,7 +96,7 @@ export function OrderListPage({api, tenantId, fixture = false}: PageProps) {
   useEffect(() => { setCursor(''); setHistory([]); }, [tenantId]);
   return <section className="admin-page" aria-labelledby="orders-title"><h1 id="orders-title">Orders</h1>{fixture && <p className="admin-muted">{ORDERS_FIXTURE_LABEL}</p>}
     <div className="admin-form"><FormField id="order-state" label="Order state"><Select value={filter} onChange={event => { setFilter(event.target.value as OrderState | ''); setCursor(''); setHistory([]); }}><option value="">All states</option>{ORDER_STATES.map(s => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}</Select></FormField></div>
-    {error ? <OrderError message={error} retry={() => setRetry(n => n + 1)} /> : <Card><DataTable caption="Order list" loading={loading} emptyLabel="No orders match this filter." columns={[{key: 'number', label: 'Order'}, {key: 'state', label: 'State'}, {key: 'customer', label: 'Customer'}, {key: 'total', label: 'Total'}, {key: 'created', label: 'Created'}]} rows={(visiblePage?.items ?? []).map(order => ({id: order.id, number: <Link to={order.id}>{order.order_number}</Link>, state: <Badge tone="neutral">{order.state.replaceAll('_', ' ')}</Badge>, customer: order.customer_kind, total: formatMoney(order.total_minor, order.currency), created: <time dateTime={order.created_at}>{order.created_at}</time>}))} /></Card>}
+    {error ? <OrderError message={error} retry={() => setRetry(n => n + 1)} /> : <Card><DataTable caption="Order list" loading={loading} emptyLabel="No orders match this filter." columns={[{key: 'number', label: 'Order'}, {key: 'state', label: 'Order state'}, {key: 'customer', label: 'Customer'}, {key: 'total', label: 'Total'}, {key: 'created', label: 'Created'}]} rows={(visiblePage?.items ?? []).map(order => ({id: order.id, number: <Link to={order.id}>{order.order_number}</Link>, state: <Badge tone="neutral">{order.state.replaceAll('_', ' ')}</Badge>, customer: order.customer_kind, total: formatMoney(order.total_minor, order.currency), created: <time dateTime={order.created_at}>{order.created_at}</time>}))} /></Card>}
     <div className="admin-actions"><Button variant="secondary" disabled={loading || !history.length} onClick={() => { setCursor(history.at(-1) ?? ''); setHistory(history.slice(0, -1)); }}>Previous page</Button><Button variant="secondary" disabled={loading || !!error || !visiblePage?.next_cursor} onClick={() => { if (visiblePage?.next_cursor) { setHistory([...history, cursor]); setCursor(visiblePage.next_cursor); } }}>Next page</Button></div>
   </section>;
 }
