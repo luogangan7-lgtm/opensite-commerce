@@ -14,7 +14,7 @@ const saved=new Map(names.map(name=>[name,process.env[name]]));
 const calls:Request[]=[];
 let mock:ReturnType<typeof spyOn>, denied=0, foreign=false;
 const values=new Map<string,string>(), flags=new Map<string,Record<string,unknown>>();
-const jar={get:(name:string)=>values.has(name)?{value:values.get(name)!}:undefined,set:(name:string,value:string,options:Record<string,unknown>)=>{values.set(name,value);flags.set(name,options);}} as unknown as AstroCookies;
+const jar={get:(name:string)=>values.has(name)?{value:values.get(name)!}:undefined,set:(name:string,value:string,options:Record<string,unknown>)=>{if(options.maxAge===0)values.delete(name);else values.set(name,value);flags.set(name,options);}} as unknown as AstroCookies;
 function csrf() { return createHmac('sha256',Buffer.from(process.env.OPENSITE_CUSTOMER_CSRF_SECRET!,'base64url')).update(`customer-http:${site}:customer-session:${tenant}:${bearer}`).digest('base64url'); }
 function session() { return {customer:{tenant_id:foreign?'c0900001-0000-4000-8000-000000000002':tenant,customer_id:customer,session_id:cart,email:'buyer@example.test',expires_at:'2000-01-01T00:00:00Z',idle_expires_at:'2000-01-01T00:00:00Z'},csrf_token:csrf()}; }
 function request(operation:string,token?:string,input?:unknown,method=input?'POST':'GET') {
@@ -28,7 +28,7 @@ beforeEach(()=>{
     const r=input instanceof Request?input:new Request(input,init);calls.push(r);const path=new URL(r.url).pathname;
     if(path==='/api/v1/public/sites/current')return Response.json({tenant_id:tenant,products:[{id:sku,name:'Tote',slug:'tote',skus:[{sku_id:sku,sku_code:'TOTE',option_values:[],price_minor:'2400',currency:'USD',available:true}]}]});
     if(path.includes('/customer/')) {
-      if(denied)return Response.json({code:'private_account_exists',detail:'secret internals'},{status:denied});
+      if(denied&&(r.method!=='GET'||values.has(sessionName)))return Response.json({code:'private_account_exists',detail:'secret internals'},{status:denied});
       const cookie=r.headers.get('Cookie')??'';
       if(path.endsWith('/session')&&r.method==='GET') {
         if(cookie.includes(sessionName+'='))return Response.json(session());
@@ -96,6 +96,22 @@ test('customer writes reject foreign Origin and forged browser CSRF before upstr
     expect((await handlePurchaseRequest(r,jar,'customer/register')).status).toBe(403);
   }
   expect(calls.length).toBe(before);
+});
+test('duplicate customer cookies cannot choose an identity',async()=>{
+  const context=await readPurchaseContext(request('context'),jar),before=calls.length;
+  const r=request('cart',context.csrf,{sku_id:sku,quantity:1});r.headers.set('Cookie',`${sessionName}=${bearer}; ${sessionName}=forged`);
+  expect((await handlePurchaseRequest(r,jar,'cart')).status).toBe(401);expect(calls.length).toBe(before);
+});
+test('logout discards customer cart custody even if the browser replays its old signed BFF cookie',async()=>{
+  values.set(sessionName,bearer);let context=await readPurchaseContext(request('context'),jar);
+  expect((await send('cart',context.csrf,{sku_id:sku,quantity:1})).status).toBe(200);
+  const old=values.get('__Host-osc_storefront_cart')!;
+  expect(Buffer.from(old.split('.')[0]!,'base64url').toString()).not.toContain(bearer);
+  context=await readPurchaseContext(request('context'),jar);
+  expect((await send('customer/session',context.csrf,undefined,'DELETE')).status).toBe(200);
+  values.set('__Host-osc_storefront_cart',old);const before=calls.length;
+  expect(await (await send('cart')).json()).toBeNull();
+  expect(calls.slice(before).some(r=>r.url.includes('/carts/'))).toBe(false);
 });
 test('login and registration failures do not relay account-existence codes or private detail',async()=>{
   const context=await readPurchaseContext(request('context'),jar);

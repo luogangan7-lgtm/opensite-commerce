@@ -1,0 +1,12 @@
+---
+/** Responsibility: private mailbox-proof entry; depends on Shell and verification island.
+ * Invariants: no proof in SSR/query/canonical, no-store/no-referrer/noindex; no GET mutation.
+ */
+import Shell from '../../layouts/Shell.astro';
+import CustomerVerification from '../../components/CustomerVerification';
+Astro.response.headers.set('Cache-Control','no-store');
+Astro.response.headers.set('Referrer-Policy','no-referrer');
+---
+<Shell title="Verify your email" description="Confirm your email to finish registration." noindex>
+  <h1>Verify your email</h1><CustomerVerification client:load />
+</Shell>
