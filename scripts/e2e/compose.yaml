@@ -7,7 +7,6 @@ services:
       OSC_PUBLIC_DATABASE_URL: "host=postgres port=5432 dbname=${OPENSITE_DB} user=opensite_domain_login password=${OPENSITE_DOMAIN_DB_PASSWORD} sslmode=disable"
       OPENSITE_CMS_PREVIEW_KEY: ${OPENSITE_CMS_PREVIEW_KEY}
       OPENSITE_IDEMPOTENCY_ROOT: /tmp/c09d-receipts
-      OPENSITE_STOREFRONT_KEY: ${OPENSITE_STOREFRONT_KEY}
       OPENSITE_STOREFRONT_TENANT_ID: c0900001-0000-4000-8000-000000000001
       OPENSITE_CHECKOUT_RULE_METADATA: ${OPENSITE_CHECKOUT_RULE_METADATA}
       # Existing minimum idle policy; only this disposable browser fixture is shortened.
