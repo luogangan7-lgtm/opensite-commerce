@@ -1654,7 +1654,10 @@
         "idempotency_records",
         "customer_auth_tokens",
         "customer_sessions",
-        "customer_guest_order_links"
+        "customer_guest_order_links",
+        "shipments",
+        "returns",
+        "inventory_movements"
       ],
       "note": "Controlled privacy functions preserve other modules money and snapshot invariants."
     },
