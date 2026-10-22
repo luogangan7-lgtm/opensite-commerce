@@ -31,6 +31,8 @@ DECLARE
  release uuid := 'f0c10000-0000-4000-8000-000000000020';
  blog uuid := 'f0c10000-0000-4000-8000-000000000021';
  notification_order uuid := 'f0c10000-0000-4000-8000-000000000022';
+ guest_cart uuid := 'f0c10000-0000-4000-8000-000000000023';
+ guest_checkout uuid := 'f0c10000-0000-4000-8000-000000000024';
  quote uuid;
  reservation app.inventory_reservations;
  registered app.orders;
@@ -198,7 +200,29 @@ BEGIN
    'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','surcharge','amount_minor',1,
    'reason',{{canary:order_adjustments.reason}})));
+ -- The same column canaries must be removed from BOTH ownership paths. A
+ -- linked guest checkout exercises all immutable result/address copies too.
+ INSERT INTO app.carts(tenant_id,id,guest_token_hash,currency)
+ VALUES(t,guest_cart,sha256(uuidv7()::text::bytea),'USD');
+ INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,
+  cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,
+  shipping_minor,payable_version)
+ SELECT t,guest_checkout,'guest','privacy-guest','privacy-guest-checkout',sha256('privacy-guest-checkout'::bytea),
+  guest_cart,1,id,jsonb_build_object('recipient',{{canary:checkout_sessions.address_snapshot}}),
+  currency,total_minor,items_net_minor,tax_minor,shipping_minor,version
+ FROM app.orders WHERE tenant_id=t AND id=guest_order;
+ UPDATE app.checkout_sessions SET phase='ready',provider_ref='privacy-guest-local-no-io',
+  start_result=jsonb_build_object('contact',{{canary:checkout_sessions.start_result}})
+ WHERE tenant_id=t AND id=guest_checkout;
+ UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key='privacy-guest-payment'
+ WHERE tenant_id=t AND id=guest_checkout;
  PERFORM app.orders_transition(guest_order,'paid','privacy-guest-payment');
+ UPDATE app.checkout_sessions SET phase='paid',final_result=jsonb_build_object('contact',{{canary:checkout_sessions.final_result}})
+ WHERE tenant_id=t AND id=guest_checkout;
+ INSERT INTO app.checkout_attempts(tenant_id,event_kind,event_key,checkout_id,request_hash)
+ VALUES(t,'payment','privacy-guest-payment',guest_checkout,sha256('privacy-guest-payment'::bytea));
+ UPDATE app.checkout_attempts SET result=jsonb_build_object('contact',{{canary:checkout_attempts.result}})
+ WHERE tenant_id=t AND event_kind='payment' AND event_key='privacy-guest-payment';
  -- Mailbox-proven link (customer_guest_order_links): the verified customer now
  -- owns this guest order, its contact copy, adjustment text and notifications.
  INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES(t,customer,guest_order);

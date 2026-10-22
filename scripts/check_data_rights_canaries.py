@@ -46,6 +46,8 @@ RETAINED = {
     "audit_events.payload",
     "outbox_events.payload", "outbox_events.last_error", "webhook_inbox.payload_reference",
     "queue.river_job.args", "queue.river_job.errors", "queue.river_job.metadata",
+    # Merchant-authored public projection has no verified customer subject.
+    "storefront_serving.body", "storefront_serving.fallback_body",
 }
 
 
@@ -89,8 +91,25 @@ DO $before$ DECLARE missing text; BEGIN
 END $before$;
 SELECT set_config('app.tenant_id',(SELECT tenant_id::text FROM app.customers WHERE id='{CUSTOMER}'),true);
 SET LOCAL ROLE app_runtime;
+DO $linked_export$ DECLARE rid uuid:=uuidv7(); payload jsonb; BEGIN
+ PERFORM app.data_rights_request_export(rid,'{CUSTOMER}','service',uuidv7());
+ payload:=app.data_rights_build_export(rid);
+ IF NOT EXISTS(SELECT FROM jsonb_array_elements(payload->'orders') o WHERE o->>'id'='f0c10000-0000-4000-8000-000000000012'
+   AND o->'guest_contact'->>'email' IS NOT NULL) THEN
+  RAISE EXCEPTION 'PRIVACY_GATE linked guest export omitted'; END IF;
+END $linked_export$;
 SELECT 'ERASED_COUNTS='||(app.data_rights_erase_customer('{CUSTOMER}','service',uuidv7())->'counts')::text;
 RESET ROLE;
+DO $linked_future$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid; eid uuid; BEGIN
+ IF EXISTS(SELECT FROM app.customer_guest_order_links WHERE tenant_id=t AND customer_id='{CUSTOMER}') THEN
+  RAISE EXCEPTION 'PRIVACY_GATE verified links retained'; END IF;
+ INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+ VALUES(t,'order.fulfilled',jsonb_build_object('order_id','f0c10000-0000-4000-8000-000000000012'),
+  'orders.events','privacy-linked-guest-after-erasure') RETURNING id INTO eid;
+ IF NOT EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=eid
+  AND status='dead_letter' AND last_error='PRIVACY_ERASED' AND recipient='erased-'||id::text||'@invalid.test') THEN
+  RAISE EXCEPTION 'PRIVACY_GATE linked guest future fanout revived'; END IF;
+END $linked_future$;
 DO $after$ DECLARE leaked text; lost text; BEGIN
  SELECT string_agg(key||'@'||hits,'; ') INTO leaked FROM pg_temp.privacy_hits() WHERE expect='erase' AND hits IS NOT NULL;
  SELECT string_agg(key,', ') INTO lost FROM pg_temp.privacy_hits() WHERE expect='retain' AND hits IS NULL;
