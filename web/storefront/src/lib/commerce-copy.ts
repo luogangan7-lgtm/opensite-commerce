@@ -9,6 +9,8 @@ const english = {
   browseProducts: 'Browse products', variant: 'Variant', quantity: 'Quantity', addCart: 'Add to cart', viewCart: 'View cart',
   added: 'Item added to cart.', outOfStock: 'Unavailable', selectedPrice: 'Selected price',
   loading: 'Loading…', retry: 'Try again', requestFailed: 'We could not complete this request. Try again.',
+  priceChanged: 'Prices have changed. Review the updated server totals before confirming payment.',
+  acceptUpdatedTotal: 'Confirm updated total',
   cartChanged: 'Your cart changed in another tab. We refreshed it and kept those changes. Review the updated quantities before trying again.',
   emptyCart: 'Your cart is empty', emptyCartDescription: 'Choose a product to start your cart.',
   updateQuantity: 'Update quantity', remove: 'Remove', subtotal: 'Subtotal', tax: 'Tax', shipping: 'Shipping', total: 'Total',
