@@ -1,13 +1,11 @@
 // Responsibility: exercise real generated checkout routes and trust admission.
 // Dependencies: httptest, checkout contract and generated JSON; no DB is mocked
-// as SQL evidence. Invariants: default deny, actor target match, raw MAC proof,
-// strict JSON and test-only configuration must precede every domain call.
+// as SQL evidence. Invariants: default deny, actor target match, raw handoff,
+// strict JSON and test-only configuration must precede every receiver call.
 package checkout_test
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,7 +18,7 @@ import (
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	contract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
@@ -33,7 +31,7 @@ const checkoutID = "30000000-0000-4000-8000-000000000001"
 const orderID = "40000000-0000-4000-8000-000000000001"
 const origin = "https://store.example.invalid"
 const body = `{"cart_id":"` + cart + `","buyer_contact":{"email":"guest@example.invalid"},"shipping_address":{"country":"US","address1":"Fixture road","city":"Fixture city","postal_code":"00001"}}`
-const eventBody = `{"event_id":"evt-fixture","tenant_id":"` + tenant + `","order_id":"` + orderID + `","order_version":1,"provider_ref":"fake-fixture","status":"captured","amount_minor":1200,"currency":"USD"}`
+const eventBody = `{"event_id":"evt-fixture","account_id":"fake-account-fixture","order_id":"` + orderID + `","order_version":1,"provider_ref":"fake-fixture","status":"captured","amount_minor":1200,"currency":"USD"}`
 
 type service struct {
 	starts, confirms int
@@ -295,27 +293,51 @@ func TestCheckoutServiceErrorMapping(t *testing.T) {
 		}
 	}
 }
+
+// receiver is a non-degenerate HTTP contract fixture, not signature/SQL proof.
+type receiver struct {
+	calls     int
+	raw       []byte
+	signature string
+	status    string
+	err       error
+}
+
+func (r *receiver) Receive(_ context.Context, raw []byte, signature string) (payments.Receipt, error) {
+	r.calls++
+	r.raw = append([]byte(nil), raw...)
+	r.signature = signature
+	status := r.status
+	if status == "" {
+		status = "processed"
+	}
+	return payments.Receipt{EventID: "evt-fixture", Status: status}, r.err
+}
+
+const fixtureSignature = "t=1791900000,v1=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 func TestFakeWebhookProductionForbidden(t *testing.T) {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatal(err)
-	}
-	v, err := checkout.NewFakeHMACVerifier(key)
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, mode := range []string{"", "production", "Production", "staging"} {
-		if _, err := checkout.New(checkout.Config{FakeEnabled: true, Environment: mode, Verifier: v}); err == nil {
+		if _, err := checkout.New(checkout.Config{FakeEnabled: true, Environment: mode, Events: &receiver{}}); err == nil {
 			t.Fatalf("Fake enabled in %q", mode)
 		}
 	}
 	for _, mode := range []string{"test", "development"} {
-		if _, err := checkout.New(checkout.Config{FakeEnabled: true, Environment: mode, Verifier: v}); err != nil {
+		if _, err := checkout.New(checkout.Config{FakeEnabled: true, Environment: mode, Events: &receiver{}}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := checkout.New(checkout.Config{FakeEnabled: true, Environment: "test"}); err == nil {
-		t.Fatal("unsigned Fake admitted")
+	v, err := checkout.NewFakeHMACVerifier(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []checkout.Config{
+		{FakeEnabled: true, Environment: "test"},
+		{FakeEnabled: true, Environment: "test", Verifier: v},
+	} {
+		if _, err := checkout.New(c); err == nil {
+			t.Fatal("Fake admitted without trusted Payments receiver")
+		}
 	}
 	r := router(t, checkout.Config{})
 	checkProblem(t, request(r, checkout.FakePattern, eventBody, nil), 404)
@@ -323,79 +345,130 @@ func TestFakeWebhookProductionForbidden(t *testing.T) {
 		t.Fatal("resolver admitted without exact origin")
 	}
 }
-func sign(key []byte, raw string) string {
-	m := hmac.New(sha256.New, key)
-	_, _ = m.Write([]byte(raw))
-	return hex.EncodeToString(m.Sum(nil))
-}
-func TestFakeWebhookRawSignatureRequired(t *testing.T) {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatal(err)
-	}
-	v, err := checkout.NewFakeHMACVerifier(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []struct {
-		name, body, sig string
-		status          int
-	}{{"missing", eventBody, "", 401}, {"wrong key", eventBody, strings.Repeat("0", 64), 401}, {"tampered bytes", eventBody + " ", sign(key, eventBody), 401}, {"valid", eventBody, sign(key, eventBody), 200}} {
-		t.Run(c.name, func(t *testing.T) {
+
+func TestFakeWebhookRawHandoffAndReceipt(t *testing.T) {
+	for _, status := range []string{"pending", "processed"} {
+		t.Run(status, func(t *testing.T) {
 			s := &service{}
-			r := router(t, checkout.Config{Service: s, FakeEnabled: true, Environment: "test", Verifier: v})
-			w := request(r, checkout.FakePattern, c.body, map[string]string{"X-Fake-Signature": c.sig})
-			if c.status != 200 {
-				checkProblem(t, w, c.status)
-				if s.confirms != 0 {
-					t.Fatal("unverified webhook reached service")
-				}
-				return
+			events := &receiver{status: status}
+			r := router(t, checkout.Config{Service: s, FakeEnabled: true, Environment: "test", Events: events})
+			raw := " \n" + eventBody + " \t"
+			w := request(r, checkout.FakePattern, raw, map[string]string{"X-Fake-Signature": fixtureSignature})
+			var receipt struct {
+				EventID string `json:"event_id"`
+				Status  string `json:"status"`
 			}
-			if w.Code != 200 || s.confirms != 1 || s.event.TenantID != tenant || s.event.OrderID != orderID || s.event.Amount.Amount != 1200 {
-				t.Fatalf("event not admitted correctly %d %s", w.Code, w.Body.String())
+			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &receipt) != nil || receipt.EventID != "evt-fixture" || receipt.Status != status {
+				t.Fatalf("bad receipt %d %s", w.Code, w.Body.String())
+			}
+			if events.calls != 1 || string(events.raw) != raw || events.signature != fixtureSignature || s.confirms != 0 || s.starts != 0 {
+				t.Fatalf("raw handoff changed bytes/signature or issued checkout command: receiver=%+v service=%+v", events, s)
 			}
 		})
 	}
-	h, _ := checkout.New(checkout.Config{Service: &service{}, FakeEnabled: true, Environment: "test", Verifier: v})
-	if _, err := h.ReceiveFakePaymentEvent(context.Background(), httpapi.ReceiveFakePaymentEventRequestObject{}); err == nil {
-		t.Fatal("direct body/context bypassed signature proof")
+	events := &receiver{}
+	h, err := checkout.New(checkout.Config{FakeEnabled: true, Environment: "test", Events: events})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.ReceiveFakePaymentEvent(context.Background(), httpapi.ReceiveFakePaymentEventRequestObject{}); err == nil || events.calls != 0 {
+		t.Fatal("direct body/context bypassed raw admission")
 	}
 	if _, err := h.CreateCheckout(context.Background(), httpapi.CreateCheckoutRequestObject{}); err == nil {
 		t.Fatal("direct handler bypassed actor proof")
 	}
 }
 
-type fixedVerifier struct{ event payment.VerifiedEvent }
-
-func (v fixedVerifier) Verify(context.Context, []byte, string) (payment.VerifiedEvent, error) {
-	return v.event, nil
-}
-func TestFakeWebhookStrictJSONAndProofOnly(t *testing.T) {
-	// Fixed trusted event deliberately disagrees with body data. Handler may use
-	// only verifier's proof; core will later recheck it against database binding.
-	proof := payment.VerifiedEvent{EventID: "verified", TenantID: otherTenant, OrderID: orderID, OrderVersion: 1, ProviderRef: "trusted-provider", Status: payment.StatusCaptured, Amount: money.Money{Amount: 1200, Currency: "USD"}}
+func TestFakeWebhookStrictAdmissionBeforeReceive(t *testing.T) {
 	for _, c := range []struct {
-		name, content string
-		status        int
-	}{{"valid", eventBody, 200}, {"unknown", strings.TrimSuffix(eventBody, "}") + `,"untrusted":true}`, 400}, {"second", eventBody + ` {}`, 400}, {"duplicate", strings.TrimSuffix(eventBody, "}") + `,"amount_minor":1200}`, 400}, {"oversize", strings.Repeat(" ", 64<<10) + eventBody, 413}} {
+		name, content, signature, media string
+		status                          int
+	}{
+		{"valid", eventBody, fixtureSignature, "application/json", 200},
+		{"refund", strings.Replace(eventBody, "captured", "partially_refunded", 1), fixtureSignature, "application/json", 200},
+		{"full refund", strings.Replace(eventBody, "captured", "refunded", 1), fixtureSignature, "application/json", 200},
+		{"missing signature", eventBody, "", "application/json", 401},
+		{"timestamp free", eventBody, strings.Repeat("a", 64), "application/json", 400},
+		{"malformed signature", eventBody, "t=bad,v1=" + strings.Repeat("a", 64), "application/json", 400},
+		{"legacy tenant authority", strings.Replace(eventBody, `"account_id":"fake-account-fixture"`, `"tenant_id":"`+tenant+`"`, 1), fixtureSignature, "application/json", 400},
+		{"bad account", strings.Replace(eventBody, "fake-account-fixture", "fake/account", 1), fixtureSignature, "application/json", 400},
+		{"authorized command", strings.Replace(eventBody, "captured", "authorized", 1), fixtureSignature, "application/json", 400},
+		{"unknown", strings.TrimSuffix(eventBody, "}") + `,"untrusted":true}`, fixtureSignature, "application/json", 400},
+		{"second", eventBody + ` {}`, fixtureSignature, "application/json", 400},
+		{"duplicate", strings.TrimSuffix(eventBody, "}") + `,"amount_minor":1200}`, fixtureSignature, "application/json", 400},
+		{"overflow", strings.Replace(eventBody, "1200", "9223372036854775808", 1), fixtureSignature, "application/json", 400},
+		{"case variant", strings.Replace(eventBody, "account_id", "ACCOUNT_ID", 1), fixtureSignature, "application/json", 400},
+		{"wrong media", eventBody, fixtureSignature, "text/plain", 415},
+		{"oversize", strings.Repeat(" ", 64<<10) + eventBody, fixtureSignature, "application/json", 413},
+	} {
 		t.Run(c.name, func(t *testing.T) {
 			s := &service{}
-			r := router(t, checkout.Config{Service: s, FakeEnabled: true, Environment: "test", Verifier: fixedVerifier{proof}})
-			w := request(r, checkout.FakePattern, c.content, map[string]string{"X-Fake-Signature": strings.Repeat("a", 64)})
+			events := &receiver{}
+			r := router(t, checkout.Config{Service: s, FakeEnabled: true, Environment: "test", Events: events})
+			w := request(r, checkout.FakePattern, c.content, map[string]string{"X-Fake-Signature": c.signature, "Content-Type": c.media})
 			if c.status != 200 {
 				checkProblem(t, w, c.status)
-				if s.confirms != 0 {
-					t.Fatal("invalid strict webhook called service")
+				if events.calls != 0 {
+					t.Fatal("invalid strict webhook called receiver")
 				}
-				return
+			} else if w.Code != 200 || events.calls != 1 {
+				t.Fatalf("valid event not received: %d %s", w.Code, w.Body.String())
 			}
-			if w.Code != 200 || s.event.TenantID != otherTenant || s.event.EventID != "verified" {
-				t.Fatal("HTTP decoded body masqueraded as trusted event")
+			if s.confirms != 0 {
+				t.Fatal("webhook issued legacy checkout command")
 			}
 		})
 	}
+	events := &receiver{}
+	r := router(t, checkout.Config{FakeEnabled: true, Environment: "test", Events: events})
+	q := httptest.NewRequest(http.MethodPost, checkout.FakePattern, strings.NewReader(eventBody))
+	q.Header.Set("Content-Type", "application/json")
+	q.Header.Add("X-Fake-Signature", fixtureSignature)
+	q.Header.Add("X-Fake-Signature", fixtureSignature)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, q)
+	checkProblem(t, w, 401)
+	if events.calls != 0 {
+		t.Fatal("duplicate signature header called receiver")
+	}
 }
+
+func TestFakeWebhookReceiverSafeErrors(t *testing.T) {
+	for _, c := range []struct {
+		err    error
+		status int
+	}{
+		{apperrors.New(401, "unauthenticated", "Authentication is required"), 401},
+		{apperrors.New(409, "payment_conflict", "Payment event conflict"), 409},
+		{apperrors.New(422, "invalid_event", "Invalid payment event"), 422},
+		{apperrors.New(503, "payment_unavailable", "private failure diagnostic"), 503},
+		{errors.New("private failure diagnostic"), 500},
+	} {
+		events := &receiver{err: c.err}
+		r := router(t, checkout.Config{FakeEnabled: true, Environment: "test", Events: events})
+		w := request(r, checkout.FakePattern, eventBody, map[string]string{"X-Fake-Signature": fixtureSignature})
+		checkProblem(t, w, c.status)
+		if events.calls != 1 || strings.Contains(w.Body.String(), "private failure") {
+			t.Fatal("receiver error skipped or diagnostic exposed")
+		}
+	}
+}
+
+func TestFakeWebhookRejectsInvalidReceiverReceipt(t *testing.T) {
+	for _, c := range []struct {
+		status string
+		code   int
+	}{{"rejected", 409}, {"unexpected", 500}} {
+		events := &receiver{status: c.status}
+		r := router(t, checkout.Config{FakeEnabled: true, Environment: "test", Events: events})
+		w := request(r, checkout.FakePattern, eventBody, map[string]string{"X-Fake-Signature": fixtureSignature})
+		checkProblem(t, w, c.code)
+		if events.calls != 1 {
+			t.Fatal("receipt error skipped receiver")
+		}
+	}
+}
+
 func TestDuplicateSecurityHeadersRejected(t *testing.T) {
 	s := &service{}
 	r := router(t, checkout.Config{Service: s, Resolver: resolver{actor: actor(t, tenant, "guest")}, Origin: origin})
