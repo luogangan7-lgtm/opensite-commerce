@@ -13,12 +13,14 @@ async function start(page: Page) {
   await page.getByRole('button', { name: 'Add to cart', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Item added to cart.');
   const cookie = (await page.context().cookies()).find(c => c.name === '__Host-osc_storefront_cart');
-  expect(cookie).toMatchObject({ secure: true, httpOnly: true, sameSite: 'Lax', path: '/' });
+  expect(cookie && { secure: cookie.secure, httpOnly: cookie.httpOnly, sameSite: cookie.sameSite, path: cookie.path })
+    .toEqual({ secure: true, httpOnly: true, sameSite: 'Lax', path: '/' });
   expect(await page.evaluate(() => document.cookie)).not.toContain('__Host-osc_storefront_cart');
   await page.goto(`${fixture.storefront}/cart`);
   await expect(page.locator('[data-cart-line]')).toHaveCount(1);
   await expect(page.getByRole('main')).toContainText('$24.00');
   await page.goto(`${fixture.storefront}/checkout`);
+  await page.getByLabel('Email', { exact: true }).fill('c09d-buyer@example.test');
   await page.getByLabel('Country code', { exact: true }).fill('US');
   await page.getByLabel('Address line 1', { exact: true }).fill('1 Test Way');
   await page.getByLabel('City', { exact: true }).fill('Test City');

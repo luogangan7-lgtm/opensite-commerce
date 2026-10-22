@@ -72,6 +72,11 @@ DO $purchase_seed$
 DECLARE t uuid := 'c0900001-0000-4000-8000-000000000001'; n integer; account_code text; account_kind text;
 BEGIN
  PERFORM set_config('app.tenant_id',t::text,true);
+ -- The browse-only seed leaves settlement unset; initialize only before our first stock/account seed.
+ UPDATE app.tenants SET settlement_currency='USD' WHERE id=t AND settlement_currency IS NULL
+  AND NOT EXISTS(SELECT FROM app.stock_levels WHERE tenant_id=t)
+  AND NOT EXISTS(SELECT FROM app.ledger_accounts WHERE tenant_id=t);
+ IF NOT EXISTS(SELECT FROM app.tenants WHERE id=t AND settlement_currency='USD') THEN RAISE EXCEPTION 'C09D_CURRENCY_DRIFT'; END IF;
  FOR n IN 1..2 LOOP
   IF NOT EXISTS(SELECT FROM app.stock_levels WHERE tenant_id=t AND sku_id=('c2400008-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid) THEN
    PERFORM app.inventory_adjust(('c2400008-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,20,'C09d purchase seed',('c09d0001-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'inbound');
