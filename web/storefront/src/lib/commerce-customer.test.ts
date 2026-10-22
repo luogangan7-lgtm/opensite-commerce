@@ -34,7 +34,11 @@ beforeEach(()=>{
         if(cookie.includes(sessionName+'='))return Response.json(session());
         return Response.json({customer:null,csrf_token:challenge},{headers:{'Set-Cookie':`__Host-osc_customer_challenge=${challenge}; Path=/; Secure; HttpOnly; SameSite=Lax; Expires=Wed, 01 Jan 2098 00:00:00 GMT`}});
       }
-      if(path.endsWith('/session')&&r.method==='POST')return Response.json(session(),{headers:{'Set-Cookie':`${sessionName}=${bearer}; Path=/; Secure; HttpOnly; SameSite=Lax; Expires=Wed, 01 Jan 2098 00:00:00 GMT`}});
+      if(path.endsWith('/session')&&r.method==='POST'){
+        const headers=new Headers();headers.append('Set-Cookie',`${sessionName}=${bearer}; Path=/; Secure; HttpOnly; SameSite=Lax; Expires=Wed, 01 Jan 2098 00:00:00 GMT`);
+        headers.append('Set-Cookie','__Host-osc_customer_challenge=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0');
+        return Response.json(session(),{headers});
+      }
       if(path.endsWith('/session')&&r.method==='DELETE')return new Response(null,{status:204,headers:{'Set-Cookie':`${sessionName}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`}});
       if(path.endsWith('/verifications'))return new Response(null,{status:204});
       if(path.endsWith('/registrations'))return Response.json({status:'verification_pending'},{status:202});
@@ -55,6 +59,7 @@ test('registration verification login session and logout use real generated rout
   const login=await send('customer/session',context.csrf,{email:'buyer@example.test',password:'twelve-byte-password'});
   expect(login.status).toBe(200);expect(await login.text()).not.toContain(bearer);
   expect(values.get(sessionName)).toBe(bearer);
+  expect(values.has('__Host-osc_customer_challenge')).toBe(false);
   expect(flags.get(sessionName)).toMatchObject({secure:true,httpOnly:true,path:'/',sameSite:'lax'});
   context=await readPurchaseContext(request('context'),jar);expect(context.actor).toBe('customer');
   expect(await (await send('customer/session')).json()).toMatchObject({actor:'customer'});

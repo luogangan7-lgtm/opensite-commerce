@@ -1,4 +1,4 @@
-/** Responsibility: customer session/registration UI with an explicitly labeled contract fixture.
+/** Responsibility: customer session/registration UI backed by server-validated identity.
  * Dependencies: React/shared fields, same-origin customer client; caller: account SSR route.
  * Invariants: registration remains verification-pending; refresh validated actor/CSRF after session transitions; no browser bearer.
  */
