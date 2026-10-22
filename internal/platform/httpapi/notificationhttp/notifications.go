@@ -24,7 +24,7 @@ type Handler struct {
 }
 
 func New(service contract.Service) *Handler {
-	doc, err := generated.GetSwagger()
+	doc, err := httpapi.GetSwagger()
 	if err != nil {
 		panic(err)
 	}

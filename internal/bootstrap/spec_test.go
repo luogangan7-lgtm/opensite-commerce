@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -30,7 +31,7 @@ func TestConcurrentBootstrapPreservesAPIContract(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			server, err := bootstrap.New(bootstrap.Config{})
+			server, err := bootstrap.New(bootstrap.Config{Authenticator: runtimeActorAuth{}})
 			if err != nil {
 				t.Error(err)
 				return
@@ -39,6 +40,19 @@ func TestConcurrentBootstrapPreservesAPIContract(t *testing.T) {
 			server.Handler.ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
 			if w.Code != 204 {
 				t.Errorf("health status = %d", w.Code)
+			}
+			const products = "/api/v1/t/11111111-1111-1111-1111-111111111111/products"
+			for _, tc := range []struct{ method, path, body string }{
+				{"POST", products, `{"product_code":"p","unexpected":true}`},
+				{"GET", products + "?page_size=101", ""},
+			} {
+				req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				server.Handler.ServeHTTP(w, req)
+				if w.Code != 400 {
+					t.Errorf("schema admission %s %s = %d: %s", tc.method, tc.path, w.Code, w.Body.String())
+				}
 			}
 			shared, err := httpapi.GetSwagger()
 			if err != nil || shared != doc {
