@@ -1,0 +1,27 @@
+// Responsibilities: expose generated privacy/CSV DTOs through the shared HTTP
+// contract port. Dependencies: pinned generated OAS; adapters use aliases only.
+package httpapi
+
+import "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+
+type CatalogCSVReport = generated.CatalogCSVReport
+type DataExportRequest = generated.DataExportRequest
+type DataExportStatus = generated.DataExportStatus
+type DownloadCustomerDataExport200ApplicationoctetStreamResponse = generated.DownloadCustomerDataExport200ApplicationoctetStreamResponse
+type DownloadCustomerDataExportRequestObject = generated.DownloadCustomerDataExportRequestObject
+type DownloadCustomerDataExportResponseObject = generated.DownloadCustomerDataExportResponseObject
+type EraseCustomerDataRequestObject = generated.EraseCustomerDataRequestObject
+type EraseCustomerDataResponseObject = generated.EraseCustomerDataResponseObject
+type ExportCatalogCSV200TextcsvResponse = generated.ExportCatalogCSV200TextcsvResponse
+type ExportCatalogCSVRequestObject = generated.ExportCatalogCSVRequestObject
+type ExportCatalogCSVResponseObject = generated.ExportCatalogCSVResponseObject
+type GetCustomerDataExport200JSONResponse = generated.GetCustomerDataExport200JSONResponse
+type GetCustomerDataExportRequestObject = generated.GetCustomerDataExportRequestObject
+type GetCustomerDataExportResponseObject = generated.GetCustomerDataExportResponseObject
+type ImportCatalogCSVRequestObject = generated.ImportCatalogCSVRequestObject
+type ImportCatalogCSVResponseObject = generated.ImportCatalogCSVResponseObject
+type PreflightCatalogCSV200JSONResponse = generated.PreflightCatalogCSV200JSONResponse
+type PreflightCatalogCSVRequestObject = generated.PreflightCatalogCSVRequestObject
+type PreflightCatalogCSVResponseObject = generated.PreflightCatalogCSVResponseObject
+type RequestCustomerDataExportRequestObject = generated.RequestCustomerDataExportRequestObject
+type RequestCustomerDataExportResponseObject = generated.RequestCustomerDataExportResponseObject

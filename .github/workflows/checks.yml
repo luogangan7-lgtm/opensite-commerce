@@ -84,6 +84,9 @@ jobs:
       C07_FIXTURE_PASSWORD: ci_catalog_test_only
       C07_DATABASE_URL: postgres://c07_runtime:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
       C07_MEDIA_DATABASE_URL: postgres://c07_media:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
+      # Every pgx step (incl. check_codegen) needs the C-22a fixture; #54 forbids skips.
+      C22A_DATABASE_URL: postgres://c07_runtime:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
+      C22A_MAINTENANCE_DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - name: Land in-development migrations in this ephemeral checkout only
@@ -126,6 +129,11 @@ jobs:
       - name: Python tools (hash-locked)
         if: matrix.lane == 'offline' || matrix.lane == 'pg'
         run: python -m pip install --quiet --require-hashes -r requirements-ci.txt
+      - name: All-migration Go and DB role-scope parity
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          go test -tags pgx -count=1 -timeout=5m -v -run '^TestC02cRoleScopesMirrorPostgres$' ./internal/modules/identity
       - name: CI pin policy and offline gates
         if: matrix.lane == 'offline'
         run: |
@@ -171,6 +179,8 @@ jobs:
       - name: Privacy column registry and persisted canary coverage
         if: matrix.lane == 'pg'
         run: python3 scripts/privacy_registry.py --database --fixture
+      - name: Data-rights erasure over every registry canary
+        run: python3 scripts/check_data_rights_canaries.py
       - name: Catalog/media real HTTP gates with isolated role logins
         if: matrix.lane == 'pgx' || matrix.lane == 'sqlc'
         env:
@@ -191,7 +201,9 @@ jobs:
         if: matrix.lane == 'pgx'
         run: |
           go vet -tags pgx ./...
-          go test -race -tags pgx -count=1 ./...
+          # The full bootstrap suite exceeded Go's 10m package default on slow
+          # runners (39779427428, attempts 1-2); keep it bounded within this 45m job.
+          go test -race -tags pgx -count=1 -timeout=15m ./...
       - name: sqlc v1.31.1 (verified release artifact)
         if: matrix.lane == 'sqlc'
         run: |

@@ -31,6 +31,8 @@ DECLARE
  release uuid := 'f0c10000-0000-4000-8000-000000000020';
  blog uuid := 'f0c10000-0000-4000-8000-000000000021';
  notification_order uuid := 'f0c10000-0000-4000-8000-000000000022';
+ guest_cart uuid := 'f0c10000-0000-4000-8000-000000000029';
+ guest_checkout uuid := 'f0c10000-0000-4000-8000-000000000030';
  fulfillment_order uuid := 'f0c10000-0000-4000-8000-000000000023';
  fulfillment_line uuid := 'f0c10000-0000-4000-8000-000000000024';
  income_account uuid := 'f0c10000-0000-4000-8000-000000000025';
@@ -150,7 +152,7 @@ BEGIN
  VALUES(t,staff,{{canary:media_uploads.original_filename}}||'.txt',clock_timestamp()+interval '1 hour');
 
  -- App commands preserve their real ownership fences and emit derivative rows.
- PERFORM app.inventory_adjust(sku,20,{{canary:inventory_movements.reason}},uuidv7(),'inbound');
+ PERFORM app.inventory_adjust(sku,20,'privacy-unowned-stock-control',uuidv7(),'inbound');
  reservation := app.inventory_reserve(sku,1,'order',registered_order,'privacy-registered-hold',900);
  registered := app.orders_create(registered_order,'privacy-registered-order',
   sha256('privacy-registered-order'::bytea),customer,NULL,'USD',5,
@@ -226,6 +228,17 @@ BEGIN
  return_id := (return_receipt->>'id')::uuid;
  SELECT * INTO STRICT registered FROM app.orders WHERE tenant_id=t AND id=fulfillment_order;
  PERFORM app.returns_receive(return_id,registered.version,'privacy-return-receive',true);
+ IF NOT EXISTS(SELECT FROM app.inventory_movements WHERE tenant_id=t AND owner_type='return'
+  AND owner_id=return_id AND reason='return_received') THEN
+  RAISE EXCEPTION 'PRIVACY_GATE return restock copied personal text'; END IF;
+ -- Historical/imported derived copy, inserted with every live constraint and
+ -- immutable guard intact. Its paired stock delta keeps the ledger balanced.
+ WITH stock AS (UPDATE app.stock_levels SET on_hand=on_hand+1 WHERE tenant_id=t AND sku_id=sku RETURNING *)
+ INSERT INTO app.inventory_movements(tenant_id,warehouse_id,sku_id,owner_type,owner_id,kind,quantity,
+  on_hand_delta,reserved_delta,on_hand_after,reserved_after,reason)
+ SELECT t,stock.warehouse_id,sku,'return',return_id,'adjustment',1,1,0,stock.on_hand,stock.reserved,
+  {{canary:inventory_movements.reason}}||' '||(return_receipt->>'reason') FROM stock;
+
  INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
   (t,income_account,'privacy-return-income','USD','revenue'),
   (t,tax_account,'privacy-return-tax','USD','liability'),
@@ -233,7 +246,9 @@ BEGIN
   (t,cash_account,'privacy-return-cash','USD','asset');
  SELECT * INTO STRICT registered FROM app.orders WHERE tenant_id=t AND id=fulfillment_order;
  PERFORM app.returns_prepare_refund(return_id,registered.version,'privacy-return-refund',
-  {{canary:returns.provider_ref}},1,income_account,tax_account,shipping_account,cash_account);
+  'opaque-privacy-refund-capture',1,income_account,tax_account,shipping_account,cash_account);
+ PERFORM app.returns_fail_refund(return_id,'privacy-return-refund',false);
+ PERFORM set_config('privacy.fixture.return_id',return_id::text,true);
 
  -- Guest contact retains its own independent column canary.
  reservation := app.inventory_reserve(sku,1,'order',guest_order,'privacy-guest-hold',900);
@@ -243,8 +258,34 @@ BEGIN
    'quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
    'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','surcharge','amount_minor',1,
-   'reason',{{canary:order_adjustments.reason}})));
+   'reason',{{canary:order_adjustments.reason}}),
+   jsonb_build_object('id',uuidv7(),'kind','discount','amount_minor',-1,'reason','fixture balancing discount')));
+ -- The same column canaries must be removed from BOTH ownership paths. A
+ -- linked guest checkout exercises all immutable result/address copies too.
+ INSERT INTO app.carts(tenant_id,id,guest_token_hash,currency)
+ VALUES(t,guest_cart,sha256('privacy-guest-fixture-token'::bytea),'USD');
+ INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,
+  cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,
+  shipping_minor,payable_version)
+ SELECT t,guest_checkout,'guest',encode(sha256('privacy-guest-fixture-token'::bytea),'hex'),'privacy-guest-checkout',sha256('privacy-guest-checkout'::bytea),
+  guest_cart,1,id,jsonb_build_object('recipient',{{canary:checkout_sessions.address_snapshot}}),
+  currency,total_minor,items_net_minor,tax_minor,shipping_minor,version
+ FROM app.orders WHERE tenant_id=t AND id=guest_order;
+ UPDATE app.checkout_sessions SET phase='ready',provider_ref='privacy-guest-local-no-io',
+  start_result=jsonb_build_object('contact',{{canary:checkout_sessions.start_result}})
+ WHERE tenant_id=t AND id=guest_checkout;
+ UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key='privacy-guest-payment'
+ WHERE tenant_id=t AND id=guest_checkout;
  PERFORM app.orders_transition(guest_order,'paid','privacy-guest-payment');
+ UPDATE app.checkout_sessions SET phase='paid',final_result=jsonb_build_object('contact',{{canary:checkout_sessions.final_result}})
+ WHERE tenant_id=t AND id=guest_checkout;
+ INSERT INTO app.checkout_attempts(tenant_id,event_kind,event_key,checkout_id,request_hash)
+ VALUES(t,'payment','privacy-guest-payment',guest_checkout,sha256('privacy-guest-payment'::bytea));
+ UPDATE app.checkout_attempts SET result=jsonb_build_object('contact',{{canary:checkout_attempts.result}})
+ WHERE tenant_id=t AND event_kind='payment' AND event_key='privacy-guest-payment';
+ -- Mailbox-proven link (customer_guest_order_links): the verified customer now
+ -- owns this guest order, its contact copy, adjustment text and notifications.
+ INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES(t,customer,guest_order);
 
  quote := app.create_quote(t,site,inquiry,company,staff,'USD',100,10,5,115,
   jsonb_build_object('contact',{{canary:quotes.snapshot}}),clock_timestamp()+interval '1 hour',
@@ -252,6 +293,25 @@ BEGIN
    'description',{{canary:quote_lines.description}},'quantity',1,'unit_price',100,'line_total',100,
    'snapshot',jsonb_build_object('contact',{{canary:quote_lines.snapshot}}))));
  PERFORM set_config('privacy.fixture.quote_id',quote::text,true);
+ -- DERIVED COPY: a staff create receipt predates the verified customer's acceptance.
+ PERFORM app.idempotency_claim(t,'user',staff,'quotes.create','staff-snapshot',
+  sha256('privacy-staff-quote-receipt'::bytea),interval '1 hour',inline_claim);
+ PERFORM set_config('app.idempotency_claim',inline_claim::text,true);
+ UPDATE app.idempotency_records SET state='completed',response_status=201,
+  response_body=jsonb_build_object('id',quote,'snapshot',jsonb_build_object(
+   'contact',{{canary:idempotency_records.response_body}})),completed_at=clock_timestamp()
+ WHERE tenant_id=t AND actor_kind='user' AND actor_id=staff
+  AND operation='quotes.create' AND idempotency_key='staff-snapshot';
+
+ -- An unrelated staff receipt must survive; no quote ID ownership is inferred.
+ PERFORM app.idempotency_claim(t,'user',staff,'quotes.create','staff-unrelated',
+  sha256('privacy-unrelated-staff'::bytea),interval '1 hour',uuidv7());
+ PERFORM set_config('app.idempotency_claim',(SELECT claim_token::text FROM app.idempotency_records
+  WHERE tenant_id=t AND actor_id=staff AND operation='quotes.create' AND idempotency_key='staff-unrelated'),true);
+ UPDATE app.idempotency_records SET state='completed',response_status=201,
+  response_body=jsonb_build_object('id',uuidv7(),'snapshot','privacy-unrelated-staff-control'),completed_at=clock_timestamp()
+ WHERE tenant_id=t AND actor_kind='user' AND actor_id=staff
+  AND operation='quotes.create' AND idempotency_key='staff-unrelated';
  PERFORM app.transition_quote(t,quote,1,'send','staff',staff);
  PERFORM app.transition_quote(t,quote,2,'accept','customer',customer);
  PERFORM app.transition_quote(t,quote,3,'approve','customer',approver);

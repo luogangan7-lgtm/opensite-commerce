@@ -462,17 +462,98 @@ func TestC02cWriteAuthorityLocksPostgres(t *testing.T) {
 	}
 }
 
+// FIX-44 exercises issuance and write-time fencing with real app_auth/runtime
+// capabilities. Both tenants have active issuer memberships, so tenant denial
+// cannot be explained by a missing membership or mismatched tenant GUC.
+func TestFIX44ScopeAuthorityPostgres(t *testing.T) {
+	ctx, admin, dsn, _ := setupLoginPG(t)
+	auth := c02cAuthDB(t, ctx, dsn)
+	user := seedLoginPG(t, ctx, admin, "fix44-scopes@example.test")
+	var tenant, other, session string
+	for _, target := range []*string{&tenant, &other} {
+		if err := admin.QueryRow(ctx, `INSERT INTO app.tenants(name) VALUES('FIX-44 scopes') RETURNING id::text`).Scan(target); err != nil {
+			t.Fatal("FIX-44 tenant fixture", safeCode(err))
+		}
+	}
+	if _, err := admin.Exec(ctx, `INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES($1,$3,'admin'),($2,$3,'admin')`, tenant, other, user); err != nil {
+		t.Fatal("FIX-44 memberships", safeCode(err))
+	}
+	if err := admin.QueryRow(ctx, `INSERT INTO app.auth_sessions(user_id,token_hash,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour') RETURNING id::text`, user, c02cKeyHash(t)).Scan(&session); err != nil {
+		t.Fatal("FIX-44 session", safeCode(err))
+	}
+	scopes := []string{"customers:privacy", "catalog:import", "catalog:export"}
+	var key string
+	for _, role := range []string{"owner", "admin"} {
+		if _, err := admin.Exec(ctx, `UPDATE app.tenant_memberships SET role=$3 WHERE tenant_id=$1 AND user_id=$2`, tenant, user, role); err != nil {
+			t.Fatal("FIX-44 issuer role", safeCode(err))
+		}
+		err := auth.QueryRow(ctx, `SELECT app.auth_create_api_key($1,$2,$3,'fix44',$4,$5,NULL)::text`, tenant, user, uuid.NewString(), c02cKeyHash(t), scopes).Scan(&key)
+		if err != nil {
+			t.Fatal("FIX-44 approved key issuance refused", role, safeCode(err))
+		}
+	}
+	check := func(t *testing.T, target, kind, credential, scope string, want bool) {
+		t.Helper()
+		var admitted bool
+		err := admin.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, `SET LOCAL ROLE app_runtime`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id',$1,true)`, target); err != nil {
+				return err
+			}
+			return tx.QueryRow(ctx, `SELECT app.auth_revalidate_tenant($1,$2,$3,$4,$5)`, target, user, kind, credential, scope).Scan(&admitted)
+		})
+		if err != nil || admitted != want {
+			t.Fatal("FIX-44 scope authority mismatch", kind, scope, want, admitted, safeCode(err))
+		}
+	}
+	for _, role := range []string{"owner", "admin", "catalog_editor", "content_editor", "viewer"} {
+		if _, err := admin.Exec(ctx, `UPDATE app.tenant_memberships SET role=$3 WHERE tenant_id=$1 AND user_id=$2`, tenant, user, role); err != nil {
+			t.Fatal("FIX-44 role downgrade", safeCode(err))
+		}
+		for _, scope := range append(append([]string{}, scopes...), "unknown:scope") {
+			t.Run(role+"/"+scope, func(t *testing.T) {
+				want := scope != "unknown:scope" && (role == "owner" || role == "admin" || role == "catalog_editor" && scope != "customers:privacy")
+				check(t, tenant, "session", session, scope, want)
+				check(t, tenant, "api_key", key, scope, want)
+				check(t, other, "api_key", key, scope, false)
+			})
+		}
+	}
+	if _, err := admin.Exec(ctx, `UPDATE app.tenant_memberships SET role='admin' WHERE tenant_id=$1 AND user_id=$2`, tenant, user); err != nil {
+		t.Fatal("FIX-44 restore role", safeCode(err))
+	}
+	var invalid string
+	err := auth.QueryRow(ctx, `SELECT app.auth_create_api_key($1,$2,$3,'fix44',$4,ARRAY['unknown:scope'],NULL)::text`, tenant, user, uuid.NewString(), c02cKeyHash(t)).Scan(&invalid)
+	if safeCode(err) != "22023" {
+		t.Fatal("FIX-44 unknown scope issuance admitted", safeCode(err))
+	}
+}
+
 // Go admission and transactional SQL must use the same exact role allowlists.
 func TestC02cRoleScopesMirrorPostgres(t *testing.T) {
 	ctx, admin, _, _ := setupLoginPG(t)
-	for _, role := range []string{"owner", "admin", "catalog_editor", "content_editor", "viewer", "unknown", "OWNER"} {
+	// Discover every role admitted by the migrated membership CHECK, rather than
+	// silently omitting a newly introduced role from this gate.
+	var roles []string
+	if err := admin.QueryRow(ctx, `SELECT array_agg(DISTINCT m[1] ORDER BY m[1])
+ FROM pg_constraint c JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=ANY(c.conkey)
+ CROSS JOIN LATERAL regexp_matches(pg_get_constraintdef(c.oid), '''([^'']+)''', 'g') m
+ WHERE c.conrelid='app.tenant_memberships'::regclass AND c.contype='c' AND a.attname='role'`).Scan(&roles); err != nil || len(roles) == 0 {
+		t.Fatal("role-scope parity: migrated role inventory unavailable", safeCode(err))
+	}
+	for _, role := range append(roles, "unknown", "OWNER") {
 		t.Run(role, func(t *testing.T) {
 			var actual []string
 			if err := admin.QueryRow(ctx, `SELECT app.auth_role_scopes($1)`, role).Scan(&actual); err != nil {
 				t.Fatal("C02c SQL role scopes unavailable", safeCode(err))
 			}
-			if !slices.Equal(actual, authcontract.RoleScopes(role)) {
-				t.Fatal("C02c Go and SQL role scopes disagree", role)
+			want := authcontract.RoleScopes(role)
+			slices.Sort(actual)
+			slices.Sort(want)
+			if len(slices.Compact(slices.Clone(actual))) != len(actual) || !slices.Equal(actual, want) {
+				t.Fatalf("ROLE_SCOPE_PARITY role=%s Go=%v DB=%v", role, want, actual)
 			}
 		})
 	}

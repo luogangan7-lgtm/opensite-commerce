@@ -1004,6 +1004,155 @@ got=$(sql <<<"SELECT generation||'|'||status||'|'||(SELECT count(*) FROM app.not
 echo "notification concurrent redrive: $got (expected 2|pending|1|2)"
 [[ $got == '2|pending|1|2' ]] || fail=1
 
+# C-22a data rights races BEGIN: controlled capability calls hold customer then
+# request locks. Gates80–86 are reserved here; pg_stat_activity witnesses every
+# contender's wait before release, so elapsed time never chooses the winner.
+privacy_fixture() {
+ sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('privacy-race-synthetic') RETURNING id AS t \gset
+INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','race@example.invalid','Synthetic race') RETURNING id AS c \gset
+SELECT uuidv7() AS request,uuidv7() AS actor \gset
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_runtime;
+SELECT app.data_rights_request_export(:'request',:'c','service',:'actor');
+COMMIT;
+SELECT :'t'||' '||:'c'||' '||:'request'||' '||:'actor';
+SQL
+}
+read -r T CUSTOMER REQUEST ACTOR <<<"$(privacy_fixture)"
+tx privacy_ready app_runtime "$T" "SELECT app.data_rights_build_export('$REQUEST'); SELECT app.data_rights_complete_export('$REQUEST',sha256('privacy-race-token'::bytea),sha256('privacy-race-content'::bytea),app.data_rights_download_deadline('$REQUEST'));"
+expect privacy_ready ok
+gate_close 80
+tx privacy_download_first app_runtime "$T" "SELECT 'download='||(app.data_rights_consume_export('$REQUEST','$CUSTOMER',sha256('privacy-race-token'::bytea))->>'id'); $(park 80)" &
+await privacy_download_first advisory
+tx privacy_download_second app_runtime "$T" "SELECT app.data_rights_consume_export('$REQUEST','$CUSTOMER',sha256('privacy-race-token'::bytea));" &
+await privacy_download_second "${ROWLOCK[@]}"
+gate_open 80; wait
+expect privacy_download_first ok; expect privacy_download_second 55000
+result privacy_download_first "download=$REQUEST"
+got=$(sql <<<"SELECT status||'|'||(token_hash=sha256('privacy-race-token'::bytea)) FROM app.data_rights_exports WHERE tenant_id='$T' AND id='$REQUEST';")
+echo "privacy concurrent single-use download: $got (expected consumed|true)"
+[[ $got == 'consumed|true' ]] || fail=1
+
+# Worker starts building and owns the customer lock before erasure is admitted;
+# completion commits first, then erasure revokes it and scrubs both hashes.
+read -r T CUSTOMER REQUEST ACTOR <<<"$(privacy_fixture)"
+gate_close 81
+tx privacy_build_first app_runtime "$T" "SELECT app.data_rights_build_export('$REQUEST'); $(park 81) SELECT app.data_rights_complete_export('$REQUEST',sha256('privacy-race-token'::bytea),sha256('privacy-race-content'::bytea),app.data_rights_download_deadline('$REQUEST'));" &
+await privacy_build_first advisory
+# Prove the worker owns the CUSTOMER lock specifically, not merely a request
+# row that would make erasure wait later in its lock sequence.
+tx privacy_customer_lock_probe postgres "$T" "DO \$proof\$ BEGIN
+ BEGIN PERFORM id FROM app.customers WHERE tenant_id='$T' AND id='$CUSTOMER' FOR UPDATE NOWAIT;
+ RAISE EXCEPTION 'PRIVACY_CUSTOMER_LOCK_GATE missing customer lock before erasure';
+ EXCEPTION WHEN lock_not_available THEN NULL; END;
+ END \$proof\$;"
+expect privacy_customer_lock_probe ok
+tx privacy_erase_second app_runtime "$T" "SELECT app.data_rights_erase_customer('$CUSTOMER','service','$ACTOR');" &
+await privacy_erase_second "${ROWLOCK[@]}"
+gate_open 81; wait
+expect privacy_build_first ok; expect privacy_erase_second ok
+got=$(sql <<<"SELECT c.status||'|'||r.status||'|'||(r.token_hash IS NULL AND r.content_hash IS NULL)||'|'||(SELECT count(*) FROM app.data_rights_erasures WHERE tenant_id='$T' AND customer_id='$CUSTOMER') FROM app.customers c JOIN app.data_rights_exports r ON (r.tenant_id,r.customer_id)=(c.tenant_id,c.id) WHERE c.tenant_id='$T' AND c.id='$CUSTOMER' AND r.id='$REQUEST';")
+echo "privacy completion followed by erasure: $got (expected disabled|revoked|true|1)"
+[[ $got == 'disabled|revoked|true|1' ]] || fail=1
+for operation in build download consume complete; do
+ case $operation in
+  build) call="app.data_rights_build_export('$REQUEST')" ;;
+  download) call="app.data_rights_download_info('$REQUEST','$CUSTOMER')" ;;
+  consume) call="app.data_rights_consume_export('$REQUEST','$CUSTOMER',sha256('privacy-race-token'::bytea))" ;;
+  complete) call="app.data_rights_complete_export('$REQUEST',sha256('privacy-race-token'::bytea),sha256('privacy-race-content'::bytea),clock_timestamp()+interval '1 minute')" ;;
+ esac
+ tx "privacy_after_erase_$operation" app_runtime "$T" "SELECT $call;"
+ expect "privacy_after_erase_$operation" 55000
+done
+
+# Reverse admission proves a queued worker cannot rebuild after erasure commits.
+read -r T CUSTOMER REQUEST ACTOR <<<"$(privacy_fixture)"
+gate_close 82
+tx privacy_erase_first app_runtime "$T" "SELECT app.data_rights_erase_customer('$CUSTOMER','service','$ACTOR'); $(park 82)" &
+await privacy_erase_first advisory
+tx privacy_build_second app_runtime "$T" "SELECT app.data_rights_build_export('$REQUEST');" &
+await privacy_build_second "${ROWLOCK[@]}"
+gate_open 82; wait
+expect privacy_erase_first ok; expect privacy_build_second 55000
+# C22a notification erasure gates83–86: 84 uses two extra barrier phases.
+privacy_notification_fixture() {
+ sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('privacy-notification-race') RETURNING id AS t \gset
+INSERT INTO app.customers(tenant_id,email) VALUES(:'t','privacy-notify@example.invalid') RETURNING id AS c \gset
+SELECT uuidv7() AS oid,uuidv7() AS request,uuidv7() AS actor \gset
+BEGIN;
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_orders_executor;
+INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,customer_id,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+ VALUES(:'t',:'oid',1,'privacy-notification-race',sha256('race'::bytea),:'c','USD',100,0,0,'{"amount_minor":0,"currency":"USD","address":"Synthetic private street"}',100);
+RESET ROLE;
+INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+ VALUES(:'t','order.paid',jsonb_build_object('order_id',:'oid'),'orders.events','privacy-notification-race') RETURNING id AS source \gset
+SELECT id AS notification,dispatch_event_id AS dispatch FROM app.notification_deliveries WHERE tenant_id=:'t' AND source_event_id=:'source' \gset
+UPDATE app.notification_deliveries SET status='dead_letter',last_error='DELIVERY_REJECTED' WHERE tenant_id=:'t' AND id=:'notification';
+UPDATE app.outbox_events SET status='dead_letter',attempts=10 WHERE tenant_id=:'t' AND id=:'dispatch';
+SET LOCAL ROLE app_runtime;
+SELECT app.data_rights_request_export(:'request',:'c','service',:'actor');
+COMMIT;
+SELECT :'t'||' '||:'c'||' '||:'oid'||' '||:'notification'||' '||:'request'||' '||:'actor';
+SQL
+}
+# Redrive owns the envelope but its new dispatch is not yet visible. Erasure
+# cannot wait holding older dispatches; NOWAIT must roll everything back.
+read -r T CUSTOMER PRIVACY_ORDER NOTIFICATION REQUEST ACTOR <<<"$(privacy_notification_fixture)"
+gate_close 83
+tx privacy_redrive_hold app_runtime "$T" "SELECT app.notification_redrive('$T','$NOTIFICATION','privacy-race-redrive'); $(park 83)" &
+await privacy_redrive_hold advisory
+tx privacy_redrive_erase_busy app_runtime "$T" "SELECT app.data_rights_erase_customer('$CUSTOMER','service','$ACTOR');" &
+PRIVACY_BUSY_PID=$!
+await_job privacy_redrive_erase_busy "$PRIVACY_BUSY_PID"
+expect privacy_redrive_erase_busy 55P03
+got=$(sql <<<"SELECT c.status||'|'||r.status||'|'||(SELECT count(*) FROM app.data_rights_erasures WHERE tenant_id='$T' AND customer_id='$CUSTOMER')||'|'||(SELECT recipient FROM app.notification_deliveries WHERE tenant_id='$T' AND id='$NOTIFICATION') FROM app.customers c JOIN app.data_rights_exports r ON(r.tenant_id,r.customer_id)=(c.tenant_id,c.id) WHERE c.tenant_id='$T' AND c.id='$CUSTOMER' AND r.id='$REQUEST';")
+echo "privacy redrive contention rollback: $got (expected active|pending|0|privacy-notify@example.invalid)"
+[[ $got == 'active|pending|0|privacy-notify@example.invalid' ]] || fail=1
+gate_open 83; wait
+expect privacy_redrive_hold ok
+tx privacy_redrive_erase_retry app_runtime "$T" "SELECT app.data_rights_erase_customer('$CUSTOMER','service','$ACTOR');"
+expect privacy_redrive_erase_retry ok
+got=$(sql <<<"SELECT d.status||'|'||d.last_error||'|'||(d.recipient='erased-'||d.id::text||'@invalid.test')||'|'||(SELECT count(*) FROM app.outbox_events e WHERE e.tenant_id='$T' AND e.payload=jsonb_build_object('notification_id',d.id) AND e.delivery_target='notifications.email' AND e.status='dead_letter' AND e.last_error='PRIVACY_ERASED') FROM app.notification_deliveries d WHERE d.tenant_id='$T' AND d.id='$NOTIFICATION';")
+echo "privacy redrive contention retry: $got (expected dead_letter|PRIVACY_ERASED|true|2)"
+[[ $got == 'dead_letter|PRIVACY_ERASED|true|2' ]] || fail=1
+# The initial order scan cannot see an uncommitted order. An independent share
+# holder keeps erasure at customer admission while insertion commits and a real
+# financial writer locks that new order. The second scan MUST fail NOWAIT,
+# allowing that writer's customer-dependent fanout and a later erase retry.
+read -r T CUSTOMER REQUEST ACTOR <<<"$(privacy_fixture)"
+PRIVACY_ORDER=$(sql <<<"SELECT uuidv7();")
+gate_close 84;gate_close 85;gate_close 86
+tx privacy_new_order_share postgres "$T" "SELECT id FROM app.customers WHERE tenant_id='$T' AND id='$CUSTOMER' FOR SHARE; $(park 84)" &
+await privacy_new_order_share advisory
+tx privacy_new_order_insert app_orders_executor "$T" "INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,customer_id,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor) VALUES('$T','$PRIVACY_ORDER',1,'privacy-new-order-race',sha256('race'::bytea),'$CUSTOMER','USD',100,0,0,'{\"amount_minor\":0,\"currency\":\"USD\",\"address\":\"Synthetic private street\"}',100); $(park 85)" &
+await privacy_new_order_insert advisory
+tx privacy_new_order_erase_busy app_runtime "$T" "SELECT app.data_rights_erase_customer('$CUSTOMER','service','$ACTOR');" &
+PRIVACY_BUSY_PID=$!
+await privacy_new_order_erase_busy "${ROWLOCK[@]}"
+gate_open 85;await privacy_new_order_insert gone
+expect privacy_new_order_insert ok
+tx privacy_new_order_transition app_orders_executor "$T" "SELECT id FROM app.orders WHERE tenant_id='$T' AND id='$PRIVACY_ORDER' FOR UPDATE; $(park 86) INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES('$T','order.paid',jsonb_build_object('order_id','$PRIVACY_ORDER'),'orders.events','privacy-new-order-race');" &
+await privacy_new_order_transition advisory
+gate_open 84;await privacy_new_order_share gone;await privacy_new_order_erase_busy gone;await_job privacy_new_order_erase_busy "$PRIVACY_BUSY_PID"
+expect privacy_new_order_share ok;expect privacy_new_order_erase_busy 55P03
+got=$(sql <<<"SELECT c.status||'|'||r.status||'|'||(SELECT count(*) FROM app.data_rights_erasures WHERE tenant_id='$T' AND customer_id='$CUSTOMER') FROM app.customers c JOIN app.data_rights_exports r ON(r.tenant_id,r.customer_id)=(c.tenant_id,c.id) WHERE c.tenant_id='$T' AND c.id='$CUSTOMER' AND r.id='$REQUEST';")
+echo "privacy newly committed order rollback: $got (expected active|pending|0)"
+[[ $got == 'active|pending|0' ]] || fail=1
+gate_open 86;wait
+expect privacy_new_order_transition ok
+tx privacy_new_order_erase_retry app_runtime "$T" "SELECT app.data_rights_erase_customer('$CUSTOMER','service','$ACTOR');"
+expect privacy_new_order_erase_retry ok
+got=$(sql <<<"SELECT c.status||'|'||r.status||'|'||d.status||'|'||d.last_error||'|'||(d.recipient='erased-'||d.id::text||'@invalid.test') FROM app.customers c JOIN app.data_rights_exports r ON(r.tenant_id,r.customer_id)=(c.tenant_id,c.id) JOIN app.orders o ON(o.tenant_id,o.customer_id)=(c.tenant_id,c.id) JOIN app.notification_deliveries d ON(d.tenant_id,d.reference_id)=(o.tenant_id,o.id) WHERE c.tenant_id='$T' AND c.id='$CUSTOMER' AND r.id='$REQUEST';")
+echo "privacy newly committed order retry: $got (expected disabled|revoked|dead_letter|PRIVACY_ERASED|true)"
+[[ $got == 'disabled|revoked|dead_letter|PRIVACY_ERASED|true' ]] || fail=1
+
+echo 'PASS: privacy single-use, export/erase and notification/redrive/new-order races preserve rollback and revocation'
+# C-22a data rights races END
+
 # Quotes: freeze a pending quote and use the same expected version for both
 # writers. Run both deterministic winners; a rowlock wait precedes gate release.
 for winner in approve withdraw; do
@@ -1434,6 +1583,25 @@ gate_open 94; wait
 expect payment_stream_first ok; expect payment_stream_second ok
 result payment_stream_second C19_STREAM_SECOND
 
+# FIX-44 artifact sweep/build serialize before customer/request locks, including
+# a pending (rolled-back build) capability. No sleep-based ordering.
+read -r T CUSTOMER REQUEST ACTOR <<<"$(privacy_fixture)"
+gate_close 95
+tx privacy_artifact_build app_runtime "$T" "SELECT app.data_rights_worker_info('$REQUEST'); $(park 95) SELECT app.data_rights_complete_export('$REQUEST',sha256('token'::bytea),sha256('content'::bytea),date_trunc('second',clock_timestamp())+interval '10 minutes');" &
+await privacy_artifact_build advisory
+tx privacy_artifact_sweep app_runtime "$T" "SELECT 'PRIVACY_ARTIFACT_LIVE='||app.data_rights_artifact_live('$REQUEST');" &
+await privacy_artifact_sweep advisory
+gate_open 95; wait
+expect privacy_artifact_build ok; expect privacy_artifact_sweep ok
+result privacy_artifact_sweep PRIVACY_ARTIFACT_LIVE=true
+gate_close 96
+tx privacy_artifact_sweep_hold app_runtime "$T" "SELECT app.data_rights_artifact_live('$REQUEST'); $(park 96)" &
+await privacy_artifact_sweep_hold advisory
+tx privacy_artifact_build_wait app_runtime "$T" "SELECT app.data_rights_worker_info('$REQUEST'); SELECT 'PRIVACY_BUILD_AFTER_SWEEP';" &
+await privacy_artifact_build_wait advisory
+gate_open 96; wait
+expect privacy_artifact_sweep_hold ok; expect privacy_artifact_build_wait ok
+result privacy_artifact_build_wait PRIVACY_BUILD_AFTER_SWEEP
 # C-18b quote conversion gates 100-103. Each contender mirrors the public
 # caller-owned transaction: lock, receipt lookup, reserve/create only if absent,
 # then bind. Fixture helpers are session-local SQL, never production commands.
