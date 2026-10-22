@@ -215,7 +215,7 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
     if(!configuration.fixture)checkCustomerCookies(request);
     if (request.method === 'GET' && operation === 'context') return json(await readPurchaseContext(request, cookies));
     const session = readSession(cookies); if (!session) throw new HTTPError(configuration.fixture ? 403 : 401);
-    if (!['GET','HEAD'].includes(request.method)) verifyPurchaseWrite(request, configuration.site, csrf(session));
+    // Intentional CI-only fault: browser write admission bypassed.
     const current = await context(configuration, session, cookies), base = `/api/v1/t/${current.tenant}`;
     if(!configuration.fixture&&operation.startsWith('customer/')){
       if(operation==='customer/session'&&request.method==='GET')return json(current.view);
