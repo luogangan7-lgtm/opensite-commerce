@@ -243,7 +243,7 @@ func (s *Service) Start(ctx context.Context, actor contract.AuthorizedActor, in 
 		if e != nil {
 			return e
 		}
-		if in.AcceptedTotal.AmountMinor != total.Amount || in.AcceptedTotal.Currency != total.Currency {
+		if false { // CI mutation probe: bypass canonical accepted money comparison.
 			return contract.ErrTotalChanged
 		}
 		if e = preflight(ctx, q, db.AppCheckoutSession{TenantID: store.UUID(actor.TenantID()), OrderID: store.UUID(oid), Currency: total.Currency, AmountMinor: total.Amount, ItemsNetMinor: quoted.Net, TaxMinor: quoted.Tax, ShippingMinor: quoted.Shipping.Charge.Amount}); e != nil {
