@@ -13,7 +13,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
-	g "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+	g "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/oapi-codegen/nullable"
 )
 
