@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "mobile/field-help.png",
   "scope": "gallery",
-  "sourceFingerprint": "e8975753c860fbc192b20f7526dd91abfc1c869807e273a498d26b0662a4e436",
+  "sourceFingerprint": "488ea33514769b4d222eb9adc97d58d7095d64227f71f5dfbdadfaa9d822b458",
   "pngSha256": "e8f405e89a1bb6084245811772b57744751fd2a4084b025a0ec3ff93f88627dd",
   "scopeSnapshots": [
     "desktop/badge-danger.png",
@@ -186,8 +186,8 @@
     "mobile/table-populated-hover.png",
     "mobile/table-populated.png"
   ],
-  "sourceSha": "d3f86c688a1479711abb91113deda66a89ec9033",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/38451726222",
+  "sourceSha": "4f2899f3a449981148568e0228623abb9dfd5ea6",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/39800552691",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",

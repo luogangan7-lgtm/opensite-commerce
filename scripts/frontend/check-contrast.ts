@@ -1,6 +1,6 @@
 // WCAG contrast gate; reads the shared registry in tokens.json; used by CI and tests.
 // Every registered pair must resolve to strict opaque hex tokens and satisfy its declared minimum.
-import source from '../../packages/design-tokens/tokens.json';
+import source from '../../packages/design-tokens/tokens.json' with { type: 'json' };
 export type ContrastSource = {tokens: Record<string,string>; contrastPairs: {name:string;foreground:string;background:string;minimum:number}[]};
 function luminance(hex: string): number {
  if (!/^#[0-9a-f]{6}$/i.test(hex)) throw new Error(`Invalid opaque color: ${hex}`);
