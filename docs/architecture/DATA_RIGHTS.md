@@ -66,6 +66,22 @@ scrub writes a fixed marker (`{"erased":true}`, `[erased]`, `erased`); quote
 snapshots keep only calculator money/currency facts. A checkout still in flight
 cannot write a fresh personal result into a scrubbed session.
 Amounts, currency, quantities, order IDs/state and ledger entries remain intact.
+Opaque payment-provider references and refund keys are financial-obligation
+records retained for refund recovery/reconciliation and accounting, rather than
+subject PII. Each retained Returns column explicitly declares
+`classification: financial_obligation`, `retention: financial-obligation` and a
+nonempty reason in the privacy registry; missing classification or reason fails
+the gate. Provider references must be opaque, never customer-entered text.
+Shipment carrier/tracking text, return reason and both immutable response
+snapshots are scrubbed, together with historical return-derived
+`inventory_movements.reason` copies. Other inventory producers retain their
+separate null-subject policy. New restock movements use `return_received`.
+Erasure is allowed during `refund_reconcile`: it preserves the entire frozen
+refund authority, and later completion uses the retained provider reference.
+The order fence serializes erasure with fulfillment writers; exact scrub guards
+permit no change to financial/state/version cells. Subsequent fulfillment on an
+erased order stores fixed scrub markers, including mailbox-linked guest orders
+whose proof links have already been deleted.
 Snapshot guards permit only the exact privacy scrub under an unassumable,
 non-BYPASSRLS executor role; runtime cannot use that exception directly. For
 checkout, quote, adjustment and receipt copies the owner module's guard trigger

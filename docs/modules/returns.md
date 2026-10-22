@@ -175,6 +175,13 @@ It verifies tenant, order, currency and the entire original paid total, then
 commits a refund intent before calling `PaymentPort.Refund`. The intent freezes
 the provider reference, original capture version, PSP key, amount and accounts.
 A retry resumes this stored intent before consulting mutable configuration.
+Privacy erasure retains this opaque provider reference, refund keys, amounts,
+currency, identities, states and timestamps as explicitly classified financial
+obligations for recovery/reconciliation and accounting. It scrubs personal
+reason/receipt text and every return-derived inventory reason, including while
+the refund is in `refund_reconcile`; recovery must still complete afterward.
+Restock movements write the fixed non-PII code `return_received`. The privacy
+executor may only write exact scrub markers and cannot alter refund authority.
 Provider-success/database-failure retries reuse the same Payment Port fingerprint.
 
 The final tenant transaction posts a `return` / `refund` ledger journal, debiting

@@ -32,7 +32,7 @@ ERASED = {
     # Guest order linked to the customer by mailbox proof (customer_guest_order_links).
     "orders.guest_contact", "order_adjustments.reason",
     "shipments.carrier", "shipments.tracking_number", "returns.reason",
-    "returns.creation_response", "returns.receive_response", "returns.provider_ref",
+    "returns.creation_response", "returns.receive_response", "inventory_movements.reason",
 }
 # Retain strategy, a different subject (staff, merchant, guest, inquiry contact),
 # or no verified owner (null_subject_policy): customer erasure must not touch them.
@@ -44,7 +44,7 @@ RETAINED = {
     "site_drafts.title", "site_drafts.description", "site_drafts.navigation", "draft_pages.document",
     "draft_operations.operation", "site_releases.manifest", "site_release_templates.document",
     "inquiries.buyer_email", "inquiries.buyer_name", "inquiries.message",
-    "media_assets.filename", "media_uploads.original_filename", "inventory_movements.reason",
+    "media_assets.filename", "media_uploads.original_filename",
     "audit_events.payload",
     "outbox_events.payload", "outbox_events.last_error", "webhook_inbox.payload_reference",
     "queue.river_job.args", "queue.river_job.errors", "queue.river_job.metadata",
@@ -82,7 +82,7 @@ SET LOCAL bytea_output='escape';
 -- Capture every non-PII financial/state/identity cell before controlled erasure.
 CREATE TEMP TABLE privacy_fulfillment_before AS
  SELECT 'shipments' tab,id,to_jsonb(s)-ARRAY['carrier','tracking_number'] facts FROM app.shipments s
- UNION ALL SELECT 'returns',id,to_jsonb(r)-ARRAY['reason','provider_ref','creation_response','receive_response'] FROM app.returns r
+ UNION ALL SELECT 'returns',id,to_jsonb(r)-ARRAY['reason','creation_response','receive_response'] FROM app.returns r
  UNION ALL SELECT 'inventory_movements',id,to_jsonb(m)-'reason' FROM app.inventory_movements m;
 CREATE TEMP TABLE privacy_canary(key text PRIMARY KEY,val text NOT NULL,expect text NOT NULL) ON COMMIT DROP;
 INSERT INTO privacy_canary VALUES {rows};
@@ -123,7 +123,7 @@ END $linked_future$;
 DO $after$ DECLARE leaked text; lost text; BEGIN
  IF EXISTS(SELECT FROM privacy_fulfillment_before b LEFT JOIN (
   SELECT 'shipments' tab,id,to_jsonb(s)-ARRAY['carrier','tracking_number'] facts FROM app.shipments s
-  UNION ALL SELECT 'returns',id,to_jsonb(r)-ARRAY['reason','provider_ref','creation_response','receive_response'] FROM app.returns r
+  UNION ALL SELECT 'returns',id,to_jsonb(r)-ARRAY['reason','creation_response','receive_response'] FROM app.returns r
   UNION ALL SELECT 'inventory_movements',id,to_jsonb(m)-'reason' FROM app.inventory_movements m
  ) a USING(tab,id) WHERE a.facts IS DISTINCT FROM b.facts) THEN
   RAISE EXCEPTION 'PRIVACY_GATE fulfillment financial/state/identity cells changed'; END IF;
@@ -136,6 +136,79 @@ DO $after$ DECLARE leaked text; lost text; BEGIN
  IF leaked IS NOT NULL THEN RAISE EXCEPTION 'PRIVACY_GATE leftover subject PII: %',leaked; END IF;
  IF lost IS NOT NULL THEN RAISE EXCEPTION 'PRIVACY_GATE erased another subject or retained field: %',lost; END IF;
 END $after$;
+-- Exercise the real closed recovery path AFTER erasure. No PSP/SMTP IO occurs.
+SET LOCAL ROLE app_returns_service;
+DO $reconcile$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;
+ rid uuid:=current_setting('privacy.fixture.return_id')::uuid; r jsonb; receipt jsonb; journal uuid;
+BEGIN
+ r:=app.returns_lock_refund(rid,'privacy-return-refund');
+ IF r->>'status'<>'refund_reconcile' OR r->>'provider_ref'<>'opaque-privacy-refund-capture'
+  OR r->>'reason'<>'[erased]' THEN RAISE EXCEPTION 'PRIVACY_GATE erased frozen recovery authority'; END IF;
+ journal:=app.post_ledger(t,r->>'currency','return',rid::text,'refund',
+  ARRAY[(r->>'income_account_id')::uuid,(r->>'cash_account_id')::uuid],
+  ARRAY['debit','credit'],ARRAY[(r->>'income_minor')::bigint,(r->>'refund_minor')::bigint]);
+ receipt:=app.returns_complete_refund(rid,r->>'refund_key',r->>'provider_ref',journal);
+ IF receipt->>'status'<>'refunded' OR receipt->>'provider_ref'<>r->>'provider_ref' THEN
+  RAISE EXCEPTION 'PRIVACY_GATE reconcile after erase failed'; END IF;
+ IF app.returns_complete_refund(rid,r->>'refund_key',r->>'provider_ref',journal) IS DISTINCT FROM receipt THEN
+  RAISE EXCEPTION 'PRIVACY_GATE reconciliation replay drifted'; END IF;
+END $reconcile$;
+RESET ROLE;
+DO $recovered_sweep$ BEGIN
+ IF EXISTS(SELECT FROM pg_temp.privacy_hits() WHERE expect='erase' AND hits IS NOT NULL) THEN
+  RAISE EXCEPTION 'PRIVACY_GATE recovery resurrected PII'; END IF;
+ IF NOT EXISTS(SELECT FROM app.inventory_movements WHERE reason='privacy-unowned-stock-control') THEN
+  RAISE EXCEPTION 'PRIVACY_GATE erased unowned stock text'; END IF;
+END $recovered_sweep$;
+-- Widen privileges only inside this rolled-back test: rejection must come
+-- from the precise scrub guard, rather than an unrelated permission error.
+GRANT UPDATE(provider_ref,status) ON app.returns TO app_data_rights_executor;
+GRANT UPDATE(quantity) ON app.inventory_movements TO app_data_rights_executor;
+SET LOCAL ROLE app_data_rights_executor;
+DO $guard_negative$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;
+ rid uuid:=current_setting('privacy.fixture.return_id')::uuid; probe text;
+BEGIN
+ UPDATE app.returns SET reason='[erased]',creation_response='{{"erased":true}}',receive_response='{{"erased":true}}' WHERE tenant_id=t AND id=rid;
+ FOREACH probe IN ARRAY ARRAY['reason','receipt','provider','state','shipment','movement','quantity'] LOOP
+  BEGIN
+   CASE probe
+    WHEN 'reason' THEN UPDATE app.returns SET reason='forged-contact' WHERE tenant_id=t AND id=rid;
+    WHEN 'receipt' THEN UPDATE app.returns SET creation_response='{{"contact":"forged"}}' WHERE tenant_id=t AND id=rid;
+    WHEN 'provider' THEN UPDATE app.returns SET provider_ref='forged' WHERE tenant_id=t AND id=rid;
+    WHEN 'state' THEN UPDATE app.returns SET status='refund_failed' WHERE tenant_id=t AND id=rid;
+    WHEN 'shipment' THEN UPDATE app.shipments SET tracking_number='forged' WHERE tenant_id=t;
+    WHEN 'movement' THEN UPDATE app.inventory_movements SET reason='forged' WHERE tenant_id=t AND owner_type='return' AND owner_id=rid;
+    WHEN 'quantity' THEN UPDATE app.inventory_movements SET quantity=quantity+1 WHERE tenant_id=t AND owner_type='return' AND owner_id=rid;
+   END CASE;
+   RAISE EXCEPTION 'PRIVACY_GATE scrub guard admitted %',probe;
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+   IF SQLERRM<>'PRIVACY_SCRUB_ONLY' THEN RAISE; END IF;
+  END;
+ END LOOP;
+END $guard_negative$;
+RESET ROLE;
+SET LOCAL ROLE app_runtime;
+DO $future_fulfillment$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;
+ oid uuid:='f0c10000-0000-4000-8000-000000000023'; lid uuid:='f0c10000-0000-4000-8000-000000000024';
+ v bigint; shipment jsonb; sid uuid; rid uuid;
+BEGIN
+ SELECT version INTO STRICT v FROM app.orders WHERE tenant_id=t AND id=oid;
+ shipment:=app.fulfillment_create_shipment(oid,v,'privacy-late-shipment','privacy-future-carrier','privacy-future-tracking',
+  jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
+ IF shipment->>'carrier'<>'[erased]' OR shipment->>'tracking_number'<>'[erased]' THEN
+  RAISE EXCEPTION 'PRIVACY_GATE future shipment resurrected PII'; END IF;
+ SELECT id INTO STRICT sid FROM app.shipment_lines WHERE tenant_id=t AND shipment_id=(shipment->>'id')::uuid;
+ SELECT version INTO STRICT v FROM app.orders WHERE tenant_id=t AND id=oid;
+ PERFORM app.returns_create(oid,v,'privacy-late-return','shipment_return','privacy-future-customer-text',
+  jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',1)));
+ SELECT id INTO STRICT rid FROM app.returns WHERE tenant_id=t AND creation_key='privacy-late-return';
+ SELECT version INTO STRICT v FROM app.orders WHERE tenant_id=t AND id=oid;
+ PERFORM app.returns_receive(rid,v,'privacy-late-receive',true);
+ IF NOT EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND id=rid AND reason='[erased]'
+  AND creation_response='{{"erased":true}}'::jsonb AND receive_response='{{"erased":true}}'::jsonb) THEN
+  RAISE EXCEPTION 'PRIVACY_GATE future return resurrected PII'; END IF;
+END $future_fulfillment$;
+RESET ROLE;
 ROLLBACK;
 """
         result = subprocess.run(["psql", os.environ["DATABASE_URL"], "-X", "-qAt"], input=sql, cwd=ROOT,
@@ -145,6 +218,31 @@ ROLLBACK;
         if result.returncode != 0:
             print(result.stderr.strip(), file=sys.stderr)
             return 1
+        # Each injected defect lives in its own disposable transaction. A failed
+        # assertion must identify that defect; unrelated fixture failures do not
+        # count as RED. psql disconnect rolls back the failed transaction.
+        mutations = (
+            ("exact scrub", "SET LOCAL ROLE app_data_rights_executor;\nDO $guard_negative$",
+             "CREATE OR REPLACE FUNCTION app.data_rights_scrub_guard() RETURNS trigger "
+             "LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp "
+             "AS $mutant$ BEGIN RETURN NEW; END $mutant$;\n",
+             "PRIVACY_GATE scrub guard admitted reason"),
+            ("future fulfillment", "SET LOCAL ROLE app_runtime;\nDO $future_fulfillment$",
+             "DROP TRIGGER data_rights_fulfillment_erased_guard ON app.shipments;\n",
+             "PRIVACY_GATE future shipment resurrected PII"),
+        )
+        for name, anchor, fault, marker in mutations:
+            if sql.count(anchor) != 1:
+                print(f"FAIL: mutation anchor missing for {name}", file=sys.stderr)
+                return 1
+            mutant = subprocess.run(["psql", os.environ["DATABASE_URL"], "-X", "-qAt"],
+                                    input=sql.replace(anchor, fault + anchor), cwd=ROOT,
+                                    text=True, capture_output=True, timeout=300)
+            if mutant.returncode == 0 or marker not in mutant.stderr:
+                print(f"FAIL: {name} mutation did not reach its expected RED assertion", file=sys.stderr)
+                print(mutant.stderr.strip(), file=sys.stderr)
+                return 1
+            print(f"PASS: {name} control GREEN / injected defect RED ({marker})")
     print(f"PASS: erasure removed {len(ERASED)} subject canaries and kept {len(RETAINED)} retained/other-subject canaries")
     return 0
 

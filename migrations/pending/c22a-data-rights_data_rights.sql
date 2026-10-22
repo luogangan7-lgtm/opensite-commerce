@@ -1,4 +1,5 @@
 -- stable-id: c22a-data-rights
+-- depends-on: c20a-fulfillment
 -- Data rights owns export requests and append-only erasure receipts.
 -- Depends on customers/orders/cart/notifications/quotes. Trusted services call capability functions.
 -- Invariants: tenant/customer locks before request locks; no credentials exported;
@@ -112,6 +113,16 @@ GRANT SELECT(tenant_id,id,order_id),UPDATE(reason) ON app.order_adjustments TO a
 GRANT SELECT(tenant_id,actor_kind,actor_id,operation,idempotency_key,response_body,response_body_reference),UPDATE(response_body,response_body_reference) ON app.idempotency_records TO app_data_rights_executor;
 GRANT SELECT(tenant_id,customer_id),DELETE ON app.customer_auth_tokens,app.customer_sessions,app.customer_guest_order_links TO app_data_rights_executor;
 GRANT SELECT(order_id) ON app.customer_guest_order_links TO app_data_rights_executor;
+-- Financial authority (including provider_ref) is read-only to privacy.
+GRANT SELECT ON app.shipments,app.returns,app.inventory_movements TO app_data_rights_executor;
+GRANT UPDATE(carrier,tracking_number) ON app.shipments TO app_data_rights_executor;
+GRANT UPDATE(reason,creation_response,receive_response) ON app.returns TO app_data_rights_executor;
+GRANT UPDATE(reason) ON app.inventory_movements TO app_data_rights_executor;
+DO $fulfillment_privacy_rls$ DECLARE n text; BEGIN
+ FOREACH n IN ARRAY ARRAY['shipments','returns','inventory_movements'] LOOP
+  EXECUTE format('CREATE POLICY data_rights_scope ON app.%I TO app_data_rights_executor USING(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK(tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',n);
+ END LOOP;
+END $fulfillment_privacy_rls$;
 CREATE POLICY data_rights_scope ON app.outbox_events TO app_data_rights_executor USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid) WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid AND delivery_target='notifications.email');
 
 CREATE FUNCTION app.data_rights_context() RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
@@ -142,6 +153,11 @@ CREATE FUNCTION app.data_rights_scrub_values(p_table text,p_old jsonb) RETURNS j
   WHEN 'quotes' THEN jsonb_build_object('snapshot',app.data_rights_quote_scrub(p_old->'snapshot'))
   WHEN 'quote_lines' THEN jsonb_build_object('description','[erased]','snapshot','{"erased":true}'::jsonb)
   WHEN 'order_adjustments' THEN jsonb_build_object('reason','[erased]')
+  WHEN 'shipments' THEN jsonb_build_object('carrier','[erased]','tracking_number','[erased]')
+  WHEN 'returns' THEN jsonb_build_object('reason','[erased]',
+   'creation_response',CASE WHEN jsonb_typeof(p_old->'creation_response')='object' THEN '{"erased":true}'::jsonb ELSE 'null'::jsonb END,
+   'receive_response',CASE WHEN jsonb_typeof(p_old->'receive_response')='object' THEN '{"erased":true}'::jsonb ELSE 'null'::jsonb END)
+  WHEN 'inventory_movements' THEN jsonb_build_object('reason','[erased]')
   WHEN 'idempotency_records' THEN jsonb_build_object(
    'response_body',CASE WHEN jsonb_typeof(p_old->'response_body')='object' THEN '{"erased":true}'::jsonb ELSE 'null'::jsonb END,
    'response_body_reference',CASE WHEN jsonb_typeof(p_old->'response_body_reference')='string' THEN '"erased"'::jsonb ELSE 'null'::jsonb END)
@@ -327,7 +343,7 @@ CREATE FUNCTION app.data_rights_receipt_owned(p_customer uuid,p_kind text,p_acto
    WHERE q.tenant_id=app.data_rights_context() AND q.accepted_by=p_customer AND q.id::text=p_body->>'id'));
 $fn$;
 CREATE FUNCTION app.data_rights_erase_customer(p_customer uuid,p_actor_kind text,p_actor_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
-DECLARE t uuid:=app.data_rights_context();c app.customers; owned uuid[]; requests jsonb; naddr integer;ncred integer;nb2b integer;norder integer;nline integer;nnotification integer;ncheckout integer;nattempt integer;nquote integer;nquoteline integer;nadjust integer;nreceipt integer;nauth integer;n integer;
+DECLARE t uuid:=app.data_rights_context();c app.customers; owned uuid[]; requests jsonb; naddr integer;ncred integer;nb2b integer;norder integer;nline integer;nnotification integer;ncheckout integer;nattempt integer;nquote integer;nquoteline integer;nadjust integer;nreceipt integer;nauth integer;nshipment integer;nreturn integer;nmovement integer;n integer;
 BEGIN
  IF p_customer IS NULL OR p_actor_id IS NULL OR p_actor_kind IS NULL OR p_actor_kind NOT IN('user','api_key','service') THEN RAISE EXCEPTION 'PRIVACY_INVALID' USING ERRCODE='22023'; END IF;
  -- Existing financial writers lock order before notification fanout locks customer.
@@ -339,6 +355,20 @@ BEGIN
  PERFORM id FROM app.orders WHERE tenant_id=t AND id IN(SELECT app.data_rights_customer_orders(t,p_customer)) ORDER BY id FOR UPDATE NOWAIT;
  -- Fixed before any link is deleted: own + mailbox-linked guest orders.
  SELECT coalesce(array_agg(o ORDER BY o),'{}') INTO owned FROM app.data_rights_customer_orders(t,p_customer) o;
+ -- Fulfillment writers lock Order -> Returns -> Inventory; the Order fence
+ -- serializes them with erasure even while PSP IO occurs outside the DB.
+ -- NOWAIT on copies prevents inversion with an older/in-flight writer.
+ PERFORM id FROM app.returns WHERE tenant_id=t AND order_id=ANY(owned) ORDER BY id FOR UPDATE NOWAIT;
+ PERFORM id FROM app.shipments WHERE tenant_id=t AND order_id=ANY(owned) ORDER BY id FOR UPDATE NOWAIT;
+ PERFORM m.id FROM app.inventory_movements m JOIN app.returns r ON(r.tenant_id,r.id)=(m.tenant_id,m.owner_id)
+  WHERE m.tenant_id=t AND m.owner_type='return' AND r.order_id=ANY(owned) ORDER BY m.id FOR UPDATE OF m NOWAIT;
+ UPDATE app.shipments SET carrier='[erased]',tracking_number='[erased]' WHERE tenant_id=t AND order_id=ANY(owned);GET DIAGNOSTICS nshipment=ROW_COUNT;
+ UPDATE app.returns SET reason='[erased]',
+  creation_response=CASE WHEN creation_response IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END,
+  receive_response=CASE WHEN receive_response IS NULL THEN NULL ELSE '{"erased":true}'::jsonb END
+  WHERE tenant_id=t AND order_id=ANY(owned);GET DIAGNOSTICS nreturn=ROW_COUNT;
+ UPDATE app.inventory_movements m SET reason='[erased]' FROM app.returns r
+  WHERE (r.tenant_id,r.id)=(m.tenant_id,m.owner_id) AND m.tenant_id=t AND m.owner_type='return' AND r.order_id=ANY(owned);GET DIAGNOSTICS nmovement=ROW_COUNT;
  PERFORM id FROM app.data_rights_exports WHERE tenant_id=t AND customer_id=p_customer ORDER BY id FOR UPDATE;
  SELECT coalesce(jsonb_agg(id ORDER BY id),'[]'::jsonb) INTO requests FROM app.data_rights_exports WHERE tenant_id=t AND customer_id=p_customer;
  UPDATE app.data_rights_exports SET status='revoked',token_hash=NULL,content_hash=NULL WHERE tenant_id=t AND customer_id=p_customer;
@@ -400,8 +430,8 @@ BEGIN
  UPDATE app.order_lines l SET tax_snapshot=app.data_rights_tax_scrub(l.tax_snapshot) WHERE l.tenant_id=t AND l.order_id=ANY(owned);GET DIAGNOSTICS nline=ROW_COUNT;
  UPDATE app.customers SET email='erased+'||id::text||'@erased.invalid',display_name='[erased]',status='disabled' WHERE tenant_id=t AND id=p_customer;
  INSERT INTO app.data_rights_erasures(tenant_id,customer_id,actor_kind,actor_id) VALUES(t,p_customer,p_actor_kind,p_actor_id) ON CONFLICT DO NOTHING;
- INSERT INTO app.audit_events(tenant_id,actor_kind,actor_id,operation,resource_type,resource_id,payload) VALUES(t,p_actor_kind,p_actor_id,'data_rights.customer.erase','customer',p_customer,jsonb_build_object('scope','customer','addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification,'checkouts',ncheckout,'checkout_attempts',nattempt,'quotes',nquote,'quote_lines',nquoteline,'order_adjustments',nadjust,'command_receipts',nreceipt,'customer_auth',nauth));
- RETURN jsonb_build_object('customer_id',p_customer,'requests',requests,'counts',jsonb_build_object('addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification,'checkouts',ncheckout,'checkout_attempts',nattempt,'quotes',nquote,'quote_lines',nquoteline,'order_adjustments',nadjust,'command_receipts',nreceipt,'customer_auth',nauth));
+ INSERT INTO app.audit_events(tenant_id,actor_kind,actor_id,operation,resource_type,resource_id,payload) VALUES(t,p_actor_kind,p_actor_id,'data_rights.customer.erase','customer',p_customer,jsonb_build_object('scope','customer','addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification,'checkouts',ncheckout,'checkout_attempts',nattempt,'quotes',nquote,'quote_lines',nquoteline,'order_adjustments',nadjust,'command_receipts',nreceipt,'customer_auth',nauth,'shipments',nshipment,'returns',nreturn,'return_movements',nmovement));
+ RETURN jsonb_build_object('customer_id',p_customer,'requests',requests,'counts',jsonb_build_object('addresses',naddr,'credentials',ncred,'b2b',nb2b,'orders',norder,'order_lines',nline,'notifications',nnotification,'checkouts',ncheckout,'checkout_attempts',nattempt,'quotes',nquote,'quote_lines',nquoteline,'order_adjustments',nadjust,'command_receipts',nreceipt,'customer_auth',nauth,'shipments',nshipment,'returns',nreturn,'return_movements',nmovement));
 END $fn$;
 -- Immutable receipt is the restore/re-erasure barrier; no raw PII is retained.
 CREATE FUNCTION app.data_rights_erasure_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$
@@ -542,11 +572,36 @@ DROP TRIGGER order_adjustments_snapshot_guard ON app.order_adjustments;
 CREATE TRIGGER order_adjustments_snapshot_guard BEFORE INSERT OR UPDATE OR DELETE ON app.order_adjustments FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.orders_child_guard();
 DROP TRIGGER idempotency_identity ON app.idempotency_records;
 CREATE TRIGGER idempotency_identity BEFORE UPDATE ON app.idempotency_records FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.guard_idempotency_identity();
+DROP TRIGGER shipment_header_immutable ON app.shipments;
+CREATE TRIGGER shipment_header_immutable BEFORE INSERT OR UPDATE OR DELETE ON app.shipments FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.fulfillment_header_guard();
+DROP TRIGGER return_header_immutable ON app.returns;
+CREATE TRIGGER return_header_immutable BEFORE INSERT OR UPDATE OR DELETE ON app.returns FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.fulfillment_header_guard();
+DROP TRIGGER inventory_movements_immutable ON app.inventory_movements;
+CREATE TRIGGER inventory_movements_immutable BEFORE UPDATE OR DELETE ON app.inventory_movements FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.inventory_immutable_movement();
 DO $scrub_triggers$ DECLARE n text; BEGIN
- FOREACH n IN ARRAY ARRAY['checkout_sessions','checkout_attempts','quotes','quote_lines','order_adjustments','idempotency_records'] LOOP
+ FOREACH n IN ARRAY ARRAY['checkout_sessions','checkout_attempts','quotes','quote_lines','order_adjustments','idempotency_records','shipments','returns','inventory_movements'] LOOP
   EXECUTE format('CREATE TRIGGER data_rights_scrub_guard BEFORE INSERT OR UPDATE OR DELETE ON app.%I FOR EACH ROW WHEN (current_user=''app_data_rights_executor'') EXECUTE FUNCTION app.data_rights_scrub_guard()',n);
  END LOOP;
 END $scrub_triggers$;
+-- Order is the common writer fence. The exact order scrub is also the durable
+-- tombstone for mailbox-linked guest orders after their proof links are deleted.
+-- Normal fulfillment commands keep working, but cannot create fresh PII copies.
+CREATE FUNCTION app.data_rights_fulfillment_erased_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
+BEGIN
+ IF EXISTS(SELECT FROM app.orders o WHERE o.tenant_id=NEW.tenant_id AND o.id=NEW.order_id
+  AND (EXISTS(SELECT FROM app.data_rights_erasures e WHERE (e.tenant_id,e.customer_id)=(o.tenant_id,o.customer_id))
+   OR o.shipping_snapshot=jsonb_build_object('erased',true,'amount_minor',o.shipping_minor,'currency',o.currency))) THEN
+  IF TG_TABLE_NAME='shipments' THEN NEW.carrier:='[erased]';NEW.tracking_number:='[erased]';
+  ELSE
+   NEW.reason:='[erased]';
+   IF NEW.creation_response IS NOT NULL THEN NEW.creation_response:='{"erased":true}'::jsonb; END IF;
+   IF NEW.receive_response IS NOT NULL THEN NEW.receive_response:='{"erased":true}'::jsonb; END IF;
+  END IF;
+ END IF;
+ RETURN NEW;
+END $fn$;
+CREATE TRIGGER data_rights_fulfillment_erased_guard BEFORE INSERT OR UPDATE ON app.shipments FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.data_rights_fulfillment_erased_guard();
+CREATE TRIGGER data_rights_fulfillment_erased_guard BEFORE INSERT OR UPDATE ON app.returns FOR EACH ROW WHEN (current_user<>'app_data_rights_executor') EXECUTE FUNCTION app.data_rights_fulfillment_erased_guard();
 -- A checkout still in flight at erasure cannot write a fresh personal copy:
 -- later results for a scrubbed session are stored as the erased marker.
 CREATE FUNCTION app.data_rights_checkout_erased_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,app,pg_temp AS $fn$

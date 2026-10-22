@@ -185,6 +185,83 @@ func (f fulfillmentFixture) stock(t *testing.T) int64 {
 	}
 	return stock
 }
+func TestFulfillmentRefundReconcileAfterCustomerErasure(t *testing.T) {
+	f := newFulfillmentFixture(t)
+	customer := uuid.NewString()
+	err := f.maint.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "INSERT INTO app.customers(tenant_id,id,email) VALUES($1,$2,'erase-refund@example.invalid')", f.tenant, customer); err != nil {
+			return err
+		}
+		// Seed the explicit mailbox-proven identity path, never email equality.
+		_, err := tx.Exec(ctx, "INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES($1,$2,$3)", f.tenant, customer, f.order.ID)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requested returnscontract.Return
+	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var err error
+		requested, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "privacy-cancel", Kind: returnscontract.UnshippedCancel, Reason: "private customer return note", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 1}}})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.journal.fail = true
+	refund := returnscontract.RefundInput{ReturnID: requested.ID, ExpectedVersion: requested.OrderVersion, IdempotencyKey: "privacy-refund"}
+	if _, err = f.returns.Refund(f.ctx, f.tenant, refund); err == nil {
+		t.Fatal("post-provider failure was not injected")
+	}
+	err = f.service.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "SELECT app.returns_fail_refund($1,$2,false)", requested.ID, refund.IdempotencyKey)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "SELECT app.data_rights_erase_customer($1,'service',$2)", customer, uuid.NewString())
+		return err
+	})
+	if err != nil {
+		t.Fatalf("refund_reconcile prevented erasure: %v", err)
+	}
+	// Recovery must use the frozen provider/key/accounts after a restart, even
+	// with no mutable capture/account resolver available.
+	f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Ledger: f.journal})
+	completed, err := f.returns.Refund(f.ctx, f.tenant, refund)
+	if err != nil || completed.Status != "refunded" || len(f.payments.Events()) != 3 {
+		t.Fatalf("erasure broke durable provider recovery: %+v err=%v effects=%d", completed, err, len(f.payments.Events()))
+	}
+	if _, err = f.returns.Refund(f.ctx, f.tenant, refund); err != nil || len(f.payments.Events()) != 3 {
+		t.Fatalf("erased refund replay repeated provider effect: err=%v effects=%d", err, len(f.payments.Events()))
+	}
+	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		late, err := f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: completed.OrderVersion, IdempotencyKey: "privacy-late-cancel", Kind: returnscontract.UnshippedCancel, Reason: "late private customer note", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 1}}})
+		if err == nil && !returnscontract.ValidID(late.ID) {
+			t.Fatal("scrubbed receipt broke the public command result identity")
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var clean bool
+		if err := tx.QueryRow(ctx, "SELECT reason='[erased]' AND creation_response=jsonb_build_object('erased',true) AND receive_response IS NULL AND provider_ref IS NOT NULL FROM app.returns WHERE tenant_id=$1 AND id=$2", f.tenant, requested.ID).Scan(&clean); err != nil {
+			return err
+		}
+		if !clean {
+			t.Fatal("refund recovery lost retained authority or resurrected personal copies")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFulfillmentPartialShipmentCancelRemainderRefund(t *testing.T) {
 	f := newFulfillmentFixture(t)
 	if got := f.stock(t); got != 16 {

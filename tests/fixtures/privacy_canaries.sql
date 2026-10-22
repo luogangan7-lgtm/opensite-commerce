@@ -152,7 +152,7 @@ BEGIN
  VALUES(t,staff,{{canary:media_uploads.original_filename}}||'.txt',clock_timestamp()+interval '1 hour');
 
  -- App commands preserve their real ownership fences and emit derivative rows.
- PERFORM app.inventory_adjust(sku,20,{{canary:inventory_movements.reason}},uuidv7(),'inbound');
+ PERFORM app.inventory_adjust(sku,20,'privacy-unowned-stock-control',uuidv7(),'inbound');
  reservation := app.inventory_reserve(sku,1,'order',registered_order,'privacy-registered-hold',900);
  registered := app.orders_create(registered_order,'privacy-registered-order',
   sha256('privacy-registered-order'::bytea),customer,NULL,'USD',5,
@@ -228,6 +228,17 @@ BEGIN
  return_id := (return_receipt->>'id')::uuid;
  SELECT * INTO STRICT registered FROM app.orders WHERE tenant_id=t AND id=fulfillment_order;
  PERFORM app.returns_receive(return_id,registered.version,'privacy-return-receive',true);
+ IF NOT EXISTS(SELECT FROM app.inventory_movements WHERE tenant_id=t AND owner_type='return'
+  AND owner_id=return_id AND reason='return_received') THEN
+  RAISE EXCEPTION 'PRIVACY_GATE return restock copied personal text'; END IF;
+ -- Historical/imported derived copy, inserted with every live constraint and
+ -- immutable guard intact. Its paired stock delta keeps the ledger balanced.
+ WITH stock AS (UPDATE app.stock_levels SET on_hand=on_hand+1 WHERE tenant_id=t AND sku_id=sku RETURNING *)
+ INSERT INTO app.inventory_movements(tenant_id,warehouse_id,sku_id,owner_type,owner_id,kind,quantity,
+  on_hand_delta,reserved_delta,on_hand_after,reserved_after,reason)
+ SELECT t,stock.warehouse_id,sku,'return',return_id,'adjustment',1,1,0,stock.on_hand,stock.reserved,
+  {{canary:inventory_movements.reason}}||' '||(return_receipt->>'reason') FROM stock;
+
  INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
   (t,income_account,'privacy-return-income','USD','revenue'),
   (t,tax_account,'privacy-return-tax','USD','liability'),
@@ -235,7 +246,9 @@ BEGIN
   (t,cash_account,'privacy-return-cash','USD','asset');
  SELECT * INTO STRICT registered FROM app.orders WHERE tenant_id=t AND id=fulfillment_order;
  PERFORM app.returns_prepare_refund(return_id,registered.version,'privacy-return-refund',
-  {{canary:returns.provider_ref}},1,income_account,tax_account,shipping_account,cash_account);
+  'opaque-privacy-refund-capture',1,income_account,tax_account,shipping_account,cash_account);
+ PERFORM app.returns_fail_refund(return_id,'privacy-return-refund',false);
+ PERFORM set_config('privacy.fixture.return_id',return_id::text,true);
 
  -- Guest contact retains its own independent column canary.
  reservation := app.inventory_reserve(sku,1,'order',guest_order,'privacy-guest-hold',900);
