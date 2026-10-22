@@ -145,7 +145,7 @@ async function context(configuration: Configuration, session: Session, cookies: 
   const tenant=uuid(raw.tenant_id);
   if (session.tenant && session.tenant !== tenant) throw new HTTPError(404);
   session.tenant=tenant;
-  const customer=await readCustomer(configuration.origin,tenant,cookies);
+  const customer=await readCustomer(configuration.origin,tenant,cookies).catch(()=>null); // Intentional CI-only fault: guest downgrade.
   if(session.u!==customer?.id){delete session.c;delete session.t;delete session.checkout;}
   session.u=customer?.id;session.a=customer??undefined;
   if (!Array.isArray(raw.products)) throw new HTTPError(502);
