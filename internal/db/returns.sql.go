@@ -63,6 +63,24 @@ func (q *Queries) CreateReturn(ctx context.Context, arg CreateReturnParams) ([]b
 	return result, err
 }
 
+const failReturnRefund = `-- name: FailReturnRefund :one
+SELECT app.returns_fail_refund($1::uuid,$2::text,
+ $3::boolean)::jsonb AS result
+`
+
+type FailReturnRefundParams struct {
+	ReturnID       pgtype.UUID `json:"return_id"`
+	IdempotencyKey string      `json:"idempotency_key"`
+	Rejected       bool        `json:"rejected"`
+}
+
+func (q *Queries) FailReturnRefund(ctx context.Context, arg FailReturnRefundParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, failReturnRefund, arg.ReturnID, arg.IdempotencyKey, arg.Rejected)
+	var result []byte
+	err := row.Scan(&result)
+	return result, err
+}
+
 const getPreparedReturnRefund = `-- name: GetPreparedReturnRefund :one
 SELECT app.returns_refund_snapshot($1::uuid,$2::text)::jsonb AS result
 `

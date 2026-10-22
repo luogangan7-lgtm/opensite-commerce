@@ -49,5 +49,5 @@ jobs:
       - name: All three independent money regressions
         run: >-
           go test -race -tags pgx -count=1 -v
-          -run 'TestRefundProviderFailureState|TestRefundFailurePersistenceErrorSurfaces|TestRefundUncertainFailureRetainsReservation|TestHTTPRefundMinorLosslessSerialization|TestRefundNegativeAdjustedIncomeCapacity|TestRefundFailedIntentGuard|TestRefundRejectedThenCorrected'
-          ./internal/modules/returns/internal/service ./internal/modules/returns ./internal/db
+          -run 'TestRefundProviderFailureState|TestRefundFailurePersistenceErrorSurfaces|TestRefundUncertainFailureRetainsReservation|TestHTTPRefundMinorLosslessSerialization|TestRefundNegativeAdjustedIncomeCapacity|TestRefundFailedIntentGuard|TestRefundRejectedThenCorrected|TestRefundBeforeCaptureCannotProvePermanentNoSideEffect'
+          ./internal/modules/returns/internal/service ./internal/modules/returns ./internal/db ./internal/paymentfake

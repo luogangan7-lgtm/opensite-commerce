@@ -127,3 +127,33 @@ func TestRefundNoSideEffectEvidenceAndSuccessfulReplay(t *testing.T) {
 		t.Fatalf("successful refund replay changed result/effects: result=%+v err=%v events=%d", replay, err, len(f.Events()))
 	}
 }
+
+func TestRefundBeforeCaptureCannotProvePermanentNoSideEffect(t *testing.T) {
+	f := paymentfake.New()
+	r := request()
+	created, err := f.CreateIntent(context.Background(), r)
+	if err != nil || created.Status != payment.StatusAuthorized {
+		t.Fatalf("create result=%+v err=%v", created, err)
+	}
+	refund := operation(r, created.ProviderRef, "refund-before-capture")
+	refund.Amount.Amount = 400
+	_, err = f.Refund(context.Background(), refund)
+	var rejection *payment.PaymentError
+	if !errors.As(err, &rejection) || rejection.Code != payment.ErrorStateConflict {
+		t.Fatalf("refund before capture must reject: %v", err)
+	}
+	if rejection.NoSideEffect {
+		t.Error("uncached rejection asserted permanent no-side-effect proof for a key that can later succeed")
+	}
+	if len(f.Events()) != 1 {
+		t.Fatal("refund before capture created a provider effect")
+	}
+	if _, err = f.Capture(context.Background(), operation(r, created.ProviderRef, "capture-after-rejection")); err != nil {
+		t.Fatal(err)
+	}
+	// The exact previously rejected request can now move money under the same key.
+	result, err := f.Refund(context.Background(), refund)
+	if err != nil || result.Status != payment.StatusPartiallyRefunded || len(f.Events()) != 3 {
+		t.Fatalf("same-key refund after capture result=%+v err=%v events=%d", result, err, len(f.Events()))
+	}
+}

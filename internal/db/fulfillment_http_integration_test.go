@@ -131,7 +131,7 @@ func TestFulfillmentHTTPPartialShipmentCancellationRefundAndReplay(t *testing.T)
 	if err := json.Unmarshal(cancelledBytes, &cancelled); err != nil {
 		t.Fatal(err)
 	}
-	if cancelled.Status != "received" || !cancelled.Restocked || cancelled.RefundMinor != 230 || f.stock(t) != 18 {
+	if cancelled.Status != "received" || !cancelled.Restocked || cancelled.RefundMinor != "230" || f.stock(t) != 18 {
 		t.Fatalf("unshipped cancellation must restore two units: return=%+v stock=%d", cancelled, f.stock(t))
 	}
 	refundPath := fmt.Sprintf("/api/v1/t/%s/returns/%s/refund", f.tenant, cancelled.Id)
@@ -141,7 +141,7 @@ func TestFulfillmentHTTPPartialShipmentCancellationRefundAndReplay(t *testing.T)
 	if err := json.Unmarshal(refundedBytes, &refunded); err != nil {
 		t.Fatal(err)
 	}
-	if refunded.Status != "refunded" || refunded.RefundMinor != 230 || refunded.OrderVersion <= cancelled.OrderVersion {
+	if refunded.Status != "refunded" || refunded.RefundMinor != "230" || refunded.OrderVersion <= cancelled.OrderVersion {
 		t.Fatalf("refund response does not reflect financial completion: %+v", refunded)
 	}
 	if replay := post(a, refundPath, refundKey, cancelled.OrderVersion, []byte(`{}`), http.StatusOK); !bytes.Equal(replay, refundedBytes) {
