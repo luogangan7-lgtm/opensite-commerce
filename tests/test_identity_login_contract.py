@@ -38,6 +38,9 @@ SCOPES = {
     'quotes:read', 'quotes:write', 'organization.create', 'site.create',
     'fulfillment:write', 'returns:write',
 }
+NON_STAFF_SCOPES = {
+    'quotes:convert': 'Buyer-company conversion capability; never staff/API-key authority.',
+}
 
 
 def assert_contract(registry, source):
@@ -101,10 +104,20 @@ def assert_contract(registry, source):
     assert create['properties']['scopes']['type'] == 'array'
     assert create['properties']['scopes']['maxItems'] == len(SCOPES), 'every known scope fits in one key'
     assert set(create['properties']['scopes']['items']['enum']) == SCOPES, 'unknown scopes must fail closed'
-    # Buyer capabilities are not scopes that a staff administrator can issue.
-    staff_blocks = [body for body in blocks.values()
-                    if body.get('x-opensite-access') in {'AdminSession', 'AdminOrAPIKey'}]
-    assert {body['x-required-scope'] for body in staff_blocks if 'x-required-scope' in body} == SCOPES
+    # Access classes must never hide scopes from the canonical inventory.
+    scoped_blocks = [body for body in blocks.values() if 'x-required-scope' in body]
+    declared_scopes = {body['x-required-scope'] for body in scoped_blocks}
+    assert not SCOPES & NON_STAFF_SCOPES.keys(), 'non-staff exceptions cannot exempt staff scopes'
+    assert declared_scopes == SCOPES | NON_STAFF_SCOPES.keys(), (
+        f'route scope parity: unknown={sorted(declared_scopes - SCOPES - NON_STAFF_SCOPES.keys())}, '
+        f'stale={sorted((SCOPES | NON_STAFF_SCOPES.keys()) - declared_scopes)}')
+    for body in scoped_blocks:
+        scope = body['x-required-scope']
+        if scope in NON_STAFF_SCOPES:
+            assert body.get('x-opensite-access') == 'BuyerCompany', 'buyer scope escaped to another access class'
+        owner = next(m for m in registry['modules']
+                     if any(op['operation_id'] == body['operationId'] for op in m['operations']))
+        assert scope in owner['scopes'], f"module {owner['name']} missing scope {scope} for {body['operationId']}"
     view = schemas['APIKeyView']
     assert view['additionalProperties'] is False
     assert set(view['required']) == {'id', 'key_prefix', 'scopes', 'issued_by', 'created_at'}
@@ -132,7 +145,8 @@ check_operations(registry, ROOT / 'api/openapi.yaml')
 api = yaml.safe_load(source)
 for fault in ['anonymous session', 'login CSRF removed', 'planned status changed', 'actual status changed',
               'bearer key management', 'key CSRF removed', 'unknown scope', 'unknown staff route scope',
-              'secret in list', 'secret replay']:
+              'secret in list', 'secret replay', 'stale buyer exception', 'buyer scope on staff route',
+              'module scope missing']:
     bad_api = copy.deepcopy(api)
     bad_registry = copy.deepcopy(registry)
     if fault == 'anonymous session':
@@ -147,6 +161,12 @@ for fault in ['anonymous session', 'login CSRF removed', 'planned status changed
         bad_api['components']['schemas']['CreateAPIKey']['properties']['scopes']['items']['enum'].append('unknown:scope')
     elif fault == 'unknown staff route scope':
         bad_api['paths']['/api/v1/t/{tenant_id}/quotes/{quote_id}']['get']['x-required-scope'] = 'unknown:scope'
+    elif fault == 'stale buyer exception':
+        del bad_api['paths']['/api/v1/t/{tenant_id}/quotes/{quote_id}/orders']['post']['x-required-scope']
+    elif fault == 'buyer scope on staff route':
+        bad_api['paths']['/api/v1/t/{tenant_id}/quotes/{quote_id}']['get']['x-required-scope'] = 'quotes:convert'
+    elif fault == 'module scope missing':
+        next(m for m in bad_registry['modules'] if m['name'] == 'quotes')['scopes'].remove('quotes:convert')
     elif fault == 'secret in list':
         bad_api['components']['schemas']['APIKeyView']['properties']['key'] = {'type': 'string'}
     elif fault == 'secret replay':
@@ -161,6 +181,19 @@ for fault in ['anonymous session', 'login CSRF removed', 'planned status changed
         pass
     else:
         raise AssertionError(f'fault accepted: {fault}')
+# Probe every access class, including classes outside staff authentication.
+for access in ['AdminSession', 'AdminOrAPIKey', 'APIKey', 'InternalService', 'AuthenticatedSelf', 'BuyerCompany', 'Public']:
+    bad_api = copy.deepcopy(api)
+    bad_api['paths']['/scope-parity-probe'] = {'get': {
+        'operationId': 'scopeParityProbe', 'x-opensite-access': access,
+        'x-required-scope': 'unknown:scope',
+    }}
+    try:
+        assert_contract(registry, yaml.safe_dump(bad_api))
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError(f'unknown scope accepted for access class: {access}')
 with tempfile.TemporaryDirectory() as tmp:
     bad = Path(tmp) / 'openapi.yaml'
     bad.write_text(source.replace('operationId: createStaffLoginSession', 'operationId: orphanSession'))
@@ -170,4 +203,4 @@ with tempfile.TemporaryDirectory() as tmp:
         pass
     else:
         raise AssertionError('missing identity operation accepted')
-print('PASS: global sessions, tenant admin-only API keys, exhaustive scope allowlist and ten injected contract faults')
+print('PASS: global sessions, tenant admin-only API keys, all-route scope parity, exact buyer exceptions, module ownership and injected contract faults')
