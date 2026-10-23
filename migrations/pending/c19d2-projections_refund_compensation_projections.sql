@@ -154,15 +154,22 @@ BEGIN
  IF c.return_id IS NULL THEN RETURN; END IF;
  UPDATE app.returns SET status='refund_compensated',order_version=c.order_version+1
  WHERE tenant_id=t AND id=c.return_id AND status='refunded' AND ledger_transaction_id=c.original_journal_id;
- IF NOT FOUND AND NOT EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND id=c.return_id AND status='refund_compensated') THEN
+ IF NOT FOUND THEN
+  IF EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND id=c.return_id AND status='refund_compensated') THEN RETURN; END IF;
   RAISE EXCEPTION 'C19D2_RETURN_REVISION' USING ERRCODE='23514'; END IF;
  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
  VALUES(t,'return.refund_compensated',jsonb_build_object('return_id',c.return_id,'reversal_journal_id',p_reversal),
- 'returns.events','compensate:'||p_reversal) ON CONFLICT DO NOTHING;
+ 'returns.events','compensate:'||p_reversal);
 END $$;
 ALTER FUNCTION app.returns_compensate_refund(uuid) OWNER TO app_fulfillment_executor;
 REVOKE ALL ON FUNCTION app.returns_compensate_refund(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.returns_compensate_refund(uuid) TO app_payments_service;
+GRANT INSERT(tenant_id,event_type,payload,delivery_target,dedup_key) ON app.outbox_events TO app_fulfillment_executor;
+CREATE POLICY returns_compensation_outbox ON app.outbox_events FOR INSERT TO app_fulfillment_executor
+ WITH CHECK(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid
+  AND delivery_target='returns.events' AND event_type='return.refund_compensated');
+CREATE POLICY returns_compensation_outbox_namespace ON app.outbox_events AS RESTRICTIVE FOR INSERT TO app_runtime
+ WITH CHECK(event_type<>'return.refund_compensated' AND NOT(delivery_target='returns.events' AND starts_with(dedup_key,'compensate:')));
 GRANT SELECT ON app.payment_refund_terminals,app.payment_refund_reversals,app.ledger_transactions TO app_orders_executor,app_fulfillment_executor;
 -- The closed Orders budget still treats compensated allocation as permanently sealed.
 CREATE OR REPLACE FUNCTION app.orders_refund_budget(p_order uuid,p_phase text,p_return uuid,
