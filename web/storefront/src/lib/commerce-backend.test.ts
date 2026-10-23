@@ -37,7 +37,7 @@ beforeEach(() => {
     return new Response(`{"id":"${cart}","currency":"USD","version":1,"lines":[{"sku_id":"${sku}","quantity":1,"sellable":true,"unit_amount":9223372036854775807,"line_amount":9223372036854775807}],"subtotal":9223372036854775807}`,{headers:{ETag:etag,'Content-Type':'application/json'}});
   },{preconnect:globalThis.fetch.preconnect}));
 });
-afterEach(()=>{mock?.mockRestore();for(const name of names){const value=saved.get(name);if(value===undefined)delete process.env[name];else process.env[name]=value;}});
+afterEach(()=>{delete (globalThis as typeof globalThis & {__OSC_COMMERCE_TEST_HTTP__?:boolean}).__OSC_COMMERCE_TEST_HTTP__;mock?.mockRestore();for(const name of names){const value=saved.get(name);if(value===undefined)delete process.env[name];else process.env[name]=value;}});
 test('configured backend creates and reads the real cart with cookie-only capability and exact int64 amounts',async()=>{
   const jar=cookies(), context=await readPurchaseContext(request('context'),jar.jar);
   expect(context.enabled).toBe(true);expect(context.fixture).toBe(false);

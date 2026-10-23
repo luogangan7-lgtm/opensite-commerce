@@ -33,6 +33,10 @@ import (
 )
 
 func FromEnvironment(ctx context.Context, config Config) (Config, func(), error) {
+	stripeEnabled, stripeErr := stripeSandboxEnvironment()
+	if stripeErr != nil {
+		return Config{}, nil, stripeErr
+	}
 	fakeEnvironment, err := checkoutEnvironment(os.Getenv)
 	if err != nil {
 		return Config{}, nil, err
@@ -48,6 +52,9 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			return Config{}, nil, errors.New("Fake checkout and payment signing keys conflict")
 		}
 		fakeEnabled, fakeKey = true, fakeEnvironment.key
+	}
+	if stripeEnabled && (fakeEnabled || fakeEnvironment.enabled) {
+		return Config{}, nil, errors.New("Stripe sandbox and Fake configuration conflict")
 	}
 	// Bound all capability pool probes together, including explicit DSNs.
 	startup, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -100,8 +107,8 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	if err != nil {
 		return Config{}, nil, err
 	}
-	if fakeEnabled && runtimeURL == "" {
-		return Config{}, nil, errors.New("Fake payment requires the runtime database")
+	if (fakeEnabled || stripeEnabled) && runtimeURL == "" {
+		return Config{}, nil, errors.New("Payment provider requires the runtime database")
 	}
 	if url := runtimeURL; url != "" {
 		runner, err := pgxadapter.OpenQueryRunner(startup, url)
@@ -110,6 +117,12 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			return Config{}, nil, err
 		}
 		runners = append(runners, runner)
+		if stripeEnabled {
+			if err := wireStripePayments(&config, runner); err != nil {
+				closeRuntime()
+				return Config{}, nil, err
+			}
+		}
 		if fakeEnabled {
 			if err := wireFakePayments(&config, runner, fakeKey); err != nil {
 				closeRuntime()
@@ -155,7 +168,10 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			previous := closeRuntime
 			closeRuntime = func() { stopRefresh(); <-done; previous() }
 		}
-		if err := wireStorefrontCheckout(&config,runner); err != nil { closeRuntime(); return Config{},nil,err }
+		if err := wireStorefrontCheckout(&config, runner); err != nil {
+			closeRuntime()
+			return Config{}, nil, err
+		}
 		config.Orders.Read = runner.RunAuthorizedSnapshot
 		config.Fulfillment.Run = runner.RunAuthorizedTx
 		config.Returns.Run = runner.RunAuthorizedTx

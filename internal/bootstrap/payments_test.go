@@ -48,3 +48,25 @@ func TestFakePaymentEnvironmentAdmission(t *testing.T) {
 		})
 	}
 }
+
+func TestStripeSandboxSelection(t *testing.T) {
+	for _, tc := range []struct {
+		provider, environment, key string
+		enabled, reject            bool
+	}{
+		{"", "production", "", false, false}, {"fake", "production", "", false, false},
+		{"stripe", "test", "sk_test_fixture", false, true}, {"stripe-sandbox", "production", "sk_test_fixture", false, true},
+		{"stripe-sandbox", "test", "sk_live_fixture", false, true}, {"stripe-sandbox", "test", "rk_live_fixture", false, true},
+		{"stripe-sandbox", "test", "sk_test_fixture", true, false},
+	} {
+		t.Run(tc.provider+tc.environment, func(t *testing.T) {
+			t.Setenv("OPENSITE_PAYMENT_PROVIDER", tc.provider)
+			t.Setenv("OPENSITE_ENVIRONMENT", tc.environment)
+			t.Setenv("STRIPE_TEST_SECRET_KEY", tc.key)
+			enabled, err := stripeSandboxEnvironment()
+			if enabled != tc.enabled || (err != nil) != tc.reject {
+				t.Fatal("provider selection admission drift")
+			}
+		})
+	}
+}

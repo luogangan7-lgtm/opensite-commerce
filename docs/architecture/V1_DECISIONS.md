@@ -855,6 +855,43 @@ without calling Capture; it must retain actual money even for old sessions and
 must never be treated as permission to initiate capture. No async/batch writer
 may bypass this admission contract when C-19b introduces real-provider IO.
 
+### C-19b sandbox implementation boundary
+
+`OPENSITE_PAYMENT_PROVIDER` defaults to `fake`; the only additional value is
+`stripe-sandbox`, accepted only with `OPENSITE_ENVIRONMENT=test|development` and
+an env-only `STRIPE_TEST_SECRET_KEY` beginning `sk_test_`. Live/restricted keys
+have no admission path. No publishable key is needed. The sandbox also requires
+`STRIPE_TEST_WEBHOOK_SECRET` (from the pinned CLI listener) and
+`STRIPE_TEST_ACCOUNT_ID`, with an enabled `stripe/test` provider-account binding.
+The existing storefront tenant/origin/key/rules and runtime DB settings compose
+Checkout. Missing cart composition refuses provider IO. Only `pm_card_visa` and
+`pm_card_chargeDeclined` are admitted by `STRIPE_TEST_PAYMENT_METHOD` (Visa default).
+No customer/email/address fields are sent to Stripe.
+
+Checkout's real-payment admission rereads the persisted cart accepted total,
+locked payable and settlement currency, with the original create/capture key.
+`AdoptOrder`/quote and receipt-free recovery remain disabled for this provider;
+Fake recovery behavior is preserved. DB time bounds create retries to 23 hours
+because Stripe may prune idempotency keys after 24 hours. Confirmation/cancel
+recover the referenced PaymentIntent's terminal state. Refund retries first
+recover the operation's durable metadata; histories beyond 100 refunds fail
+closed. The sandbox supports synchronous test-card refunds; pending refunds
+remain unavailable for reconciliation rather than acquiring no-side-effect proof.
+
+The adapter uses stdlib HTTPS and equivalent constant-time HMAC-SHA256 verification
+rather than a large SDK dependency: fixed Stripe URL, bounded responses/errors,
+API version `2026-08-26.dahlia`, no redirects, exact raw bytes, rotating v1 signatures,
+and five-minute DB-clock tolerance before and after the existing stream lock.
+The mapped account, stream, inbox, Checkout and immutable Orders remain the data
+and lock authorities. The original fake inbox namespace stays isolated.
+`POST /api/v1/payments/stripe/webhook` returns 503 when unconfigured.
+
+Live mode requires a separate design/card, consent contract for any new source,
+security review, production gate and explicit owner launch authorization. It
+cannot be enabled through a sandbox flag or secret replacement. Real sandbox
+lifecycle CI is a dependent delivery unit under C-19b's line-budget split; until
+its final-SHA receipt exists the MVP Stripe acceptance row remains NOT_RUN.
+
 ### 修订后的三行 PR 序列
 
 | PR 号 | 模块与依赖 | 验收 Gate |

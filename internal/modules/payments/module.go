@@ -48,6 +48,12 @@ var accountPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 var signaturePattern = regexp.MustCompile(`^t=([0-9]{1,12}),v1=([0-9a-f]{64})$`)
 
 func New(config Config) (*Module, error) {
+	if config.Provider == "" {
+		config.Provider = "fake"
+	}
+	if config.Provider != "fake" && config.Provider != "stripe" {
+		return nil, errors.New("unsupported payment provider")
+	}
 	if len(config.Key) < 32 || config.Run == nil || config.Apply == nil {
 		return nil, errors.New("payment ingress requires key, mapped transaction and fact consumer")
 	}
@@ -134,11 +140,15 @@ func (m *Module) Receive(ctx context.Context, raw []byte, signature string) (con
 	if err != nil {
 		return contract.Receipt{}, err
 	}
+	return m.receive(ctx, raw, in, stamp)
+}
+
+func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int64) (contract.Receipt, error) {
 	receipt := contract.Receipt{EventID: in.EventID, Status: "pending"}
 	payload := sha256.Sum256(raw)
-	identity, _ := json.Marshal([4]string{"fake", "test", in.AccountID, in.EventID})
+	identity, _ := json.Marshal([4]string{m.config.Provider, "test", in.AccountID, in.EventID})
 	eventKey := sha256.Sum256(identity)
-	err = m.config.Run(ctx, in.AccountID, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
+	err := m.config.Run(ctx, in.AccountID, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
 		delta := at.Sub(time.Unix(stamp, 0))
 		if delta > 5*time.Minute || delta < -5*time.Minute {
 			return rejected()

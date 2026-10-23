@@ -890,6 +890,10 @@
         {
           "operation_id": "receiveFakePaymentEvent",
           "status": "implemented"
+        },
+        {
+          "operation_id": "receiveStripePaymentEvent",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -900,7 +904,10 @@
         "internal/contracts/payment/v1/payment_test.go",
         "internal/paymentfake/fake_test.go",
         "internal/db/payments_webhook_integration_test.go",
-        "tests/db_payments.sql"
+        "tests/db_payments.sql",
+        "internal/modules/payments/stripe_test.go",
+        "internal/db/stripe_consent_integration_test.go",
+        "tests/db_stripe_sandbox.sql"
       ],
       "scopes": [],
       "legacy_go_paths": [
@@ -910,7 +917,7 @@
       "approved_public_ports": [
         "internal/contracts/payment/v1"
       ],
-      "note": "Fake-only raw signed webhook admission, trusted immutable account mapping, existing inbox and atomic caller-transaction fact consumption. No Stripe or external PSP. Runtime cannot provision account bindings."
+      "note": "Explicit test-only Stripe Payment Port adapter and signed account-mapped inbox; default Fake remains for foundation/MVP. Real-provider existing-order adoption is disabled by durable cart-consent admission."
     },
     {
       "name": "checkout",
@@ -1824,12 +1831,29 @@
     {
       "file": "migrations/pending/fix-266_catalog_listing.sql",
       "owner": "catalog",
-      "touches_tables": ["product_listings", "serving_invalidations", "storefront_serving", "product_content_revisions", "site_release_skus"]
+      "touches_tables": [
+        "product_listings",
+        "serving_invalidations",
+        "storefront_serving",
+        "product_content_revisions",
+        "site_release_skus"
+      ]
     },
     {
       "file": "migrations/pending/ds-277_catalog_listing_version.sql",
       "owner": "catalog",
-      "touches_tables": ["product_listings"]
+      "touches_tables": [
+        "product_listings"
+      ]
+    },
+    {
+      "file": "migrations/pending/c19b-stripe_stripe_sandbox.sql",
+      "owner": "payments",
+      "touches_tables": [
+        "payment_provider_accounts",
+        "payment_events",
+        "webhook_inbox"
+      ]
     }
   ]
 }

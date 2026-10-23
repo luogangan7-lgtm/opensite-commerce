@@ -36,3 +36,28 @@ func (r *QueryRunner) RunFakePaymentTx(ctx context.Context, account string, fn f
 		return fn(ctx, tx, tenant, mapped.AtTime.Time)
 	})
 }
+
+// RunStripePaymentTx admits a fixed Stripe/test account and lends a transaction,
+// never a raw connection. Provider and tenant are local to the mapped transaction.
+func (r *QueryRunner) RunStripePaymentTx(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+	if r == nil || r.runner.pool == nil || fn == nil {
+		return errors.New("payment database unavailable")
+	}
+	return pgx.BeginFunc(ctx, r.runner.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+			return err
+		}
+		mapped, err := db.New(tx).ResolveStripePaymentAccount(ctx, account)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperrors.New(401, "unauthenticated", "Payment account not recognized")
+		}
+		if err != nil {
+			return err
+		}
+		tenant := mapped.TenantID.String()
+		if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true),set_config('app.payment_provider','stripe',true)", tenant); err != nil {
+			return err
+		}
+		return fn(ctx, tx, tenant, mapped.AtTime.Time)
+	})
+}

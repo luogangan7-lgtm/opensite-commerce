@@ -14,3 +14,7 @@ import (
 func (*QueryRunner) RunFakePaymentTx(context.Context, string, func(context.Context, pgx.Tx, string, time.Time) error) error {
 	return errors.New("payment database requires pgx build")
 }
+
+func (*QueryRunner) RunStripePaymentTx(context.Context, string, func(context.Context, pgx.Tx, string, time.Time) error) error {
+	return errors.New("payment database requires pgx build")
+}
