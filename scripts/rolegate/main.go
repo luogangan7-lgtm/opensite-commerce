@@ -1,11 +1,14 @@
 // Command rolegate rejects cluster-role SQL written directly in Go tests.
 // Responsibilities: parse every *_test.go outside the role-fixture helper package,
-// fold string literals and named string constants, and fail on CREATE/ALTER/DROP
-// ROLE, role GRANT/REVOKE, and pg_auth_members writes.
+// fold string literals and named string constants (package-level and function-local),
+// and fail on CREATE/ALTER/DROP ROLE, role GRANT/REVOKE, and pg_auth_members writes.
 // Dependencies: Go standard library only (go/ast, go/parser, go/token, strconv).
 // Called by: tests/test_pg_role_fixture.py (offline lane).
 // Invariants: comments and testdata directories are ignored; the allowlist keeps
 // the common advisory-lock helper's writes legal; exit 1 on findings.
+// Known limitations: see README.md — this gate catches accidental bypasses only;
+// pgxtest.NewRole is the real control, and fmt.Sprintf/strings.Join assembly is
+// deliberately not evaluated.
 package main
 
 import (
@@ -131,14 +134,15 @@ func main() {
 	}
 
 	// Constants may be declared in any file of the package, so resolve them after
-	// the whole tree is parsed. Only same-package top-level constants are folded.
+	// the whole tree is parsed. Only same-package top-level constants are folded;
+	// function-local constants are folded per function body while scanning.
 	defs := make(map[string][]constDef)
 	for _, pf := range files {
 		collectConsts(pf.file, pkgKey(pf.dir, pf.pkg), defs)
 	}
 	envs := make(map[string]map[string]string, len(defs))
 	for key, list := range defs {
-		envs[key] = resolveConsts(list)
+		envs[key] = resolveConsts(list, nil)
 	}
 
 	seen := make(map[string]bool)
@@ -148,34 +152,32 @@ func main() {
 			continue
 		}
 		env := envs[pkgKey(pf.dir, pf.pkg)]
-		ast.Inspect(pf.file, func(n ast.Node) bool {
-			expr, ok := n.(ast.Expr)
+		visit := func(expr ast.Expr, scope map[string]string) bool {
+			value, ok := evalString(expr, scope)
 			if !ok {
-				return true
+				// Not foldable on its own: keep descending so the foldable parts
+				// of a split statement (e.g. "CREATE " + name) are still seen.
+				return false
 			}
-			switch expr.(type) {
-			case *ast.BasicLit, *ast.Ident, *ast.BinaryExpr, *ast.ParenExpr, *ast.CallExpr:
-			default:
-				return true
+			// Maximal foldable expression: judge the folded value and never
+			// re-check its constituents. `"GRANT " + "SELECT ON t TO r"` is an
+			// object privilege, and the bare "GRANT " literal is only a fragment.
+			if clusterRoleSQL(value) {
+				pos := fset.Position(expr.Pos())
+				key := fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column)
+				if !seen[key] {
+					seen[key] = true
+					findings = append(findings, finding{
+						file:  pos.Filename,
+						line:  pos.Line,
+						col:   pos.Column,
+						value: value,
+					})
+				}
 			}
-			value, ok := evalString(expr, env)
-			if !ok || !clusterRoleSQL(value) {
-				return true
-			}
-			pos := fset.Position(expr.Pos())
-			key := fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column)
-			if seen[key] {
-				return true
-			}
-			seen[key] = true
-			findings = append(findings, finding{
-				file:  pos.Filename,
-				line:  pos.Line,
-				col:   pos.Column,
-				value: value,
-			})
 			return true
-		})
+		}
+		walkScope(pf.file, env, visit)
 	}
 
 	sort.Slice(findings, func(i, j int) bool {
@@ -232,51 +234,130 @@ func pkgKey(dir, pkg string) string {
 	return dir + "\x00" + pkg
 }
 
+// walkScope visits every expression of n with the string constants visible at that
+// point. Function bodies (and literals) extend the enclosing scope with their own
+// CONST declarations, so `const a = "CREATE "; ... db.Exec(ctx, a+b)` is folded.
+// Block-local shadowing inside one body is resolved coarsely: the last declaration
+// of a name wins for the whole body.
+func walkScope(n ast.Node, env map[string]string, visit func(ast.Expr, map[string]string) bool) {
+	switch node := n.(type) {
+	case *ast.FuncDecl:
+		if node.Body != nil {
+			walkScope(node.Body, scopeWith(env, node.Body), visit)
+		}
+		return
+	case *ast.FuncLit:
+		walkScope(node.Body, scopeWith(env, node.Body), visit)
+		return
+	}
+	if expr, ok := n.(ast.Expr); ok && visit(expr, env) {
+		return
+	}
+	ast.Inspect(n, func(child ast.Node) bool {
+		if child == nil {
+			return true
+		}
+		if child == n {
+			return true
+		}
+		walkScope(child, env, visit)
+		return false
+	})
+}
+
+// scopeWith returns env extended with the CONST declarations of one function body.
+// Declarations in nested function literals belong to that literal's own scope and
+// are skipped here; they are picked up when the literal itself is walked.
+func scopeWith(env map[string]string, body *ast.BlockStmt) map[string]string {
+	var list []constDef
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.GenDecl:
+			if node.Tok != token.CONST {
+				return true
+			}
+			list = append(list, constDefsFrom(node)...)
+			return false
+		}
+		return true
+	})
+	if len(list) == 0 {
+		return env
+	}
+	scope := resolveConsts(list, env)
+	// A local declaration shadows a package constant even when it cannot be folded
+	// (e.g. `const n = 3` under a package string constant named n): drop names that
+	// no local declaration resolves to a string.
+	folded := make(map[string]bool, len(list))
+	for _, def := range list {
+		if _, ok := evalString(def.expr, scope); ok {
+			folded[def.name] = true
+		}
+	}
+	for _, def := range list {
+		if !folded[def.name] {
+			delete(scope, def.name)
+		}
+	}
+	return scope
+}
+
 func collectConsts(file *ast.File, key string, defs map[string][]constDef) {
 	for _, decl := range file.Decls {
 		gen, ok := decl.(*ast.GenDecl)
 		if !ok || gen.Tok != token.CONST {
 			continue
 		}
-		var lastExpr ast.Expr
-		for _, spec := range gen.Specs {
-			valueSpec, ok := spec.(*ast.ValueSpec)
-			if !ok {
+		defs[key] = append(defs[key], constDefsFrom(gen)...)
+	}
+}
+
+// constDefsFrom expands one CONST declaration into name/expression pairs, skipping
+// blank names and handling the implicit repetition form `const ( a = "x"; b )`.
+func constDefsFrom(gen *ast.GenDecl) []constDef {
+	var out []constDef
+	var lastExpr ast.Expr
+	for _, spec := range gen.Specs {
+		valueSpec, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		if len(valueSpec.Values) == 0 {
+			// `const ( a = "x"; b )` repeats the previous expression.
+			if lastExpr == nil {
 				continue
 			}
-			if len(valueSpec.Values) == 0 {
-				// `const ( a = "x"; b )` repeats the previous expression.
-				if lastExpr == nil {
-					continue
+			for _, name := range valueSpec.Names {
+				if name.Name != "_" {
+					out = append(out, constDef{name: name.Name, expr: lastExpr})
 				}
-				for _, name := range valueSpec.Names {
-					addConst(defs, key, name.Name, lastExpr)
-				}
-				continue
 			}
-			lastExpr = valueSpec.Values[len(valueSpec.Values)-1]
-			for i, name := range valueSpec.Names {
-				expr := lastExpr
-				if i < len(valueSpec.Values) {
-					expr = valueSpec.Values[i]
-				}
-				addConst(defs, key, name.Name, expr)
+			continue
+		}
+		lastExpr = valueSpec.Values[len(valueSpec.Values)-1]
+		for i, name := range valueSpec.Names {
+			expr := lastExpr
+			if i < len(valueSpec.Values) {
+				expr = valueSpec.Values[i]
+			}
+			if name.Name != "_" {
+				out = append(out, constDef{name: name.Name, expr: expr})
 			}
 		}
 	}
-}
-
-func addConst(defs map[string][]constDef, key, name string, expr ast.Expr) {
-	if name == "_" {
-		return
-	}
-	defs[key] = append(defs[key], constDef{name: name, expr: expr})
+	return out
 }
 
 // resolveConsts folds string constants to a fixed point so later declarations may
-// refer to earlier or later ones in the same package.
-func resolveConsts(list []constDef) map[string]string {
-	values := make(map[string]string, len(list))
+// refer to earlier or later ones in the same scope. base is the enclosing scope
+// (package constants for a function body); it supplies values and is not mutated.
+func resolveConsts(list []constDef, base map[string]string) map[string]string {
+	values := make(map[string]string, len(list)+len(base))
+	for name, value := range base {
+		values[name] = value
+	}
 	pending := append([]constDef(nil), list...)
 	for len(pending) > 0 {
 		var next []constDef
@@ -300,9 +381,9 @@ func resolveConsts(list []constDef) map[string]string {
 	return values
 }
 
-// evalString folds string literals, `+` concatenations, parentheses, same-package
-// constants, and `string(x)` conversions. Unknown operands make the expression
-// unevaluable rather than guessed.
+// evalString folds string literals, `+` concatenations, parentheses, constants
+// visible in the current scope, and `string(x)` conversions. Unknown operands make
+// the expression unevaluable rather than guessed.
 func evalString(expr ast.Expr, consts map[string]string) (string, bool) {
 	switch e := expr.(type) {
 	case *ast.BasicLit:

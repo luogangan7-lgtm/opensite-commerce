@@ -24,6 +24,7 @@ FAIL_FIXTURES = (
     'concat_test.go',         # "CREATE " + "ROLE " + name
     'const_test.go',          # const q = "GRANT x TO "
     'const_cross_file_test.go',  # const sharedRoleSQL in another file of the package
+    'func_const_test.go',     # const prefix = "CREATE " declared inside a function body
     'raw_string_test.go',     # `CREATE ROLE x`
     'split_keyword_test.go',  # raw newline/tab between keywords
     'escape_split_test.go',   # "REVOKE x\nFROM y"
