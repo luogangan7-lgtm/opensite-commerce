@@ -273,7 +273,7 @@ func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, s
 	// The API key's issuer is the staff subject, never the key ID. Only the
 	// identity module's admitted principal can supply this projection; tenant,
 	// credential and scope checks have already succeeded on the selected route.
-	if spec.Scope == "quotes:read" || spec.Scope == "quotes:write" {
+	if (spec.Scope == "quotes:read" || spec.Scope == "quotes:write") && spec.OperationID != "getQuote" {
 		if actor, ok := identity.AuthorizationFromContext(ctx); ok && actor.TenantID == r.PathValue("tenant_id") {
 			ctx = qc.WithTrustedActor(ctx, qc.ActorIdentity{TenantID: actor.TenantID, StaffID: actor.UserID})
 		}

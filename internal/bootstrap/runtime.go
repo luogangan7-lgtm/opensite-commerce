@@ -186,7 +186,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		config.Fulfillment.Run = runner.RunAuthorizedTx
 		config.Returns.Run = runner.RunAuthorizedTx
 		if config.Notifications == nil {
-			config.Notifications = notifications.New(runner.RunAuthorizedTx)
+			_ = notifications.New(runner.RunAuthorizedTx)
 		}
 		if config.Cart == nil {
 			config.Cart = cart.NewPostgres(cart.Config{Run: runner.RunAuthorized, Read: runner.RunAuthorizedSnapshot}, nil)
