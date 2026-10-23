@@ -10,11 +10,22 @@ import (
 	"errors"
 	"fmt"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"net/netip"
 	"os"
 	"strings"
 	"time"
 )
+
+// staffSubject adapts only the Router's sealed projection for CSV/privacy
+// commands. API keys retain their key identity for idempotency and audit.
+func staffSubject(ctx context.Context) (httpapi.Subject, error) {
+	actor, err := httpapi.AuthorizedActor(ctx)
+	if err != nil {
+		return httpapi.Subject{}, err
+	}
+	return httpapi.Subject{Kind: actor.Kind, ID: actor.ID}, nil
+}
 
 // staffLoginEnvironment pairs the deployment's auth DSN (from FromEnvironment)
 // with OSC_ADMIN_ORIGIN, OSC_AUTH_SIGNING_KEY_HEX and OSC_AUTH_TRUSTED_PROXIES.

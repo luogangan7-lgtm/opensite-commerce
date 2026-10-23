@@ -26,14 +26,19 @@ import (
 	rights "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 func FromEnvironment(ctx context.Context, config Config) (Config, func(), error) {
+	if config.Subject == nil {
+		config.Subject = staffSubject
+	}
 	stripeEnabled, stripeErr := stripeSandboxEnvironment()
 	if stripeErr != nil {
 		return Config{}, nil, stripeErr
@@ -180,6 +185,9 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		config.Orders.Read = runner.RunAuthorizedSnapshot
 		config.Fulfillment.Run = runner.RunAuthorizedTx
 		config.Returns.Run = runner.RunAuthorizedTx
+		if config.Notifications == nil {
+			config.Notifications = notifications.New(runner.RunAuthorizedTx)
+		}
 		if config.Cart == nil {
 			config.Cart = cart.NewPostgres(cart.Config{Run: runner.RunAuthorized, Read: runner.RunAuthorizedSnapshot}, nil)
 		}
@@ -348,11 +356,11 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		config.CustomerOrigin, config.CustomerSecret = origin, secret
 	}
-	if fakeEnvironment.enabled {
-		if runtimeURL == "" || config.Customer == nil {
-			closeRuntime()
-			return Config{}, nil, errors.New("Fake checkout requires runtime and customer capabilities")
-		}
+	if fakeEnvironment.enabled && (runtimeURL == "" || config.Customer == nil) {
+		closeRuntime()
+		return Config{}, nil, errors.New("Fake checkout requires runtime and customer capabilities")
+	}
+	if runtimeURL != "" && (config.Quotes == nil || fakeEnvironment.enabled) {
 		quoteRuntime, closeQuoteRuntime, err = openQuoteRuntime(startup, runtimeURL)
 		if err != nil {
 			closeRuntime()
@@ -363,6 +371,14 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	if err != nil {
 		closeRuntime()
 		return Config{}, nil, err
+	}
+	if config.Quotes == nil && runtimeURL != "" {
+		config.Quotes = quotes.NewApplication(quoteRuntime)
+	}
+	// The same typed conversion/admission path also serves configured cart
+	// checkout. Quote buyer access must not depend on the quote-only Fake toggle.
+	if quoteRuntime.run != nil && config.QuoteConversion == nil && config.QuoteOrders == nil && config.Customer != nil && config.Checkout != nil && config.Checkout.Service != nil {
+		config.QuoteConversion = &QuoteConversionConfig{Runner: quoteRuntime, Quotes: quotes.New(), Orders: orders.NewQuoteCreator()}
 	}
 	if dsn := os.Getenv("OSC_PUBLIC_DATABASE_URL"); dsn != "" && config.QuotesInquiryResolver == nil {
 		var public *publish.Module
