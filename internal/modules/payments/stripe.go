@@ -87,7 +87,6 @@ func (s *Stripe) request(ctx context.Context, method, path, key string, form url
 	req.Header.Set("Stripe-Version", "2026-08-26.dahlia")
 	if method == http.MethodPost {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set("Idempotency-Key", key)
 	}
 	res, err := s.client.Do(req)
 	if err != nil {
