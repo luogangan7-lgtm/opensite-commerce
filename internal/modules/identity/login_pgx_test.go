@@ -41,6 +41,7 @@ import (
 // A Row keeps query inputs, never a transaction; Scan completes before commit.
 type testLoginDB struct {
 	runner *identityadapter.IdentityRunner
+	role   *pgxtest.FixtureRole
 }
 type testLoginRow struct{ scan func(...any) error }
 
@@ -153,9 +154,7 @@ func setupLoginPG(t *testing.T) (context.Context, *testLoginDB, string, LoginCon
 		if fixturePSQL(cleanupCtx, source, "DROP DATABASE IF EXISTS "+pgx.Identifier{database}.Sanitize()+" WITH (FORCE);") != nil {
 			t.Error("fixture database cleanup failed")
 		}
-		if fixturePSQL(cleanupCtx, source, "DROP ROLE IF EXISTS "+pgx.Identifier{role}.Sanitize()+";") != nil {
-			t.Error("fixture role cleanup failed")
-		}
+
 	})
 	fixtureURL.Path = "/" + database
 	fixtureDSN := fixtureURL.String()
@@ -187,14 +186,11 @@ func setupLoginPG(t *testing.T) (context.Context, *testLoginDB, string, LoginCon
 				return fmt.Errorf("migration failed: %s", filepath.Base(path))
 			}
 		}
-		// Generated random password is a local fixture; never a command argument.
-		if fixturePSQL(ctx, source, "CREATE ROLE "+pgx.Identifier{role}.Sanitize()+" LOGIN INHERIT PASSWORD '"+roleSecret+"'; GRANT app_auth TO "+pgx.Identifier{role}.Sanitize()+";") != nil {
-			return errors.New("fixture login unavailable")
-		}
 		return nil
 	}); initializationErr != nil {
 		t.Fatal("fixture initialization failed", initializationErr)
 	}
+	fixtureRole := pgxtest.NewRole(t, ctx, fixtureDSN, role, roleSecret, true, "app_auth")
 	runner, e := identityadapter.OpenIdentity(ctx, fixtureDSN)
 	if e != nil {
 		t.Fatal("fixture database unavailable")
@@ -210,7 +206,7 @@ func setupLoginPG(t *testing.T) (context.Context, *testLoginDB, string, LoginCon
 	}
 	authURL := *fixtureURL
 	authURL.User = url.UserPassword(role, roleSecret)
-	return ctx, &testLoginDB{runner: runner}, authURL.String(), LoginConfig{Origin: "https://admin.example.test", SigningKey: key[:]}
+	return ctx, &testLoginDB{runner: runner, role: fixtureRole}, authURL.String(), LoginConfig{Origin: "https://admin.example.test", SigningKey: key[:]}
 }
 func safeCode(e error) string {
 	if v, ok := e.(interface{ SQLState() string }); ok {
@@ -410,17 +406,31 @@ func TestLoginRoleAdmissionPostgres(t *testing.T) {
 		t.Fatal("fixture URL unavailable")
 	}
 	role := pgx.Identifier{authURL.User.Username()}.Sanitize()
+	apply := func(sql string) error {
+		switch sql {
+		case "membership":
+			db.role.Grant(t, ctx, "app_runtime", "")
+		case "restore membership":
+			db.role.Revoke(t, ctx, "app_runtime")
+		case "CREATEDB", "NOCREATEDB":
+			db.role.Alter(t, ctx, sql)
+		default:
+			_, err := db.Exec(ctx, sql)
+			return err
+		}
+		return nil
+	}
 	for _, probe := range []struct{ name, add, remove string }{
-		{"extra membership", "GRANT app_runtime TO " + role, "REVOKE app_runtime FROM " + role},
-		{"create database", "ALTER ROLE " + role + " CREATEDB", "ALTER ROLE " + role + " NOCREATEDB"},
+		{"extra membership", "membership", "restore membership"},
+		{"create database", "CREATEDB", "NOCREATEDB"},
 		{"extra catalog column", "GRANT SELECT(product_code) ON app.products TO " + role, "REVOKE SELECT(product_code) ON app.products FROM " + role},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
-			if _, e := db.Exec(ctx, probe.add); e != nil {
+			if e := apply(probe.add); e != nil {
 				t.Fatal("privilege probe failed", safeCode(e))
 			}
 			defer func() {
-				if _, e := db.Exec(ctx, probe.remove); e != nil {
+				if e := apply(probe.remove); e != nil {
 					t.Fatal("privilege probe restoration failed", safeCode(e))
 				}
 			}()

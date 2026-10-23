@@ -9,8 +9,10 @@ package pgxtest
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -206,5 +208,50 @@ func TestFixtureInitializationReleasesPostgres(t *testing.T) {
 				t.Fatal("fixture initialization leaked maintenance session advisory lock")
 			}
 		})
+	}
+}
+
+// This contract also powers CI mutation probes: wrong lock key and cancelled
+// cleanup context must both fail, while the restored helper must pass.
+func TestFixtureRolesLifecyclePostgres(t *testing.T) {
+	source := fixtureLockSource(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	observer := fixtureLockRunner(t, ctx, source)
+	name := "osc_role_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	var pid uint32
+	t.Run("cancelled owner", func(t *testing.T) {
+		owner, stop := context.WithCancel(ctx)
+		defer stop()
+		r := NewRole(t, owner, source, name, uuid.NewString(), true, "app_runtime")
+		// Multiple bootstrap bindings must reuse one backend, not deadlock.
+		second := NewRole(t, owner, source, name+"_two", uuid.NewString(), true, "app_auth")
+		if r.session != second.session {
+			t.Fatal("fixture roles did not reuse test lock")
+		}
+		pid = r.session.conn.PgConn().PID()
+		var held bool
+		if err := observer.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `SELECT EXISTS(SELECT FROM pg_locks WHERE pid=$1 AND locktype='advisory'
+    AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+    AND classid=0 AND objid=18004518 AND objsubid=1 AND mode='ExclusiveLock' AND granted)`, pid).Scan(&held)
+		}); err != nil || !held {
+			t.Fatal("role fixture lacks common database lock", err)
+		}
+		if err := observer.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, "CREATE TABLE public."+pgx.Identifier{name}.Sanitize()+"(id int); ALTER TABLE public."+pgx.Identifier{name}.Sanitize()+" OWNER TO "+pgx.Identifier{name}.Sanitize())
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		stop() // Both role cleanup and session close must survive owner cancellation.
+	})
+	var leaked bool
+	if err := observer.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT EXISTS(SELECT FROM pg_roles WHERE rolname IN ($1,$2))
+   OR to_regclass('public.' || $1) IS NOT NULL
+   OR EXISTS(SELECT FROM pg_locks WHERE pid=$3 AND locktype='advisory' AND classid=0 AND objid=18004518)`, name, name+"_two", pid).Scan(&leaked)
+	}); err != nil || leaked {
+		t.Fatal("role fixture leaked roles, owned objects or lock after cancellation", err)
 	}
 }
