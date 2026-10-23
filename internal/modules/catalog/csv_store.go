@@ -58,9 +58,7 @@ func (csvStore) preflight(ctx context.Context, tx pgx.Tx, input io.Reader) ([]cs
 			keys = append(keys, "s:"+row.SKU)
 		}
 	}
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('catalog-csv:'||$1||':'||k,0)) FROM (SELECT DISTINCT k FROM unnest($2::text[]) k ORDER BY k) ordered`, tenant, keys); err != nil {
-		return nil, report, tenant, err
-	}
+	// MUTATION PROBE: shared CSV code locks deliberately omitted.
 	// Stable lock order prevents opposite-order imports from deadlocking each other.
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].ProductCode == rows[j].ProductCode {
