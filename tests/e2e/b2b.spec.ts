@@ -21,7 +21,7 @@ async function login(page: Page, email: string) {
   await expect(page.getByRole('link', { name: 'Order history', exact: true })).toBeVisible();
   const response = await page.request.get(`${tenant}/customer/session`, { headers: { Origin: storeOrigin } });
   expect(response.status()).toBe(200);
-  return { Origin: storeOrigin, 'X-CSRF-Token': (await response.json()).csrf_token };
+  return { Host: '127.0.0.1', Origin: storeOrigin, 'X-CSRF-Token': (await response.json()).csrf_token };
 }
 
 test('real B2B inquiry quote approval prepayment order', async ({ page, browser, request }, info) => {
@@ -36,7 +36,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     const buyerHeaders = await login(page, email);
     await audit(page, info);
     // Host-derived public site; body contains no tenant/company/actor authority.
-    const inquiryResponse = await page.request.post(`${publicAPI}/inquiries`, { data: {
+    const inquiryResponse = await page.request.post(`${publicAPI}/inquiries`, { headers: { Host: '127.0.0.1' }, data: {
       buyer_email: email, buyer_name: 'B2B buyer', message: `B2B ${info.project.name}`, quantity: 2,
       product_id: 'c0900007-0000-4000-8000-000000000002',
     } });
@@ -44,12 +44,12 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     const inquiry = await inquiryResponse.json();
     expect(inquiry.status).toBe('received');
     await staff.goto(`${fixture.admin}/login`);
-    await staff.getByLabel('Email', { exact: true }).fill(fixture.ownerEmail);
+    await staff.getByLabel('Email', { exact: true }).fill('b2b-staff@example.test');
     await staff.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
     await staff.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(staff.getByRole('heading', { name: 'Open a store', exact: true })).toBeVisible();
     const staffSession = await (await staff.request.get(`${fixture.admin}/api/v1/auth/session`)).json();
-    const staffHeaders = { Origin: 'https://admin.e2e.test', 'X-CSRF-Token': staffSession.csrf_token };
+    const staffHeaders = { Host: '127.0.0.1', Origin: 'https://admin.e2e.test', 'X-CSRF-Token': staffSession.csrf_token };
     const quoteResponse = await staff.request.post(`${tenant}/quotes`, { headers: {
       ...staffHeaders, 'If-Match': '*', 'Idempotency-Key': randomUUID(),
     }, data: {

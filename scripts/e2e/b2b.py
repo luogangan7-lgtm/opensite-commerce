@@ -1,15 +1,17 @@
 """CI B2B identity prerequisites and independent read-only persistence witness.
 
 Called by run.py; production APIs own every inquiry/quote/approval/order/payment
-write. Seed only company/customer/staff identity only; Fake account mapping is the existing B2C seed.
+write. Seed only company/customer/staff identity; reuse the B2C Fake account.
 """
 TENANT = 'c0900001-0000-4000-8000-000000000001'
 
 
 def seed(psql):
     psql(f"""BEGIN;
+    INSERT INTO app.users(email,password_hash)
+      SELECT 'b2b-staff@example.test',password_hash FROM app.users WHERE email='c24-owner@example.test';
     INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
-      SELECT '{TENANT}',id,'owner' FROM app.users WHERE email='c24-owner@example.test';
+      SELECT '{TENANT}',id,'owner' FROM app.users WHERE email='b2b-staff@example.test';
     INSERT INTO app.buyer_companies(tenant_id,id,name)
       SELECT '{TENANT}',('b2b00002-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,
         'E2E B2B company '||n FROM generate_series(1,4) n;
