@@ -275,7 +275,7 @@ func stripeRefundStatus(status string) error {
 	case "succeeded":
 		return nil
 	case "failed", "canceled":
-		return &payment.PaymentError{Code: payment.ErrorNonRetryable, Message: "Stripe refund terminated without effect", NoSideEffect: true}
+		return &payment.PaymentError{Code: payment.ErrorNonRetryable, Message: "Stripe refund terminated without effect", NoSideEffect: false}
 	default:
 		return stripeError(payment.ErrorRetryable)
 	}
