@@ -13,7 +13,7 @@ function invalid():never{throw new APIError(502,'invalid_response');}
 function record(value:unknown):Record<string,unknown>{return value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:invalid();}
 function uuid(value:unknown):string{return typeof value==='string'&&validateUUID(value)?value:invalid();}
 function integer(value:unknown,min:number):number{return typeof value==='number'&&Number.isInteger(value)&&value>=min&&value<=2147483647?value:invalid();}
-function date(value:unknown):string{return typeof value==='string'&&value.length<=64&&Number.isFinite(Date.parse(value))?value:invalid();}
+function date(value:unknown):string{return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/.test(value)&&Number.isFinite(Date.parse(value))?value:invalid();}
 export function parseFailures(value:unknown):Failure[]{
  const items=record(value).items;if(!Array.isArray(items)||items.length>100)return invalid();
  return items.map(value=>{const r=record(value);

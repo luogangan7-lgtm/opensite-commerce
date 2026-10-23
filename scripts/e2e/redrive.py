@@ -5,6 +5,7 @@ explicit final-attempt fixture, never a fabricated failure or delivery result.
 """
 import json
 import time
+import urllib.request
 
 SOURCE_FILTER = "source_event_id::text IN ('c3400001-0000-4000-8000-000000000001','c3400001-0000-4000-8000-000000000002')"
 
@@ -64,3 +65,25 @@ def verify(rows):
     if any(any(row.get(key) != value for key, value in expected.items()) for row in rows):
         raise RuntimeError('Notification redrive/DLQ/outbox delivery witness differs')
     return {'status': 'PASS', 'projects': rows}
+
+
+def mailpit_witness():
+    """After worker shutdown, require one actual MIME delivery per frozen reference."""
+    def get(path):
+        with urllib.request.urlopen('http://127.0.0.1:8025/api/v1/' + path, timeout=5) as response:
+            return json.loads(response.read(1024 * 1024))
+    counts = {'desktop': 0, 'mobile': 0}
+    for item in get('messages?limit=100')['messages']:
+        if item['Subject'] != 'Order shipped':
+            continue
+        # Mailpit IDs are untrusted response data, never an arbitrary URL/path.
+        import re
+        if not re.fullmatch(r'[A-Za-z0-9-]{1,128}', item['ID']):
+            raise RuntimeError('Invalid local Mailpit message identity')
+        body = get('message/' + item['ID'])['Text']
+        for n, project in enumerate(('desktop', 'mobile'), 1):
+            if f'c1900003-0000-4000-8000-{n:012d}' in body:
+                counts[project] += 1
+    if counts != {'desktop': 1, 'mobile': 1}:
+        raise RuntimeError('Real redrive delivered duplicate or missing MIME messages: ' + json.dumps(counts))
+    return {'status': 'PASS', 'counts': counts}

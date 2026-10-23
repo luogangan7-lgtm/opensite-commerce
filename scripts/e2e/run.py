@@ -361,7 +361,9 @@ def run(receipt_dir):
                 persist()
                 raise RuntimeError("MVP E2E browser assertions failed")
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
+            command(compose_command(["stop", "--timeout", "30", "notification-worker"]), "notification-worker-stop", timeout=60)
             receipt['notification_redrive'] = redrive.verify(json.loads(ops_common.psql(redrive.WITNESS_SQL)))
+            receipt['notification_mailpit'] = redrive.mailpit_witness()
             staff = json.loads(ops_common.psql(f"""SELECT jsonb_build_object(
               'sealed',(SELECT count(*) FROM app.site_releases WHERE tenant_id='{owner_tenant}' AND site_id='c3300003-0000-4000-8000-000000000001' AND sealed),
               'visible',(SELECT count(*) FROM app.storefront_serving v CROSS JOIN LATERAL jsonb_array_elements(convert_from(v.body,'UTF8')::jsonb->'products') p WHERE v.tenant_id='{owner_tenant}' AND v.site_id='c3300003-0000-4000-8000-000000000001' AND p->>'slug' IN ('staff-desktop','staff-mobile') AND p->>'name'='Staff product '||split_part(p->>'slug','-',2)||' edited' AND p->>'description'='Staff description' AND p->'skus' @> '[{{"price_minor":"3456","currency":"USD"}}]'::jsonb),
