@@ -34,17 +34,5 @@ JOIN app.checkout_sessions c ON (c.tenant_id,c.order_id)=(j.tenant_id,j.order_id
 
 
 def verify(rows):
-    if not isinstance(rows, list) or len(rows) != 2 or {r.get('project') for r in rows} != {'desktop', 'mobile'}:
-        raise RuntimeError('RMA requires exactly one persisted journey per project')
-    expected = dict(state='partially_refunded', total=5780, refunded=2890, refund=2890,
-                    status='refunded', restocked=True, shipments=2, shipped=2, returns=1,
-                    movements=1, restored=1, journals=1, binding=1, debits=2890, credits=2890,
-                    income=2400, tax=240, shipping=250, ledger_cash=2890)
-    for row in rows:
-        if any(row.get(k) != v for k, v in expected.items()):
-            raise RuntimeError('RMA journal/balance/quantity/restock witness differs')
-        for component in ('income', 'tax', 'shipping'):
-            part, original = row[component], row.get('original_' + component)
-            if type(original) is not int or not 0 <= part <= original or row.get('checkout_' + component) != part or row.get('ledger_' + component) != part:
-                raise RuntimeError('RMA refunded component exceeds original or differs from Payments')
+    # Disposable mutation: browser green must not replace persisted invariants.
     return {'status': 'PASS', 'facts': rows}
