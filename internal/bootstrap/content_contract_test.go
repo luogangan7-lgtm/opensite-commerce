@@ -23,6 +23,9 @@ func TestStaffContentRoles(t *testing.T) {
 			want                        int
 		}{
 			{"GET", base + "/content/en", "", "", 503},
+			{"GET", base + "/content/" + strings.Repeat("x", 65), "", "", 422},
+			{"PUT", base + "/content/en", `{"title":"copy","body_blocks":[{"text":"` + strings.Repeat("x", 65530) + `"}],"seo":{}}`, `"0"`, 422},
+			{"PUT", base + "/content/en", `{"title":"copy","body_blocks":[` + strings.Repeat(`{},`, 128) + `{}],"seo":{}}`, `"0"`, 400},
 			{"PUT", base + "/content/en", `{"title":"copy","body_blocks":[],"seo":{}}`, `"0"`, 503},
 			{"PUT", base + "/content/en", `{"title":"copy","body_blocks":[],"seo":{}}`, "", 428},
 			{"PUT", base + "/content/en", `{"title":"copy","body_blocks":{},"seo":{}}`, `"0"`, 400},
