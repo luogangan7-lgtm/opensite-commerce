@@ -76,7 +76,7 @@ test('customer cart and checkout carry validated customer cookie and CSRF withou
   values.set(sessionName,bearer);
   const context=await readPurchaseContext(request('context'),jar);expect(context.actor).toBe('customer');
   expect((await send('cart',context.csrf,{sku_id:sku,quantity:1})).status).toBe(200);
-  expect((await send('preview',context.csrf,{shipping_address:{country:'US'}})).status).toBe(200);
+  expect((await send('preview',context.csrf,{shipping_address:{country:'US',postal_code:'10001'}})).status).toBe(200);
   for(const r of calls.filter(r=>/\/(carts|checkout)/.test(r.url))) {
     expect(r.headers.get('Cookie')).toBe(`${sessionName}=${bearer}`);
     expect(r.headers.has('X-Cart-Token')).toBe(false);
