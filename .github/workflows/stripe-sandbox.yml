@@ -14,7 +14,8 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     steps:
-      - run: echo 'SKIPPED: no secret (fork PR)'
+      - run: |
+          echo 'SKIPPED: no secret (fork PR)'
   stripe-sandbox:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
