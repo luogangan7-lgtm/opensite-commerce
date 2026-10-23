@@ -127,19 +127,26 @@ func (s *Service) SetProductListing(ctx context.Context, r httpapi.SetProductLis
 		return nil, invalid("Listing body is required")
 	}
 	var result httpapi.StaffProductListing
-	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
-		if err := checkContent(ctx, q, r.TenantId, r.ProductId, r.Locale, r.Params.IfMatch); err != nil {
+	err := s.transactionRaw(ctx, r.TenantId, func(q *db.Queries) error {
+		if err := lockContent(ctx, q, dbID(r.TenantId), dbID(r.ProductId)); err != nil {
 			return err
 		}
-		if _, err := listing(ctx, q, r.TenantId, r.ProductId, r.SiteId, r.Locale); err != nil {
+		current, err := listing(ctx, q, r.TenantId, r.ProductId, r.SiteId, r.Locale)
+		if err != nil {
 			return err
 		}
-		if err := q.WriteCatalogListing(ctx, db.WriteCatalogListingParams{TenantID: dbID(r.TenantId), ProductID: dbID(r.ProductId), SiteID: dbID(r.SiteId), Locale: r.Locale, Slug: r.Body.Slug, Listed: r.Body.Listed, ContentRevision: r.Body.ContentRevision}); err != nil {
+		if *contentETag(current.Revision) != r.Params.IfMatch {
+			return stale()
+		}
+		n, err := q.WriteCatalogListing(ctx, db.WriteCatalogListingParams{TenantID: dbID(r.TenantId), ProductID: dbID(r.ProductId), SiteID: dbID(r.SiteId), Locale: r.Locale, Slug: r.Body.Slug, Listed: r.Body.Listed, ContentRevision: r.Body.ContentRevision, ExpectedVersion: current.Revision})
+		if err != nil {
 			return err
 		}
-		var err error
+		if n != 1 {
+			return stale()
+		}
 		result, err = listing(ctx, q, r.TenantId, r.ProductId, r.SiteId, r.Locale)
 		return err
 	})
-	return httpapi.SetProductListing200JSONResponse{Body: result, Headers: httpapi.SetProductListing200ResponseHeaders{ETag: contentETag(result.Revision)}}, err
+	return httpapi.SetProductListing200JSONResponse{Body: result, Headers: httpapi.SetProductListing200ResponseHeaders{ETag: contentETag(result.Revision)}}, mapListingError(err)
 }

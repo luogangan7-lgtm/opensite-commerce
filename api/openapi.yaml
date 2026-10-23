@@ -93,10 +93,10 @@ paths:
       x-required-scope: catalog:write
       responses: &StaffListingResponses
         '200':
-          description: Private locale state; revision zero represents no content yet.
+          description: Private listing state; revision zero represents no listing yet.
           headers:
             Cache-Control: {schema: {type: string, const: no-store}}
-            ETag: {schema: {type: string}, description: Quoted latest content revision.}
+            ETag: {schema: {type: string}, description: "Quoted listing row version, independent of locale content revision."}
           content:
             application/json:
               schema: {$ref: '#/components/schemas/StaffProductListing'}
@@ -116,10 +116,11 @@ paths:
     put:
       tags: [Catalog]
       operationId: setProductListing
+      x-opensite-if-match-zero: true
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog:write
-      description: If-Match is the latest locale content revision, quoted; use zero for the first revision. Listing writes pin the explicit content_revision.
+      description: If-Match must equal the ETag returned by GET for this listing. It is a quoted listing row version (zero for an absent listing), independent of content revisions. Every listing write advances it, including legacy SQL writes. Listing writes pin the explicit content_revision.
       parameters:
         - {$ref: '#/components/parameters/IdempotencyKey'}
         - {$ref: '#/components/parameters/IfMatch'}
@@ -4745,7 +4746,7 @@ components:
         slug: {type: string}
         listed: {type: boolean}
         content_revision: {type: integer, format: int64, minimum: 0}
-        revision: {type: integer, format: int64, minimum: 0, description: Latest content revision used by If-Match.}
+        revision: {type: integer, format: int64, minimum: 0, description: Listing row version used by If-Match; independent of content revisions.}
     StaffPriceListInput:
       type: object
       additionalProperties: false
