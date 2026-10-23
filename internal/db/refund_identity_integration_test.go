@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -352,12 +353,27 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	completed, err := s.Refund(p.f.ctx, p.f.tenant, returnscontract.RefundInput{ReturnID: receipt.ID, ExpectedVersion: receipt.OrderVersion, IdempotencyKey: "single-money"})
-	if err != nil {
-		t.Fatal(err)
+	input := returnscontract.RefundInput{ReturnID: receipt.ID, ExpectedVersion: receipt.OrderVersion, IdempotencyKey: "single-money"}
+	crash := errors.New("abort after provider success before commit")
+	if _, err := s.(returnscontract.RefundCompleter).RefundWithCompletion(p.f.ctx, p.f.tenant, input, func(context.Context, pgx.Tx, returnscontract.Return) error { return crash }); !errors.Is(err, crash) {
+		t.Fatalf("provider-success crash was not rolled back: %v", err)
 	}
 	events := p.f.provider.fake.Events()
 	fact := events[len(events)-1]
+	var early map[string]any
+	_ = json.Unmarshal(p.raw("rma-before-commit", payment.StatusPartiallyRefunded, fact.Amount.Amount), &early)
+	early["refund_id"] = fact.EventID
+	raw, _ := json.Marshal(early)
+	if earlyReceipt, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err != nil || earlyReceipt.Status == "processed" {
+		t.Fatalf("early webhook must remain pending before durable binding: %+v %v", earlyReceipt, err)
+	}
+	completed, err := s.Refund(p.f.ctx, p.f.tenant, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replay, err := s.Refund(p.f.ctx, p.f.tenant, input); err != nil || !reflect.DeepEqual(replay, completed) {
+		t.Fatalf("completed RMA replay changed receipt: %+v %v", replay, err)
+	}
 	for _, delivery := range []string{"rma-created", "rma-updated", "rma-created"} {
 		var body map[string]any
 		_ = json.Unmarshal(p.raw(delivery, payment.StatusPartiallyRefunded, completed.RefundMinor), &body)
