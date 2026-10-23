@@ -19,7 +19,7 @@ func (r *QueryRunner) RunFakePaymentTx(ctx context.Context, account string, fn f
 		return errors.New("payment database unavailable")
 	}
 	return pgx.BeginFunc(ctx, r.runner.pool, func(tx pgx.Tx) error {
-		if _, e := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); e != nil {
+		if _, e := tx.Exec(ctx, paymentRuntimeRole(r)); e != nil {
 			return e
 		}
 		mapped, e := db.New(tx).ResolveFakePaymentAccount(ctx, account)
@@ -44,7 +44,7 @@ func (r *QueryRunner) RunStripePaymentTx(ctx context.Context, account string, fn
 		return errors.New("payment database unavailable")
 	}
 	return pgx.BeginFunc(ctx, r.runner.pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+		if _, err := tx.Exec(ctx, paymentRuntimeRole(r)); err != nil {
 			return err
 		}
 		mapped, err := db.New(tx).ResolveStripePaymentAccount(ctx, account)
@@ -60,4 +60,11 @@ func (r *QueryRunner) RunStripePaymentTx(ctx context.Context, account string, fn
 		}
 		return fn(ctx, tx, tenant, mapped.AtTime.Time)
 	})
+}
+
+func paymentRuntimeRole(r *QueryRunner) string {
+	if r.paymentIngress {
+		return "SET LOCAL ROLE app_payments_ingress"
+	}
+	return "SET LOCAL ROLE app_runtime"
 }

@@ -1384,7 +1384,7 @@ done
 # checking child aggregates. Expected next versions deliberately bypass the
 # stale-If-Match branch, so these witnesses exercise the quantity constraint.
 fulfillment_fixture() {
- sql <<'SQL' | tail -1
+ sql -v finalizer="${1:-false}" <<'SQL' | tail -1
 INSERT INTO app.tenants(name,settlement_currency) VALUES('fulfillment-race','USD') RETURNING id AS t \gset
 INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','race') RETURNING id AS p \gset
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','race','default') RETURNING id AS sku \gset
@@ -1398,6 +1398,28 @@ SELECT app.orders_create(:'oid','race-create',sha256('race'::bytea),NULL,'{"emai
  'USD',2,'{"currency":"USD","amount_minor":2,"service":"fixture"}',
  jsonb_build_array(jsonb_build_object('id',:'lid','sku_id',:'sku','sku','race','quantity',2,
  'unit_price_minor',5,'line_net_minor',10,'line_tax_minor',2,'line_total_minor',12,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
+\if :finalizer
+RESET ROLE;
+INSERT INTO app.ledger_accounts(tenant_id,code,currency,account_type) VALUES
+ (:'t','revenue','USD','revenue'),(:'t','tax_payable','USD','liability'),(:'t','shipping_revenue','USD','revenue'),(:'t','cash','USD','asset');
+INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment) VALUES(:'t','fake','c19d2-'||:'t','test');
+SET ROLE app_runtime;
+INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,currency,
+ amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version,address_snapshot)
+ VALUES(:'t',uuidv7(),'guest',repeat('a',64),'c19d2',sha256('c19d2'::bytea),uuidv7(),1,:'oid','USD',14,10,2,2,1,'{}');
+UPDATE app.checkout_sessions SET phase='ready',provider_ref='captured-race',start_result='{}' WHERE tenant_id=:'t';
+UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key='c19d2' WHERE tenant_id=:'t';
+UPDATE app.checkout_sessions SET phase='paid',final_result='{}' WHERE tenant_id=:'t';
+-- A paid Checkout alone is not original PSP authority. Seed the same mapped
+-- capture admission/outcome used by Payments before the synchronous RMA posts.
+SELECT * FROM app.resolve_fake_payment_account('c19d2-'||:'t');
+SELECT app.lock_payment_stream('c19d2-'||:'t','captured-race');
+SELECT app.admit_payment_inbox('c19d2-'||:'t','race-capture',sha256('race-capture'::bytea)) AS capture_inbox \gset
+INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
+ VALUES(:'t',:'capture_inbox','c19d2-'||:'t','captured-race',encode(sha256('race-capture'::bytea),'hex'),:'oid',1,'captured',14,'USD');
+UPDATE app.payment_events SET applied=true WHERE tenant_id=:'t' AND id=:'capture_inbox';
+SELECT app.finish_payment_inbox(:'capture_inbox',true);
+\endif
 SELECT app.orders_transition(:'oid','paid','race-paid',0);
 RESET ROLE;
 SELECT concat_ws(' ',:'t',:'oid',:'lid',:'sku');
@@ -1495,7 +1517,7 @@ expect fulfill_same_prepare_a ok;expect fulfill_same_prepare_b ok
 result fulfill_same_prepare_a "$RID";result fulfill_same_prepare_b "$RID"
 [[ $(sql <<<"SELECT status||'|'||refund_minor||'|'||order_version FROM app.returns WHERE tenant_id='$T';") == 'refund_pending|14|4' ]] || fail=1
 JID=$(sql <<SQL | tail -1
-BEGIN;SELECT set_config('app.tenant_id','$T',true);SET LOCAL ROLE app_returns_service;
+BEGIN;SELECT set_config('app.tenant_id','$T',true);SET LOCAL ROLE app_runtime;
 SELECT app.post_ledger('$T','USD','return','$RID','refund',ARRAY['$INCOME','$TAX','$SHIPPING','$CASH']::uuid[],ARRAY['debit','debit','debit','credit'],ARRAY[10,2,2,14]::bigint[]) AS jid \gset
 COMMIT;SELECT :'jid';
 SQL
@@ -1563,6 +1585,45 @@ expect fulfill_direct_rr_b 40001
 [[ $(sql <<<"SELECT sum(quantity)||'|'||(SELECT version FROM app.orders WHERE tenant_id='$T' AND id='$OID') FROM app.shipment_lines WHERE tenant_id='$T';") == '2|2' ]] || fail=1
 echo 'PASS: direct trusted RR quantity trigger writes parent before child aggregates (129)'
 echo 'PASS: fulfillment shipment/ship-cancel/return and RR stale-snapshot quantity races (120-123)'
+
+# C19d2 gate131: a posted RMA is compensated once, across synchronized RC/RR/SERIALIZABLE contenders.
+for isolation in 'read committed' 'repeatable read' 'serializable'; do
+ read -r T OID LID SKU <<<"$(fulfillment_fixture true)"
+ RID="$(sql <<SQL | tail -1
+BEGIN;SELECT set_config('app.tenant_id','$T',true);SET LOCAL ROLE app_runtime;
+SELECT app.returns_create('$OID',2,'c19d2-rma','unshipped_cancel','c19d2','[{"order_line_id":"$LID","quantity":2}]')->>'id' AS rid \gset
+RESET ROLE;
+SELECT id AS income FROM app.ledger_accounts WHERE tenant_id='$T' AND code='revenue' \gset
+SELECT id AS tax FROM app.ledger_accounts WHERE tenant_id='$T' AND code='tax_payable' \gset
+SELECT id AS shipping FROM app.ledger_accounts WHERE tenant_id='$T' AND code='shipping_revenue' \gset
+SELECT id AS cash FROM app.ledger_accounts WHERE tenant_id='$T' AND code='cash' \gset
+SET LOCAL ROLE app_returns_service;
+SELECT app.returns_prepare_refund(:'rid',3,'c19d2-money','captured-race',1,:'income',:'tax',:'shipping',:'cash');
+SELECT app.payments_post_return_refund(:'rid','c19d2-money','c19d2-refund') AS jid \gset
+SELECT app.returns_complete_refund(:'rid','c19d2-money','captured-race',:'jid');
+COMMIT; SELECT :'rid';
+SQL
+ )"
+ terminal="SELECT app.payments_finalize_refund(jsonb_build_object('tenant_id','$T','provider','fake','account_id','c19d2-$T','refund_id','c19d2-refund',
+ 'event_id','c19d2-terminal','provider_ref','captured-race','order_id','$OID','order_version',1,'amount_minor',14,'currency','USD','status','failed',
+ 'timestamp',extract(epoch FROM clock_timestamp())::bigint,'payload_hash',encode(sha256('terminal'::bytea),'hex')));"
+ gate_close 131
+ tx c19d2_first app_payments_ingress "$T" "$terminal $(park 131)" & first=$!
+ await c19d2_first advisory
+ tx c19d2_second app_payments_ingress "$T" "$terminal" "SET default_transaction_isolation='$isolation';" & second=$!
+ await c19d2_second advisory
+ gate_open 131
+ await_job c19d2_first "$first";await_job c19d2_second "$second"
+ expect c19d2_first ok
+ if [[ $isolation == 'read committed' ]]; then expect c19d2_second ok; else expect c19d2_second 40001; fi
+ tx c19d2_retry app_payments_ingress "$T" "$terminal";expect c19d2_retry ok
+ got=$(sql <<<"SELECT o.state||'|'||o.refunded_minor||'|'||r.status||'|'||(SELECT count(*) FROM app.payment_refund_reversals WHERE tenant_id='$T')||'|'||c.refunded_net_minor||'|'||c.refunded_tax_minor||'|'||c.refunded_shipping_minor FROM app.orders o JOIN app.returns r ON(r.tenant_id,r.order_id)=(o.tenant_id,o.id) JOIN app.checkout_sessions c ON(c.tenant_id,c.order_id)=(o.tenant_id,o.id) WHERE o.tenant_id='$T';")
+ if [[ $got == 'paid|0|refund_compensated|1|0|0|0' ]]; then
+  echo "PASS C19D2 gate131 exactly-once compensation $isolation"
+ else
+  echo "FAIL C19D2_RACE $isolation $got";fail=1
+ fi
+done
 
 # C-19a gates93/94: actual inbox unique-key contention and public stream lock.
 # Separate connections must be observed blocked before release; no timed ordering.

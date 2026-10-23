@@ -88,6 +88,17 @@ func (q *Queries) BindPaymentReturnRefund(ctx context.Context, arg BindPaymentRe
 	return err
 }
 
+const finalizeRefundCompensation = `-- name: FinalizeRefundCompensation :one
+SELECT app.payments_finalize_refund($1::jsonb)::jsonb AS result
+`
+
+func (q *Queries) FinalizeRefundCompensation(ctx context.Context, fact []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, finalizeRefundCompensation, fact)
+	var result []byte
+	err := row.Scan(&result)
+	return result, err
+}
+
 const finishPaymentInbox = `-- name: FinishPaymentInbox :exec
 SELECT app.finish_payment_inbox($1::uuid,$2::boolean)
 `
@@ -243,6 +254,35 @@ func (q *Queries) InsertPaymentEvent(ctx context.Context, arg InsertPaymentEvent
 	return err
 }
 
+const isPaymentRefundTerminal = `-- name: IsPaymentRefundTerminal :one
+SELECT app.payments_refund_terminal($1::text,$2::text,$3::uuid,$4::text,$5::bigint,$6::bigint,$7::text)::boolean AS terminal
+`
+
+type IsPaymentRefundTerminalParams struct {
+	Account          string      `json:"account"`
+	ProviderRefundID string      `json:"provider_refund_id"`
+	OrderID          pgtype.UUID `json:"order_id"`
+	ProviderRef      string      `json:"provider_ref"`
+	PaymentVersion   int64       `json:"payment_version"`
+	AmountMinor      int64       `json:"amount_minor"`
+	Currency         string      `json:"currency"`
+}
+
+func (q *Queries) IsPaymentRefundTerminal(ctx context.Context, arg IsPaymentRefundTerminalParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isPaymentRefundTerminal,
+		arg.Account,
+		arg.ProviderRefundID,
+		arg.OrderID,
+		arg.ProviderRef,
+		arg.PaymentVersion,
+		arg.AmountMinor,
+		arg.Currency,
+	)
+	var terminal bool
+	err := row.Scan(&terminal)
+	return terminal, err
+}
+
 const listPaymentDeliveries = `-- name: ListPaymentDeliveries :many
 SELECT id FROM app.payment_event_deliveries WHERE tenant_id=$1 AND payment_event_id=$2 ORDER BY id
 `
@@ -370,6 +410,23 @@ func (q *Queries) MatchPaymentReturnRefund(ctx context.Context, arg MatchPayment
 	var result string
 	err := row.Scan(&result)
 	return result, err
+}
+
+const postPaymentReturnRefund = `-- name: PostPaymentReturnRefund :one
+SELECT app.payments_post_return_refund($1::uuid,$2::text,$3::text)::uuid AS id
+`
+
+type PostPaymentReturnRefundParams struct {
+	ReturnID         pgtype.UUID `json:"return_id"`
+	AttemptKey       string      `json:"attempt_key"`
+	ProviderRefundID string      `json:"provider_refund_id"`
+}
+
+func (q *Queries) PostPaymentReturnRefund(ctx context.Context, arg PostPaymentReturnRefundParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, postPaymentReturnRefund, arg.ReturnID, arg.AttemptKey, arg.ProviderRefundID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const resolveFakePaymentAccount = `-- name: ResolveFakePaymentAccount :one

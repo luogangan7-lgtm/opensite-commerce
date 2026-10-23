@@ -58,6 +58,9 @@ sql:
       - "migrations/pending/fix-returns-grant_returns_tenant_auth.sql"
       - "migrations/pending/c19d-identity_refund_compensation_identity.sql"
       - "migrations/pending/c19d-ledger_refund_compensation_boundary.sql"
+      - "migrations/pending/c19d2-terminal_refund_compensation_terminal.sql"
+      - "migrations/pending/c19d2-projections_refund_compensation_projections.sql"
+      - "migrations/pending/c19d2-finalizer_atomic_refund_compensation.sql"
     queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant", "queries/pricing", "queries/catalog"]
     gen:
       go:

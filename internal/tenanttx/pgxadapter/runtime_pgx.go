@@ -16,8 +16,9 @@ import (
 )
 
 type QueryRunner struct {
-	runner Runner
-	close  func()
+	runner         Runner
+	close          func()
+	paymentIngress bool
 }
 
 func OpenQueryRunner(ctx context.Context, url string) (*QueryRunner, error) {
