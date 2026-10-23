@@ -53,7 +53,8 @@ def assert_contract(registry, source):
         **{operation: 'planned' for operation in ['createAdminSession', 'deleteAdminSession', 'getCurrentActor', 'listAdminSessions', 'revokeAdminSession']}}
     api = yaml.safe_load(source)
     blocks = {(path, method): op for path, item in api['paths'].items()
-              for method, op in item.items() if method in {'get', 'post', 'put', 'delete', 'patch'}}
+              for method, op in item.items()
+              if method in {'get', 'post', 'put', 'delete', 'patch', 'head', 'options', 'trace'}}
     for key, operation in EXPECTED.items():
         body = blocks[key]
         assert body['operationId'] == operation, key
@@ -182,9 +183,12 @@ for fault in ['anonymous session', 'login CSRF removed', 'planned status changed
     else:
         raise AssertionError(f'fault accepted: {fault}')
 # Probe every access class, including classes outside staff authentication.
-for access in ['AdminSession', 'AdminOrAPIKey', 'APIKey', 'InternalService', 'AuthenticatedSelf', 'BuyerCompany', 'Public']:
+for method, access in [
+        ('get', access) for access in ['AdminSession', 'AdminOrAPIKey', 'APIKey', 'InternalService',
+                                     'AuthenticatedSelf', 'BuyerCompany', 'CustomerSession', 'Storefront', 'Public']
+        ] + [(method, 'APIKey') for method in ['head', 'options', 'trace']]:
     bad_api = copy.deepcopy(api)
-    bad_api['paths']['/scope-parity-probe'] = {'get': {
+    bad_api['paths']['/scope-parity-probe'] = {method: {
         'operationId': 'scopeParityProbe', 'x-opensite-access': access,
         'x-required-scope': 'unknown:scope',
     }}
@@ -193,7 +197,7 @@ for access in ['AdminSession', 'AdminOrAPIKey', 'APIKey', 'InternalService', 'Au
     except AssertionError:
         pass
     else:
-        raise AssertionError(f'unknown scope accepted for access class: {access}')
+        raise AssertionError(f'unknown scope accepted for {method} / {access}')
 with tempfile.TemporaryDirectory() as tmp:
     bad = Path(tmp) / 'openapi.yaml'
     bad.write_text(source.replace('operationId: createStaffLoginSession', 'operationId: orphanSession'))
