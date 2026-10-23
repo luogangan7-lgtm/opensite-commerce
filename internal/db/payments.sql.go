@@ -28,6 +28,21 @@ func (q *Queries) AdmitPaymentInbox(ctx context.Context, arg AdmitPaymentInboxPa
 	return id, err
 }
 
+const bindPaymentDelivery = `-- name: BindPaymentDelivery :exec
+INSERT INTO app.payment_event_deliveries(tenant_id,id,payment_event_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING
+`
+
+type BindPaymentDeliveryParams struct {
+	TenantID       pgtype.UUID `json:"tenant_id"`
+	ID             pgtype.UUID `json:"id"`
+	PaymentEventID pgtype.UUID `json:"payment_event_id"`
+}
+
+func (q *Queries) BindPaymentDelivery(ctx context.Context, arg BindPaymentDeliveryParams) error {
+	_, err := q.db.Exec(ctx, bindPaymentDelivery, arg.TenantID, arg.ID, arg.PaymentEventID)
+	return err
+}
+
 const finishPaymentInbox = `-- name: FinishPaymentInbox :exec
 SELECT app.finish_payment_inbox($1::uuid,$2::boolean)
 `
@@ -43,7 +58,7 @@ func (q *Queries) FinishPaymentInbox(ctx context.Context, arg FinishPaymentInbox
 }
 
 const getPaymentEvent = `-- name: GetPaymentEvent :one
-SELECT tenant_id, id, provider, provider_account_id, environment, provider_ref, event_key, claimed_order_id, order_version, status, amount_minor, currency, applied, error_code, created_at FROM app.payment_events WHERE tenant_id=$1 AND id=$2
+SELECT tenant_id, id, provider, provider_account_id, environment, provider_ref, event_key, claimed_order_id, order_version, status, amount_minor, currency, applied, error_code, created_at, provider_refund_id FROM app.payment_events WHERE tenant_id=$1 AND id=$2
 `
 
 type GetPaymentEventParams struct {
@@ -70,12 +85,13 @@ func (q *Queries) GetPaymentEvent(ctx context.Context, arg GetPaymentEventParams
 		&i.Applied,
 		&i.ErrorCode,
 		&i.CreatedAt,
+		&i.ProviderRefundID,
 	)
 	return i, err
 }
 
 const getPaymentEventByKey = `-- name: GetPaymentEventByKey :one
-SELECT tenant_id, id, provider, provider_account_id, environment, provider_ref, event_key, claimed_order_id, order_version, status, amount_minor, currency, applied, error_code, created_at FROM app.payment_events WHERE tenant_id=$1 AND event_key=$2
+SELECT tenant_id, id, provider, provider_account_id, environment, provider_ref, event_key, claimed_order_id, order_version, status, amount_minor, currency, applied, error_code, created_at, provider_refund_id FROM app.payment_events WHERE tenant_id=$1 AND event_key=$2
 `
 
 type GetPaymentEventByKeyParams struct {
@@ -102,13 +118,37 @@ func (q *Queries) GetPaymentEventByKey(ctx context.Context, arg GetPaymentEventB
 		&i.Applied,
 		&i.ErrorCode,
 		&i.CreatedAt,
+		&i.ProviderRefundID,
 	)
 	return i, err
 }
 
+const hasLegacyPaymentRefund = `-- name: HasLegacyPaymentRefund :one
+SELECT EXISTS(SELECT 1 FROM app.payment_events WHERE tenant_id=$1 AND provider_account_id=$2 AND provider_ref=$3 AND provider=$4 AND status IN('partially_refunded','refunded') AND provider_refund_id IS NULL)
+`
+
+type HasLegacyPaymentRefundParams struct {
+	TenantID          pgtype.UUID `json:"tenant_id"`
+	ProviderAccountID string      `json:"provider_account_id"`
+	ProviderRef       string      `json:"provider_ref"`
+	Provider          string      `json:"provider"`
+}
+
+func (q *Queries) HasLegacyPaymentRefund(ctx context.Context, arg HasLegacyPaymentRefundParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasLegacyPaymentRefund,
+		arg.TenantID,
+		arg.ProviderAccountID,
+		arg.ProviderRef,
+		arg.Provider,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const insertPaymentEvent = `-- name: InsertPaymentEvent :exec
-INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING
+INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency,provider_refund_id)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING
 `
 
 type InsertPaymentEventParams struct {
@@ -122,6 +162,7 @@ type InsertPaymentEventParams struct {
 	Status            string      `json:"status"`
 	AmountMinor       int64       `json:"amount_minor"`
 	Currency          string      `json:"currency"`
+	ProviderRefundID  pgtype.Text `json:"provider_refund_id"`
 }
 
 func (q *Queries) InsertPaymentEvent(ctx context.Context, arg InsertPaymentEventParams) error {
@@ -136,12 +177,42 @@ func (q *Queries) InsertPaymentEvent(ctx context.Context, arg InsertPaymentEvent
 		arg.Status,
 		arg.AmountMinor,
 		arg.Currency,
+		arg.ProviderRefundID,
 	)
 	return err
 }
 
+const listPaymentDeliveries = `-- name: ListPaymentDeliveries :many
+SELECT id FROM app.payment_event_deliveries WHERE tenant_id=$1 AND payment_event_id=$2 ORDER BY id
+`
+
+type ListPaymentDeliveriesParams struct {
+	TenantID       pgtype.UUID `json:"tenant_id"`
+	PaymentEventID pgtype.UUID `json:"payment_event_id"`
+}
+
+func (q *Queries) ListPaymentDeliveries(ctx context.Context, arg ListPaymentDeliveriesParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listPaymentDeliveries, arg.TenantID, arg.PaymentEventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingPaymentEvents = `-- name: ListPendingPaymentEvents :many
-SELECT tenant_id, id, provider, provider_account_id, environment, provider_ref, event_key, claimed_order_id, order_version, status, amount_minor, currency, applied, error_code, created_at FROM app.payment_events WHERE tenant_id=$1 AND provider_account_id=$2 AND provider_ref=$3 AND provider=coalesce(nullif(current_setting('app.payment_provider',true),''),'fake') AND NOT applied
+SELECT tenant_id, id, provider, provider_account_id, environment, provider_ref, event_key, claimed_order_id, order_version, status, amount_minor, currency, applied, error_code, created_at, provider_refund_id FROM app.payment_events WHERE tenant_id=$1 AND provider_account_id=$2 AND provider_ref=$3 AND provider=coalesce(nullif(current_setting('app.payment_provider',true),''),'fake') AND NOT applied
 ORDER BY CASE status WHEN 'captured' THEN 0 WHEN 'failed' THEN 2 WHEN 'canceled' THEN 2 ELSE 1 END,created_at,id FOR UPDATE
 `
 
@@ -176,6 +247,7 @@ func (q *Queries) ListPendingPaymentEvents(ctx context.Context, arg ListPendingP
 			&i.Applied,
 			&i.ErrorCode,
 			&i.CreatedAt,
+			&i.ProviderRefundID,
 		); err != nil {
 			return nil, err
 		}
