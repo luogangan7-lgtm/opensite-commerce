@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -91,16 +92,7 @@ func publicLogin(t *testing.T, ctx context.Context, admin pgxadapter.Runner) str
 	t.Helper()
 	role := "c15b_public_" + strings.ReplaceAll(newUUID(t), "-", "")[:12]
 	password := strings.ReplaceAll(newUUID(t), "-", "")
-	quoted := pgx.Identifier{role}.Sanitize()
-	if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, "CREATE ROLE "+quoted+" LOGIN INHERIT NOSUPERUSER NOBYPASSRLS PASSWORD '"+password+"';GRANT app_domain_resolver TO "+quoted)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_ = admin.InMaintenance(context.Background(), func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, "DROP ROLE "+quoted); return err })
-	})
+	pgxtest.NewRole(t, ctx, os.Getenv("DATABASE_URL"), role, password, true, "app_domain_resolver")
 	u, err := url.Parse(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		t.Fatal(err)

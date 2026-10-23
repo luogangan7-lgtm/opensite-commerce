@@ -7,15 +7,16 @@ package publish_test
 
 import (
 	"context"
-	"encoding/json"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/internal/store"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"net/url"
 	"os"
@@ -66,18 +67,7 @@ func TestPublicPublishedReadPG(t *testing.T) {
 	suffix := hex.EncodeToString(secret)
 	role := "c09_public_" + suffix[:12]
 	password := suffix
-	quoted := pgx.Identifier{role}.Sanitize()
-	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, "CREATE ROLE "+quoted+" LOGIN INHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+password+"'; GRANT app_domain_resolver TO "+quoted)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := admin.InMaintenance(context.Background(), func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, "DROP ROLE "+quoted); return err }); err != nil {
-			t.Error(err)
-		}
-	}()
+	fixtureRole := pgxtest.NewRole(t, ctx, dsn, role, password, true, "app_domain_resolver")
 	u, err := url.Parse(dsn)
 	if err != nil || u.Scheme == "" {
 		t.Fatal("test DATABASE_URL must be URL form")
@@ -180,41 +170,25 @@ func TestPublicPublishedReadPG(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, option := range []string{"SET FALSE", "ADMIN TRUE"} {
-		if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, "GRANT app_domain_resolver TO "+quoted+" WITH "+option)
-			return err
-		}); err != nil {
-			t.Fatal(err)
-		}
+		fixtureRole.Grant(t, ctx, "app_domain_resolver", option)
 		if _, close, err := pgxadapter.OpenPublic(ctx, publicDSN); err == nil {
 			close()
 			t.Errorf("unsafe resolver membership option accepted: %s", option)
 		}
-		if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, "GRANT app_domain_resolver TO "+quoted+" WITH SET TRUE, ADMIN FALSE")
-			return err
-		}); err != nil {
-			t.Fatal(err)
-		}
+		fixtureRole.Grant(t, ctx, "app_domain_resolver", "SET TRUE, ADMIN FALSE")
 	}
 	// Review thread rnC5D: a second grantor's ADMIN membership must also be rejected.
-	provisioner := pgx.Identifier{"c09_prov_" + suffix[:12]}.Sanitize()
-	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, "CREATE ROLE "+provisioner+" NOLOGIN; GRANT app_domain_resolver TO "+provisioner+" WITH ADMIN OPTION; GRANT app_domain_resolver TO "+quoted+" WITH ADMIN OPTION GRANTED BY "+provisioner)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
+	provisioner := "c09_prov_" + suffix[:12]
+	grantor := pgxtest.NewRole(t, ctx, dsn, provisioner, password, true, "app_domain_resolver")
+	grantor.Alter(t, ctx, "NOLOGIN")
+	grantor.Grant(t, ctx, "app_domain_resolver", "ADMIN OPTION")
+	fixtureRole.Grant(t, ctx, "app_domain_resolver", "ADMIN OPTION", provisioner)
 	if _, close, err := pgxadapter.OpenPublic(ctx, publicDSN); err == nil {
 		close()
 		t.Error("ADMIN resolver membership from a second grantor accepted")
 	}
-	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, "REVOKE app_domain_resolver FROM "+quoted+" GRANTED BY "+provisioner+"; DROP ROLE "+provisioner)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
+	fixtureRole.Revoke(t, ctx, "app_domain_resolver", provisioner)
+	grantor.Drop(t, ctx)
 	if _, close, err := pgxadapter.OpenPublic(ctx, publicDSN); err != nil {
 		t.Fatalf("single safe membership rejected after revoking second grantor: %v", err)
 	} else {
@@ -290,12 +264,7 @@ func TestPublicPublishedReadPG(t *testing.T) {
 			t.Errorf("near-limit fixture too small: %d bytes", len(encoded))
 		}
 	}
-	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, "GRANT app_runtime TO "+quoted)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
+	fixtureRole.Grant(t, ctx, "app_runtime", "")
 	if _, close, err := pgxadapter.OpenPublic(ctx, publicDSN); err == nil {
 		close()
 		t.Fatal("mixed runtime/public membership accepted")

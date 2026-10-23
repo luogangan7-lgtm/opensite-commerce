@@ -428,26 +428,7 @@ func TestJobsPGRestrictedLoginCannotEscalate(t *testing.T) {
 		name := "c04b_login_" + role + "_" + f.tenant[:8]
 		// Random fixture-only credentials stay in parameters, never stdout or argv.
 		password := f.tenant + f.reservation
-		if _, err := f.admin.Exec(f.ctx, "CREATE ROLE "+pgx.Identifier{name}.Sanitize()+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE"); err != nil {
-			t.Fatal(err)
-		}
-		defer func() {
-			if _, err := f.admin.Exec(f.ctx, "DROP ROLE "+pgx.Identifier{name}.Sanitize()); err != nil {
-				t.Error(err)
-			}
-		}()
-		// ALTER ROLE does not accept parameter placeholders. Use PostgreSQL's own
-		// literal quoting to construct this test-only credential statement.
-		var statement string
-		if err := f.admin.QueryRow(f.ctx, "SELECT format('ALTER ROLE %I PASSWORD %L',$1::text,$2::text)", name, password).Scan(&statement); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := f.admin.Exec(f.ctx, statement); err != nil {
-			t.Fatal("fixture credential setup failed")
-		}
-		if _, err := f.admin.Exec(f.ctx, "GRANT "+pgx.Identifier{role}.Sanitize()+" TO "+pgx.Identifier{name}.Sanitize()); err != nil {
-			t.Fatal(err)
-		}
+		pgxtest.NewRole(t, f.ctx, os.Getenv("DATABASE_URL"), name, password, false, role)
 		func() {
 			cfg, err := pgx.ParseConfig(os.Getenv("DATABASE_URL"))
 			if err != nil {

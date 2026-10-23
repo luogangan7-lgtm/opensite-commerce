@@ -96,8 +96,7 @@ func (f storeFixture) publicStore(t *testing.T, ctx context.Context) *Store {
 	t.Helper()
 	role := "c15b_store_" + strings.ReplaceAll(storeUUID(t), "-", "")[:12]
 	password := strings.ReplaceAll(storeUUID(t), "-", "")
-	quoted := pgx.Identifier{role}.Sanitize()
-	f.exec(t, ctx, "CREATE ROLE "+quoted+" LOGIN INHERIT NOSUPERUSER NOBYPASSRLS PASSWORD '"+password+"';GRANT app_domain_resolver TO "+quoted)
+	pgxtest.NewRole(t, ctx, f.dsn, role, password, true, "app_domain_resolver")
 	u, err := url.Parse(f.dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -107,10 +106,7 @@ func (f storeFixture) publicStore(t *testing.T, ctx context.Context) *Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		closeStore()
-		_ = f.admin.InMaintenance(context.Background(), func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, "DROP ROLE "+quoted); return err })
-	})
+	t.Cleanup(closeStore)
 	return s
 }
 

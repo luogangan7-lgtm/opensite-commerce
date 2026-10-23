@@ -6,7 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 # GRANT object privileges contain ON; only role memberships are cluster global.
-ROLE_SQL = re.compile(r'\b(?:CREATE\s+ROLE|ALTER\s+ROLE|DROP\s+ROLE|GRANT\s+(?![^;"`\n]*\bON\b)[^;"`\n]*\bTO\b|(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:pg_catalog\.)?pg_auth_members)\b', re.I)
+ROLE_SQL = re.compile(r'\b(?:CREATE\s+ROLE\b|ALTER\s+ROLE\b|DROP\s+ROLE\b|GRANT\b(?![^;"`\n]*\bON\b)\s|(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:pg_catalog\.)?pg_auth_members\b)', re.I)
 LITERAL = re.compile(r'`[^`]*`|"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.S)
 
 
@@ -18,7 +18,7 @@ def role_sql(text):
 
 class RoleFixtureGate(unittest.TestCase):
     def test_no_raw_role_sql(self):
-        offenders = [str(p.relative_to(ROOT)) for p in ROOT.joinpath('internal').rglob('*_test.go')
+        offenders = [str(p.relative_to(ROOT)) for p in ROOT.rglob('*_test.go')
                      if role_sql(p.read_text())]
         self.assertEqual(offenders, [], 'cluster role writes must use pgxtest.NewRole')
 

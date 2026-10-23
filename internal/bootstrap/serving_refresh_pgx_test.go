@@ -69,16 +69,7 @@ func loginDSN(t *testing.T, ctx context.Context, admin pgxadapter.Runner, dsn, p
 	t.Helper()
 	name := prefix + strings.ReplaceAll(refreshUUID(t), "-", "")[:12]
 	password := strings.ReplaceAll(refreshUUID(t), "-", "")
-	quoted := pgx.Identifier{name}.Sanitize()
-	if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, "CREATE ROLE "+quoted+" LOGIN INHERIT NOSUPERUSER NOBYPASSRLS PASSWORD '"+password+"';GRANT "+role+" TO "+quoted)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_ = admin.InMaintenance(context.Background(), func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, "DROP ROLE "+quoted); return err })
-	})
+	pgxtest.NewRole(t, ctx, dsn, name, password, true, role)
 	u, err := url.Parse(dsn)
 	if err != nil {
 		t.Fatal(err)

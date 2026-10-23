@@ -27,64 +27,18 @@ func TestReturnsCoordinatorDedicatedLoginPostgres(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	login := "c19c_" + uuid.NewString()[:8]
-	guardURL, err := url.Parse(dsn)
-	if err != nil {
-		t.Fatal("invalid fixture DSN")
-	}
-	query := guardURL.Query()
-	query.Set("application_name", login+"_guard")
-	guardURL.RawQuery = query.Encode()
-	guard, err := pgxadapter.OpenIdentity(ctx, guardURL.String())
-	if err != nil {
-		t.Fatal("fixture lock connection unavailable")
-	}
-	defer guard.Close(context.Background())
-	// Migrations in other databases inspect these cluster-global memberships.
-	// Hold the existing COMMON-source lock until the temporary role is gone.
-	if err := pgxtest.WithFixtureInitialization(ctx, guard.InMaintenance, func(ctx context.Context) error {
-		testReturnsCoordinatorDedicatedLogin(t, ctx, dsn, login)
-		return nil
-	}); err != nil {
-		t.Fatal("returns fixture initialization failed", err)
-	}
-}
-
-func testReturnsCoordinatorDedicatedLogin(t *testing.T, ctx context.Context, dsn, login string) {
-	t.Helper()
 	admin, err := pgxadapter.OpenAuthorization(ctx, dsn)
 	if err != nil {
 		t.Fatal("maintenance fixture unavailable")
 	}
 	defer admin.Close(context.Background())
-	// A database per fixture does not isolate pg_auth_members. Witness this
-	// fixture's own common-database lock before publishing cluster membership.
-	assertFixtureLock := func() {
-		t.Helper()
-		var held bool
-		err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-			return tx.QueryRow(ctx, `SELECT EXISTS (
- SELECT FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid
- WHERE a.application_name=$1 AND l.locktype='advisory'
- AND l.database=(SELECT oid FROM pg_database WHERE datname=current_database())
- AND l.classid=0 AND l.objid=18004518 AND l.objsubid=1
- AND l.mode='ExclusiveLock' AND l.granted)`, login+"_guard").Scan(&held)
-		})
-		if err != nil || !held {
-			t.Error("returns fixture cluster membership lacks common initialization lock")
-		}
-	}
-	assertFixtureLock()
+	fixtureRole := pgxtest.NewRole(t, ctx, dsn, login, "ci_returns_fixture_only_123456789", true, "app_returns_service")
 	exec := func(sql string) {
 		t.Helper()
 		if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, sql); return err }); err != nil {
 			t.Fatal(err)
 		}
 	}
-	exec("CREATE ROLE " + login + " LOGIN INHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD 'ci_returns_fixture_only_123456789'; GRANT app_returns_service TO " + login)
-	defer func() {
-		assertFixtureLock()
-		exec("DROP OWNED BY " + login + "; DROP ROLE " + login)
-	}()
 	u, err := url.Parse(dsn)
 	if err != nil {
 		t.Fatal("invalid fixture DSN")
@@ -112,10 +66,7 @@ func testReturnsCoordinatorDedicatedLogin(t *testing.T, ctx context.Context, dsn
 	}
 	closeRuntime()
 	for _, fault := range []struct{ add, undo string }{
-		{"GRANT app_runtime TO " + login, "REVOKE app_runtime FROM " + login},
 		{"GRANT SELECT(password_hash) ON app.users TO " + login, "REVOKE SELECT(password_hash) ON app.users FROM " + login},
-		{"ALTER ROLE " + login + " BYPASSRLS", "ALTER ROLE " + login + " NOBYPASSRLS"},
-		{"ALTER ROLE " + login + " NOINHERIT", "ALTER ROLE " + login + " INHERIT"},
 	} {
 		exec(fault.add)
 		bad, err := open()
@@ -123,6 +74,25 @@ func testReturnsCoordinatorDedicatedLogin(t *testing.T, ctx context.Context, dsn
 			bad.Close()
 		}
 		exec(fault.undo)
+		if err == nil {
+			t.Fatal("unsafe coordinator capability accepted")
+		}
+	}
+	for _, attribute := range []struct{ add, undo string }{{"BYPASSRLS", "NOBYPASSRLS"}, {"NOINHERIT", "INHERIT"}, {"membership", ""}} {
+		if attribute.add == "membership" {
+			fixtureRole.Grant(t, ctx, "app_runtime", "")
+		} else {
+			fixtureRole.Alter(t, ctx, attribute.add)
+		}
+		bad, err := open()
+		if bad != nil {
+			bad.Close()
+		}
+		if attribute.add == "membership" {
+			fixtureRole.Revoke(t, ctx, "app_runtime")
+		} else {
+			fixtureRole.Alter(t, ctx, attribute.undo)
+		}
 		if err == nil {
 			t.Fatal("unsafe coordinator capability accepted")
 		}

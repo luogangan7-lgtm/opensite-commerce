@@ -81,13 +81,7 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 	tenantID, customerID, actorID := uuid.NewString(), uuid.NewString(), uuid.NewString()
 	login := "c22a_http_" + strings.ReplaceAll(tenantID[:8], "-", "")
 	password := strings.ReplaceAll(uuid.NewString(), "-", "")
-	// Register cleanup immediately after role creation; credentials never enter logs.
-	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, "CREATE ROLE "+pgx.Identifier{login}.Sanitize()+" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT PASSWORD '"+password+"'")
-		return err
-	}); err != nil {
-		t.Fatal("fixture login creation failed")
-	}
+	pgxtest.NewRole(t, ctx, maintenanceDSN, login, password, false, "app_runtime")
 	defer func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stop()
@@ -102,16 +96,12 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 					return err
 				}
 			}
-			_, err := tx.Exec(ctx, "DROP ROLE "+pgx.Identifier{login}.Sanitize())
-			return err
+			return nil
 		}); err != nil {
 			t.Errorf("fixture cleanup: %v", err)
 		}
 	}()
 	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "GRANT app_runtime TO "+pgx.Identifier{login}.Sanitize()); err != nil {
-			return err
-		}
 		if _, err := tx.Exec(ctx, "INSERT INTO app.tenants(id,name) VALUES($1::uuid,'C22a HTTP fixture')", tenantID); err != nil {
 			return err
 		}
