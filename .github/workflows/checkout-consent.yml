@@ -5,7 +5,7 @@ on: pull_request
 # required source gate is RED. Required foundation/frontend gates stay intact.
 jobs:
   consent-pg:
-    if: startsWith(github.head_ref, 'codex/c09e-')
+    if: startsWith(github.head_ref, 'codex/c09e-') || startsWith(github.head_ref, 'codex/psp-prereq')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -43,7 +43,7 @@ jobs:
         run: go test -race -tags pgx -count=1 -v -run 'TestCheckoutPG.*Consent|TestCheckoutPGConsentReplayAndRepricing' ./internal/db
 
   consent-browser:
-    if: startsWith(github.head_ref, 'codex/c09e-')
+    if: startsWith(github.head_ref, 'codex/c09e-') || startsWith(github.head_ref, 'codex/psp-prereq')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
