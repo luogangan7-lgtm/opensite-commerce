@@ -35,6 +35,5 @@ for script in scripts/*.sh; do
  bash -n "$script"
 done
 bash scripts/check_frontend.sh
-echo 'PASS: offline checks (does not test PostgreSQL or production API)'
-
 python3 tests/test_pg_role_fixture.py
+echo 'PASS: offline checks (does not test PostgreSQL or production API)'
