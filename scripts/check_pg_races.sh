@@ -1744,7 +1744,7 @@ echo 'PASS: quote approve/withdraw row-lock CAS races have exactly one winner an
 echo 'PASS: CMS gate80 one publisher, gate81 restore ABA epoch fence, gate82 apply/publish lock order'
 echo 'PASS: checkout confirm/cancel claims choose one durable winner with atomic order, stock, ledger and outbox witnesses'
 # Focused native River/claim/fence gates cannot silently skip for missing PG.
-reliability_packages=(./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)
+reliability_packages=(./internal/modules/catalog ./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)
 if [[ -n "${DATABASE_URL:-}" ]]; then
  JOBS_REQUIRE_PG=1 IDEMPOTENCY_REQUIRE_PG=1 OUTBOX_REQUIRE_PG=1 GOTOOLCHAIN=local \
   go test -race -tags pgx -count=1 -timeout=120s -run '^(TestPG|TestJobsPG)' "${reliability_packages[@]}"
