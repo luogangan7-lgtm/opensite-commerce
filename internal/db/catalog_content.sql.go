@@ -85,7 +85,7 @@ func (q *Queries) ReadCatalogContent(ctx context.Context, arg ReadCatalogContent
 const readCatalogListing = `-- name: ReadCatalogListing :one
 SELECT jsonb_build_object('site_id',s.id,'locale',$1::text,'slug',coalesce(l.slug,''),
  'listed',coalesce(l.status='published',false),'content_revision',coalesce(l.published_content_revision,0),
- 'revision',coalesce((SELECT max(revision) FROM app.product_content_revisions c WHERE c.tenant_id=p.tenant_id AND c.product_id=p.id AND c.locale=$1),0))::jsonb
+ 'revision',coalesce(l.version,0))::jsonb
 FROM app.products p JOIN app.sites s ON s.tenant_id=p.tenant_id
 LEFT JOIN app.product_listings l ON l.tenant_id=p.tenant_id AND l.product_id=p.id AND l.site_id=s.id AND l.locale=$1
 WHERE p.tenant_id=$2 AND p.id=$3 AND s.id=$4
@@ -110,11 +110,14 @@ func (q *Queries) ReadCatalogListing(ctx context.Context, arg ReadCatalogListing
 	return column_1, err
 }
 
-const writeCatalogListing = `-- name: WriteCatalogListing :exec
-INSERT INTO app.product_listings(tenant_id,site_id,product_id,locale,slug,status,published_content_revision)
-VALUES($1,$2,$3,$4,$5,
- CASE WHEN $6::boolean THEN 'published' ELSE 'unpublished' END,$7::bigint)
+const writeCatalogListing = `-- name: WriteCatalogListing :execrows
+INSERT INTO app.product_listings AS target(tenant_id,site_id,product_id,locale,slug,status,published_content_revision)
+SELECT $1,$2,$3,$4,$5,
+ CASE WHEN $6::boolean THEN 'published' ELSE 'unpublished' END,$7::bigint
+WHERE $8::bigint=0 OR EXISTS(SELECT FROM app.product_listings l
+ WHERE l.tenant_id=$1 AND l.site_id=$2 AND l.product_id=$3 AND l.locale=$4 AND l.version=$8::bigint)
 ON CONFLICT(tenant_id,site_id,product_id,locale) DO UPDATE SET slug=excluded.slug,status=excluded.status,published_content_revision=excluded.published_content_revision
+WHERE target.version=$8::bigint
 `
 
 type WriteCatalogListingParams struct {
@@ -125,10 +128,11 @@ type WriteCatalogListingParams struct {
 	Slug            string      `json:"slug"`
 	Listed          bool        `json:"listed"`
 	ContentRevision int64       `json:"content_revision"`
+	ExpectedVersion int64       `json:"expected_version"`
 }
 
-func (q *Queries) WriteCatalogListing(ctx context.Context, arg WriteCatalogListingParams) error {
-	_, err := q.db.Exec(ctx, writeCatalogListing,
+func (q *Queries) WriteCatalogListing(ctx context.Context, arg WriteCatalogListingParams) (int64, error) {
+	result, err := q.db.Exec(ctx, writeCatalogListing,
 		arg.TenantID,
 		arg.SiteID,
 		arg.ProductID,
@@ -136,6 +140,10 @@ func (q *Queries) WriteCatalogListing(ctx context.Context, arg WriteCatalogListi
 		arg.Slug,
 		arg.Listed,
 		arg.ContentRevision,
+		arg.ExpectedVersion,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

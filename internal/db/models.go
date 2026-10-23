@@ -696,6 +696,7 @@ type AppProductListing struct {
 	Slug                     string      `json:"slug"`
 	Status                   string      `json:"status"`
 	PublishedContentRevision pgtype.Int8 `json:"published_content_revision"`
+	Version                  int64       `json:"version"`
 }
 
 type AppProductMedium struct {

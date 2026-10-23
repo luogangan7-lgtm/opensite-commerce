@@ -105,7 +105,8 @@
         "locale": {"classification": "operational"},
         "slug": {"classification": "operational"},
         "status": {"classification": "operational"},
-        "published_content_revision": {"classification": "operational"}
+        "published_content_revision": {"classification": "operational"},
+        "version": {"classification": "operational"}
       }
     }
   }

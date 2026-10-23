@@ -381,7 +381,7 @@ BEGIN
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
-  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('catalog_listing_version','pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
@@ -416,7 +416,7 @@ BEGIN
  END LOOP;
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
-  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
+  AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('catalog_listing_version','pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
@@ -1443,3 +1443,22 @@ BEGIN
   RAISE EXCEPTION 'CONTENT_INVALIDATION runtime authority expanded';
  END IF;
 END $content_matrix$;
+
+-- Listing version guard is invoker-only and callable only through its trigger.
+DO $listing_guard$ DECLARE f record; role_name text; BEGIN
+ SELECT p.* INTO STRICT f FROM pg_proc p WHERE p.oid='app.catalog_listing_version()'::regprocedure;
+ IF f.prokind<>'f' OR f.pronargs<>0 OR f.prorettype<>'trigger'::regtype OR f.prosecdef
+  OR f.proowner<>(SELECT relowner FROM pg_class WHERE oid='app.product_listings'::regclass)
+  OR cardinality(f.proconfig) IS DISTINCT FROM 1
+  OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
+  OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner)))
+   WHERE grantee<>f.proowner OR privilege_type<>'EXECUTE' OR is_grantable) THEN
+  RAISE EXCEPTION 'CATALOG_LISTING_UNSAFE_VERSION_GUARD';
+ END IF;
+ FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+  IF has_function_privilege(role_name,f.oid,'EXECUTE')
+   OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+   RAISE EXCEPTION 'CATALOG_LISTING_GUARD_EXECUTE_MISMATCH: %',role_name;
+  END IF;
+ END LOOP;
+END $listing_guard$;

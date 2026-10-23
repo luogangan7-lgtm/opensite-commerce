@@ -147,6 +147,9 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.goto(`${fixture.admin}/t/${tenant}/products/${product.id}`);
     await expect(page.getByText('Catalog editing is unavailable for this session.', { exact: true })).toBeVisible();
+    const priceDenied = page.waitForResponse(r => r.url().startsWith(base + '/price-lists') && r.request().method() === 'GET');
+    await page.getByRole('button', { name: `Edit ${slug.toUpperCase()}`, exact: true }).click();
+    expect((await priceDenied).status()).toBe(403);
     for (const name of ['Save price', 'Save content', 'Save listing']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
     const restricted = await (await page.request.get(`${fixture.admin}/api/v1/auth/session`)).json();
     for (const path of [`/price-lists/${list.id}/variants/${sku.id}/prices/1`, `/products/${product.id}/content/en`, `/products/${product.id}/listings/${staffSite}/en`]) {
