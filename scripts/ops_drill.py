@@ -437,6 +437,12 @@ def previous_version_refusal(directory):
     shutil.copy2(ROOT / 'scripts/migrate.sh', prefix / 'scripts/migrate.sh')
     for source in predecessor:
         shutil.copy2(source, prefix / 'migrations' / source.name)
+    # This private cluster was already provisioned, but the frozen Fulfillment
+    # migration requires a pristine capability when rebuilding historical DDL.
+    # Remove only our synthetic coordinator membership; restore() reapplies the
+    # exact LOGIN_ROLES policy after the restored schema has been verified.
+    login, group = LOGIN_ROLES['RETURNS']
+    psql(f'REVOKE {group} FROM {login};', 'postgres')
     psql('CREATE DATABASE opensite TEMPLATE template0;', 'postgres')
     compose(['run', '--rm', '--no-deps', '--entrypoint', '/bin/sh', 'migrate', '-c',
              'export PGPASSWORD="$POSTGRES_PASSWORD"; '
