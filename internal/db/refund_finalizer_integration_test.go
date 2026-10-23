@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
@@ -77,5 +78,31 @@ func TestRefundFinalizerSignedFacts(t *testing.T) {
 				t.Fatalf("capacity not restored: %+v", w)
 			}
 		})
+	}
+}
+
+func (p *paymentFactFixture) runTerminal(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+	return p.run(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
+		if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_payments_ingress"); err != nil {
+			return err
+		}
+		return fn(ctx, tx, tenant, at)
+	})
+}
+
+func (p *paymentFactFixture) terminalFact(t *testing.T, event, refund string, amount int64) {
+	t.Helper()
+	var body map[string]any
+	if err := json.Unmarshal(p.raw(event, payment.StatusFailed, amount), &body); err != nil {
+		t.Fatal(err)
+	}
+	body["refund_id"] = refund
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at))
+	if err != nil || receipt.Status != "processed" {
+		t.Fatalf("C19D2_MIXED_TERMINAL_RED: %+v %v", receipt, err)
 	}
 }

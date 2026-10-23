@@ -510,6 +510,67 @@ func TestMixedRefundComponents(t *testing.T) {
 				}
 
 			}
+			// Compensate every successful identity, including synchronous RMAs
+			// that have not received their success webhook. Sealed data stays exact.
+			var identities []struct {
+				id     string
+				amount int64
+			}
+			var frozen string
+			if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				if err := tx.QueryRow(ctx, `SELECT coalesce(jsonb_agg(to_jsonb(r)-ARRAY['status','order_version'] ORDER BY id),'[]')::text FROM app.returns r WHERE tenant_id=$1`, p.f.tenant).Scan(&frozen); err != nil {
+					return err
+				}
+				rows, err := tx.Query(ctx, `SELECT provider_refund_id,r.refund_minor FROM app.payment_return_refunds b JOIN app.returns r ON (r.tenant_id,r.id)=(b.tenant_id,b.return_id) WHERE b.tenant_id=$1`, p.f.tenant)
+				if err != nil {
+					return err
+				}
+				defer rows.Close()
+				for rows.Next() {
+					var id string
+					var amount int64
+					if err := rows.Scan(&id, &amount); err != nil {
+						return err
+					}
+					identities = append(identities, struct {
+						id     string
+						amount int64
+					}{id, amount})
+				}
+				return rows.Err()
+			}); err != nil {
+				t.Fatal(err)
+			}
+			for i, amount := range steps {
+				if amount > 0 {
+					identities = append(identities, struct {
+						id     string
+						amount int64
+					}{fmt.Sprintf("mixed-%d", i), amount})
+				}
+			}
+			for i, identity := range identities {
+				p.terminalFact(t, fmt.Sprintf("mixed-terminal-%d", i), identity.id, identity.amount)
+				p.terminalFact(t, fmt.Sprintf("mixed-terminal-%d", i), identity.id, identity.amount)
+				total -= identity.amount
+				if w := p.witness(t); w.refunded != total || w.checkout.cash != p.start.AmountMinor-total {
+					t.Fatalf("C19D2_MIXED_RESTORE_RED: %+v want %d", w, total)
+				}
+			}
+			if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				var current string
+				var active int
+				if err := tx.QueryRow(ctx, `SELECT coalesce(jsonb_agg(to_jsonb(r)-ARRAY['status','order_version'] ORDER BY id),'[]')::text,count(*) FILTER(WHERE status<>'refund_compensated') FROM app.returns r WHERE tenant_id=$1`, p.f.tenant).Scan(&current, &active); err != nil {
+					return err
+				}
+				if current != frozen || active != 0 {
+					return fmt.Errorf("C19D2_FROZEN_RMA_RED: snapshot changed or %d uncompensated", active)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+
 		})
 	}
 }
