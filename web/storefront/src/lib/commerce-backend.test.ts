@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { createHmac, randomBytes } from 'node:crypto';
+import { readdirSync, readFileSync } from 'node:fs';
 import type { AstroCookies } from 'astro';
 import { handlePurchaseRequest, readPurchaseContext } from './commerce-server';
 const site = 'https://shop.example.test', tenant = 'c0900001-0000-4000-8000-000000000001';
@@ -25,6 +26,7 @@ function request(operation: string, csrf?: string, value?: unknown) {
     ...(value ? {method:'POST',body:JSON.stringify(value)} : {}) });
 }
 beforeEach(() => {
+  (globalThis as typeof globalThis & {__OSC_COMMERCE_TEST_HTTP__?:boolean}).__OSC_COMMERCE_TEST_HTTP__=true;
   Object.assign(process.env, {OSC_COMMERCE_MODE:'backend',OSC_COMMERCE_API_ORIGIN:'http://api:8080',OSC_COMMERCE_SITE:site,OSC_COMMERCE_COOKIE_KEY:randomBytes(32).toString('base64url'),OSC_STOREFRONT_ALLOWED_HOSTS:'shop.example.test',OPENSITE_STOREFRONT_ORIGIN:site,OPENSITE_STOREFRONT_KEY:randomBytes(32).toString('base64url')});
   calls.length=0; failure=false;failureCode='stock_unavailable';
   mock=spyOn(globalThis,'fetch').mockImplementation(Object.assign(async(input:RequestInfo|URL,init?:RequestInit)=>{
@@ -35,7 +37,7 @@ beforeEach(() => {
     return new Response(`{"id":"${cart}","currency":"USD","version":1,"lines":[{"sku_id":"${sku}","quantity":1,"sellable":true,"unit_amount":9223372036854775807,"line_amount":9223372036854775807}],"subtotal":9223372036854775807}`,{headers:{ETag:etag,'Content-Type':'application/json'}});
   },{preconnect:globalThis.fetch.preconnect}));
 });
-afterEach(()=>{mock?.mockRestore();for(const name of names){const value=saved.get(name);if(value===undefined)delete process.env[name];else process.env[name]=value;}});
+afterEach(()=>{delete (globalThis as typeof globalThis & {__OSC_COMMERCE_TEST_HTTP__?:boolean}).__OSC_COMMERCE_TEST_HTTP__;mock?.mockRestore();for(const name of names){const value=saved.get(name);if(value===undefined)delete process.env[name];else process.env[name]=value;}});
 test('configured backend creates and reads the real cart with cookie-only capability and exact int64 amounts',async()=>{
   const jar=cookies(), context=await readPurchaseContext(request('context'),jar.jar);
   expect(context.enabled).toBe(true);expect(context.fixture).toBe(false);
@@ -111,6 +113,19 @@ test('GITHUB_ACTIONS cannot relax HTTPS; HTTP needs explicit test environment an
   expect((await readPurchaseContext(req(),jar.jar)).enabled).toBe(false);
 });
 
+test('missing build define forbids HTTP before upstream IO',async()=>{
+  delete (globalThis as typeof globalThis & {__OSC_COMMERCE_TEST_HTTP__?:boolean}).__OSC_COMMERCE_TEST_HTTP__;
+  Object.assign(process.env,{OSC_COMMERCE_SITE:'http://127.0.0.1:4321',OSC_STOREFRONT_ALLOWED_HOSTS:'127.0.0.1',OSC_COMMERCE_TEST_HTTP:'1',OPENSITE_ENVIRONMENT:'test'});
+  const count=calls.length;
+  expect((await readPurchaseContext(new Request('http://127.0.0.1:4321',{headers:{Host:'127.0.0.1:4321'}}),cookies().jar)).enabled).toBe(false);
+  expect(calls.length).toBe(count);
+});
+test('production build output pins the HTTP capability to literal false',()=>{
+  const dir=new URL('../../dist/server/',import.meta.url);
+  const output=readdirSync(dir,{recursive:true}).filter(p=>String(p).endsWith('.mjs')).map(p=>readFileSync(new URL(String(p),dir),'utf8')).join('\n');
+  expect(/commerceBuildCapabilities\s*=\s*Object\.freeze\(\{\s*testHTTP:\s*false\b/.test(output)).toBe(true);
+  expect(output.includes('__OSC_COMMERCE_TEST_HTTP__')).toBe(false);
+});
 test('production build pin forbids HTTP even if runtime flags claim test',async()=>{
   const build=globalThis as typeof globalThis & {__OSC_COMMERCE_TEST_HTTP__?:boolean};
   build.__OSC_COMMERCE_TEST_HTTP__=false;

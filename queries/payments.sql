@@ -2,6 +2,8 @@
 -- the mapped tenant transaction. No raw webhook body or cross-module DML.
 -- name: ResolveFakePaymentAccount :one
 SELECT tenant_id::uuid,at_time::timestamptz FROM app.resolve_fake_payment_account(sqlc.arg(account)::text);
+-- name: ResolveStripePaymentAccount :one
+SELECT tenant_id::uuid,at_time::timestamptz FROM app.resolve_stripe_payment_account(sqlc.arg(account)::text);
 -- name: LockPaymentStream :one
 SELECT app.lock_payment_stream(sqlc.arg(account)::text,sqlc.arg(provider_ref)::text)::timestamptz AS at_time;
 -- name: AdmitPaymentInbox :one
@@ -10,7 +12,7 @@ SELECT app.admit_payment_inbox(sqlc.arg(account)::text,sqlc.arg(event_id)::text,
 INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(tenant_id,id) DO NOTHING;
 -- name: ListPendingPaymentEvents :many
-SELECT * FROM app.payment_events WHERE tenant_id=$1 AND provider_account_id=$2 AND provider_ref=$3 AND NOT applied
+SELECT * FROM app.payment_events WHERE tenant_id=$1 AND provider_account_id=$2 AND provider_ref=$3 AND provider=coalesce(nullif(current_setting('app.payment_provider',true),''),'fake') AND NOT applied
 ORDER BY CASE status WHEN 'captured' THEN 0 WHEN 'failed' THEN 2 WHEN 'canceled' THEN 2 ELSE 1 END,created_at,id FOR UPDATE;
 -- name: SetPaymentEventOutcome :exec
 UPDATE app.payment_events SET applied=$3,error_code=$4 WHERE tenant_id=$1 AND id=$2;

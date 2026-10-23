@@ -248,6 +248,19 @@ def validate_contract(api):
                 require(signature.get("in") == "header" and signature.get("required") is True and
                         signature.get("schema") == {"type": "string", "pattern": "^t=[0-9]{1,12},v1=[0-9a-f]{64}$"},
                         "Fake signature parameter missing/incorrect")
+            elif ident == "receiveStripePaymentEvent":
+                require((path, method) == ("/api/v1/payments/stripe/webhook", "post") and
+                        op.get("x-test-only") is True and security == [{"StripeWebhookSignature": []}] and
+                        "x-required-scope" not in op and not tenant,
+                        "Stripe webhook must be signed, test-only and outside tenant business paths")
+                require(schemes.get("StripeWebhookSignature") == {
+                    "type": "apiKey", "in": "header", "name": "Stripe-Signature",
+                    "description": "HMAC SHA256 over Stripe timestamp and raw bytes, constant-time verification and five-minute DB-clock tolerance. Sandbox only."},
+                    "Stripe signature scheme drift")
+                signature = next((p for p in parameters if p.get("name") == "Stripe-Signature"), {})
+                require(signature.get("in") == "header" and signature.get("required") is True and
+                        signature.get("schema") == {"type": "string", "maxLength": 4096},
+                        "Stripe signature parameter missing/incorrect")
             else:
                 customer = ident in CUSTOMER_OPERATIONS
                 require(ident in {"health", "createAdminSession", "submitInquiry", "getPublishedSite", "getAdminLoginChallenge", "createStaffLoginSession"} | BUYER_QUOTES.keys() | CUSTOMER_OPERATIONS and security == [] and

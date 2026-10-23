@@ -846,6 +846,50 @@ paths:
         '429': {$ref: '#/components/responses/TooManyRequests'}
         '500': {$ref: '#/components/responses/InternalServerError'}
         '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/payments/stripe/webhook:
+    post:
+      tags: [Checkout]
+      operationId: receiveStripePaymentEvent
+      x-opensite-status: implemented
+      x-opensite-access: Public
+      x-test-only: true
+      description: Stripe test-mode raw-byte signature admission. Unconfigured deployments return 503. Tenant comes only from the enabled DB account binding; duplicate event IDs reuse the existing inbox.
+      security:
+        - StripeWebhookSignature: []
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema: {type: string, maxLength: 4096}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: true}
+      responses:
+        '200':
+          description: Durable admission receipt, or an ignored unrelated test event.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [event_id, status]
+                properties:
+                  event_id: {type: string}
+                  status: {type: string, enum: [pending, processed, rejected, ignored]}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
   /api/v1/testing/payments/fake/webhook:
     post:
       tags: [Checkout]
@@ -4389,6 +4433,11 @@ components:
       in: header
       name: X-Cart-Token
       description: Opaque cart capability, verified with server proof and cart ownership; never an admin cookie.
+    StripeWebhookSignature:
+      type: apiKey
+      in: header
+      name: Stripe-Signature
+      description: HMAC SHA256 over Stripe timestamp and raw bytes, constant-time verification and five-minute DB-clock tolerance. Sandbox only.
     FakeWebhookSignature:
       type: apiKey
       in: header

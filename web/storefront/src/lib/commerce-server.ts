@@ -39,6 +39,7 @@ export function fixtureConfiguration(request: Request): { origin: string; site: 
   return { origin, site };
 }
 function purchaseConfiguration(request: Request): Configuration | null {
+  const commerceBuildCapabilities = Object.freeze({testHTTP: typeof __OSC_COMMERCE_TEST_HTTP__ !== 'undefined' && __OSC_COMMERCE_TEST_HTTP__ === true});
   if (process.env.OSC_COMMERCE_MODE !== 'backend') {
     const fixture = fixtureConfiguration(request); return fixture ? {...fixture,fixture:true} : null;
   }
@@ -46,7 +47,7 @@ function purchaseConfiguration(request: Request): Configuration | null {
     const site = readAPIOrigin(process.env.OSC_COMMERCE_SITE ?? '');
     const url = new URL(request.url);
     if (url.origin !== site || !requestCanonical({url,request}) ||
-        (url.protocol !== 'https:' && !((typeof __OSC_COMMERCE_TEST_HTTP__ === 'undefined' || __OSC_COMMERCE_TEST_HTTP__) && process.env.OSC_COMMERCE_TEST_HTTP === '1' && process.env.OPENSITE_ENVIRONMENT === 'test' && ['127.0.0.1','localhost'].includes(url.hostname)))) return null;
+        (url.protocol !== 'https:' && !(commerceBuildCapabilities.testHTTP && process.env.OSC_COMMERCE_TEST_HTTP === '1' && process.env.OPENSITE_ENVIRONMENT === 'test' && ['127.0.0.1','localhost'].includes(url.hostname)))) return null;
     signingKey();
     return {site,origin:readAPIOrigin(process.env.OSC_COMMERCE_API_ORIGIN ?? '')};
   } catch { return null; }

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart"
 	cartcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/cart/contract"
@@ -21,6 +22,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/pricing"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
@@ -37,6 +39,8 @@ import (
 )
 
 type Config struct {
+	Payment                  payment.Port
+	Stripe                   *payments.Stripe
 	Subject                  httpapi.SubjectResolver
 	Privacy                  datarightshttp.Config
 	CatalogCSV               catalogcsvhttp.Config
@@ -135,6 +139,11 @@ func New(config Config) (server *http.Server, err error) {
 	router := httpapi.New(authenticator, config.Logger)
 	health := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "health", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })}
 	routes := []httpapi.Route{health}
+	stripeRoute := payments.StripeRoute(nil)
+	if config.Stripe != nil {
+		stripeRoute = payments.StripeRoute(config.Stripe)
+	}
+	routes = append(routes, stripeRoute)
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
 	routes = append(routes, pricing.New(config.Pricing).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)
