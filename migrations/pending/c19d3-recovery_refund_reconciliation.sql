@@ -173,7 +173,7 @@ BEGIN
  SELECT * INTO STRICT c FROM app.payment_refund_cases WHERE tenant_id=t AND id=p_case
   AND provider=coalesce(nullif(current_setting('app.payment_provider',true),''),'fake');
  PERFORM app.lock_payment_stream(c.provider_account_id,c.provider_ref);
- IF EXISTS(SELECT FROM app.payment_refund_case_resolutions WHERE tenant_id=t AND case_id=p_case AND reason='verified_terminal') THEN RETURN; END IF;
+ IF EXISTS(SELECT FROM app.payment_refund_case_resolutions x WHERE x.tenant_id=t AND x.case_id=p_case AND x.reason='verified_terminal') THEN RETURN; END IF;
  h:=decode(p_resolution->>'evidence_hash','hex');
  INSERT INTO app.payment_refund_case_resolutions(tenant_id,case_id,outcome,reason,verifier,evidence_hash)
  VALUES(t,p_case,'resolved_no_posting',reason,actor,h) ON CONFLICT DO NOTHING;

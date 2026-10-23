@@ -27,7 +27,7 @@ func TestRefundCaseReadAdmission(t *testing.T) {
 		deny  bool
 		want  int
 	}{
-		{"", true, 403}, {"?after_id=bad", false, 400}, {"?unexpected=1", false, 400}, {"", false, 503},
+		{"", true, 403}, {"?after_id=bad", false, 400}, {"?after_id=11111111-1111-4111-8111-111111111111&after_id=11111111-1111-4111-8111-111111111111", false, 400}, {"", false, 503},
 	} {
 		router := httpapi.New(caseAuth{deny: tc.deny}, nil)
 		for _, route := range NewReconciliationHTTP(nil).Routes() {
