@@ -42,7 +42,7 @@ def load_environment():
         if not line or line.startswith("#"):
             continue
         key, separator, value = line.partition("=")
-        if (not separator or not re.fullmatch(r"(?:POSTGRES_PASSWORD|COMPOSE_PROJECT_NAME|OPENSITE_[A-Z0-9_]+|JOB_SIGNING_KEY|JOB_TENANTS|OUTBOX_ENABLED)", key)
+        if (not separator or not re.fullmatch(r"(?:POSTGRES_PASSWORD|COMPOSE_PROJECT_NAME|OPENSITE_[A-Z0-9_]+|JOB_SIGNING_KEY|JOB_TENANTS|OUTBOX_ENABLED|PRIVACY_WORKER_DATABASE_URL|PRIVACY_TOKEN_KEY|PRIVACY_EXPORT_WORKER_ENABLED)", key)
                 or key in values):
             raise OpsError(f"invalid ops environment assignment at line {number}")
         if value[:1] in {"'", '"'}:

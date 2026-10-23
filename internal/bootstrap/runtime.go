@@ -69,6 +69,12 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		config.Media.Root = os.Getenv("OPENSITE_MEDIA_ROOT")
 	}
 	privacyURL := os.Getenv("OPENSITE_PRIVACY_DATABASE_URL")
+	if privacyURL == "" {
+		slog.Warn("privacy API unavailable", "missing_setting", "OPENSITE_PRIVACY_DATABASE_URL")
+	}
+	if os.Getenv("PRIVACY_EXPORT_WORKER_ENABLED") != "true" {
+		slog.Warn("privacy export enqueue disabled", "missing_setting", "PRIVACY_EXPORT_WORKER_ENABLED=true")
+	}
 	if privacyURL != "" && (!filepath.IsAbs(config.Media.Root) || (os.Getenv("OPENSITE_PRIVACY_ROOT") != "" && filepath.Clean(os.Getenv("OPENSITE_PRIVACY_ROOT")) != filepath.Clean(config.Media.Root))) {
 		return Config{}, nil, errors.New("privacy root must equal the configured media root")
 	}

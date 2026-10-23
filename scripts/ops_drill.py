@@ -28,6 +28,7 @@ from unittest.mock import patch
 
 from ops_common import ROOT, OpsError, compose, compose_command, pg_command, psql, quote_ident
 from ops_deploy import DeployError, LOGIN_ROLES, preflight
+from e2e import privacy
 from ops_backup import backup, compare_tables, digest, read_manifest, restore, table_manifest
 
 
@@ -61,7 +62,7 @@ def staff_login_reachable(url):
 
 
 def start_api():
-    compose(['up', '-d', '--build', '--wait', '--wait-timeout', '120', 'api', 'worker', 'mailpit'])
+    compose(['up', '-d', '--build', '--force-recreate', '--wait', '--wait-timeout', '120', 'api', 'worker', 'mailpit'])
     url = live_url()
     healthy(url)
     healthy(live_url('worker','8081'))
@@ -498,6 +499,8 @@ def drill(receipt_dir):
         variables = {'POSTGRES_PASSWORD': secrets.token_urlsafe(32), 'OPENSITE_DB':'opensite',
                      'OPENSITE_API_PORT':'0', 'OPENSITE_WORKER_PORT':'0', 'OPENSITE_MAIL_PORT':'0', 'COMPOSE_PROJECT_NAME':project,
                      'JOB_SIGNING_KEY':secrets.token_hex(32),'JOB_TENANTS':'',
+                     'OPENSITE_PRIVACY_DATABASE_URL':'', 'PRIVACY_WORKER_DATABASE_URL':'',
+                     'PRIVACY_TOKEN_KEY':'', 'PRIVACY_EXPORT_WORKER_ENABLED':'false',
                      'OPENSITE_ADMIN_ORIGIN':'https://admin.drill.test','OPENSITE_AUTH_SIGNING_KEY':secrets.token_hex(32),
                      'OPENSITE_STOREFRONT_ORIGIN':'https://store.drill.test',
                      'OPENSITE_CUSTOMER_CSRF_SECRET':secrets.token_urlsafe(32),
@@ -535,6 +538,20 @@ def drill(receipt_dir):
             steps.append('second-app-and-connections-disabled-database-red-green')
             blob, blob_hash, tenant, job_id = seed()
             require(job_id.isdigit(), 'missing persistent River witness')
+            privacy.prepare(url, psql, tenant, enabled=False)
+            require(b'OPENSITE_PRIVACY_DATABASE_URL' in compose(['logs', '--no-color', 'api']).stdout,
+                    'missing privacy setting not named at startup')
+            variables.update(privacy.environment(variables['OPENSITE_RUNTIME_DB_PASSWORD']), JOB_TENANTS=tenant)
+            env_file.write_text(''.join(f"{key}='{value}'\n" for key,value in variables.items()))
+            os.environ.update(variables)
+            url = start_api()
+            export = privacy.prepare(url, psql, tenant)
+            export_path = '/media/data-rights/' + tenant + '/' + export['request'] + '.json'
+            modes = compose(['exec', '-T', 'postgres', 'stat', '-c', '%a:%u:%g',
+                             export_path, str(Path(export_path).parent)]).stdout.decode().splitlines()
+            require(modes == ['600:65532:65532', '700:65532:65532'], 'privacy export storage is not private')
+            processed_witness(tenant)  # signed expiry tick also runs the configured privacy sweeper
+            steps.append('privacy-default-503-opt-in-staff-api-worker-export-and-sweep-tick')
             worker_metrics()
             with urllib.request.urlopen(url+'/metrics', timeout=3) as response:
                 metrics = response.read().decode()
@@ -601,6 +618,9 @@ def drill(receipt_dir):
             worker_metrics()
             processed_witness(tenant)
             restored_customer_witness(url, buyer)
+            privacy.download(export, url)
+            privacy.download(privacy.prepare(url, psql, tenant))
+            steps.append('restored-private-export-download-and-new-worker-export')
             steps.append('restored-customer-proof-session-and-cart-ownership')
             steps.append('volume-loss-restore-all-tables-and-blob-api-worker-health-and-signed-job')
             receipt = {'head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),

@@ -54,6 +54,10 @@ services:
       OPENSITE_DOMAIN_DB_PASSWORD: ${OPENSITE_DOMAIN_DB_PASSWORD:?set domain password}
       OPENSITE_MEDIA_DB_PASSWORD: ${OPENSITE_MEDIA_DB_PASSWORD:?set media password}
       OPENSITE_MEDIA_ROOT: /var/lib/opensite/media
+      OPENSITE_PRIVACY_DATABASE_URL: ${OPENSITE_PRIVACY_DATABASE_URL:-}
+      PRIVACY_TOKEN_KEY: ${PRIVACY_TOKEN_KEY:-}
+      PRIVACY_EXPORT_WORKER_ENABLED: ${PRIVACY_EXPORT_WORKER_ENABLED:-false}
+      JOB_SIGNING_KEY: ${JOB_SIGNING_KEY:?set independent 64-hex job signing key}
       # Storefront serving refresher (ADR_STOREFRONT_SERVING 2.6): trusted tenant UUIDs.
       # Empty = no refresh; published storefronts fall back to "no purchasable SKUs".
       OPENSITE_SERVING_REFRESH_TENANTS: ${OPENSITE_SERVING_REFRESH_TENANTS:-}
@@ -107,6 +111,11 @@ services:
       JOB_SIGNING_KEY: ${JOB_SIGNING_KEY:?set independent 64-hex job signing key}
       JOB_TENANTS: ${JOB_TENANTS:-}
       OUTBOX_ENABLED: "false"
+      PRIVACY_WORKER_DATABASE_URL: ${PRIVACY_WORKER_DATABASE_URL:-}
+      PRIVACY_TOKEN_KEY: ${PRIVACY_TOKEN_KEY:-}
+      OPENSITE_MEDIA_ROOT: /var/lib/opensite/media
+    volumes:
+      - media_data:/var/lib/opensite/media
     ports:
       - "127.0.0.1:${OPENSITE_WORKER_PORT:-8081}:8081"
     depends_on:
