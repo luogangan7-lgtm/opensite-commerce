@@ -91,7 +91,7 @@ class BrowserReceiptTests(unittest.TestCase):
                  'annotations': [{'type': 'fixme'}] if gap else [],
                  'results': [{'status': 'skipped' if gap else 'passed'}]}
                 for project in ('desktop', 'mobile')]})
-        return {'stats': {'expected': 34, 'skipped': 2, 'unexpected': 0, 'flaky': 0},
+        return {'stats': {'expected': 36, 'skipped': 0, 'unexpected': 0, 'flaky': 0},
                 'suites': [{'specs': specs}]}
 
     def rows(self):
@@ -110,7 +110,7 @@ class BrowserReceiptTests(unittest.TestCase):
     def test_payment_is_required_in_both_projects_and_exact_spec(self):
         module = self.runner()
         report = self.browser_report(module)
-        self.assertEqual(module.verify_browser_report(report)['expected'], 34)
+        self.assertEqual(module.verify_browser_report(report)['expected'], 36)
         for mutation in ('remove', 'wrong_file', 'skip'):
             changed = json.loads(json.dumps(report))
             payment = next(s for s in changed['suites'][0]['specs'] if s['title'] in module.PAYMENT_TESTS)
@@ -124,11 +124,21 @@ class BrowserReceiptTests(unittest.TestCase):
         module = self.runner()
         for mutation in ('remove', 'wrong_file', 'skip', 'fixme'):
             report = self.browser_report(module)
-            admin = next(s for s in report['suites'][0]['specs'] if s['title'] in module.ADMIN_TESTS)
+            admin = next(s for s in report['suites'][0]['specs'] if s['title'] == 'real admin orders list and detail use persisted orders and staff scopes')
             if mutation == 'remove': report['suites'][0]['specs'].remove(admin)
             elif mutation == 'wrong_file': admin['file'] = 'admin.spec.ts'
             elif mutation == 'skip': admin['tests'][0]['results'] = [{'status': 'skipped'}]
             else: admin['tests'][0]['expectedStatus'] = 'skipped'
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                module.verify_browser_report(report)
+
+    def test_staff_publication_cannot_be_removed_or_skipped(self):
+        module = self.runner()
+        for mutation in ('remove', 'skip'):
+            report = self.browser_report(module)
+            staff = next(s for s in report['suites'][0]['specs'] if s['title'] == 'real staff create SKU → media upload → publish')
+            if mutation == 'remove': report['suites'][0]['specs'].remove(staff)
+            else: staff['tests'][0]['results'] = [{'status': 'skipped'}]
             with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
                 module.verify_browser_report(report)
 
@@ -194,3 +204,4 @@ class PurchaseWitnessTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

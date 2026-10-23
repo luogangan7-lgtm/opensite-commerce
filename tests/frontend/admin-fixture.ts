@@ -21,6 +21,15 @@ export async function fixture(page:Page,options:{authenticated?:boolean;loginSta
   if(path==='/api/v1/auth/logout'){authenticated=false;return route.fulfill({status:204,headers:{'Set-Cookie':'__Host-osc_admin_session=; Secure; HttpOnly; Path=/; Max-Age=0'}});}
   if(!path.startsWith(`/api/v1/t/${tenant}/`))return problem(route,404);
   const base=`/api/v1/t/${tenant}`;
+  if(path===`${base}/price-lists`)return json(route,{items:[]});
+  if(path===`${base}/products/${productId}/content/en`){
+    if(method==='PUT'){expect(r.headers()['if-match']).toBe('"content-opaque"');return problem(route,412);}
+    return json(route,{locale:'en',revision:7,title:'Sample title',body_blocks:[],seo:{}},200,{ETag:'"content-opaque"'});
+  }
+  if(path===`${base}/products/${productId}/listings/${tenant}/en`){
+    if(method==='PUT'){expect(r.headers()['if-match']).toBe('"listing-opaque"');return problem(route,412);}
+    return json(route,{site_id:tenant,locale:'en',slug:'sample',listed:true,content_revision:7,revision:7},200,{ETag:'"listing-opaque"'});
+  }
   if(path===`${base}/products`){if(method==='POST'){current={...current,product_code:r.postDataJSON().product_code.toUpperCase()};return json(route,current,201);}return json(route,{items:options.empty||url.searchParams.has('cursor')?[]:[current],...(!options.empty&&!url.searchParams.has('cursor')?{next_cursor:'fixture cursor/+?'}:{})});}
   if(path===`${base}/products/${productId}`){if(method==='PATCH'){expect(r.headers()['if-match']).toBe(`"${current.version}"`);if(options.productConflict)return problem(route,412);current={...current,...r.postDataJSON(),version:current.version+1};}return json(route,current);}
   if(path===`${base}/products/${productId}/variants`){if(method==='POST'){variants.push({id:variantId,product_id:productId,...r.postDataJSON(),lifecycle_status:'draft',version:1,created_at:created});return json(route,variants.at(-1),201);}return json(route,{items:variants});}

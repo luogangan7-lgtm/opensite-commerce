@@ -1748,6 +1748,12 @@
       "touches_tables": []
     },
     {
+      "file": "migrations/pending/admin-ui-3-media-auth_media_tenant_auth.sql",
+      "owner": "tenant",
+      "touches_tables": [],
+      "note": "Media service may call only the boolean credential revalidation capability; no credential table access."
+    },
+    {
       "file": "migrations/pending/c18b-quote-conversion_quote_conversion.sql",
       "owner": "quotes",
       "touches_tables": [

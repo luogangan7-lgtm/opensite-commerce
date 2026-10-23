@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Badge, Button, DataTable, EmptyState, FormField, Select, TextInput } from '@opensite/ui';
 import { APIError, type CatalogAPI, type Product, type Variant, type UploadSession, type LinkProductMedia } from './api';
+import { PriceEditor, PublicationEditor } from './catalog-editors';
 import { parseOptionValueIds, validateCode, validateMediaFile, validateUUID } from './validation';
 
 type PageProps = { api: CatalogAPI; tenantId: string };
@@ -171,6 +172,7 @@ function ProductEditor({ api, tenantId, productId }: PageProps & { productId: st
         </form>
       </section>
       <VariantSection api={api} productId={productId} archived={product.lifecycle_status === 'archived'} />
+      <PublicationEditor api={api} productId={productId} archived={product.lifecycle_status === 'archived'} />
       <MediaSection api={api} productId={productId} archived={product.lifecycle_status === 'archived'} />
     </> : !loading && <><ErrorNotice error={error} /><Button variant="secondary" onClick={() => setReload(value => value + 1)}>Retry product</Button></>}
   </div>;
@@ -260,6 +262,7 @@ function VariantSection({ api, productId, archived }: { api: CatalogAPI; product
       <div className="admin-actions"><Button type="submit" loading={busy} disabled={conflict || archived || editing?.lifecycle_status === 'archived'}>{editing ? 'Save SKU' : 'Create SKU'}</Button>
         {editing && <><Button variant="secondary" disabled={busy} onClick={() => void reloadVariant()}>Reload SKU from server</Button><Button variant="ghost" disabled={busy} onClick={() => select()}>Cancel SKU edit</Button></>}</div>
     </form>
+    {editing && <PriceEditor key={editing.id} api={api} variantId={editing.id} archived={archived || editing.lifecycle_status === 'archived'} />}
   </section>;
 }
 

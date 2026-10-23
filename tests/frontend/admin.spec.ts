@@ -42,3 +42,65 @@ test('orders unavailable in another tenant and version errors are safe',async({p
 test('upload processing and failed states are explicit',async({page})=>{await fixture(page,{uploadStatus:'processing'});await page.goto(`${origin}/t/${tenant}/products/${productId}`);await page.getByLabel('Media file').setInputFiles({name:'sample.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')});await page.getByRole('button',{name:'Upload media',exact:true}).click();await expect(page.getByText('processing',{exact:true})).toBeVisible();await audit(page);await page.unrouteAll({behavior:'wait'});await fixture(page,{uploadStatus:'failed'});await page.reload();await page.getByLabel('Media file').setInputFiles({name:'sample.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')});await page.getByRole('button',{name:'Upload media',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Media verification or processing failed');await expect(page.getByRole('button',{name:'Attach media',exact:true})).toBeDisabled();await audit(page);});
 
 test('PR47 null shipping method remains readable with SKU-only snapshot lines',async({page})=>{await fixture(page,{shippingMethod:null});await page.goto(`${fixtureOrigin}/t/${tenant}/orders/44444444-4444-4444-8444-444444444444`);await expect(page.getByRole('heading',{name:'Order 1001'})).toBeVisible();await expect(page.getByRole('cell',{name:'SAMPLE-1',exact:true})).toBeVisible();await expect(page.getByText('Shipping rule (Not recorded)')).toBeVisible();await expect(page.getByText('Sample product',{exact:true})).toHaveCount(0);await expect(page.getByRole('alert')).toHaveCount(0);await audit(page);});
+
+test('price keyboard submission associates and announces invalid amounts', async ({ page }) => {
+ await fixture(page);
+ const list = { id: tenant, version: 1, currency: 'USD', status: 'active', audience: 'all', priority: 0,
+   starts_at: '2020-01-01T00:00:00Z', ends_at: null };
+ let writes = 0;
+ await page.route('**/api/v1/t/*/price-lists**', async route => {
+   if (route.request().method() === 'PUT') writes++;
+   await route.fulfill({ json: new URL(route.request().url()).pathname.endsWith('/price-lists') ? { items: [list] } : list });
+ });
+ await page.goto(`${origin}/t/${tenant}/products/${productId}`);
+ await page.getByLabel('SKU code', { exact: true }).fill('PRICE-SKU');
+ await page.getByRole('button', { name: 'Create SKU', exact: true }).click();
+ await page.getByRole('button', { name: 'Edit PRICE-SKU', exact: true }).click();
+ await page.getByLabel('Price list', { exact: true }).selectOption(tenant);
+ const amount = page.getByLabel('Price in minor units', { exact: true });
+ await expect(amount).toBeEnabled();
+ for (const invalid of ['', '-1', '9223372036854775808']) {
+   await amount.fill(invalid);
+   await amount.press('Enter');
+   await expect(amount).toBeFocused();
+   await expect(amount).toHaveAttribute('aria-invalid', 'true');
+   await expect(amount).toHaveAttribute('aria-describedby', 'price-minor-help price-minor-error');
+   await expect(page.locator('#price-minor-error')).toHaveAttribute('role', 'alert');
+   await expect(amount).toHaveAccessibleDescription(/Enter whole minor units from 0 to 9223372036854775807\./);
+   expect(writes).toBe(0);
+ }
+ await audit(page);
+ await page.getByRole('button', { name: 'Reload price from server', exact: true }).click();
+ await expect(amount).toBeEnabled();
+ await expect(amount).toHaveValue('');
+ await expect(page.locator('#price-minor-error')).toHaveCount(0);
+ await amount.fill('3456');
+ await expect(amount).not.toHaveAttribute('aria-invalid', 'true');
+ await expect(amount).toHaveAttribute('aria-describedby', 'price-minor-help');
+ await expect(page.locator('#price-minor-error')).toHaveCount(0);
+ await amount.press('Enter');
+ await expect(page.getByRole('status').filter({ hasText: 'Price saved' })).toBeVisible();
+ expect(writes).toBe(1);
+});
+
+test('content and listing preserve opaque ETags and retain conflicting drafts',async({page})=>{
+ await fixture(page);await page.goto(`${origin}/t/${tenant}/products/${productId}`);
+ await page.getByRole('button',{name:'Load content',exact:true}).click();
+ await expect(page.getByLabel('Title',{exact:true})).toHaveValue('Sample title');
+ await page.getByLabel('Title',{exact:true}).fill('Unsaved title');
+ await page.getByRole('button',{name:'Save content',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Save content',exact:true})).toBeDisabled();
+ await expect(page.getByLabel('Title',{exact:true})).toHaveValue('Unsaved title');
+ await page.getByRole('button',{name:'Load content',exact:true}).click();
+ await expect(page.getByLabel('Title',{exact:true})).toHaveValue('Sample title');
+ await page.getByLabel('Site ID',{exact:true}).fill(tenant);
+ await page.getByRole('button',{name:'Load listing',exact:true}).click();
+ await page.getByLabel('Slug',{exact:true}).fill('unsaved-slug');
+ await page.getByRole('button',{name:'Save listing',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Save listing',exact:true})).toBeDisabled();
+ await expect(page.getByLabel('Slug',{exact:true})).toHaveValue('unsaved-slug');
+ await audit(page,'admin-publication-conflict.png');
+ await page.getByRole('button',{name:'Load listing',exact:true}).click();
+ await expect(page.getByLabel('Slug',{exact:true})).toHaveValue('sample');
+ await expect(page.getByRole('button',{name:'Save listing',exact:true})).toBeEnabled();
+});

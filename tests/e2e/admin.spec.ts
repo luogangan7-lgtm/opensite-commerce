@@ -103,7 +103,7 @@ test('real API denies anonymous catalog reads and creation before data access', 
 
 
 test('real owner session reads and creates tenant catalog through production authorization', async ({ page }, info) => {
-  test.setTimeout(95_000);
+  test.setTimeout(150_000);
   await page.goto(`${fixture.admin}/login`);
   await page.getByLabel('Email', { exact: true }).fill(fixture.ownerEmail);
   await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);

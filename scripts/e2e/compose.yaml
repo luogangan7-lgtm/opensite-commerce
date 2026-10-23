@@ -42,6 +42,25 @@ services:
     depends_on:
       api:
         condition: service_healthy
+  staff-storefront:
+    image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
+    working_dir: /workspace
+    command: ["node", "web/storefront/dist/server/entry.mjs"]
+    environment:
+      HOST: 0.0.0.0
+      PORT: "4322"
+      OSC_READ_API_ORIGIN: http://api:8080
+      OSC_COMMERCE_MODE: backend
+      OSC_COMMERCE_API_ORIGIN: http://api:8080
+      OSC_COMMERCE_SITE: http://localhost:4322
+      OSC_COMMERCE_TEST_HTTP: "1"
+      OSC_COMMERCE_COOKIE_KEY: ${OSC_COMMERCE_COOKIE_KEY}
+      OSC_STOREFRONT_ALLOWED_HOSTS: localhost
+      OPENSITE_ENVIRONMENT: test
+    volumes:
+      - ../:/workspace:ro
+    ports:
+      - "127.0.0.1:4322:4322"
   admin:
     image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
     working_dir: /workspace

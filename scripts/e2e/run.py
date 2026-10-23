@@ -41,11 +41,10 @@ PURCHASE_TESTS = {"published guest purchase persists captured order", "pending r
 ACTIVE_TESTS |= PURCHASE_TESTS
 PAYMENT_TESTS = {"real signed payment webhook rejects forgery and deduplicates concurrent facts"}
 ACTIVE_TESTS |= PAYMENT_TESTS
-ADMIN_TESTS = {"real admin orders list and detail use persisted orders and staff scopes"}
+ADMIN_TESTS = {"real admin orders list and detail use persisted orders and staff scopes",
+               "real staff create SKU → media upload → publish"}
 ACTIVE_TESTS |= ADMIN_TESTS
-GAP_TESTS = {
-    "FIXME staff create SKU → media upload → publish",
-}
+GAP_TESTS = set()
 
 
 class CIOnlyError(RuntimeError):
@@ -103,7 +102,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 34, "skipped": 2, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 36, "skipped": 0, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -286,6 +285,12 @@ def run(receipt_dir):
             if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", owner_tenant):
                 raise RuntimeError("MVP E2E owner bootstrap did not create exactly one owner tenant")
             os.environ["E2E_OWNER_TENANT_ID"] = owner_tenant
+            # Deployment authorizes refresh by tenant UUID; bootstrap creates a new one.
+            variables["OPENSITE_SERVING_REFRESH_TENANTS"] = f"{TENANT},{owner_tenant}"
+            os.environ["OPENSITE_SERVING_REFRESH_TENANTS"] = variables["OPENSITE_SERVING_REFRESH_TENANTS"]
+            env_file.write_text("".join(f"{key}={value}\n" for key, value in variables.items()))
+            # Mailpit shares API's network namespace, so recreate both together.
+            command(compose_command(["up", "-d", "--no-deps", "--force-recreate", "--wait", "--wait-timeout", "120", "api", "mailpit"]), "staff-refresh-start", timeout=300)
             receipt["owner_bootstrap"]["status"] = "PASS"
             receipt["publication"] = purchase.publish(ops_common.psql, credentials)
             # Owned C19 SQL orders are read through real owner session authorization.
@@ -294,13 +299,26 @@ def run(receipt_dir):
                             f"WHERE m.tenant_id='{owner_tenant}' AND m.role='owner' "
                             "AND t.id IN ('c1900010-0000-4000-8000-000000000001',"
                             "'c1900010-0000-4000-8000-000000000002');")
+            # Identity/site-only prerequisites; every new catalog/publication fact is an HTTP write.
+            ops_common.psql(f"""UPDATE app.tenants SET settlement_currency='USD' WHERE id='{owner_tenant}';
+              INSERT INTO app.users(email,password_hash)
+                SELECT 'staff-'||r||'@example.test',u.password_hash FROM app.users u
+                CROSS JOIN unnest(ARRAY['viewer','content_editor']) r
+                WHERE u.id=(SELECT user_id FROM app.tenant_memberships WHERE tenant_id='{owner_tenant}' AND role='owner');
+              INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
+                SELECT '{owner_tenant}',id,split_part(split_part(email,'@',1),'staff-',2) FROM app.users WHERE email IN ('staff-viewer@example.test','staff-content_editor@example.test');
+              INSERT INTO app.organizations(tenant_id,id,display_name) VALUES ('{owner_tenant}','c3300002-0000-4000-8000-000000000001','Staff E2E');
+              INSERT INTO app.sites(tenant_id,id,organization_id,name) VALUES ('{owner_tenant}','c3300003-0000-4000-8000-000000000001','c3300002-0000-4000-8000-000000000001','Staff E2E');
+              UPDATE app.site_domains SET status='disabled' WHERE normalized_hostname='localhost';
+              INSERT INTO app.site_domains(tenant_id,site_id,hostname,status,verified_at)
+                VALUES ('{owner_tenant}','c3300003-0000-4000-8000-000000000001','localhost','verified',clock_timestamp());""")
             os.environ["E2E_RELEASE_ID"] = receipt["publication"]["release_id"]
             receipt["steps"].append("real-cms-builder-membership-and-serving")
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
             persist()
             # API/worker/mailpit are already healthy. Recreating API here strands
             # its loopback SMTP sidecar in the old network namespace.
-            command(compose_command(["up", "-d", "--no-deps", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
+            command(compose_command(["up", "-d", "--no-deps", "--wait", "--wait-timeout", "120", "storefront", "staff-storefront", "admin"]), "frontends-start", timeout=300)
             wait_http("http://127.0.0.1:4321/", 200, b"Made for everyday use")
             wait_http("http://127.0.0.1:4173/", 200, b"<div id=\"root\"")
             wait_http("http://127.0.0.1:8025/api/v1/messages?limit=1", 200)
@@ -318,6 +336,14 @@ def run(receipt_dir):
                 persist()
                 raise RuntimeError("MVP E2E browser assertions failed")
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
+            staff = json.loads(ops_common.psql(f"""SELECT jsonb_build_object(
+              'sealed',(SELECT count(*) FROM app.site_releases WHERE tenant_id='{owner_tenant}' AND site_id='c3300003-0000-4000-8000-000000000001' AND sealed),
+              'visible',(SELECT count(*) FROM app.storefront_serving v CROSS JOIN LATERAL jsonb_array_elements(convert_from(v.body,'UTF8')::jsonb->'products') p WHERE v.tenant_id='{owner_tenant}' AND v.site_id='c3300003-0000-4000-8000-000000000001' AND p->>'slug' IN ('staff-desktop','staff-mobile') AND p->>'name'='Staff product '||split_part(p->>'slug','-',2)||' edited' AND p->>'description'='Staff description' AND p->'skus' @> '[{{"price_minor":"3456","currency":"USD"}}]'::jsonb),
+              'serving',(SELECT count(*) FROM app.storefront_serving WHERE tenant_id='{owner_tenant}' AND site_id='c3300003-0000-4000-8000-000000000001'),
+              'skus',(SELECT count(*) FROM app.site_release_skus m JOIN app.sites s ON (s.tenant_id,s.id,s.published_release_id)=(m.tenant_id,m.site_id,m.release_id) WHERE m.tenant_id='{owner_tenant}' AND m.site_id='c3300003-0000-4000-8000-000000000001' AND m.sku_code IN ('STAFF-DESKTOP','STAFF-MOBILE')));"""))
+            if staff != {'sealed': 2, 'serving': 1, 'skus': 2, 'visible': 2}:
+                raise RuntimeError('Staff sealed release/serving/SKU persistence witness differs')
+            receipt['staff_publication'] = staff
             # Independent persistence witness runs before declaring the browser run PASS.
             payment_rows = json.loads(ops_common.psql(PAYMENT_WITNESS_SQL).strip())
             receipt["payment_webhook"] = {"status": "FAIL", "projects": payment_rows}
