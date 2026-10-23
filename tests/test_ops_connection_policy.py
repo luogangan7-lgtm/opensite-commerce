@@ -64,8 +64,9 @@ class ConnectionPolicyTests(unittest.TestCase):
             self.assertEqual(hba.stat().st_mode & 0o777, 0o600)
 
     def test_exact_application_logins_and_all_connection_lanes(self):
-        self.assertEqual(len(ops.LOGIN_ROLES), 7)
+        self.assertEqual(len(ops.LOGIN_ROLES), 8)
         self.assertIn('opensite_customer_auth_login', LOGINS)
+        self.assertIn('opensite_returns_login', LOGINS)
         self.assert_policy('opensite')
 
     def test_keyword_database_names_are_exact_quoted_literals(self):

@@ -18,7 +18,9 @@ API refuses to start if either value is missing or malformed. Customer authentic
 also requires `OPENSITE_CUSTOMER_AUTH_DB_PASSWORD`, a pinned HTTPS
 `OPENSITE_STOREFRONT_ORIGIN` and an independent `OPENSITE_CUSTOMER_CSRF_SECRET`
 containing 32–128 CSPRNG bytes encoded with unpadded base64url. Use simple `KEY=value` or single-quoted values, with no
-interpolation or multiline values. Never commit the file or print resolved
+interpolation or multiline values. The isolated refund coordinator additionally requires
+`OPENSITE_RETURNS_DB_PASSWORD`; its LOGIN receives only `app_returns_service`.
+Never commit the file or print resolved
 Compose configuration. The helpers read `.env`; exported variables take
 precedence. Set `OPENSITE_ENV_FILE` to use another private file and
 `COMPOSE_PROJECT_NAME` to isolate a stack.
@@ -90,7 +92,7 @@ refuses deployment. Another database containing both the
 Plain databases are permitted. V1 database names must be lowercase ASCII
 identifiers (letters, numbers and underscores, maximum 63 characters).
 On a fresh Compose volume, the initdb hook places exact target-database SCRAM
-rules before the existing administrator rules. The seven application LOGINs are
+rules before the existing administrator rules. The eight application LOGINs are
 refused connections to maintenance/plain databases and physical replication,
 over Unix sockets, IPv4 and IPv6. This leaves unrelated database ACLs intact.
 The hook runs only at initialization. For an existing volume, back up the
@@ -165,7 +167,7 @@ bash scripts/ops_drill.sh --receipt-dir work/C23a/evidence
 
 The drill generates private temporary secrets and an unpredictable project
 name. It starts Compose, verifies real password logins and restricted grants,
-tests all seven LOGINs over TCP4/TCP6/Unix with wrong passwords and other databases,
+tests all eight LOGINs over TCP4/TCP6/Unix with wrong passwords and other databases,
 and refuses direct credential grants, permissive RLS policies and LOGIN-owned objects before writes.
 It creates/removes its own second-database negative fixture, seeds nonempty
 database, queue and media witnesses, and checks API/worker metrics. It performs

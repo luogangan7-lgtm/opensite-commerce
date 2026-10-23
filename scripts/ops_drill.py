@@ -308,7 +308,7 @@ def connection_boundaries():
                             'HBA did not enforce database/password boundary')
     finally:
         psql('DROP DATABASE ops_plain;', 'postgres')
-    print('PASS: seven LOGINs authenticate only to app DB; wrong passwords and '
+    print('PASS: eight LOGINs authenticate only to app DB; wrong passwords and '
           'maintenance/plain DBs rejected over TCP4/TCP6/Unix', flush=True)
 
 
@@ -511,7 +511,7 @@ def drill(receipt_dir):
             print('PASS: compose PG18.6 → preflight/River/app migrations → restricted LOGINs → API/worker health → staff login challenge', flush=True)
             steps.append('compose-and-login-boundaries')
             connection_boundaries()
-            steps.append('seven-logins-hba-tcp4-tcp6-unix-target-only-and-password-rejection')
+            steps.append('eight-logins-hba-tcp4-tcp6-unix-target-only-and-password-rejection')
             tainted_login_refusal()
             steps.append('direct-login-credential-acl-prewrite-refusal-and-clean-rerun')
             tainted_login_refusal(policy=True)

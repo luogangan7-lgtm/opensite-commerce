@@ -37,6 +37,19 @@ class DeployTests(unittest.TestCase):
         self.assertNotIn('GRANT app_auth TO opensite_customer_auth_login;', sql)
         self.assertIn("'opensite_customer_auth_login'", ops.login_role_audit_sql('opensite'))
 
+    def test_missing_returns_secret_refuses_before_writers(self):
+        env = {f'OPENSITE_{kind}_DB_PASSWORD': secrets.token_urlsafe(32) for kind in ops.LOGIN_ROLES}
+        env.update(POSTGRES_PASSWORD=secrets.token_urlsafe(32), OPENSITE_RETURNS_DB_PASSWORD='')
+        with patch.dict(os.environ, env, clear=True), patch.object(ops, 'preflight'), \
+                patch.object(ops, 'audit_login_roles') as audit, \
+                patch.object(ops, 'install_migrations') as install, patch.object(ops, 'query') as query, \
+                patch('sys.stdout', io.StringIO()), patch('sys.stderr', io.StringIO()) as error:
+            self.assertEqual(ops.main(['install']), 1, 'RETURNS_SECRET_RED')
+            self.assertIn('INVALID_ENV_SECRET', error.getvalue())
+            audit.assert_not_called()
+            install.assert_not_called()
+            query.assert_not_called()
+
     def test_missing_customer_auth_secret_refuses_before_writers(self):
         env = {f'OPENSITE_{kind}_DB_PASSWORD': secrets.token_urlsafe(32) for kind in ops.LOGIN_ROLES}
         env['POSTGRES_PASSWORD'] = secrets.token_urlsafe(32)

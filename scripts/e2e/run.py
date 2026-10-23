@@ -165,6 +165,7 @@ def run(receipt_dir):
     ops_common.compose_command = compose_command
     import ops_drill
     from e2e import purchase
+    # Shared provisioning includes the isolated RETURNS coordinator (eighth login).
     from ops_deploy import LOGIN_ROLES
 
     receipt_dir = receipt_dir.resolve()
