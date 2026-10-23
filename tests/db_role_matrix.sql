@@ -29,7 +29,7 @@ DECLARE
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','shipments','shipment_lines','returns','return_lines','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals','quote_conversions',
-  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events','payment_event_deliveries','payment_return_refunds',
+  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events','payment_event_deliveries','payment_return_refunds','payment_refund_attempts','payment_refund_reversals',
   'site_release_skus','storefront_serving','serving_invalidations','data_rights_exports','data_rights_erasures'];
  role_name text;
  r record;
@@ -76,7 +76,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_return_refunds','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='SELECT' AND t.relname='customer_guest_order_links' THEN
@@ -1535,3 +1535,29 @@ BEGIN
   END LOOP;
  END LOOP;
 END $payment_return_matrix$;
+
+-- C-19d part 1: the dedicated capability is inert until atomic finalization.
+DO $compensation_matrix$
+DECLARE r record; t record; a record; p text; f record; expected boolean;
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_payments_service';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+ OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+ OR NOT has_schema_privilege(r.rolname,'app','USAGE') OR has_schema_privilege(r.rolname,'app','CREATE')
+ OR has_schema_privilege(r.rolname,'app','USAGE WITH GRANT OPTION') THEN RAISE EXCEPTION 'C19D_MATRIX unsafe role'; END IF;
+ FOR t IN SELECT c.oid FROM pg_class c WHERE c.relnamespace='app'::regnamespace AND c.relkind IN('r','p') LOOP
+  FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   IF has_table_privilege(r.rolname,t.oid,p) THEN RAISE EXCEPTION 'C19D_MATRIX unexpected table privilege'; END IF;
+  END LOOP;
+  FOR a IN SELECT attnum FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+   FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
+    IF has_column_privilege(r.rolname,t.oid,a.attnum,p) THEN RAISE EXCEPTION 'C19D_MATRIX unexpected column privilege'; END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  expected:=EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE');
+  IF has_function_privilege(r.rolname,f.oid,'EXECUTE') IS DISTINCT FROM expected
+   OR has_function_privilege(r.rolname,f.oid,'EXECUTE WITH GRANT OPTION') THEN RAISE EXCEPTION 'C19D_MATRIX unexpected routine %',f.proname; END IF;
+ END LOOP;
+END $compensation_matrix$;

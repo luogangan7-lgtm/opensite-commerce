@@ -53,3 +53,30 @@ component counters. Orders-only legacy credit keeps its prior waterfall.
 The existing Checkout component CHECKs remain the final cap guard. Identity-less
 refund deliveries retain a failed Inbox/hash without a normalized money fact;
 Fake events and results carry the same durable refund identity.
+
+## C-19d preparation (part 1)
+
+The approved `C19D_REFUND_COMPENSATION.md` sequencing starts with identity,
+ports and ACLs. `RefundIdentity` prepares a bounded provider/account/refund key
+and a swapped copy of persisted Ledger entries. `RefundCompensator` specifies
+one whole atomic command; it has no implementation or composed caller yet.
+
+`payment_refund_attempts` binds authenticated success facts to a unique posted
+original journal. RMA bindings also require a matching applied account-mapped
+fact; old unproven identities are not backfilled. `payment_refund_reversals`
+requires that original plus a posted, exactly swapped journal with the canonical
+transition identity. Both tables are immutable and FORCE RLS. No application
+role has table/column rights; the isolated `app_payments_service` group is
+unprovisioned and has no posting capability. These tables are not effective
+financial state or a declaration that projections were compensated.
+
+Part 2 must compose the single atomic Payments finalizer, net Orders budget and
+fulfillment projection, RMA financial projection and append-only attempt history,
+and transfer refund posting away from Returns in the same change. It must first
+freeze new closed Orders/Returns ports and independent posted-witness guards;
+generic transitions remain unchanged. It must add all RC/RR/SERIALIZABLE races,
+rollback boundaries and mixed RMA/direct/replacement tests before enablement.
+Part 3 adds retained cases/leases, all recovery/operator entrypoints, observability
+and actual Stripe lifecycle acceptance. Current post-success failure handling
+still retains reconciliation evidence without reversing money. No replacement
+refund is automatic; no live acceptance is implied by this preparation.

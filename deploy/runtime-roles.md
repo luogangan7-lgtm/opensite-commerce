@@ -203,3 +203,14 @@ DB-clock idle/absolute policy and flooding hardening. The default 30-minute idle
 window exceeds the production request deadline; custom shorter idle policies
 still need H-4 transaction-level policy alignment.
 
+
+## Compensation preparation (C-19d part 1)
+
+`app_payments_service` is an isolated NOLOGIN/NOINHERIT group reserved for the
+closed Payments compensation finalizer. Do not provision a LOGIN or grant group
+membership yet: part 1 grants only schema USAGE, no table/column access or Ledger
+posting. New immutable attempt/reversal tables have no application grants.
+The exact role matrix checks this inert capability across all app tables,
+columns and functions. Returns retains the existing success path until part 2
+atomically transfers posting and introduces the Orders/RMA projection commands.
+This preparation does not enable live or post-success compensation.
