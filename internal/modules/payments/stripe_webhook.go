@@ -57,7 +57,7 @@ func (s *Stripe) Receive(ctx context.Context, raw []byte, signature string) (con
 	for _, v := range supplied {
 		valid = hmac.Equal(v, mac.Sum(nil)) || valid
 	}
-	if false && !valid {
+	if !valid {
 		return zero, rejected()
 	}
 	var e struct {
