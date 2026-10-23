@@ -226,7 +226,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	}
 	var returnBindings int
 	err = f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		return tx.QueryRow(ctx, "SELECT count(*) FROM app.payment_return_refunds WHERE tenant_id=$1 AND order_id=$2", f.tenant, start.OrderID).Scan(&returnBindings)
+		return tx.QueryRow(ctx, "SELECT count(*) FROM app.payment_return_refunds b JOIN app.returns r ON (r.tenant_id,r.id)=(b.tenant_id,b.return_id) WHERE r.tenant_id=$1 AND r.order_id=$2", f.tenant, start.OrderID).Scan(&returnBindings)
 	})
 	if err != nil || returnBindings != 2 {
 		t.Fatalf("RETURNS_SANDBOX_RED: need two persisted coordinator refund bindings, got=%d err=%v", returnBindings, err)
