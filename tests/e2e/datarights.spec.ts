@@ -78,6 +78,7 @@ test('real registered customer export and erasure journey', async ({ page, reque
   };
   const first = await ready();
   expect((await page.request.get(first.path.replace(fixture.tenantId, fixture.ownerTenantId))).status()).toBe(404);
+  expect((await post(first.link.replace(fixture.tenantId, fixture.ownerTenantId))).status()).toBe(404);
   const download = await post(first.link);
   expect(download.status()).toBe(200);
   expect(download.headers()['cache-control']).toBe('no-store');
