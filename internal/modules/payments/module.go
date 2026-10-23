@@ -153,6 +153,7 @@ func (m *Module) Receive(ctx context.Context, raw []byte, signature string) (con
 
 func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int64) (contract.Receipt, error) {
 	receipt := contract.Receipt{EventID: in.EventID, Status: "pending"}
+	var captures []payment.VerifiedEvent
 	payload := sha256.Sum256(raw)
 	identity, _ := json.Marshal([4]string{m.config.Provider, "test", in.AccountID, in.EventID})
 	if in.RefundID != "" {
@@ -160,6 +161,7 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 	}
 	eventKey := sha256.Sum256(identity)
 	err := m.config.Run(ctx, in.AccountID, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
+		captures = nil // Retain only this transaction attempt if a runner retries.
 		delta := at.Sub(time.Unix(stamp, 0))
 		if delta > 5*time.Minute || delta < -5*time.Minute {
 			return rejected()
@@ -231,6 +233,9 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 			}
 			event := payment.VerifiedEvent{EventID: r.EventKey, TenantID: tenant, OrderID: r.ClaimedOrderID.String(), OrderVersion: r.OrderVersion, ProviderRef: r.ProviderRef, Status: payment.PaymentStatus(r.Status), Amount: money.Money{Amount: r.AmountMinor, Currency: r.Currency}}
 			done, applyErr := m.applyFact(ctx, child, event, r.ProviderRefundID.String, r.ProviderAccountID)
+			if done && applyErr == nil && event.Status == payment.StatusCaptured {
+				captures = append(captures, event)
+			}
 			var code pgtype.Text
 			if applyErr != nil {
 				if e = child.Rollback(ctx); e != nil {
@@ -268,6 +273,10 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 			return e
 		}
 		if current.Applied {
+			// Include replay: a previous post-commit observer may have failed.
+			if current.Status == string(payment.StatusCaptured) {
+				captures = append(captures, payment.VerifiedEvent{EventID: current.EventKey, TenantID: tenant, OrderID: current.ClaimedOrderID.String(), OrderVersion: current.OrderVersion, ProviderRef: current.ProviderRef, Status: payment.StatusCaptured, Amount: money.Money{Amount: current.AmountMinor, Currency: current.Currency}})
+			}
 			receipt.Status = "processed"
 		} else if current.ErrorCode.Valid {
 			receipt.Status = "rejected"
@@ -295,6 +304,15 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 			return receipt, err
 		}
 		return receipt, apperrors.New(503, "payment_unavailable", "Payment event processing unavailable")
+	}
+	// No provider mutation before Run's successful commit. Rejected, unmatched
+	// and rolled-back captures can never authorize the simulation's refund.
+	if m.config.Provider == "fake" && m.config.ObserveCommittedCapture != nil {
+		for _, event := range captures {
+			if err := m.config.ObserveCommittedCapture(event); err != nil {
+				return receipt, apperrors.New(503, "payment_unavailable", "Fake capture observation unavailable")
+			}
+		}
 	}
 	if receipt.Status == "rejected" {
 		slog.WarnContext(ctx, "payment_webhook_reconciliation_required", "reason", "state_conflict")

@@ -82,7 +82,16 @@ func fakePaymentEnvironment() (bool, []byte, error) {
 }
 func wireFakePayments(config *Config, runner *pgxadapter.QueryRunner, key []byte) error {
 	consumer := checkout.New(checkout.Config{Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}}).(checkoutcontract.PaymentEventApplier)
-	receiver, e := payments.New(payments.Config{TerminalRun: config.PaymentTerminalRun, Key: key, Run: runner.RunFakePaymentTx, Apply: consumer.ApplyPaymentEvent})
+	receiver, e := payments.New(payments.Config{TerminalRun: config.PaymentTerminalRun, Key: key, Run: runner.RunFakePaymentTx, Apply: consumer.ApplyPaymentEvent, ObserveCommittedCapture: func(event payment.VerifiedEvent) error {
+		// Resolve late: storefront/quote composition installs the shared Fake after
+		// the mapped receiver. No public payload or uncommitted fact reaches it.
+		if observer, ok := config.Payment.(interface {
+			ObserveCaptured(payment.VerifiedEvent) error
+		}); ok {
+			return observer.ObserveCaptured(event)
+		}
+		return nil
+	}})
 	if e != nil {
 		return e
 	}
