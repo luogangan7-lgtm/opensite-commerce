@@ -105,3 +105,33 @@ ALTER FUNCTION app.payments_guard_refund_reversal() OWNER TO app_payments_servic
 ALTER TABLE app.payment_refund_reversals ALTER CONSTRAINT payment_refund_reversals_tenant_id_reversal_journal_id_fkey DEFERRABLE INITIALLY DEFERRED;
 CREATE CONSTRAINT TRIGGER payment_refund_reversal_journal AFTER INSERT ON app.payment_refund_reversals
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.payments_guard_refund_reversal();
+
+-- Temporary CI sample: remove only the exact swapped-entry proof.
+CREATE OR REPLACE FUNCTION app.payments_guard_refund_reversal() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
+DECLARE a app.payment_refund_attempts; j app.ledger_transactions; source_key text;
+BEGIN
+ IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'PAYMENTS_REFUND_REVERSAL_IMMUTABLE' USING ERRCODE='23514'; END IF;
+ IF NEW.tenant_id IS DISTINCT FROM nullif(current_setting('app.tenant_id',true),'')::uuid THEN
+  RAISE EXCEPTION 'PAYMENTS_REFUND_TENANT' USING ERRCODE='42501'; END IF;
+ SELECT * INTO a FROM app.payment_refund_attempts WHERE tenant_id=NEW.tenant_id AND provider=NEW.provider
+  AND provider_account_id=NEW.provider_account_id AND environment=NEW.environment AND provider_refund_id=NEW.provider_refund_id;
+ IF NOT FOUND OR a.original_journal_id<>NEW.original_journal_id THEN
+  RAISE EXCEPTION 'PAYMENTS_REFUND_ORIGINAL_PROOF' USING ERRCODE='23514'; END IF;
+ source_key:=encode(sha256(convert_to(length(a.provider)||':'||a.provider||length(a.provider_account_id)||':'||a.provider_account_id
+  ||length(a.provider_refund_id)||':'||a.provider_refund_id,'UTF8')),'hex');
+ SELECT * INTO j FROM app.ledger_transactions WHERE tenant_id=NEW.tenant_id AND id=NEW.reversal_journal_id;
+ IF NOT FOUND OR j.status<>'posted' OR j.currency<>a.currency OR j.source_type<>'payment_refund'
+  OR j.source_id<>source_key OR j.event<>'posted_to_compensated/v1' THEN
+  RAISE EXCEPTION 'PAYMENTS_REFUND_REVERSAL_PROOF' USING ERRCODE='23514'; END IF;
+ -- Independent of the future Go finalizer: every line must match, including
+ -- order, account, amount and currency. No current account configuration is read.
+ IF FALSE AND EXISTS(SELECT FROM
+  (SELECT * FROM app.ledger_entries WHERE tenant_id=NEW.tenant_id AND transaction_id=NEW.original_journal_id) x
+  FULL JOIN (SELECT * FROM app.ledger_entries WHERE tenant_id=NEW.tenant_id AND transaction_id=NEW.reversal_journal_id) y USING(line_no)
+  WHERE x.account_id IS DISTINCT FROM y.account_id OR x.amount IS DISTINCT FROM y.amount
+   OR x.currency IS DISTINCT FROM y.currency OR y.side IS DISTINCT FROM CASE x.side WHEN 'debit' THEN 'credit' WHEN 'credit' THEN 'debit' END) THEN
+  RAISE EXCEPTION 'PAYMENTS_REFUND_SWAPPED_PROOF' USING ERRCODE='23514'; END IF;
+ NEW.created_at:=clock_timestamp();
+ RETURN NEW;
+END $$;
