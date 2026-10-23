@@ -9,7 +9,7 @@ DECLARE d app.notification_deliveries;r app.notification_redrive_requests; dispa
  SELECT * INTO r FROM app.notification_redrive_requests WHERE tenant_id=p_tenant AND notification_id=p_notification_id AND idempotency_key=p_key;
  IF FOUND THEN
   -- FAULT PROBE ONLY: incorrectly creates a second delivery for an old key.
-  UPDATE app.notification_deliveries SET status='pending',generation=generation+1,dispatch_event_id=dispatch,send_token=NULL,lease_attempt=NULL,lease_worker=NULL,last_error=NULL,updated_at=clock_timestamp() WHERE tenant_id=p_tenant AND id=p_notification_id RETURNING * INTO d;
+  UPDATE app.notification_deliveries SET status='pending',sent_at=NULL,generation=generation+1,dispatch_event_id=dispatch,send_token=NULL,lease_attempt=NULL,lease_worker=NULL,last_error=NULL,updated_at=clock_timestamp() WHERE tenant_id=p_tenant AND id=p_notification_id RETURNING * INTO d;
   INSERT INTO app.outbox_events(tenant_id,id,event_type,payload,delivery_target,dedup_key) VALUES(p_tenant,dispatch,'notification.dispatch',jsonb_build_object('notification_id',d.id),'notifications.email',d.id::text||':'||d.generation::text);
   RETURN r;
  END IF;
