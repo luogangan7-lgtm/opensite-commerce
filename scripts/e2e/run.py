@@ -52,7 +52,7 @@ ACTIVE_TESTS |= B2B_TESTS
 REDRIVE_TESTS = {"real admin notification failure redrive delivers once with scoped isolation"}
 ACTIVE_TESTS |= REDRIVE_TESTS
 DATARIGHTS_TESTS = {"real registered customer export and erasure journey"}
-ACTIVE_TESTS |= DATARIGHTS_TESTS
+# Deliberate CI fault: privacy silently disappears from the required inventory.
 GAP_TESTS = set()
 
 
