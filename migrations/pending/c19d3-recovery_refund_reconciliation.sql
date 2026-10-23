@@ -145,7 +145,7 @@ REVOKE ALL ON FUNCTION app.payments_refund_case_evidence(text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.payments_refund_case_evidence(text,text) TO app_payments_ingress;
 CREATE FUNCTION app.payments_replay_refund_case(p_case uuid,p_fact jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
-DECLARE e jsonb;
+DECLARE e jsonb; result jsonb; j app.ledger_transactions;
 BEGIN
  e:=app.payments_refund_case_evidence(p_fact->>'event_id',p_fact->>'account_id');
  IF e IS NULL OR (e->>'case_id')::uuid IS DISTINCT FROM p_case
@@ -155,7 +155,18 @@ BEGIN
   RAISE EXCEPTION 'C19D3_REPLAY_BINDING' USING ERRCODE='23514'; END IF;
  -- Only this capability may refresh freshness after provider retrieval. The
  -- original event/hash remain unchanged; current provider verification is external.
- RETURN app.payments_finalize_refund(p_fact||jsonb_build_object('timestamp',extract(epoch FROM clock_timestamp())::bigint));
+ result:=app.payments_finalize_refund(p_fact||jsonb_build_object('timestamp',extract(epoch FROM clock_timestamp())::bigint));
+ -- Fault injection: a broken recovery implementation tries to post the same
+ -- cash reversal again under a fresh replay key instead of reusing the finalizer.
+ IF result->>'reversal_journal_id' IS NOT NULL THEN
+  SELECT * INTO STRICT j FROM app.ledger_transactions WHERE tenant_id=current_setting('app.tenant_id')::uuid
+   AND id=(result->>'original_journal_id')::uuid;
+  PERFORM app.payments_post_refund_compensation(j.tenant_id,j.currency,'payment_refund',
+   encode(sha256(convert_to('duplicate-replay:'||p_case::text,'UTF8')),'hex'),'posted_to_compensated/v1',
+   array_agg(account_id ORDER BY line_no),array_agg(CASE side WHEN 'debit' THEN 'credit' ELSE 'debit' END ORDER BY line_no),
+   array_agg(amount ORDER BY line_no)) FROM app.ledger_entries WHERE tenant_id=j.tenant_id AND transaction_id=j.id;
+ END IF;
+ RETURN result;
 END $$;
 ALTER FUNCTION app.payments_replay_refund_case(uuid,jsonb) OWNER TO app_payments_service;
 REVOKE ALL ON FUNCTION app.payments_replay_refund_case(uuid,jsonb) FROM PUBLIC;
