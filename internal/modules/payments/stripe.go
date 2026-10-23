@@ -227,8 +227,11 @@ func (s *Stripe) Refund(ctx context.Context, r payment.PaymentOperation) (paymen
 	found := false
 	for _, v := range list.Data {
 		if v.Metadata["osc_key"] == key {
-			if v.Amount != r.Amount.Amount || v.Status != "succeeded" {
+			if v.Amount != r.Amount.Amount {
 				return payment.PaymentIntentResult{}, stripeError(payment.ErrorStateConflict)
+			}
+			if v.Status != "succeeded" {
+				return payment.PaymentIntentResult{}, stripeError(payment.ErrorRetryable)
 			}
 			found = true
 		}

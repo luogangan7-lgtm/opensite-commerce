@@ -10,11 +10,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
@@ -73,27 +77,71 @@ func (s *Stripe) Receive(ctx context.Context, raw []byte, signature string) (con
 		return zero, invalid()
 	}
 	o := e.Data.Object
-	status := map[string]payment.PaymentStatus{"payment_intent.succeeded": payment.StatusCaptured, "payment_intent.canceled": payment.StatusCanceled, "payment_intent.payment_failed": payment.StatusFailed, "refund.created": payment.StatusPartiallyRefunded}[e.Type]
-	if status == "" || o.Metadata["osc_order"] == "" {
+	status := map[string]payment.PaymentStatus{"payment_intent.succeeded": payment.StatusCaptured, "payment_intent.canceled": payment.StatusCanceled, "payment_intent.payment_failed": payment.StatusFailed, "refund.created": payment.StatusPartiallyRefunded, "refund.updated": payment.StatusPartiallyRefunded}[e.Type]
+	if status == "" {
 		return contract.Receipt{EventID: e.ID, Status: "ignored"}, nil
 	}
 	ref := o.ID
-	if e.Type == "refund.created" {
+	refundID := ""
+	if e.Type == "refund.created" || e.Type == "refund.updated" {
+		if !strings.HasPrefix(o.ID, "re_") || len(o.ID) > 128 || !accountPattern.MatchString(o.ID) ||
+			!strings.HasPrefix(o.PaymentIntent, "pi_") || len(o.PaymentIntent) > 200 || !stripeID.MatchString(o.PaymentIntent) ||
+			!strings.HasPrefix(e.ID, "evt_") || len(e.ID) > 128 || !accountPattern.MatchString(e.ID) ||
+			o.Amount <= 0 || (money.Money{Amount: o.Amount, Currency: strings.ToUpper(o.Currency)}).Validate() != nil {
+			return zero, invalid()
+		}
+		if o.Metadata["osc_order"] == "" {
+			return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp)
+		}
 		if o.Status != "succeeded" {
 			return contract.Receipt{EventID: e.ID, Status: "ignored"}, nil
 		}
 		ref = o.PaymentIntent
+		refundID = o.ID
+	}
+	if o.Metadata["osc_order"] == "" {
+		return contract.Receipt{EventID: e.ID, Status: "ignored"}, nil
 	}
 	version, err := strconv.ParseInt(o.Metadata["osc_version"], 10, 64)
 	if err != nil {
 		return zero, invalid()
 	}
-	in := envelope{EventID: e.ID, AccountID: s.account, OrderID: o.Metadata["osc_order"], OrderVersion: version, ProviderRef: ref, Status: status, AmountMinor: o.Amount, Currency: strings.ToUpper(o.Currency)}
+	in := envelope{EventID: e.ID, AccountID: s.account, OrderID: o.Metadata["osc_order"], OrderVersion: version, ProviderRef: ref, Status: status, AmountMinor: o.Amount, Currency: strings.ToUpper(o.Currency), RefundID: refundID}
 	if !strings.HasPrefix(ref, "pi_") || !stripeID.MatchString(ref) || !strings.HasPrefix(e.ID, "evt_") || len(e.ID) > 128 ||
 		(payment.VerifiedEvent{EventID: e.ID, TenantID: "00000000-0000-0000-0000-000000000001", OrderID: in.OrderID, OrderVersion: version, ProviderRef: ref, Status: status, Amount: money.Money{Amount: o.Amount, Currency: in.Currency}}).Validate() != nil {
 		return zero, invalid()
 	}
 	return s.Module.receive(ctx, raw, in, timestamp)
+}
+
+// Keep a bounded event identity/hash in the existing reconciliation inbox, not
+// the raw payload. The provider event ID retrieves the full fact during matching.
+// No domain consumer is called until trusted order/attempt matching exists.
+func (s *Stripe) unmatchedRefund(ctx context.Context, raw []byte, event, ref string, stamp int64) (contract.Receipt, error) {
+	hash := sha256.Sum256(raw)
+	err := s.config.Run(ctx, s.account, func(ctx context.Context, tx pgx.Tx, _ string, at time.Time) error {
+		if delta := at.Sub(time.Unix(stamp, 0)); delta > 5*time.Minute || delta < -5*time.Minute {
+			return rejected()
+		}
+		q := db.New(tx)
+		locked, err := q.LockPaymentStream(ctx, db.LockPaymentStreamParams{Account: s.account, ProviderRef: ref})
+		if err != nil {
+			return err
+		}
+		if delta := locked.Time.Sub(time.Unix(stamp, 0)); delta > 5*time.Minute || delta < -5*time.Minute {
+			return rejected()
+		}
+		inbox, err := q.AdmitPaymentInbox(ctx, db.AdmitPaymentInboxParams{Account: s.account, EventID: event, PayloadHash: hash[:]})
+		if err != nil {
+			return err
+		}
+		return q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: inbox, Success: false})
+	})
+	if err != nil {
+		return contract.Receipt{}, apperrors.New(503, "payment_unavailable", "Unmatched refund retention unavailable")
+	}
+	slog.WarnContext(ctx, "payment_webhook_reconciliation_required", "reason", "unmatched_refund", "event_id", event)
+	return contract.Receipt{EventID: event, Status: "unmatched"}, nil
 }
 
 func StripeRoute(receiver contract.Receiver) httpapi.Route {

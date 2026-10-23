@@ -10,7 +10,7 @@ SELECT app.lock_payment_stream(sqlc.arg(account)::text,sqlc.arg(provider_ref)::t
 SELECT app.admit_payment_inbox(sqlc.arg(account)::text,sqlc.arg(event_id)::text,sqlc.arg(payload_hash)::bytea)::uuid AS id;
 -- name: InsertPaymentEvent :exec
 INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(tenant_id,id) DO NOTHING;
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING;
 -- name: ListPendingPaymentEvents :many
 SELECT * FROM app.payment_events WHERE tenant_id=$1 AND provider_account_id=$2 AND provider_ref=$3 AND provider=coalesce(nullif(current_setting('app.payment_provider',true),''),'fake') AND NOT applied
 ORDER BY CASE status WHEN 'captured' THEN 0 WHEN 'failed' THEN 2 WHEN 'canceled' THEN 2 ELSE 1 END,created_at,id FOR UPDATE;
@@ -18,5 +18,7 @@ ORDER BY CASE status WHEN 'captured' THEN 0 WHEN 'failed' THEN 2 WHEN 'canceled'
 UPDATE app.payment_events SET applied=$3,error_code=$4 WHERE tenant_id=$1 AND id=$2;
 -- name: GetPaymentEvent :one
 SELECT * FROM app.payment_events WHERE tenant_id=$1 AND id=$2;
+-- name: GetPaymentEventByKey :one
+SELECT * FROM app.payment_events WHERE tenant_id=$1 AND event_key=$2;
 -- name: FinishPaymentInbox :exec
 SELECT app.finish_payment_inbox(sqlc.arg(id)::uuid,sqlc.arg(success)::boolean);
