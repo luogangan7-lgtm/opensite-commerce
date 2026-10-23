@@ -43,6 +43,27 @@ func (q *Queries) BindPaymentDelivery(ctx context.Context, arg BindPaymentDelive
 	return err
 }
 
+const bindPaymentReturnRefund = `-- name: BindPaymentReturnRefund :exec
+SELECT app.payments_bind_return_refund($1::uuid,$2::text,$3::text,$4::uuid)
+`
+
+type BindPaymentReturnRefundParams struct {
+	ReturnID         pgtype.UUID `json:"return_id"`
+	AttemptKey       string      `json:"attempt_key"`
+	ProviderRefundID string      `json:"provider_refund_id"`
+	JournalID        pgtype.UUID `json:"journal_id"`
+}
+
+func (q *Queries) BindPaymentReturnRefund(ctx context.Context, arg BindPaymentReturnRefundParams) error {
+	_, err := q.db.Exec(ctx, bindPaymentReturnRefund,
+		arg.ReturnID,
+		arg.AttemptKey,
+		arg.ProviderRefundID,
+		arg.JournalID,
+	)
+	return err
+}
+
 const finishPaymentInbox = `-- name: FinishPaymentInbox :exec
 SELECT app.finish_payment_inbox($1::uuid,$2::boolean)
 `
@@ -121,6 +142,22 @@ func (q *Queries) GetPaymentEventByKey(ctx context.Context, arg GetPaymentEventB
 		&i.ProviderRefundID,
 	)
 	return i, err
+}
+
+const getPaymentReturnContext = `-- name: GetPaymentReturnContext :one
+SELECT app.payments_return_context($1::uuid,$2::text)::jsonb AS result
+`
+
+type GetPaymentReturnContextParams struct {
+	OrderID  pgtype.UUID `json:"order_id"`
+	Currency string      `json:"currency"`
+}
+
+func (q *Queries) GetPaymentReturnContext(ctx context.Context, arg GetPaymentReturnContextParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getPaymentReturnContext, arg.OrderID, arg.Currency)
+	var result []byte
+	err := row.Scan(&result)
+	return result, err
 }
 
 const hasLegacyPaymentRefund = `-- name: HasLegacyPaymentRefund :one
@@ -259,6 +296,15 @@ func (q *Queries) ListPendingPaymentEvents(ctx context.Context, arg ListPendingP
 	return items, nil
 }
 
+const lockPaymentReturnCheckout = `-- name: LockPaymentReturnCheckout :exec
+SELECT app.payments_lock_return_checkout($1::uuid)
+`
+
+func (q *Queries) LockPaymentReturnCheckout(ctx context.Context, returnID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, lockPaymentReturnCheckout, returnID)
+	return err
+}
+
 const lockPaymentStream = `-- name: LockPaymentStream :one
 SELECT app.lock_payment_stream($1::text,$2::text)::timestamptz AS at_time
 `
@@ -273,6 +319,33 @@ func (q *Queries) LockPaymentStream(ctx context.Context, arg LockPaymentStreamPa
 	var at_time pgtype.Timestamptz
 	err := row.Scan(&at_time)
 	return at_time, err
+}
+
+const matchPaymentReturnRefund = `-- name: MatchPaymentReturnRefund :one
+SELECT app.payments_match_return_refund($1::uuid,$2::text,$3::text,$4::bigint,$5::bigint,$6::text)::text AS result
+`
+
+type MatchPaymentReturnRefundParams struct {
+	OrderID          pgtype.UUID `json:"order_id"`
+	ProviderRef      string      `json:"provider_ref"`
+	ProviderRefundID string      `json:"provider_refund_id"`
+	PaymentVersion   int64       `json:"payment_version"`
+	AmountMinor      int64       `json:"amount_minor"`
+	Currency         string      `json:"currency"`
+}
+
+func (q *Queries) MatchPaymentReturnRefund(ctx context.Context, arg MatchPaymentReturnRefundParams) (string, error) {
+	row := q.db.QueryRow(ctx, matchPaymentReturnRefund,
+		arg.OrderID,
+		arg.ProviderRef,
+		arg.ProviderRefundID,
+		arg.PaymentVersion,
+		arg.AmountMinor,
+		arg.Currency,
+	)
+	var result string
+	err := row.Scan(&result)
+	return result, err
 }
 
 const resolveFakePaymentAccount = `-- name: ResolveFakePaymentAccount :one

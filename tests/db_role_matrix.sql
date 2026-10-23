@@ -76,7 +76,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_return_refunds','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='SELECT' AND t.relname='customer_guest_order_links' THEN
