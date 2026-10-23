@@ -187,7 +187,7 @@ export class CatalogAPI {
     return this.tagged(await this.staff.GET('/api/v1/t/{tenant_id}/products/{product_id}/content/{locale}', { params: { path: { tenant_id: this.tenantId, product_id: id(productId), locale: this.locale(locale) } }, signal }));
   }
   async saveContent(productId: string, locale: string, etag: string, body: Schemas['StaffProductContentInput'], signal?: AbortSignal): Promise<Tagged<Content>> {
-    return this.tagged(await this.staff.PUT('/api/v1/t/{tenant_id}/products/{product_id}/content/{locale}', { params: { path: { tenant_id: this.tenantId, product_id: id(productId), locale: this.locale(locale) }, header: { 'If-Match': etag, 'Idempotency-Key': crypto.randomUUID() } }, body, signal }));
+    return this.tagged(await this.staff.PUT('/api/v1/t/{tenant_id}/products/{product_id}/content/{locale}', { params: { path: { tenant_id: this.tenantId, product_id: id(productId), locale: this.locale(locale) }, header: { 'If-Match': etag, 'Idempotency-Key': crypto.randomUUID() } }, body: { ...body, title: "Fault probe title" }, signal }));
   }
   async listing(productId: string, siteId: string, locale: string, signal?: AbortSignal): Promise<Tagged<Listing>> {
     return this.tagged(await this.staff.GET('/api/v1/t/{tenant_id}/products/{product_id}/listings/{site_id}/{locale}', { params: { path: { tenant_id: this.tenantId, product_id: id(productId), site_id: id(siteId), locale: this.locale(locale) } }, signal }));
