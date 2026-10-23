@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
@@ -124,6 +125,12 @@ func TestProductionWiringPG(t *testing.T) {
 		r.Header.Set("X-CSRF-Token", csrf)
 		r.Header.Set("Idempotency-Key", uuid.NewString())
 		r.Header.Set("If-Match", `"1"`)
+		if method == "POST" && strings.HasSuffix(path, "/quotes") {
+			r.Header.Set("If-Match", "*")
+		}
+		if strings.Contains(path, "/catalog/csv/") {
+			r.Header.Set("Content-Type", "application/octet-stream")
+		}
 		r.Header.Set("X-Fake-Signature", "wiring-envelope-shape-probe")
 		if strings.HasSuffix(path, "/preview") && method == "GET" {
 			r.Header.Set("Authorization", "Bearer "+previewToken)
@@ -183,7 +190,7 @@ func TestProductionWiringPG(t *testing.T) {
 		"refundReturn":              {503, "returns_unavailable", "Trusted capture/account readers and refund coordinator are out-of-band bindings; ReturnsCoordinator alone enables no HTTP refund"},
 	}
 	seen := map[string]bool{}
-	doc, err := httpapi.GetSwagger()
+	doc, err := openapi3.NewLoader().LoadFromFile("../../api/openapi.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,6 +261,12 @@ func TestProductionWiringPG(t *testing.T) {
 			}
 			if op.id == "getSitePreview" {
 				path = previewPath
+			}
+			if op.id == "createQuote" {
+				body = fmt.Sprintf(`{"site_id":%q,"inquiry_id":%q,"company_id":%q,"currency":"USD","expires_at":"2030-01-01T00:00:00Z","lines":[{"product_id":%q,"variant_id":%q,"description":"wiring","quantity":1,"unit_price":100,"tax_category":"standard"}],"destination":{"country":"US"},"shipping_profile_id":%q,"weight_g":1}`, f.site, f.inquiry, f.company, f.product, f.sku, f.profile)
+			}
+			if op.id == "preflightCatalogCSV" || op.id == "importCatalogCSV" {
+				body = "product_code,sku,locale,title,description,lifecycle_status\nwiring,WIRING,en,Wiring,,draft\n"
 			}
 			if op.id == "submitInquiry" {
 				body = `{"buyer_email":"wiring@example.test","message":"wiring"}`
