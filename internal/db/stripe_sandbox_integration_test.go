@@ -135,7 +135,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	go func() { _ = server.Serve(listener) }()
 	defer server.Close()
 	seen := map[string]bool{}
-	refunds := map[string]string{}
+	expectedRefunds := map[string]string{}
 	pending := []stripeDelivery{}
 	var timeoutDiagnostic func()
 	wait := func(kind, order string) stripeDelivery {
@@ -149,7 +149,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		observed := map[string]int{}
 		for {
 			for i, d := range pending {
-				if d.kind == kind && (d.order == order || (refunds[order] != "" && refunds[order] == d.refund)) && !seen[d.id] {
+				if d.kind == kind && (d.order == order || (expectedRefunds[order] != "" && expectedRefunds[order] == d.refund)) && !seen[d.id] {
 					pending = append(pending[:i], pending[i+1:]...)
 					seen[d.id] = true
 					if d.status != 200 && !(kind == "payment_intent.payment_failed" && d.status == 409) {
@@ -391,7 +391,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	if w := f.witness(t, failStart.OrderID); w.cash != failBefore.cash-1 || w.state != "partially_refunded" {
 		t.Fatalf("C19D2_SANDBOX_JOURNALED_SUCCESS_RED: %+v", w)
 	}
-	refunds[failStart.OrderID] = created.refund
+	expectedRefunds[failStart.OrderID] = created.refund
 	// Diagnose only the real provider status on a bounded delivery failure.
 	// Never retain/log response bodies, signatures, API keys or customer fields.
 	timeoutDiagnostic = func() {
