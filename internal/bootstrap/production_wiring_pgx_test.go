@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
@@ -65,6 +66,10 @@ func TestProductionWiringPG(t *testing.T) {
 		return err
 	})
 	publicDSN := loginDSN(t, f.ctx, f.runner.Runner, os.Getenv("DATABASE_URL"), "wiring_public_", "app_domain_resolver")
+	metadata, err := json.Marshal(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 1}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for name, value := range map[string]string{
 		"OPENSITE_DATABASE_URL":         loginDSN(t, f.ctx, f.runner.Runner, os.Getenv("DATABASE_URL"), "wiring_runtime_", "app_runtime"),
 		"OPENSITE_AUTH_DATABASE_URL":    loginDSN(t, f.ctx, f.runner.Runner, os.Getenv("DATABASE_URL"), "wiring_auth_", "app_auth"),
@@ -76,8 +81,11 @@ func TestProductionWiringPG(t *testing.T) {
 		"OPENSITE_CMS_PREVIEW_KEY":      base64.RawURLEncoding.EncodeToString(quoteRandom(t)),
 		"PRIVACY_TOKEN_KEY":             hex.EncodeToString(quoteRandom(t)),
 		"PRIVACY_EXPORT_WORKER_ENABLED": "true", "JOB_SIGNING_KEY": hex.EncodeToString(quoteRandom(t)),
-		"OPENSITE_ENVIRONMENT": "test", "OPENSITE_CHECKOUT_FAKE_ENABLED": "true",
-		"OPENSITE_CHECKOUT_FAKE_SIGNING_KEY": base64.RawURLEncoding.EncodeToString(quoteRandom(t)),
+		"OPENSITE_ENVIRONMENT": "test", "OPENSITE_FAKE_PSP": "1",
+		"OPENSITE_FAKE_WEBHOOK_KEY":     base64.RawURLEncoding.EncodeToString(quoteRandom(t)),
+		"OPENSITE_STOREFRONT_KEY":       base64.RawURLEncoding.EncodeToString(quoteRandom(t)),
+		"OPENSITE_STOREFRONT_TENANT_ID": f.tenant, "OPENSITE_STOREFRONT_ORIGIN": origin,
+		"OPENSITE_CHECKOUT_RULE_METADATA": string(metadata),
 	} {
 		t.Setenv(name, value)
 	}
@@ -104,8 +112,10 @@ func TestProductionWiringPG(t *testing.T) {
 	// before reaching it. This prevents malformed samples masking nil services.
 	for name, ready := range map[string]bool{
 		"catalog": cfg.Catalog.Run != nil, "pricing": cfg.Pricing.Run != nil,
-		"media":  cfg.Media.Run != nil && cfg.Media.Root != "",
-		"orders": cfg.Orders.Read != nil, "fulfillment": cfg.Fulfillment.Run != nil,
+		"staff authentication": cfg.Authenticator != nil, "cart": cfg.Cart != nil,
+		"checkout": cfg.Checkout != nil && cfg.Checkout.Service != nil && cfg.Checkout.Resolver != nil,
+		"media":    cfg.Media.Run != nil && cfg.Media.Root != "",
+		"orders":   cfg.Orders.Read != nil, "fulfillment": cfg.Fulfillment.Run != nil,
 		"returns": cfg.Returns.Run != nil, "CMS": cfg.CMS.Writer != nil && cfg.CMS.Idempotency.Store != nil,
 		"quotes":        cfg.Quotes != nil && cfg.QuoteConversion != nil,
 		"notifications": cfg.Notifications != nil, "subject": cfg.Subject != nil,
@@ -117,7 +127,7 @@ func TestProductionWiringPG(t *testing.T) {
 		}
 	}
 
-	previewToken := ""
+	previewToken, bearer := "", ""
 	request := func(method, path, body, csrf string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, origin+path, strings.NewReader(body)).WithContext(f.ctx)
 		r.Header.Set("Origin", origin)
@@ -134,6 +144,10 @@ func TestProductionWiringPG(t *testing.T) {
 		r.Header.Set("X-Fake-Signature", "wiring-envelope-shape-probe")
 		if strings.HasSuffix(path, "/preview") && method == "GET" {
 			r.Header.Set("Authorization", "Bearer "+previewToken)
+		}
+		if bearer != "" {
+			r.Header.Set("Authorization", "Bearer "+bearer)
+			cookies = nil
 		}
 		for _, c := range cookies {
 			r.AddCookie(c)
@@ -190,6 +204,7 @@ func TestProductionWiringPG(t *testing.T) {
 		"refundReturn":              {503, "returns_unavailable", "Trusted capture/account readers and refund coordinator are out-of-band bindings; ReturnsCoordinator alone enables no HTTP refund"},
 	}
 	seen := map[string]bool{}
+	// Embedded generator metadata normalizes IDs; the source YAML is canonical.
 	doc, err := openapi3.NewLoader().LoadFromFile("../../api/openapi.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -207,6 +222,66 @@ func TestProductionWiringPG(t *testing.T) {
 				ops = append(ops, operation{op.OperationID, method, path, fmt.Sprint(op.Extensions["x-opensite-access"])})
 			}
 		}
+	}
+	// Issue a real narrowed key through production HTTP; test both alternatives
+	// on every AdminOrAPIKey operation, including issuer-to-Quotes projection.
+	scopes := map[string]bool{}
+	for _, item := range doc.Paths.Map() {
+		for _, op := range item.Operations() {
+			if op.Extensions["x-opensite-status"] == "implemented" && op.Extensions["x-opensite-access"] == "AdminOrAPIKey" {
+				if scope, ok := op.Extensions["x-required-scope"].(string); ok {
+					scopes[scope] = true
+				}
+			}
+		}
+	}
+	var keyScopes []string
+	for scope := range scopes {
+		keyScopes = append(keyScopes, scope)
+	}
+	sort.Strings(keyScopes)
+	keyBody, err := json.Marshal(map[string]any{"scopes": keyScopes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyResponse := request("POST", "/api/v1/t/"+f.tenant+"/api-keys", string(keyBody), staffCSRF, staffCookie)
+	var key struct {
+		Value string `json:"key"`
+	}
+	if keyResponse.Code != 201 || json.Unmarshal(keyResponse.Body.Bytes(), &key) != nil || key.Value == "" {
+		t.Fatalf("API key setup status=%d", keyResponse.Code)
+	}
+	for _, cookie := range []*http.Cookie{nil, customerCookie} {
+		var cookies []*http.Cookie
+		if cookie != nil {
+			cookies = append(cookies, cookie)
+		}
+		if w := request("GET", "/api/v1/t/"+f.tenant+"/quotes/"+f.quote.ID, "", "", cookies...); w.Code != 401 {
+			t.Errorf("staff quote negative admission status=%d", w.Code)
+		}
+	}
+	quoteBody := fmt.Sprintf(`{"site_id":%q,"inquiry_id":%q,"company_id":%q,"currency":"USD","expires_at":"2030-01-01T00:00:00Z","lines":[{"product_id":%q,"variant_id":%q,"description":"wiring","quantity":1,"unit_price":100,"tax_category":"standard"}],"destination":{"country":"US"},"shipping_profile_id":%q,"weight_g":1}`, f.site, f.inquiry, f.company, f.product, f.sku, f.profile)
+	// Revoke membership after route authentication but before the transaction.
+	// The admitted Quotes actor must not bypass the existing staff write fence.
+	quotePath := "/api/v1/t/" + f.tenant + "/quotes"
+	changeRole := func(role string) {
+		f.maintenance(t, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE app.tenant_memberships SET role=$3 WHERE tenant_id=$1 AND user_id=$2`, f.tenant, f.staff, role)
+			return err
+		})
+	}
+	revoked := false
+	bodyReader := &c02cHTTPBody{reader: strings.NewReader(quoteBody), before: func() { changeRole("viewer"); revoked = true }}
+	r := httptest.NewRequest("POST", origin+quotePath, bodyReader).WithContext(f.ctx)
+	r.AddCookie(staffCookie)
+	for name, value := range map[string]string{"Content-Type": "application/json", "Origin": origin, "X-CSRF-Token": staffCSRF, "If-Match": "*", "Idempotency-Key": uuid.NewString()} {
+		r.Header.Set(name, value)
+	}
+	w := httptest.NewRecorder()
+	server.Handler.ServeHTTP(w, r)
+	changeRole("admin")
+	if !revoked || w.Code != 403 {
+		t.Errorf("Quotes transaction authority fence: revoked=%v status=%d", revoked, w.Code)
 	}
 	// Logout witnesses run last so one operation cannot invalidate another's credentials.
 	sort.Slice(ops, func(i, j int) bool {
@@ -263,7 +338,7 @@ func TestProductionWiringPG(t *testing.T) {
 				path = previewPath
 			}
 			if op.id == "createQuote" {
-				body = fmt.Sprintf(`{"site_id":%q,"inquiry_id":%q,"company_id":%q,"currency":"USD","expires_at":"2030-01-01T00:00:00Z","lines":[{"product_id":%q,"variant_id":%q,"description":"wiring","quantity":1,"unit_price":100,"tax_category":"standard"}],"destination":{"country":"US"},"shipping_profile_id":%q,"weight_g":1}`, f.site, f.inquiry, f.company, f.product, f.sku, f.profile)
+				body = quoteBody
 			}
 			if op.id == "preflightCatalogCSV" || op.id == "importCatalogCSV" {
 				body = "product_code,sku,locale,title,description,lifecycle_status\nwiring,WIRING,en,Wiring,,draft\n"
@@ -271,19 +346,27 @@ func TestProductionWiringPG(t *testing.T) {
 			if op.id == "submitInquiry" {
 				body = `{"buyer_email":"wiring@example.test","message":"wiring"}`
 			}
-			w := request(op.method, path, body, token, cookies...)
-			var problem struct{ Code, Detail string }
-			_ = json.Unmarshal(w.Body.Bytes(), &problem)
-			if exception, ok := allow[op.id]; ok {
-				seen[op.id] = true
-				if w.Code != exception.status || problem.Code != exception.code || exception.reason == "" {
-					t.Errorf("stale wiring exception: status=%d code=%s", w.Code, problem.Code)
+			credentials := []string{""}
+			if op.access == "AdminOrAPIKey" {
+				credentials = append(credentials, key.Value)
+			}
+			for _, credential := range credentials {
+				bearer = credential
+				w := request(op.method, path, body, token, cookies...)
+				var problem struct{ Code, Detail string }
+				_ = json.Unmarshal(w.Body.Bytes(), &problem)
+				if exception, ok := allow[op.id]; ok {
+					seen[op.id] = true
+					if w.Code != exception.status || problem.Code != exception.code || exception.reason == "" {
+						t.Errorf("stale wiring exception: status=%d code=%s", w.Code, problem.Code)
+					}
+					continue
 				}
-				return
+				if w.Code == 401 || w.Code == 403 || w.Code >= 500 || strings.Contains(problem.Detail, "Route not found") {
+					t.Errorf("WIRING_GAP: %s %s status=%d code=%s detail=%s", op.access, op.id, w.Code, problem.Code, problem.Detail)
+				}
 			}
-			if w.Code == 401 || w.Code == 403 || w.Code >= 500 || strings.Contains(problem.Detail, "Route not found") {
-				t.Errorf("WIRING_GAP: %s %s status=%d code=%s detail=%s", op.access, op.id, w.Code, problem.Code, problem.Detail)
-			}
+			bearer = ""
 		})
 	}
 	for id := range allow {
@@ -292,8 +375,8 @@ func TestProductionWiringPG(t *testing.T) {
 		}
 	}
 	// Quotes are a runtime capability, not a side effect of enabling Fake payments.
-	t.Setenv("OPENSITE_CHECKOUT_FAKE_ENABLED", "false")
-	t.Setenv("OPENSITE_CHECKOUT_FAKE_SIGNING_KEY", "")
+	t.Setenv("OPENSITE_FAKE_PSP", "0")
+	t.Setenv("OPENSITE_STOREFRONT_KEY", "")
 	plain, closePlain, err := bootstrap.FromEnvironment(f.ctx, bootstrap.Config{Logger: cfg.Logger})
 	if err != nil {
 		t.Fatal(err)
