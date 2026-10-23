@@ -384,7 +384,10 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 		}
 	}
 	// A missing financial identity must be retained without interpreting it as a new refund.
-	missing := p.raw("rma-without-identity", payment.StatusPartiallyRefunded, completed.RefundMinor)
+	var missingBody map[string]any
+	_ = json.Unmarshal(p.raw("rma-without-identity", payment.StatusPartiallyRefunded, completed.RefundMinor), &missingBody)
+	delete(missingBody, "refund_id")
+	missing, _ := json.Marshal(missingBody)
 	if got, err := p.module.Receive(p.f.ctx, missing, p.signature(missing, p.at)); err != nil || got.Status != "rejected" {
 		t.Fatalf("IDENTITYLESS_REFUND_RED: receipt=%+v err=%v", got, err)
 	}
