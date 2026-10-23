@@ -8,7 +8,13 @@ import {validateUUID} from './validation';
 import {SessionProvider,useSession} from './session';
 import {ProductCreatePage,ProductEditPage,ProductListPage} from './products';
 import {OrdersAPI,OrderDetailPage,OrderListPage} from './orders';
-const Gallery=import.meta.env.DEV||import.meta.env.MODE==='gallery'?lazy(()=>import('./gallery')):null;
+// Native selects cache text metrics at creation; waiting before screenshots is too late.
+// Keep the font boundary inside the build-guarded gallery, before any controls mount.
+const Gallery=import.meta.env.DEV||import.meta.env.MODE==='gallery'?lazy(async()=>{
+ const gallery=await import('./gallery');
+ await Promise.all(['400','500','600'].map(weight=>document.fonts.load(`${weight} 16px Inter`, 'Default Selected')));
+ return gallery;
+}):null;
 // Contract fixtures are supplied only by the isolated test runner's interception.
 const ordersFixture=import.meta.env.DEV||import.meta.env.MODE==='gallery';
 export class ErrorBoundary extends Component<{children:ReactNode},{failed:boolean}>{
