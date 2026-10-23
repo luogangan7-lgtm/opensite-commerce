@@ -14,7 +14,16 @@ import urllib.request
 import uuid
 
 
-def prepare(url, psql, tenant, credentials=None):
+def environment(password):
+    # Both harnesses generate hex/base64url passwords; never accept DSN options.
+    if not password or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in password):
+        raise RuntimeError('PRIVACY_WIRING: invalid fixture credential')
+    dsn = 'host=postgres port=5432 dbname=opensite user=opensite_runtime_login password=' + password + ' sslmode=disable'
+    return {'OPENSITE_PRIVACY_DATABASE_URL': dsn, 'PRIVACY_WORKER_DATABASE_URL': dsn,
+            'PRIVACY_TOKEN_KEY': secrets.token_hex(32), 'PRIVACY_EXPORT_WORKER_ENABLED': 'true'}
+
+
+def prepare(url, psql, tenant, credentials=None, enabled=True):
     tenant = str(uuid.UUID(tenant))
     staff, customer, key = (str(uuid.uuid4()) for _ in range(3))
     secret = secrets.token_bytes(32)
@@ -32,7 +41,9 @@ def prepare(url, psql, tenant, credentials=None):
       COMMIT;""")
     witness = dict(url=url, tenant=tenant, customer=customer, bearer=bearer,
                    base=f'/api/v1/t/{tenant}/customers/{customer}/data-exports')
-    created = request(witness, witness['base'], 202, method='POST')
+    created = request(witness, witness['base'], 202 if enabled else 503, method='POST')
+    if not enabled:
+        return witness
     witness['request'] = str(uuid.UUID(created['request_id']))
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
@@ -59,6 +70,8 @@ def request(witness, path, expected, method='GET'):
                 raise RuntimeError('PRIVACY_WIRING: unexpected response')
             return json.loads(raw)
     except urllib.error.HTTPError as error:
+        if error.code == expected:
+            return {}
         raise RuntimeError(f'PRIVACY_WIRING: HTTP {error.code}, expected {expected}') from None
     except (OSError, ValueError):
         raise RuntimeError('PRIVACY_WIRING: transport or export content invalid') from None

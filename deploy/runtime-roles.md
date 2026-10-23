@@ -91,6 +91,13 @@ unnecessary.
 
 ## Deployment constraint
 
+Privacy API/export-worker DSNs use the existing restricted `app_runtime`
+capability through `opensite_runtime_login` (see `DATA_RIGHTS.md` and the
+privacy setup in `README.md`). This login is already provisioned/restored by
+`LOGIN_ROLES` and fenced by the exact-database HBA rules. Supply it to the worker
+only as the explicit privacy DSN; its separate queue pool keeps the queue LOGIN.
+Exports share the API's private media volume and UID, never a public media path.
+
 V1 supports exactly one OpenSite application database per PostgreSQL cluster.
 All capability roles (`app_runtime`, `app_auth`, `app_customer_auth`, ...) are
 cluster-wide, so a second OpenSite database on the same cluster would share

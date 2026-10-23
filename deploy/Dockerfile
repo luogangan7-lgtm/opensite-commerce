@@ -25,6 +25,7 @@ HEALTHCHECK --interval=5s --timeout=4s --retries=15 CMD ["/usr/local/bin/healthc
 
 FROM postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336 AS worker
 COPY --from=build /out/worker /out/healthcheck /usr/local/bin/
+RUN mkdir -p /var/lib/opensite/media && chown 65532:65532 /var/lib/opensite/media
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/worker"]
 HEALTHCHECK --interval=5s --timeout=4s --retries=15 CMD ["/usr/local/bin/healthcheck", "http://127.0.0.1:8081/healthz"]

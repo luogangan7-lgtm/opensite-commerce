@@ -239,7 +239,10 @@ def run(receipt_dir):
                        "OPENSITE_E2E_OWNER_PASSWORD": secrets.token_hex(32),
                        "OPENSITE_E2E_BOOTSTRAP_PASSWORD": secrets.token_hex(32),
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
+        privacy_settings = privacy.environment(credentials['OPENSITE_RUNTIME_DB_PASSWORD'])
+        credentials.update({key: value for key, value in privacy_settings.items() if key != 'PRIVACY_EXPORT_WORKER_ENABLED'})
         variables = dict(credentials, COMPOSE_PROJECT_NAME=project, OPENSITE_DB="opensite",
+                         PRIVACY_EXPORT_WORKER_ENABLED='true',
                          OPENSITE_API_PORT="8080", OPENSITE_WORKER_PORT="8081", JOB_TENANTS=TENANT,
                          OPENSITE_SERVING_REFRESH_TENANTS=TENANT,
                          # Staff login requires an HTTPS Origin; the admin preview proxy presents this
@@ -249,7 +252,7 @@ def run(receipt_dir):
                          OPENSITE_E2E_OWNER_EMAIL="c24-owner@example.test",
                          OPENSITE_CHECKOUT_RULE_METADATA=json.dumps({"Profiles": {TENANT: "c2400014-0000-4000-8000-000000000001"},
                            "SKUs": {TENANT: {f"c2400008-0000-4000-8000-{n:012d}": {"TaxCategory": "standard", "WeightG": 100} for n in (1, 2)}}}, separators=(",", ":")))
-        env_file.write_text("".join(f"{key}={value}\n" for key, value in variables.items()))
+        env_file.write_text("".join(f"{key}='{value}'\n" for key, value in variables.items()))
         env_file.chmod(0o600)
         os.environ.update(variables, OPENSITE_ENV_FILE=str(env_file), OPENSITE_OPS_TIMEOUT="900")
         persist()
@@ -304,7 +307,7 @@ def run(receipt_dir):
             # Deployment authorizes refresh by tenant UUID; bootstrap creates a new one.
             variables["OPENSITE_SERVING_REFRESH_TENANTS"] = f"{TENANT},{owner_tenant}"
             os.environ["OPENSITE_SERVING_REFRESH_TENANTS"] = variables["OPENSITE_SERVING_REFRESH_TENANTS"]
-            env_file.write_text("".join(f"{key}={value}\n" for key, value in variables.items()))
+            env_file.write_text("".join(f"{key}='{value}'\n" for key, value in variables.items()))
             # Mailpit shares API's network namespace, so recreate both together.
             command(compose_command(["up", "-d", "--no-deps", "--force-recreate", "--wait", "--wait-timeout", "120", "api", "mailpit"]), "staff-refresh-start", timeout=300)
             receipt["owner_bootstrap"]["status"] = "PASS"
