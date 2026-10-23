@@ -73,10 +73,13 @@ func TestRefundCompensationIdentityFences(t *testing.T) {
 			return err
 		}
 		// A balanced, posted journal with the correct source is still insufficient
-		// when its sides do not reverse the original. The savepoint rolls it back.
+		// when its receivable lines are not swapped. Cash is correctly reversed,
+		// so only the exact-entry proof can reject this balanced journal.
 		badWitness := `WITH bad AS (
  SELECT app.payments_post_refund_compensation($1,$3,'payment_refund',$2,'posted_to_compensated/v1',
- array_agg(account_id ORDER BY line_no),array_agg(side ORDER BY line_no),array_agg(amount ORDER BY line_no)) AS id
+ array_agg(account_id ORDER BY line_no),array_agg(CASE WHEN account_id IN
+  (SELECT id FROM app.ledger_accounts WHERE tenant_id=$1 AND code='accounts_receivable') THEN side
+  WHEN side='debit' THEN 'credit' ELSE 'debit' END ORDER BY line_no),array_agg(amount ORDER BY line_no)) AS id
  FROM app.ledger_entries WHERE tenant_id=$1 AND transaction_id=$4)
  INSERT INTO app.payment_refund_reversals(tenant_id,provider,provider_account_id,environment,provider_refund_id,original_journal_id,reversal_journal_id)
  SELECT $1,'fake',$5,'test','compensable',$4,id FROM bad`
