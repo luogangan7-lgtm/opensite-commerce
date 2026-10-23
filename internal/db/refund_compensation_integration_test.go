@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	paymentscontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 )
@@ -46,8 +45,8 @@ func TestRefundCompensationIdentityFences(t *testing.T) {
 			}
 			defer nested.Rollback(ctx)
 			_, err = nested.Exec(ctx, query, args...)
-			var pg *pgconn.PgError
-			if !errors.As(err, &pg) || pg.Code != code {
+			var pg interface{ SQLState() string }
+			if !errors.As(err, &pg) || pg.SQLState() != code {
 				return fmt.Errorf("C19D expected %s, got %v", code, err)
 			}
 			return nil
@@ -70,6 +69,17 @@ func TestRefundCompensationIdentityFences(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		// A balanced, posted journal with the correct source is still insufficient
+		// when its sides do not reverse the original. The savepoint rolls it back.
+		badWitness := `WITH bad AS (
+ SELECT app.post_ledger($1,$3,'payment_refund',$2,'posted_to_compensated/v1',
+ array_agg(account_id ORDER BY line_no),array_agg(side ORDER BY line_no),array_agg(amount ORDER BY line_no)) AS id
+ FROM app.ledger_entries WHERE tenant_id=$1 AND transaction_id=$4)
+ INSERT INTO app.payment_refund_reversals(tenant_id,provider,provider_account_id,environment,provider_refund_id,original_journal_id,reversal_journal_id)
+ SELECT $1,'fake',$5,'test','compensable',$4,id FROM bad`
+		if err := reject(badWitness, "23514", p.f.tenant, source, p.start.Currency, original, p.account); err != nil {
+			return err
+		}
 		query := `SELECT app.post_ledger($1,$3,'payment_refund',$2,'posted_to_compensated/v1',
    array_agg(account_id ORDER BY line_no),array_agg(CASE side WHEN 'debit' THEN 'credit' ELSE 'debit' END ORDER BY line_no),array_agg(amount ORDER BY line_no))
    FROM app.ledger_entries WHERE tenant_id=$1 AND transaction_id=$4`
@@ -78,6 +88,9 @@ func TestRefundCompensationIdentityFences(t *testing.T) {
 		}
 		witness := `INSERT INTO app.payment_refund_reversals(tenant_id,provider,provider_account_id,environment,provider_refund_id,original_journal_id,reversal_journal_id)
    VALUES($1,'fake',$2,'test','compensable',$3,$4)`
+		if err := reject(witness, "23514", p.f.tenant, p.account, original, original); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, witness, p.f.tenant, p.account, original, reversal); err != nil {
 			return err
 		}
@@ -91,6 +104,43 @@ func TestRefundCompensationIdentityFences(t *testing.T) {
 			return err
 		}
 		if err := reject("UPDATE app.orders SET refunded_minor=0,state='paid',version=version+1 WHERE tenant_id=$1 AND id=$2", "55000", p.f.tenant, p.start.OrderID); err != nil {
+			return err
+		}
+		if err := reject("TRUNCATE app.payment_refund_attempts CASCADE", "23514"); err != nil {
+			return err
+		}
+		if err := reject("TRUNCATE app.payment_refund_reversals", "23514"); err != nil {
+			return err
+		}
+		// Give the fixture only SELECT in a savepoint to exercise FORCE RLS itself,
+		// independently from the production capability's complete ACL denial.
+		rls, err := tx.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer rls.Rollback(ctx)
+		if _, err = rls.Exec(ctx, "GRANT SELECT ON app.payment_refund_attempts TO app_payments_service"); err != nil {
+			return err
+		}
+		if _, err = rls.Exec(ctx, "SET LOCAL ROLE app_payments_service"); err != nil {
+			return err
+		}
+		for _, scope := range []struct {
+			tenant string
+			count  int
+		}{{p.f.tenant, 1}, {"00000000-0000-0000-0000-000000000001", 0}, {"", 0}} {
+			if _, err = rls.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", scope.tenant); err != nil {
+				return err
+			}
+			var count int
+			if err = rls.QueryRow(ctx, "SELECT count(*) FROM app.payment_refund_attempts").Scan(&count); err != nil {
+				return err
+			}
+			if count != scope.count {
+				return fmt.Errorf("C19D RLS count %d want %d", count, scope.count)
+			}
+		}
+		if err = rls.Rollback(ctx); err != nil {
 			return err
 		}
 		// Always roll privileged fixture money back: preparation must have no financial effect.

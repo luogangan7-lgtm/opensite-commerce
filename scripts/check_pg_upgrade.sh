@@ -1719,6 +1719,11 @@ SQL
 [[ $result == *'FULFILLMENT_UPGRADE=partially_fulfilled|4|4|0|1|7|1'* ]] || bad "fulfillment paid legacy upgrade: $result"
 db "$DB" -f tests/db_fulfillment_returns.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
+# C-19d preparation: all predecessors above include populated pre-compensation
+# orders. Do not invent provider/journal bindings during the forward upgrade.
+db "$DB" -f tests/db_refund_compensation.sql >/dev/null
+result=$(db "$DB" -c "SELECT (SELECT count(*) FROM app.payment_refund_attempts)||'|'||(SELECT count(*) FROM app.payment_refund_reversals)")
+[[ $result == *'0|0'* ]] || bad "compensation preparation backfilled unproven legacy identities: $result"
 admin -c "DROP DATABASE $DB"; FULFILLMENT_DB=""
 pass 'fulfillment upgrade preserves paid inventory and compensates only unshipped quantities'
 
