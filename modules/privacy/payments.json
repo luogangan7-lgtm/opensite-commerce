@@ -246,6 +246,130 @@
           "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
         }
       }
+    },
+    "payment_refund_terminals": {
+      "columns": {
+        "tenant_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "provider": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "provider_account_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "environment": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "provider_refund_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "order_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "provider_ref": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "payment_version": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "amount_minor": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "currency": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "inbox_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "terminal_status": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "original_journal_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "reversal_journal_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "return_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "order_version": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "order_target": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "checkout_net": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "checkout_tax": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "checkout_shipping": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "income_minor": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "tax_minor": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "shipping_minor": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        },
+        "created_at": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
+        }
+      }
     }
   }
 }
