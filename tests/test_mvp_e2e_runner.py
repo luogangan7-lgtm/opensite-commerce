@@ -179,6 +179,22 @@ class BrowserReceiptTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
                 module.verify_browser_report(changed)
 
+    def test_data_rights_journey_is_mandatory(self):
+        module = self.runner()
+        title = 'real registered customer export and erasure journey'
+        self.assertIn(title, module.ACTIVE_TESTS)
+        self.assertEqual(module.DATARIGHTS_TESTS, {title})
+        report = self.browser_report(module)
+        self.assertEqual(module.verify_browser_report(report)['expected'], 44)
+        for mutation in ('remove', 'wrong_file', 'skip'):
+            changed = json.loads(json.dumps(report))
+            case = next(s for s in changed['suites'][0]['specs'] if s['title'] == title)
+            if mutation == 'remove': changed['suites'][0]['specs'].remove(case)
+            elif mutation == 'wrong_file': case['file'] = 'purchase.spec.ts'
+            else: case['tests'][0]['results'] = [{'status': 'skipped'}]
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                module.verify_browser_report(changed)
+
     def test_staff_publication_cannot_be_removed_or_skipped(self):
         module = self.runner()
         for mutation in ('remove', 'skip'):
