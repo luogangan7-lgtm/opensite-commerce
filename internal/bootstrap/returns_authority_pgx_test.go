@@ -152,20 +152,22 @@ func returnsCoordinatorRefund(t *testing.T, source string) {
 	if source != "quote" {
 		rounds = 2
 	}
-	for part := 0; part < rounds; part++ {
-		var shipmentLine string
-		if source != "quote" {
-			w := request("POST", "/api/v1/t/"+f.tenant+"/orders/"+orderID+"/shipments", fmt.Sprintf(`{"lines":[{"order_line_id":%q,"quantity":1}]}`, line), uuid.NewString(), version)
+	shipmentLines := []string{}
+	if source != "quote" {
+		for range rounds {
+			w := request("POST", "/api/v1/t/"+f.tenant+"/orders/"+orderID+"/shipments", fmt.Sprintf(`{"carrier":"CI","tracking_number":"","lines":[{"order_line_id":%q,"quantity":1}]}`, line), uuid.NewString(), version)
 			var shipment httpapi.ShipmentRecord
 			if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &shipment) != nil || len(shipment.Lines) != 1 {
 				t.Fatalf("shipment: %d %s", w.Code, w.Body.String())
 			}
 			version = shipment.OrderVersion
-			shipmentLine = shipment.Lines[0].Id.String()
+			shipmentLines = append(shipmentLines, shipment.Lines[0].Id.String())
 		}
+	}
+	for part := 0; part < rounds; part++ {
 		body := fmt.Sprintf(`{"kind":"unshipped_cancel","reason":"CI coordinator regression","lines":[{"order_line_id":%q,"quantity":2}]}`, line)
 		if source != "quote" {
-			body = fmt.Sprintf(`{"kind":"shipment_return","reason":"CI cart regression","lines":[{"order_line_id":%q,"shipment_line_id":%q,"quantity":1}]}`, line, shipmentLine)
+			body = fmt.Sprintf(`{"kind":"shipment_return","reason":"CI cart regression","lines":[{"order_line_id":%q,"shipment_line_id":%q,"quantity":1}]}`, line, shipmentLines[part])
 		}
 		created := request("POST", "/api/v1/t/"+f.tenant+"/orders/"+orderID+"/returns", body, uuid.NewString(), version)
 		var receipt httpapi.ReturnRecord
