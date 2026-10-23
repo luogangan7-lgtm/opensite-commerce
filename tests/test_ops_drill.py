@@ -94,6 +94,19 @@ class CustomerAuthComposeTests(unittest.TestCase):
     """Customer capability and local proof delivery must be deployed together."""
     root = Path(__file__).resolve().parents[1]
 
+    def test_privacy_compose_binds_api_worker_and_shared_private_storage(self):
+        import yaml
+        services = yaml.safe_load((self.root / 'deploy/compose.yaml').read_text())['services']
+        api, worker = (services[name]['environment'] for name in ('api', 'worker'))
+        self.assertIn('OPENSITE_PRIVACY_DATABASE_URL', api, 'PRIVACY_WIRING_RED: missing API DSN')
+        self.assertIn('PRIVACY_WORKER_DATABASE_URL', worker, 'PRIVACY_WIRING_RED: missing worker DSN')
+        self.assertEqual(api['PRIVACY_EXPORT_WORKER_ENABLED'], '${PRIVACY_EXPORT_WORKER_ENABLED:-false}')
+        for env in (api, worker):
+            self.assertEqual(env['PRIVACY_TOKEN_KEY'], '${PRIVACY_TOKEN_KEY:-}')
+            self.assertEqual(env['OPENSITE_MEDIA_ROOT'], '/var/lib/opensite/media')
+            self.assertIn('JOB_SIGNING_KEY', env)
+        self.assertIn('media_data:/var/lib/opensite/media', services['worker']['volumes'])
+
     def test_deployment_drill_starts_local_proof_capture(self):
         with patch.object(ops_drill, 'compose') as compose, \
                 patch.object(ops_drill, 'live_url', return_value='http://127.0.0.1:8080'), \

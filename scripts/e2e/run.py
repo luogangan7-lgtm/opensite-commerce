@@ -174,7 +174,7 @@ def run(receipt_dir):
 
     ops_common.compose_command = compose_command
     import ops_drill
-    from e2e import purchase, rma, b2b
+    from e2e import purchase, rma, b2b, privacy
     # Includes the dedicated RETURNS coordinator; one registry drives all secrets.
     from ops_deploy import LOGIN_ROLES
 
@@ -299,6 +299,8 @@ def run(receipt_dir):
             if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", owner_tenant):
                 raise RuntimeError("MVP E2E owner bootstrap did not create exactly one owner tenant")
             os.environ["E2E_OWNER_TENANT_ID"] = owner_tenant
+            receipt['privacy'] = privacy.download(privacy.prepare('http://127.0.0.1:8080', ops_common.psql, TENANT, credentials))
+            persist()
             # Deployment authorizes refresh by tenant UUID; bootstrap creates a new one.
             variables["OPENSITE_SERVING_REFRESH_TENANTS"] = f"{TENANT},{owner_tenant}"
             os.environ["OPENSITE_SERVING_REFRESH_TENANTS"] = variables["OPENSITE_SERVING_REFRESH_TENANTS"]
