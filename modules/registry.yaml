@@ -907,7 +907,8 @@
         "tests/db_payments.sql",
         "internal/modules/payments/stripe_test.go",
         "internal/db/stripe_consent_integration_test.go",
-        "tests/db_stripe_sandbox.sql"
+        "tests/db_stripe_sandbox.sql",
+        "internal/db/stripe_sandbox_integration_test.go"
       ],
       "scopes": [],
       "legacy_go_paths": [

@@ -1,0 +1,83 @@
+name: stripe-sandbox
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: stripe-sandbox-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  fork-skip:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo 'SKIPPED: no secret (fork PR)'
+  stripe-sandbox:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      OPENSITE_REQUIRE_PGX_FIXTURES: '1'
+      OPENSITE_ENVIRONMENT: test
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Admit only the test secret, before checkout or network
+        id: secret
+        env:
+          STRIPE_TEST_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+        shell: python
+        run: |
+          import os
+          key=os.environ.get('STRIPE_TEST_SECRET_KEY','')
+          if not key:
+              print('SKIPPED: no secret')
+          else:
+              print('::add-mask::'+key)
+              if not key.startswith('sk_test_') or len(key)<=8 or any(c.isspace() for c in key):
+                  raise SystemExit('FAIL: test-mode secret required')
+              with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+                  output.write('ready=true\n')
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        if: steps.secret.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        if: steps.secret.outputs.ready == 'true'
+        with:
+          go-version: '1.27.2'
+      - name: Prepare migrated disposable DB and checksum-pinned Stripe CLI
+        if: steps.secret.outputs.ready == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          python3 scripts/pending_migrations.py ci-normalize
+          ./scripts/migrate_river.sh
+          ./scripts/migrate.sh
+          go mod download
+          curl -fsSL --retry 3 https://github.com/stripe/stripe-cli/releases/download/v1.55.1/stripe_1.55.1_linux_x86_64.tar.gz -o "$RUNNER_TEMP/stripe.tar.gz"
+          echo "c7a1eb723ecd29aaa3c7ec3d16139d6f01126ea9df91bb6a161b9616ad8fba68  $RUNNER_TEMP/stripe.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/stripe-bin"
+          tar -xzf "$RUNNER_TEMP/stripe.tar.gz" -C "$RUNNER_TEMP/stripe-bin"
+          echo "$RUNNER_TEMP/stripe-bin" >> "$GITHUB_PATH"
+      - name: Real test-mode lifecycle and persisted financial assertions
+        if: steps.secret.outputs.ready == 'true'
+        env:
+          STRIPE_TEST_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+        run: python3 scripts/stripe_sandbox_ci.py
