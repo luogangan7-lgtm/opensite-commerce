@@ -81,7 +81,19 @@ class FoundationLanes(unittest.TestCase):
             for key in ('C22A_DATABASE_URL', 'C22A_MAINTENANCE_DATABASE_URL'):
                 self.assertNotIn(key, step.get('env', {}), 'no per-step fixture override')
         prerequisite = next(s for s in jobs['frontend']['steps'] if s.get('name') == 'Bun archive extraction prerequisite')
-        self.assertIn('Acquire::Retries=3', prerequisite['run'])
+        self.assertIn('scripts/ci_apt_install.sh', prerequisite['run'])
+
+    def test_apt_installs_are_time_bounded(self):
+        # Incident 39989676720: an unbounded `apt-get update` stalled foundation-pg for 22 min.
+        for workflow in sorted((ROOT / '.github/workflows').glob('*.yml')):
+            for number, line in enumerate(workflow.read_text().splitlines(), 1):
+                body = line.split('#', 1)[0]
+                if 'apt-get' in body:
+                    self.assertRegex(body, r'timeout \d+ apt-get', f'{workflow.name}:{number}')
+        helper = (ROOT / 'scripts/ci_apt_install.sh').read_text()
+        for token in ('UPDATE_TIMEOUT=180', 'INSTALL_TIMEOUT=300', 'ATTEMPTS=3',
+                      'Acquire::http::Timeout=20', 'SKIP apt: already present'):
+            self.assertIn(token, helper)
 
     def test_required_context_and_all_lane_results(self):
         jobs = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']
