@@ -103,7 +103,12 @@ func (p *paymentFactFixture) newModule(t *testing.T, override func(context.Conte
 }
 
 func (p *paymentFactFixture) raw(id string, status payment.PaymentStatus, amount int64) []byte {
-	raw, err := json.Marshal(map[string]any{"event_id": id, "account_id": p.account, "order_id": p.start.OrderID, "order_version": p.start.OrderVersion, "provider_ref": p.start.Payment.ProviderRef, "status": string(status), "amount_minor": amount, "currency": p.start.Currency})
+	raw, err := json.Marshal(map[string]any{"event_id": id, "account_id": p.account, "order_id": p.start.OrderID, "order_version": p.start.OrderVersion, "provider_ref": p.start.Payment.ProviderRef, "status": string(status), "amount_minor": amount, "currency": p.start.Currency, "refund_id": func() string {
+		if status == payment.StatusPartiallyRefunded || status == payment.StatusRefunded {
+			return id
+		}
+		return ""
+	}()})
 	if err != nil {
 		panic(err)
 	}

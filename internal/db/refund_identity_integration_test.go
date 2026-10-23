@@ -383,6 +383,17 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A missing financial identity must be retained without interpreting it as a new refund.
+	missing := p.raw("rma-without-identity", payment.StatusPartiallyRefunded, completed.RefundMinor)
+	if got, err := p.module.Receive(p.f.ctx, missing, p.signature(missing, p.at)); err != nil || got.Status != "rejected" {
+		t.Fatalf("IDENTITYLESS_REFUND_RED: receipt=%+v err=%v", got, err)
+	}
+	var quarantined int
+	if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider_event_id='rma-without-identity' AND status='failed' AND octet_length(payload_hash)=32", p.f.tenant).Scan(&quarantined)
+	}); err != nil || quarantined != 1 {
+		t.Fatalf("identity-less refund not durably quarantined: %d %v", quarantined, err)
+	}
 	// Count both journal identities: the earlier witness counted only order sources
 	// and could not observe the separate return journal at all.
 	var journals, refunded, bindings int64
@@ -394,5 +405,65 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	w := p.f.witness(t, p.start.OrderID)
 	if err != nil || journals != 2 || bindings != 1 || refunded != completed.RefundMinor || w.cash != p.start.AmountMinor-completed.RefundMinor {
 		t.Fatalf("RETURNS_DOUBLE_POST_RED: journals=%d bindings=%d refunded=%d cash=%d err=%v", journals, bindings, refunded, w.cash, err)
+	}
+}
+
+func TestMixedRefundComponents(t *testing.T) {
+	for _, steps := range [][]int64{{55, 0}, {0, 55, 0}, {1, 54, 0, 1, 0}} {
+		t.Run(fmt.Sprint(steps), func(t *testing.T) {
+			p := newPaymentFactFixture(t)
+			p.f.provider.before = nil
+			r := payment.CreatePaymentIntent{TenantID: p.f.tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}, IdempotencyKey: "mixed-capture"}
+			if _, err := p.f.provider.Capture(p.f.ctx, payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: p.start.Payment.ProviderRef}); err != nil {
+				t.Fatal(err)
+			}
+			p.receive(t, "mixed-capture", payment.StatusCaptured, r.Amount.Amount)
+			var line string
+			var accounts returnscontract.RefundAccounts
+			if err := p.f.runner.InTenant(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, `SELECT (SELECT id::text FROM app.order_lines WHERE tenant_id=$1 AND order_id=$2 LIMIT 1),
+				(SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='revenue'),
+				(SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='tax_payable'),
+				(SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='shipping_revenue'),
+				(SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='cash')`, p.f.tenant, r.OrderID).Scan(&line, &accounts.Income, &accounts.Tax, &accounts.Shipping, &accounts.Cash)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			s := returns.New(returns.Config{Runner: fulfillmentRunner{runner: p.f.runner, role: "service"}, Payments: p.f.provider,
+				Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Paid: r.Amount}},
+				Accounts: fulfillmentAccounts{tenant: p.f.tenant, accounts: accounts}, Ledger: payments.RefundJournal{Ledger: ledger.New()}})
+			var total int64
+			for i, amount := range steps {
+				key := fmt.Sprintf("mixed-%d", i)
+				if amount > 0 {
+					p.receive(t, key, payment.StatusPartiallyRefunded, amount)
+				} else {
+					var receipt returnscontract.Return
+					if err := p.f.run(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+						var version int64
+						if err := tx.QueryRow(ctx, "SELECT version FROM app.orders WHERE tenant_id=$1 AND id=$2", p.f.tenant, r.OrderID).Scan(&version); err != nil {
+							return err
+						}
+						var err error
+						receipt, err = s.Request(ctx, tx, p.f.tenant, returnscontract.RequestInput{OrderID: r.OrderID, ExpectedVersion: version, IdempotencyKey: key, Kind: returnscontract.UnshippedCancel, Reason: "mixed allocation", Lines: []returnscontract.Line{{OrderLineID: line, Quantity: 1}}})
+						return err
+					}); err != nil {
+						t.Fatal(err)
+					}
+					completed, err := s.Refund(p.f.ctx, p.f.tenant, returnscontract.RefundInput{ReturnID: receipt.ID, ExpectedVersion: receipt.OrderVersion, IdempotencyKey: key + "-refund"})
+					if err != nil {
+						t.Fatalf("MIXED_COMPONENT_RED: %v", err)
+					}
+					amount = completed.RefundMinor
+				}
+				total += amount
+				var net, tax, shipping int64
+				if err := p.f.runner.InTenant(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+					return tx.QueryRow(ctx, "SELECT refunded_net_minor,refunded_tax_minor,refunded_shipping_minor FROM app.checkout_sessions WHERE tenant_id=$1 AND order_id=$2", p.f.tenant, r.OrderID).Scan(&net, &tax, &shipping)
+				}); err != nil || net > 200 || tax > 20 || shipping > 50 || net+tax+shipping != total {
+					t.Fatalf("MIXED_COMPONENT_RED: parts=%d/%d/%d total=%d err=%v", net, tax, shipping, total, err)
+				}
+			}
+		})
 	}
 }
