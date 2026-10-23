@@ -50,6 +50,24 @@ class CIOnlyRunnerTests(unittest.TestCase):
 
 
 class BrowserReceiptTests(unittest.TestCase):
+    def test_b2b_journey_is_mandatory_and_persisted(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('b2b_runner', source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertIn('real B2B inquiry quote approval prepayment order', module.ACTIVE_TESTS)
+        row = {'project': 'desktop', 'approved': True, 'immutable': True, 'paid': True,
+               'total': 2700, 'order_total': 2700, 'approvals': 1, 'conversions': 1,
+               'payments': 1, 'journals': 1, 'debits': 5400, 'credits': 5400}
+        rows = [row, {**row, 'project': 'mobile'}]
+        self.assertEqual(module.verify_b2b_witness(rows)['status'], 'PASS')
+        for field in row.keys() - {'project'}:
+            broken = {**row, field: False if isinstance(row[field], bool) else row[field] + 1}
+            with self.subTest(field=field), self.assertRaises(RuntimeError):
+                module.verify_b2b_witness([broken, rows[1]])
+        with self.assertRaises(RuntimeError):
+            module.verify_b2b_witness([row, row])
+
     def verify(self, report):
         source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
         spec = importlib.util.spec_from_file_location('mvp_e2e_runner', source)
