@@ -235,8 +235,7 @@
         "internal/modules/catalog/csv_test.go",
         "internal/modules/catalog/csv_store_test.go",
         "internal/modules/catalog/content_http_test.go",
-        "internal/modules/catalog/content_integration_test.go",
-        "tests/db_staff_content.sql"
+        "internal/modules/catalog/content_integration_test.go"
       ],
       "scopes": [
         "catalog:read",
