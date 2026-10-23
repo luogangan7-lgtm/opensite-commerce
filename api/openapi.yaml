@@ -27,6 +27,110 @@ tags:
   - name: Fulfillment
   - name: Returns
 paths:
+  /api/v1/t/{tenant_id}/products/{product_id}/content/{locale}:
+    parameters:
+      - {$ref: '#/components/parameters/TenantId'}
+      - {$ref: '#/components/parameters/ProductId'}
+      - {name: locale, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 64, pattern: '^[a-z]{2,8}(-[a-z0-9]{1,8})*$'}}
+    get:
+      tags: [Catalog]
+      operationId: getProductContent
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      responses: &StaffContentResponses
+        '200':
+          description: Private locale state; revision zero represents no content yet.
+          headers:
+            Cache-Control: {schema: {type: string, const: no-store}}
+            ETag: {schema: {type: string}, description: Quoted latest content revision.}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StaffProductContent'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+    put:
+      tags: [Catalog]
+      operationId: setProductContent
+      x-opensite-if-match-zero: true
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      description: If-Match is the latest locale content revision, quoted; use zero for the first revision. Listing writes pin the explicit content_revision.
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/IfMatch'}
+        - {$ref: '#/components/parameters/OriginIfCookie'}
+        - {$ref: '#/components/parameters/CSRFTokenIfCookie'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StaffProductContentInput'}
+      responses: *StaffContentResponses
+  /api/v1/t/{tenant_id}/products/{product_id}/listings/{site_id}/{locale}:
+    parameters:
+      - {$ref: '#/components/parameters/TenantId'}
+      - {$ref: '#/components/parameters/ProductId'}
+      - {name: site_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: locale, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 64, pattern: '^[a-z]{2,8}(-[a-z0-9]{1,8})*$'}}
+    get:
+      tags: [Catalog]
+      operationId: getProductListing
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      responses: &StaffListingResponses
+        '200':
+          description: Private locale state; revision zero represents no content yet.
+          headers:
+            Cache-Control: {schema: {type: string, const: no-store}}
+            ETag: {schema: {type: string}, description: Quoted latest content revision.}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StaffProductListing'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+    put:
+      tags: [Catalog]
+      operationId: setProductListing
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: catalog:write
+      description: If-Match is the latest locale content revision, quoted; use zero for the first revision. Listing writes pin the explicit content_revision.
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/IfMatch'}
+        - {$ref: '#/components/parameters/OriginIfCookie'}
+        - {$ref: '#/components/parameters/CSRFTokenIfCookie'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StaffProductListingInput'}
+      responses: *StaffListingResponses
   /api/v1/t/{tenant_id}/price-lists:
     parameters:
       - {$ref: '#/components/parameters/TenantId'}
@@ -4607,6 +4711,41 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    StaffProductContentInput:
+      type: object
+      additionalProperties: false
+      required: [title, body_blocks, seo]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 4096}
+        body_blocks: {type: array, maxItems: 128, items: {type: object, maxProperties: 32, additionalProperties: true}}
+        seo: {type: object, maxProperties: 32, additionalProperties: true}
+    StaffProductContent:
+      type: object
+      required: [locale, revision, title, body_blocks, seo]
+      properties:
+        locale: {type: string}
+        revision: {type: integer, format: int64, minimum: 0}
+        title: {type: string}
+        body_blocks: {type: array, items: {type: object, additionalProperties: true}}
+        seo: {type: object, additionalProperties: true}
+    StaffProductListingInput:
+      type: object
+      additionalProperties: false
+      required: [slug, listed, content_revision]
+      properties:
+        slug: {type: string, minLength: 1, maxLength: 255, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'}
+        listed: {type: boolean}
+        content_revision: {type: integer, format: int64, minimum: 1}
+    StaffProductListing:
+      type: object
+      required: [site_id, locale, slug, listed, content_revision, revision]
+      properties:
+        site_id: {type: string, format: uuid}
+        locale: {type: string}
+        slug: {type: string}
+        listed: {type: boolean}
+        content_revision: {type: integer, format: int64, minimum: 0}
+        revision: {type: integer, format: int64, minimum: 0, description: Latest content revision used by If-Match.}
     StaffPriceListInput:
       type: object
       additionalProperties: false

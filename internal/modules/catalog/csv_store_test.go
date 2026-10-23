@@ -48,6 +48,8 @@ func csvNewRows(q string, args []any) pgx.Row {
 		switch {
 		case strings.Contains(q, "current_setting"):
 			*dest[0].(*string) = "00000000-0000-0000-0000-000000000001"
+		case strings.Contains(q, "SELECT lifecycle_status FROM app.products"):
+			*dest[0].(*string) = "draft"
 		case strings.Contains(q, "INSERT INTO app.products"):
 			*dest[0].(*string) = "00000000-0000-0000-0000-000000000002"
 		default:

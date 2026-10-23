@@ -1,0 +1,24 @@
+// Responsibility: expose staff catalog wire types through the HTTP platform port.
+// Dependency: generated OpenAPI types; caller: catalog strict service.
+package httpapi
+
+import "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+
+type GetProductContentRequestObject = generated.GetProductContentRequestObject
+type GetProductContentResponseObject = generated.GetProductContentResponseObject
+type GetProductContent200JSONResponse = generated.GetProductContent200JSONResponse
+type GetProductContent200ResponseHeaders = generated.GetProductContent200ResponseHeaders
+type SetProductContentRequestObject = generated.SetProductContentRequestObject
+type SetProductContentResponseObject = generated.SetProductContentResponseObject
+type SetProductContent200JSONResponse = generated.SetProductContent200JSONResponse
+type SetProductContent200ResponseHeaders = generated.SetProductContent200ResponseHeaders
+type GetProductListingRequestObject = generated.GetProductListingRequestObject
+type GetProductListingResponseObject = generated.GetProductListingResponseObject
+type GetProductListing200JSONResponse = generated.GetProductListing200JSONResponse
+type GetProductListing200ResponseHeaders = generated.GetProductListing200ResponseHeaders
+type SetProductListingRequestObject = generated.SetProductListingRequestObject
+type SetProductListingResponseObject = generated.SetProductListingResponseObject
+type SetProductListing200JSONResponse = generated.SetProductListing200JSONResponse
+type SetProductListing200ResponseHeaders = generated.SetProductListing200ResponseHeaders
+type StaffProductContent = generated.StaffProductContent
+type StaffProductListing = generated.StaffProductListing

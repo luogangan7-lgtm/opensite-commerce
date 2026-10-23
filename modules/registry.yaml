@@ -205,6 +205,22 @@
         {
           "operation_id": "exportCatalogCSV",
           "status": "implemented"
+        },
+        {
+          "operation_id": "getProductContent",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "setProductContent",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "getProductListing",
+          "status": "implemented"
+        },
+        {
+          "operation_id": "setProductListing",
+          "status": "implemented"
         }
       ],
       "dependencies": [
@@ -217,7 +233,9 @@
         "tests/db_catalog_api.sql",
         "internal/modules/catalog/integration_test.go",
         "internal/modules/catalog/csv_test.go",
-        "internal/modules/catalog/csv_store_test.go"
+        "internal/modules/catalog/csv_store_test.go",
+        "internal/modules/catalog/content_http_test.go",
+        "internal/modules/catalog/content_integration_test.go"
       ],
       "scopes": [
         "catalog:read",
@@ -1784,6 +1802,17 @@
       "owner": "customer",
       "touches_tables": [
         "customer_guest_order_links"
+      ]
+    },
+    {
+      "file": "migrations/pending/admin-content-2_catalog_content.sql",
+      "owner": "catalog",
+      "touches_tables": [
+        "product_content_revisions",
+        "product_listings",
+        "serving_invalidations",
+        "storefront_serving",
+        "site_release_skus"
       ]
     }
   ]

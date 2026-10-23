@@ -14,7 +14,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog/contract"
 )
 
@@ -140,10 +142,7 @@ func (store csvStore) Import(ctx context.Context, tx pgx.Tx, input io.Reader) (c
 		}
 		// Content is append-only. Retain body and SEO from the latest locale revision,
 		// skip identical titles, and leave any published listing pointer untouched.
-		_, err = tx.Exec(ctx, `INSERT INTO app.product_content_revisions(tenant_id,product_id,locale,revision,title,body_blocks,seo)
-SELECT $1::uuid,$2::uuid,$3,coalesce(latest.revision,0)+1,$4,coalesce(latest.body_blocks,'[]'::jsonb),coalesce(latest.seo,'{}'::jsonb)
-FROM (SELECT 1) anchor LEFT JOIN LATERAL(SELECT revision,title,body_blocks,seo FROM app.product_content_revisions WHERE tenant_id=$1::uuid AND product_id=$2::uuid AND locale=$3 ORDER BY revision DESC LIMIT 1) latest ON true
-WHERE latest.title IS DISTINCT FROM $4`, tenant, product, row.Locale, row.Title)
+		err = appendContent(ctx, db.New(tx), db.AppendCatalogContentParams{TenantID: dbID(uuid.MustParse(tenant)), ProductID: dbID(uuid.MustParse(product)), Locale: row.Locale, Title: row.Title})
 		if err != nil {
 			return report, err
 		}

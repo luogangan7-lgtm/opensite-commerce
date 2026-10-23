@@ -48,7 +48,8 @@ sql:
       - "migrations/pending/h4-identity_hardening.sql"
       - "migrations/pending/admin-pricing-1_staff_pricing.sql"
       - "migrations/pending/c09f-history_customer_history.sql"
-    queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant", "queries/pricing"]
+      - "migrations/pending/admin-content-2_catalog_content.sql"
+    queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant", "queries/pricing", "queries/catalog"]
     gen:
       go:
         package: "db"

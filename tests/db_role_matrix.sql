@@ -1428,3 +1428,18 @@ BEGIN
  END LOOP;
 END $pricing_matrix$;
 SELECT 'PASS: pricing exact executor table/column/routine matrix';
+
+-- Catalog content/listing reuse the existing definer; add no runtime grants.
+DO $content_matrix$
+DECLARE n int;
+BEGIN
+ SELECT count(*) INTO n FROM pg_trigger
+ WHERE tgrelid IN ('app.product_content_revisions'::regclass,'app.product_listings'::regclass)
+ AND tgname='storefront_serving_invalidate' AND NOT tgisinternal
+ AND tgfoid='app.cms_serving_invalidate()'::regprocedure AND tgenabled='O';
+ IF n<>2 THEN RAISE EXCEPTION 'CONTENT_INVALIDATION trigger set'; END IF;
+ IF has_function_privilege('app_runtime','app.cms_serving_invalidate()','EXECUTE')
+ OR has_table_privilege('app_runtime','app.serving_invalidations','INSERT') THEN
+  RAISE EXCEPTION 'CONTENT_INVALIDATION runtime authority expanded';
+ END IF;
+END $content_matrix$;
