@@ -345,6 +345,13 @@ func TestObservedCaptureRetainsBindingAndRefundBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 	event := payment.VerifiedEvent{EventID: "committed-capture", TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: created.ProviderRef, Status: payment.StatusCaptured, Amount: r.Amount}
+	external := event
+	external.ProviderRef = "fake_external_capture"
+	if err = f.ObserveCaptured(external); err != nil {
+		t.Fatal("external capture fact was rejected", err)
+	}
+	_, err = f.Refund(ctx, operation(r, external.ProviderRef, "external-refund"))
+	code(t, err, payment.ErrorNotFound)
 	for _, mutate := range []func(*payment.VerifiedEvent){func(e *payment.VerifiedEvent) { e.TenantID = "00000000-0000-4000-8000-000000000003" }, func(e *payment.VerifiedEvent) { e.OrderID = "00000000-0000-4000-8000-000000000003" }, func(e *payment.VerifiedEvent) { e.OrderVersion++ }, func(e *payment.VerifiedEvent) { e.Amount.Amount++ }, func(e *payment.VerifiedEvent) { e.Amount.Currency = "EUR" }} {
 		bad := event
 		mutate(&bad)
