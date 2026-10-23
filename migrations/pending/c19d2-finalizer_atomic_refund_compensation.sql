@@ -72,6 +72,9 @@ BEGIN
    coalesce(sum(x.amount) FILTER(WHERE ac.code='tax_payable'),0),coalesce(sum(x.amount) FILTER(WHERE ac.code='shipping_revenue'),0)
   INTO income,tax,shipping FROM app.ledger_entries x JOIN app.ledger_accounts ac ON (ac.tenant_id,ac.id)=(x.tenant_id,x.account_id)
   WHERE x.tenant_id=t AND x.transaction_id=j.id AND x.side='debit';
+  IF b.return_id IS NOT NULL THEN
+   SELECT r.income_minor,r.tax_minor,r.shipping_minor INTO income,tax,shipping FROM app.returns r WHERE r.tenant_id=t AND r.id=b.return_id;
+  END IF;
   IF income::numeric+tax+shipping<>amt THEN RAISE EXCEPTION 'C19D2_COMPONENT_PROOF' USING ERRCODE='23514'; END IF;
  END IF;
  target:=CASE WHEN reversal IS NULL THEN o.state WHEN o.refunded_minor<amt THEN NULL

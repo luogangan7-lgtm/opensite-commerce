@@ -8,6 +8,10 @@ package db_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/jackc/pgx/v5/pgconn"
+	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"testing"
 	"time"
 
@@ -38,6 +42,32 @@ func TestRefundFinalizerSignedFacts(t *testing.T) {
 			}
 			if first == "succeeded" {
 				send("success", payment.StatusPartiallyRefunded)
+				before := p.witness(t)
+				abort := errors.New("C19D2 after all projections before commit")
+				m, err := payments.New(payments.Config{Key: p.key, Run: p.run, Apply: p.f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent,
+					TerminalRun: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+						return p.runTerminal(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
+							if err := fn(ctx, tx, tenant, at); err != nil {
+								return err
+							}
+							return abort
+						})
+					}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var body map[string]any
+				_ = json.Unmarshal(p.raw("abort-before-commit", payment.StatusFailed, 1), &body)
+				body["refund_id"] = "finalizer-refund"
+				raw, _ := json.Marshal(body)
+				if _, err = m.Receive(p.f.ctx, raw, p.signature(raw, p.at)); !errors.Is(err, abort) {
+					t.Fatalf("C19D2_ROLLBACK_RED: %v", err)
+				}
+				if p.witness(t) != before {
+					t.Fatal("C19D2_ROLLBACK_RED partial money or Inbox commit")
+				}
+				p.rejectCompensationMutation(t, "app_orders_executor", "UPDATE app.orders SET refunded_minor=refunded_minor-1,state='paid',version=version+1 WHERE tenant_id=$1")
+				p.rejectCompensationMutation(t, "app_payments_service", "UPDATE app.checkout_sessions SET refunded_net_minor=refunded_net_minor-1 WHERE tenant_id=$1")
 			}
 			send("failure", payment.StatusFailed)
 			before := p.witness(t)
@@ -104,5 +134,23 @@ func (p *paymentFactFixture) terminalFact(t *testing.T, event, refund string, am
 	receipt, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at))
 	if err != nil || receipt.Status != "processed" {
 		t.Fatalf("C19D2_MIXED_TERMINAL_RED: %+v %v", receipt, err)
+	}
+}
+
+func (p *paymentFactFixture) rejectCompensationMutation(t *testing.T, role, statement string) {
+	t.Helper()
+	err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", p.f.tenant); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "SET LOCAL ROLE "+role); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, statement, p.f.tenant)
+		return err
+	})
+	var pg *pgconn.PgError
+	if !errors.As(err, &pg) || pg.Code != "23514" {
+		t.Fatalf("C19D2_INDEPENDENT_WITNESS_RED %s: %v", role, err)
 	}
 }

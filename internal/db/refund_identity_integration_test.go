@@ -549,6 +549,7 @@ func TestMixedRefundComponents(t *testing.T) {
 				}
 
 			}
+			p.rejectCompensationMutation(t, "app_fulfillment_executor", "UPDATE app.returns SET status='refund_compensated' WHERE tenant_id=$1 AND status='refunded'")
 			// Compensate every successful identity, including synchronous RMAs
 			// that have not received their success webhook. Sealed data stays exact.
 			var identities []struct {

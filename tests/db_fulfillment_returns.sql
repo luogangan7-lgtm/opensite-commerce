@@ -21,8 +21,9 @@ BEGIN
  END IF;
  IF EXISTS(SELECT FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
   WHERE p.oid=command AND a.privilege_type='EXECUTE'
-  AND a.grantee NOT IN('app_orders_executor'::regrole,'app_fulfillment_executor'::regrole))
+  AND a.grantee NOT IN('app_orders_executor'::regrole,'app_fulfillment_executor'::regrole,'app_payments_service'::regrole))
   OR NOT has_function_privilege('app_fulfillment_executor',command,'EXECUTE')
+  OR NOT has_function_privilege('app_payments_service',command,'EXECUTE')
   OR has_function_privilege('app_runtime',command,'EXECUTE')
   OR has_function_privilege('app_returns_service',command,'EXECUTE') THEN
   RAISE EXCEPTION 'SHARED_REFUND_BUDGET_AUTHORITY_ACL';

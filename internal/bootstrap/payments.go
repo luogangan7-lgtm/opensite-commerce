@@ -82,7 +82,7 @@ func fakePaymentEnvironment() (bool, []byte, error) {
 }
 func wireFakePayments(config *Config, runner *pgxadapter.QueryRunner, key []byte) error {
 	consumer := checkout.New(checkout.Config{Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}}).(checkoutcontract.PaymentEventApplier)
-	receiver, e := payments.New(payments.Config{TerminalRun: c.PaymentTerminalRun, Key: key, Run: runner.RunFakePaymentTx, Apply: consumer.ApplyPaymentEvent})
+	receiver, e := payments.New(payments.Config{TerminalRun: config.PaymentTerminalRun, Key: key, Run: runner.RunFakePaymentTx, Apply: consumer.ApplyPaymentEvent})
 	if e != nil {
 		return e
 	}
