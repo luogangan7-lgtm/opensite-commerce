@@ -40,9 +40,9 @@ import (
 )
 
 type stripeDelivery struct {
-	id, kind, signature, order string
-	raw                        []byte
-	status                     int
+	id, kind, signature, order, refund string
+	raw                                []byte
+	status                             int
 }
 
 func TestStripeSandboxLifecycle(t *testing.T) {
@@ -50,7 +50,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		t.Fatal("FAIL: no test secret; this explicit CI gate cannot skip")
 	}
 	f := newCheckoutPGFixture(t, 100, 10)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Minute)
 	defer cancel()
 	f.ctx = ctx
 	runner, err := pgxadapter.OpenQueryRunner(ctx, os.Getenv("DATABASE_URL"))
@@ -121,39 +121,52 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 			Type string `json:"type"`
 			Data struct {
 				Object struct {
+					ID       string            `json:"id"`
 					Metadata map[string]string `json:"metadata"`
 				} `json:"object"`
 			} `json:"data"`
 		}
 		_ = json.Unmarshal(raw, &event)
 		select {
-		case deliveries <- stripeDelivery{id: event.ID, kind: event.Type, signature: r.Header.Get("Stripe-Signature"), order: event.Data.Object.Metadata["osc_order"], raw: raw, status: rec.Code}:
+		case deliveries <- stripeDelivery{id: event.ID, kind: event.Type, signature: r.Header.Get("Stripe-Signature"), order: event.Data.Object.Metadata["osc_order"], refund: event.Data.Object.ID, raw: raw, status: rec.Code}:
 		default:
 		}
 	})}
 	go func() { _ = server.Serve(listener) }()
 	defer server.Close()
 	seen := map[string]bool{}
+	refunds := map[string]string{}
+	pending := []stripeDelivery{}
+	var timeoutDiagnostic func()
 	wait := func(kind, order string) stripeDelivery {
 		t.Helper()
 		limit := 30 * time.Second
 		if kind == "refund.failed" {
-			limit = 2 * time.Minute
+			limit = 4 * time.Minute
 		}
 		timer := time.NewTimer(limit)
 		defer timer.Stop()
+		observed := map[string]int{}
 		for {
-			select {
-			case d := <-deliveries:
-				if d.kind == kind && d.order == order && !seen[d.id] {
+			for i, d := range pending {
+				if d.kind == kind && (d.order == order || (refunds[order] != "" && refunds[order] == d.refund)) && !seen[d.id] {
+					pending = append(pending[:i], pending[i+1:]...)
 					seen[d.id] = true
 					if d.status != 200 && !(kind == "payment_intent.payment_failed" && d.status == 409) {
 						t.Fatalf("signed %s admission status=%d", kind, d.status)
 					}
 					return d
 				}
+			}
+			select {
+			case d := <-deliveries:
+				observed[fmt.Sprintf("%s/http%d", d.kind, d.status)]++
+				pending = append(pending, d)
 			case <-timer.C:
-				t.Fatalf("CLI delivery timeout: %s", kind)
+				if timeoutDiagnostic != nil {
+					timeoutDiagnostic()
+				}
+				t.Fatalf("CLI delivery timeout: %s; observed=%v pending=%d", kind, observed, len(pending))
 				return stripeDelivery{}
 			}
 		}
@@ -378,7 +391,34 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	if w := f.witness(t, failStart.OrderID); w.cash != failBefore.cash-1 || w.state != "partially_refunded" {
 		t.Fatalf("C19D2_SANDBOX_JOURNALED_SUCCESS_RED: %+v", w)
 	}
+	refunds[failStart.OrderID] = created.refund
+	// Diagnose only the real provider status on a bounded delivery failure.
+	// Never retain/log response bodies, signatures, API keys or customer fields.
+	timeoutDiagnostic = func() {
+		req, err := http.NewRequestWithContext(ctx, "GET", "https://api.stripe.com/v1/refunds/"+url.PathEscape(created.refund), nil)
+		if err != nil {
+			t.Log("refund status diagnostic request unavailable")
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+os.Getenv("STRIPE_TEST_SECRET_KEY"))
+		res, err := client.Do(req)
+		if err != nil {
+			t.Log("refund status diagnostic transport unavailable")
+			return
+		}
+		defer res.Body.Close()
+		var current struct {
+			Status   string `json:"status"`
+			Livemode bool   `json:"livemode"`
+		}
+		if json.NewDecoder(io.LimitReader(res.Body, 65536)).Decode(&current) != nil {
+			t.Log("refund status diagnostic decode unavailable")
+			return
+		}
+		t.Logf("real refund diagnostic: http=%d status=%q live=%t", res.StatusCode, current.Status, current.Livemode)
+	}
 	failed := wait("refund.failed", failStart.OrderID)
+	timeoutDiagnostic = nil
 	compensated := f.witness(t, failStart.OrderID)
 	var reversals, inbox int
 	var refunded, components int64
