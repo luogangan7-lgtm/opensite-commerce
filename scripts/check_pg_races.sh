@@ -1410,6 +1410,15 @@ INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,r
 UPDATE app.checkout_sessions SET phase='ready',provider_ref='captured-race',start_result='{}' WHERE tenant_id=:'t';
 UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key='c19d2' WHERE tenant_id=:'t';
 UPDATE app.checkout_sessions SET phase='paid',final_result='{}' WHERE tenant_id=:'t';
+-- A paid Checkout alone is not original PSP authority. Seed the same mapped
+-- capture admission/outcome used by Payments before the synchronous RMA posts.
+SELECT * FROM app.resolve_fake_payment_account('c19d2-'||:'t');
+SELECT app.lock_payment_stream('c19d2-'||:'t','captured-race');
+SELECT app.admit_payment_inbox('c19d2-'||:'t','race-capture',sha256('race-capture'::bytea)) AS capture_inbox \gset
+INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
+ VALUES(:'t',:'capture_inbox','c19d2-'||:'t','captured-race',encode(sha256('race-capture'::bytea),'hex'),:'oid',1,'captured',14,'USD');
+UPDATE app.payment_events SET applied=true WHERE tenant_id=:'t' AND id=:'capture_inbox';
+SELECT app.finish_payment_inbox(:'capture_inbox',true);
 \endif
 SELECT app.orders_transition(:'oid','paid','race-paid',0);
 RESET ROLE;
@@ -1609,8 +1618,11 @@ SQL
  if [[ $isolation == 'read committed' ]]; then expect c19d2_second ok; else expect c19d2_second 40001; fi
  tx c19d2_retry app_payments_ingress "$T" "$terminal";expect c19d2_retry ok
  got=$(sql <<<"SELECT o.state||'|'||o.refunded_minor||'|'||r.status||'|'||(SELECT count(*) FROM app.payment_refund_reversals WHERE tenant_id='$T')||'|'||c.refunded_net_minor||'|'||c.refunded_tax_minor||'|'||c.refunded_shipping_minor FROM app.orders o JOIN app.returns r ON(r.tenant_id,r.order_id)=(o.tenant_id,o.id) JOIN app.checkout_sessions c ON(c.tenant_id,c.order_id)=(o.tenant_id,o.id) WHERE o.tenant_id='$T';")
- [[ $got == 'paid|0|refund_compensated|1|0|0|0' ]] || { echo "FAIL C19D2_RACE $isolation $got";fail=1; }
- echo "PASS C19D2 gate131 exactly-once compensation $isolation"
+ if [[ $got == 'paid|0|refund_compensated|1|0|0|0' ]]; then
+  echo "PASS C19D2 gate131 exactly-once compensation $isolation"
+ else
+  echo "FAIL C19D2_RACE $isolation $got";fail=1
+ fi
 done
 
 # C-19a gates93/94: actual inbox unique-key contention and public stream lock.
