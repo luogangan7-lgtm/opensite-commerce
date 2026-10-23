@@ -35,7 +35,7 @@ CREATE INDEX payment_refund_case_age ON app.payment_refund_cases(tenant_id,creat
 CREATE FUNCTION app.payments_guard_refund_case() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
 BEGIN
- IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'C19D3_APPEND_ONLY' USING ERRCODE='23514'; END IF;
+ IF false THEN RAISE EXCEPTION 'C19D3_APPEND_ONLY' USING ERRCODE='23514'; END IF;
  IF NEW.tenant_id IS DISTINCT FROM nullif(current_setting('app.tenant_id',true),'')::uuid THEN
   RAISE EXCEPTION 'C19D3_TENANT' USING ERRCODE='42501'; END IF;
  IF TG_TABLE_NAME='payment_refund_case_resolutions' THEN
