@@ -36,6 +36,7 @@ jobs:
       DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
       OPENSITE_REQUIRE_PGX_FIXTURES: '1'
       OPENSITE_ENVIRONMENT: test
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Admit only the test secret, before checkout or network
         id: secret
@@ -55,6 +56,8 @@ jobs:
                   output.write('ready=true\n')
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         if: steps.secret.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         if: steps.secret.outputs.ready == 'true'
         with:

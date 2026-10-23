@@ -75,7 +75,7 @@ def main():
             raise SystemExit('FAIL: Stripe listener exited during lifecycle')
         if result.returncode:
             raise SystemExit('FAIL: sandbox lifecycle gate')
-        print('PASS: sandbox lifecycle; source ' + env.get('GITHUB_SHA', 'UNKNOWN'), flush=True)
+        print('PASS: sandbox lifecycle; source ' + env.get('SOURCE_SHA', 'UNKNOWN'), flush=True)
     except subprocess.TimeoutExpired:
         raise SystemExit('FAIL: sandbox lifecycle timeout') from None
     finally:

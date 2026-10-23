@@ -32,9 +32,9 @@ import (
 )
 
 type stripeDelivery struct {
-	id, kind, signature string
-	raw                 []byte
-	status              int
+	id, kind, signature, order string
+	raw                        []byte
+	status                     int
 }
 
 func TestStripeSandboxLifecycle(t *testing.T) {
@@ -103,24 +103,29 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		var event struct {
 			ID   string `json:"id"`
 			Type string `json:"type"`
+			Data struct {
+				Object struct {
+					Metadata map[string]string `json:"metadata"`
+				} `json:"object"`
+			} `json:"data"`
 		}
 		_ = json.Unmarshal(raw, &event)
 		select {
-		case deliveries <- stripeDelivery{event.ID, event.Type, r.Header.Get("Stripe-Signature"), raw, rec.Code}:
+		case deliveries <- stripeDelivery{id: event.ID, kind: event.Type, signature: r.Header.Get("Stripe-Signature"), order: event.Data.Object.Metadata["osc_order"], raw: raw, status: rec.Code}:
 		default:
 		}
 	})}
 	go func() { _ = server.Serve(listener) }()
 	defer server.Close()
 	seen := map[string]bool{}
-	wait := func(kind string) stripeDelivery {
+	wait := func(kind, order string) stripeDelivery {
 		t.Helper()
 		timer := time.NewTimer(30 * time.Second)
 		defer timer.Stop()
 		for {
 			select {
 			case d := <-deliveries:
-				if d.kind == kind && !seen[d.id] {
+				if d.kind == kind && d.order == order && !seen[d.id] {
 					seen[d.id] = true
 					if d.status != 200 {
 						t.Fatalf("signed %s admission status=%d", kind, d.status)
@@ -163,7 +168,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	if err != nil || paid.State != "paid" {
 		t.Fatalf("pay failed: %v", err)
 	}
-	capture := wait("payment_intent.succeeded")
+	capture := wait("payment_intent.succeeded", start.OrderID)
 	assertEvent(capture.id)
 	before := f.witness(t, start.OrderID)
 	if before.cash != start.AmountMinor || before.journals != 1 || before.debits != before.credits || before.state != "paid" {
@@ -198,7 +203,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		if result.Status != want {
 			t.Fatal("refund provider state mismatch")
 		}
-		refund := wait("refund.created")
+		refund := wait("refund.created", start.OrderID)
 		assertEvent(refund.id)
 		if _, err := adapter.Refund(ctx, op); err != nil {
 			t.Fatalf("stable refund replay failed: %v", err)
@@ -224,7 +229,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	if err != nil || canceled.State != "cancelled" {
 		t.Fatalf("cancel failed: %v", err)
 	}
-	canceledEvent := wait("payment_intent.canceled")
+	canceledEvent := wait("payment_intent.canceled", cancelStart.OrderID)
 	assertEvent(canceledEvent.id)
 	if w := f.witness(t, cancelStart.OrderID); w.journals != 0 || w.state != "cancelled" {
 		t.Fatal("cancel posted money")
@@ -236,7 +241,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	if declineErr != nil || declined.State != "failed" {
 		t.Fatalf("decline did not finish failed: %v", declineErr)
 	}
-	failedEvent := wait("payment_intent.payment_failed")
+	failedEvent := wait("payment_intent.payment_failed", declineStart.OrderID)
 	if post(failedEvent, failedEvent.raw) != 200 {
 		t.Fatal("failed fact replay rejected")
 	}
