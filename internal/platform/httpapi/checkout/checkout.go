@@ -189,8 +189,9 @@ func acceptanceAdmission(next http.Handler) http.Handler {
 		}
 		var fields map[string]json.RawMessage
 		var accepted contract.AcceptedTotal
+		var shape map[string]json.RawMessage
 		_ = json.Unmarshal(raw, &fields)
-		if json.Unmarshal(fields["accepted_total"], &accepted) != nil || accepted.AmountMinor <= 0 || (money.Money{Amount: accepted.AmountMinor, Currency: accepted.Currency}).Validate() != nil {
+		if json.Unmarshal(fields["accepted_total"], &shape) != nil || len(shape) != 2 || shape["amount_minor"] == nil || shape["currency"] == nil || json.Unmarshal(fields["accepted_total"], &accepted) != nil || accepted.AmountMinor <= 0 || (money.Money{Amount: accepted.AmountMinor, Currency: accepted.Currency}).Validate() != nil {
 			httpapi.WriteProblem(w, r, apperrors.New(422, "validation_failed", "Valid accepted total required"))
 			return
 		}
