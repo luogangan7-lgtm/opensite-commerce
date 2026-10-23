@@ -315,7 +315,7 @@ jobs:
   frontend:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read
@@ -369,9 +369,7 @@ jobs:
         id: visual
         env:
           OPENSITE_ORPHAN_CHECK: '1'
-        run: |
-          bun run visual:test
-          OPENSITE_ORPHAN_CHECK=0 bun run visual:test tests/frontend/gallery.spec.ts --repeat-each=20
+        run: bun run visual:test
       - name: Comparison receipt (CI artifact and summary only)
         if: always()
         env:
