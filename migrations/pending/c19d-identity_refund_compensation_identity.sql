@@ -1,5 +1,6 @@
 -- stable-id: c19d-identity
 -- depends-on: c19c1-money
+-- depends-on: c22a-data-rights
 -- Responsibility: Payments' immutable compensation identity and posted witness fences.
 -- Dependencies: authenticated provider mapping, success facts, Ledger and RMA receipts.
 -- Caller: future closed Payments finalizer; part 1 grants no application writer.
