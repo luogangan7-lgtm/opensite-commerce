@@ -46,9 +46,6 @@ func (p RefundJournal) PaidContext(ctx context.Context, tx pgx.Tx, orderID strin
 }
 func (m *Module) applyFact(ctx context.Context, tx pgx.Tx, event payment.VerifiedEvent, refundID string) (bool, error) {
 	if event.Status == payment.StatusRefunded || event.Status == payment.StatusPartiallyRefunded {
-		if refundID == "" {
-			return false, &payment.PaymentError{Code: payment.ErrorStateConflict, Message: "refund requires stable provider identity"}
-		}
 		match, err := db.New(tx).MatchPaymentReturnRefund(ctx, db.MatchPaymentReturnRefundParams{OrderID: id(event.OrderID), ProviderRef: event.ProviderRef, ProviderRefundID: refundID, PaymentVersion: event.OrderVersion, AmountMinor: event.Amount.Amount, Currency: event.Amount.Currency})
 		if err != nil {
 			return false, err
