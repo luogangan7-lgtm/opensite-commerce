@@ -668,14 +668,44 @@ type AppPaymentRefundReversal struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
+type AppPaymentRefundTerminal struct {
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	Provider          string             `json:"provider"`
+	ProviderAccountID string             `json:"provider_account_id"`
+	Environment       string             `json:"environment"`
+	ProviderRefundID  string             `json:"provider_refund_id"`
+	OrderID           pgtype.UUID        `json:"order_id"`
+	ProviderRef       string             `json:"provider_ref"`
+	PaymentVersion    int64              `json:"payment_version"`
+	AmountMinor       int64              `json:"amount_minor"`
+	Currency          string             `json:"currency"`
+	InboxID           pgtype.UUID        `json:"inbox_id"`
+	TerminalStatus    string             `json:"terminal_status"`
+	OriginalJournalID pgtype.UUID        `json:"original_journal_id"`
+	ReversalJournalID pgtype.UUID        `json:"reversal_journal_id"`
+	ReturnID          pgtype.UUID        `json:"return_id"`
+	OrderVersion      int64              `json:"order_version"`
+	OrderTarget       string             `json:"order_target"`
+	CheckoutNet       int64              `json:"checkout_net"`
+	CheckoutTax       int64              `json:"checkout_tax"`
+	CheckoutShipping  int64              `json:"checkout_shipping"`
+	IncomeMinor       int64              `json:"income_minor"`
+	TaxMinor          int64              `json:"tax_minor"`
+	ShippingMinor     int64              `json:"shipping_minor"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
 type AppPaymentReturnRefund struct {
-	TenantID         pgtype.UUID        `json:"tenant_id"`
-	ReturnID         pgtype.UUID        `json:"return_id"`
-	AttemptKey       string             `json:"attempt_key"`
-	ProviderRef      string             `json:"provider_ref"`
-	ProviderRefundID string             `json:"provider_refund_id"`
-	JournalID        pgtype.UUID        `json:"journal_id"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	ReturnID          pgtype.UUID        `json:"return_id"`
+	AttemptKey        string             `json:"attempt_key"`
+	ProviderRef       string             `json:"provider_ref"`
+	ProviderRefundID  string             `json:"provider_refund_id"`
+	JournalID         pgtype.UUID        `json:"journal_id"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	Provider          pgtype.Text        `json:"provider"`
+	ProviderAccountID pgtype.Text        `json:"provider_account_id"`
+	Environment       pgtype.Text        `json:"environment"`
 }
 
 type AppPriceEntry struct {

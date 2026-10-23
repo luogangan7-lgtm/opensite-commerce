@@ -38,7 +38,7 @@ func stripeSandboxEnvironment() (bool, error) {
 
 func wireStripePayments(c *Config, r *pgxadapter.QueryRunner) error {
 	consumer := checkout.New(checkout.Config{Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}}).(checkoutcontract.PaymentEventApplier)
-	adapter, err := payments.NewStripe(payments.Config{Run: r.RunStripePaymentTx, Apply: consumer.ApplyPaymentEvent, Admit: func(ctx context.Context, in payment.CreatePaymentIntent, capture bool) error {
+	adapter, err := payments.NewStripe(payments.Config{TerminalRun: c.PaymentTerminalRun, Run: r.RunStripePaymentTx, Apply: consumer.ApplyPaymentEvent, Admit: func(ctx context.Context, in payment.CreatePaymentIntent, capture bool) error {
 		if c.Checkout == nil || c.Checkout.Service == nil {
 			return errors.New("Stripe cart consent unavailable")
 		}
@@ -82,7 +82,7 @@ func fakePaymentEnvironment() (bool, []byte, error) {
 }
 func wireFakePayments(config *Config, runner *pgxadapter.QueryRunner, key []byte) error {
 	consumer := checkout.New(checkout.Config{Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}}).(checkoutcontract.PaymentEventApplier)
-	receiver, e := payments.New(payments.Config{Key: key, Run: runner.RunFakePaymentTx, Apply: consumer.ApplyPaymentEvent, ObserveCommittedCapture: func(event payment.VerifiedEvent) error {
+	receiver, e := payments.New(payments.Config{TerminalRun: config.PaymentTerminalRun, Key: key, Run: runner.RunFakePaymentTx, Apply: consumer.ApplyPaymentEvent, ObserveCommittedCapture: func(event payment.VerifiedEvent) error {
 		// Resolve late: storefront/quote composition installs the shared Fake after
 		// the mapped receiver. No public payload or uncommitted fact reaches it.
 		if observer, ok := config.Payment.(interface {

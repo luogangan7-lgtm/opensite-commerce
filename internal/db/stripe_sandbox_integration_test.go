@@ -40,9 +40,9 @@ import (
 )
 
 type stripeDelivery struct {
-	id, kind, signature, order string
-	raw                        []byte
-	status                     int
+	id, kind, signature, order, refund string
+	raw                                []byte
+	status                             int
 }
 
 func TestStripeSandboxLifecycle(t *testing.T) {
@@ -50,7 +50,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		t.Fatal("FAIL: no test secret; this explicit CI gate cannot skip")
 	}
 	f := newCheckoutPGFixture(t, 100, 10)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Minute)
 	defer cancel()
 	f.ctx = ctx
 	runner, err := pgxadapter.OpenQueryRunner(ctx, os.Getenv("DATABASE_URL"))
@@ -69,6 +69,14 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		t.Setenv("STRIPE_TEST_PAYMENT_METHOD", method)
 		var svc ch.Service
 		adapter, err := payments.NewStripe(payments.Config{Run: runner.RunStripePaymentTx,
+			TerminalRun: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+				return runner.RunStripePaymentTx(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
+					if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_payments_ingress"); err != nil {
+						return err
+					}
+					return fn(ctx, tx, tenant, at)
+				})
+			},
 			Apply: func(ctx context.Context, tx pgx.Tx, e payment.VerifiedEvent) (bool, error) {
 				return svc.(ch.PaymentEventApplier).ApplyPaymentEvent(ctx, tx, e)
 			},
@@ -113,35 +121,52 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 			Type string `json:"type"`
 			Data struct {
 				Object struct {
+					ID       string            `json:"id"`
 					Metadata map[string]string `json:"metadata"`
 				} `json:"object"`
 			} `json:"data"`
 		}
 		_ = json.Unmarshal(raw, &event)
 		select {
-		case deliveries <- stripeDelivery{id: event.ID, kind: event.Type, signature: r.Header.Get("Stripe-Signature"), order: event.Data.Object.Metadata["osc_order"], raw: raw, status: rec.Code}:
+		case deliveries <- stripeDelivery{id: event.ID, kind: event.Type, signature: r.Header.Get("Stripe-Signature"), order: event.Data.Object.Metadata["osc_order"], refund: event.Data.Object.ID, raw: raw, status: rec.Code}:
 		default:
 		}
 	})}
 	go func() { _ = server.Serve(listener) }()
 	defer server.Close()
 	seen := map[string]bool{}
+	expectedRefunds := map[string]string{}
+	pending := []stripeDelivery{}
+	var timeoutDiagnostic func()
 	wait := func(kind, order string) stripeDelivery {
 		t.Helper()
-		timer := time.NewTimer(30 * time.Second)
+		limit := 30 * time.Second
+		if kind == "refund.failed" {
+			limit = 4 * time.Minute
+		}
+		timer := time.NewTimer(limit)
 		defer timer.Stop()
+		observed := map[string]int{}
 		for {
-			select {
-			case d := <-deliveries:
-				if d.kind == kind && d.order == order && !seen[d.id] {
+			for i, d := range pending {
+				if d.kind == kind && (d.order == order || (expectedRefunds[order] != "" && expectedRefunds[order] == d.refund)) && !seen[d.id] {
+					pending = append(pending[:i], pending[i+1:]...)
 					seen[d.id] = true
 					if d.status != 200 && !(kind == "payment_intent.payment_failed" && d.status == 409) {
 						t.Fatalf("signed %s admission status=%d", kind, d.status)
 					}
 					return d
 				}
+			}
+			select {
+			case d := <-deliveries:
+				observed[fmt.Sprintf("%s/http%d", d.kind, d.status)]++
+				pending = append(pending, d)
 			case <-timer.C:
-				t.Fatalf("CLI delivery timeout: %s", kind)
+				if timeoutDiagnostic != nil {
+					timeoutDiagnostic()
+				}
+				t.Fatalf("CLI delivery timeout: %s; observed=%v pending=%d", kind, observed, len(pending))
 				return stripeDelivery{}
 			}
 		}
@@ -344,6 +369,79 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		t.Fatalf("Returns over-refund admission: %v", err)
 	}
 	assertRefunds(total, 2)
+	// Stripe documents pm_card_refundFail as succeeded -> failed. Both facts
+	// below are real CLI-forwarded signatures; the finalizer retrieves the real
+	// current object. No fixture signs or fabricates a terminal provider fact.
+	failSvc, failAdapter := compose("pm_card_refundFail")
+	f.service = failSvc
+	failStart := f.start(t)
+	if paid, err := failSvc.Confirm(checkoutRequestContext(ctx), f.event(failStart, payment.StatusAuthorized)); err != nil || paid.State != "paid" {
+		t.Fatalf("C19D2_SANDBOX_CAPTURE_RED: %v", err)
+	}
+	wait("payment_intent.succeeded", failStart.OrderID)
+	failBefore := f.witness(t, failStart.OrderID)
+	op := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: f.tenant,
+		OrderID: failStart.OrderID, OrderVersion: failStart.OrderVersion, Amount: money.Money{Amount: 1, Currency: failStart.Currency},
+		IdempotencyKey: "sandbox-posted-failure"}, ProviderRef: failStart.Payment.ProviderRef}
+	if _, err := failAdapter.Refund(ctx, op); err != nil {
+		t.Fatalf("C19D2_SANDBOX_SUCCESS_RED: %v", err)
+	}
+	created := wait("refund.created", failStart.OrderID)
+	assertEvent(created.id)
+	if w := f.witness(t, failStart.OrderID); w.cash != failBefore.cash-1 || w.state != "partially_refunded" {
+		t.Fatalf("C19D2_SANDBOX_JOURNALED_SUCCESS_RED: %+v", w)
+	}
+	expectedRefunds[failStart.OrderID] = created.refund
+	// Diagnose only the real provider status on a bounded delivery failure.
+	// Never retain/log response bodies, signatures, API keys or customer fields.
+	timeoutDiagnostic = func() {
+		req, err := http.NewRequestWithContext(ctx, "GET", "https://api.stripe.com/v1/refunds/"+url.PathEscape(created.refund), nil)
+		if err != nil {
+			t.Log("refund status diagnostic request unavailable")
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+os.Getenv("STRIPE_TEST_SECRET_KEY"))
+		res, err := client.Do(req)
+		if err != nil {
+			t.Log("refund status diagnostic transport unavailable")
+			return
+		}
+		defer res.Body.Close()
+		var current struct {
+			Status   string `json:"status"`
+			Livemode bool   `json:"livemode"`
+		}
+		if json.NewDecoder(io.LimitReader(res.Body, 65536)).Decode(&current) != nil {
+			t.Log("refund status diagnostic decode unavailable")
+			return
+		}
+		t.Logf("real refund diagnostic: http=%d status=%q live=%t", res.StatusCode, current.Status, current.Livemode)
+	}
+	failed := wait("refund.failed", failStart.OrderID)
+	timeoutDiagnostic = nil
+	compensated := f.witness(t, failStart.OrderID)
+	var reversals, inbox int
+	var refunded, components int64
+	err = f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT
+ (SELECT count(*) FROM app.payment_refund_reversals WHERE tenant_id=$1),
+ (SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider_event_id=$3 AND status='processed'),
+ o.refunded_minor,c.refunded_net_minor+c.refunded_tax_minor+c.refunded_shipping_minor
+ FROM app.orders o JOIN app.checkout_sessions c ON (c.tenant_id,c.order_id)=(o.tenant_id,o.id)
+ WHERE o.tenant_id=$1 AND o.id=$2`, f.tenant, failStart.OrderID, failed.id).Scan(&reversals, &inbox, &refunded, &components)
+	})
+	if err != nil || reversals != 1 || inbox != 1 || refunded != 0 || components != 0 || compensated.cash != failBefore.cash || compensated.state != "paid" || compensated.journals != failBefore.journals+1 {
+		t.Fatalf("C19D2_SANDBOX_COMPENSATION_RED: reversals=%d inbox=%d net=%d components=%d witness=%+v err=%v", reversals, inbox, refunded, components, compensated, err)
+	}
+	for _, d := range []stripeDelivery{failed, created, failed} {
+		if post(d, d.raw) != 200 {
+			t.Fatal("C19D2_SANDBOX_REPLAY_RED")
+		}
+	}
+	if f.witness(t, failStart.OrderID) != compensated {
+		t.Fatal("C19D2_SANDBOX_REPLAY_MONEY_RED")
+	}
+	t.Log("PASS C19D2: real TEST succeeded -> failed refund, one posted reversal and capacity restoration; signed duplicate/stale-success replay inert")
 	cancelStart := f.start(t)
 	canceled, err := svc.Cancel(checkoutRequestContext(ctx), f.actor, ch.CancelInput{CheckoutID: cancelStart.CheckoutID, IdempotencyKey: "sandbox-cancel"})
 	if err != nil || canceled.State != "cancelled" {

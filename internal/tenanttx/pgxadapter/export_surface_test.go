@@ -198,6 +198,8 @@ var reviewedAdapterExports = []string{
 	"func:OpenCustomerRunner",
 	"func:OpenIdentity",
 	"func:OpenMigrationPool",
+	// Payments ingress exposes checked transactions only; no raw pool or connection.
+	"func:OpenPaymentsRunner",
 	"func:OpenQueryRunner",
 	"func:OpenQueuePool",
 	// Returns coordinator exposes checked transactions only; its pool stays private.

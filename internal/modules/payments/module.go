@@ -124,7 +124,7 @@ func (m *Module) verify(raw []byte, signature string) (envelope, int64, error) {
 		return in, 0, invalid()
 	}
 	if len(in.RefundID) > 200 || strings.ContainsFunc(in.RefundID, func(c rune) bool { return c < '!' || c > '~' }) ||
-		(in.RefundID != "" && in.Status != payment.StatusPartiallyRefunded && in.Status != payment.StatusRefunded) {
+		(in.RefundID != "" && in.Status != payment.StatusPartiallyRefunded && in.Status != payment.StatusRefunded && in.Status != payment.StatusFailed && in.Status != payment.StatusCanceled) {
 		return in, 0, invalid()
 	}
 	switch in.Status {
@@ -144,6 +144,9 @@ func (m *Module) Receive(ctx context.Context, raw []byte, signature string) (con
 	in, stamp, err := m.verify(raw, signature)
 	if err != nil {
 		return contract.Receipt{}, err
+	}
+	if in.RefundID != "" && (in.Status == payment.StatusFailed || in.Status == payment.StatusCanceled) {
+		return m.receiveTerminal(ctx, raw, in, stamp)
 	}
 	return m.receive(ctx, raw, in, stamp)
 }
@@ -229,7 +232,7 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 				return e
 			}
 			event := payment.VerifiedEvent{EventID: r.EventKey, TenantID: tenant, OrderID: r.ClaimedOrderID.String(), OrderVersion: r.OrderVersion, ProviderRef: r.ProviderRef, Status: payment.PaymentStatus(r.Status), Amount: money.Money{Amount: r.AmountMinor, Currency: r.Currency}}
-			done, applyErr := m.applyFact(ctx, child, event, r.ProviderRefundID.String)
+			done, applyErr := m.applyFact(ctx, child, event, r.ProviderRefundID.String, r.ProviderAccountID)
 			if done && applyErr == nil && event.Status == payment.StatusCaptured {
 				captures = append(captures, event)
 			}

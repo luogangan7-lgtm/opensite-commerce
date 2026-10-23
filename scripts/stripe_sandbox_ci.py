@@ -34,7 +34,7 @@ def main():
     listener = subprocess.Popen([
         'stripe', 'listen', '--forward-to',
         'http://127.0.0.1:8787/api/v1/payments/stripe/webhook', '--events',
-        'payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled,refund.created,refund.updated',
+        'payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled,refund.created,refund.updated,refund.failed',
     ], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     secrets = queue.Queue(maxsize=1)
 
