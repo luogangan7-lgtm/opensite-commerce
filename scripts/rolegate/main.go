@@ -36,6 +36,7 @@ var (
 	onWord     = regexp.MustCompile(`\bON\b`)
 	toWord     = regexp.MustCompile(`\bTO\b`)
 	fromWord   = regexp.MustCompile(`\bFROM\b`)
+	spaceRun   = regexp.MustCompile(`\s+`)
 	// Object privileges contain ON; only cluster-global role memberships are banned.
 	// The negative ON check mirrors the retired regex: any ON in the statement skips it.
 	authMembers = regexp.MustCompile(`\b(?:INSERT INTO|UPDATE|DELETE FROM) (?:PG_CATALOG\.)?PG_AUTH_MEMBERS\b`)
@@ -340,7 +341,9 @@ func evalString(expr ast.Expr, consts map[string]string) (string, bool) {
 // across concatenated literals are still caught. GRANT/REVOKE statements carrying
 // ON are object privileges, not role membership changes.
 func clusterRoleSQL(value string) bool {
-	normalized := strings.Join(strings.Fields(strings.ToUpper(value)), " ")
+	// Keep leading/trailing spaces: the retired regex required whitespace after
+	// GRANT/REVOKE, so a prose suffix such as "idempotent revoke" must not match.
+	normalized := spaceRun.ReplaceAllString(strings.ToUpper(value), " ")
 	if normalized == "" {
 		return false
 	}
@@ -355,7 +358,18 @@ func clusterRoleSQL(value string) bool {
 
 func roleMembership(normalized string, keyword, terminal *regexp.Regexp) bool {
 	for _, loc := range keyword.FindAllStringIndex(normalized, -1) {
-		rest := normalized[loc[1]:]
+		// The retired regex required whitespace after the keyword, so a prose
+		// suffix ("idempotent revoke") or "GRANT;" is not role SQL.
+		if loc[1] >= len(normalized) || normalized[loc[1]] != ' ' {
+			continue
+		}
+		rest := strings.TrimLeft(normalized[loc[1]:], " ")
+		if rest == "" {
+			return true // keyword plus whitespace at end of string
+		}
+		if rest[0] == ';' {
+			continue // `$` did not match before a statement separator
+		}
 		if end := strings.IndexByte(rest, ';'); end >= 0 {
 			rest = rest[:end]
 		}
@@ -363,7 +377,7 @@ func roleMembership(normalized string, keyword, terminal *regexp.Regexp) bool {
 		if onWord.MatchString(rest) {
 			continue
 		}
-		if rest == "" || terminal.MatchString(rest) {
+		if terminal.MatchString(rest) {
 			return true
 		}
 	}

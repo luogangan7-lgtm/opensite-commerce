@@ -10,4 +10,5 @@ func helperCalls(t, ctx, dsn, password any) {
 	_ = "GRANT SELECT ON app.users TO app_runtime"
 	_ = "REVOKE SELECT ON app.users FROM app_runtime"
 	_ = "preview grant setup status=%d"
+	_ = "idempotent revoke"
 }
