@@ -85,6 +85,11 @@ func (s *Service) Routes() []httpapi.Route {
 			next := routes[i].Handler
 			routes[i].Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Cache-Control", "no-store")
+				locale := r.PathValue("locale")
+				if len(locale) > 64 || !csvLocale.MatchString(locale) {
+					httpapi.WriteProblem(w, r, invalid("Invalid content locale"))
+					return
+				}
 				next.ServeHTTP(w, r)
 			})
 		}

@@ -63,6 +63,7 @@ paths:
     put:
       tags: [Catalog]
       operationId: setProductContent
+      x-opensite-if-match-zero: true
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog:write
