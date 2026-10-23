@@ -156,6 +156,9 @@ func TestPaymentsLegacyRefundRequiresReconciliation(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := p.f.witness(t, p.start.OrderID)
+	// An unbound old posted refund must never acquire an immutable unposted
+	// terminal: later retries must remain available to trusted reconciliation.
+	p.rejectTerminalBinding(t, "legacy-terminal", "legacy-provider-refund", 1)
 	body["event_id"] = "new-updated"
 	raw, _ := json.Marshal(body)
 	if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err == nil {
