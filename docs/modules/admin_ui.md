@@ -54,6 +54,24 @@ messages, including the 30-day processing and export-copy commitment. This is
 information only: no customer data read, deletion control, API, or support
 workflow is implemented here.
 
+ADMIN-REDRIVE adds `/t/:tenantId/notifications` using the existing
+`notifications:write` failure-list/redrive APIs. The list response authorizes the
+surface; 403 shows a no-access state with no metadata or mutation controls.
+The session DTO does not contain tenant roles, so the browser does not infer a
+scope from a role name. Only safe metadata is projected; contacts, subject and
+body are never rendered. The API has a 100-item cap without a cursor: pagination
+is explicitly within the latest bounded snapshot, in pages of ten, with reload.
+
+Known dead letters require confirmation through the existing shared Dialog.
+Uncertain sends and unavailable recipients require manual investigation.
+An unconfirmed request retries the same idempotency key. A 404/409/412 disables
+redrive until reload; a receipt means queued, never delivered. The CI-only
+`scripts/e2e/redrive.py` harness supplies a final-attempt fixture, makes an actual
+worker send fail against a refusing loopback port, restores Mailpit, and checks
+one accepted MIME message per project after replay plus notification/outbox/DLQ
+persistence. Production SMTP defaults are unchanged; external Sender acceptance
+remains NOT_RUN.
+
 `bash scripts/check_all.sh` includes frontend source gates. Bun tests cover
 transport, validation, auth races and exact money formatting. Playwright covers
 login, product list/create/edit, SKU edits/archive, upload/attachment, order

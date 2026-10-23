@@ -49,6 +49,8 @@ RMA_TESTS = {"real shipment → partial → full refund journey"}
 ACTIVE_TESTS |= RMA_TESTS
 B2B_TESTS = {"real B2B inquiry quote approval prepayment order"}
 ACTIVE_TESTS |= B2B_TESTS
+REDRIVE_TESTS = {"real admin notification failure redrive delivers once with scoped isolation"}
+ACTIVE_TESTS |= REDRIVE_TESTS
 GAP_TESTS = set()
 
 
@@ -92,7 +94,7 @@ def verify_browser_report(report):
                         raise RuntimeError("MVP E2E duplicate browser assertion")
                     observed[key] = [item.get("status") for item in test.get("results", [])]
                     filename = Path(spec.get("file", "")).name
-                    expected_file = "rma.spec.ts" if spec.get("title") in RMA_TESTS else "b2b.spec.ts" if spec.get("title") in B2B_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
+                    expected_file = "redrive.spec.ts" if spec.get("title") in REDRIVE_TESTS else "rma.spec.ts" if spec.get("title") in RMA_TESTS else "b2b.spec.ts" if spec.get("title") in B2B_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
                         "purchase.spec.ts" if spec.get("title") in PURCHASE_TESTS else (
                         "payments.spec.ts" if spec.get("title") in PAYMENT_TESTS else (
                         "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts")))
@@ -107,7 +109,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 40, "skipped": 0, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 42, "skipped": 0, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -167,6 +169,7 @@ def run(receipt_dir):
     # stdin PostgreSQL secret transport and permission/job witnesses unchanged.
     sys.path.insert(0, str(ROOT / "scripts"))
     import ops_common
+    from e2e import redrive
     base_compose_command = ops_common.compose_command
 
     def compose_command(args):
@@ -342,6 +345,14 @@ def run(receipt_dir):
             os.environ["E2E_RELEASE_ID"] = receipt["publication"]["release_id"]
             receipt["steps"].append("real-cms-builder-membership-and-serving")
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
+            redrive.seed(ops_common.psql)
+            command(compose_command(["up", "-d", "--no-deps", "notification-worker"]), "notification-refusing-smtp-start", timeout=120)
+            receipt['notification_failure'] = redrive.await_failure(ops_common.psql)
+            # Only the CI override changes; API/customer SMTP and production defaults stay fixed.
+            variables['E2E_NOTIFICATION_SMTP_PORT'] = '1025'
+            os.environ['E2E_NOTIFICATION_SMTP_PORT'] = '1025'
+            env_file.write_text("".join(f"{key}={value}\n" for key, value in variables.items()))
+            command(compose_command(["up", "-d", "--no-deps", "--force-recreate", "notification-worker"]), "notification-restored-smtp-start", timeout=120)
             persist()
             # API/worker/mailpit are already healthy. Recreating API here strands
             # its loopback SMTP sidecar in the old network namespace.
@@ -365,6 +376,9 @@ def run(receipt_dir):
                 persist()
                 raise RuntimeError("MVP E2E browser assertions failed")
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
+            command(compose_command(["stop", "--timeout", "30", "notification-worker"]), "notification-worker-stop", timeout=60)
+            receipt['notification_redrive'] = redrive.verify(json.loads(ops_common.psql(redrive.WITNESS_SQL)))
+            receipt['notification_mailpit'] = redrive.mailpit_witness()
             staff = json.loads(ops_common.psql(f"""SELECT jsonb_build_object(
               'sealed',(SELECT count(*) FROM app.site_releases WHERE tenant_id='{owner_tenant}' AND site_id='c3300003-0000-4000-8000-000000000001' AND sealed),
               'visible',(SELECT count(*) FROM app.storefront_serving v CROSS JOIN LATERAL jsonb_array_elements(convert_from(v.body,'UTF8')::jsonb->'products') p WHERE v.tenant_id='{owner_tenant}' AND v.site_id='c3300003-0000-4000-8000-000000000001' AND p->>'slug' IN ('staff-desktop','staff-mobile') AND p->>'name'='Staff product '||split_part(p->>'slug','-',2)||' edited' AND p->>'description'='Staff description' AND p->'skus' @> '[{{"price_minor":"3456","currency":"USD"}}]'::jsonb),
