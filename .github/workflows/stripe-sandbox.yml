@@ -65,8 +65,7 @@ jobs:
       - name: Prepare migrated disposable DB and checksum-pinned Stripe CLI
         if: steps.secret.outputs.ready == 'true'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client
+          ./scripts/ci_apt_install.sh postgresql-client
           python3 scripts/pending_migrations.py ci-normalize
           ./scripts/migrate_river.sh
           ./scripts/migrate.sh
