@@ -32,6 +32,24 @@ func TestReturnsCoordinatorDedicatedLoginPostgres(t *testing.T) {
 	}
 	defer admin.Close(context.Background())
 	login := "c19c_" + uuid.NewString()[:8]
+	// A database per fixture does not isolate pg_auth_members. Witness this
+	// fixture's own common-database lock before publishing cluster membership.
+	assertFixtureLock := func() {
+		t.Helper()
+		var held bool
+		err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `SELECT EXISTS (
+ SELECT FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid
+ WHERE a.application_name=$1 AND l.locktype='advisory'
+ AND l.database=(SELECT oid FROM pg_database WHERE datname=current_database())
+ AND l.classid=0 AND l.objid=18004518 AND l.objsubid=1
+ AND l.mode='ExclusiveLock' AND l.granted)`, login+"_guard").Scan(&held)
+		})
+		if err != nil || !held {
+			t.Fatal("returns fixture cluster membership lacks common initialization lock")
+		}
+	}
+	assertFixtureLock()
 	exec := func(sql string) {
 		t.Helper()
 		if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, sql); return err }); err != nil {
@@ -39,7 +57,10 @@ func TestReturnsCoordinatorDedicatedLoginPostgres(t *testing.T) {
 		}
 	}
 	exec("CREATE ROLE " + login + " LOGIN INHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD 'ci_returns_fixture_only_123456789'; GRANT app_returns_service TO " + login)
-	defer exec("DROP OWNED BY " + login + "; DROP ROLE " + login)
+	defer func() {
+		assertFixtureLock()
+		exec("DROP OWNED BY " + login + "; DROP ROLE " + login)
+	}()
 	u, err := url.Parse(dsn)
 	if err != nil {
 		t.Fatal("invalid fixture DSN")
