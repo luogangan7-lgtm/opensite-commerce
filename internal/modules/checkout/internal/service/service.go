@@ -479,6 +479,14 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 		if actor.Valid() && (row.ActorKind != actor.Kind() || row.ActorID != actor.ID()) {
 			return contract.ErrNotFound
 		}
+		if claimPhase == "confirming" && row.SourceKind == "cart" {
+			var receipt struct {
+				AcceptedTotal contract.AcceptedTotal `json:"accepted_total"`
+			}
+			if json.Unmarshal(row.AddressSnapshot, &receipt) != nil || receipt.AcceptedTotal.AmountMinor != row.AmountMinor || receipt.AcceptedTotal.Currency != row.Currency {
+				return contract.ErrTotalChanged
+			}
+		}
 		if event != nil && (row.OrderID.String() != event.OrderID || row.Currency != event.Amount.Currency || row.AmountMinor != event.Amount.Amount || row.PayableVersion != event.OrderVersion || row.ProviderRef != event.ProviderRef) {
 			return contract.ErrConflict
 		}
@@ -515,14 +523,7 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 		}
 		if row.Phase == "ready" {
 			// Consent authorizes a new claim, never retroactively blocks recovery.
-			if claimPhase == "confirming" && row.SourceKind == "cart" {
-				var receipt struct {
-					AcceptedTotal contract.AcceptedTotal `json:"accepted_total"`
-				}
-				if json.Unmarshal(row.AddressSnapshot, &receipt) != nil || receipt.AcceptedTotal.AmountMinor != row.AmountMinor || receipt.AcceptedTotal.Currency != row.Currency {
-					return contract.ErrTotalChanged
-				}
-			}
+
 			row.Phase = claimPhase
 			row.ClaimKind = store.Text(kind)
 			row.ClaimKey = store.Text(eventKey)
