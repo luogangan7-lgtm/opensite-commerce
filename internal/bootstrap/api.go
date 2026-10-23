@@ -89,7 +89,7 @@ func New(config Config) (server *http.Server, err error) {
 			return nil, err
 		}
 		if config.QuotesBuyerAuthenticator == nil {
-			config.QuotesBuyerAuthenticator = quoteBuyerAdmission{customer: customerHTTP, runner: config.QuoteConversion.Runner}
+			config.QuotesBuyerAuthenticator = quoteBuyerAdmission{customer: customerHTTP, runner: config.QuoteConversion.Runner, inquiry: config.QuotesInquiryResolver}
 		}
 	}
 	if config.QuotesBuyerAuthenticator != nil && config.QuoteOrders == nil {
