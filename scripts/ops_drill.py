@@ -499,6 +499,8 @@ def drill(receipt_dir):
         variables = {'POSTGRES_PASSWORD': secrets.token_urlsafe(32), 'OPENSITE_DB':'opensite',
                      'OPENSITE_API_PORT':'0', 'OPENSITE_WORKER_PORT':'0', 'OPENSITE_MAIL_PORT':'0', 'COMPOSE_PROJECT_NAME':project,
                      'JOB_SIGNING_KEY':secrets.token_hex(32),'JOB_TENANTS':'',
+                     'OPENSITE_PRIVACY_DATABASE_URL':'', 'PRIVACY_WORKER_DATABASE_URL':'',
+                     'PRIVACY_TOKEN_KEY':'', 'PRIVACY_EXPORT_WORKER_ENABLED':'false',
                      'OPENSITE_ADMIN_ORIGIN':'https://admin.drill.test','OPENSITE_AUTH_SIGNING_KEY':secrets.token_hex(32),
                      'OPENSITE_STOREFRONT_ORIGIN':'https://store.drill.test',
                      'OPENSITE_CUSTOMER_CSRF_SECRET':secrets.token_urlsafe(32),
