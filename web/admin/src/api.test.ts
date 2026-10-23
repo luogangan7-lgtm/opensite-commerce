@@ -200,3 +200,19 @@ describe('review follow-ups', () => {
     expect(h.calls[0].url).toBe(`/api/v1/t/${tenant.replace('4', 'a')}/products`);
   });
 });
+
+ test('generated staff client echoes opaque ETag and sends full int64 minor units exactly', async () => {
+   const tag = '"listing-v9-content-v7"';
+   const h = harness([json(session), Response.json({ site_id: tenant, locale: 'en', slug: 'sample', listed: true, content_revision: 7, revision: 7 }, { headers: { ETag: tag } }),
+     Response.json({ site_id: tenant, locale: 'en', slug: 'sample', listed: false, content_revision: 7, revision: 7 }, { headers: { ETag: '"new-tag"' } }), json({ id: tenant, version: 3 })]);
+   const transport = new AdminAPI({ fetch: h.fetcher }); await transport.session();
+   const api = new CatalogAPI(transport, tenant), listing = await api.listing(product, tenant, 'en');
+   await api.saveListing(product, tenant, 'en', listing.etag, { slug: 'sample', listed: false, content_revision: 7 });
+   expect(new Headers(h.calls[2].init.headers).get('If-Match')).toBe(tag);
+   await api.savePrice({ id: tenant, version: 2, currency: 'USD', status: 'active', starts_at: '2020-01-01T00:00:00Z', priority: 0, audience: 'all' }, product, '9223372036854775807');
+   expect(h.calls[3].init.body).toBe('{"unit_amount":9223372036854775807}');
+   for (const invalid of ['-1', '1.5', '1e3', '9223372036854775808']) {
+     await expect(api.savePrice({ id: tenant, version: 2 } as never, product, invalid)).rejects.toMatchObject({ status: 422 });
+   }
+   expect(h.calls).toHaveLength(4);
+ });

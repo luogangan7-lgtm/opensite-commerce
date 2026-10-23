@@ -42,3 +42,25 @@ test('orders unavailable in another tenant and version errors are safe',async({p
 test('upload processing and failed states are explicit',async({page})=>{await fixture(page,{uploadStatus:'processing'});await page.goto(`${origin}/t/${tenant}/products/${productId}`);await page.getByLabel('Media file').setInputFiles({name:'sample.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')});await page.getByRole('button',{name:'Upload media',exact:true}).click();await expect(page.getByText('processing',{exact:true})).toBeVisible();await audit(page);await page.unrouteAll({behavior:'wait'});await fixture(page,{uploadStatus:'failed'});await page.reload();await page.getByLabel('Media file').setInputFiles({name:'sample.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')});await page.getByRole('button',{name:'Upload media',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Media verification or processing failed');await expect(page.getByRole('button',{name:'Attach media',exact:true})).toBeDisabled();await audit(page);});
 
 test('PR47 null shipping method remains readable with SKU-only snapshot lines',async({page})=>{await fixture(page,{shippingMethod:null});await page.goto(`${fixtureOrigin}/t/${tenant}/orders/44444444-4444-4444-8444-444444444444`);await expect(page.getByRole('heading',{name:'Order 1001'})).toBeVisible();await expect(page.getByRole('cell',{name:'SAMPLE-1',exact:true})).toBeVisible();await expect(page.getByText('Shipping rule (Not recorded)')).toBeVisible();await expect(page.getByText('Sample product',{exact:true})).toHaveCount(0);await expect(page.getByRole('alert')).toHaveCount(0);await audit(page);});
+
+test('content and listing preserve opaque ETags and retain conflicting drafts',async({page})=>{
+ await fixture(page);await page.goto(`${origin}/t/${tenant}/products/${productId}`);
+ await page.getByRole('button',{name:'Load content',exact:true}).click();
+ await expect(page.getByLabel('Title',{exact:true})).toHaveValue('Sample title');
+ await page.getByLabel('Title',{exact:true}).fill('Unsaved title');
+ await page.getByRole('button',{name:'Save content',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Save content',exact:true})).toBeDisabled();
+ await expect(page.getByLabel('Title',{exact:true})).toHaveValue('Unsaved title');
+ await page.getByRole('button',{name:'Load content',exact:true}).click();
+ await expect(page.getByLabel('Title',{exact:true})).toHaveValue('Sample title');
+ await page.getByLabel('Site ID',{exact:true}).fill(tenant);
+ await page.getByRole('button',{name:'Load listing',exact:true}).click();
+ await page.getByLabel('Slug',{exact:true}).fill('unsaved-slug');
+ await page.getByRole('button',{name:'Save listing',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Save listing',exact:true})).toBeDisabled();
+ await expect(page.getByLabel('Slug',{exact:true})).toHaveValue('unsaved-slug');
+ await audit(page,'admin-publication-conflict.png');
+ await page.getByRole('button',{name:'Load listing',exact:true}).click();
+ await expect(page.getByLabel('Slug',{exact:true})).toHaveValue('sample');
+ await expect(page.getByRole('button',{name:'Save listing',exact:true})).toBeEnabled();
+});

@@ -103,9 +103,27 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
   }).toMatchObject({ name: title + ' edited', skus: expect.arrayContaining([
     expect.objectContaining({ sku_id: sku.id, sku_code: slug.toUpperCase(), price_minor: '3456', currency: 'USD' }),
   ]) });
-  await page.goto(`http://localhost:4321/products/${slug}`);
+  // Publication alone cannot prove serving invalidation: change an already served listing.
+  await page.getByRole('button', { name: 'Load listing', exact: true }).click();
+  await page.getByLabel('Listing state', { exact: true }).selectOption('unlisted');
+  await page.getByRole('button', { name: 'Save listing', exact: true }).click();
+  await expect(page.getByText('Listing saved.', { exact: true })).toBeVisible();
+  await expect.poll(async () => {
+    const response = await page.request.get(`${fixture.api}/api/v1/public/sites/current?host=localhost`);
+    return response.status() === 200 ? (await response.json()).products.some((p: { slug: string }) => p.slug === slug) : true;
+  }, { message: 'Listing invalidation must remove the product from the served release', timeout: 20_000 }).toBe(false);
+  await page.getByLabel('Listing state', { exact: true }).selectOption('listed');
+  await page.getByRole('button', { name: 'Save listing', exact: true }).click();
+  await expect(page.getByText('Listing saved.', { exact: true })).toBeVisible();
+  await expect.poll(async () => {
+    const response = await page.request.get(`${fixture.api}/api/v1/public/sites/current?host=localhost`);
+    return response.status() === 200 ? (await response.json()).products.some((p: { slug: string }) => p.slug === slug) : false;
+  }).toBe(true);
+  await page.goto(`http://localhost:4322/products/${slug}`);
   await expect(page.getByRole('heading', { name: title + ' edited', exact: true })).toBeVisible();
-  await expect(page.getByText('USD 34.56', { exact: false })).toBeVisible();
+  await expect(page.getByText('$34.56', { exact: false })).toBeVisible();
+  await expect(page.getByText('Staff description', { exact: true })).toBeVisible();
+  await expect(page.getByRole('option', { name: new RegExp(slug.toUpperCase()) })).toHaveCount(1);
   await audit(page, info);
   expect((await page.request.get(`${fixture.admin}/api/v1/t/${fixture.tenantId}/products/${product.id}`)).status()).toBe(404);
   await info.attach('staff-publication', { body: JSON.stringify({ product: product.id, sku: sku.id, release: release.release_id }), contentType: 'application/json' });

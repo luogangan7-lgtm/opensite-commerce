@@ -1,6 +1,7 @@
 /** Cookie-only admin transport; depends on generated main OpenAPI schema and native
  * fetch/WebCrypto. Called by session provider and catalog forms; CSRF lives in memory,
  * redirects are rejected, tenant routing never substitutes for server authorization. */
+import { createCommerceClient } from '../../../packages/api-client/src';
 import type { components } from '../../../packages/api-client/src/schema';
 import { validateCode, validateMediaFile, validateUUID } from './validation';
 type Schemas = components['schemas'];
@@ -46,7 +47,7 @@ function csrf(value: unknown): string {
   if (typeof value !== 'string' || !value || value.length > 4096 || /[\r\n]/.test(value)) throw new APIError(502, 'invalid_response');
   return value;
 }
-export type RequestOptions = MutationOptions & { version?: number; raw?: boolean; anonymous?: boolean; responseRaw?: boolean; quiet401?: boolean };
+export type RequestOptions = MutationOptions & { etag?: string; serialized?: boolean; version?: number; raw?: boolean; anonymous?: boolean; responseRaw?: boolean; quiet401?: boolean };
 export class AdminAPI {
   private csrfToken = '';
   private authGeneration = 0;
@@ -76,12 +77,16 @@ export class AdminAPI {
         headers.set('Idempotency-Key', key);
       }
     }
+    if (options.etag !== undefined) {
+      if (!/^"[^"\r\n]{1,256}"$/.test(options.etag)) throw new APIError(502, 'invalid_response');
+      headers.set('If-Match', options.etag);
+    }
     if (options.version !== undefined) headers.set('If-Match', versionHeader(options.version));
     if (body !== undefined) headers.set('Content-Type', options.raw ? 'application/octet-stream' : 'application/json');
     // Raw uploads are bounded by the 10 MiB client cap (server enforces its own); give slow links 5 minutes.
     const timeout = AbortSignal.timeout(options.raw ? 300000 : 15000);
     const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
-    const response = await this.fetcher(path, { method, headers, credentials: 'same-origin', redirect: 'error', cache: 'no-store', signal, body: body === undefined ? undefined : options.raw ? body as BodyInit : JSON.stringify(body) });
+    const response = await this.fetcher(path, { method, headers, credentials: 'same-origin', redirect: 'error', cache: 'no-store', signal, body: body === undefined ? undefined : options.raw || options.serialized ? body as BodyInit : JSON.stringify(body) });
     // Old requests must not expire a newer session or return its predecessor's data.
     this.requireCurrent(generation, signal);
     if (!response.ok) {
@@ -132,9 +137,63 @@ export class AdminAPI {
     this.clearSession();
   }
 }
+export type PriceList = Schemas['StaffPriceList'];
+export type Content = Schemas['StaffProductContent'];
+export type Listing = Schemas['StaffProductListing'];
+export type Tagged<T> = { data: T; etag: string };
+export function priceIssue(value: string): string {
+  return /^(0|[1-9][0-9]{0,18})$/.test(value) && BigInt(value) <= 9223372036854775807n ? '' : 'Enter whole minor units from 0 to 9223372036854775807.';
+}
 export class CatalogAPI {
   private readonly base: string;
-  constructor(private readonly client: AdminAPI, tenantId: string) { this.base = `/api/v1/t/${id(tenantId)}`; }
+  private readonly staff;
+  constructor(private readonly client: AdminAPI, private readonly tenantId: string) {
+    this.base = `/api/v1/t/${id(tenantId)}`;
+    // Generated path/body contracts, with all cookie/CSRF/session policy owned by AdminAPI.
+    this.staff = createCommerceClient('http://localhost', async request => this.client.request<Response>(
+      new URL(request.url).pathname + new URL(request.url).search, request.method,
+      request.method === 'GET' ? undefined : await request.text(),
+      { signal: request.signal, idempotencyKey: request.headers.get('Idempotency-Key') ?? undefined, etag: request.headers.get('If-Match') ?? undefined, serialized: true, responseRaw: true },
+    ));
+  }
+  private locale(value: string): string {
+    if (!/^[a-z]{2,8}(-[a-z0-9]{1,8})*$/.test(value) || value.length > 64) throw new APIError(422, 'invalid_input', 'Enter a locale such as en or zh-cn.');
+    return value;
+  }
+  private value<T>(result: { data?: T; response: Response }): T {
+    if (!result.data) throw new APIError(502, 'invalid_response');
+    return result.data;
+  }
+  private tagged<T>(result: { data?: T; response: Response }): Tagged<T> {
+    const etag = result.response.headers.get('ETag');
+    if (!etag || !/^"[^"\r\n]{1,256}"$/.test(etag)) throw new APIError(502, 'invalid_response');
+    return { data: this.value(result), etag };
+  }
+  async priceLists(after?: string, signal?: AbortSignal): Promise<Schemas['StaffPriceListPage']> {
+    return this.value(await this.staff.GET('/api/v1/t/{tenant_id}/price-lists', { params: { path: { tenant_id: this.tenantId }, query: { after } }, signal }));
+  }
+  async priceList(listId: string, signal?: AbortSignal): Promise<PriceList> {
+    return this.value(await this.staff.GET('/api/v1/t/{tenant_id}/price-lists/{price_list_id}', { params: { path: { tenant_id: this.tenantId, price_list_id: id(listId) } }, signal }));
+  }
+  async savePrice(list: PriceList, variantId: string, minor: string, signal?: AbortSignal): Promise<PriceList> {
+    if (priceIssue(minor)) throw new APIError(422, 'invalid_input', priceIssue(minor));
+    return this.value(await this.staff.PUT('/api/v1/t/{tenant_id}/price-lists/{price_list_id}/variants/{variant_id}/prices/{min_quantity}', {
+      params: { path: { tenant_id: this.tenantId, price_list_id: id(list.id), variant_id: id(variantId), min_quantity: 1 }, header: { 'If-Match': versionHeader(list.version) } },
+      body: { unit_amount: 0 }, serializeBody: () => `{"unit_amount":${minor}}`, signal,
+    }));
+  }
+  async content(productId: string, locale: string, signal?: AbortSignal): Promise<Tagged<Content>> {
+    return this.tagged(await this.staff.GET('/api/v1/t/{tenant_id}/products/{product_id}/content/{locale}', { params: { path: { tenant_id: this.tenantId, product_id: id(productId), locale: this.locale(locale) } }, signal }));
+  }
+  async saveContent(productId: string, locale: string, etag: string, body: Schemas['StaffProductContentInput'], signal?: AbortSignal): Promise<Tagged<Content>> {
+    return this.tagged(await this.staff.PUT('/api/v1/t/{tenant_id}/products/{product_id}/content/{locale}', { params: { path: { tenant_id: this.tenantId, product_id: id(productId), locale: this.locale(locale) }, header: { 'If-Match': etag, 'Idempotency-Key': crypto.randomUUID() } }, body, signal }));
+  }
+  async listing(productId: string, siteId: string, locale: string, signal?: AbortSignal): Promise<Tagged<Listing>> {
+    return this.tagged(await this.staff.GET('/api/v1/t/{tenant_id}/products/{product_id}/listings/{site_id}/{locale}', { params: { path: { tenant_id: this.tenantId, product_id: id(productId), site_id: id(siteId), locale: this.locale(locale) } }, signal }));
+  }
+  async saveListing(productId: string, siteId: string, locale: string, etag: string, body: Schemas['StaffProductListingInput'], signal?: AbortSignal): Promise<Tagged<Listing>> {
+    return this.tagged(await this.staff.PUT('/api/v1/t/{tenant_id}/products/{product_id}/listings/{site_id}/{locale}', { params: { path: { tenant_id: this.tenantId, product_id: id(productId), site_id: id(siteId), locale: this.locale(locale) }, header: { 'If-Match': etag, 'Idempotency-Key': crypto.randomUUID() } }, body, signal }));
+  }
   private productPath(productId: string): string { return `${this.base}/products/${id(productId)}`; }
   private variantPath(productId: string, variantId: string): string { return `${this.productPath(productId)}/variants/${id(variantId)}`; }
   private page(options: PageOptions): string {

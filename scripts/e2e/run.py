@@ -312,7 +312,7 @@ def run(receipt_dir):
             persist()
             # API/worker/mailpit are already healthy. Recreating API here strands
             # its loopback SMTP sidecar in the old network namespace.
-            command(compose_command(["up", "-d", "--no-deps", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
+            command(compose_command(["up", "-d", "--no-deps", "--wait", "--wait-timeout", "120", "storefront", "staff-storefront", "admin"]), "frontends-start", timeout=300)
             wait_http("http://127.0.0.1:4321/", 200, b"Made for everyday use")
             wait_http("http://127.0.0.1:4173/", 200, b"<div id=\"root\"")
             wait_http("http://127.0.0.1:8025/api/v1/messages?limit=1", 200)
