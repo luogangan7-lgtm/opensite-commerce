@@ -396,7 +396,7 @@ BEGIN
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
    'customer_session','customer_revoke_session','customer_admit','customer_failed',
-   'resolve_fake_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox',
+   'resolve_fake_payment_account','resolve_stripe_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox',
    'guard_payment_fact','guard_checkout_refund') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
@@ -431,7 +431,7 @@ BEGIN
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
    'customer_session','customer_revoke_session','customer_admit','customer_failed',
-   'resolve_fake_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox',
+   'resolve_fake_payment_account','resolve_stripe_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox',
    'guard_payment_fact','guard_checkout_refund'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
@@ -1180,8 +1180,8 @@ BEGIN
   END LOOP;
  END LOOP;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
-  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM (f.proname='resolve_fake_payment_account') THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_FUNCTION %',f.proname; END IF;
-  IF f.proname='resolve_fake_payment_account' THEN
+  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM (f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account')) THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_FUNCTION %',f.proname; END IF;
+  IF f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account') THEN
    IF NOT f.prosecdef OR f.proowner<>r.oid OR NOT f.proconfig @> ARRAY['search_path=pg_catalog, app, pg_temp'] THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_RESOLVER'; END IF;
    FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
     expected:=role_name IN('app_runtime','app_payment_resolver');
@@ -1192,12 +1192,12 @@ BEGIN
  -- The generic legacy capability inventory above excludes exactly this list;
  -- retain exact signatures, invoker/definer, owner, search_path and ACL assertions.
  FOR f IN SELECT p.*, n.expected_signature FROM (VALUES
-  ('resolve_fake_payment_account(text)'),('lock_payment_stream(text,text)'),
+  ('resolve_fake_payment_account(text)'),('resolve_stripe_payment_account(text)'),('lock_payment_stream(text,text)'),
   ('admit_payment_inbox(text,text,bytea)'),('finish_payment_inbox(uuid,boolean)'),
   ('guard_payment_fact()'),('guard_checkout_refund()')) AS n(expected_signature)
  LEFT JOIN pg_proc p ON p.oid=to_regprocedure('app.'||n.expected_signature) LOOP
-  IF f.oid IS NULL OR f.prosecdef IS DISTINCT FROM (f.proname='resolve_fake_payment_account')
-   OR f.proowner IS DISTINCT FROM (CASE WHEN f.proname='resolve_fake_payment_account' THEN r.oid
+  IF f.oid IS NULL OR f.prosecdef IS DISTINCT FROM (f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account'))
+   OR f.proowner IS DISTINCT FROM (CASE WHEN f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account') THEN r.oid
       ELSE (SELECT relowner FROM pg_class WHERE oid='app.payment_events'::regclass) END)
    OR cardinality(f.proconfig) IS DISTINCT FROM 1
    OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'
@@ -1205,8 +1205,8 @@ BEGIN
   THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_ROUTINE %',f.expected_signature; END IF;
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    expected:=(role_name='app_runtime' AND f.proname IN
-    ('resolve_fake_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox'))
-    OR (role_name='app_payment_resolver' AND f.proname='resolve_fake_payment_account');
+    ('resolve_fake_payment_account','resolve_stripe_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox'))
+    OR (role_name='app_payment_resolver' AND f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account'));
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR (role_name<>'app_payment_resolver' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION'))
    THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_ROUTINE_ACL % %',role_name,f.proname; END IF;
