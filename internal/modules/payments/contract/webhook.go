@@ -23,10 +23,11 @@ type Receiver interface {
 type Run func(context.Context, string, func(context.Context, pgx.Tx, string, time.Time) error) error
 type Apply func(context.Context, pgx.Tx, payment.VerifiedEvent) (bool, error)
 type Config struct {
-	Key      []byte
-	Run      Run
-	Apply    Apply
-	Provider string
+	Key         []byte
+	Run         Run
+	Apply       Apply
+	Provider    string
+	TerminalRun Run
 	// Admit is mandatory for real-provider create/capture; implementation reads
 	// durable cart consent through Checkout's public admission capability.
 	Admit func(context.Context, payment.CreatePaymentIntent, bool) error

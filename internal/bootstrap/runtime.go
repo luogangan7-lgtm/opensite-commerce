@@ -120,6 +120,22 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	if (fakeEnabled || stripeEnabled) && runtimeURL == "" {
 		return Config{}, nil, errors.New("Payment provider requires the runtime database")
 	}
+	paymentsURL, err := environmentDSN("OPENSITE_PAYMENTS_DATABASE_URL", "PAYMENTS", "opensite_payments_login")
+	if err != nil {
+		return Config{}, nil, err
+	}
+	if paymentsURL != "" {
+		terminal, err := pgxadapter.OpenPaymentsRunner(startup, paymentsURL)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, err
+		}
+		runners = append(runners, terminal)
+		config.PaymentTerminalRun = terminal.RunFakePaymentTx
+		if stripeEnabled {
+			config.PaymentTerminalRun = terminal.RunStripePaymentTx
+		}
+	}
 	if url := runtimeURL; url != "" {
 		runner, err := pgxadapter.OpenQueryRunner(startup, url)
 		if err != nil {

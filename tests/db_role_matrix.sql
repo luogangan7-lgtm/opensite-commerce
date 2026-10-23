@@ -29,7 +29,7 @@ DECLARE
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','shipments','shipment_lines','returns','return_lines','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals','quote_conversions',
-  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events','payment_event_deliveries','payment_return_refunds','payment_refund_attempts','payment_refund_reversals',
+  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events','payment_event_deliveries','payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals',
   'site_release_skus','storefront_serving','serving_invalidations','data_rights_exports','data_rights_erasures'];
  role_name text;
  r record;
@@ -76,7 +76,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='SELECT' AND t.relname='customer_guest_order_links' THEN
@@ -388,6 +388,7 @@ BEGIN
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger','ledger_post_core',
    'payments_post_refund_compensation','payments_guard_compensation_source','payments_assert_compensation_journal',
+   'payments_finalize_refund','payments_refund_terminal','payments_post_return_refund','payments_guard_refund_terminal','orders_compensate_refund','returns_compensate_refund',
    'fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json','fulfillment_header_guard','fulfillment_line_guard',
    'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund',
    'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return',
@@ -424,6 +425,7 @@ BEGIN
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
    'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger','ledger_post_core',
    'payments_post_refund_compensation','payments_guard_compensation_source','payments_assert_compensation_journal',
+   'payments_finalize_refund','payments_refund_terminal','payments_post_return_refund','payments_guard_refund_terminal','orders_compensate_refund','returns_compensate_refund',
    'fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json','fulfillment_header_guard','fulfillment_line_guard',
    'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund',
    'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return',
@@ -579,7 +581,8 @@ BEGIN
    ELSIF privilege='INSERT' THEN
     allowed:=CASE t.relname
      WHEN 'ledger_transactions' THEN ARRAY['tenant_id','id','currency','source_type','source_id','event']
-     WHEN 'ledger_entries' THEN ARRAY['tenant_id','transaction_id','line_no','account_id','currency','side','amount'] ELSE allowed END;
+     WHEN 'ledger_entries' THEN ARRAY['tenant_id','transaction_id','line_no','account_id','currency','side','amount']
+     WHEN 'webhook_inbox' THEN ARRAY['tenant_id','id','provider','provider_account_id','environment','provider_event_id','payload_hash','payload_reference'] ELSE allowed END;
    ELSIF privilege='UPDATE' AND t.relname='ledger_transactions' THEN allowed:=ARRAY['status','posted_at','revision'];
    END IF;
    IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected_table
@@ -607,7 +610,7 @@ BEGIN
    END IF;
    FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
     'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_orders_executor','app_queue_worker','app_outbox_tenant_broker','app_fulfillment_executor','app_returns_service'] LOOP
-    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name IN('app_runtime','app_returns_service') AND f.proname='post_ledger')
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM (role_name='app_runtime' AND f.proname='post_ledger')
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
      RAISE EXCEPTION 'ledger routine authority: % %',role_name,f.proname;
     END IF;
@@ -675,7 +678,7 @@ SELECT 'PASS: cart tenant helper exact owner/search_path/boolean/STABLE/EXECUTE;
 DO $orders$
 DECLARE r record; t record; a record; f record; role_name text; privilege text;
  expected boolean; allowed text[];
- names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget'];
+ names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','orders_compensate_refund'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_orders_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -690,7 +693,7 @@ BEGIN
    RAISE EXCEPTION 'orders RLS must ENABLE and FORCE';
   END IF;
   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
-   expected:=privilege='SELECT' AND t.relname IN('orders','order_lines','order_adjustments','tenants','inventory_reservations','outbox_events','shipments','shipment_lines','returns','return_lines')
+   expected:=privilege='SELECT' AND t.relname IN('orders','order_lines','order_adjustments','tenants','inventory_reservations','outbox_events','shipments','shipment_lines','returns','return_lines','payment_refund_terminals','payment_refund_reversals','ledger_transactions')
     OR privilege='INSERT' AND t.relname IN('orders','order_lines','order_adjustments');
    allowed:=ARRAY[]::text[];
    IF expected THEN SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
@@ -1187,7 +1190,7 @@ BEGIN
   IF f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account') THEN
    IF NOT f.prosecdef OR f.proowner<>r.oid OR NOT f.proconfig @> ARRAY['search_path=pg_catalog, app, pg_temp'] THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_RESOLVER'; END IF;
    FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
-    expected:=role_name IN('app_runtime','app_payment_resolver');
+    expected:=role_name IN('app_runtime','app_payment_resolver','app_payments_service','app_payments_ingress');
     IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_RESOLVE_GRANT %',role_name; END IF;
    END LOOP;
   END IF;
@@ -1209,7 +1212,8 @@ BEGIN
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    expected:=(role_name='app_runtime' AND f.proname IN
     ('resolve_fake_payment_account','resolve_stripe_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox'))
-    OR (role_name='app_payment_resolver' AND f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account'));
+    OR (role_name IN('app_payment_resolver','app_payments_ingress') AND f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account'))
+    OR (role_name='app_payments_service' AND f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox'));
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR (role_name<>'app_payment_resolver' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION'))
    THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_ROUTINE_ACL % %',role_name,f.proname; END IF;
@@ -1224,7 +1228,7 @@ DECLARE r record;t record;a record;f record;role_name text;privilege text;
  tables text[]:=ARRAY['shipments','shipment_lines','returns','return_lines'];
  names text[]:=ARRAY['fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json',
   'fulfillment_header_guard','fulfillment_line_guard','fulfillment_create_shipment','returns_create',
-  'returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund'];
+  'returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund','returns_compensate_refund'];
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['app_fulfillment_executor','app_returns_service'] LOOP
   SELECT * INTO STRICT r FROM pg_roles WHERE rolname=role_name;
@@ -1242,7 +1246,7 @@ BEGIN
    FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
     expected_table:=false;allowed:=ARRAY[]::text[];
     IF privilege='SELECT' AND(role_name='app_fulfillment_executor' AND t.relname=ANY(tables||ARRAY['tenants','orders','order_lines',
-      'inventory_reservations','ledger_accounts','ledger_transactions','ledger_entries'])
+      'inventory_reservations','ledger_accounts','ledger_transactions','ledger_entries','payment_refund_terminals','payment_refund_reversals'])
       OR role_name='app_returns_service' AND t.relname IN('returns','return_lines'))
      OR privilege='INSERT' AND role_name='app_fulfillment_executor' AND t.relname=ANY(tables) THEN
      expected_table:=true;
@@ -1281,7 +1285,8 @@ BEGIN
     RAISE EXCEPTION 'FULFILLMENT_MATRIX_FUNCTION %',f.proname; END IF;
    FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') AND rolname<>'app_fulfillment_executor' LOOP
     expected:=role_name='app_runtime' AND f.proname IN('fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot')
-     OR role_name='app_returns_service' AND f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund');
+     OR role_name='app_returns_service' AND f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund')
+     OR role_name='app_payments_service' AND f.proname IN('returns_lock_refund','returns_compensate_refund');
     IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
      RAISE EXCEPTION 'FULFILLMENT_MATRIX_ROUTINE % %',role_name,f.proname; END IF;
@@ -1291,7 +1296,7 @@ BEGIN
    (f.proname=ANY(names) OR f.proname IN('orders_context','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return','payments_allocate_refund')) THEN
    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_EXECUTOR_FUNCTION %',f.proname; END IF;
   IF has_function_privilege('app_returns_service',f.oid,'EXECUTE') IS DISTINCT FROM
-   (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund','post_ledger','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund')) THEN
+   (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund','payments_post_return_refund','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund')) THEN
    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_SERVICE_FUNCTION %',f.proname; END IF;
  END LOOP;
  IF(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
@@ -1321,7 +1326,8 @@ BEGIN
   owner_role:=CASE f.proname WHEN 'orders_refund_budget' THEN 'app_orders_executor'::regrole
    ELSE 'app_fulfillment_executor'::regrole END;
   allowed_roles:=CASE f.proname WHEN 'orders_refund_budget' THEN
-   ARRAY[owner_role,'app_fulfillment_executor'::regrole::oid]
+   ARRAY[owner_role,'app_fulfillment_executor'::regrole::oid,'app_payments_service'::regrole::oid]
+   WHEN 'returns_lock_refund' THEN ARRAY[owner_role,'app_returns_service'::regrole::oid,'app_payments_service'::regrole::oid]
    ELSE ARRAY[owner_role,'app_returns_service'::regrole::oid] END;
   IF f.prokind<>'f' OR f.proretset OR NOT f.prosecdef OR f.proowner<>owner_role
    OR f.prorettype<>(CASE f.proname WHEN 'orders_refund_budget' THEN 'app.orders'::regtype ELSE 'jsonb'::regtype END)
@@ -1530,7 +1536,7 @@ BEGIN
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0) THEN
    RAISE EXCEPTION 'PAYMENT_RETURN_ROUTINE %',f.signature; END IF;
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
-   expected:=CASE WHEN f.proname='payments_allocate_refund' THEN role_name IN('app_runtime','app_fulfillment_executor') WHEN f.proname='payments_match_return_refund' THEN role_name='app_runtime' ELSE role_name='app_returns_service' END;
+   expected:=CASE WHEN f.proname='payments_allocate_refund' THEN role_name IN('app_runtime','app_fulfillment_executor') WHEN f.proname='payments_match_return_refund' THEN role_name='app_runtime' ELSE role_name='app_returns_service' OR role_name='app_payments_service' AND f.proname IN('payments_lock_return_checkout','payments_bind_return_refund') END;
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'PAYMENT_RETURN_ROUTINE_ACL % %',role_name,f.proname; END IF;
@@ -1543,7 +1549,7 @@ DO $compensation_matrix$
 DECLARE r record; t record; a record; f record; role_name text; privilege text;
  expected boolean; allowed text[];
  names text[]:=ARRAY['payments_post_refund_compensation','payments_guard_compensation_source',
-  'payments_assert_compensation_journal','payments_guard_refund_reversal'];
+  'payments_assert_compensation_journal','payments_guard_refund_reversal','payments_finalize_refund','payments_refund_terminal','payments_post_return_refund'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_payments_service';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -1553,14 +1559,19 @@ BEGIN
  FOR t IN SELECT c.oid,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
-   expected:=privilege='SELECT' AND t.relname=ANY(ARRAY['ledger_accounts','ledger_transactions','ledger_entries','payment_refund_attempts','payment_refund_reversals']);
+   expected:=privilege='SELECT' AND t.relname=ANY(ARRAY['ledger_accounts','ledger_transactions','ledger_entries','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals',
+    'payment_events','payment_return_refunds','checkout_sessions','orders','order_lines','shipment_lines','webhook_inbox','returns'])
+    OR privilege='INSERT' AND t.relname IN('payment_refund_attempts','payment_refund_reversals','payment_refund_terminals');
    allowed:=ARRAY[]::text[];
    IF expected THEN
     SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
    ELSIF privilege='INSERT' THEN
     allowed:=CASE t.relname WHEN 'ledger_transactions' THEN ARRAY['tenant_id','id','currency','source_type','source_id','event']
-     WHEN 'ledger_entries' THEN ARRAY['tenant_id','transaction_id','line_no','account_id','currency','side','amount'] ELSE allowed END;
-   ELSIF privilege='UPDATE' AND t.relname='ledger_transactions' THEN allowed:=ARRAY['status','posted_at']; END IF;
+     WHEN 'ledger_entries' THEN ARRAY['tenant_id','transaction_id','line_no','account_id','currency','side','amount']
+     WHEN 'webhook_inbox' THEN ARRAY['tenant_id','id','provider','provider_account_id','environment','provider_event_id','payload_hash','payload_reference'] ELSE allowed END;
+   ELSIF privilege='UPDATE' THEN allowed:=CASE t.relname WHEN 'ledger_transactions' THEN ARRAY['status','posted_at']
+    WHEN 'checkout_sessions' THEN ARRAY['refunded_net_minor','refunded_tax_minor','refunded_shipping_minor','updated_at']
+    WHEN 'webhook_inbox' THEN ARRAY['status','attempts','processed_at'] ELSE allowed END; END IF;
    IF has_table_privilege('app_payments_service',t.oid,privilege) IS DISTINCT FROM expected
     OR has_table_privilege('app_payments_service',t.oid,privilege||' WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'COMPENSATION_MATRIX_TABLE % %',t.relname,privilege; END IF;
@@ -1579,11 +1590,15 @@ BEGIN
    OR f.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, app, pg_temp']::text[]
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0)) THEN
    RAISE EXCEPTION 'COMPENSATION_MATRIX_DEFINITION %',f.proname; END IF;
-  IF has_function_privilege('app_payments_service',f.oid,'EXECUTE') IS DISTINCT FROM (f.proname=ANY(names) OR f.proname='ledger_post_core') THEN
+  IF has_function_privilege('app_payments_service',f.oid,'EXECUTE') IS DISTINCT FROM (f.proname=ANY(names) OR f.proname IN('ledger_post_core','orders_refund_budget','orders_compensate_refund','returns_compensate_refund','returns_lock_refund',
+    'payments_lock_return_checkout','payments_bind_return_refund','resolve_fake_payment_account','resolve_stripe_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox')) THEN
    RAISE EXCEPTION 'COMPENSATION_MATRIX_FOREIGN_FUNCTION %',f.proname; END IF;
   IF f.proname=ANY(names) OR f.proname='ledger_post_core' THEN
    FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
-    expected:=role_name='app_payments_service' OR (role_name='app_ledger_executor' AND f.proname='ledger_post_core');
+    expected:=role_name='app_payments_service' OR (role_name='app_ledger_executor' AND f.proname='ledger_post_core')
+     OR role_name='app_payments_ingress' AND f.proname='payments_finalize_refund'
+     OR role_name='app_runtime' AND f.proname='payments_refund_terminal'
+     OR role_name='app_returns_service' AND f.proname='payments_post_return_refund';
     IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') IS DISTINCT FROM (role_name=f.proowner::regrole::text) THEN
      RAISE EXCEPTION 'COMPENSATION_MATRIX_EXECUTE % %',role_name,f.proname; END IF;

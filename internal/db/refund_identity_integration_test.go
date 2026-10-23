@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -199,93 +201,130 @@ func (stripeFactIntent) CreateIntent(context.Context, payment.CreatePaymentInten
 	return payment.PaymentIntentResult{ProviderRef: "pi_refundtransition", Status: payment.StatusPending}, nil
 }
 
-func TestStripeRefundFailedAfterSuccessReconciles(t *testing.T) {
-	for _, terminal := range []string{"failed", "canceled"} {
-		t.Run(terminal, func(t *testing.T) {
-			f := newCheckoutPGFixture(t, 10, 2)
-			account := "acct_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-			if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
-				_, err := tx.Exec(ctx, "INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment) VALUES($1,'stripe',$2,'test')", f.tenant, account)
-				return err
-			}); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("OPENSITE_ENVIRONMENT", "test")
-			t.Setenv("STRIPE_TEST_SECRET_KEY", "sk_test_unit_fixture")
-			t.Setenv("STRIPE_TEST_WEBHOOK_SECRET", "whsec_isolated_transition_signing_key")
-			t.Setenv("STRIPE_TEST_ACCOUNT_ID", account)
-			rules := checkout.NewSQLRules(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 100}}}})
-			f.service = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: stripeFactIntent{}})
-			start := f.start(t)
-			var at time.Time
-			s, err := payments.NewStripe(payments.Config{Run: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
-				return f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-					var tenant string
-					if err := tx.QueryRow(ctx, "SELECT tenant_id::text,at_time FROM app.resolve_stripe_payment_account($1)", account).Scan(&tenant, &at); err != nil {
-						return err
-					}
-					if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true),set_config('app.payment_provider','stripe',true)", tenant); err != nil {
-						return err
-					}
-					if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
-						return err
-					}
-					return fn(ctx, tx, tenant, at)
-				})
-			}, Apply: f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent, Admit: func(context.Context, payment.CreatePaymentIntent, bool) error { return nil }})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
-				return tx.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&at)
-			}); err != nil {
-				t.Fatal(err)
-			}
-			deliver := func(id, kind, status string, amount int64) string {
-				t.Helper()
-				ref, intent := "re_transition", `,"payment_intent":"pi_refundtransition"`
-				if kind == "payment_intent.succeeded" {
-					ref, intent = "pi_refundtransition", ""
+func TestStripeRefundFailedAfterSuccess(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, terminal := range []string{"failed", "canceled"} {
+			t.Run(fmt.Sprint(terminal, enabled), func(t *testing.T) {
+				f := newCheckoutPGFixture(t, 10, 2)
+				account := "acct_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+				if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+					_, err := tx.Exec(ctx, "INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment) VALUES($1,'stripe',$2,'test')", f.tenant, account)
+					return err
+				}); err != nil {
+					t.Fatal(err)
 				}
-				raw := []byte(fmt.Sprintf(`{"id":%q,"type":%q,"livemode":false,"data":{"object":{"id":%q%s,"status":%q,"amount":%d,"currency":"usd","metadata":{"osc_order":%q,"osc_version":"1"}}}}`, id, kind, ref, intent, status, amount, start.OrderID))
-				stamp := fmt.Sprint(at.Unix())
-				mac := hmac.New(sha256.New, []byte("whsec_isolated_transition_signing_key"))
-				mac.Write([]byte(stamp + "."))
-				mac.Write(raw)
-				receipt, err := s.Receive(f.ctx, raw, "t="+stamp+",v1="+hex.EncodeToString(mac.Sum(nil)))
+				t.Setenv("OPENSITE_ENVIRONMENT", "test")
+				t.Setenv("STRIPE_TEST_SECRET_KEY", "sk_test_unit_fixture")
+				t.Setenv("STRIPE_TEST_WEBHOOK_SECRET", "whsec_isolated_transition_signing_key")
+				t.Setenv("STRIPE_TEST_ACCOUNT_ID", account)
+				rules := checkout.NewSQLRules(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 100}}}})
+				f.service = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: stripeFactIntent{}})
+				start := f.start(t)
+				var at time.Time
+				run := func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+					return f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+						var tenant string
+						if err := tx.QueryRow(ctx, "SELECT tenant_id::text,at_time FROM app.resolve_stripe_payment_account($1)", account).Scan(&tenant, &at); err != nil {
+							return err
+						}
+						if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true),set_config('app.payment_provider','stripe',true)", tenant); err != nil {
+							return err
+						}
+						if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+							return err
+						}
+						return fn(ctx, tx, tenant, at)
+					})
+				}
+				config := payments.Config{Run: run, Apply: f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent, Admit: func(context.Context, payment.CreatePaymentIntent, bool) error { return nil }}
+				if enabled {
+					config.TerminalRun = func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+						return run(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
+							if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_payments_ingress"); err != nil {
+								return err
+							}
+							return fn(ctx, tx, tenant, at)
+						})
+					}
+					old := http.DefaultTransport
+					http.DefaultTransport = compensationTransport(func(req *http.Request) (*http.Response, error) {
+						if req.Method != "GET" || req.URL.Path != "/v1/refunds/re_transition" {
+							return nil, fmt.Errorf("unexpected provider command %s", req.Method)
+						}
+						return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"id":"re_transition","payment_intent":"pi_refundtransition","status":"` + terminal + `","amount":1,"currency":"usd","livemode":false}`)), Header: make(http.Header)}, nil
+					})
+					t.Cleanup(func() { http.DefaultTransport = old })
+				}
+				s, err := payments.NewStripe(config)
 				if err != nil {
 					t.Fatal(err)
 				}
-				return receipt.Status
-			}
-			deliver("evt_capture", "payment_intent.succeeded", "succeeded", start.AmountMinor)
-			before := f.witness(t, start.OrderID)
-			deliver("evt_pending", "refund.created", "pending", 1)
-			if f.witness(t, start.OrderID) != before {
-				t.Fatal("pending refund posted money")
-			}
-			if deliver("evt_succeeded", "refund.updated", "succeeded", 1) != "processed" {
-				t.Fatal("succeeded refund was not journaled")
-			}
-			posted := f.witness(t, start.OrderID)
-			if posted.journals != 2 || posted.cash != start.AmountMinor-1 {
-				t.Fatalf("refund was not journaled exactly once: %+v", posted)
-			}
-			for i := 0; i < 2; i++ {
-				if deliver("evt_terminal", "refund.updated", terminal, 1) != "unmatched" {
-					t.Fatal("terminal refund transition silently ignored")
+				if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+					return tx.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&at)
+				}); err != nil {
+					t.Fatal(err)
 				}
-			}
-			var retained int
-			err = f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
-				return tx.QueryRow(ctx, "SELECT count(*) FROM app.webhook_inbox i WHERE tenant_id=$1 AND provider='stripe' AND provider_event_id='evt_terminal' AND status='failed' AND octet_length(payload_hash)=32 AND NOT EXISTS(SELECT FROM app.payment_events e WHERE (e.tenant_id,e.id)=(i.tenant_id,i.id))", f.tenant).Scan(&retained)
+				deliver := func(id, kind, status string, amount int64) string {
+					t.Helper()
+					ref, intent := "re_transition", `,"payment_intent":"pi_refundtransition"`
+					if kind == "payment_intent.succeeded" {
+						ref, intent = "pi_refundtransition", ""
+					}
+					raw := []byte(fmt.Sprintf(`{"id":%q,"type":%q,"livemode":false,"data":{"object":{"id":%q%s,"status":%q,"amount":%d,"currency":"usd","metadata":{"osc_order":%q,"osc_version":"1"}}}}`, id, kind, ref, intent, status, amount, start.OrderID))
+					stamp := fmt.Sprint(at.Unix())
+					mac := hmac.New(sha256.New, []byte("whsec_isolated_transition_signing_key"))
+					mac.Write([]byte(stamp + "."))
+					mac.Write(raw)
+					receipt, err := s.Receive(f.ctx, raw, "t="+stamp+",v1="+hex.EncodeToString(mac.Sum(nil)))
+					if err != nil {
+						t.Fatal(err)
+					}
+					return receipt.Status
+				}
+				deliver("evt_capture", "payment_intent.succeeded", "succeeded", start.AmountMinor)
+				before := f.witness(t, start.OrderID)
+				deliver("evt_pending", "refund.created", "pending", 1)
+				if f.witness(t, start.OrderID) != before {
+					t.Fatal("pending refund posted money")
+				}
+				if deliver("evt_succeeded", "refund.updated", "succeeded", 1) != "processed" {
+					t.Fatal("succeeded refund was not journaled")
+				}
+				posted := f.witness(t, start.OrderID)
+				if posted.journals != 2 || posted.cash != start.AmountMinor-1 {
+					t.Fatalf("refund was not journaled exactly once: %+v", posted)
+				}
+				if enabled {
+					for i := 0; i < 2; i++ {
+						if deliver("evt_terminal", "refund.failed", terminal, 1) != "processed" {
+							t.Fatal("C19D2_SIGNED_STRIPE_RED")
+						}
+					}
+					deliver("evt_stale_success", "refund.updated", "succeeded", 1)
+					var count int
+					if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+						return tx.QueryRow(ctx, "SELECT count(*) FROM app.payment_refund_reversals WHERE tenant_id=$1", f.tenant).Scan(&count)
+					}); err != nil || count != 1 || f.witness(t, start.OrderID).cash != start.AmountMinor {
+						t.Fatalf("C19D2_STRIPE_EXACTLY_ONCE_RED count=%d err=%v", count, err)
+					}
+					return
+				}
+				for i := 0; i < 2; i++ {
+					if deliver("evt_terminal", "refund.updated", terminal, 1) != "unmatched" {
+						t.Fatal("terminal refund transition silently ignored")
+					}
+				}
+				var retained int
+				err = f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+					return tx.QueryRow(ctx, "SELECT count(*) FROM app.webhook_inbox i WHERE tenant_id=$1 AND provider='stripe' AND provider_event_id='evt_terminal' AND status='failed' AND octet_length(payload_hash)=32 AND NOT EXISTS(SELECT FROM app.payment_events e WHERE (e.tenant_id,e.id)=(i.tenant_id,i.id))", f.tenant).Scan(&retained)
+				})
+				// Owner split: reversal is C-19d. A journaled success remains immutable
+				// while terminal provider facts are retained for reconciliation.
+				if err != nil || retained != 1 || f.witness(t, start.OrderID) != posted {
+					t.Fatalf("terminal failure must retain reconciliation without changing posted money: count=%d err=%v", retained, err)
+				}
 			})
-			// Owner split: reversal is C-19d. A journaled success remains immutable
-			// while terminal provider facts are retained for reconciliation.
-			if err != nil || retained != 1 || f.witness(t, start.OrderID) != posted {
-				t.Fatalf("terminal failure must retain reconciliation without changing posted money: count=%d err=%v", retained, err)
-			}
-		})
+		}
 	}
 }
 
@@ -574,3 +613,7 @@ func TestMixedRefundComponents(t *testing.T) {
 		})
 	}
 }
+
+type compensationTransport func(*http.Request) (*http.Response, error)
+
+func (f compensationTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

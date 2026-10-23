@@ -12,3 +12,7 @@ import (
 func OpenReturnsRunner(context.Context, string) (*QueryRunner, error) {
 	return nil, errors.New("returns database configuration requires the pgx build tag")
 }
+
+func OpenPaymentsRunner(context.Context, string) (*QueryRunner, error) {
+	return nil, errors.New("payments database configuration requires the pgx build tag")
+}

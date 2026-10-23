@@ -136,13 +136,17 @@ BEGIN
   PERFORM app.returns_complete_refund(cancel_id,'refund-cancel','captured-fixture',uuidv7());
   RAISE EXCEPTION 'FULFILLMENT_GATE unposted/foreign ledger accepted';
  EXCEPTION WHEN check_violation THEN NULL; END;
+ EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
  journal:=app.post_ledger(t,'USD','refund-probe',cancel_id::text,'wrong-receipt',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[1,1]::bigint[]);
+ EXECUTE 'SET LOCAL ROLE app_returns_service';
  BEGIN
   PERFORM app.returns_complete_refund(cancel_id,'refund-cancel','captured-fixture',journal);
   RAISE EXCEPTION 'FULFILLMENT_GATE posted wrong journal accepted';
  EXCEPTION WHEN check_violation THEN NULL; END;
+ EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
  journal:=app.post_ledger(t,'USD','return',cancel_id::text,'refund',ARRAY[income,tax,shipping,cash],
   ARRAY['debit','debit','debit','credit'],ARRAY[100,10,10,120]::bigint[]);
+ EXECUTE 'SET LOCAL ROLE app_returns_service';
  completed:=app.returns_complete_refund(cancel_id,'refund-cancel','captured-fixture',journal);
  EXECUTE 'SET LOCAL ROLE app_runtime';
  IF completed->>'status'<>'refunded' OR (SELECT refunded_minor FROM app.orders WHERE tenant_id=t AND id=oid)<>120
@@ -166,8 +170,10 @@ BEGIN
  SELECT version INTO ord.version FROM app.orders WHERE tenant_id=t AND id=oid;
  EXECUTE 'SET LOCAL ROLE app_returns_service';
  prepared:=app.returns_prepare_refund(return_id,ord.version,'refund-return','captured-fixture',1,income,tax,shipping,cash);
+ EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
  journal:=app.post_ledger(t,'USD','return',return_id::text,'refund',ARRAY[income,tax,shipping,cash],
   ARRAY['debit','debit','debit','credit'],ARRAY[100,10,10,120]::bigint[]);
+ EXECUTE 'SET LOCAL ROLE app_returns_service';
  PERFORM app.returns_complete_refund(return_id,'refund-return','captured-fixture',journal);
  EXECUTE 'SET LOCAL ROLE app_runtime';
  IF (SELECT refunded_minor FROM app.orders WHERE tenant_id=t AND id=oid)<>240 THEN
@@ -306,7 +312,9 @@ BEGIN
    EXECUTE 'SET LOCAL ROLE app_returns_service';
    r:=app.returns_prepare_refund(rid,ord.version,'legacy-refund-'||case_i||'-'||part_i,'legacy-capture',1,income,tax,shipping,cash);
    IF (r->>'refund_minor')::bigint<>amount THEN RAISE EXCEPTION 'FULFILLMENT_GATE legacy freeze drift';END IF;
+ EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
    journal:=app.post_ledger(t,'USD','return',rid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[amount,amount]);
+ EXECUTE 'SET LOCAL ROLE app_returns_service';
    PERFORM app.returns_complete_refund(rid,'legacy-refund-'||case_i||'-'||part_i,'legacy-capture',journal);
    EXECUTE 'SET LOCAL ROLE app_runtime';
    SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
@@ -361,7 +369,9 @@ BEGIN
   IF expected>0 THEN
    EXECUTE 'SET LOCAL ROLE app_returns_service';
    PERFORM app.returns_prepare_refund(rid,ord.version,'cross-line-refund-'||i,'cross-line-capture',1,income,tax,shipping,cash);
+ EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
    journal:=app.post_ledger(t,'USD','return',rid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[expected,expected]);
+ EXECUTE 'SET LOCAL ROLE app_returns_service';
    PERFORM app.returns_complete_refund(rid,'cross-line-refund-'||i,'cross-line-capture',journal);
    EXECUTE 'SET LOCAL ROLE app_runtime';
   ELSIF r->>'status'<>'completed' OR EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND id=rid
@@ -431,7 +441,9 @@ BEGIN
  SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
  EXECUTE 'SET LOCAL ROLE app_returns_service';
  PERFORM app.returns_prepare_refund(bid,ord.version,'zero-refund-b','zero-capture',1,income,tax,shipping,cash);
+ EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
  journal:=app.post_ledger(t,'USD','return',bid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[1,1]::bigint[]);
+ EXECUTE 'SET LOCAL ROLE app_returns_service';
  PERFORM app.returns_complete_refund(bid,'zero-refund-b','zero-capture',journal);
  EXECUTE 'SET LOCAL ROLE app_runtime';
  SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
@@ -526,7 +538,9 @@ BEGIN
     IF tx>0 THEN accounts:=array_append(accounts,tax);sides:=array_append(sides,'debit');amounts:=array_append(amounts,tx);END IF;
     IF sh>0 THEN accounts:=array_append(accounts,shipping);sides:=array_append(sides,'debit');amounts:=array_append(amounts,sh);END IF;
     accounts:=array_append(accounts,cash);sides:=array_append(sides,'credit');amounts:=array_append(amounts,n+tx+sh);
+ EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
     journal:=app.post_ledger(t,'USD','return',r->>'id','refund',accounts,sides,amounts);
+ EXECUTE 'SET LOCAL ROLE app_returns_service';
     PERFORM app.returns_complete_refund((r->>'id')::uuid,'allocation-refund-'||case_i||'-'||unit_i,'capture-allocation',journal);
     EXECUTE 'SET LOCAL ROLE app_runtime';
    END IF;
@@ -661,7 +675,9 @@ BEGIN
    r:=app.returns_prepare_refund(rid,ord.version,'budget-refund','budget-provider',1,income,tax,shipping,cash);
   END IF;
   IF phase='complete' THEN
+ EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
    journal:=app.post_ledger(t,'USD','return',rid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[10,10]::bigint[]);
+ EXECUTE 'SET LOCAL ROLE app_returns_service';
   END IF;
   EXECUTE 'RESET ROLE';
   before:=pg_temp.refund_budget_witness(t);

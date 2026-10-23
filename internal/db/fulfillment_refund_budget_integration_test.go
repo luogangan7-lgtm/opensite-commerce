@@ -187,9 +187,14 @@ func prepareBudgetReturn(t *testing.T, f fulfillmentFixture, id, key string, amo
 		if _, err := tx.Exec(ctx, "SELECT app.returns_prepare_refund($1,$2,$3,'budget-provider',1,$4,$5,$6,$7)", id, version, key, income, tax, shipping, cash); err != nil {
 			return err
 		}
-		return tx.QueryRow(ctx, `SELECT app.post_ledger($1,'USD','return',$2,'refund',
-		 ARRAY[$4,$5]::uuid[],ARRAY['debit','credit'],ARRAY[$3,$3]::bigint[])::text`, f.tenant, id, amount, income, cash).Scan(&journal)
+		return nil
 	})
+	if err == nil {
+		err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `SELECT app.post_ledger($1,'USD','return',$2,'refund',
+		 ARRAY[$4,$5]::uuid[],ARRAY['debit','credit'],ARRAY[$3,$3]::bigint[])::text`, f.tenant, id, amount, income, cash).Scan(&journal)
+		})
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -888,7 +888,8 @@
         "payment_event_deliveries",
         "payment_return_refunds",
         "payment_refund_attempts",
-        "payment_refund_reversals"
+        "payment_refund_reversals",
+        "payment_refund_terminals"
       ],
       "operations": [
         {
@@ -912,7 +913,9 @@
         "tests/db_payments.sql",
         "internal/modules/payments/stripe_test.go",
         "internal/db/refund_compensation_integration_test.go",
+        "internal/db/refund_finalizer_integration_test.go",
         "tests/db_refund_compensation.sql",
+        "tests/db_refund_finalizer.sql",
         "internal/db/stripe_consent_integration_test.go",
         "tests/db_stripe_sandbox.sql",
         "internal/db/stripe_sandbox_integration_test.go"
@@ -1868,6 +1871,9 @@
       "owner": "payments",
       "touches_tables": ["payment_events", "payment_event_deliveries"]
     },
+    {"file":"migrations/pending/c19d2-terminal_refund_compensation_terminal.sql","owner":"payments","touches_tables":["payment_refund_terminals"]},
+    {"file":"migrations/pending/c19d2-projections_refund_compensation_projections.sql","owner":"orders","touches_tables":["orders","returns","checkout_sessions"]},
+    {"file":"migrations/pending/c19d2-finalizer_atomic_refund_compensation.sql","owner":"payments","touches_tables":["payment_refund_attempts","payment_refund_reversals","payment_refund_terminals","checkout_sessions","webhook_inbox"]},
     {"file":"migrations/pending/c19d-ledger_refund_compensation_boundary.sql","owner":"ledger","touches_tables":["ledger_accounts","ledger_transactions","ledger_entries","payment_refund_reversals"]},
     {"file":"migrations/pending/c19d-identity_refund_compensation_identity.sql","owner":"payments","touches_tables":["payment_refund_attempts","payment_refund_reversals"]},
     {"file":"migrations/pending/c19c1-money_return_refund_identity.sql","owner":"payments","touches_tables":["payment_return_refunds","checkout_sessions","returns","return_lines"]}

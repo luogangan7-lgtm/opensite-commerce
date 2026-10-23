@@ -102,7 +102,7 @@ func (p *paymentFactFixture) newModule(t *testing.T, override func(context.Conte
 		}
 		apply = applier.ApplyPaymentEvent
 	}
-	m, err := payments.New(payments.Config{Key: p.key, Run: p.run, Apply: apply})
+	m, err := payments.New(payments.Config{Key: p.key, Run: p.run, TerminalRun: p.runTerminal, Apply: apply})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -82,16 +82,37 @@ func (r RefundIdentity) Reversal(original ledger.Transaction) (ledger.Transactio
 }
 
 // CompensationInput carries references, not an arbitrary amount or target state.
-// Revision is rechecked under the canonical lock order after trusted retrieval.
+// Revision optionally fences the current Orders projection under the common lock.
 // A value alone grants no authority: implementations must use the dedicated pool.
 type CompensationInput struct {
 	Identity          RefundIdentity
 	OriginalJournalID string
 	Revision          int64
+	Observation       TerminalObservation
 }
-type CompensationReceipt struct{ OriginalJournalID, ReversalJournalID string }
+type TerminalObservation struct {
+	TenantID          string `json:"tenant_id"`
+	Provider          string `json:"provider"`
+	AccountID         string `json:"account_id"`
+	RefundID          string `json:"refund_id"`
+	EventID           string `json:"event_id"`
+	OrderID           string `json:"order_id"`
+	OrderVersion      int64  `json:"order_version"`
+	ProviderRef       string `json:"provider_ref"`
+	Status            string `json:"status"`
+	AmountMinor       int64  `json:"amount_minor"`
+	Currency          string `json:"currency"`
+	PayloadHash       string `json:"payload_hash"`
+	Timestamp         int64  `json:"timestamp"`
+	OriginalJournalID string `json:"original_journal_id"`
+	Revision          int64  `json:"revision"`
+}
+type CompensationReceipt struct {
+	OriginalJournalID string `json:"original_journal_id"`
+	ReversalJournalID string `json:"reversal_journal_id"`
+}
 
-// RefundCompensator is preparatory only: no implementation is composed in part 1.
+// RefundCompensator commits through Payments and closed domain projection ports.
 // It owns the complete journal/projection/case/outbox transaction, never a partial
 // journal command. Provider retrieval must happen before entering this method.
 type RefundCompensator interface {

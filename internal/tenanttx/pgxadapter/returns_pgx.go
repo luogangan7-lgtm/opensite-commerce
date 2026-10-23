@@ -14,6 +14,14 @@ import (
 )
 
 func OpenReturnsRunner(ctx context.Context, dsn string) (*QueryRunner, error) {
+	return openCoordinatorRunner(ctx, dsn, "app_returns_service")
+}
+
+func OpenPaymentsRunner(ctx context.Context, dsn string) (*QueryRunner, error) {
+	return openCoordinatorRunner(ctx, dsn, "app_payments_ingress")
+}
+
+func openCoordinatorRunner(ctx context.Context, dsn, capability string) (*QueryRunner, error) {
 	runner, err := OpenQueryRunner(ctx, dsn)
 	if err != nil {
 		return nil, errors.New("returns database is unavailable or misconfigured")
@@ -53,7 +61,7 @@ func OpenReturnsRunner(ctx context.Context, dsn string) (*QueryRunner, error) {
     WHERE n.nspname IN('app','queue','public') AND c.relkind='S' AND CASE WHEN c.relkind='S' THEN
      has_sequence_privilege(r.oid,c.oid,'USAGE,SELECT,UPDATE') IS DISTINCT FROM has_sequence_privilege(g.oid,c.oid,'USAGE,SELECT,UPDATE')
      OR has_sequence_privilege(r.oid,c.oid,'USAGE WITH GRANT OPTION,SELECT WITH GRANT OPTION,UPDATE WITH GRANT OPTION') ELSE false END)
-   FROM pg_roles r CROSS JOIN pg_roles g WHERE r.rolname=session_user AND g.rolname='app_returns_service'`).Scan(&safe)
+   FROM pg_roles r CROSS JOIN pg_roles g WHERE r.rolname=session_user AND g.rolname=$1`, capability).Scan(&safe)
 		if err != nil || !safe {
 			return errors.New("returns database capability is invalid")
 		}
@@ -63,5 +71,6 @@ func OpenReturnsRunner(ctx context.Context, dsn string) (*QueryRunner, error) {
 		runner.Close()
 		return nil, errors.New("returns database capability is invalid")
 	}
+	runner.paymentIngress = capability == "app_payments_ingress"
 	return runner, nil
 }
