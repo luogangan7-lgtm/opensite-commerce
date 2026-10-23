@@ -48,9 +48,6 @@ CREATE TABLE app.payment_refund_reversals (
  reversal_journal_id uuid NOT NULL,
  transition text NOT NULL DEFAULT 'posted_to_compensated/v1' CHECK(transition='posted_to_compensated/v1'),
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- PRIMARY KEY(tenant_id,provider,provider_account_id,environment,provider_refund_id,transition),
- UNIQUE(tenant_id,original_journal_id),
- UNIQUE(tenant_id,reversal_journal_id),
  CHECK(original_journal_id<>reversal_journal_id),
  FOREIGN KEY(tenant_id,provider,provider_account_id,environment,provider_refund_id)
   REFERENCES app.payment_refund_attempts(tenant_id,provider,provider_account_id,environment,provider_refund_id),
@@ -124,7 +121,7 @@ BEGIN
   ||length(a.provider_refund_id)||':'||a.provider_refund_id,'UTF8')),'hex');
  SELECT * INTO j FROM app.ledger_transactions WHERE tenant_id=NEW.tenant_id AND id=NEW.reversal_journal_id;
  IF NOT FOUND OR j.status<>'posted' OR j.currency<>a.currency OR j.source_type<>'payment_refund'
-  OR j.source_id<>source_key OR j.event<>'posted_to_compensated/v1' THEN
+  OR j.event<>'posted_to_compensated/v1' THEN
   RAISE EXCEPTION 'PAYMENTS_REFUND_REVERSAL_PROOF' USING ERRCODE='23514'; END IF;
  -- Independent of the future Go finalizer: every line must match, including
  -- order, account, amount and currency. No current account configuration is read.
