@@ -193,7 +193,7 @@ func TestPaymentsRefundAliasesConvergeAfterCapture(t *testing.T) {
 type stripeFactIntent struct{ payment.Port }
 
 func (stripeFactIntent) CreateIntent(context.Context, payment.CreatePaymentIntent) (payment.PaymentIntentResult, error) {
-	return payment.PaymentIntentResult{ProviderRef: "pi_refund_transition", Status: payment.StatusPending}, nil
+	return payment.PaymentIntentResult{ProviderRef: "pi_refundtransition", Status: payment.StatusPending}, nil
 }
 
 func TestStripeRefundFailedAfterSuccessReconciles(t *testing.T) {
@@ -240,9 +240,9 @@ func TestStripeRefundFailedAfterSuccessReconciles(t *testing.T) {
 			}
 			deliver := func(id, kind, status string, amount int64) string {
 				t.Helper()
-				ref, intent := "re_transition", `,"payment_intent":"pi_refund_transition"`
+				ref, intent := "re_transition", `,"payment_intent":"pi_refundtransition"`
 				if kind == "payment_intent.succeeded" {
-					ref, intent = "pi_refund_transition", ""
+					ref, intent = "pi_refundtransition", ""
 				}
 				raw := []byte(fmt.Sprintf(`{"id":%q,"type":%q,"livemode":false,"data":{"object":{"id":%q%s,"status":%q,"amount":%d,"currency":"usd","metadata":{"osc_order":%q,"osc_version":"1"}}}}`, id, kind, ref, intent, status, amount, start.OrderID))
 				stamp := fmt.Sprint(at.Unix())
