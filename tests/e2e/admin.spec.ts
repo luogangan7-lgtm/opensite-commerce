@@ -75,6 +75,15 @@ test('real bootstrapped owner logs in, holds a session and signs out', async ({ 
   expect(await me.json()).toMatchObject({ user_id: expect.any(String), session_id: expect.any(String) });
   assertPublicOnly(await page.content());
 
+  await page.getByLabel('Store ID', { exact: true }).fill(fixture.ownerTenantId);
+  await page.getByRole('button', { name: 'Open store', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Store navigation' }).getByRole('link', { name: 'Data privacy', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Data privacy', exact: true })).toBeVisible();
+  await expect(page.getByText('To delete shop or customer data, contact support. We will process it within 30 days and provide an export copy.', { exact: true })).toBeVisible();
+  await expect(page.getByText('如需删除店铺或客户数据，请联系支持，我们会在 30 天内处理并提供导出副本。', { exact: true })).toBeVisible();
+  await expect(page.getByRole('main').getByRole('button')).toHaveCount(0);
+  await audit(page, info);
+
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(`${fixture.admin}/login`);
   expect(await hasSession(page)).toBe(false);

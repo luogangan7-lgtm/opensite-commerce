@@ -19,7 +19,7 @@ test('merchant data privacy explains support deletion without offering a write a
  await expect(main.getByRole('button')).toHaveCount(0);await expect(main.getByRole('form')).toHaveCount(0);
  const writes:string[]=[];page.on('request',r=>{if(!['GET','HEAD','OPTIONS'].includes(r.method()))writes.push(r.method()+' '+r.url());});
  await page.reload();await expect(main.getByRole('heading',{name:'Data privacy',exact:true})).toBeVisible();
- expect(writes).toEqual([]);await audit(page);
+ expect(writes).toEqual([]);await audit(page,'admin-data-privacy.png');
 });
 test('merchant data privacy remains behind the session guard',async({page})=>{
  await fixture(page,{authenticated:false});await page.goto(`${origin}/t/${tenant}/data-privacy`);
