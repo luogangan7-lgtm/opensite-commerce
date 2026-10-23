@@ -226,7 +226,7 @@ func (f *Fake) ObserveCaptured(event payment.VerifiedEvent) error {
 	}
 	switch current.status {
 	case payment.StatusAuthorized:
-		current.status = payment.StatusCaptured
+		current.status = payment.StatusAuthorized
 		f.intents[event.ProviderRef] = current
 	case payment.StatusCaptured, payment.StatusPartiallyRefunded, payment.StatusRefunded:
 	default:
