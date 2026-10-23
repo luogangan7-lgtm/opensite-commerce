@@ -255,6 +255,33 @@ new pools are verified, then remove that owned copy.
 
 ## Delivery boundaries
 
+### Configure the privacy worker and trusted JOB_TENANTS
+
+Privacy defaults OFF. Follow [the data-rights contract](../docs/architecture/DATA_RIGHTS.md):
+set `OPENSITE_PRIVACY_DATABASE_URL` for the API and `PRIVACY_WORKER_DATABASE_URL`
+for the worker to the HBA-fenced `opensite_runtime_login` on the application
+database, using its independently provisioned runtime credential. The worker's
+queue pool still uses `opensite_queue_login`; queue credentials cannot read PII.
+No new LOGIN, group or grant is needed. In `.env`, use single-quoted libpq DSNs
+and keep credentials out of shell arguments, logs and version control.
+
+Set an independent CSPRNG 32-byte hexadecimal `PRIVACY_TOKEN_KEY` on both
+processes, preserve their existing shared `JOB_SIGNING_KEY`, then explicitly set
+`PRIVACY_EXPORT_WORKER_ENABLED=true`. Missing API binding keeps HTTP 503 and logs
+the missing setting name only. Both services mount `media_data` at the same
+absolute `OPENSITE_MEDIA_ROOT`; both images prepare it for UID/GID 65532. Export
+subdirectories/files retain the module's private 0700/0600 permissions.
+
+List trusted tenant UUIDs in `JOB_TENANTS` for the existing one-minute periodic
+expiry/physical-export cleanup worker. Signed export jobs use the dedicated
+`privacy_exports` queue. The E2E harness generates ephemeral token/connection
+configuration and verifies a scoped staff API request, worker completion and
+shared-volume download. The ops drill checks default 503, explicit opt-in and a
+signed sweep tick, then restores a ready export from the same media archive and
+downloads it through the API before requesting a fresh export. Preserve token
+and job keys together with the private volume across real recovery; follow the
+data-rights erasure-journal replay procedure before serving restored data.
+
 Outbox sending is disabled (`OUTBOX_ENABLED=false`): this local stack has no
 external Sender. The actual dispatcher remains fail-closed when sending is
 requested without a configured Sender; its existing integration tests exercise

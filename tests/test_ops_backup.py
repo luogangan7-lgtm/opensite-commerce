@@ -484,6 +484,17 @@ class BackupTests(unittest.TestCase):
                 self.assertEqual(os.environ["JOB_TENANTS"], "tenant-a,tenant-b")
                 self.assertEqual(os.environ["OUTBOX_ENABLED"], "false")
 
+    def test_dotenv_accepts_privacy_opt_in_and_quoted_component_dsns(self):
+        with tempfile.TemporaryDirectory() as root:
+            env_file = Path(root, 'privacy.env')
+            env_file.write_text("OPENSITE_PRIVACY_DATABASE_URL='host=postgres user=opensite_runtime_login'\n"
+                                "PRIVACY_WORKER_DATABASE_URL='host=postgres user=opensite_runtime_login'\n"
+                                "PRIVACY_TOKEN_KEY=fixture_token_key\nPRIVACY_EXPORT_WORKER_ENABLED=true\n")
+            with patch.dict(os.environ, {'OPENSITE_ENV_FILE': str(env_file)}, clear=True):
+                common.load_environment()
+                self.assertEqual(os.environ['PRIVACY_WORKER_DATABASE_URL'], 'host=postgres user=opensite_runtime_login')
+                self.assertEqual(os.environ['PRIVACY_EXPORT_WORKER_ENABLED'], 'true')
+
     def test_backup_and_restore_cli_load_dotenv_without_manual_exports(self):
         with tempfile.TemporaryDirectory() as root:
             env_file = Path(root, "configured.env")

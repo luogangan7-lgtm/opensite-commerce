@@ -160,6 +160,9 @@ func runContext(parent context.Context, getenv func(string) string, sender outbo
 }
 
 func composeWorkers(ctx context.Context, getenv func(string) string, sender outbox.Sender) (jobWorker, *outbox.Runner, func(), error) {
+	if getenv("PRIVACY_WORKER_DATABASE_URL") == "" {
+		log.Print("privacy worker disabled: missing PRIVACY_WORKER_DATABASE_URL")
+	}
 	if getenv("PRIVACY_WORKER_DATABASE_URL") != "" {
 		root := getenv("OPENSITE_MEDIA_ROOT")
 		legacy := getenv("OPENSITE_PRIVACY_ROOT")
