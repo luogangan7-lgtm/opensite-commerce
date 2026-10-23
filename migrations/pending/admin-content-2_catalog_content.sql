@@ -10,7 +10,7 @@ DECLARE row_new jsonb; row_old jsonb; doc jsonb; t uuid; key uuid; why text; BEG
  IF TG_OP<>'INSERT' THEN row_old:=to_jsonb(OLD); END IF;
  doc:=coalesce(row_new,row_old);
  t:=doc->>'tenant_id';
- IF TG_TABLE_NAME='product_listings' THEN
+ IF TG_TABLE_NAME='product_listings' THEN RETURN NULL; -- fault probe: suppress listing invalidation
   INSERT INTO app.serving_invalidations(tenant_id,site_id,reason) VALUES(t,(doc->>'site_id')::uuid,'product');
   RETURN NULL;
  ELSIF TG_TABLE_NAME='product_content_revisions' THEN
