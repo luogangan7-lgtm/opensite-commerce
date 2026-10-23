@@ -17,6 +17,15 @@ their original journal key; new refund identities on those streams are retained
 as failed Inbox deliveries and rejected for trusted reconciliation. No automatic
 amount-based matching or rewriting of historical financial identities occurs.
 
+Refund facts that are not succeeded, including matched failed/canceled transitions
+following success, use the same reconciliation path as metadata-free refunds.
+They never silently disappear or automatically reverse an existing journal.
+Ledger's generic new-event/swapped-side reversal primitive does not define a
+provider-refund failure reversal identity, order transition or authorized entry
+point; trusted reconciliation must establish those before any corrective posting.
+Terminal failed/canceled API refunds return permanent `NoSideEffect` proof on
+both creation and durable recovery; pending/unknown states remain retryable.
+
 Dashboard refunds without `osc_order` are acknowledged as `unmatched`, retained
 as failed Stripe Inbox entries with bounded event ID and SHA-256 payload hash,
 and emit `payment_webhook_reconciliation_required` / `unmatched_refund`.
