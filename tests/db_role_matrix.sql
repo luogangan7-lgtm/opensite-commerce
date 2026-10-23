@@ -1368,7 +1368,7 @@ BEGIN
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    expected:=role_name='app_credential_writer'
     OR role_name='app_auth' AND f.proname IN ('auth_create_api_key','auth_revoke_api_key','auth_touch_api_key')
-    OR role_name IN ('app_runtime','app_auth','app_media_service') AND f.proname='auth_revalidate_tenant';
+    OR role_name IN ('app_runtime','app_auth','app_media_service','app_returns_service') AND f.proname='auth_revalidate_tenant';
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR role_name<>'app_credential_writer' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'TENANT_AUTH_ROUTINE_ACL % %',role_name,f.proname; END IF;
