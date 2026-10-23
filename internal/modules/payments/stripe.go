@@ -1,5 +1,5 @@
 // Responsibility: Stripe TEST MODE implementation of the existing Payment Port.
-// Dependencies: net/http, env-only credentials and Checkout's admission callback;
+// Dependencies: net/http, env-only credentials, mapped DB account and Checkout;
 // callers: bootstrap/CI. No live keys, customer data, redirect or endpoint override.
 // Provider errors are bounded; uncertain effects never get NoSideEffect proof.
 package payments
@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 )
 
@@ -115,10 +116,31 @@ func (s *Stripe) request(ctx context.Context, method, path, key string, form url
 	}
 	return nil
 }
+
+// The existing resolver locks an enabled stripe/test mapping and commits before
+// any HTTP. Provider-account configuration never supplies tenant authority.
+func (s *Stripe) admitAccount(ctx context.Context, r payment.CreatePaymentIntent) error {
+	if r.Validate() != nil {
+		return stripeError(payment.ErrorNonRetryable)
+	}
+	err := s.config.Run(ctx, s.account, func(_ context.Context, _ pgx.Tx, tenant string, _ time.Time) error {
+		if tenant != r.TenantID {
+			return stripeError(payment.ErrorStateConflict)
+		}
+		return nil
+	})
+	if err != nil {
+		return stripeError(payment.ErrorStateConflict)
+	}
+	return nil
+}
 func (s *Stripe) intent(ctx context.Context, r payment.PaymentOperation) (stripeObject, error) {
 	var o stripeObject
 	if r.Validate() != nil || !strings.HasPrefix(r.ProviderRef, "pi_") || !stripeID.MatchString(r.ProviderRef) {
 		return o, stripeError(payment.ErrorNonRetryable)
+	}
+	if err := s.admitAccount(ctx, r.CreatePaymentIntent); err != nil {
+		return o, err
 	}
 	err := s.request(ctx, "GET", "payment_intents/"+r.ProviderRef+"?expand[]=latest_charge", "", nil, &o)
 	if err == nil && (o.ID != r.ProviderRef || o.Livemode == nil || *o.Livemode || o.Metadata["osc_tenant"] != r.TenantID || o.Metadata["osc_order"] != r.OrderID || o.Metadata["osc_version"] != strconv.FormatInt(r.OrderVersion, 10) || strings.ToUpper(o.Currency) != r.Amount.Currency) {
@@ -134,8 +156,8 @@ func stripeResult(o stripeObject) (payment.PaymentIntentResult, error) {
 	return payment.PaymentIntentResult{ProviderRef: o.ID, Status: status}, nil
 }
 func (s *Stripe) CreateIntent(ctx context.Context, r payment.CreatePaymentIntent) (payment.PaymentIntentResult, error) {
-	if r.Validate() != nil {
-		return payment.PaymentIntentResult{}, stripeError(payment.ErrorNonRetryable)
+	if err := s.admitAccount(ctx, r); err != nil {
+		return payment.PaymentIntentResult{}, err
 	}
 	if err := s.config.Admit(ctx, r, false); err != nil {
 		return payment.PaymentIntentResult{}, err
