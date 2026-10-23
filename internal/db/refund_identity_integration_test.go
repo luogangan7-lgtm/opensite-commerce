@@ -411,6 +411,27 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	if err != nil || journals != 2 || bindings != 1 || refunded != completed.RefundMinor || w.cash != p.start.AmountMinor-completed.RefundMinor {
 		t.Fatalf("RETURNS_DOUBLE_POST_RED: journals=%d bindings=%d refunded=%d cash=%d err=%v", journals, bindings, refunded, w.cash, err)
 	}
+	// C-19d part 1: an RMA success needs BOTH the frozen receipt and the
+	// authenticated account fact before it can become compensation identity.
+	identityRollback := errors.New("identity fixture rollback")
+	err = p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", p.f.tenant); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO app.payment_refund_attempts(tenant_id,provider,provider_account_id,environment,provider_refund_id,
+ order_id,provider_ref,amount_minor,currency,return_id,attempt_key,original_journal_id)
+ SELECT b.tenant_id,'fake',$2,'test',b.provider_refund_id,r.order_id,b.provider_ref,r.refund_minor,r.currency,b.return_id,b.attempt_key,b.journal_id
+ FROM app.payment_return_refunds b JOIN app.returns r ON (r.tenant_id,r.id)=(b.tenant_id,b.return_id)
+ WHERE b.tenant_id=$1 AND b.return_id=$3`, p.f.tenant, p.account, receipt.ID)
+		if err != nil {
+			return err
+		}
+		return identityRollback
+	})
+	if !errors.Is(err, identityRollback) {
+		t.Fatalf("RMA compensation identity: %v", err)
+	}
+
 }
 
 func TestMixedRefundComponents(t *testing.T) {
