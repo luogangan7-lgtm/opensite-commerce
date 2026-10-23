@@ -27,12 +27,23 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tax"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
+
+type b2bStaffAdmission struct {
+	tenant, staff string
+	calls         int
+}
+
+func (a *b2bStaffAdmission) Authenticate(ctx context.Context, _ *http.Request, _ httpapi.RouteSpec) (context.Context, error) {
+	a.calls++
+	return qc.WithTrustedActor(ctx, qc.ActorIdentity{TenantID: a.tenant, StaffID: a.staff}), nil
+}
 
 func TestB2BWiringHTTPPG(t *testing.T) {
 	f := quoteOrdersDB(t, time.Hour)
@@ -108,10 +119,13 @@ func TestB2BWiringHTTPPG(t *testing.T) {
 	// Exercise the actual environment composition without enabling any unrelated
 	// capability. No DSN or token is included in assertions or test output.
 	t.Setenv("OSC_PUBLIC_DATABASE_URL", loginDSN(t, f.ctx, f.runner.Runner, os.Getenv("DATABASE_URL"), "b2b_public_", "app_domain_resolver"))
+	receiver, _ := f.factReceiver(t)
+	staffAdmission := &b2bStaffAdmission{tenant: f.tenant, staff: f.staff}
 	config, closeRuntime, err := bootstrap.FromEnvironment(f.ctx, bootstrap.Config{
 		Customer: service, CustomerOrigin: origin, CustomerSecret: secret,
 		Quotes:          quotes.NewApplication(f.runner),
-		Checkout:        &checkouthttp.Config{Service: f.checkout, Origin: origin, FakeEnabled: true, Environment: "test"},
+		Authenticator:   staffAdmission,
+		Checkout:        &checkouthttp.Config{Service: f.checkout, Origin: origin, FakeEnabled: true, Environment: "test", Events: receiver},
 		QuoteConversion: &bootstrap.QuoteConversionConfig{Runner: f.runner, Quotes: quotes.New(), Orders: orders.NewQuoteCreator()},
 	})
 	if err != nil {
@@ -156,7 +170,7 @@ func TestB2BWiringHTTPPG(t *testing.T) {
 		server.Handler.ServeHTTP(w, r)
 		return w
 	}
-	check := func(w *httptest.ResponseRecorder, status int) {
+	check := func(t *testing.T, w *httptest.ResponseRecorder, status int) {
 		t.Helper()
 		if w.Code != status {
 			t.Fatalf("status=%d want=%d body=%s", w.Code, status, w.Body.String())
@@ -182,7 +196,7 @@ func TestB2BWiringHTTPPG(t *testing.T) {
 	}
 	t.Run("inquiry uses verified host", func(t *testing.T) {
 		w := request("POST", "/api/public/v1/inquiries", `{"buyer_email":"inquiry@example.test","message":"B2B request"}`, f.buyer, "", csrf[f.buyer], host)
-		check(w, 202)
+		check(t, w, 202)
 		var receipt struct {
 			ID     string `json:"id"`
 			Status string `json:"status"`
@@ -200,27 +214,30 @@ func TestB2BWiringHTTPPG(t *testing.T) {
 			}
 			return nil
 		})
-		check(request("POST", "/api/public/v1/inquiries", `{"buyer_email":"inquiry@example.test","message":"request"}`, f.buyer, "", csrf[f.buyer], "unverified.example.invalid"), 404)
+		check(t, request("POST", "/api/public/v1/inquiries", `{"buyer_email":"inquiry@example.test","message":"request"}`, f.buyer, "", csrf[f.buyer], "unverified.example.invalid"), 404)
 	})
 	t.Run("buyer lifecycle and negative authority", func(t *testing.T) {
 		q := newQuote()
 		path := base + q.ID
-		check(request("GET", path, "", f.buyer, "", "", host), 200)
-		check(request("POST", path+"/approve", "{}", f.approver, q.ETag(), csrf[f.approver], host), 409)
-		check(request("POST", path+"/accept", "{}", f.buyer, q.ETag(), "forged", host), 403)
-		check(request("GET", path, "", outsider, "", "", host), 404)
-		check(request("POST", path+"/accept", "{}", f.buyer, q.ETag(), csrf[f.buyer], "unverified.example.invalid"), 404)
+		check(t, request("GET", path, "", f.buyer, "", "", host), 200)
+		check(t, request("POST", path+"/approve", "{}", f.approver, q.ETag(), csrf[f.approver], host), 409)
+		check(t, request("POST", path+"/accept", "{}", f.buyer, q.ETag(), "forged", host), 403)
+		check(t, request("GET", path, "", outsider, "", "", host), 404)
+		check(t, request("POST", path+"/accept", "{}", f.buyer, q.ETag(), csrf[f.buyer], "unverified.example.invalid"), 404)
 		w := request("POST", path+"/accept", "{}", f.buyer, q.ETag(), csrf[f.buyer], host)
-		check(w, 200)
+		check(t, w, 200)
 		etag := w.Header().Get("ETag")
-		check(request("POST", path+"/approve", "{}", purchaser, etag, csrf[purchaser], host), 403)
-		check(request("POST", path+"/approve", "{}", f.buyer, etag, csrf[f.buyer], host), 403)
-		check(request("POST", path+"/approve", "{}", outsider, etag, csrf[outsider], host), 404)
-		check(request("POST", path+"/approve", "{}", "staff", etag, "", host), 401)
-		check(request("POST", "/api/v1/t/"+f.tenant+"/quotes/"+q.ID+"/orders", "{}", f.buyer, etag, csrf[f.buyer], host), 409)
+		check(t, request("POST", path+"/approve", "{}", purchaser, etag, csrf[purchaser], host), 403)
+		check(t, request("POST", path+"/approve", "{}", f.buyer, etag, csrf[f.buyer], host), 403)
+		check(t, request("POST", path+"/approve", "{}", outsider, etag, csrf[outsider], host), 404)
+		check(t, request("POST", path+"/approve", "{}", "staff", etag, "", host), 401)
+		if staffAdmission.calls != 0 {
+			t.Fatal("buyer operations called staff authenticator")
+		}
+		check(t, request("POST", "/api/v1/t/"+f.tenant+"/quotes/"+q.ID+"/orders", "{}", f.buyer, etag, csrf[f.buyer], host), 409)
 		w = request("POST", path+"/approve", "{}", f.approver, etag, csrf[f.approver], host)
-		check(w, 200)
-		check(request("POST", "/api/v1/t/"+f.tenant+"/quotes/"+q.ID+"/orders", "{}", f.buyer, w.Header().Get("ETag"), csrf[f.buyer], host), 201)
-		check(request("POST", base+f.quote.ID+"/accept", "{}", f.buyer, f.quote.ETag(), csrf[f.buyer], host), 409)
+		check(t, w, 200)
+		check(t, request("POST", "/api/v1/t/"+f.tenant+"/quotes/"+q.ID+"/orders", "{}", f.buyer, w.Header().Get("ETag"), csrf[f.buyer], host), 201)
+		check(t, request("POST", base+f.quote.ID+"/accept", "{}", f.buyer, f.quote.ETag(), csrf[f.buyer], host), 409)
 	})
 }
