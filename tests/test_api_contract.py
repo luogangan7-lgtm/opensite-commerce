@@ -135,6 +135,7 @@ class APIContractTests(unittest.TestCase):
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia",
                     "createShipment", "createReturn", "receiveReturn", "refundReturn"}
+        payment_reads = {"listRefundCases"}
         cart = {"createCart", "getCart", "setCartLine", "deleteCartLine"}
         quote_operations = {"submitInquiry", "createQuote", "getQuote", "sendQuote", "withdrawQuote", "expireQuote", "getBuyerQuote", "acceptQuote", "approveQuote", "rejectQuote", "createQuoteOrder", "getQuoteOrderConversion"}
         cms = {"createSiteDraft", "getSiteDraft", "listDraftPages", "createDraftPage", "getDraftPage",
@@ -149,10 +150,13 @@ class APIContractTests(unittest.TestCase):
         pricing = {"createPriceList", "listPriceLists", "getPriceList", "updatePriceList",
                    "setVariantPrice", "clearVariantPrice"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | customer_orders | cms | data_rights | csv | pricing |
+                          if op["x-opensite-status"] == "implemented"}, expected | payment_reads | cart | quote_operations | orders | customer_orders | cms | data_rights | csv | pricing |
                          {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
                           "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession",
                           "createAPIKey", "listAPIKeys", "revokeAPIKey"} | contract.CUSTOMER_OPERATIONS)
+        path, method, operation = ops["listRefundCases"]
+        self.assertEqual((path, method, operation["x-opensite-access"], operation["x-required-scope"]),
+                         ("/api/v1/t/{tenant_id}/payments/refund-cases", "get", "AdminOrAPIKey", "returns:write"))
         for name in data_rights | csv:
             path, method, operation = ops[name]
             self.assertIn("{tenant_id}", path)
