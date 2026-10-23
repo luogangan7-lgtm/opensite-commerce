@@ -31,3 +31,10 @@ export function safeInteger(value: unknown, min: number, max: number): number {
   if (integer < BigInt(min) || integer > BigInt(max)) throw new Error('invalid_integer');
   return Number(integer);
 }
+
+// JSON.rawJSON preserves int64 tokens while JSON.stringify owns all escaping.
+// Node 22+ and the pinned Bun runtime provide this standard JSON primitive.
+export function stringifyIntegerJSON(value: unknown): string {
+  const json = JSON as typeof JSON & {rawJSON(value: string): unknown};
+  return JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? json.rawJSON(item.toString()) : item);
+}

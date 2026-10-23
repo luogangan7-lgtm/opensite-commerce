@@ -245,6 +245,8 @@ def run(receipt_dir):
         clean_env = {key: value for key, value in saved.items()
                      if key in {"PATH", "HOME", "TMPDIR", "LANG", "CI", "GITHUB_ACTIONS", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"}}
         clean_env["OSC_STOREFRONT_ALLOWED_HOSTS"] = "127.0.0.1,localhost"
+        clean_env["OPENSITE_ENVIRONMENT"] = "test"
+        clean_env["OSC_COMMERCE_TEST_HTTP"] = "1"
         try:
             command(["git", "rev-parse", "HEAD"], "source-head", timeout=10, env=clean_env)
             actual_sha = (receipt_dir / "source-head.log").read_text().strip()

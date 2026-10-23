@@ -32,6 +32,7 @@ request JSON. Cart currency must equal the tenant settlement currency before any
 order, reservation or provider effect; checkout performs no implicit conversion.
 No authenticated customer group pricing is wired by this card.
 
+Missing/malformed acceptance returns `validation_failed` (422).
 Start requires explicit `accepted_total.amount_minor` (int64) and `currency`.
 It compares both against canonical recomputation inside the Start transaction,
 before creating Orders, reservations or provider intents. Mismatch returns
@@ -42,11 +43,14 @@ payable even if live prices change; changed consent cannot reuse that key.
 
 The immutable `address_snapshot.accepted_total` is the durable consent receipt,
 written with the existing snapshot and protected by the existing guard/grants.
-No new table or migration is needed. The provider Capture command rechecks this
-receipt against the locked immutable amount/currency. Legacy cart sessions with
+No new table or migration is needed. A new Capture claim (`ready -> confirming`) rechecks this
+receipt against the locked immutable amount/currency and payable version.
+Terminal paid/attempt replays and already persisted confirming claims do not
+require a retroactive receipt; they retain their exact original identity/key. Legacy cart sessions with
 no receipt cannot issue a new Capture; uncertain old claims stay preserved for
 recovery, never implicitly canceled. Existing sealed-order adoption remains its
-separate contract. Completed provider facts still record actual money facts,
+separate contract; real-provider adoption is blocked on the C-19b consent
+contract in `docs/architecture/V1_DECISIONS.md`. Completed provider facts still record actual money facts,
 without invoking Capture or treating a browser assertion as a payment fact.
 
 Start persists the immutable address, quote, order, stock reservation and original

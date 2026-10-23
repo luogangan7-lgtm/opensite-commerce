@@ -84,7 +84,10 @@ capture stays disabled until
 the user explicitly confirms the displayed updated total. Upstream error detail
 is never UI copy; public problem codes use an explicit allowlist and messages remain local.
 Loopback HTTP backend tests require `OSC_COMMERCE_TEST_HTTP=1` together with
-`OPENSITE_ENVIRONMENT=test`; `GITHUB_ACTIONS` grants no HTTP exception.
+`OPENSITE_ENVIRONMENT=test` at both build and runtime; default/production builds
+compile this exception off, so runtime environment changes cannot enable it.
+`GITHUB_ACTIONS` grants no HTTP exception. CI full-stack acceptance builds an
+explicit test artifact, which is not a production artifact.
 
 ## Acceptance boundary
 
@@ -96,3 +99,10 @@ The BFF fetch seam is contract evidence, not a real purchase E2E. Card C owns
 real publication-to-purchase composition and any visual baseline renewal.
 This card introduces no migration, scope, lock hierarchy, production deployment
 or new provider command. Rollback is a source revert.
+
+Backend transport uses typed per-operation helpers in `commerce-backend.ts` for
+cart/lines, checkout, customer auth/history and the testing webhook. Fixture paths
+are used only by the explicit fixture fetch seam, never for backend dispatch.
+JSON.stringify owns request escaping; standard JSON.rawJSON emits exact int64
+integer tokens in Start and the signed Fake fact. No floating-point conversion
+or hand-spliced JSON is permitted at these boundaries.

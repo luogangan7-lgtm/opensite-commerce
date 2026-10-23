@@ -44,7 +44,7 @@ async function setup(fixture=false) {
   const context=await readPurchaseContext(new Request(site,{headers:{Host:new URL(site).host}}),jar);
   expect(context.enabled).toBe(true);
   expect((await handlePurchaseRequest(req('cart',{sku_id:sku,quantity:1}),jar,'cart')).status).toBe(200);
-  expect((await handlePurchaseRequest(req('checkout',{shipping_address:{country:'US',address1:'1 Test',city:'City',postal_code:'10001'},buyer_contact:{email:'buyer@example.test'},accepted_total:{amount_minor:result.amount_minor,currency:result.currency}}),jar,'checkout')).status).toBe(201);
+  expect((await handlePurchaseRequest(req('checkout',{shipping_address:{country:'US',address1:'1 \"Test\" \\ Way',city:'City',postal_code:'10001'},buyer_contact:{email:'buyer@example.test'},accepted_total:{amount_minor:result.amount_minor,currency:result.currency}}),jar,'checkout')).status).toBe(201);
   return {calls,events,result,context,send:(outcome='captured',extra={})=>handlePurchaseRequest(req('payment',{checkout_id:checkoutID,outcome,accepted_total:{amount_minor:result.amount_minor,currency:result.currency},...extra}),jar,'payment'),completion:()=>handlePurchaseRequest(req('completion'),jar,'completion'),pending:()=>{receiptStatus='pending';},receipt:(status:string,id?:string)=>{receiptStatus=status;receiptID=id;},reject:(status:number)=>{rejection=status;},malformed:()=>{malformed=true;},apply:()=>{applied=true;}};
 }
 test('BFF signs timestamp and account-bearing exact bytes with captured, never tenant or authorized',async()=>{
@@ -110,4 +110,11 @@ test('matching accepted total replays exact capture bytes; changed acceptance ne
   expect(rejected.status).toBe(409);expect(f.events).toHaveLength(2);
   const start=f.calls.find(call=>call.url.endsWith('/checkout') && call.method==='POST')!;
   expect(await start.text()).toContain('"amount_minor":9223372036854775807');
+});
+
+test('Start JSON escapes buyer text while preserving int64 acceptance',async()=>{
+  const f=await setup();
+  const raw=await f.calls.find(call=>call.url.endsWith('/checkout')&&call.method==='POST')!.text();
+  expect(raw).toContain('"amount_minor":9223372036854775807');
+  expect(JSON.parse(raw).shipping_address.address1).toBe('1 \"Test\" \\ Way');
 });

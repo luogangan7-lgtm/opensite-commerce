@@ -77,8 +77,8 @@ func checkedInput(actor contract.AuthorizedActor, in contract.StartInput) error 
 	if strings.TrimSpace(a.Address1) == "" || strings.TrimSpace(a.City) == "" || strings.TrimSpace(a.PostalCode) == "" {
 		return contract.ErrInvalid
 	}
-	if in.AcceptedTotal.AmountMinor <= 0 || len(in.AcceptedTotal.Currency) != 3 {
-		return contract.ErrTotalChanged
+	if in.AcceptedTotal.AmountMinor <= 0 || (money.Money{Amount: in.AcceptedTotal.AmountMinor, Currency: in.AcceptedTotal.Currency}).Validate() != nil {
+		return contract.ErrInvalid
 	}
 	return nil
 }
@@ -479,14 +479,6 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 		if actor.Valid() && (row.ActorKind != actor.Kind() || row.ActorID != actor.ID()) {
 			return contract.ErrNotFound
 		}
-		if claimPhase == "confirming" && row.SourceKind == "cart" {
-			var receipt struct {
-				AcceptedTotal contract.AcceptedTotal `json:"accepted_total"`
-			}
-			if json.Unmarshal(row.AddressSnapshot, &receipt) != nil || receipt.AcceptedTotal.AmountMinor != row.AmountMinor || receipt.AcceptedTotal.Currency != row.Currency {
-				return contract.ErrTotalChanged
-			}
-		}
 		if event != nil && (row.OrderID.String() != event.OrderID || row.Currency != event.Amount.Currency || row.AmountMinor != event.Amount.Amount || row.PayableVersion != event.OrderVersion || row.ProviderRef != event.ProviderRef) {
 			return contract.ErrConflict
 		}
@@ -522,6 +514,15 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 			return store.MapError(q.CompleteCheckoutAttempt(ctx, db.CompleteCheckoutAttemptParams{TenantID: row.TenantID, EventKind: kind, EventKey: eventKey, Result: row.FinalResult}))
 		}
 		if row.Phase == "ready" {
+			// Consent authorizes a new claim, never retroactively blocks recovery.
+			if claimPhase == "confirming" && row.SourceKind == "cart" {
+				var receipt struct {
+					AcceptedTotal contract.AcceptedTotal `json:"accepted_total"`
+				}
+				if json.Unmarshal(row.AddressSnapshot, &receipt) != nil || receipt.AcceptedTotal.AmountMinor != row.AmountMinor || receipt.AcceptedTotal.Currency != row.Currency {
+					return contract.ErrTotalChanged
+				}
+			}
 			row.Phase = claimPhase
 			row.ClaimKind = store.Text(kind)
 			row.ClaimKey = store.Text(eventKey)

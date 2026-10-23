@@ -4,7 +4,8 @@
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { AstroCookies } from 'astro';
-import { backendRequest } from './commerce-backend';
+import { commerceBackend } from './commerce-backend';
+import type { APIComponents } from '@opensite/api-client';
 import { readAPIOrigin } from './presentation';
 type Jar=Pick<AstroCookies,'get'|'set'>;
 export type CustomerIdentity={id:string;headers:Record<string,string>};
@@ -45,7 +46,13 @@ function relay(response:Response,cookies:Jar){
 }
 async function call(origin:string,tenant:string,cookies:Jar,path='session',method?:string,input?:unknown,csrf?:string){
   const {headers}=cookieHeaders(cookies);
-  const result=await backendRequest(origin,`/api/v1/t/${tenant}/customer/${path}`,undefined,{...(method?{method}:{}),...(input?{body:input}:{}),headers:{...headers,...(csrf?{'X-CSRF-Token':csrf}:{})}});
+  const api=commerceBackend(origin,undefined,{...headers,...(csrf?{'X-CSRF-Token':csrf}:{})});
+  const result=await (path==='session'&&!method ? api.readSession(tenant)
+    : path==='session'&&method==='POST' ? api.createSession(tenant,input as APIComponents['schemas']['CustomerCredentialsInput'])
+    : path==='session'&&method==='DELETE' ? api.deleteSession(tenant)
+    : path==='registrations'&&method==='POST' ? api.registerCustomer(tenant,input as APIComponents['schemas']['CustomerRegistrationInput'])
+    : path==='verifications'&&method==='POST' ? api.verifyCustomer(tenant,input as APIComponents['schemas']['CustomerTokenInput'])
+    : Promise.reject(new CustomerError(404)));
   // Preserve identity on transient errors; only an authoritative invalid-session read may clear it.
   if(result.response.ok||(!method&&result.response.status===401))relay(result.response,cookies);
   if(!result.response.ok){
@@ -53,7 +60,7 @@ async function call(origin:string,tenant:string,cookies:Jar,path='session',metho
     throw new CustomerError([429,503].includes(status)?status:method?400:status===401?401:502,method?'customer_auth_failed':status===401?'unauthenticated':'customer_auth_unavailable');
   }
   if(result.response.status===204)return null;
-  try{return JSON.parse(result.text??'') as Record<string,unknown>;}catch{throw new CustomerError(502);}
+  try{return JSON.parse(typeof result.data==='string'?result.data:JSON.stringify(result.data??result.error)??'') as Record<string,unknown>;}catch{throw new CustomerError(502);}
 }
 export async function readCustomer(origin:string,tenant:string,cookies:Jar):Promise<CustomerIdentity|null>{
   if(cookies.get(SESSION)===undefined)return null;

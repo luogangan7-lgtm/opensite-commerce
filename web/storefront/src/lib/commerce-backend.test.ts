@@ -110,3 +110,14 @@ test('GITHUB_ACTIONS cannot relax HTTPS; HTTP needs explicit test environment an
   process.env.OPENSITE_ENVIRONMENT='production';
   expect((await readPurchaseContext(req(),jar.jar)).enabled).toBe(false);
 });
+
+test('production build pin forbids HTTP even if runtime flags claim test',async()=>{
+  const build=globalThis as typeof globalThis & {__OSC_COMMERCE_TEST_HTTP__?:boolean};
+  build.__OSC_COMMERCE_TEST_HTTP__=false;
+  try {
+    Object.assign(process.env,{OSC_COMMERCE_SITE:'http://127.0.0.1:4321',OSC_STOREFRONT_ALLOWED_HOSTS:'127.0.0.1',OSC_COMMERCE_TEST_HTTP:'1',OPENSITE_ENVIRONMENT:'test'});
+    const count=calls.length;
+    expect((await readPurchaseContext(new Request('http://127.0.0.1:4321',{headers:{Host:'127.0.0.1:4321'}}),cookies().jar)).enabled).toBe(false);
+    expect(calls.length).toBe(count);
+  } finally { delete build.__OSC_COMMERCE_TEST_HTTP__; }
+});
