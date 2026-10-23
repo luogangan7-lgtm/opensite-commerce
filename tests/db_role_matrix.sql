@@ -1044,7 +1044,7 @@ END $quotes$;
 SELECT 'PASS: quotes exact table/column/function grants, bounded definer authority and FORCE RLS' AS result;
 -- CMS controlled functions and capability flag must have exact effective ACLs.
 DO $cms_matrix$
-DECLARE f record; role_name text; expected boolean; col text; privilege text;
+DECLARE f record; role_name text; expected boolean;
  names text[]:=ARRAY['cms_context','cms_revision_immutable','cms_draft_guard','cms_validate_document','cms_products','cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history',
   'cms_release_skus_immutable','cms_seal_skus','cms_serving_put','cms_serving_invalidate'];
  public_names text[]:=ARRAY['cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history','cms_seal_skus','cms_serving_put'];
@@ -1525,7 +1525,7 @@ ROLLBACK;
 
 -- New Payments commands are closed to one caller capability, with no raw DML.
 DO $payment_return_matrix$
-DECLARE f record; role_name text; expected boolean;
+DECLARE f record; role_name text; expected boolean; col text; privilege text;
 BEGIN
  IF NOT EXISTS(SELECT FROM pg_class WHERE oid='app.payment_return_refunds'::regclass AND relrowsecurity AND relforcerowsecurity) THEN
   RAISE EXCEPTION 'PAYMENT_RETURN_FORCE_RLS'; END IF;
