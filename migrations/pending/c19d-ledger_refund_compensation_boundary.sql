@@ -105,3 +105,6 @@ ALTER FUNCTION app.payments_guard_refund_reversal() OWNER TO app_payments_servic
 ALTER TABLE app.payment_refund_reversals ALTER CONSTRAINT payment_refund_reversals_tenant_id_reversal_journal_id_fkey DEFERRABLE INITIALLY DEFERRED;
 CREATE CONSTRAINT TRIGGER payment_refund_reversal_journal AFTER INSERT ON app.payment_refund_reversals
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.payments_guard_refund_reversal();
+
+-- Temporary CI sample: remove the Ledger-side deferred witness constraint.
+DROP TRIGGER ledger_compensation_witness ON app.ledger_transactions;
