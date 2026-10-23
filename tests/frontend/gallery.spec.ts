@@ -31,6 +31,31 @@ async function focusFits(control: Locator, wrapper: Locator) {
   expect(controlBox.y + controlBox.height + extent).toBeLessThanOrEqual(snapshotBox.y + snapshotBox.height);
 }
 
+// Native select text can retain pre-font layout metrics after document.fonts.ready.
+// Observe creation, rather than only checking the fonts immediately before capture.
+test('native gallery selects are created only after Inter is loaded', async ({ page }) => {
+  await page.addInitScript(() => {
+    const observations: boolean[] = [];
+    Object.assign(window, { gallerySelectFonts: observations });
+    new MutationObserver(records => {
+      for (const record of records) for (const node of record.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        const selects = [...node.querySelectorAll('select'), ...(node.matches('select') ? [node] : [])];
+        for (const select of selects) {
+          if (select.closest('[data-testid="gallery"]')) {
+            observations.push(document.fonts.check('400 16px Inter', 'Default Selected'));
+          }
+        }
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await catalog(page);
+  const observations = await page.evaluate(() =>
+    (window as unknown as { gallerySelectFonts: boolean[] }).gallerySelectFonts);
+  expect(observations).toHaveLength(4);
+  expect(observations).toEqual([true, true, true, true]);
+});
+
 test('all component states have visual baselines', async ({ page }) => {
   await catalog(page);
   expect(await page.locator('[data-gallery-case]').evaluateAll(elements => elements.map(el => el.getAttribute('data-gallery-case')))).toEqual(CASE_IDS);
