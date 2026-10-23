@@ -5,7 +5,7 @@
 import { createHmac } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { audit, fixture, publishedSite } from './fixture';
-import { start } from './purchase-helpers';
+import { start, registerAndLogin } from './purchase-helpers';
 
 const api = `${fixture.storefront}/purchase/api`;
 test('published guest purchase persists captured order', async ({ page, request }, info) => {
@@ -64,36 +64,6 @@ test('pending receipt alone never shows paid', async ({ page, request }, info) =
   await audit(page, info);
 });
 
-async function registerAndLogin(page: Page, email: string) {
-  const password='CI-only-c09f2-password!';
-  await page.goto(`${fixture.storefront}/account`);
-  await expect(page.locator('[data-customer-ready]')).toBeVisible();
-  await page.getByLabel('Email', {exact:true}).fill(email);
-  await page.getByLabel('Password', {exact:true}).fill(password);
-  await page.getByRole('button',{name:'Register',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('verification email has been sent');
-  let messageId='';
-  await expect.poll(async()=>{
-    const listing=await page.request.get('http://127.0.0.1:8025/api/v1/messages?limit=50');
-    const data=await listing.json();
-    messageId=data.messages.find((m:{ID:string;To:{Address:string}[]})=>m.To.some(to=>to.Address===email))?.ID??'';
-    return messageId;
-  }).not.toBe('');
-  expect(messageId).toMatch(/^[A-Za-z0-9-]{1,128}$/);
-  const message=await (await page.request.get(`http://127.0.0.1:8025/api/v1/message/${messageId}`)).json();
-  const proof=new URL(message.Text.trim().split('\n').at(-1));
-  expect(proof.origin).toBe('https://store.e2e.test');expect(proof.pathname).toBe('/customer/verify');
-  expect(new URLSearchParams(proof.hash.slice(1)).get('tenant')).toBe(fixture.tenantId);
-  await page.goto(`${fixture.storefront}/customer/verify${proof.hash}`);
-  await expect(page.getByRole('button',{name:'Verify email',exact:true})).toBeEnabled();
-  await expect(page).toHaveURL(`${fixture.storefront}/customer/verify`);
-  await page.getByRole('button',{name:'Verify email',exact:true}).click();
-  await expect(page.getByRole('status').filter({hasText:'Email verified.'})).toBeVisible();
-  await page.goto(`${fixture.storefront}/account`);
-  await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);
-  await page.getByRole('button',{name:'Sign in',exact:true}).click();
-  await expect(page.getByRole('link',{name:'Order history',exact:true})).toBeVisible();
-}
 
 test('registered purchase appears only in owned history',async({page,request},info)=>{
   test.setTimeout(90_000);
