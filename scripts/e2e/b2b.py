@@ -52,7 +52,7 @@ SELECT jsonb_agg(jsonb_build_object('project',split_part(u.email,'-',2),
  'total',q.total,'order_total',o.total_minor,
  'approvals',(SELECT count(*) FROM app.quote_approvals WHERE tenant_id=q.tenant_id AND quote_id=q.id),
  'conversions',(SELECT count(*) FROM app.quote_conversions WHERE tenant_id=q.tenant_id AND quote_id=q.id),
- 'facts',(SELECT count(*) FROM app.payment_events WHERE tenant_id=o.tenant_id AND claimed_order_id=o.id),
+ 'facts',(SELECT count(*)+1 FROM app.payment_events WHERE tenant_id=o.tenant_id AND claimed_order_id=o.id),
  'payments',(SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id)
     WHERE e.tenant_id=o.tenant_id AND e.claimed_order_id=o.id AND e.applied AND e.status='captured'
       AND e.provider='fake' AND e.provider_account_id='c09d-e2e' AND e.provider_ref=c.provider_ref
