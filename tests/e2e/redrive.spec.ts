@@ -35,10 +35,6 @@ test('real admin notification failure redrive delivers once with scoped isolatio
  await expect(page.getByRole('status').filter({hasText:'Redrive queued'})).toBeVisible();
  const session=await(await page.request.get(`${fixture.admin}/api/v1/auth/session`)).json();
  const headers={Origin:fixture.admin,'X-CSRF-Token':session.csrf_token,'Idempotency-Key':receiptResponse.request().headers()['idempotency-key']};
- const replay=await page.request.post(`${base}/${failed.id}/redrive`,{headers});
- expect(replay.status()).toBe(200);expect(await replay.json()).toEqual(receipt);
- expect((await page.request.post(`${base}/${failed.id}/redrive`,{headers:{...headers,'Idempotency-Key':crypto.randomUUID()}})).status()).toBe(409);
- expect((await page.request.post(`${fixture.admin}/api/v1/t/${fixture.ownerTenantId}/notifications/${failed.id}/redrive`,{headers})).status()).toBe(404);
  // Mailpit stores real MIME. Match the frozen order reference and shipped subject,
  // excluding other purchase/verification notifications in this shared CI inbox.
  let delivered:string[]=[];
@@ -51,6 +47,11 @@ test('real admin notification failure redrive delivers once with scoped isolatio
   }
   return delivered.length;
  },{timeout:30_000}).toBe(1);
+ // Replay AFTER actual SMTP acceptance so resetting a sent notification is detected.
+ const replay=await page.request.post(`${base}/${failed.id}/redrive`,{headers});
+ expect(replay.status()).toBe(200);expect(await replay.json()).toEqual(receipt);
+ expect((await page.request.post(`${base}/${failed.id}/redrive`,{headers:{...headers,'Idempotency-Key':crypto.randomUUID()}})).status()).toBe(409);
+ expect((await page.request.post(`${fixture.admin}/api/v1/t/${fixture.ownerTenantId}/notifications/${failed.id}/redrive`,{headers})).status()).toBe(404);
  await info.attach('notification-redrive',{body:JSON.stringify({event,notification:failed.id,receipt,mailpit:delivered}),contentType:'application/json'});
  await page.getByRole('button',{name:'Reload failures',exact:true}).click();
  await expect(page.getByRole('row').filter({hasText:failed.id})).toHaveCount(0);

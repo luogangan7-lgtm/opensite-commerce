@@ -2,6 +2,20 @@
 # Dependencies: deploy/compose.yaml and its restricted domain LOGIN; caller: run.py.
 # Invariant: public requests use resolver-only credentials, never admin/runtime fallback.
 services:
+  # E2E only: actual notification worker shares API's loopback Mailpit. The
+  # harness first supplies refusing port 1026, witnesses DLQ, then restores 1025.
+  notification-worker:
+    extends:
+      file: compose.yaml
+      service: worker
+    network_mode: service:api
+    ports: !reset []
+    environment:
+      OSC_WORKER_ADDR: :8083
+      OUTBOX_ENABLED: "true"
+      NOTIFICATIONS_SMTP_ENABLED: "true"
+      NOTIFICATIONS_SMTP_HOST: "127.0.0.1"
+      NOTIFICATIONS_SMTP_PORT: ${E2E_NOTIFICATION_SMTP_PORT:-1026}
   api:
     ports:
       - "127.0.0.1:8082:8082"
