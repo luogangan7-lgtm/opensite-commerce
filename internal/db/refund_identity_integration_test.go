@@ -362,7 +362,7 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	fact := events[len(events)-1]
 	var early map[string]any
 	_ = json.Unmarshal(p.raw("rma-before-commit", payment.StatusPartiallyRefunded, fact.Amount.Amount), &early)
-	early["refund_id"] = fact.EventID
+	early["refund_id"] = fact.RefundID
 	raw, _ := json.Marshal(early)
 	if earlyReceipt, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err != nil || earlyReceipt.Status == "processed" {
 		t.Fatalf("early webhook must remain pending before durable binding: %+v %v", earlyReceipt, err)
@@ -377,7 +377,7 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	for _, delivery := range []string{"rma-created", "rma-updated", "rma-created"} {
 		var body map[string]any
 		_ = json.Unmarshal(p.raw(delivery, payment.StatusPartiallyRefunded, completed.RefundMinor), &body)
-		body["refund_id"] = fact.EventID
+		body["refund_id"] = fact.RefundID
 		raw, _ := json.Marshal(body)
 		if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err != nil {
 			t.Fatal(err)
@@ -389,9 +389,9 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	delete(missingBody, "refund_id")
 	missing, _ := json.Marshal(missingBody)
 	identityReceipt, identityErr := p.module.Receive(p.f.ctx, missing, p.signature(missing, p.at))
-	var quarantined int
+	var quarantined, unidentified int
 	if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
-		return tx.QueryRow(ctx, "SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider_event_id='rma-without-identity' AND status='failed' AND octet_length(payload_hash)=32", p.f.tenant).Scan(&quarantined)
+		return tx.QueryRow(ctx, "SELECT (SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider_event_id='rma-without-identity' AND status='failed' AND octet_length(payload_hash)=32), (SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON i.id=e.id AND i.tenant_id=e.tenant_id WHERE i.tenant_id=$1 AND i.provider_event_id='rma-without-identity')", p.f.tenant).Scan(&quarantined, &unidentified)
 	}); err != nil {
 		t.Fatalf("identity-less refund not durably quarantined: %d %v", quarantined, err)
 	}
@@ -404,7 +404,7 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	  (SELECT count(*) FROM app.payment_return_refunds WHERE tenant_id=$1 AND return_id=$3)`, p.f.tenant, p.start.OrderID, receipt.ID).Scan(&journals, &refunded, &bindings)
 	})
 	w := p.f.witness(t, p.start.OrderID)
-	if identityErr != nil || identityReceipt.Status != "rejected" || quarantined != 1 {
+	if identityErr != nil || identityReceipt.Status != "rejected" || quarantined != 1 || unidentified != 0 {
 		t.Errorf("IDENTITYLESS_REFUND_RED: receipt=%+v err=%v quarantined=%d", identityReceipt, identityErr, quarantined)
 	}
 	if err != nil || journals != 2 || bindings != 1 || refunded != completed.RefundMinor || w.cash != p.start.AmountMinor-completed.RefundMinor {
@@ -415,7 +415,7 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 func TestMixedRefundComponents(t *testing.T) {
 	for _, steps := range [][]int64{{55, 0}, {55, 0, 0}, {0, 55, 0}, {1, 54, 0, 1, 0}} {
 		t.Run(fmt.Sprint(steps), func(t *testing.T) {
-			p := newPaymentFactFixture(t, func(f *checkoutPGFixture) {
+			p := newPaymentFactFixture(t, func(f *checkoutPGFixture) checkoutcontract.StartInput {
 				if len(steps) == 2 {
 					f.cart.cart.Lines[0].Quantity = 1
 					if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -425,6 +425,11 @@ func TestMixedRefundComponents(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+				input := f.input()
+				if len(steps) == 2 {
+					input.AcceptedTotal.AmountMinor = 110
+				}
+				return input
 			})
 			p.f.provider.before = nil
 			r := payment.CreatePaymentIntent{TenantID: p.f.tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}, IdempotencyKey: "mixed-capture"}
@@ -478,6 +483,10 @@ func TestMixedRefundComponents(t *testing.T) {
 				}); err != nil || !bounded || net+tax+shipping != total {
 					t.Fatalf("MIXED_COMPONENT_RED: parts=%d/%d/%d total=%d err=%v", net, tax, shipping, total, err)
 				}
+				if len(steps) == 2 && i == 0 && (net != 50 || tax != 5 || shipping != 0) {
+					t.Fatalf("net100/tax10 ordinary55: %d/%d/%d", net, tax, shipping)
+				}
+
 			}
 		})
 	}

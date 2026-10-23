@@ -257,7 +257,7 @@ func (a checkoutAdoptionPG) commandEvent(t *testing.T, r checkoutcontract.Result
 		if e.OrderID != r.OrderID || e.Status != payment.StatusAuthorized {
 			continue
 		}
-		return payment.VerifiedEvent(e)
+		return e.VerifiedEvent
 	}
 	t.Fatal("provider did not emit an authorized event for the adopted order")
 	return payment.VerifiedEvent{}

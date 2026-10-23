@@ -398,7 +398,7 @@ BEGIN
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
    'customer_session','customer_revoke_session','customer_admit','customer_failed',
    'resolve_fake_payment_account','resolve_stripe_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox',
-   'guard_payment_fact','guard_checkout_refund','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund','payments_match_return_refund') LOOP
+   'guard_payment_fact','guard_checkout_refund','payments_allocate_refund','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund','payments_match_return_refund') LOOP
   IF f.proname NOT IN ('guard_release_children','guard_sealed_media','seal_release','publish_release',
                       'guard_inbox_identity','guard_idempotency_identity','claim_outbox','complete_outbox','fail_outbox','idempotency_claim')
    OR f.prosecdef IS DISTINCT FROM (f.proname NOT IN ('guard_inbox_identity','guard_idempotency_identity','idempotency_claim'))
@@ -433,7 +433,7 @@ BEGIN
    'customer_consume_verification','customer_prepare_reset','customer_consume_reset','customer_save_session',
    'customer_session','customer_revoke_session','customer_admit','customer_failed',
    'resolve_fake_payment_account','resolve_stripe_payment_account','lock_payment_stream','admit_payment_inbox','finish_payment_inbox',
-   'guard_payment_fact','guard_checkout_refund','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund','payments_match_return_refund'))<>10 THEN
+   'guard_payment_fact','guard_checkout_refund','payments_allocate_refund','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund','payments_match_return_refund'))<>10 THEN
   RAISE EXCEPTION 'publisher/reliability function contract incomplete';
  END IF;
 END $services$;
@@ -1286,7 +1286,7 @@ BEGIN
    END LOOP;
   END IF;
   IF has_function_privilege('app_fulfillment_executor',f.oid,'EXECUTE') IS DISTINCT FROM
-   (f.proname=ANY(names) OR f.proname IN('orders_context','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return')) THEN
+   (f.proname=ANY(names) OR f.proname IN('orders_context','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return','payments_allocate_refund')) THEN
    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_EXECUTOR_FUNCTION %',f.proname; END IF;
   IF has_function_privilege('app_returns_service',f.oid,'EXECUTE') IS DISTINCT FROM
    (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund','post_ledger','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund')) THEN
@@ -1520,7 +1520,7 @@ DECLARE f record; role_name text; expected boolean;
 BEGIN
  IF NOT EXISTS(SELECT FROM pg_class WHERE oid='app.payment_return_refunds'::regclass AND relrowsecurity AND relforcerowsecurity) THEN
   RAISE EXCEPTION 'PAYMENT_RETURN_FORCE_RLS'; END IF;
- FOR f IN SELECT p.*,v.signature FROM (VALUES('payments_return_context(uuid,text)'),('payments_lock_return_checkout(uuid)'),
+ FOR f IN SELECT p.*,v.signature FROM (VALUES('payments_allocate_refund(uuid,jsonb,bigint)'),('payments_return_context(uuid,text)'),('payments_lock_return_checkout(uuid)'),
   ('payments_bind_return_refund(uuid,text,text,uuid)'),('payments_match_return_refund(uuid,text,text,bigint,bigint,text)')) v(signature)
  LEFT JOIN pg_proc p ON p.oid=to_regprocedure('app.'||v.signature) LOOP
   IF f.oid IS NULL OR NOT f.prosecdef OR f.proowner<>(SELECT relowner FROM pg_class WHERE oid='app.payment_return_refunds'::regclass)
@@ -1528,7 +1528,7 @@ BEGIN
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0) THEN
    RAISE EXCEPTION 'PAYMENT_RETURN_ROUTINE %',f.signature; END IF;
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
-   expected:=CASE WHEN f.proname='payments_match_return_refund' THEN role_name='app_runtime' ELSE role_name='app_returns_service' END;
+   expected:=CASE WHEN f.proname='payments_allocate_refund' THEN role_name IN('app_runtime','app_fulfillment_executor') WHEN f.proname='payments_match_return_refund' THEN role_name='app_runtime' ELSE role_name='app_returns_service' END;
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'PAYMENT_RETURN_ROUTINE_ACL % %',role_name,f.proname; END IF;

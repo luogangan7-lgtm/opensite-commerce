@@ -292,7 +292,7 @@ func (f *quoteOrderFixture) deliver(t *testing.T, orderID string) *httptest.Resp
 		if event.OrderID != orderID || event.Status != payment.StatusAuthorized {
 			continue
 		}
-		_, err := f.checkout.Confirm(quoteObserved(f.ctx), payment.VerifiedEvent(event))
+		_, err := f.checkout.Confirm(quoteObserved(f.ctx), event.VerifiedEvent)
 		response := httptest.NewRecorder()
 		if err != nil {
 			var providerError *payment.PaymentError

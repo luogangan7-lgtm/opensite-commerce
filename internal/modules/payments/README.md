@@ -44,3 +44,12 @@ monitor unresolved Inbox facts and provider balances, support authenticated
 matching with audit evidence, and prove one journal across request/webhook
 replays before live keys or production refunds can be enabled. A successful
 sandbox check does not satisfy this live acceptance requirement.
+
+Refund components are allocated by Payments' closed
+`app.payments_allocate_refund(uuid,jsonb,bigint)` command for both ordinary
+facts and quantity-bounded RMA creation. It takes the Orders physical fence,
+locks RMAs by UUID, and subtracts frozen receipts plus Checkout's actual ordinary
+component counters. Orders-only legacy credit keeps its prior waterfall.
+The existing Checkout component CHECKs remain the final cap guard. Identity-less
+refund deliveries retain a failed Inbox/hash without a normalized money fact;
+Fake events and results carry the same durable refund identity.

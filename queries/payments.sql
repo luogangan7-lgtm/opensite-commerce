@@ -36,3 +36,7 @@ SELECT app.payments_lock_return_checkout(sqlc.arg(return_id)::uuid);
 SELECT app.payments_bind_return_refund(sqlc.arg(return_id)::uuid,sqlc.arg(attempt_key)::text,sqlc.arg(provider_refund_id)::text,sqlc.arg(journal_id)::uuid);
 -- name: MatchPaymentReturnRefund :one
 SELECT app.payments_match_return_refund(sqlc.arg(order_id)::uuid,sqlc.arg(provider_ref)::text,sqlc.arg(provider_refund_id)::text,sqlc.arg(payment_version)::bigint,sqlc.arg(amount_minor)::bigint,sqlc.arg(currency)::text)::text AS result;
+-- name: AllocatePaymentRefund :one
+SELECT (parts->0->>'income_minor')::bigint AS income_minor,(parts->0->>'tax_minor')::bigint AS tax_minor,
+ (parts->0->>'shipping_minor')::bigint AS shipping_minor FROM
+ (SELECT app.payments_allocate_refund(sqlc.arg(order_id)::uuid,NULL,sqlc.arg(amount_minor)::bigint) AS parts) allocation;

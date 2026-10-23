@@ -44,7 +44,7 @@ type paymentFactFixture struct {
 	providerCommands atomic.Int32
 }
 
-func newPaymentFactFixture(t *testing.T, configure ...func(*checkoutPGFixture)) *paymentFactFixture {
+func newPaymentFactFixture(t *testing.T, configure ...func(*checkoutPGFixture) checkoutcontract.StartInput) *paymentFactFixture {
 	t.Helper()
 	f := newCheckoutPGFixture(t, 10, 2)
 	p := &paymentFactFixture{f: f, account: "acct_" + uuid.NewString(), key: []byte("isolated-payment-fixture-key-32-bytes")}
@@ -57,10 +57,14 @@ func newPaymentFactFixture(t *testing.T, configure ...func(*checkoutPGFixture)) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	input := f.input()
 	for _, apply := range configure {
-		apply(f)
+		input = apply(f)
 	}
-	p.start = f.start(t)
+	p.start, err = f.service.Start(checkoutRequestContext(f.ctx), f.actor, input)
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.provider.before = func(context.Context, paymentfake.Operation) error {
 		p.providerCommands.Add(1)
 		return errors.New("fact consumer must never issue provider commands")
@@ -106,12 +110,11 @@ func (p *paymentFactFixture) newModule(t *testing.T, override func(context.Conte
 }
 
 func (p *paymentFactFixture) raw(id string, status payment.PaymentStatus, amount int64) []byte {
-	raw, err := json.Marshal(map[string]any{"event_id": id, "account_id": p.account, "order_id": p.start.OrderID, "order_version": p.start.OrderVersion, "provider_ref": p.start.Payment.ProviderRef, "status": string(status), "amount_minor": amount, "currency": p.start.Currency, "refund_id": func() string {
-		if status == payment.StatusPartiallyRefunded || status == payment.StatusRefunded {
-			return id
-		}
-		return ""
-	}()})
+	body := map[string]any{"event_id": id, "account_id": p.account, "order_id": p.start.OrderID, "order_version": p.start.OrderVersion, "provider_ref": p.start.Payment.ProviderRef, "status": string(status), "amount_minor": amount, "currency": p.start.Currency}
+	if status == payment.StatusPartiallyRefunded || status == payment.StatusRefunded {
+		body["refund_id"] = id
+	}
+	raw, err := json.Marshal(body)
 	if err != nil {
 		panic(err)
 	}
@@ -501,6 +504,16 @@ func TestPaymentsPGSignedHTTPAdmissionToLedger(t *testing.T) {
 	if w.inbox != 1 || w.events != 1 || w.applied != 1 || w.checkout.state != "paid" || w.checkout.journals != 1 || w.checkout.cash != p.start.AmountMinor || w.checkout.debits != w.checkout.credits || w.checkout.paidEvents != 1 {
 		t.Fatalf("signed endpoint→account→inbox→ledger/order %+v", w)
 	}
+	refund := p.raw("http-refund", payment.StatusPartiallyRefunded, 55)
+	for range 2 {
+		if response := post(refund, p.signature(refund, p.at)); response.Code != 200 {
+			t.Fatalf("signed refund identity: %d %s", response.Code, response.Body.String())
+		}
+	}
+	if after := p.witness(t); after.refunded != 55 || after.checkout.journals != 2 || after.checkout.cash != p.start.AmountMinor-55 {
+		t.Fatalf("HTTP refund replay reposted: %+v", after)
+	}
+
 }
 
 // The runner's first DB timestamp can become stale while waiting for the intent
