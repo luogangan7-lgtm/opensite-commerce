@@ -44,6 +44,10 @@ func (h *Handler) Routes() []httpapi.Route {
 	return routes
 }
 func csvError(err error) error {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return apperrors.New(413, "request_too_large", "Request body exceeds the route limit")
+	}
 	switch {
 	case errors.Is(err, contract.ErrCSVInvalid):
 		return apperrors.New(422, "invalid_csv", "CSV validation failed")
@@ -102,10 +106,10 @@ func (h *Handler) ImportCatalogCSV(ctx context.Context, r httpapi.ImportCatalogC
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, contract.CSVMaxBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, csvError(err)
 	}
 	if len(raw) > contract.CSVMaxBytes {
-		return nil, csvError(contract.ErrCSVLimit)
+		return nil, apperrors.New(413, "request_too_large", "Request body exceeds the route limit")
 	}
 	response, err := httpapi.Command(ctx, h.config.SubjectCommandConfig, tenant, "importCatalogCSV", base+"/import", map[string]string{"tenant_id": tenant}, func(ctx context.Context, tx pgx.Tx, _ httpapi.Subject) (idempotency.Response, error) {
 		return importResponse(h.config.Service.Import(ctx, tx, bytes.NewReader(raw)))

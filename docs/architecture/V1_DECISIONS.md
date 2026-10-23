@@ -435,6 +435,10 @@ V1.x 的 FX 使用独立币种 Journal、清算账户和明确的汇率快照，
 
 Refund 与 RMA 必须分离。
 
+退款成功入账后提供商确认失败/取消的补偿契约见
+[C-19d 提案](C19D_REFUND_COMPENSATION.md)（**PROPOSAL，待编排者批准**）；
+该提案不修改当前冻结契约，也不代表补偿已实现或允许 live mode。
+
 RMA 判断商品是否退回、能否重新入库；Payments 负责资金退款；Ledger 负责账务记录；Orders 负责订单状态。
 
 发票由 Billing 管理，引用 Orders 的成交快照与 Tax 的计算结果，不重新自行计算税额。
