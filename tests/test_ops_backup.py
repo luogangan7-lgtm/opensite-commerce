@@ -195,6 +195,21 @@ class BackupTests(unittest.TestCase):
                     backup.restore(archive, manifest)
                 psql.assert_not_called()
 
+    def test_missing_returns_secret_refuses_restore_before_target_ddl(self):
+        from ops_deploy import LOGIN_ROLES
+        with tempfile.TemporaryDirectory() as root:
+            archive, manifest = self.fixture(Path(root))
+            env = {f'OPENSITE_{kind}_DB_PASSWORD': secrets.token_urlsafe(32) for kind in LOGIN_ROLES}
+            env['POSTGRES_PASSWORD'] = secrets.token_urlsafe(32)
+            env['OPENSITE_RETURNS_DB_PASSWORD'] = str()
+            with patch.dict(os.environ, env, clear=True), patch.object(backup, 'cluster_preflight'), \
+                    patch.object(backup, 'psql') as psql, patch.object(backup, 'pg_command') as pg:
+                with self.assertRaisesRegex(common.OpsError, 'INVALID_ENV_SECRET',
+                                            msg='RETURNS_RESTORE_RED: missing returns capability credential accepted'):
+                    backup.restore(archive, manifest)
+                psql.assert_not_called()
+                pg.assert_not_called()
+
     def test_missing_customer_auth_secret_refuses_restore_before_target_ddl(self):
         from ops_deploy import LOGIN_ROLES
         with tempfile.TemporaryDirectory() as root:

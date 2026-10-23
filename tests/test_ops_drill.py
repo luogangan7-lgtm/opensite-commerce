@@ -103,6 +103,17 @@ class CustomerAuthComposeTests(unittest.TestCase):
         self.assertIn('mailpit', started,
                       'CUSTOMER_LOCAL_PROOF_RED: deployment starts without capture SMTP server')
 
+    def test_compose_provisions_independent_returns_secret(self):
+        import yaml
+        services = yaml.safe_load((self.root / 'deploy/compose.yaml').read_text())['services']
+        for service in ('migrate', 'api'):
+            env = services[service]['environment']
+            self.assertIn('OPENSITE_RETURNS_DB_PASSWORD', env,
+                          'RETURNS_COMPOSE_RED: capability pool credential omitted')
+            self.assertTrue(env['OPENSITE_RETURNS_DB_PASSWORD'].startswith('${OPENSITE_RETURNS_DB_PASSWORD:?'))
+        for service in ('postgres', 'worker'):
+            self.assertNotIn('OPENSITE_RETURNS_DB_PASSWORD', services[service]['environment'])
+
     def test_compose_provisions_independent_customer_auth_secret(self):
         import yaml
         services = yaml.safe_load((self.root / 'deploy/compose.yaml').read_text())['services']
