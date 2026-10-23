@@ -28,7 +28,7 @@ func TestStripePendingRefundRetryable(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := payment.CreatePaymentIntent{TenantID: "10000000-0000-4000-8000-000000000001", OrderID: "10000000-0000-4000-8000-000000000002", OrderVersion: 1, Amount: money.Money{Amount: 300, Currency: "USD"}, IdempotencyKey: "pending-refund"}
-	pending := true
+	status := "pending"
 	s.client.Transport = stripeTransport(func(req *http.Request) (*http.Response, error) {
 		body := `{"id":"pi_fixture","status":"succeeded","livemode":false,"amount":1150,"currency":"usd","latest_charge":{"amount_refunded":300},"metadata":{"osc_tenant":"10000000-0000-4000-8000-000000000001","osc_order":"10000000-0000-4000-8000-000000000002","osc_version":"1"}}`
 		if req.URL.Path == "/v1/refunds" {
@@ -36,9 +36,7 @@ func TestStripePendingRefundRetryable(t *testing.T) {
 				t.Fatal("pending retry issued another refund")
 			}
 			body = `{"data":[{"id":"re_fixture","status":"pending","amount":300,"metadata":{"osc_key":"` + stripeKey(r, "refund") + `"}}]}`
-			if !pending {
-				body = strings.Replace(body, `"pending"`, `"succeeded"`, 1)
-			}
+			body = strings.Replace(body, `"pending"`, `"`+status+`"`, 1)
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
 	})
@@ -47,7 +45,14 @@ func TestStripePendingRefundRetryable(t *testing.T) {
 	if !errors.As(err, &pe) || !pe.Retryable() || pe.NoSideEffect {
 		t.Fatalf("pending refund must remain retryable without no-effect proof: %v", err)
 	}
-	pending = false
+	for _, terminal := range []string{"canceled", "failed"} {
+		status = terminal
+		_, err = s.Refund(context.Background(), payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: "pi_fixture"})
+		if !errors.As(err, &pe) || pe.Retryable() || !pe.NoSideEffect || pe.Code != payment.ErrorNonRetryable {
+			t.Errorf("terminal %s refund must permanently release reservation: %v", terminal, err)
+		}
+	}
+	status = "succeeded"
 	result, err := s.Refund(context.Background(), payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: "pi_fixture"})
 	if err != nil || result.Status != payment.StatusPartiallyRefunded {
 		t.Fatalf("pending refund did not recover after provider success: %+v %v", result, err)
@@ -79,5 +84,37 @@ func TestStripeRefundFactsReachMappedAdmission(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestStripeNewRefundTerminalNoEffect(t *testing.T) {
+	for _, status := range []string{"canceled", "failed", "pending"} {
+		t.Run(status, func(t *testing.T) {
+			c := stripeTestConfig(t)
+			t.Setenv("STRIPE_TEST_SECRET_KEY", "sk_test_unit_fixture")
+			s, err := NewStripe(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := payment.CreatePaymentIntent{TenantID: "10000000-0000-4000-8000-000000000001", OrderID: "10000000-0000-4000-8000-000000000002", OrderVersion: 1, Amount: money.Money{Amount: 300, Currency: "USD"}, IdempotencyKey: "terminal-refund"}
+			posts := 0
+			s.client.Transport = stripeTransport(func(req *http.Request) (*http.Response, error) {
+				body := `{"id":"pi_fixture","status":"succeeded","livemode":false,"amount":1150,"currency":"usd","metadata":{"osc_tenant":"10000000-0000-4000-8000-000000000001","osc_order":"10000000-0000-4000-8000-000000000002","osc_version":"1"}}`
+				if req.URL.Path == "/v1/refunds" {
+					body = `{"data":[]}`
+					if req.Method == http.MethodPost {
+						posts++
+						body = `{"id":"re_terminal","status":"` + status + `"}`
+					}
+				}
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
+			})
+			_, err = s.Refund(context.Background(), payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: "pi_fixture"})
+			var pe *payment.PaymentError
+			pending := status == "pending"
+			if posts != 1 || !errors.As(err, &pe) || pe.Retryable() != pending || pe.NoSideEffect == pending {
+				t.Fatalf("new %s refund error contract: posts=%d err=%v", status, posts, err)
+			}
+		})
 	}
 }

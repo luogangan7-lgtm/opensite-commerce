@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -21,9 +22,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout"
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 )
 
 func TestPaymentsRefundDeliveryIdentity(t *testing.T) {
@@ -180,5 +185,131 @@ func TestPaymentsRefundAliasesConvergeAfterCapture(t *testing.T) {
 	}
 	if w := p.witness(t); w.refunded != 1 || w.checkout.journals != 2 {
 		t.Fatalf("out-of-order refund money: %+v", w)
+	}
+}
+
+// Only intent creation is synthetic; webhook admission, Checkout and journals
+// use their production implementations against the disposable database.
+type stripeFactIntent struct{ payment.Port }
+
+func (stripeFactIntent) CreateIntent(context.Context, payment.CreatePaymentIntent) (payment.PaymentIntentResult, error) {
+	return payment.PaymentIntentResult{ProviderRef: "pi_refund_transition", Status: payment.StatusPending}, nil
+}
+
+func TestStripeRefundFailedAfterSuccessReconciles(t *testing.T) {
+	for _, terminal := range []string{"failed", "canceled"} {
+		t.Run(terminal, func(t *testing.T) {
+			f := newCheckoutPGFixture(t, 10, 2)
+			account := "acct_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+			if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				_, err := tx.Exec(ctx, "INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment) VALUES($1,'stripe',$2,'test')", f.tenant, account)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("OPENSITE_ENVIRONMENT", "test")
+			t.Setenv("STRIPE_TEST_SECRET_KEY", "sk_test_unit_fixture")
+			t.Setenv("STRIPE_TEST_WEBHOOK_SECRET", "whsec_isolated_transition_signing_key")
+			t.Setenv("STRIPE_TEST_ACCOUNT_ID", account)
+			rules := checkout.NewSQLRules(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 100}}}})
+			f.service = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: ledger.New(), Payment: stripeFactIntent{}})
+			start := f.start(t)
+			var at time.Time
+			s, err := payments.NewStripe(payments.Config{Run: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+				return f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+					var tenant string
+					if err := tx.QueryRow(ctx, "SELECT tenant_id::text,at_time FROM app.resolve_stripe_payment_account($1)", account).Scan(&tenant, &at); err != nil {
+						return err
+					}
+					if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true),set_config('app.payment_provider','stripe',true)", tenant); err != nil {
+						return err
+					}
+					if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+						return err
+					}
+					return fn(ctx, tx, tenant, at)
+				})
+			}, Apply: f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent, Admit: func(context.Context, payment.CreatePaymentIntent, bool) error { return nil }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&at)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			deliver := func(id, kind, status string, amount int64) string {
+				t.Helper()
+				ref, intent := "re_transition", `,"payment_intent":"pi_refund_transition"`
+				if kind == "payment_intent.succeeded" {
+					ref, intent = "pi_refund_transition", ""
+				}
+				raw := []byte(fmt.Sprintf(`{"id":%q,"type":%q,"livemode":false,"data":{"object":{"id":%q%s,"status":%q,"amount":%d,"currency":"usd","metadata":{"osc_order":%q,"osc_version":"1"}}}}`, id, kind, ref, intent, status, amount, start.OrderID))
+				stamp := fmt.Sprint(at.Unix())
+				mac := hmac.New(sha256.New, []byte("whsec_isolated_transition_signing_key"))
+				mac.Write([]byte(stamp + "."))
+				mac.Write(raw)
+				receipt, err := s.Receive(f.ctx, raw, "t="+stamp+",v1="+hex.EncodeToString(mac.Sum(nil)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				return receipt.Status
+			}
+			deliver("evt_capture", "payment_intent.succeeded", "succeeded", start.AmountMinor)
+			before := f.witness(t, start.OrderID)
+			deliver("evt_pending", "refund.created", "pending", 1)
+			if f.witness(t, start.OrderID) != before {
+				t.Fatal("pending refund posted money")
+			}
+			if deliver("evt_succeeded", "refund.updated", "succeeded", 1) != "processed" {
+				t.Fatal("succeeded refund was not journaled")
+			}
+			posted := f.witness(t, start.OrderID)
+			if posted.journals != 2 || posted.cash != start.AmountMinor-1 {
+				t.Fatalf("refund was not journaled exactly once: %+v", posted)
+			}
+			for i := 0; i < 2; i++ {
+				if deliver("evt_terminal", "refund.updated", terminal, 1) != "unmatched" {
+					t.Fatal("terminal refund transition silently ignored")
+				}
+			}
+			var retained int
+			err = f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, "SELECT count(*) FROM app.webhook_inbox i WHERE tenant_id=$1 AND provider='stripe' AND provider_event_id='evt_terminal' AND status='failed' AND octet_length(payload_hash)=32 AND NOT EXISTS(SELECT FROM app.payment_events e WHERE (e.tenant_id,e.id)=(i.tenant_id,i.id))", f.tenant).Scan(&retained)
+			})
+			if err != nil || retained != 1 || f.witness(t, start.OrderID) != posted {
+				t.Fatalf("reconciliation retention or second journal: count=%d err=%v", retained, err)
+			}
+		})
+	}
+}
+
+type paymentKeyReadFailure struct{ pgx.Tx }
+
+func (tx paymentKeyReadFailure) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if strings.Contains(sql, "-- name: GetPaymentEventByKey") {
+		return tx.Tx.QueryRow(ctx, "SELECT 1/0")
+	}
+	return tx.Tx.QueryRow(ctx, sql, args...)
+}
+
+func TestPaymentsFactReadFailureIsBounded(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	m, err := payments.New(payments.Config{Key: p.key, Run: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+		return p.run(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
+			return fn(ctx, paymentKeyReadFailure{tx}, tenant, at)
+		})
+	}, Apply: p.f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := p.raw("db-failure", payment.StatusCaptured, p.start.AmountMinor)
+	_, err = m.Receive(p.f.ctx, raw, p.signature(raw, p.at))
+	var public *apperrors.Error
+	if !errors.As(err, &public) || public.Status != 503 || public.Code != "payment_unavailable" || strings.Contains(err.Error(), "division") {
+		t.Fatalf("fact read failure must be bounded internal error: %v", err)
+	}
+	if w := p.witness(t); w.inbox != 0 || w.events != 0 || w.checkout.journals != 0 {
+		t.Fatalf("failed fact read persisted partial work: %+v", w)
 	}
 }
