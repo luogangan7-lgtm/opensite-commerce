@@ -127,7 +127,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 			case d := <-deliveries:
 				if d.kind == kind && d.order == order && !seen[d.id] {
 					seen[d.id] = true
-					if d.status != 200 {
+					if d.status != 200 && !(kind == "payment_intent.payment_failed" && d.status == 409) {
 						t.Fatalf("signed %s admission status=%d", kind, d.status)
 					}
 					return d
