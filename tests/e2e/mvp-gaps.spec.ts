@@ -124,7 +124,7 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
   expect(await history.json()).toContainEqual(expect.objectContaining({
     release_id: release.release_id, publication_revision: release.publication_revision, manifest_hash: release.manifest_hash,
   }));
-  const identity = { tenant_id: tenant, site_id: staffSite, release_id: release.release_id };
+  const identity = { tenant_id: tenant, site_id: staffSite, release_id: fixture.releaseId };
   let serving: unknown;
   // getPublishedSite reads the real serving body. Identity and purchasable SKU must
   // match in the SAME response; a previous release with identical content cannot pass.
