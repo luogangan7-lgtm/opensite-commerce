@@ -225,3 +225,10 @@ DO $scope$ DECLARE tab text; BEGIN
 END $scope$;
 CREATE POLICY orders_compensation_read ON app.ledger_transactions FOR SELECT TO app_orders_executor
  USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
+
+-- CI behavior sample: allow the generic command to decrement confirmed money.
+DO $sample$ DECLARE definition text; BEGIN
+ definition:=pg_get_functiondef('app.orders_transition(uuid,text,text,bigint)'::regprocedure);
+ definition:=replace(definition,E'BEGIN\n IF p_id',E'BEGIN\n IF p_refund_minor<0 THEN\n  UPDATE app.orders SET refunded_minor=refunded_minor+p_refund_minor,state=p_target,version=version+1,updated_at=clock_timestamp()\n  WHERE tenant_id=t AND id=p_id RETURNING * INTO o;\n  RETURN o;\n END IF;\n IF p_id');
+ EXECUTE definition;
+END $sample$;

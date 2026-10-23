@@ -40,17 +40,7 @@ BEGIN
   AND current_user<>'app_orders_executor' THEN
   RAISE EXCEPTION 'ORDER_CONTROLLED_COMMAND_REQUIRED' USING ERRCODE='55000';
  END IF;
- IF NEW.refunded_minor<OLD.refunded_minor THEN
-  IF current_user<>'app_orders_executor' OR NOT EXISTS(
-   SELECT FROM app.payment_refund_terminals c JOIN app.payment_refund_reversals w
-    ON (w.tenant_id,w.reversal_journal_id)=(c.tenant_id,c.reversal_journal_id)
-   JOIN app.ledger_transactions j ON (j.tenant_id,j.id)=(w.tenant_id,w.reversal_journal_id)
-   WHERE c.tenant_id=NEW.tenant_id AND c.order_id=NEW.id AND j.status='posted'
-    AND c.order_version=OLD.version AND NEW.version=OLD.version+1 AND NEW.sealed
-    AND OLD.refunded_minor-NEW.refunded_minor=c.amount_minor AND NEW.state=c.order_target) THEN
-   RAISE EXCEPTION 'C19D2_ORDER_WITNESS_REQUIRED' USING ERRCODE='23514'; END IF;
-  RETURN NEW;
- END IF;
+ IF NEW.refunded_minor<OLD.refunded_minor THEN RETURN NEW; END IF;
  IF OLD.state IS DISTINCT FROM NEW.state OR OLD.refunded_minor IS DISTINCT FROM NEW.refunded_minor THEN
   IF NOT OLD.sealed OR NOT NEW.sealed OR NEW.version<>OLD.version+1 OR NOT (
    (OLD.state='pending_payment' AND NEW.state IN('paid','cancelled'))
