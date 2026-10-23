@@ -351,7 +351,7 @@ func newCMSPG(t *testing.T, ctx context.Context, seed ...string) *cmsPG {
 	t.Cleanup(closeAdmin)
 	f := &cmsPG{admin: admin, tenant: newUUID(t), site: newUUID(t)}
 	org := newUUID(t)
-	err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = admin.InTenant(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		statements := append([]string{
 			`INSERT INTO app.tenants(id,name) VALUES($1,'C09b bounds PG')`,
 			`INSERT INTO app.organizations(tenant_id,id,display_name) SELECT $1,$3,'C09b' WHERE $2::uuid IS NOT NULL`,
@@ -514,7 +514,7 @@ func TestCMSPublishValidatesSealedSnapshotPG(t *testing.T) {
 			t.Fatal(err)
 		}
 		f.beforeSeal = func() {
-			if err := f.admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			if err := f.admin.InTenant(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 				_, err := tx.Exec(ctx, `UPDATE app.product_listings SET published_content_revision=2 WHERE tenant_id=$1`, f.tenant)
 				return err
 			}); err != nil {

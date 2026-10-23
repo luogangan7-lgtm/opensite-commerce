@@ -4,6 +4,7 @@
 \set ON_ERROR_STOP on
 BEGIN;
 INSERT INTO app.tenants(name) VALUES('C09B-CMS-GATE') RETURNING id AS tenant \gset
+SELECT set_config('app.tenant_id',:'tenant',true);
 INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'tenant','CMS') RETURNING id AS org \gset
 INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'tenant',:'org','CMS') RETURNING id AS site \gset
 -- Published catalog uses actual ready representative SKU and active qty1/all price.

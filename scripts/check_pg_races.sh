@@ -1746,6 +1746,7 @@ echo 'PASS: checkout confirm/cancel claims choose one durable winner with atomic
 # Focused native River/claim/fence gates cannot silently skip for missing PG.
 reliability_packages=(./internal/db ./internal/platform/jobs ./internal/platform/idempotency ./internal/platform/outbox)
 if [[ -n "${DATABASE_URL:-}" ]]; then
+ OPENSITE_DISPOSABLE_PG=1 bash scripts/check_catalog_api.sh
  JOBS_REQUIRE_PG=1 IDEMPOTENCY_REQUIRE_PG=1 OUTBOX_REQUIRE_PG=1 GOTOOLCHAIN=local \
   go test -race -tags pgx -count=1 -timeout=120s -run '^(TestPG|TestJobsPG)' "${reliability_packages[@]}"
 else

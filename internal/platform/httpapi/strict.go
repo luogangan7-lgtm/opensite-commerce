@@ -64,7 +64,7 @@ func StrictRoutes(service generated.StrictServerInterface, specs []RouteSpec) []
 				schema = media.Schema.Value
 			}
 		}
-		routes = append(routes, Route{Spec: spec, Handler: strictAdmission(handler, schema, binary, requiresVersion(op), op.Parameters)})
+		routes = append(routes, Route{Spec: spec, Handler: strictAdmission(handler, schema, binary, requiresVersion(op), op.Extensions["x-opensite-if-match-zero"] == true, op.Parameters)})
 	}
 	return routes
 }
@@ -93,10 +93,10 @@ func requiresVersion(op *openapi3.Operation) bool {
 	}
 	return false
 }
-func strictAdmission(next http.Handler, schema *openapi3.Schema, binary, version bool, parameters openapi3.Parameters) http.Handler {
+func strictAdmission(next http.Handler, schema *openapi3.Schema, binary, version, allowZero bool, parameters openapi3.Parameters) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if version {
-			if err := admitVersion(r); err != nil {
+			if err := admitVersion(r, allowZero); err != nil {
 				WriteProblem(w, r, err)
 				return
 			}
@@ -143,7 +143,7 @@ func strictAdmission(next http.Handler, schema *openapi3.Schema, binary, version
 		next.ServeHTTP(w, r)
 	})
 }
-func admitVersion(r *http.Request) error {
+func admitVersion(r *http.Request, allowZero bool) error {
 	values := r.Header.Values("If-Match")
 	if len(values) == 0 {
 		return apperrors.New(428, "precondition_required", "If-Match is required")
@@ -157,6 +157,9 @@ func admitVersion(r *http.Request) error {
 	value := values[0]
 	if len(value) < 3 || value[0] != '"' || value[len(value)-1] != '"' {
 		return invalid()
+	}
+	if allowZero && value == `"0"` {
+		return nil
 	}
 	digits := value[1 : len(value)-1]
 	if digits[0] == '0' || strings.IndexFunc(digits, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {

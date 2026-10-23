@@ -26,6 +26,9 @@ func mapError(err error) error {
 		return apperrors.New(404, "not_found", "Catalog resource not found")
 	}
 	var pgerr *pgxadapter.PgError
+	if errors.As(err, &pgerr) && pgerr.Code == "23503" {
+		return invalid("Listing site or content revision does not belong to this product and locale")
+	}
 	if errors.As(err, &pgerr) && pgerr.Code == "23505" {
 		return apperrors.New(409, "catalog_conflict", "Product code, SKU or option combination already exists")
 	}

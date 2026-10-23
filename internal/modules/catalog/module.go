@@ -6,6 +6,7 @@ package catalog
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
@@ -56,6 +57,10 @@ func routeSpecs() []httpapi.RouteSpec {
 	variants := product + "/variants"
 	variant := variants + "/{variant_id}"
 	specs := []httpapi.RouteSpec{
+		{OperationID: "getProductContent", Method: http.MethodGet, Pattern: product + "/content/{locale}", Scope: "catalog:write"},
+		{OperationID: "setProductContent", Method: http.MethodPut, Pattern: product + "/content/{locale}", Scope: "catalog:write"},
+		{OperationID: "getProductListing", Method: http.MethodGet, Pattern: product + "/listings/{site_id}/{locale}", Scope: "catalog:write"},
+		{OperationID: "setProductListing", Method: http.MethodPut, Pattern: product + "/listings/{site_id}/{locale}", Scope: "catalog:write"},
 		{OperationID: "createProduct", Method: http.MethodPost, Pattern: base, Scope: "catalog:write"},
 		{OperationID: "listProducts", Method: http.MethodGet, Pattern: base, Scope: "catalog:read"},
 		{OperationID: "getProduct", Method: http.MethodGet, Pattern: product, Scope: "catalog:read"},
@@ -73,4 +78,21 @@ func routeSpecs() []httpapi.RouteSpec {
 	}
 	return specs
 }
-func (s *Service) Routes() []httpapi.Route { return httpapi.StrictRoutes(s, routeSpecs()) }
+func (s *Service) Routes() []httpapi.Route {
+	routes := httpapi.StrictRoutes(s, routeSpecs())
+	for i := range routes {
+		if strings.Contains(routes[i].Spec.OperationID, "ProductContent") || strings.Contains(routes[i].Spec.OperationID, "ProductListing") {
+			next := routes[i].Handler
+			routes[i].Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Cache-Control", "no-store")
+				locale := r.PathValue("locale")
+				if len(locale) > 64 || !csvLocale.MatchString(locale) {
+					httpapi.WriteProblem(w, r, invalid("Invalid content locale"))
+					return
+				}
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
+	return routes
+}
