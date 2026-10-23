@@ -5,13 +5,41 @@
   "tables": {
     "payment_return_refunds": {
       "columns": {
-        "tenant_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Permanent refund journal identity needed for recovery and reconciliation."},
-        "return_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Permanent refund journal identity needed for recovery and reconciliation."},
-        "attempt_key": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Frozen RMA refund key prevents a retry from creating another financial obligation."},
-        "provider_ref": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Opaque provider intent reference binds the confirmed refund to its captured payment."},
-        "provider_refund_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Opaque provider refund identity prevents duplicate money posting across deliveries."},
-        "journal_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Permanent journal foreign key proves the single posted refund."},
-        "created_at": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "DB timestamp for permanent refund recovery and reconciliation evidence."}
+        "tenant_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Permanent refund journal identity needed for recovery and reconciliation."
+        },
+        "return_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Permanent refund journal identity needed for recovery and reconciliation."
+        },
+        "attempt_key": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Frozen RMA refund key prevents a retry from creating another financial obligation."
+        },
+        "provider_ref": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Opaque provider intent reference binds the confirmed refund to its captured payment."
+        },
+        "provider_refund_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Opaque provider refund identity prevents duplicate money posting across deliveries."
+        },
+        "journal_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Permanent journal foreign key proves the single posted refund."
+        },
+        "created_at": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "DB timestamp for permanent refund recovery and reconciliation evidence."
+        }
       }
     },
     "payment_provider_accounts": {
@@ -98,6 +126,124 @@
         },
         "payment_event_id": {
           "classification": "operational"
+        }
+      }
+    },
+    "payment_refund_attempts": {
+      "columns": {
+        "tenant_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "provider": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "provider_account_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "environment": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "provider_refund_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "order_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "provider_ref": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "amount_minor": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "currency": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "return_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "attempt_key": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "original_journal_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "created_at": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        }
+      }
+    },
+    "payment_refund_reversals": {
+      "columns": {
+        "tenant_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "provider": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "provider_account_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "environment": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "provider_refund_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "original_journal_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "reversal_journal_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "transition": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
+        },
+        "created_at": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
         }
       }
     }
