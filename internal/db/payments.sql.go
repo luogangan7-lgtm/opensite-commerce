@@ -28,6 +28,30 @@ func (q *Queries) AdmitPaymentInbox(ctx context.Context, arg AdmitPaymentInboxPa
 	return id, err
 }
 
+const allocatePaymentRefund = `-- name: AllocatePaymentRefund :one
+SELECT (parts->0->>'income_minor')::bigint AS income_minor,(parts->0->>'tax_minor')::bigint AS tax_minor,
+ (parts->0->>'shipping_minor')::bigint AS shipping_minor FROM
+ (SELECT app.payments_allocate_refund($1::uuid,NULL,$2::bigint) AS parts) allocation
+`
+
+type AllocatePaymentRefundParams struct {
+	OrderID     pgtype.UUID `json:"order_id"`
+	AmountMinor int64       `json:"amount_minor"`
+}
+
+type AllocatePaymentRefundRow struct {
+	IncomeMinor   int64 `json:"income_minor"`
+	TaxMinor      int64 `json:"tax_minor"`
+	ShippingMinor int64 `json:"shipping_minor"`
+}
+
+func (q *Queries) AllocatePaymentRefund(ctx context.Context, arg AllocatePaymentRefundParams) (AllocatePaymentRefundRow, error) {
+	row := q.db.QueryRow(ctx, allocatePaymentRefund, arg.OrderID, arg.AmountMinor)
+	var i AllocatePaymentRefundRow
+	err := row.Scan(&i.IncomeMinor, &i.TaxMinor, &i.ShippingMinor)
+	return i, err
+}
+
 const bindPaymentDelivery = `-- name: BindPaymentDelivery :exec
 INSERT INTO app.payment_event_deliveries(tenant_id,id,payment_event_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING
 `

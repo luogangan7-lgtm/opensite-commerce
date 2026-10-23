@@ -1864,6 +1864,6 @@
       "owner": "payments",
       "touches_tables": ["payment_events", "payment_event_deliveries"]
     },
-    {"file":"migrations/pending/c19c1-money_return_refund_identity.sql","owner":"payments","touches_tables":["payment_return_refunds","checkout_sessions"]}
+    {"file":"migrations/pending/c19c1-money_return_refund_identity.sql","owner":"payments","touches_tables":["payment_return_refunds","checkout_sessions","returns","return_lines"]}
   ]
 }
