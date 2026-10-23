@@ -8,7 +8,7 @@ ALTER TABLE app.product_listings ADD COLUMN version bigint NOT NULL DEFAULT 1 CH
 CREATE FUNCTION app.catalog_listing_version() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path=pg_catalog,app,pg_temp AS $$
 BEGIN
- IF TG_OP='INSERT' THEN NEW.version:=1; ELSE NEW.version:=OLD.version+1; END IF;
+ IF TG_OP='INSERT' THEN NEW.version:=1; ELSE NEW.version:=OLD.version; END IF;
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.catalog_listing_version() FROM PUBLIC;
