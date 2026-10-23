@@ -12,11 +12,10 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
 )
 
 type ReconciliationHTTP struct {
-	generated.StrictServerInterface
+	httpapi.StrictServerInterface
 	read func(context.Context, string, func(*db.Queries) error) error
 }
 
@@ -29,7 +28,7 @@ func (h *ReconciliationHTTP) Routes() []httpapi.Route {
 		Pattern: "/api/v1/t/{tenant_id}/payments/refund-cases", Access: httpapi.AdminOrAPIKey, Scope: "returns:write"}})
 }
 
-func (h *ReconciliationHTTP) ListRefundCases(ctx context.Context, in generated.ListRefundCasesRequestObject) (generated.ListRefundCasesResponseObject, error) {
+func (h *ReconciliationHTTP) ListRefundCases(ctx context.Context, in httpapi.ListRefundCasesRequestObject) (httpapi.ListRefundCasesResponseObject, error) {
 	tenant, err := httpapi.AuthorizedTenant(ctx)
 	if err != nil {
 		return nil, err
