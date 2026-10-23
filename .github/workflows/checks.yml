@@ -207,6 +207,8 @@ jobs:
           # The full bootstrap suite exceeded Go's 10m package default on slow
           # runners (39779427428, attempts 1-2); keep it bounded within this 45m job.
           go test -race -tags pgx -count=1 -timeout=15m ./...
+          # FIX-268 temporary CI-only determinism receipt; revert after run.
+          go test -race -tags pgx -count=20 -timeout=15m -v -run '^TestQuoteOrdersPGProductionCompositionAdmissionAndConfirm$' ./internal/bootstrap
       - name: sqlc v1.31.1 (verified release artifact)
         if: matrix.lane == 'sqlc'
         run: |
