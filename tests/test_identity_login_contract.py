@@ -116,8 +116,9 @@ def assert_contract(registry, source):
         scope = body['x-required-scope']
         if scope in NON_STAFF_SCOPES:
             assert body.get('x-opensite-access') == 'BuyerCompany', 'buyer scope escaped to another access class'
-        owner = next(m for m in registry['modules']
-                     if any(op['operation_id'] == body['operationId'] for op in m['operations']))
+        owner = next((m for m in registry['modules']
+                      if any(op['operation_id'] == body['operationId'] for op in m['operations'])), None)
+        assert owner is not None, f"registry owner missing for scoped operation {body['operationId']}"
         assert scope in owner['scopes'], f"module {owner['name']} missing scope {scope} for {body['operationId']}"
     view = schemas['APIKeyView']
     assert view['additionalProperties'] is False
@@ -147,7 +148,7 @@ api = yaml.safe_load(source)
 for fault in ['anonymous session', 'login CSRF removed', 'planned status changed', 'actual status changed',
               'bearer key management', 'key CSRF removed', 'unknown scope', 'unknown staff route scope',
               'secret in list', 'secret replay', 'stale buyer exception', 'buyer scope on staff route',
-              'module scope missing']:
+              'module scope missing', 'module operation missing']:
     bad_api = copy.deepcopy(api)
     bad_registry = copy.deepcopy(registry)
     if fault == 'anonymous session':
@@ -168,6 +169,9 @@ for fault in ['anonymous session', 'login CSRF removed', 'planned status changed
         bad_api['paths']['/api/v1/t/{tenant_id}/quotes/{quote_id}']['get']['x-required-scope'] = 'quotes:convert'
     elif fault == 'module scope missing':
         next(m for m in bad_registry['modules'] if m['name'] == 'quotes')['scopes'].remove('quotes:convert')
+    elif fault == 'module operation missing':
+        quotes = next(m for m in bad_registry['modules'] if m['name'] == 'quotes')
+        quotes['operations'] = [op for op in quotes['operations'] if op['operation_id'] != 'getQuote']
     elif fault == 'secret in list':
         bad_api['components']['schemas']['APIKeyView']['properties']['key'] = {'type': 'string'}
     elif fault == 'secret replay':

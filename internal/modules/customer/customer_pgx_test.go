@@ -502,7 +502,7 @@ func TestCustomerPGEqualIdleAndAbsoluteDeadlinesShareOneDatabaseInstant(t *testi
 func TestCustomerPGRejectsExecutorPrivilegeDrift(t *testing.T) {
 	f := customerPrivilegePG(t)
 	// Register cleanup before injection; it must run even when the assertion
-	// fails or the request context expires. Other customer PG tests are serial.
+	// fails or the request context expires. Only this private database is changed.
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -570,7 +570,8 @@ func TestCustomerPGRejectsGlobalCounterPrivilegeDrift(t *testing.T) {
 // Tenant UUIDs cannot isolate schema/table ACLs: require a separate database.
 func customerPrivilegePG(t *testing.T) customerPGFixture {
 	t.Helper()
-	f := customerPG(t)
+	ownerDSN, customerDSN := customerPrivilegeDSNs(t)
+	f := customerPGWithDSNs(t, ownerDSN, customerDSN)
 	source, err := url.Parse(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		t.Fatal("CUSTOMER_PG_SOURCE_URL_INVALID")
