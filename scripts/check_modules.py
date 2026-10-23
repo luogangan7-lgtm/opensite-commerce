@@ -518,6 +518,9 @@ TRUSTED_TX = re.compile(r"\bRunTrustedTx\b")
 
 
 def raw_connection_allowed(relative):
+    # The single tagged fixture owns private common-lock sessions, never exports them.
+    if relative == Path("internal/platform/pgxtest/roles_pgx.go"):
+        return True
     suffix = RAW_CONNECTION_ALLOWED.get(relative.parent)
     return suffix is not None and relative.name.endswith(suffix)
 

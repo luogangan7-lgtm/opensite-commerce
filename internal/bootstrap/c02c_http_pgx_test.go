@@ -125,11 +125,7 @@ func c02cHTTPPGFixture(t *testing.T) (context.Context, *pgxadapter.IdentityRunne
 		if c02cHTTPPSQL(cleanup, source, "DROP DATABASE IF EXISTS "+pgx.Identifier{database}.Sanitize()+" WITH (FORCE);") != nil {
 			t.Error("HTTP fixture database cleanup failed")
 		}
-		for _, role := range []string{authRole, runtimeRole} {
-			if c02cHTTPPSQL(cleanup, source, "DROP ROLE IF EXISTS "+pgx.Identifier{role}.Sanitize()+";") != nil {
-				t.Error("HTTP fixture role cleanup failed")
-			}
-		}
+
 	})
 	u.Path = "/" + database
 	fixtureDSN := u.String()
@@ -161,16 +157,12 @@ func c02cHTTPPGFixture(t *testing.T) (context.Context, *pgxadapter.IdentityRunne
 				return fmt.Errorf("HTTP fixture migration failed: %s", filepath.Base(path))
 			}
 		}
-		for _, entry := range []struct{ role, credential, capability string }{{authRole, authCredential, "app_auth"}, {runtimeRole, runtimeCredential, "app_runtime"}} {
-			sql := "CREATE ROLE " + pgx.Identifier{entry.role}.Sanitize() + " LOGIN INHERIT PASSWORD '" + entry.credential + "'; GRANT " + entry.capability + " TO " + pgx.Identifier{entry.role}.Sanitize() + ";"
-			if c02cHTTPPSQL(ctx, source, sql) != nil {
-				return errors.New("HTTP fixture role creation failed")
-			}
-		}
 		return nil
 	}); initializationErr != nil {
 		t.Fatal("fixture initialization failed", initializationErr)
 	}
+	pgxtest.NewRole(t, ctx, fixtureDSN, authRole, authCredential, true, "app_auth")
+	pgxtest.NewRole(t, ctx, fixtureDSN, runtimeRole, runtimeCredential, true, "app_runtime")
 	admin, err := pgxadapter.OpenIdentity(ctx, fixtureDSN)
 	if err != nil {
 		t.Fatal("HTTP fixture maintenance unavailable")

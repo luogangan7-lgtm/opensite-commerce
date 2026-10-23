@@ -210,18 +210,7 @@ func TestCMSWritePublishRestorePG(t *testing.T) {
 		}
 		role := "c09b_public_" + strings.ReplaceAll(site, "-", "")[:12]
 		password := strings.ReplaceAll(newUUID(t), "-", "")
-		quoted := pgx.Identifier{role}.Sanitize()
-		if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, "CREATE ROLE "+quoted+" LOGIN INHERIT NOSUPERUSER NOBYPASSRLS PASSWORD '"+password+"';GRANT app_domain_resolver TO "+quoted)
-			return err
-		}); err != nil {
-			t.Fatal(err)
-		}
-		defer func() {
-			if err := admin.InMaintenance(context.Background(), func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, "DROP ROLE "+quoted); return err }); err != nil {
-				t.Error(err)
-			}
-		}()
+		pgxtest.NewRole(t, ctx, dsn, role, password, true, "app_domain_resolver")
 		u, err := url.Parse(dsn)
 		if err != nil {
 			t.Fatal(err)

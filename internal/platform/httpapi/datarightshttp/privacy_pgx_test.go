@@ -3,7 +3,8 @@
 // Responsibilities: prove HTTP replay, native River enqueue, failure rollback,
 // signed worker duplicates and capability custody against disposable real PG.
 // Dependencies: approved pgxadapter transactions and public service/contracts;
-// focused integration gate runs with C22A_DATABASE_URL, no raw connections.
+// focused integration gate runs with C22A_DATABASE_URL plus pgxtest.NewRole's
+// DATABASE_URL lock connection, no raw connections.
 package datarightshttp_test
 
 import (
@@ -73,6 +74,12 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 	if maintenanceDSN == "" {
 		t.Fatal("C22A_MAINTENANCE_DATABASE_URL required")
 	}
+	// pgxtest.NewRole always locks through DATABASE_URL (roles_pgx.go:43); this
+	// fixture declares only C22A_*, so name that dependency instead of letting
+	// the helper fail with a generic connection error.
+	if os.Getenv("DATABASE_URL") == "" {
+		t.Fatal("DATABASE_URL required by pgxtest.NewRole lock connection")
+	}
 	admin, closeAdmin, err := pgxadapter.Open(ctx, maintenanceDSN)
 	if err != nil {
 		t.Fatal("fixture database unavailable")
@@ -81,13 +88,7 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 	tenantID, customerID, actorID := uuid.NewString(), uuid.NewString(), uuid.NewString()
 	login := "c22a_http_" + strings.ReplaceAll(tenantID[:8], "-", "")
 	password := strings.ReplaceAll(uuid.NewString(), "-", "")
-	// Register cleanup immediately after role creation; credentials never enter logs.
-	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, "CREATE ROLE "+pgx.Identifier{login}.Sanitize()+" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT PASSWORD '"+password+"'")
-		return err
-	}); err != nil {
-		t.Fatal("fixture login creation failed")
-	}
+	pgxtest.NewRole(t, ctx, maintenanceDSN, login, password, false, "app_runtime")
 	defer func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stop()
@@ -102,16 +103,12 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 					return err
 				}
 			}
-			_, err := tx.Exec(ctx, "DROP ROLE "+pgx.Identifier{login}.Sanitize())
-			return err
+			return nil
 		}); err != nil {
 			t.Errorf("fixture cleanup: %v", err)
 		}
 	}()
 	if err = admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "GRANT app_runtime TO "+pgx.Identifier{login}.Sanitize()); err != nil {
-			return err
-		}
 		if _, err := tx.Exec(ctx, "INSERT INTO app.tenants(id,name) VALUES($1::uuid,'C22a HTTP fixture')", tenantID); err != nil {
 			return err
 		}

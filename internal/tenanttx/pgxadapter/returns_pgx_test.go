@@ -24,22 +24,21 @@ func TestReturnsCoordinatorDedicatedLoginPostgres(t *testing.T) {
 	if dsn == "" {
 		pgxtest.Skip(t, "NOT_RUN: disposable PostgreSQL required")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
+	login := "c19c_" + uuid.NewString()[:8]
 	admin, err := pgxadapter.OpenAuthorization(ctx, dsn)
 	if err != nil {
 		t.Fatal("maintenance fixture unavailable")
 	}
 	defer admin.Close(context.Background())
-	login := "c19c_" + uuid.NewString()[:8]
+	fixtureRole := pgxtest.NewRole(t, ctx, dsn, login, "ci_returns_fixture_only_123456789", true, "app_returns_service")
 	exec := func(sql string) {
 		t.Helper()
 		if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, sql); return err }); err != nil {
 			t.Fatal(err)
 		}
 	}
-	exec("CREATE ROLE " + login + " LOGIN INHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD 'ci_returns_fixture_only_123456789'; GRANT app_returns_service TO " + login)
-	defer exec("DROP OWNED BY " + login + "; DROP ROLE " + login)
 	u, err := url.Parse(dsn)
 	if err != nil {
 		t.Fatal("invalid fixture DSN")
@@ -67,10 +66,7 @@ func TestReturnsCoordinatorDedicatedLoginPostgres(t *testing.T) {
 	}
 	closeRuntime()
 	for _, fault := range []struct{ add, undo string }{
-		{"GRANT app_runtime TO " + login, "REVOKE app_runtime FROM " + login},
 		{"GRANT SELECT(password_hash) ON app.users TO " + login, "REVOKE SELECT(password_hash) ON app.users FROM " + login},
-		{"ALTER ROLE " + login + " BYPASSRLS", "ALTER ROLE " + login + " NOBYPASSRLS"},
-		{"ALTER ROLE " + login + " NOINHERIT", "ALTER ROLE " + login + " INHERIT"},
 	} {
 		exec(fault.add)
 		bad, err := open()
@@ -78,6 +74,25 @@ func TestReturnsCoordinatorDedicatedLoginPostgres(t *testing.T) {
 			bad.Close()
 		}
 		exec(fault.undo)
+		if err == nil {
+			t.Fatal("unsafe coordinator capability accepted")
+		}
+	}
+	for _, attribute := range []struct{ add, undo string }{{"BYPASSRLS", "NOBYPASSRLS"}, {"NOINHERIT", "INHERIT"}, {"membership", ""}} {
+		if attribute.add == "membership" {
+			fixtureRole.Grant(t, ctx, "app_runtime", "")
+		} else {
+			fixtureRole.Alter(t, ctx, attribute.add)
+		}
+		bad, err := open()
+		if bad != nil {
+			bad.Close()
+		}
+		if attribute.add == "membership" {
+			fixtureRole.Revoke(t, ctx, "app_runtime")
+		} else {
+			fixtureRole.Alter(t, ctx, attribute.undo)
+		}
 		if err == nil {
 			t.Fatal("unsafe coordinator capability accepted")
 		}
