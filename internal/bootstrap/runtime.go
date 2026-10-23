@@ -73,7 +73,11 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	var customerRunner *pgxadapter.CustomerRunner
 	var quoteRuntime runtimeQuoteRunner
 	var closeQuoteRuntime func()
+	var closeInquiryPublic func()
 	closeRuntime := func() {
+		if closeInquiryPublic != nil {
+			closeInquiryPublic()
+		}
 		if closeQuoteRuntime != nil {
 			closeQuoteRuntime()
 		}
@@ -359,6 +363,15 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 	if err != nil {
 		closeRuntime()
 		return Config{}, nil, err
+	}
+	if dsn := os.Getenv("OSC_PUBLIC_DATABASE_URL"); dsn != "" && config.QuotesInquiryResolver == nil {
+		var public *publish.Module
+		public, closeInquiryPublic, err = publish.Open(startup, dsn)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, errors.New("quote public resolver is unavailable or misconfigured")
+		}
+		config.QuotesInquiryResolver = quoteInquiryResolver(public)
 	}
 	wireReturns(&config)
 	return config, closeRuntime, nil

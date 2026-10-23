@@ -59,6 +59,9 @@ func (r runtimeQuoteRunner) InTenant(ctx context.Context, tenant string, fn func
 	if actor, err := qc.ActorFromContext(ctx); err == nil && actor.TenantID() == tenant {
 		return r.run(ctx, tenant, fn)
 	}
+	if inquiry, err := qc.InquiryFromContext(ctx); err == nil && inquiry.TenantID == tenant {
+		return r.run(ctx, tenant, fn)
+	}
 	if actor, ok := customercontract.ActorFromContext(ctx); ok && actor.TenantID == tenant && actor.CustomerID != "" {
 		return r.snapshot(ctx, tenant, fn)
 	}
