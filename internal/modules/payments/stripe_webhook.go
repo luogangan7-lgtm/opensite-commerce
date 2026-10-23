@@ -77,13 +77,13 @@ func (s *Stripe) Receive(ctx context.Context, raw []byte, signature string) (con
 		return zero, invalid()
 	}
 	o := e.Data.Object
-	status := map[string]payment.PaymentStatus{"payment_intent.succeeded": payment.StatusCaptured, "payment_intent.canceled": payment.StatusCanceled, "payment_intent.payment_failed": payment.StatusFailed, "refund.created": payment.StatusPartiallyRefunded, "refund.updated": payment.StatusPartiallyRefunded}[e.Type]
+	status := map[string]payment.PaymentStatus{"payment_intent.succeeded": payment.StatusCaptured, "payment_intent.canceled": payment.StatusCanceled, "payment_intent.payment_failed": payment.StatusFailed, "refund.created": payment.StatusPartiallyRefunded, "refund.updated": payment.StatusPartiallyRefunded, "refund.failed": payment.StatusPartiallyRefunded}[e.Type]
 	if status == "" {
 		return contract.Receipt{EventID: e.ID, Status: "ignored"}, nil
 	}
 	ref := o.ID
 	refundID := ""
-	if e.Type == "refund.created" || e.Type == "refund.updated" {
+	if e.Type == "refund.created" || e.Type == "refund.updated" || e.Type == "refund.failed" {
 		if !strings.HasPrefix(o.ID, "re_") || len(o.ID) > 128 || !accountPattern.MatchString(o.ID) ||
 			!strings.HasPrefix(o.PaymentIntent, "pi_") || len(o.PaymentIntent) > 200 || !stripeID.MatchString(o.PaymentIntent) ||
 			!strings.HasPrefix(e.ID, "evt_") || len(e.ID) > 128 || !accountPattern.MatchString(e.ID) ||
@@ -92,6 +92,27 @@ func (s *Stripe) Receive(ctx context.Context, raw []byte, signature string) (con
 		}
 		if o.Status != "succeeded" && o.Status != "failed" && o.Status != "canceled" {
 			return contract.Receipt{EventID: e.ID, Status: "ignored"}, nil
+		}
+		if o.Status != "succeeded" && s.config.TerminalRun != nil {
+			// Authenticate the mapped account before retrieval, and commit before HTTP.
+			if err := s.config.Run(ctx, s.account, func(context.Context, pgx.Tx, string, time.Time) error { return nil }); err != nil {
+				return zero, err
+			}
+			var current stripeObject
+			if err := s.request(ctx, "GET", "refunds/"+o.ID, "", nil, &current); err != nil {
+				return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp, "refund_terminal_retrieval_failed")
+			}
+			// Refund has no livemode field in Stripe's schema. Test-key scope,
+			// signed event mode and the mapped account establish the environment.
+			if current.ID != o.ID || current.PaymentIntent != o.PaymentIntent || current.Amount != o.Amount ||
+				current.Currency != o.Currency || (current.Livemode != nil && *current.Livemode) ||
+				(current.Status != "failed" && current.Status != "canceled") {
+				return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp, "refund_terminal_unconfirmed")
+			}
+			version, _ := strconv.ParseInt(current.Metadata["osc_version"], 10, 64)
+			return s.Module.receiveTerminal(ctx, raw, envelope{EventID: e.ID, AccountID: s.account, OrderID: current.Metadata["osc_order"],
+				OrderVersion: version, ProviderRef: current.PaymentIntent, RefundID: current.ID,
+				Status: payment.PaymentStatus(current.Status), AmountMinor: current.Amount, Currency: strings.ToUpper(current.Currency)}, timestamp)
 		}
 		if o.Metadata["osc_order"] == "" || o.Status != "succeeded" {
 			reason := "unmatched_refund"

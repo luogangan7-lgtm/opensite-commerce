@@ -40,3 +40,10 @@ SELECT app.payments_match_return_refund(sqlc.arg(order_id)::uuid,sqlc.arg(provid
 SELECT (parts->0->>'income_minor')::bigint AS income_minor,(parts->0->>'tax_minor')::bigint AS tax_minor,
  (parts->0->>'shipping_minor')::bigint AS shipping_minor FROM
  (SELECT app.payments_allocate_refund(sqlc.arg(order_id)::uuid,NULL,sqlc.arg(amount_minor)::bigint) AS parts) allocation;
+
+-- name: FinalizeRefundCompensation :one
+SELECT app.payments_finalize_refund(sqlc.arg(fact)::jsonb)::jsonb AS result;
+-- name: IsPaymentRefundTerminal :one
+SELECT app.payments_refund_terminal(sqlc.arg(account)::text,sqlc.arg(provider_refund_id)::text,sqlc.arg(order_id)::uuid,sqlc.arg(provider_ref)::text,sqlc.arg(payment_version)::bigint,sqlc.arg(amount_minor)::bigint,sqlc.arg(currency)::text)::boolean AS terminal;
+-- name: PostPaymentReturnRefund :one
+SELECT app.payments_post_return_refund(sqlc.arg(return_id)::uuid,sqlc.arg(attempt_key)::text,sqlc.arg(provider_refund_id)::text)::uuid AS id;

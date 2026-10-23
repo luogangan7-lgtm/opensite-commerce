@@ -144,9 +144,8 @@ BEGIN
  r:=app.returns_lock_refund(rid,'privacy-return-refund');
  IF r->>'status'<>'refund_reconcile' OR r->>'provider_ref'<>'opaque-privacy-refund-capture'
   OR r->>'reason'<>'[erased]' THEN RAISE EXCEPTION 'PRIVACY_GATE erased frozen recovery authority'; END IF;
- journal:=app.post_ledger(t,r->>'currency','return',rid::text,'refund',
-  ARRAY[(r->>'income_account_id')::uuid,(r->>'cash_account_id')::uuid],
-  ARRAY['debit','credit'],ARRAY[(r->>'income_minor')::bigint,(r->>'refund_minor')::bigint]);
+ -- Payments derives principal from the sealed RMA; Returns has no generic posting grant.
+ journal:=app.payments_post_return_refund(rid,r->>'refund_key','privacy-refund-after-erasure');
  receipt:=app.returns_complete_refund(rid,r->>'refund_key',r->>'provider_ref',journal);
  IF receipt->>'status'<>'refunded' OR receipt->>'provider_ref'<>r->>'provider_ref' THEN
   RAISE EXCEPTION 'PRIVACY_GATE reconcile after erase failed'; END IF;

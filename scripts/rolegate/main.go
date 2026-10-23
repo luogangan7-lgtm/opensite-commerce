@@ -1,0 +1,474 @@
+// Command rolegate rejects cluster-role SQL written directly in Go tests.
+// Responsibilities: parse every *_test.go outside the role-fixture helper package,
+// fold string literals and named string constants (package-level and function-local),
+// and fail on CREATE/ALTER/DROP ROLE, role GRANT/REVOKE, and pg_auth_members writes.
+// Dependencies: Go standard library only (go/ast, go/parser, go/token, strconv).
+// Called by: tests/test_pg_role_fixture.py (offline lane).
+// Invariants: comments and testdata directories are ignored; the allowlist keeps
+// the common advisory-lock helper's writes legal; exit 1 on findings.
+// Known limitations: see README.md — this gate catches accidental bypasses only;
+// pgxtest.NewRole is the real control, and fmt.Sprintf/strings.Join assembly is
+// deliberately not evaluated.
+package main
+
+import (
+	"flag"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+// The helper package owns the common advisory lock, so only it may write roles.
+const defaultAllow = "internal/platform/pgxtest/"
+
+var (
+	createRole = regexp.MustCompile(`\bCREATE ROLE\b`)
+	alterRole  = regexp.MustCompile(`\bALTER ROLE\b`)
+	dropRole   = regexp.MustCompile(`\bDROP ROLE\b`)
+	grantWord  = regexp.MustCompile(`\bGRANT\b`)
+	revokeWord = regexp.MustCompile(`\bREVOKE\b`)
+	onWord     = regexp.MustCompile(`\bON\b`)
+	toWord     = regexp.MustCompile(`\bTO\b`)
+	fromWord   = regexp.MustCompile(`\bFROM\b`)
+	spaceRun   = regexp.MustCompile(`\s+`)
+	// Object privileges contain ON; only cluster-global role memberships are banned.
+	// The negative ON check mirrors the retired regex: any ON in the statement skips it.
+	authMembers = regexp.MustCompile(`\b(?:INSERT INTO|UPDATE|DELETE FROM) (?:PG_CATALOG\.)?PG_AUTH_MEMBERS\b`)
+)
+
+type parsedFile struct {
+	dir    string
+	pkg    string
+	file   *ast.File
+	isTest bool
+}
+
+type constDef struct {
+	name string
+	expr ast.Expr
+}
+
+type finding struct {
+	file  string
+	line  int
+	col   int
+	value string
+}
+
+func main() {
+	root := flag.String("root", ".", "directory to scan")
+	allow := flag.String("allow", defaultAllow, "comma-separated path prefixes that may write roles")
+	flag.Parse()
+
+	absRoot, err := filepath.Abs(*root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: rolegate: %v\n", err)
+		os.Exit(2)
+	}
+	allows := normalizeAllows(*allow)
+
+	fset := token.NewFileSet()
+	var files []parsedFile
+	var parseErrs []string
+	walkErr := filepath.WalkDir(absRoot, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, relErr := filepath.Rel(absRoot, p)
+		if relErr != nil {
+			return relErr
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if p == absRoot {
+				return nil
+			}
+			switch d.Name() {
+			case ".git", "node_modules", "vendor", "testdata":
+				return fs.SkipDir
+			}
+			if isAllowed(rel+"/", allows) {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".go") {
+			return nil
+		}
+		isTest := strings.HasSuffix(d.Name(), "_test.go")
+		if isTest && isAllowed(rel, allows) {
+			return nil
+		}
+		source, readErr := os.ReadFile(p)
+		if readErr != nil {
+			parseErrs = append(parseErrs, fmt.Sprintf("%s: %v", rel, readErr))
+			return nil
+		}
+		f, parseErr := parser.ParseFile(fset, rel, source, parser.SkipObjectResolution)
+		if parseErr != nil {
+			parseErrs = append(parseErrs, parseErr.Error())
+			if f == nil {
+				return nil
+			}
+		}
+		files = append(files, parsedFile{
+			dir:    path.Dir(rel),
+			pkg:    f.Name.Name,
+			file:   f,
+			isTest: isTest,
+		})
+		return nil
+	})
+	if walkErr != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: rolegate: walk %s: %v\n", absRoot, walkErr)
+		os.Exit(2)
+	}
+
+	// Constants may be declared in any file of the package, so resolve them after
+	// the whole tree is parsed. Only same-package top-level constants are folded;
+	// function-local constants are folded per function body while scanning.
+	defs := make(map[string][]constDef)
+	for _, pf := range files {
+		collectConsts(pf.file, pkgKey(pf.dir, pf.pkg), defs)
+	}
+	envs := make(map[string]map[string]string, len(defs))
+	for key, list := range defs {
+		envs[key] = resolveConsts(list, nil)
+	}
+
+	seen := make(map[string]bool)
+	var findings []finding
+	for _, pf := range files {
+		if !pf.isTest {
+			continue
+		}
+		env := envs[pkgKey(pf.dir, pf.pkg)]
+		visit := func(expr ast.Expr, scope map[string]string) bool {
+			value, ok := evalString(expr, scope)
+			if !ok {
+				// Not foldable on its own: keep descending so the foldable parts
+				// of a split statement (e.g. "CREATE " + name) are still seen.
+				return false
+			}
+			// Maximal foldable expression: judge the folded value and never
+			// re-check its constituents. `"GRANT " + "SELECT ON t TO r"` is an
+			// object privilege, and the bare "GRANT " literal is only a fragment.
+			if clusterRoleSQL(value) {
+				pos := fset.Position(expr.Pos())
+				key := fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column)
+				if !seen[key] {
+					seen[key] = true
+					findings = append(findings, finding{
+						file:  pos.Filename,
+						line:  pos.Line,
+						col:   pos.Column,
+						value: value,
+					})
+				}
+			}
+			return true
+		}
+		walkScope(pf.file, env, visit)
+	}
+
+	sort.Slice(findings, func(i, j int) bool {
+		if findings[i].file != findings[j].file {
+			return findings[i].file < findings[j].file
+		}
+		if findings[i].line != findings[j].line {
+			return findings[i].line < findings[j].line
+		}
+		return findings[i].col < findings[j].col
+	})
+	for _, f := range findings {
+		fmt.Printf("%s:%d: cluster role SQL must use pgxtest.NewRole (%s)\n", f.file, f.line, quoteValue(f.value))
+	}
+
+	if len(parseErrs) > 0 {
+		for _, parseErr := range parseErrs {
+			fmt.Fprintln(os.Stderr, parseErr)
+		}
+		fmt.Fprintln(os.Stderr, "FAIL: rolegate: unparseable Go source")
+		os.Exit(2)
+	}
+	if len(findings) > 0 {
+		fmt.Fprintf(os.Stderr, "FAIL: rolegate: %d cluster-role write(s)\n", len(findings))
+		os.Exit(1)
+	}
+}
+
+func normalizeAllows(raw string) []string {
+	var allows []string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(strings.TrimPrefix(filepath.ToSlash(part), "./"))
+		if part == "" {
+			continue
+		}
+		if !strings.HasSuffix(part, "/") {
+			part += "/"
+		}
+		allows = append(allows, part)
+	}
+	return allows
+}
+
+func isAllowed(rel string, allows []string) bool {
+	for _, allow := range allows {
+		if strings.HasPrefix(rel, allow) {
+			return true
+		}
+	}
+	return false
+}
+
+func pkgKey(dir, pkg string) string {
+	return dir + "\x00" + pkg
+}
+
+// walkScope visits every expression of n with the string constants visible at that
+// point. Function bodies (and literals) extend the enclosing scope with their own
+// CONST declarations, so `const a = "CREATE "; ... db.Exec(ctx, a+b)` is folded.
+// Block-local shadowing inside one body is resolved coarsely: the last declaration
+// of a name wins for the whole body.
+func walkScope(n ast.Node, env map[string]string, visit func(ast.Expr, map[string]string) bool) {
+	switch node := n.(type) {
+	case *ast.FuncDecl:
+		if node.Body != nil {
+			walkScope(node.Body, scopeWith(env, node.Body), visit)
+		}
+		return
+	case *ast.FuncLit:
+		walkScope(node.Body, scopeWith(env, node.Body), visit)
+		return
+	}
+	if expr, ok := n.(ast.Expr); ok && visit(expr, env) {
+		return
+	}
+	ast.Inspect(n, func(child ast.Node) bool {
+		if child == nil {
+			return true
+		}
+		if child == n {
+			return true
+		}
+		walkScope(child, env, visit)
+		return false
+	})
+}
+
+// scopeWith returns env extended with the CONST declarations of one function body.
+// Declarations in nested function literals belong to that literal's own scope and
+// are skipped here; they are picked up when the literal itself is walked.
+func scopeWith(env map[string]string, body *ast.BlockStmt) map[string]string {
+	var list []constDef
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.GenDecl:
+			if node.Tok != token.CONST {
+				return true
+			}
+			list = append(list, constDefsFrom(node)...)
+			return false
+		}
+		return true
+	})
+	if len(list) == 0 {
+		return env
+	}
+	scope := resolveConsts(list, env)
+	// A local declaration shadows a package constant even when it cannot be folded
+	// (e.g. `const n = 3` under a package string constant named n): drop names that
+	// no local declaration resolves to a string.
+	folded := make(map[string]bool, len(list))
+	for _, def := range list {
+		if _, ok := evalString(def.expr, scope); ok {
+			folded[def.name] = true
+		}
+	}
+	for _, def := range list {
+		if !folded[def.name] {
+			delete(scope, def.name)
+		}
+	}
+	return scope
+}
+
+func collectConsts(file *ast.File, key string, defs map[string][]constDef) {
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		defs[key] = append(defs[key], constDefsFrom(gen)...)
+	}
+}
+
+// constDefsFrom expands one CONST declaration into name/expression pairs, skipping
+// blank names and handling the implicit repetition form `const ( a = "x"; b )`.
+func constDefsFrom(gen *ast.GenDecl) []constDef {
+	var out []constDef
+	var lastExpr ast.Expr
+	for _, spec := range gen.Specs {
+		valueSpec, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		if len(valueSpec.Values) == 0 {
+			// `const ( a = "x"; b )` repeats the previous expression.
+			if lastExpr == nil {
+				continue
+			}
+			for _, name := range valueSpec.Names {
+				if name.Name != "_" {
+					out = append(out, constDef{name: name.Name, expr: lastExpr})
+				}
+			}
+			continue
+		}
+		lastExpr = valueSpec.Values[len(valueSpec.Values)-1]
+		for i, name := range valueSpec.Names {
+			expr := lastExpr
+			if i < len(valueSpec.Values) {
+				expr = valueSpec.Values[i]
+			}
+			if name.Name != "_" {
+				out = append(out, constDef{name: name.Name, expr: expr})
+			}
+		}
+	}
+	return out
+}
+
+// resolveConsts folds string constants to a fixed point so later declarations may
+// refer to earlier or later ones in the same scope. base is the enclosing scope
+// (package constants for a function body); it supplies values and is not mutated.
+func resolveConsts(list []constDef, base map[string]string) map[string]string {
+	values := make(map[string]string, len(list)+len(base))
+	for name, value := range base {
+		values[name] = value
+	}
+	pending := append([]constDef(nil), list...)
+	for len(pending) > 0 {
+		var next []constDef
+		progress := false
+		for _, def := range pending {
+			value, ok := evalString(def.expr, values)
+			if !ok {
+				next = append(next, def)
+				continue
+			}
+			if previous, exists := values[def.name]; !exists || previous != value {
+				values[def.name] = value
+				progress = true
+			}
+		}
+		if !progress {
+			break
+		}
+		pending = next
+	}
+	return values
+}
+
+// evalString folds string literals, `+` concatenations, parentheses, constants
+// visible in the current scope, and `string(x)` conversions. Unknown operands make
+// the expression unevaluable rather than guessed.
+func evalString(expr ast.Expr, consts map[string]string) (string, bool) {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		if e.Kind != token.STRING {
+			return "", false
+		}
+		value, err := strconv.Unquote(e.Value)
+		if err != nil {
+			return "", false
+		}
+		return value, true
+	case *ast.ParenExpr:
+		return evalString(e.X, consts)
+	case *ast.Ident:
+		value, ok := consts[e.Name]
+		return value, ok
+	case *ast.BinaryExpr:
+		if e.Op != token.ADD {
+			return "", false
+		}
+		left, leftOK := evalString(e.X, consts)
+		right, rightOK := evalString(e.Y, consts)
+		if !leftOK || !rightOK {
+			return "", false
+		}
+		return left + right, true
+	case *ast.CallExpr:
+		if ident, ok := e.Fun.(*ast.Ident); ok && ident.Name == "string" && len(e.Args) == 1 {
+			return evalString(e.Args[0], consts)
+		}
+	}
+	return "", false
+}
+
+// clusterRoleSQL normalizes case and whitespace before matching so keywords split
+// across concatenated literals are still caught. GRANT/REVOKE statements carrying
+// ON are object privileges, not role membership changes.
+func clusterRoleSQL(value string) bool {
+	// Keep leading/trailing spaces: the retired regex required whitespace after
+	// GRANT/REVOKE, so a prose suffix such as "idempotent revoke" must not match.
+	normalized := spaceRun.ReplaceAllString(strings.ToUpper(value), " ")
+	if normalized == "" {
+		return false
+	}
+	if createRole.MatchString(normalized) || alterRole.MatchString(normalized) || dropRole.MatchString(normalized) {
+		return true
+	}
+	if roleMembership(normalized, grantWord, toWord) || roleMembership(normalized, revokeWord, fromWord) {
+		return true
+	}
+	return authMembers.MatchString(normalized)
+}
+
+func roleMembership(normalized string, keyword, terminal *regexp.Regexp) bool {
+	for _, loc := range keyword.FindAllStringIndex(normalized, -1) {
+		// The retired regex required whitespace after the keyword, so a prose
+		// suffix ("idempotent revoke") or "GRANT;" is not role SQL.
+		if loc[1] >= len(normalized) || normalized[loc[1]] != ' ' {
+			continue
+		}
+		rest := strings.TrimLeft(normalized[loc[1]:], " ")
+		if rest == "" {
+			return true // keyword plus whitespace at end of string
+		}
+		if rest[0] == ';' {
+			continue // `$` did not match before a statement separator
+		}
+		if end := strings.IndexByte(rest, ';'); end >= 0 {
+			rest = rest[:end]
+		}
+		rest = strings.TrimSpace(rest)
+		if onWord.MatchString(rest) {
+			continue
+		}
+		if terminal.MatchString(rest) {
+			return true
+		}
+	}
+	return false
+}
+
+func quoteValue(value string) string {
+	const limit = 120
+	if len(value) > limit {
+		value = value[:limit] + "..."
+	}
+	return strconv.Quote(value)
+}

@@ -58,7 +58,7 @@ func NewStripe(c Config) (*Stripe, error) {
 	if method == "" {
 		method = "pm_card_visa"
 	}
-	if method != "pm_card_visa" && method != "pm_card_chargeDeclined" {
+	if method != "pm_card_visa" && method != "pm_card_chargeDeclined" && method != "pm_card_refundFail" {
 		return nil, errors.New("Stripe sandbox requires an approved test PaymentMethod")
 	}
 	c.Provider, c.Key = "stripe", []byte(whsec)

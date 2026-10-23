@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	paymentscontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"log/slog"
 	"net/http"
 	"time"
@@ -70,6 +71,7 @@ type Config struct {
 	CustomerSecret           []byte
 	// ReturnsCoordinator is an unconsumed trusted composition seam; it enables no HTTP operation.
 	ReturnsCoordinator returns.Config
+	PaymentTerminalRun paymentscontract.Run
 }
 
 func New(config Config) (server *http.Server, err error) {

@@ -79,8 +79,17 @@ func (a fulfillmentAccounts) RefundAccounts(_ context.Context, _ pgx.Tx, tenant,
 }
 
 type failingRefundJournal struct {
+	payments.RefundJournal
 	fail   bool
 	ledger *ledger.Module
+}
+
+func (l *failingRefundJournal) PostReturnRefund(ctx context.Context, tx pgx.Tx, id, key, refund string, in ledgercontract.Transaction) (string, error) {
+	if l.fail {
+		l.fail = false
+		return "", errors.New("injected post-provider journal failure")
+	}
+	return l.RefundJournal.PostReturnRefund(ctx, tx, id, key, refund, in)
 }
 
 func (l *failingRefundJournal) Post(ctx context.Context, tx pgx.Tx, in ledgercontract.Transaction) (string, error) {
@@ -173,7 +182,7 @@ func newFulfillmentFixture(t *testing.T) fulfillmentFixture {
 		t.Fatal(err)
 	}
 	f.journal = &failingRefundJournal{ledger: ledger.New()}
-	f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: f.tenant, OrderID: f.order.ID, ProviderRef: intent.ProviderRef, OrderVersion: intentRequest.OrderVersion, Paid: intentRequest.Amount}}, Accounts: fulfillmentAccounts{tenant: f.tenant, accounts: accounts}, Ledger: payments.RefundJournal{Ledger: f.journal}})
+	f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: f.tenant, OrderID: f.order.ID, ProviderRef: intent.ProviderRef, OrderVersion: intentRequest.OrderVersion, Paid: intentRequest.Amount}}, Accounts: fulfillmentAccounts{tenant: f.tenant, accounts: accounts}, Ledger: f.journal})
 	return f
 }
 func (f fulfillmentFixture) stock(t *testing.T) int64 {
@@ -231,7 +240,7 @@ func TestFulfillmentRefundReconcileAfterCustomerErasure(t *testing.T) {
 	}
 	// Recovery must use the frozen provider/key/accounts after a restart, even
 	// with no mutable capture/account resolver available.
-	f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Ledger: payments.RefundJournal{Ledger: f.journal}})
+	f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Ledger: f.journal})
 	completed, err := f.returns.Refund(f.ctx, f.tenant, refund)
 	if err != nil || completed.Status != "refunded" || len(f.payments.Events()) != 3 {
 		t.Fatalf("erasure broke durable provider recovery: %+v err=%v effects=%d", completed, err, len(f.payments.Events()))

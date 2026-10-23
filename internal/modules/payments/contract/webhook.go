@@ -31,6 +31,7 @@ type Config struct {
 	// It must be idempotent; retries can observe the same committed fact again.
 	ObserveCommittedCapture func(payment.VerifiedEvent) error
 	Provider                string
+	TerminalRun             Run
 	// Admit is mandatory for real-provider create/capture; implementation reads
 	// durable cart consent through Checkout's public admission capability.
 	Admit func(context.Context, payment.CreatePaymentIntent, bool) error
