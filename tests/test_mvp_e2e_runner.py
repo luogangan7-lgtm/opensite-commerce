@@ -132,6 +132,21 @@ class BrowserReceiptTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
                 module.verify_browser_report(report)
 
+    def test_rma_journey_is_required_in_both_projects(self):
+        module = self.runner()
+        title = 'real shipment → return → refund journey'
+        self.assertIn(title, module.ACTIVE_TESTS)
+        report = self.browser_report(module)
+        self.assertEqual(module.verify_browser_report(report)['expected'], 38)
+        for mutation in ('remove', 'wrong_file', 'skip'):
+            changed = json.loads(json.dumps(report))
+            rma = next(s for s in changed['suites'][0]['specs'] if s['title'] == title)
+            if mutation == 'remove': changed['suites'][0]['specs'].remove(rma)
+            elif mutation == 'wrong_file': rma['file'] = 'purchase.spec.ts'
+            else: rma['tests'][0]['results'] = [{'status': 'skipped'}]
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                module.verify_browser_report(changed)
+
     def test_staff_publication_cannot_be_removed_or_skipped(self):
         module = self.runner()
         for mutation in ('remove', 'skip'):
