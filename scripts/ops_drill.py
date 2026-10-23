@@ -437,6 +437,9 @@ def previous_version_refusal(directory):
     shutil.copy2(ROOT / 'scripts/migrate.sh', prefix / 'scripts/migrate.sh')
     for source in predecessor:
         shutil.copy2(source, prefix / 'migrations' / source.name)
+    # Frozen prefix refuses preexisting returns members; final restore reprovisions this owned LOGIN.
+    login, group = LOGIN_ROLES['RETURNS']
+    psql(f'REVOKE {group} FROM {login};', 'postgres')
     psql('CREATE DATABASE opensite TEMPLATE template0;', 'postgres')
     compose(['run', '--rm', '--no-deps', '--entrypoint', '/bin/sh', 'migrate', '-c',
              'export PGPASSWORD="$POSTGRES_PASSWORD"; '
