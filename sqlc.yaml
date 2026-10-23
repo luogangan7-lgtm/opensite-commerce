@@ -55,6 +55,7 @@ sql:
       - "migrations/pending/admin-ui-3-media-auth_media_tenant_auth.sql"
       - "migrations/pending/fix-266_catalog_listing.sql"
       - "migrations/pending/ds-277_catalog_listing_version.sql"
+      - "migrations/pending/fix-returns-grant_returns_tenant_auth.sql"
       - "migrations/pending/c19d-identity_refund_compensation_identity.sql"
       - "migrations/pending/c19d-ledger_refund_compensation_boundary.sql"
       - "migrations/pending/c19d2-terminal_refund_compensation_terminal.sql"

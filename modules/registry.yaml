@@ -1772,6 +1772,12 @@
       "note": "Media service may call only the boolean credential revalidation capability; no credential table access."
     },
     {
+      "file": "migrations/pending/fix-returns-grant_returns_tenant_auth.sql",
+      "owner": "tenant",
+      "touches_tables": [],
+      "note": "Returns coordinator may call only the boolean tenant revalidation capability; no table access or membership changes."
+    },
+    {
       "file": "migrations/pending/c18b-quote-conversion_quote_conversion.sql",
       "owner": "quotes",
       "touches_tables": [

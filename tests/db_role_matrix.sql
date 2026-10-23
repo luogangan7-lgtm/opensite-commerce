@@ -1296,7 +1296,7 @@ BEGIN
    (f.proname=ANY(names) OR f.proname IN('orders_context','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return','payments_allocate_refund')) THEN
    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_EXECUTOR_FUNCTION %',f.proname; END IF;
   IF has_function_privilege('app_returns_service',f.oid,'EXECUTE') IS DISTINCT FROM
-   (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund','payments_post_return_refund','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund')) THEN
+   (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund','payments_post_return_refund','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund','auth_revalidate_tenant')) THEN
    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_SERVICE_FUNCTION %',f.proname; END IF;
  END LOOP;
  IF(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
@@ -1376,7 +1376,7 @@ BEGIN
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    expected:=role_name='app_credential_writer'
     OR role_name='app_auth' AND f.proname IN ('auth_create_api_key','auth_revoke_api_key','auth_touch_api_key')
-    OR role_name IN ('app_runtime','app_auth','app_media_service') AND f.proname='auth_revalidate_tenant';
+    OR role_name IN ('app_runtime','app_auth','app_media_service','app_returns_service') AND f.proname='auth_revalidate_tenant';
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR role_name<>'app_credential_writer' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'TENANT_AUTH_ROUTINE_ACL % %',role_name,f.proname; END IF;
