@@ -187,4 +187,54 @@ func TestPGListingFollowups(t *testing.T) {
 			return err
 		})
 	})
+	t.Run("legacy writes advance listing ETag", func(t *testing.T) {
+		before := expect(t, r, "GET", path, "", "", 200).Header().Get("ETag")
+		run(func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE app.product_listings SET slug='legacy' WHERE tenant_id=$1 AND site_id=$2 AND product_id=$3 AND locale='en'`, a, site, product)
+			return err
+		})
+		after := expect(t, r, "GET", path, "", "", 200).Header().Get("ETag")
+		if before == after {
+			t.Error("LISTING_LEGACY did not advance ETag")
+		}
+		expect(t, r, "PUT", path, body, before, 412)
+		run(func(ctx context.Context, tx pgx.Tx) error {
+			_, err := NewCSV().Import(ctx, tx, strings.NewReader(csvPGInput([]string{"LISTING", "Content only", "", "en"})))
+			return err
+		})
+		if tag := expect(t, r, "GET", path, "", "", 200).Header().Get("ETag"); tag != after {
+			t.Errorf("LISTING_CONTENT changed listing ETag %s -> %s", after, tag)
+		}
+	})
+	t.Run("served queue", func(t *testing.T) {
+		admin, closeAdmin, err := pgxadapter.Open(ctx, os.Getenv("C22A_MAINTENANCE_DATABASE_URL"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer closeAdmin()
+		if err := admin.InTenant(ctx, a, func(ctx context.Context, tx pgx.Tx) error {
+			var release string
+			if err := tx.QueryRow(ctx, `INSERT INTO app.site_releases(tenant_id,site_id,release_no,renderer_build_id,manifest,manifest_hash) VALUES($1,$2,1,'fixture','{}',sha256('fixture'::bytea)) RETURNING id::text`, a, site).Scan(&release); err != nil {
+				return err
+			}
+			_, err := tx.Exec(ctx, `INSERT INTO app.storefront_serving(tenant_id,site_id,release_id,publication_revision,serving_generation,body,fallback_body,body_sha256,fallback_sha256,valid_until,built_at) VALUES($1,$2,$3,1,1,'{}','{}',sha256('{}'::bytea),sha256('{}'::bytea),clock_timestamp()+interval '1 hour',clock_timestamp())`, a, site, release)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		initial := expect(t, r, "GET", path, "", "", 200).Header().Get("ETag")
+		expect(t, r, "PUT", path, body, initial, 200)
+		run(func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := NewCSV().Import(ctx, tx, strings.NewReader(csvPGInput([]string{"LISTING", "Served content", "", "en"}))); err != nil {
+				return err
+			}
+			var n int
+			err := tx.QueryRow(ctx, `SELECT count(*) FROM app.serving_invalidations WHERE tenant_id=$1 AND site_id=$2 AND reason='product'`, a, site).Scan(&n)
+			if n != 2 {
+				t.Errorf("SERVED_INVALIDATION persisted %d want 2", n)
+			}
+			return err
+		})
+	})
+
 }

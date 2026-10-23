@@ -65,7 +65,8 @@ func TestPGStaffContent(t *testing.T) {
 	expect(t, r, "PUT", content, body, `"1"`, 412)
 	expect(t, r, "PUT", content, body, `"2"`, 200) // identical write is a no-op
 	listingBody := `{"slug":"staff-copy","listed":true,"content_revision":2}`
-	expect(t, r, "PUT", listingPath, listingBody, `"2"`, 200)
+	listingTag := expect(t, r, "GET", listingPath, "", "", 200).Header().Get("ETag")
+	expect(t, r, "PUT", listingPath, listingBody, listingTag, 200)
 	run(a, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := NewCSV().Import(ctx, tx, strings.NewReader(csvPGInput([]string{"STAFF-COPY", "CSV next", "", "en"})))
 		return err
@@ -80,9 +81,10 @@ func TestPGStaffContent(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"content_revision":2`) {
 		t.Fatal("CSV changed published pointer")
 	}
-	expect(t, r, "PUT", listingPath, strings.ReplaceAll(listingBody, "true", "false"), `"3"`, 200)
+	listingTag = w.Header().Get("ETag")
+	w = expect(t, r, "PUT", listingPath, strings.ReplaceAll(listingBody, "true", "false"), listingTag, 200)
 	expect(t, foreign, "GET", strings.Replace(content, a, b, 1), "", "", 404)
-	expect(t, r, "PUT", listingPath, strings.ReplaceAll(listingBody, ":2", ":999"), `"3"`, 422)
+	expect(t, r, "PUT", listingPath, strings.ReplaceAll(listingBody, ":2", ":999"), w.Header().Get("ETag"), 422)
 	rollback := errors.New("rollback witness")
 	s.run = func(ctx context.Context, tenant string, fn func(*db.Queries) error) error {
 		return runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
@@ -103,8 +105,8 @@ func TestPGStaffContent(t *testing.T) {
 	run(a, func(ctx context.Context, tx pgx.Tx) error {
 		var n int
 		err := tx.QueryRow(ctx, `SELECT count(*) FROM app.serving_invalidations WHERE site_id=$1 AND reason='product'`, site).Scan(&n)
-		if n != 3 {
-			t.Fatalf("CONTENT_INVALIDATION persisted %d want 3", n)
+		if n != 0 {
+			t.Fatalf("CONTENT_INVALIDATION persisted %d want 0", n)
 		}
 		return err
 	})

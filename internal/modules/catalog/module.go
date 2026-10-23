@@ -34,6 +34,11 @@ func authorize(ctx context.Context, requested uuid.UUID) (string, error) {
 	return tenant, nil
 }
 func (s *Service) transaction(ctx context.Context, requested uuid.UUID, fn func(*db.Queries) error) error {
+	return mapError(s.transactionRaw(ctx, requested, fn))
+}
+
+// transactionRaw lets a command scope database errors before the generic mapper.
+func (s *Service) transactionRaw(ctx context.Context, requested uuid.UUID, fn func(*db.Queries) error) error {
 	tenant, err := authorize(ctx, requested)
 	if err != nil {
 		return err
@@ -43,13 +48,13 @@ func (s *Service) transaction(ctx context.Context, requested uuid.UUID, fn func(
 	}
 	// The runner receives only the stamped tenant. Check again before its DB
 	// callback to make authorization invariant even with an injected runner.
-	return mapError(s.run(ctx, tenant, func(q *db.Queries) error {
+	return s.run(ctx, tenant, func(q *db.Queries) error {
 		current, err := httpapi.AuthorizedTenant(ctx)
 		if err != nil || current != tenant {
 			return apperrors.New(404, "not_found", "Catalog resource not found")
 		}
 		return fn(q)
-	}))
+	})
 }
 func routeSpecs() []httpapi.RouteSpec {
 	base := "/api/v1/t/{tenant_id}/products"
