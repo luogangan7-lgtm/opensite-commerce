@@ -141,7 +141,7 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
     await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
     const signedIn = page.waitForResponse(r => r.url() === `${fixture.admin}/api/v1/auth/login` && r.request().method() === 'POST');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    expect((await signedIn).status()).toBe(200);
+    expect((await signedIn).status()).toBe(201);
     await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
     await page.goto(`${fixture.admin}/t/${tenant}/products/${product.id}`);
     await expect(page.getByText('Catalog editing is unavailable for this session.', { exact: true })).toBeVisible();
