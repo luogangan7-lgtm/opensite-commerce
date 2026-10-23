@@ -101,6 +101,11 @@ verified resolution only with the persisted terminal/posted reversal witness.
 Case/audit failure rolls back the financial transaction. No process clock or
 provider event creation time orders financial state.
 
+Queued refund rejections retain every contributing delivery's own Inbox hash,
+even when a different event drains the stream. Recovered legacy case resolutions
+append the validated terminal refund identity, so separate unbound deliveries
+can reference one existing terminal and reversal without another compensation.
+
 `Stripe.ReplayRefundCase(eventID)` reads retained evidence, commits, retrieves
 the immutable event and current refund outside DB locks, and enters the same
 Part 2 finalizer through the dedicated ingress pool. Only confirmed terminal

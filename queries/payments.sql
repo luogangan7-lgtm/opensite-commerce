@@ -25,7 +25,9 @@ SELECT EXISTS(SELECT 1 FROM app.payment_events WHERE tenant_id=$1 AND provider_a
 -- name: BindPaymentDelivery :exec
 INSERT INTO app.payment_event_deliveries(tenant_id,id,payment_event_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING;
 -- name: ListPaymentDeliveries :many
-SELECT id FROM app.payment_event_deliveries WHERE tenant_id=$1 AND payment_event_id=$2 ORDER BY id;
+SELECT d.id,i.provider_event_id,i.payload_hash FROM app.payment_event_deliveries d
+JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(d.tenant_id,d.id)
+WHERE d.tenant_id=$1 AND d.payment_event_id=$2 ORDER BY d.id;
 -- name: FinishPaymentInbox :exec
 SELECT app.finish_payment_inbox(sqlc.arg(id)::uuid,sqlc.arg(success)::boolean);
 -- name: GetPaymentReturnContext :one

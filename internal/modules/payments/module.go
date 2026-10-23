@@ -266,8 +266,17 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 				return e
 			}
 			for _, alias := range aliases {
-				if e = q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: alias, Success: done}); e != nil {
+				if e = q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: alias.ID, Success: done}); e != nil {
 					return e
+				}
+				if code.Valid && r.ProviderRefundID.Valid {
+					// A different incoming event may drain this queued refund. Its
+					// aliases retain their own immutable evidence, never that event's.
+					fact := envelope{AccountID: r.ProviderAccountID, ProviderRef: r.ProviderRef,
+						RefundID: r.ProviderRefundID.String, EventID: alias.ProviderEventID}
+					if e = retainRefundCase(ctx, q, fact, [32]byte(alias.PayloadHash), "unmatched_refund"); e != nil {
+						return e
+					}
 				}
 			}
 		}

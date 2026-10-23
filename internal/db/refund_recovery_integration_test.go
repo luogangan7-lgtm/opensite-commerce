@@ -294,6 +294,20 @@ func TestRefundCaseUnboundDeliveriesResolveOneTerminal(t *testing.T) {
 		if n == 1 && replay(2) == nil {
 			t.Fatal("C19DP2_CONFLICT_RED second delivery changed terminal amount")
 		}
+		if n == 1 {
+			err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", p.f.tenant); err != nil {
+					return err
+				}
+				_, err := tx.Exec(ctx, `INSERT INTO app.payment_refund_case_resolutions(tenant_id,case_id,outcome,reason,evidence_hash,original_journal_id,reversal_journal_id,terminal_refund_id)
+ VALUES($1,$2,'resolved_compensated','verified_terminal',$3,$4,$5,'different-refund')`, p.f.tenant, cid, hash[:], original, reversal)
+				return err
+			})
+			var pg interface{ SQLState() string }
+			if !errors.As(err, &pg) || pg.SQLState() != "23514" {
+				t.Fatalf("C19DP2_FORGED_TERMINAL_RED: %v", err)
+			}
+		}
 		for range 2 {
 			if err := replay(1); err != nil {
 				t.Fatalf("C19DP2_UNBOUND_REPLAY_RED delivery=%d: %v", n, err)
@@ -310,15 +324,16 @@ func TestRefundCaseUnboundDeliveriesResolveOneTerminal(t *testing.T) {
 			} else if original != gotOriginal || reversal != gotReversal {
 				return fmt.Errorf("C19DP2_SECOND_COMPENSATION_RED resolutions reference different journals")
 			}
-			var reversals, terminals, processed int
+			var reversals, terminals, processed, journals int
 			if err := tx.QueryRow(ctx, `SELECT
  (SELECT count(*) FROM app.payment_refund_reversals WHERE tenant_id=$1),
  (SELECT count(*) FROM app.payment_refund_terminals WHERE tenant_id=$1),
- (SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider_event_id=$2 AND payload_hash=$3 AND status='processed')`, p.f.tenant, event, hash[:]).Scan(&reversals, &terminals, &processed); err != nil {
+ (SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider_event_id=$2 AND payload_hash=$3 AND status='processed'),
+ (SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=$1 AND status='posted')`, p.f.tenant, event, hash[:]).Scan(&reversals, &terminals, &processed, &journals); err != nil {
 				return err
 			}
-			if reversals != 1 || terminals != 1 || processed != 1 {
-				return fmt.Errorf("C19DP2_SECOND_COMPENSATION_RED reversals=%d terminals=%d processed=%d", reversals, terminals, processed)
+			if reversals != 1 || terminals != 1 || processed != 1 || journals != 3 {
+				return fmt.Errorf("C19DP2_SECOND_COMPENSATION_RED reversals=%d terminals=%d processed=%d journals=%d", reversals, terminals, processed, journals)
 			}
 			return nil
 		}); err != nil {
