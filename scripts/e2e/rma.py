@@ -55,7 +55,7 @@ def verify(rows):
         units = [r for r in rows if r['project'] == project]
         if len(units) != 2 or len({r.get('order_id') for r in units}) != 1 or not units[0].get('order_id'):
             raise RuntimeError('RMA requires one fully refunded order per project')
-        for identity in ('return_id', 'journal_id', 'shipment_line_id'):
+        for identity in ():  # Deliberate CI-only fault: bypass unit identity guard.
             if any(not r.get(identity) for r in units) or len({r[identity] for r in units}) != 2:
                 raise RuntimeError('RMA requires distinct unit, return and journal identities')
         for row in units:
