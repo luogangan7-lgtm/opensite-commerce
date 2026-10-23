@@ -98,7 +98,15 @@ END $$;
 ALTER FUNCTION app.payments_finalize_refund(jsonb) OWNER TO app_payments_service;
 REVOKE ALL ON FUNCTION app.payments_finalize_refund(jsonb) FROM PUBLIC;
 -- No runtime/Returns caller can enter the finalizer or its posting capability.
-CREATE ROLE app_payments_ingress NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB NOREPLICATION;
+DO $ingress$ BEGIN
+ IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='app_payments_ingress') THEN
+  CREATE ROLE app_payments_ingress NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB NOREPLICATION;
+ END IF;
+ IF EXISTS(SELECT FROM pg_roles WHERE rolname='app_payments_ingress' AND
+  (rolcanlogin OR rolinherit OR rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb OR rolreplication))
+ OR EXISTS(SELECT FROM pg_auth_members WHERE member='app_payments_ingress'::regrole) THEN
+  RAISE EXCEPTION 'C19D2_UNSAFE_INGRESS' USING ERRCODE='42501'; END IF;
+END $ingress$;
 GRANT USAGE ON SCHEMA app TO app_payments_ingress;
 GRANT EXECUTE ON FUNCTION app.payments_finalize_refund(jsonb),app.resolve_fake_payment_account(text),app.resolve_stripe_payment_account(text)
  TO app_payments_ingress;

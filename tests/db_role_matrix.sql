@@ -581,8 +581,7 @@ BEGIN
    ELSIF privilege='INSERT' THEN
     allowed:=CASE t.relname
      WHEN 'ledger_transactions' THEN ARRAY['tenant_id','id','currency','source_type','source_id','event']
-     WHEN 'ledger_entries' THEN ARRAY['tenant_id','transaction_id','line_no','account_id','currency','side','amount']
-     WHEN 'webhook_inbox' THEN ARRAY['tenant_id','id','provider','provider_account_id','environment','provider_event_id','payload_hash','payload_reference'] ELSE allowed END;
+     WHEN 'ledger_entries' THEN ARRAY['tenant_id','transaction_id','line_no','account_id','currency','side','amount'] ELSE allowed END;
    ELSIF privilege='UPDATE' AND t.relname='ledger_transactions' THEN allowed:=ARRAY['status','posted_at','revision'];
    END IF;
    IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected_table
