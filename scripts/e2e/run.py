@@ -332,9 +332,10 @@ def run(receipt_dir):
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
             staff = json.loads(ops_common.psql(f"""SELECT jsonb_build_object(
               'sealed',(SELECT count(*) FROM app.site_releases WHERE tenant_id='{owner_tenant}' AND site_id='c3300003-0000-4000-8000-000000000001' AND sealed),
+              'visible',(SELECT count(*) FROM app.storefront_serving v CROSS JOIN LATERAL jsonb_array_elements(convert_from(v.body,'UTF8')::jsonb->'products') p WHERE v.tenant_id='{owner_tenant}' AND v.site_id='c3300003-0000-4000-8000-000000000001' AND p->>'slug' IN ('staff-desktop','staff-mobile') AND p->>'name'='Staff product '||split_part(p->>'slug','-',2)||' edited' AND p->>'description'='Staff description' AND p->'skus' @> '[{{"price_minor":"3456","currency":"USD"}}]'::jsonb),
               'serving',(SELECT count(*) FROM app.storefront_serving WHERE tenant_id='{owner_tenant}' AND site_id='c3300003-0000-4000-8000-000000000001'),
               'skus',(SELECT count(*) FROM app.site_release_skus m JOIN app.sites s ON (s.tenant_id,s.id,s.published_release_id)=(m.tenant_id,m.site_id,m.release_id) WHERE m.tenant_id='{owner_tenant}' AND m.site_id='c3300003-0000-4000-8000-000000000001' AND m.sku_code IN ('STAFF-DESKTOP','STAFF-MOBILE')));"""))
-            if staff != {'sealed': 2, 'serving': 1, 'skus': 2}:
+            if staff != {'sealed': 2, 'serving': 1, 'skus': 2, 'visible': 2}:
                 raise RuntimeError('Staff sealed release/serving/SKU persistence witness differs')
             receipt['staff_publication'] = staff
             # Independent persistence witness runs before declaring the browser run PASS.
