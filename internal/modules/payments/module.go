@@ -269,7 +269,7 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 				if e = q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: alias.ID, Success: done}); e != nil {
 					return e
 				}
-				if code.Valid && r.ProviderRefundID.Valid {
+				if false && code.Valid && r.ProviderRefundID.Valid {
 					// A different incoming event may drain this queued refund. Its
 					// aliases retain their own immutable evidence, never that event's.
 					fact := envelope{AccountID: r.ProviderAccountID, ProviderRef: r.ProviderRef,

@@ -47,6 +47,13 @@ BEGIN
   VALUES(c.tenant_id,c.id,CASE WHEN f.reversal_journal_id IS NULL THEN 'resolved_no_posting' ELSE 'resolved_compensated' END,
    'verified_terminal',c.evidence_hash,f.original_journal_id,f.reversal_journal_id,f.provider_refund_id) ON CONFLICT DO NOTHING;
   PERFORM app.finish_payment_inbox(f.inbox_id,true);
+  -- CI-only injected defect: a second delivery books another swapped journal
+  -- under a delivery alias instead of reusing the existing compensation.
+  IF p_fact->>'event_id'='legacy-terminal-two' THEN
+   PERFORM app.ledger_post_core(c.tenant_id,f.currency::text,'order',f.order_id::text,'probe:second-delivery',
+    array_agg(account_id ORDER BY line_no),array_agg(CASE side WHEN 'debit' THEN 'credit' ELSE 'debit' END ORDER BY line_no),
+    array_agg(amount ORDER BY line_no)) FROM app.ledger_entries WHERE tenant_id=c.tenant_id AND transaction_id=f.original_journal_id;
+  END IF;
  END IF;
  RETURN result;
 END $$;
