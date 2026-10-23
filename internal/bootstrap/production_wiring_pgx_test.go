@@ -263,6 +263,7 @@ func TestProductionWiringPG(t *testing.T) {
 	quoteBody := fmt.Sprintf(`{"site_id":%q,"inquiry_id":%q,"company_id":%q,"currency":"USD","expires_at":"2030-01-01T00:00:00Z","lines":[{"product_id":%q,"variant_id":%q,"description":"wiring","quantity":1,"unit_price":100,"tax_category":"standard"}],"destination":{"country":"US","subdivision":"CA"},"shipping_profile_id":%q,"weight_g":1}`, f.site, f.inquiry, f.company, f.product, f.sku, f.profile)
 	// Revoke membership after route authentication but before the transaction.
 	// The admitted Quotes actor must not bypass the existing staff write fence.
+	// C02c sanitizes a false transaction-authority result as 401, not scope 403.
 	quotePath := "/api/v1/t/" + f.tenant + "/quotes"
 	changeRole := func(role string) {
 		f.maintenance(t, func(ctx context.Context, tx pgx.Tx) error {
@@ -280,7 +281,7 @@ func TestProductionWiringPG(t *testing.T) {
 	w := httptest.NewRecorder()
 	server.Handler.ServeHTTP(w, r)
 	changeRole("admin")
-	if !revoked || w.Code != 403 {
+	if !revoked || w.Code != http.StatusUnauthorized {
 		t.Errorf("Quotes transaction authority fence: revoked=%v status=%d", revoked, w.Code)
 	}
 	// Logout witnesses run last so one operation cannot invalidate another's credentials.
