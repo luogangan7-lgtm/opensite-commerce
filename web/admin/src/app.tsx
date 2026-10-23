@@ -12,7 +12,8 @@ import {OrdersAPI,OrderDetailPage,OrderListPage} from './orders';
 // Keep the font boundary inside the build-guarded gallery, before any controls mount.
 const Gallery=import.meta.env.DEV||import.meta.env.MODE==='gallery'?lazy(async()=>{
  const gallery=await import('./gallery');
- await Promise.all(['400','500','600'].map(weight=>document.fonts.load(`${weight} 16px Inter`, 'Default Selected')));
+ const fontSize=getComputedStyle(document.body).fontSize;
+ await Promise.all(['400','500','600'].map(weight=>document.fonts.load(`${weight} ${fontSize} Inter`, 'Default Selected')));
  return gallery;
 }):null;
 // Contract fixtures are supplied only by the isolated test runner's interception.
