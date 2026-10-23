@@ -150,6 +150,25 @@ func TestCSVExportRoundTrip(t *testing.T) {
 		t.Fatalf("unsafe spreadsheet output %q", output)
 	}
 }
+
+func TestCSVEmptyCatalogRoundTrip(t *testing.T) {
+	tx := &csvExportTx{csvTestTx: csvTestTx{row: csvNewRows}, rows: &csvTestRows{}}
+	output, err := NewCSV().Export(context.Background(), tx)
+	if err != nil || string(output) != strings.Join(csvHeader, ",")+"\n" {
+		t.Fatalf("empty export %q %v", output, err)
+	}
+	for _, importCSV := range []bool{false, true} {
+		var report contract.CSVReport
+		if importCSV {
+			report, err = NewCSV().Import(context.Background(), tx, strings.NewReader(string(output)))
+		} else {
+			report, err = NewCSV().Preflight(context.Background(), tx, strings.NewReader(string(output)))
+		}
+		if err != nil || len(report.Errors) != 0 || report.Rows != 0 || report.Imported != 0 || tx.writes != 0 {
+			t.Fatalf("empty roundtrip import=%v: %+v %v writes=%d", importCSV, report, err, tx.writes)
+		}
+	}
+}
 func TestCSVExportUnsupportedAndReadFailure(t *testing.T) {
 	failure := errors.New("read failed")
 	for _, test := range []struct {
