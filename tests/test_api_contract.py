@@ -131,6 +131,7 @@ class APIContractTests(unittest.TestCase):
         self.assertEqual(set(ops["health"][2]["responses"]), {"204"})
         self.assertNotIn("content", ops["health"][2]["responses"]["204"])
         expected = {"createCheckout", "previewCheckout", "getCheckout", "receiveFakePaymentEvent", "health", "getPublishedSite", "createProduct", "listProducts", "getProduct", "updateProduct", "archiveProduct",
+                    "getProductContent", "setProductContent", "getProductListing", "setProductListing",
                     "createVariant", "listVariants", "getVariant", "updateVariant", "archiveVariant",
                     "createMediaUpload", "putMediaUploadContent", "completeMediaUpload", "linkProductMedia", "deleteMedia",
                     "createShipment", "createReturn", "receiveReturn", "refundReturn"}
