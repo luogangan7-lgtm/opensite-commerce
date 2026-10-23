@@ -176,6 +176,19 @@ transaction; this grants no credential reads, table access or grant option.
 a dedicated LOGIN and real staff session, exercises HTTP refundReturn through
 the Fake PSP, and requires one refund journal across replay. The foundation pgx
 lane runs this authenticated smoke: service wiring alone cannot prove DB rights.
+Its coordinator matrix covers:
+
+| Purchase / confirmation | Return | Required result |
+| --- | --- | --- |
+| B2B quote / trusted Confirm | Unshipped cancellation | Refund and replay, one journal |
+| B2C cart / signed completed capture fact | Two shipments, physical receipts | Partial then full refund, one binding/journal per RMA and replay |
+| B2C cart / same fact, wrong original payment version | Physical receipt | HTTP409, no refund journal, binding or provider effect |
+
+The opt-in Fake mirrors only committed, applied capture facts after the Payments
+transaction. This is simulation state observation, not a new provider Capture.
+Original tenant/order/reference/version/amount/currency checks remain mandatory;
+replayed capture observations cannot reset partial or fully refunded balances.
+
 Do not provision membership in an executor/DDL-owner role. Credentials and provider configuration remain
 out-of-band. The migrator and restore provision `opensite_returns_login` as the
 eighth component LOGIN, granted only `app_returns_service`, with its independent
