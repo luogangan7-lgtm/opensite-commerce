@@ -7,7 +7,7 @@ import { test, expect, type APIResponse } from '@playwright/test';
 import { fixture, publishedSite, audit } from './fixture';
 import { start } from './purchase-helpers';
 
-test('real shipment → return → refund journey', async ({ page, request }, info) => {
+test('real shipment → partial → full refund journey', async ({ page, request }, info) => {
   test.setTimeout(180_000);
   await publishedSite(request);
   const checkout = await start(page, false, 2);
@@ -37,8 +37,9 @@ test('real shipment → return → refund journey', async ({ page, request }, in
     } });
   const accepted = async (op: string, response: APIResponse, status: number) => {
     const body = await response.json();
-    if (response.status() === 503 || body.code === 'route_not_found')
-      throw new Error(`BLOCKED ${op}: ${response.status()} ${JSON.stringify(body)}`);
+    if (response.status() === 503 || body.code === 'route_not_found' ||
+        (op === 'refundReturn' && response.status() !== status))
+      throw new Error(`BLOCKED ${op} request_id=${response.headers()['x-request-id']}: ${response.status()} ${JSON.stringify(body)}`);
     expect(response.status(), `${op}: ${JSON.stringify(body)}`).toBe(status);
     return body;
   };
@@ -82,13 +83,34 @@ test('real shipment → return → refund journey', async ({ page, request }, in
   expect(refunded).toMatchObject({ id: rma.id, status: 'refunded', restocked: true, refund_minor: '2890' });
   expect(await accepted('refundReturn', await write(returnPath + '/refund', {}, received.order_version, refundKey), 200)).toEqual(refunded);
   order = await read();
-  expect(order.state).toBe('refunded');
+  expect(order.state).toBe('partially_refunded');
   // Returning an already returned shipment unit would exceed its original entitlement.
   const excess = await write(orderPath + '/returns', requestReturn, order.version);
   expect([409, 422]).toContain(excess.status());
   expect(await read()).toEqual(order);
+  // A distinct shipped unit needs its own RMA and Payments command identity.
+  const remaining = await accepted('createReturn', await write(orderPath + '/returns', {
+    ...requestReturn, lines: [{ order_line_id: line, shipment_line_id: second.lines[0].id, quantity: 1 }],
+  }, order.version), 201);
+  expect(remaining).toMatchObject({ status: 'requested', restocked: false, refund_minor: '2890' });
+  expect(remaining.id).not.toBe(rma.id);
+  const remainingPath = `/returns/${remaining.id}`;
+  const remainingReceived = await accepted('receiveReturn', await write(remainingPath + '/receive',
+    { restock: true }, remaining.order_version), 200);
+  expect(remainingReceived).toMatchObject({ id: remaining.id, status: 'received', restocked: true });
+  const fullRefundKey = crypto.randomUUID();
+  expect(fullRefundKey).not.toBe(refundKey);
+  const fullRefund = await accepted('refundReturn', await write(remainingPath + '/refund', {},
+    remainingReceived.order_version, fullRefundKey), 200);
+  expect(fullRefund).toMatchObject({ id: remaining.id, status: 'refunded', restocked: true, refund_minor: '2890' });
+  expect(await accepted('refundReturn', await write(remainingPath + '/refund', {},
+    remainingReceived.order_version, fullRefundKey), 200)).toEqual(fullRefund);
+  order = await read();
+  expect(order).toMatchObject({ state: 'refunded', total_minor: '5780' });
+  expect(BigInt(refunded.refund_minor) + BigInt(fullRefund.refund_minor)).toBe(BigInt(order.total_minor));
+  expect(await read()).toEqual(order);
   await page.reload();
-  await expect(page.getByRole('main')).toContainText('partially refunded');
+  await expect(page.getByRole('main')).toContainText('refunded');
   await audit(page, info);
-  await info.attach('rma-journey', { body: JSON.stringify({ first, second, received, refunded, order }), contentType: 'application/json' });
+  await info.attach('rma-journey', { body: JSON.stringify({ first, second, received, refunded, remainingReceived, fullRefund, order }), contentType: 'application/json' });
 });

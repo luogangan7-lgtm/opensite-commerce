@@ -44,7 +44,8 @@ ACTIVE_TESTS |= PAYMENT_TESTS
 ADMIN_TESTS = {"real admin orders list and detail use persisted orders and staff scopes",
                "real staff create SKU → media upload → publish"}
 ACTIVE_TESTS |= ADMIN_TESTS
-RMA_TESTS = {"real shipment → return → refund journey"}
+# Partial and full refunds are consecutive phases of one test per viewport: 40 total.
+RMA_TESTS = {"real shipment → partial → full refund journey"}
 ACTIVE_TESTS |= RMA_TESTS
 B2B_TESTS = {"real B2B inquiry quote approval prepayment order"}
 ACTIVE_TESTS |= B2B_TESTS

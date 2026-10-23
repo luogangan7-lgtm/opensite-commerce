@@ -164,10 +164,12 @@ class BrowserReceiptTests(unittest.TestCase):
 
     def test_rma_journey_is_required_in_both_projects(self):
         module = self.runner()
-        title = 'real shipment → return → refund journey'
+        title = 'real shipment → partial → full refund journey'
         self.assertIn(title, module.ACTIVE_TESTS)
+        self.assertEqual(module.RMA_TESTS, {'real shipment → partial → full refund journey'})
         report = self.browser_report(module)
-        self.assertEqual(module.verify_browser_report(report)['expected'], 40)
+        self.assertEqual(module.verify_browser_report(report),
+                         {'expected': 40, 'skipped': 0, 'unexpected': 0, 'flaky': 0})
         for mutation in ('remove', 'wrong_file', 'skip'):
             changed = json.loads(json.dumps(report))
             rma = next(s for s in changed['suites'][0]['specs'] if s['title'] == title)
@@ -211,7 +213,7 @@ class PurchaseWitnessTests(unittest.TestCase):
         row = {'sessions': 8, 'paid': 4, 'receipt_only': 2, 'committed_owned': 4,
                'active_owned': 2, 'on_hand': 16, 'reserved': 2, 'inbox': 8,
                'captured': 4, 'pending_refund': 2, 'processed': 6, 'pending': 2,
-               'journals': 10, 'cash': 12560, 'paid_outbox': 6, 'debits': 6280, 'credits': 6280}
+               'journals': 10, 'cash': 12560, 'paid_outbox': 6, 'debits': 59800, 'credits': 59800}
         self.assertEqual(module.verify(row)['status'], 'PASS')
         for key in row:
             with self.subTest(key=key), self.assertRaises(RuntimeError):
