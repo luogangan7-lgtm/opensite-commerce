@@ -30,12 +30,7 @@ BEGIN
  inbox:=app.admit_payment_inbox(account,p_fact->>'event_id',decode(p_fact->>'payload_hash','hex'));
  SELECT * INTO prior FROM app.payment_refund_terminals WHERE tenant_id=t AND provider=p
   AND provider_account_id=account AND environment='test' AND provider_refund_id=refund;
- IF FOUND THEN
-  IF (prior.order_id,prior.provider_ref,prior.payment_version,prior.amount_minor,prior.currency::text)
-   IS DISTINCT FROM (coalesce(oid,prior.order_id),ref,CASE WHEN ver=0 THEN prior.payment_version ELSE ver END,amt,cur) THEN RAISE EXCEPTION 'C19D2_IDENTITY_CONFLICT' USING ERRCODE='23505'; END IF;
-  PERFORM app.finish_payment_inbox(inbox,true);
-  RETURN jsonb_build_object('original_journal_id',prior.original_journal_id,'reversal_journal_id',prior.reversal_journal_id);
- END IF;
+ -- CI behavior sample: re-enter finalization instead of returning the durable receipt.
  SELECT * INTO STRICT c FROM app.checkout_sessions WHERE tenant_id=t AND provider_ref=ref AND (oid IS NULL OR order_id=oid) FOR UPDATE;
  oid:=c.order_id; ver:=CASE WHEN ver=0 THEN c.payable_version ELSE ver END;
  IF c.provider_ref<>ref OR c.payable_version<>ver OR c.currency<>cur OR c.amount_minor<amt OR c.phase<>'paid' THEN
