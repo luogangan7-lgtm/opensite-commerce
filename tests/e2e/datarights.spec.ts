@@ -31,7 +31,7 @@ test('real registered customer export and erasure journey', async ({ page, reque
     // Use the shipped logout route to rotate any prior staff session reliably.
     await page.goto(`${fixture.admin}/t/${fixture.tenantId}/data-privacy`);
     const signout = page.getByRole('button', { name: 'Sign out', exact: true });
-    if (await signout.isVisible()) await signout.click();
+    if (csrf) await signout.click();
     await page.getByLabel('Email', { exact: true }).fill(email);
     await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
