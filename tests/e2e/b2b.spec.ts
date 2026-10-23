@@ -29,6 +29,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
   await publishedSite(request);
   const staff = await browser.newPage({ viewport: page.viewportSize()! });
   const approver = await browser.newPage({ viewport: page.viewportSize()! });
+  const purchaser = await browser.newPage({ viewport: page.viewportSize()! });
   const outsider = await browser.newPage({ viewport: page.viewportSize()! });
   try {
     const email = `b2b-${info.project.name}-buyer@example.test`;
@@ -81,6 +82,8 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     expect((await convert()).status()).toBe(409);
     expect((await transition(page, buyerURL, 'approve', buyerHeaders, accepted.headers().etag)).status()).toBe(403);
     expect((await transition(staff, buyerURL, 'approve', staffHeaders, accepted.headers().etag)).status()).toBe(401);
+    const purchaserHeaders = await login(purchaser, `b2b-${info.project.name}-purchaser@example.test`);
+    expect((await transition(purchaser, buyerURL, 'approve', purchaserHeaders, accepted.headers().etag)).status()).toBe(403);
     const approverHeaders = await login(approver, `b2b-${info.project.name}-approver@example.test`);
     const approved = await transition(approver, buyerURL, 'approve', approverHeaders, accepted.headers().etag);
     expect(approved.status()).toBe(200);
@@ -137,6 +140,6 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     await audit(page, info);
     await info.attach('b2b-paid-order', { body: JSON.stringify(await persisted.json()), contentType: 'application/json' });
   } finally {
-    await Promise.all([staff.close(), approver.close(), outsider.close()]);
+    await Promise.all([staff.close(), approver.close(), outsider.close(), purchaser.close()]);
   }
 });

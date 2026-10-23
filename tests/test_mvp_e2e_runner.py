@@ -58,7 +58,7 @@ class BrowserReceiptTests(unittest.TestCase):
         self.assertIn('real B2B inquiry quote approval prepayment order', module.ACTIVE_TESTS)
         row = {'project': 'desktop', 'approved': True, 'immutable': True, 'paid': True,
                'total': 2700, 'order_total': 2700, 'approvals': 1, 'conversions': 1,
-               'payments': 1, 'journals': 1, 'debits': 5400, 'credits': 5400}
+               'payments': 1, 'facts': 1, 'journals': 1, 'debits': 5400, 'credits': 5400}
         rows = [row, {**row, 'project': 'mobile'}]
         self.assertEqual(module.verify_b2b_witness(rows)['status'], 'PASS')
         for field in row.keys() - {'project'}:

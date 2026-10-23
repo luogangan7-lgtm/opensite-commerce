@@ -18,6 +18,10 @@ def seed(psql):
         'b2b-'||CASE WHEN n<=3 THEN 'desktop' ELSE 'mobile' END||'-'||
         CASE (n-1)%3 WHEN 0 THEN 'buyer' WHEN 1 THEN 'approver' ELSE 'outsider' END||'@example.test',
         clock_timestamp() FROM generate_series(1,6) n;
+    INSERT INTO app.customers(tenant_id,id,email,verified_at)
+      SELECT '{TENANT}',('b2b00001-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,
+        'b2b-'||CASE n WHEN 7 THEN 'desktop' ELSE 'mobile' END||'-purchaser@example.test',
+        clock_timestamp() FROM generate_series(7,8) n;
     INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash)
       SELECT c.tenant_id,c.id,u.password_hash FROM app.customers c CROSS JOIN app.users u
       WHERE c.tenant_id='{TENANT}' AND c.email LIKE 'b2b-%' AND u.email='c24-owner@example.test';
@@ -26,6 +30,9 @@ def seed(psql):
         (CASE WHEN n<=3 THEN 1 ELSE 3 END+CASE WHEN (n-1)%3=2 THEN 1 ELSE 0 END)::text,12,'0'))::uuid,
         ('b2b00001-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,
         CASE (n-1)%3 WHEN 1 THEN 'approver' ELSE 'purchaser' END FROM generate_series(1,6) n;
+    INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code)
+      SELECT '{TENANT}',('b2b00002-0000-4000-8000-'||lpad((2*n-13)::text,12,'0'))::uuid,
+        ('b2b00001-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'purchaser' FROM generate_series(7,8) n;
     COMMIT;""")
 
 
@@ -43,6 +50,7 @@ SELECT jsonb_agg(jsonb_build_object('project',split_part(u.email,'-',2),
  'total',q.total,'order_total',o.total_minor,
  'approvals',(SELECT count(*) FROM app.quote_approvals WHERE tenant_id=q.tenant_id AND quote_id=q.id),
  'conversions',(SELECT count(*) FROM app.quote_conversions WHERE tenant_id=q.tenant_id AND quote_id=q.id),
+ 'facts',(SELECT count(*) FROM app.payment_events WHERE tenant_id=o.tenant_id AND claimed_order_id=o.id),
  'payments',(SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id)
     WHERE e.tenant_id=o.tenant_id AND e.claimed_order_id=o.id AND e.applied AND e.status='captured'
       AND e.provider='fake' AND e.provider_account_id='c09d-e2e' AND e.provider_ref=c.provider_ref
@@ -64,7 +72,7 @@ WHERE u.tenant_id='{TENANT}' AND u.email IN ('b2b-desktop-buyer@example.test','b
 def verify(rows):
     expected = {'approved': True, 'immutable': True, 'paid': True, 'total': 2700,
                 'order_total': 2700, 'approvals': 1, 'conversions': 1,
-                'payments': 1, 'journals': 1, 'debits': 5400, 'credits': 5400}
+                'payments': 1, 'facts': 1, 'journals': 1, 'debits': 5400, 'credits': 5400}
     if (not isinstance(rows, list) or len(rows) != 2 or any(not isinstance(r, dict) for r in rows)
             or {r.get('project') for r in rows} != {'desktop', 'mobile'}
             or any(any(type(r.get(k)) is not type(v) or r[k] != v for k, v in expected.items()) for r in rows)):
