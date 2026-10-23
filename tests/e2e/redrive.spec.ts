@@ -59,6 +59,7 @@ test('real admin notification failure redrive delivers once with scoped isolatio
  await page.getByLabel('Email',{exact:true}).fill('staff-viewer@example.test');
  await page.getByLabel('Password',{exact:true}).fill(fixture.ownerPassword);
  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();
  await page.goto(`${fixture.admin}/t/${tenant}/notifications`);
  await expect(page.getByText('Notification recovery is unavailable for this session.',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Redrive',exact:true})).toHaveCount(0);
