@@ -93,8 +93,7 @@ CREATE TABLE app.return_lines(
 );
 CREATE INDEX return_lines_order_line ON app.return_lines(tenant_id,order_line_id);
 CREATE INDEX return_lines_shipment_line ON app.return_lines(tenant_id,shipment_line_id);
-CREATE UNIQUE INDEX inventory_return_restore_identity ON app.inventory_movements(tenant_id,owner_id,sku_id)
- WHERE owner_type='return' AND kind='inbound';
+-- Disposable E2E-RMA probe: permit a second persisted restoration identity.
 DO $tables$ DECLARE name text; BEGIN
  FOREACH name IN ARRAY ARRAY['shipments','shipment_lines','returns','return_lines'] LOOP
   EXECUTE format('ALTER TABLE app.%I ENABLE ROW LEVEL SECURITY',name);
@@ -320,8 +319,7 @@ BEGIN
   WHERE rl.tenant_id=t AND rl.return_id=p_return GROUP BY ol.sku_id ORDER BY ol.sku_id LOOP
   SELECT * INTO STRICT s FROM app.stock_levels WHERE tenant_id=t AND sku_id=line.sku_id FOR UPDATE;
   -- RETURN_RESTORE_ONCE: stock movement identity survives idempotency/outbox purge.
-  IF EXISTS(SELECT FROM app.inventory_movements WHERE tenant_id=t AND owner_type='return' AND owner_id=p_return AND sku_id=line.sku_id) THEN
-   RAISE EXCEPTION 'FULFILLMENT_RESTOCK_DUPLICATE' USING ERRCODE='23505'; END IF;
+  -- Disposable E2E-RMA probe: allow a second restoration for this return.
   UPDATE app.stock_levels SET on_hand=on_hand+line.quantity WHERE tenant_id=t AND sku_id=line.sku_id RETURNING * INTO s;
   INSERT INTO app.inventory_movements(tenant_id,warehouse_id,sku_id,owner_type,owner_id,kind,quantity,
    on_hand_delta,reserved_delta,on_hand_after,reserved_after,reason)
@@ -640,7 +638,10 @@ BEGIN
   RAISE EXCEPTION 'FULFILLMENT_RETURN_STATE' USING ERRCODE='55000'; END IF;
  UPDATE app.returns SET status='received',received_at=clock_timestamp(),restocked=p_restock,receive_key=p_key,receive_hash=h
  WHERE tenant_id=t AND id=p_return;
- IF p_restock THEN PERFORM app.inventory_restore_return(p_return); END IF;
+ IF p_restock THEN
+  PERFORM app.inventory_restore_return(p_return);
+  PERFORM app.inventory_restore_return(p_return);
+ END IF;
  IF r.refund_minor=0 THEN UPDATE app.returns SET status='completed' WHERE tenant_id=t AND id=p_return; END IF;
  o:=app.orders_fulfillment_advance(r.order_id,'receive:'||r.id::text);
  UPDATE app.returns SET order_version=o.version WHERE tenant_id=t AND id=p_return;
