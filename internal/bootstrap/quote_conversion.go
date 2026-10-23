@@ -18,6 +18,7 @@ import (
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
+	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
 )
 
 type QuoteConversionConfig struct {
@@ -85,11 +86,48 @@ func (p quoteCheckout) Prepay(ctx context.Context, actor qc.AuthorizedActor, rec
 type quoteBuyerAdmission struct {
 	customer *customerhttp.Handler
 	runner   quotes.TenantRunner
+	inquiry  quoteshttp.QuotesInquiryResolver
 }
 
 func (a quoteBuyerAdmission) Authenticate(ctx context.Context, r *http.Request, spec httpapi.RouteSpec) (context.Context, error) {
-	if spec.OperationID != "createQuoteOrder" || spec.Method != http.MethodPost || spec.Pattern != "/api/v1/t/{tenant_id}/quotes/{quote_id}/orders" || spec.Access != httpapi.BuyerCompany || spec.Scope != "quotes:convert" {
-		return nil, apperrors.New(401, "unauthenticated", "Customer authentication is required")
+	deny := apperrors.New(401, "unauthenticated", "Customer authentication is required")
+	if spec.OperationID == "createQuoteOrder" {
+		if spec.Method != http.MethodPost || spec.Pattern != "/api/v1/t/{tenant_id}/quotes/{quote_id}/orders" || spec.Access != httpapi.BuyerCompany || spec.Scope != "quotes:convert" {
+			return nil, deny
+		}
+	} else {
+		method, suffix := http.MethodPost, ""
+		switch spec.OperationID {
+		case "getBuyerQuote":
+			method = http.MethodGet
+		case "acceptQuote":
+			suffix = "/accept"
+		case "approveQuote":
+			suffix = "/approve"
+		case "rejectQuote":
+			suffix = "/reject"
+		default:
+			return nil, deny
+		}
+		if spec.Access != httpapi.Public || spec.Scope != "" || r.Method != method || r.URL.Path != "/api/public/v1/quotes/"+r.PathValue("quote_id")+suffix || a.inquiry == nil {
+			return nil, deny
+		}
+		// Public quote URLs have no tenant parameter. Resolve their host with the
+		// same trusted site capability as inquiries before checking the session.
+		resolved, err := a.inquiry(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+		if resolved == nil {
+			return nil, deny
+		}
+		site, err := qc.InquiryFromContext(resolved)
+		if err != nil {
+			return nil, deny
+		}
+		r = r.Clone(resolved)
+		r.SetPathValue("tenant_id", site.TenantID)
+		ctx = resolved
 	}
 	actor, err := a.customer.Resolve(ctx, r)
 	if err != nil {

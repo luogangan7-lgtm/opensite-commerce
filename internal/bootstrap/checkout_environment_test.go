@@ -158,3 +158,21 @@ func TestQuoteBuyerDoesNotAcquireStaffAuthority(t *testing.T) {
 		})
 	}
 }
+
+func TestB2BInquiryRuntimeStamp(t *testing.T) {
+	const tenant = "11111111-1111-4111-8111-111111111111"
+	const site = "22222222-2222-4222-8222-222222222222"
+	writes := 0
+	r := runtimeQuoteRunner{run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error {
+		writes++
+		return fn(ctx, nil)
+	}}
+	ctx := qc.WithTrustedInquiry(context.Background(), tenant, site)
+	fn := func(context.Context, pgx.Tx) error { return nil }
+	if err := r.InTenant(ctx, tenant, fn); err != nil || writes != 1 {
+		t.Fatalf("verified inquiry cannot persist: %v", err)
+	}
+	if err := r.InTenant(ctx, site, fn); err == nil || writes != 1 {
+		t.Fatal("inquiry stamp authorized another tenant")
+	}
+}
