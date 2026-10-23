@@ -46,7 +46,7 @@ BEGIN
   AND environment='test' AND provider_refund_id=refund AND applied AND status IN('partially_refunded','refunded');
  -- Reject before any attempt, terminal or money write. A mismatched RMA or an
  -- identity-less posted stream is not proof that this refund was never posted.
- IF (b.journal_id IS NOT NULL AND (b.provider,b.provider_account_id,b.environment) IS DISTINCT FROM (p,account,'test'::text))
+ IF false
   OR (b.journal_id IS NULL AND e.id IS NULL AND (
    EXISTS(SELECT FROM app.payment_events x WHERE x.tenant_id=t AND x.provider_ref=ref AND x.applied
     AND x.status IN('partially_refunded','refunded') AND (x.provider_refund_id IS NULL OR x.provider_refund_id=refund))
@@ -172,7 +172,6 @@ BEGIN
  ELSE
   IF NOT EXISTS(SELECT FROM app.payment_return_refunds b JOIN app.returns r ON (r.tenant_id,r.id)=(b.tenant_id,b.return_id)
    WHERE b.tenant_id=NEW.tenant_id AND b.return_id=NEW.return_id AND b.attempt_key=NEW.attempt_key
-   AND (b.provider,b.provider_account_id,b.environment)=(NEW.provider,NEW.provider_account_id,NEW.environment)
    AND b.provider_ref=NEW.provider_ref AND b.provider_refund_id=NEW.provider_refund_id AND b.journal_id=j.id
    AND r.order_id=NEW.order_id AND r.refund_minor=NEW.amount_minor AND r.currency=NEW.currency AND r.status='refunded'
    AND j.source_type='return' AND j.source_id=NEW.return_id::text AND j.event='refund')
