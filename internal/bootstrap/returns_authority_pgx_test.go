@@ -197,8 +197,8 @@ func returnsCoordinatorRefund(t *testing.T, source string) {
 			version = result.OrderVersion
 		}
 		f.maintenance(t, func(ctx context.Context, tx pgx.Tx) error {
-			var journals, refunded int64
-			if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=$1 AND source_type='return' AND source_id=$2),refunded_minor FROM app.orders WHERE tenant_id=$1 AND id=$3`, f.tenant, receipt.Id.String(), orderID).Scan(&journals, &refunded); err != nil {
+			var journals, bindings, refunded int64
+			if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=$1 AND source_type='return' AND source_id=$2),(SELECT count(*) FROM app.payment_return_refunds WHERE tenant_id=$1 AND return_id=$2::uuid),refunded_minor FROM app.orders WHERE tenant_id=$1 AND id=$3`, f.tenant, receipt.Id.String(), orderID).Scan(&journals, &bindings, &refunded); err != nil {
 				return err
 			}
 			want := total * int64(part+1) / int64(rounds)
@@ -212,7 +212,7 @@ func returnsCoordinatorRefund(t *testing.T, source string) {
 				events = 1
 				wantJournals = 0
 			}
-			if journals != wantJournals || refunded != want || len(f.fake.Events()) != events {
+			if journals != wantJournals || bindings != wantJournals || refunded != want || len(f.fake.Events()) != events {
 				return fmt.Errorf("refund conservation: journals=%d refunded=%d provider events=%d", journals, refunded, len(f.fake.Events()))
 			}
 			return nil
