@@ -500,7 +500,7 @@ func TestCustomerPGEqualIdleAndAbsoluteDeadlinesShareOneDatabaseInstant(t *testi
 // Executor authority is part of the caller capability: owning trusted proof
 // functions must never grant permission to replace objects in their schema.
 func TestCustomerPGRejectsExecutorPrivilegeDrift(t *testing.T) {
-	f := customerPrivilegePG(t)
+	f := customerPG(t)
 	// Register cleanup before injection; it must run even when the assertion
 	// fails or the request context expires. Only this private database is changed.
 	defer func() {
@@ -531,7 +531,7 @@ func TestCustomerPGRejectsExecutorPrivilegeDrift(t *testing.T) {
 // Inject effective column privileges, including PUBLIC, to prove startup rejects
 // direct reader or broader private-writer authority on the new global table.
 func TestCustomerPGRejectsGlobalCounterPrivilegeDrift(t *testing.T) {
-	f := customerPrivilegePG(t)
+	f := customerPG(t)
 	for _, tc := range []struct {
 		name, grant, revoke string
 	}{
