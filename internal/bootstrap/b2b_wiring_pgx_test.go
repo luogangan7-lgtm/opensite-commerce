@@ -150,6 +150,21 @@ func TestB2BWiringHTTPPG(t *testing.T) {
 		}
 		csrf[id] = session.CSRF
 	}
+
+	// CI fault probe only: permit purchaser approval for this disposable tenant.
+	// This deliberately violates the contract and must make the HTTP gate red.
+	f.maintenance(t, func(ctx context.Context, tx pgx.Tx) error {
+		var original string
+		if err := tx.QueryRow(ctx, `SELECT pg_get_functiondef('app.quote_actor_access(uuid,uuid,text,uuid,text)'::regprocedure)`).Scan(&original); err != nil {
+			return err
+		}
+		fault := strings.Replace(original, "m.role_code IN('approver','admin')", "(m.role_code IN('approver','admin') OR (p_tenant='"+f.tenant+"'::uuid AND m.role_code='purchaser'))", 1)
+		if fault == original {
+			return fmt.Errorf("approval fault probe did not match authority")
+		}
+		_, err := tx.Exec(ctx, fault)
+		return err
+	})
 	request := func(method, path, body, id, etag, token, requestHost string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, origin+path, strings.NewReader(body)).WithContext(quoteObserved(f.ctx))
 		r.Host = requestHost

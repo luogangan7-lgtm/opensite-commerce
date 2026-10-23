@@ -20,7 +20,11 @@ func quoteInquiryResolver(public *publish.Module) quoteshttp.QuotesInquiryResolv
 	return func(ctx context.Context, r *http.Request) (context.Context, error) {
 		lookup, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		site, err := public.Current(lookup, r.Host)
+		host := r.Host
+		if r.URL.Path == "/api/public/v1/inquiries" {
+			host = r.Header.Get("X-Forwarded-Host")
+		}
+		site, err := public.Current(lookup, host)
 		if err != nil {
 			if errors.Is(err, pc.ErrInvalid) || errors.Is(err, pc.ErrNotFound) {
 				return nil, qc.ErrNotFound
