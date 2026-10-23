@@ -84,17 +84,27 @@ a conflicting Origin refuses startup. Explicit checkout resolvers are preserved.
 The outer wrapper also forwards staff identity projection for CMS and other
 private routes using their authenticated context. Customer privacy can consume
 the same public actor context; purchasing business logic is outside this card.
-The current purchasing BFF remains its explicitly labeled contract fixture and
-is closed in production. Connecting that BFF to these real cookie/challenge
-endpoints is separate frontend work; this change does not treat fixture login
-headers as customer authentication.
+The purchasing BFF uses the generated customer registration, verification and
+session endpoints in configured backend mode. It relays only the two customer
+Host cookies with Secure, HttpOnly, SameSite=Lax and Path=/, and keeps bearer
+and upstream CSRF material out of browser JSON and the cart custody cookie.
+The BFF validates a presented session with the backend before projecting a
+customer actor; an invalid or unavailable session fails the request without
+falling back to guest purchasing. Its customer write proof uses the same
+`OPENSITE_CUSTOMER_CSRF_SECRET` and pinned `OPENSITE_STOREFRONT_ORIGIN` as Go.
+Identity changes discard the former cart, checkout and guest capability.
+Contract fixture mode remains separately labeled and cannot establish real
+authentication. The full registered-purchase/history E2E is a separate C-09f-2
+acceptance unit; these transport tests do not establish that journey.
 
 Only Fake or loopback SMTP is supported. Challenge mail refuses recipients
 outside `.test`, `.invalid` and localhost, even with Fake. Links place the
 one-time token in a browser fragment; a frontend must consume it by POST and
 clear the fragment. Transport errors never include credentials or tokens.
 Production auth configuration without a permitted Sender fails closed. This
-card does not enable real email delivery or add storefront verification pages.
+card does not enable real email delivery. The storefront `/customer/verify`
+page clears the mailbox fragment before IO and submits its token only by POST
+after explicit confirmation; the backend owns tenant binding and one-use proof.
 
 C-05c leaves three follow-up questions open:
 

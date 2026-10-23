@@ -22,7 +22,8 @@ test('writes do not auto-retry or surface internal problem details',async()=>{
 });
 test('checkout stable idempotency header and guest body forwarded, reads sameorigin',async()=>{
  const calls=transport(new Response('{}'));
- await startCheckout({shipping_address:{country:'US',address1:'1 Test Way',city:'City',postal_code:'10001'},buyer_contact:{email:'buyer@example.test'}},'stable-key','csrf');
+ await startCheckout({shipping_address:{country:'US',address1:'1 Test Way',city:'City',postal_code:'10001'},buyer_contact:{email:'buyer@example.test'}},'stable-key','csrf',{amount_minor:'9223372036854775807',currency:'USD'});
+ expect(JSON.parse(String(calls[0]!.init?.body)).accepted_total).toEqual({amount_minor:'9223372036854775807',currency:'USD'});
  expect(new Headers(calls[0]!.init?.headers).get('Idempotency-Key')).toBe('stable-key');
  expect(calls[0]!.url).toBe('/purchase/api/checkout');
  await getCart(); expect(calls[1]!.url).toBe('/purchase/api/cart'); expect(calls[1]!.init?.credentials).toBe('same-origin');

@@ -255,6 +255,12 @@ def validate_contract(api):
                 if customer:
                     require(path.startswith('/api/v1/t/{tenant_id}/customer/') and op['x-opensite-status'] == 'implemented',
                             'customer authentication route drift')
+        elif access == "CustomerSession":
+            expected = {"listCustomerOrders": "/api/v1/t/{tenant_id}/customer/orders",
+                        "getCustomerOrder": "/api/v1/t/{tenant_id}/customer/orders/{order_id}"}
+            require(ident in expected and path == expected[ident] and method == "get" and tenant and
+                    "x-required-scope" not in op and security == [{"customerSession": []}],
+                    "customer history requires session-only scope-free tenant admission")
         elif access == "BuyerCompany":
             require(ident == "createQuoteOrder" and tenant and scope == "quotes:convert" and
                     security == [{"customerSession": []}], f"buyer company session/tenant/scope required: {ident}")
@@ -302,6 +308,8 @@ def validate_contract(api):
             require(security in (COOKIE_OR_KEY, list(reversed(COOKIE_OR_KEY))), f"cookie OR API key required: {ident}")
         else:
             raise ValueError(f"access policy missing or unsupported: {ident}")
+        if ident in {"listCustomerOrders", "getCustomerOrder"}:
+            require(access == "CustomerSession", "customer history must use live customer session admission")
         if ident in {"createCheckout", "previewCheckout", "getCheckout"}:
             require(access == "Storefront", "checkout cannot use employee or service authentication")
         if ident in QUOTE_OPERATIONS:

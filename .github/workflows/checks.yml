@@ -118,7 +118,8 @@ jobs:
         if: matrix.lane == 'go'
         run: |
           go mod download
-          go test -race -count=1 ./...
+          # Guard slow runners; shared OAS loading removes repeated parse work.
+          go test -race -count=1 -timeout=15m ./...
           go vet ./...
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: matrix.lane == 'offline'

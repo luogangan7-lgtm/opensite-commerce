@@ -37,13 +37,14 @@ ACTIVE_TESTS = {
     "real API denies anonymous catalog reads and creation before data access",
     "real owner session reads and creates tenant catalog through production authorization",
 }
-PURCHASE_TESTS = {"published guest purchase persists captured order", "pending receipt alone never shows paid"}
+PURCHASE_TESTS = {"published guest purchase persists captured order", "pending receipt alone never shows paid", "registered purchase appears only in owned history"}
 ACTIVE_TESTS |= PURCHASE_TESTS
 PAYMENT_TESTS = {"real signed payment webhook rejects forgery and deduplicates concurrent facts"}
 ACTIVE_TESTS |= PAYMENT_TESTS
+ADMIN_TESTS = {"real admin orders list and detail use persisted orders and staff scopes"}
+ACTIVE_TESTS |= ADMIN_TESTS
 GAP_TESTS = {
     "FIXME staff create SKU → media upload → publish",
-    "FIXME admin orders list and detail on the real orders read API",
 }
 
 
@@ -87,7 +88,7 @@ def verify_browser_report(report):
                         raise RuntimeError("MVP E2E duplicate browser assertion")
                     observed[key] = [item.get("status") for item in test.get("results", [])]
                     filename = Path(spec.get("file", "")).name
-                    expected_file = "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS else (
+                    expected_file = "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
                         "purchase.spec.ts" if spec.get("title") in PURCHASE_TESTS else (
                         "payments.spec.ts" if spec.get("title") in PAYMENT_TESTS else (
                         "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts")))
@@ -102,7 +103,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 30, "skipped": 4, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 34, "skipped": 2, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -254,7 +255,7 @@ def run(receipt_dir):
             command(["bun", "run", "build:admin"], "admin-build", env=clean_env)
             receipt["steps"].append("locked-frontends-built")
             persist()
-            command(compose_command(["up", "-d", "--build", "--wait", "--wait-timeout", "120", "api", "worker"]), "stack-start")
+            command(compose_command(["up", "-d", "--build", "--wait", "--wait-timeout", "120", "api", "worker", "mailpit"]), "stack-start")
             if ops_common.psql("SHOW server_version_num;").strip() != "180006":
                 raise RuntimeError("MVP E2E requires PostgreSQL 18.6")
             ops_drill.healthy("http://127.0.0.1:8080")
@@ -287,19 +288,34 @@ def run(receipt_dir):
             os.environ["E2E_OWNER_TENANT_ID"] = owner_tenant
             receipt["owner_bootstrap"]["status"] = "PASS"
             receipt["publication"] = purchase.publish(ops_common.psql, credentials)
+            # Owned C19 SQL orders are read through real owner session authorization.
+            ops_common.psql("INSERT INTO app.tenant_memberships(tenant_id,user_id,role) "
+                            "SELECT t.id,m.user_id,'owner' FROM app.tenants t CROSS JOIN app.tenant_memberships m "
+                            f"WHERE m.tenant_id='{owner_tenant}' AND m.role='owner' "
+                            "AND t.id IN ('c1900010-0000-4000-8000-000000000001',"
+                            "'c1900010-0000-4000-8000-000000000002');")
             os.environ["E2E_RELEASE_ID"] = receipt["publication"]["release_id"]
             receipt["steps"].append("real-cms-builder-membership-and-serving")
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
             persist()
-            command(compose_command(["up", "-d", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
+            # API/worker/mailpit are already healthy. Recreating API here strands
+            # its loopback SMTP sidecar in the old network namespace.
+            command(compose_command(["up", "-d", "--no-deps", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
             wait_http("http://127.0.0.1:4321/", 200, b"Made for everyday use")
             wait_http("http://127.0.0.1:4173/", 200, b"<div id=\"root\"")
+            wait_http("http://127.0.0.1:8025/api/v1/messages?limit=1", 200)
             receipt["steps"].append("real-ssr-and-admin-positive-readiness")
             persist()
             result = ROOT / "test-results/e2e/results.json"
             result.unlink(missing_ok=True)  # only this CI harness's own stale result
             receipt["browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "browser"]), "browser", timeout=900, check=False)
             if receipt["browser_exit"] != 0:
+                # Counts only: locate dependency failures without persisting proof tokens or credentials.
+                receipt["customer_registration_diagnostic"] = json.loads(ops_common.psql(
+                    "SELECT jsonb_build_object('customers',count(*),'verified',count(verified_at),"
+                    "'tokens',(SELECT count(*) FROM app.customer_auth_tokens WHERE tenant_id='" + TENANT + "')) "
+                    "FROM app.customers WHERE tenant_id='" + TENANT + "' AND email LIKE 'c09f2-%';"))
+                persist()
                 raise RuntimeError("MVP E2E browser assertions failed")
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
             # Independent persistence witness runs before declaring the browser run PASS.
@@ -312,6 +328,7 @@ def run(receipt_dir):
             receipt["purchase"] = {"status": "FAIL", "facts": purchase_row}
             persist()
             receipt["purchase"] = purchase.verify(purchase_row)
+            receipt["registered_purchase"] = purchase.verify_registered(json.loads(ops_common.psql(purchase.REGISTERED_SQL)))
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-and-accessibility-assertions")
         except BaseException as exc:

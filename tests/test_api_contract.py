@@ -144,8 +144,11 @@ class APIContractTests(unittest.TestCase):
         data_rights = {"requestCustomerDataExport", "getCustomerDataExport",
                        "downloadCustomerDataExport", "eraseCustomerData"}
         csv = {"preflightCatalogCSV", "importCatalogCSV", "exportCatalogCSV"}
+        customer_orders = {"listCustomerOrders", "getCustomerOrder"}
+        pricing = {"createPriceList", "listPriceLists", "getPriceList", "updatePriceList",
+                   "setVariantPrice", "clearVariantPrice"}
         self.assertEqual({name for name, (_, _, op) in ops.items()
-                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | cms | data_rights | csv |
+                          if op["x-opensite-status"] == "implemented"}, expected | cart | quote_operations | orders | customer_orders | cms | data_rights | csv | pricing |
                          {"listNotificationFailures", "redriveNotification", "getAdminLoginChallenge",
                           "createStaffLoginSession", "logoutCurrentStaffSession", "getAdminSession",
                           "createAPIKey", "listAPIKeys", "revokeAPIKey"} | contract.CUSTOMER_OPERATIONS)
@@ -163,6 +166,13 @@ class APIContractTests(unittest.TestCase):
             self.assertTrue(path.startswith("/api/v1/t/{tenant_id}/orders"))
             self.assertEqual((method, operation["x-opensite-access"], operation["x-required-scope"]),
                              ("get", "AdminOrAPIKey", "orders:read"))
+        for name in customer_orders:
+            path, method, operation = ops[name]
+            self.assertEqual(path, "/api/v1/t/{tenant_id}/customer/orders" +
+                             ("/{order_id}" if name == "getCustomerOrder" else ""))
+            self.assertEqual((method, operation["x-opensite-access"], operation["security"]),
+                             ("get", "CustomerSession", [{"customerSession": []}]))
+            self.assertNotIn("x-required-scope", operation)
         for name in cms - {"getSitePreview"}:
             _, method, operation = ops[name]
             self.assertEqual(operation["x-opensite-access"], "AdminOrAPIKey")
@@ -266,6 +276,17 @@ class APIContractTests(unittest.TestCase):
             self.assertNotIn("x-required-scope", op)
             self.assertEqual(op["x-opensite-access"], "AuthenticatedSelf")
             self.assertEqual(op["security"], [{"adminSession": []}])
+
+    def test_customer_history_cannot_admit_staff_guest_or_scope_credentials(self):
+        for ident in ('listCustomerOrders', 'getCustomerOrder'):
+            for changes in ({'x-opensite-access': 'Storefront'},
+                            {'x-opensite-access': 'AdminOrAPIKey', 'x-required-scope': 'orders:read'},
+                            {'security': [{'adminSession': []}]},
+                            {'security': [{'cartBearer': []}]}, {'x-required-scope': ''}):
+                candidate = copy.deepcopy(self.api)
+                operations(candidate)[ident][2].update(changes)
+                with self.subTest(ident=ident, changes=changes), self.assertRaises(ValueError):
+                    contract.validate_contract(candidate)
 
     def test_checkout_auth_and_test_webhook_policy(self):
         contract.validate_contract(self.api)

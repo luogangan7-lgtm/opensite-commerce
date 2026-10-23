@@ -2,6 +2,11 @@
  * Invariants: fixture claims are explicit; unavailable production actions never promise fulfillment or real authentication.
  */
 const english = {
+  orderHistory:'Order history', historyDescription:'Your purchases and order details.',
+  historySignIn:'Sign in to view your orders.', orderNotFound:'Order not found.',
+  historyUnavailable:'Orders could not be loaded. Try again.', loadingOrders:'Loading orders…',
+  yourAccount:'Your account', noOrders:'No orders yet.', orderNumber:'Order #', nextOrders:'Next orders',
+  orderDetails:'Order details', backOrders:'Back to orders',
   cart: 'Cart', account: 'Account', checkout: 'Checkout', orderConfirmation: 'Order confirmation',
   purchaseDescription: 'Review your items and checkout details.', accountDescription: 'Manage your customer session.',
   fixtureNotice: 'Contract fixture — test data only. No real purchase, payment, or customer account is created.',
@@ -35,4 +40,10 @@ const english = {
 export type CommerceCopyKey = keyof typeof english;
 export type CommerceDictionary = Record<CommerceCopyKey, string>;
 const dictionaries: Record<'en', CommerceDictionary> = { en: english };
-export function commerceCopy(_locale = 'en'): CommerceDictionary { return dictionaries.en; }
+export function commerceCopy(_locale = 'en', fixture = true): CommerceDictionary { return fixture ? dictionaries.en : {...dictionaries.en,
+  signedIn:'You are signed in.',signedOut:'You are signed out.',
+  accountHelp:'Sign in to shop with your account, or register and verify your email address.',
+  registered:'If the address is eligible, a verification email has been sent. Verify your email before signing in.',
+  passwordHelp:'Registration requires 12–1024 UTF-8 bytes. Sign in with your existing password.',
+  invalidPassword:'Enter your password. New passwords must contain 12–1024 UTF-8 bytes.',
+}; }

@@ -170,12 +170,11 @@ type WithdrawQuote200ResponseHeaders = generated.WithdrawQuote200ResponseHeaders
 type WithdrawQuoteRequestObject = generated.WithdrawQuoteRequestObject
 type WithdrawQuoteResponseObject = generated.WithdrawQuoteResponseObject
 
-// NewStrictHandlerWithOptions and GetSwagger expose the pinned protocol adapter
+// NewStrictHandlerWithOptions exposes the pinned protocol adapter
 // to platform transports with resource-specific CAS admission. The shared
 // StrictRoutes version admission expects decimal ETags and cannot admit create *.
-// Neither helper supplies authority or registers routes.
+// This helper supplies no authority and registers no routes.
 var NewStrictHandlerWithOptions = generated.NewStrictHandlerWithOptions
-var GetSwagger = generated.GetSwagger
 
 type GetOrder200JSONResponse = generated.GetOrder200JSONResponse
 type GetOrder200ResponseHeaders = generated.GetOrder200ResponseHeaders
@@ -237,3 +236,16 @@ type ShipmentRecordLine = generated.ShipmentRecordLine
 type ReturnRecord = generated.ReturnRecord
 type ReturnRecordKind = generated.ReturnRecordKind
 type ReturnRecordLine = generated.ReturnRecordLine
+
+// Customer history uses the same typed platform port as staff order reads.
+type CustomerOrderSummary = generated.CustomerOrderSummary
+type CustomerOrderPage = generated.CustomerOrderPage
+type CustomerOrderDetail = generated.CustomerOrderDetail
+type ListCustomerOrdersRequestObject = generated.ListCustomerOrdersRequestObject
+type ListCustomerOrdersResponseObject = generated.ListCustomerOrdersResponseObject
+type ListCustomerOrders200JSONResponse = generated.ListCustomerOrders200JSONResponse
+type ListCustomerOrders200ResponseHeaders = generated.ListCustomerOrders200ResponseHeaders
+type GetCustomerOrderRequestObject = generated.GetCustomerOrderRequestObject
+type GetCustomerOrderResponseObject = generated.GetCustomerOrderResponseObject
+type GetCustomerOrder200JSONResponse = generated.GetCustomerOrder200JSONResponse
+type GetCustomerOrder200ResponseHeaders = generated.GetCustomerOrder200ResponseHeaders

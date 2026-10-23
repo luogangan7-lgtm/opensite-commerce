@@ -41,7 +41,7 @@ type Service struct {
 
 func New(repo Repository, cfg Config) (*Service, error) {
 	u, e := url.Parse(cfg.Origin)
-	if repo == nil || e != nil || u.Scheme != "https" || u.Hostname() == "" || strings.HasSuffix(u.Host, ":") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || u.String() != cfg.Origin || len(cfg.SigningKey) < 32 {
+	if repo == nil || e != nil || u.Scheme != "https" || u.Hostname() == "" || u.Port() == "443" || strings.HasSuffix(u.Host, ":") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || u.String() != cfg.Origin || len(cfg.SigningKey) < 32 {
 		return nil, ErrDatabase
 	}
 	if cfg.IdleTimeout == 0 {
@@ -137,10 +137,10 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	var oldHash *[32]byte
 	if in.OldSessionToken != "" {
 		h, e := tokenHash(in.OldSessionToken)
-		if e != nil {
-			return LoginResult{}, ErrSession
+		// A malformed cookie has no authority over a fresh credential login.
+		if e == nil {
+			oldHash = &h
 		}
-		oldHash = &h
 	}
 	credential, e := s.repo.Credential(ctx, in.Identifier)
 	if ctx.Err() != nil {
@@ -192,6 +192,20 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	}
 	if ctx.Err() != nil {
 		return LoginResult{}, ErrRateLimited
+	}
+	if !eligible {
+		oldHash = nil
+	}
+	if oldHash != nil {
+		valid, err := s.repo.RotationSession(ctx, *oldHash, credential.UserID)
+		if err != nil {
+			return LoginResult{}, ErrDatabase
+		}
+		// Preserve an observed active token through KDF for the later CAS.
+		// Expired/revoked/wrong-user cookies do not obstruct credential login.
+		if !valid {
+			oldHash = nil
+		}
 	}
 	// DB admission is distinct from KDF capacity; never retain it while hashing.
 	<-admission
@@ -248,10 +262,10 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	hash, _ := tokenHash(raw)
 	dh, _ := tokenHash(deviceRaw)
 	now := s.cfg.Now()
-	session, e := s.repo.SaveLogin(ctx, SessionInput{UserID: credential.UserID, TokenHash: hash, DeviceHash: dh, CreatedAt: now, ExpiresAt: now.Add(s.cfg.AbsoluteTimeout), DeviceExpiresAt: now.Add(s.cfg.DeviceLifetime), OldTokenHash: oldHash})
+	session, e := s.repo.SaveLogin(ctx, SessionInput{UserID: credential.UserID, VerifiedPasswordHash: credential.PasswordHash, TokenHash: hash, DeviceHash: dh, CreatedAt: now, ExpiresAt: now.Add(s.cfg.AbsoluteTimeout), DeviceExpiresAt: now.Add(s.cfg.DeviceLifetime), OldTokenHash: oldHash})
 	if e != nil {
-		if errors.Is(e, ErrSession) {
-			return LoginResult{}, ErrSession
+		if errors.Is(e, ErrSession) || errors.Is(e, ErrCredentials) {
+			return LoginResult{}, e
 		}
 		return LoginResult{}, ErrDatabase
 	}
@@ -318,6 +332,8 @@ func (s *Service) admitSession(ip netip.Addr, now time.Time) bool {
 	s.sessionGlobal, ok = takeWindow(s.sessionGlobal, now, 600)
 	return ok
 }
+
+func (s *Service) DeviceLifetime() time.Duration { return s.cfg.DeviceLifetime }
 
 func (s *Service) Logout(ctx context.Context, a Actor) error {
 	if a.userID == "" || a.sessionID == "" {

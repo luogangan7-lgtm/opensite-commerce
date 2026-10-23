@@ -98,11 +98,35 @@ SELECT jsonb_build_object(
 
 
 def verify(row):
-    expected = {'sessions': 4, 'paid': 2, 'receipt_only': 2, 'committed_owned': 2,
-                'active_owned': 2, 'on_hand': 18, 'reserved': 2, 'inbox': 4,
-                'captured': 2, 'pending_refund': 2, 'processed': 2, 'pending': 2, 'journals': 2, 'cash': 6280, 'paid_outbox': 2}
+    expected = {'sessions': 6, 'paid': 4, 'receipt_only': 2, 'committed_owned': 4,
+                'active_owned': 2, 'on_hand': 16, 'reserved': 2, 'inbox': 6,
+                'captured': 4, 'pending_refund': 2, 'processed': 4, 'pending': 2, 'journals': 4, 'cash': 12560, 'paid_outbox': 4}
     if (not isinstance(row, dict) or any(row.get(k) != v for k, v in expected.items())
             or not isinstance(row.get('debits'), int) or row['debits'] <= 0
             or row['debits'] != row.get('credits')):
         raise RuntimeError('C09d purchase order/holder-stock/Inbox/ledger witness differs')
     return {'status': 'PASS', 'facts': row}
+
+# Independent persisted ownership witness: each browser's registered buyer owns
+# exactly one paid checkout/order, committed order-held stock and balanced ledger.
+REGISTERED_SQL = f"""
+SELECT jsonb_agg(jsonb_build_object('customer',u.id,'order',o.id,'email',u.email,
+ 'actor',c.actor_kind='customer' AND c.actor_id=u.id::text,'paid',c.phase='paid' AND o.state='paid' AND o.sealed AND o.total_minor=3140,
+ 'stock',(SELECT count(*) FROM app.order_lines l JOIN app.inventory_reservations r ON r.tenant_id=l.tenant_id AND r.id=l.reservation_id WHERE l.tenant_id=o.tenant_id AND l.order_id=o.id AND r.state='committed' AND r.owner_type='order' AND r.owner_id=o.id AND r.holder_hash IS NULL AND r.sku_id='{SKU}' AND r.quantity=1),
+ 'journal',(SELECT count(*) FROM app.ledger_transactions t WHERE t.tenant_id=o.tenant_id AND t.source_id=o.id::text AND t.source_type='order' AND t.status='posted'),
+ 'debits',(SELECT sum(e.amount) FROM app.ledger_entries e JOIN app.ledger_transactions t ON t.tenant_id=e.tenant_id AND t.id=e.transaction_id WHERE t.tenant_id=o.tenant_id AND t.source_id=o.id::text AND t.source_type='order' AND t.status='posted' AND e.side='debit'),
+ 'credits',(SELECT sum(e.amount) FROM app.ledger_entries e JOIN app.ledger_transactions t ON t.tenant_id=e.tenant_id AND t.id=e.transaction_id WHERE t.tenant_id=o.tenant_id AND t.source_id=o.id::text AND t.source_type='order' AND t.status='posted' AND e.side='credit'),
+ 'capture',(SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON i.tenant_id=e.tenant_id AND i.id=e.id WHERE e.tenant_id=o.tenant_id AND e.claimed_order_id=o.id AND e.provider_ref=c.provider_ref AND e.amount_minor=3140 AND e.currency='USD' AND e.provider_account_id='c09d-e2e' AND e.status='captured' AND e.applied AND i.provider_account_id=e.provider_account_id AND i.status='processed' AND i.processed_at IS NOT NULL)))
+FROM app.customers u JOIN app.orders o ON o.tenant_id=u.tenant_id AND o.customer_id=u.id
+JOIN app.checkout_sessions c ON c.tenant_id=o.tenant_id AND c.order_id=o.id
+WHERE u.tenant_id='{TENANT}' AND u.email IN ('c09f2-desktop@example.test','c09f2-mobile@example.test');
+"""
+
+
+def verify_registered(rows):
+    if (not isinstance(rows, list) or len(rows) != 2 or
+            {r.get('email') for r in rows} != {'c09f2-desktop@example.test', 'c09f2-mobile@example.test'} or
+            any(not r.get('actor') or not r.get('paid') or any(r.get(k) != 1 for k in ('stock', 'journal', 'capture')) or
+                not isinstance(r.get('debits'), int) or r['debits'] <= 0 or r['debits'] != r.get('credits') for r in rows)):
+        raise RuntimeError('C09f2 registered purchase ownership/stock/ledger/Inbox witness differs')
+    return {'status': 'PASS', 'facts': rows}

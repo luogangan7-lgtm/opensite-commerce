@@ -594,17 +594,23 @@ func TestLoginConcurrentPostgres(t *testing.T) {
 		defer release()
 		first := prepareSeededLogin(t, a, "race@example.test", rotationFirstIP, false, old)
 		second := prepareSeededLogin(t, b, "race@example.test", rotationSecondIP, false, old)
-		ch := make(chan int, 2)
-		go func() { ch <- first.send().Code }()
-		go func() { ch <- second.send().Code }()
+		ch := make(chan *httptest.ResponseRecorder, 2)
+		go func() { ch <- first.send() }()
+		go func() { ch <- second.send() }()
 		witness, e := identityadapter.OpenIdentity(ctx, dsn)
 		if e != nil {
 			t.Fatal("witness unavailable")
 		}
 		defer witness.Close(context.Background())
-		waitLoginLocks(t, ctx, &testLoginDB{runner: witness}, "%UPDATE app.auth_sessions s SET revoked_at%", 2)
+		waitLoginLocks(t, ctx, &testLoginDB{runner: witness}, "%app.%", 2)
 		release()
-		results := []int{<-ch, <-ch}
+		one, two := <-ch, <-ch
+		for _, response := range []*httptest.ResponseRecorder{one, two} {
+			if response.Code == 401 && len(response.Result().Cookies()) != 0 {
+				t.Fatal("rotation loser overwrote winner cookie", response.Header())
+			}
+		}
+		results := []int{one.Code, two.Code}
 		sort.Ints(results)
 		if results[0] != 201 || results[1] != 401 {
 			t.Fatal("rotation response", results)

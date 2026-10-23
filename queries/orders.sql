@@ -65,3 +65,29 @@ SELECT reservation_id FROM app.order_lines WHERE tenant_id=$1 AND order_id=$2 OR
 SELECT count(*) FILTER(WHERE state='active' AND expires_at>clock_timestamp()+make_interval(secs=>sqlc.arg(min_remaining_seconds)::integer))::bigint AS live,
  count(*)::bigint AS total
 FROM app.inventory_reservations WHERE tenant_id=sqlc.arg(tenant_id) AND id=ANY(sqlc.arg(reservation_ids)::uuid[]);
+
+-- Customer history: the authenticated actor is a SQL predicate, never a Go filter.
+-- name: ListCustomerOrders :many
+SELECT o.id,o.order_number,o.state,o.currency,o.total_minor,o.created_at
+FROM app.orders o
+WHERE o.tenant_id=sqlc.arg(tenant_id)
+ AND (o.customer_id=sqlc.arg(customer_id) OR (o.customer_id IS NULL AND EXISTS(
+  SELECT 1 FROM app.customer_guest_order_links k WHERE k.tenant_id=o.tenant_id AND k.order_id=o.id AND k.customer_id=sqlc.arg(customer_id))))
+ AND o.sealed
+ AND (NOT sqlc.arg(has_cursor)::boolean OR (o.created_at,o.id)<(sqlc.arg(cursor_created_at)::timestamptz,sqlc.arg(cursor_id)::uuid))
+ORDER BY o.created_at DESC,o.id DESC LIMIT sqlc.arg(page_size)::integer;
+
+-- name: GetCustomerOrder :one
+SELECT o.id,o.order_number,o.state,o.currency,o.total_minor,o.created_at,o.shipping_minor,o.tax_minor
+FROM app.orders o
+WHERE o.tenant_id=sqlc.arg(tenant_id) AND o.id=sqlc.arg(id) AND o.sealed
+ AND (o.customer_id=sqlc.arg(customer_id) OR (o.customer_id IS NULL AND EXISTS(
+  SELECT 1 FROM app.customer_guest_order_links k WHERE k.tenant_id=o.tenant_id AND k.order_id=o.id AND k.customer_id=sqlc.arg(customer_id))));
+
+-- name: ListCustomerOrderLines :many
+SELECT l.id,l.sku,l.quantity,l.unit_price_minor,l.line_tax_minor,l.line_total_minor
+FROM app.order_lines l JOIN app.orders o ON o.tenant_id=l.tenant_id AND o.id=l.order_id
+WHERE o.tenant_id=sqlc.arg(tenant_id) AND o.id=sqlc.arg(order_id) AND o.sealed
+ AND (o.customer_id=sqlc.arg(customer_id) OR (o.customer_id IS NULL AND EXISTS(
+  SELECT 1 FROM app.customer_guest_order_links k WHERE k.tenant_id=o.tenant_id AND k.order_id=o.id AND k.customer_id=sqlc.arg(customer_id))))
+ORDER BY l.id;

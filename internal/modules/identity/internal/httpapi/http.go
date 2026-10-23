@@ -113,14 +113,12 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.service.Login(r.Context(), login.LoginInput{Identifier: *dto.Email, Password: *dto.Password, DeviceToken: device, OldSessionToken: old, IP: ip.Unmap()})
 	if err != nil {
-		if errors.Is(err, login.ErrSession) {
-			setCookie(w, SessionCookie, "", -1, time.Unix(1, 0))
-		}
+		// A failed concurrent rotation cannot overwrite the winner's cookie.
 		writeError(w, r, err)
 		return
 	}
 	h.setSessionCookie(w, result.SessionToken, result.Session)
-	setCookie(w, DeviceCookie, result.DeviceToken, 90*24*60*60, time.Time{})
+	setCookie(w, DeviceCookie, result.DeviceToken, int(h.service.DeviceLifetime()/time.Second), time.Time{})
 	setCookie(w, ChallengeCookie, "", -1, time.Unix(1, 0))
 	writeJSON(w, 201, sessionBody(result.Session, result.CSRFToken))
 }
