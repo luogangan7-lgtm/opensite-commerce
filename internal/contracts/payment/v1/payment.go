@@ -53,6 +53,8 @@ type PaymentIntentResult struct {
 	NextAction  NextAction
 }
 
+// C-19b real-provider consent preconditions (including existing-order adoption)
+// are defined in docs/architecture/V1_DECISIONS.md, section "C-19b consent contract".
 // Port requests do not prove payment to Orders. A successful client-side return
 // must never substitute for a trusted VerifiedEvent.
 type Port interface {

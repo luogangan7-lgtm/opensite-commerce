@@ -7,6 +7,7 @@ package checkout
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	contract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
@@ -166,12 +168,37 @@ func (s *Handler) Routes() []httpapi.Route {
 	}
 	routes := httpapi.StrictRoutes(s, specs)
 	for i := range routes {
+		if routes[i].Spec.OperationID == StartOperation {
+			routes[i].Handler = acceptanceAdmission(routes[i].Handler)
+		}
 		if routes[i].Spec.OperationID == FakeOperation {
 			routes[i].Handler = s.captureWebhook(routes[i].Handler)
 		}
 	}
 	return routes
 }
+
+// Classify consent shape errors before the generic OpenAPI schema rejects them
+// as invalid_json. Syntax/size/duplicate-key errors retain shared admission.
+func acceptanceAdmission(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var raw json.RawMessage
+		if err := httpapi.DecodeJSON(w, r, &raw); err != nil {
+			httpapi.WriteProblem(w, r, err)
+			return
+		}
+		var fields map[string]json.RawMessage
+		var accepted contract.AcceptedTotal
+		_ = json.Unmarshal(raw, &fields)
+		if json.Unmarshal(fields["accepted_total"], &accepted) != nil || accepted.AmountMinor <= 0 || (money.Money{Amount: accepted.AmountMinor, Currency: accepted.Currency}).Validate() != nil {
+			httpapi.WriteProblem(w, r, apperrors.New(422, "validation_failed", "Valid accepted total required"))
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Handler) browserReader(ctx context.Context, target string) (contract.AuthorizedActor, contract.BrowserReader, error) {
 	actor, ok := ctx.Value(actorKey{}).(contract.AuthorizedActor)
 	tenant, err := httpapi.AuthorizedTenant(ctx)

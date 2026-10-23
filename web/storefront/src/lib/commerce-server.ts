@@ -6,12 +6,13 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import type { CartEnvelope, CheckoutResult, Preview, PurchaseContext, PurchaseProduct } from './commerce-contract';
-import { minorAmount, parseIntegerJSON, safeInteger } from './commerce-wire';
-import { readPublishedSite } from '@opensite/api-client';
+import { minorAmount, parseIntegerJSON, safeInteger, stringifyIntegerJSON } from './commerce-wire';
+import { readPublishedSite, type APIComponents } from '@opensite/api-client';
 import { readAPIOrigin } from './presentation';
 import { requestCanonical } from './host-policy';
-import { backendRequest } from './commerce-backend';
+import { commerceBackend, type CommerceBackend, type BackendResult } from './commerce-backend';
 import { CustomerError as HTTPError, readCustomer, changeCustomer, checkCustomerCookies, type CustomerIdentity } from './customer-server';
+declare const __OSC_COMMERCE_TEST_HTTP__: boolean | undefined;
 const COOKIE = '__Host-osc_storefront_fixture';
 const key = randomBytes(32);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -45,7 +46,7 @@ function purchaseConfiguration(request: Request): Configuration | null {
     const site = readAPIOrigin(process.env.OSC_COMMERCE_SITE ?? '');
     const url = new URL(request.url);
     if (url.origin !== site || !requestCanonical({url,request}) ||
-        (url.protocol !== 'https:' && !(process.env.OSC_COMMERCE_TEST_HTTP === '1' && process.env.OPENSITE_ENVIRONMENT === 'test' && ['127.0.0.1','localhost'].includes(url.hostname)))) return null;
+        (url.protocol !== 'https:' && !((typeof __OSC_COMMERCE_TEST_HTTP__ === 'undefined' || __OSC_COMMERCE_TEST_HTTP__) && process.env.OSC_COMMERCE_TEST_HTTP === '1' && process.env.OPENSITE_ENVIRONMENT === 'test' && ['127.0.0.1','localhost'].includes(url.hostname)))) return null;
     signingKey();
     return {site,origin:readAPIOrigin(process.env.OSC_COMMERCE_API_ORIGIN ?? '')};
   } catch { return null; }
@@ -104,11 +105,12 @@ async function boundedText(response: Response) {
     if (size > 1_048_576) { await reader.cancel(); throw new HTTPError(502); } chunks.push(next.value); }
   return Buffer.concat(chunks).toString('utf8');
 }
-async function upstream(configuration: Configuration, session: Session, path: string, options: { method?: string; body?: unknown; rawBody?: string; headers?: Record<string,string> } = {}) {
+async function upstream(configuration: Configuration, session: Session, path: string, options: { method?: string; body?: unknown; rawBody?: string; headers?: Record<string,string>; backend?: (api: CommerceBackend) => Promise<BackendResult>; checkout?: boolean } = {}) {
   let response: Response, text: string;
   if (!configuration.fixture) {
-    const result = await backendRequest(configuration.origin,path,session.a?undefined:session.t,{...options,headers:{...session.a?.headers,...(path.includes('/checkout') ? checkoutHeaders(configuration,session) : {}),...options.headers}});
-    response=result.response; text=result.text;
+    if (!options.backend) throw new HTTPError(502);
+    const result = await options.backend(commerceBackend(configuration.origin,session.a?undefined:session.t,{...session.a?.headers,...(options.checkout ? checkoutHeaders(configuration,session) : {}),...options.headers}));
+    response=result.response; text=typeof result.data==='string' ? result.data : JSON.stringify(result.data??result.error)??'';
   } else {
     response=await fetch(`${configuration.origin}${path}`, {method:options.method ?? 'GET',redirect:'error',signal:AbortSignal.timeout(5000),
       headers:{Accept:'application/json','X-Fixture-Session':session.s,...(session.t ? {'X-Cart-Token':session.t}:{}),...(options.body !== undefined ? {'Content-Type':'application/json'}:{}),...options.headers},
@@ -235,7 +237,7 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
       const cursor=new URL(request.url).searchParams.get('cursor');
       if(cursor!==null&&(cursor.length>512||! /^[A-Za-z0-9_-]+$/.test(cursor)))throw new HTTPError(400,'invalid_cursor');
       const path=`${base}/customer/orders${id?`/${id}`:cursor?`?cursor=${encodeURIComponent(cursor)}`:''}`;
-      return json((await upstream(configuration,session,path)).value);
+      return json((await upstream(configuration,session,path,{backend:api=>id?api.readOrder(current.tenant,id):api.listOrders(current.tenant,cursor??undefined)})).value);
     }
     if(!configuration.fixture&&operation.startsWith('customer/')){
       if(operation==='customer/session'&&request.method==='GET')return json(current.view);
@@ -254,7 +256,7 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
     }
     if (operation === 'cart' && request.method === 'GET') {
       if (!session.c) return json(null);
-      const response = await upstream(configuration, session, `${base}/carts/${session.c}`);
+      const response = await upstream(configuration, session, `${base}/carts/${session.c}`, {backend:api=>api.readCart(current.tenant,session.c!)});
       return json(cartEnvelope(response.value, response.etag, current.view.products));
     }
     if (operation === 'cart' && request.method === 'POST') {
@@ -262,16 +264,16 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
       const sku = current.view.products.flatMap(product => product.skus).find(sku => sku.sku_id === sku_id);
       if (!sku?.available || amount < 1) throw new HTTPError(422);
       if (!session.c) {
-        const created = object((await upstream(configuration, session, `${base}/carts`, { method: 'POST', body: { currency: sku.currency } })).value);
+        const created = object((await upstream(configuration, session, `${base}/carts`, { method: 'POST', body: { currency: sku.currency }, backend:api=>api.createCart(current.tenant,{currency:sku.currency}) })).value);
         session.c = uuid(object(created.cart).id);
         if(!session.a){session.t = string(created.cart_token);if (!TOKEN.test(session.t)) throw new HTTPError(502);}
         else if(created.cart_token!==undefined)throw new HTTPError(502);
         // Persist the capability before a subsequent line write: an ambiguous write is never retried as cart creation.
         writeSession(cookies, session);
       }
-      const latest = await upstream(configuration, session, `${base}/carts/${session.c}`);
+      const latest = await upstream(configuration, session, `${base}/carts/${session.c}`, {backend:api=>api.readCart(current.tenant,session.c!)});
       const envelope = cartEnvelope(latest.value, latest.etag, current.view.products);
-      const response = await upstream(configuration, session, `${base}/carts/${session.c}/lines/${sku_id}`, { method: 'PUT', body: { quantity: amount }, headers: { 'If-Match': envelope.etag } });
+      const response = await upstream(configuration, session, `${base}/carts/${session.c}/lines/${sku_id}`, { method: 'PUT', body: { quantity: amount }, headers: { 'If-Match': envelope.etag }, backend:api=>api.setCartLine(current.tenant,session.c!,sku_id,envelope.etag,{quantity:amount}) });
       return json(cartEnvelope(response.value, response.etag, current.view.products));
     }
     if (operation.startsWith('lines/') && ['PUT','DELETE'].includes(request.method)) {
@@ -280,13 +282,14 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
       if (!/^"v\d+-[0-9a-f]{64}"$/.test(etag)) throw new HTTPError(400);
       const input = request.method === 'PUT' ? await body(request, ['quantity']) : null;
       const response = await upstream(configuration, session, `${base}/carts/${session.c}/lines/${id}`, { method: request.method,
-        ...(input ? { body: { quantity: quantity(input.quantity) } } : {}), headers: { 'If-Match': etag } });
+        ...(input ? { body: { quantity: quantity(input.quantity) } } : {}), headers: { 'If-Match': etag }, backend:api=>input?api.setCartLine(current.tenant,session.c!,id,etag,{quantity:quantity(input.quantity)}):api.deleteCartLine(current.tenant,session.c!,id,etag) });
       return json(cartEnvelope(response.value, response.etag, current.view.products));
     }
     if (operation === 'preview' && request.method === 'POST') {
       if (!session.c) throw new HTTPError(404);
       const input = await body(request, ['shipping_address']), address = object(input.shipping_address);
-      const response = await upstream(configuration, session, `${base}/checkout/preview`, { method: 'POST', body: { cart_id: session.c, shipping_address: { country: address.country, ...(address.subdivision ? { region: address.subdivision } : {}), ...(address.postal_code ? { postal_code: address.postal_code } : {}) } } });
+      const previewBody = {cart_id:session.c,shipping_address:{country:string(address.country,2),...(address.subdivision?{region:string(address.subdivision,100)}:{}),...(address.postal_code?{postal_code:string(address.postal_code,32)}:{})}};
+      const response = await upstream(configuration,session,`${base}/checkout/preview`,{method:'POST',body:previewBody,checkout:true,backend:api=>api.previewCheckout(current.tenant,previewBody)});
       return json(preview(response.value));
     }
     if (operation === 'checkout' && request.method === 'POST') {
@@ -294,9 +297,9 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
       const idempotency = request.headers.get('Idempotency-Key'); if (!idempotency || !/^[!-~]{1,128}$/.test(idempotency)) throw new HTTPError(400);
       const input = await body(request, ['shipping_address','buyer_contact','accepted_total']);
       const accepted=acceptedTotal(input.accepted_total);
-      const startBody={...input,cart_id:session.c,accepted_total:accepted};
-      const rawBody=JSON.stringify({...startBody,accepted_total:undefined}).slice(0,-1)+`,"accepted_total":{"amount_minor":${accepted.amount_minor},"currency":"${accepted.currency}"}}`;
-      const response = await upstream(configuration, session, `${base}/checkout`, { method: 'POST', body: startBody, rawBody, headers: { 'Idempotency-Key': idempotency,...checkoutHeaders(configuration,session) } });
+      const startBody={...(input as Pick<APIComponents['schemas']['CheckoutStart'],'shipping_address'|'buyer_contact'>),cart_id:session.c,accepted_total:accepted};
+      const rawBody=stringifyIntegerJSON({...startBody,accepted_total:{...accepted,amount_minor:BigInt(accepted.amount_minor)}});
+      const response = await upstream(configuration, session, `${base}/checkout`, { method: 'POST', body: startBody, rawBody, headers: { 'Idempotency-Key': idempotency,...checkoutHeaders(configuration,session) }, backend:api=>api.startCheckout(current.tenant,idempotency,startBody,rawBody) });
       const result=checkout(response.value);session.checkout=result.checkout_id;writeSession(cookies,session);return json(result,201);
     }
     if (operation === 'payment' && request.method === 'POST') {
@@ -309,26 +312,26 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
         return json(checkout((await upstream(configuration,session,'/__fixture/completion')).value));
       }
       if (!fakePaymentEnabled() || !session.checkout || input.checkout_id!==session.checkout) throw new HTTPError(404);
-      const current=checkout((await upstream(configuration,session,`${base}/checkout/${session.checkout}`)).value);
+      const current=checkout((await upstream(configuration,session,`${base}/checkout/${session.checkout}`,{checkout:true,backend:api=>api.readCheckout(current.tenant,session.checkout!)})).value);
       if (input.outcome==='captured') requireAccepted(input.accepted_total,current);
       if (['captured','failed','canceled'].includes(current.payment.status)) return json(current);
       // Authoritative backend state supplies every event field; the browser chooses only a test outcome.
       const account=process.env.OPENSITE_FAKE_ACCOUNT_ID ?? '';
       if (!/^[A-Za-z0-9_-]{1,128}$/.test(account)) throw new HTTPError(503);
       const event={event_id:`c09d:${current.checkout_id}:${input.outcome}`,account_id:account,order_id:current.order_id,
-        provider_ref:current.payment.provider_ref,status:input.outcome,currency:current.currency};
-      const raw=JSON.stringify(event).slice(0,-1)+`,"amount_minor":${minorAmount(current.amount_minor)},"order_version":${minorAmount(current.order_version)}}`;
+        provider_ref:current.payment.provider_ref,status:input.outcome as 'captured'|'failed'|'canceled',currency:current.currency};
+      const raw=stringifyIntegerJSON({...event,amount_minor:BigInt(minorAmount(current.amount_minor)),order_version:BigInt(minorAmount(current.order_version))});
       // Node supplies a timestamp; only Payments' DB clock may admit its freshness.
       const stamp=String(Math.floor(Date.now()/1000));
       const signature=`t=${stamp},v1=${createHmac('sha256',configuredKey('OPENSITE_FAKE_WEBHOOK_KEY')).update(`${stamp}.${raw}`).digest('hex')}`;
       const receipt=await upstream(configuration,{s:session.s,x:session.x},'/api/v1/testing/payments/fake/webhook',
-        {method:'POST',body:event,rawBody:raw,headers:{'X-Fake-Signature':signature}});
+        {method:'POST',body:event,rawBody:raw,headers:{'X-Fake-Signature':signature},backend:api=>api.fakeWebhook({...event,amount_minor:BigInt(current.amount_minor),order_version:BigInt(current.order_version)},raw,signature)});
       paymentReceipt(receipt.value,event.event_id);
-      return json(checkout((await upstream(configuration,session,`${base}/checkout/${session.checkout}`)).value));
+      return json(checkout((await upstream(configuration,session,`${base}/checkout/${session.checkout}`,{checkout:true,backend:api=>api.readCheckout(current.tenant,session.checkout!)})).value));
     }
     if (operation === 'completion' && request.method === 'GET') {
       if (!configuration.fixture && !session.checkout) return json(null);
-      const value=(await upstream(configuration,session,configuration.fixture ? '/__fixture/completion' : `${base}/checkout/${session.checkout}`)).value;return json(value===null?null:checkout(value));
+      const value=(await upstream(configuration,session,configuration.fixture ? '/__fixture/completion' : `${base}/checkout/${session.checkout}`,{checkout:true,backend:api=>api.readCheckout(current.tenant,session.checkout!)})).value;return json(value===null?null:checkout(value));
     }
     if (configuration.fixture && operation === 'customer/session' && ['POST','DELETE'].includes(request.method)) {
       const input = request.method === 'POST' ? await body(request, ['email','password']) : undefined;

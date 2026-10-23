@@ -148,11 +148,15 @@ func TestCheckoutPGLegacyOrForgedConsentCannotCapture(t *testing.T) {
 			t.Fatal(err)
 		}
 		event := a.f.event(checkoutcontract.Result{OrderID: a.order.ID, OrderVersion: 1, AmountMinor: 270, Currency: "USD", Payment: checkoutcontract.Intent{ProviderRef: "legacy-intent"}}, "authorized")
+		before := a.f.witness(t, a.order.ID)
 		if _, err := a.f.service.Confirm(checkoutRequestContext(a.f.ctx), event); !errors.Is(err, checkoutcontract.ErrTotalChanged) {
 			t.Fatalf("capture admitted legacy/forged consent: %v", err)
 		}
 		if a.f.provider.captures.Load() != 0 {
 			t.Fatal("consent failure reached Capture")
+		}
+		if after := a.f.witness(t, a.order.ID); after != before || after.phase != "ready" {
+			t.Fatalf("rejected Capture changed persisted state: %+v", after)
 		}
 	}
 }
@@ -195,6 +199,14 @@ func TestCheckoutPGConsentLegacyRecoveryAndPaidReplay(t *testing.T) {
 			if before.phase != "confirming" || before.journals != 0 || before.paidEvents != 0 {
 				t.Fatalf("legacy uncertain witness: %+v", before)
 			}
+			foreign := event
+			foreign.EventID += ":other-claim"
+			if _, err := f.service.Confirm(checkoutRequestContext(f.ctx), foreign); !errors.Is(err, checkoutcontract.ErrConflict) {
+				t.Fatalf("recovery changed claim key: %v", err)
+			}
+			if w := f.witness(t, a.order.ID); w != before || f.provider.captures.Load() != 1 {
+				t.Fatalf("foreign claim changed money: %+v", w)
+			}
 			paid, err := f.service.Confirm(checkoutRequestContext(f.ctx), event)
 			if err != nil || paid.State != "paid" {
 				t.Fatalf("legacy recovery: %+v %v", paid, err)
@@ -218,24 +230,32 @@ func TestCheckoutPGConsentLegacyRecoveryAndPaidReplay(t *testing.T) {
 }
 
 func TestCheckoutPGHTTPConsentInvalid(t *testing.T) {
-	for _, accepted := range []string{`null`, `{}`, `{"amount_minor":0,"currency":"USD"}`, `{"amount_minor":160,"currency":"usd"}`} {
-		f := newCheckoutPGFixture(t, 5, 1)
-		in := f.input()
-		raw, _ := json.Marshal(in)
-		var fields map[string]json.RawMessage
-		_ = json.Unmarshal(raw, &fields)
-		fields["accepted_total"] = json.RawMessage(accepted)
-		raw, _ = json.Marshal(fields)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/t/"+f.tenant+"/checkout", strings.NewReader(string(raw)))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Origin", checkoutHTTPOrigin)
-		req.Header.Set("X-CSRF-Token", "fixture")
-		req.Header.Set("Idempotency-Key", in.IdempotencyKey)
-		res := httptest.NewRecorder()
-		checkoutHTTPRouter(t, f).ServeHTTP(res, req)
-		checkoutHTTPProblem(t, res, 422, "validation_failed")
-		if w := f.provider.fake.Events(); len(w) != 0 {
-			t.Fatalf("invalid consent reached provider: %+v", w)
-		}
+	for _, accepted := range []string{`null`, `{}`, `{"amount_minor":0,"currency":"USD"}`, `{"amount_minor":160,"currency":"usd"}`, `"wrong-shape"`} {
+		t.Run(accepted, func(t *testing.T) {
+			f := newCheckoutPGFixture(t, 5, 1)
+			in := f.input()
+			raw, _ := json.Marshal(in)
+			var fields map[string]json.RawMessage
+			_ = json.Unmarshal(raw, &fields)
+			fields["accepted_total"] = json.RawMessage(accepted)
+			raw, _ = json.Marshal(fields)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/t/"+f.tenant+"/checkout", strings.NewReader(string(raw)))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Origin", checkoutHTTPOrigin)
+			req.Header.Set("X-CSRF-Token", "fixture")
+			req.Header.Set("Idempotency-Key", in.IdempotencyKey)
+			res := httptest.NewRecorder()
+			checkoutHTTPRouter(t, f).ServeHTTP(res, req)
+			checkoutHTTPProblem(t, res, 422, "validation_failed")
+			if w := f.provider.fake.Events(); len(w) != 0 {
+				t.Fatalf("invalid consent reached provider: %+v", w)
+			}
+			var count int
+			if err := f.runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, "SELECT count(*) FROM app.orders WHERE tenant_id=$1", f.tenant).Scan(&count)
+			}); err != nil || count != 0 {
+				t.Fatalf("invalid consent persisted order: %d %v", count, err)
+			}
+		})
 	}
 }

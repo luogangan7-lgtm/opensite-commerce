@@ -824,6 +824,37 @@ Payments 不依赖 Checkout 实现
 
 真实支付结果由经过签名验证、可信账户映射和 Inbox 去重的事件处理流程提交，Orders 通过受控命令更新付款状态。
 
+### C-19b consent contract
+
+Before a real-provider `Port.Capture`, Checkout must durably record buyer acceptance
+of `(tenant, buyer, order, payable_version, amount_minor, currency)` and compare it
+with the locked immutable payable before acquiring the `ready -> confirming`
+claim. A changed payable needs explicit acceptance and a fresh request key; Start
+fingerprints its accepted total, and its immutable snapshot binds the order/version.
+Amounts/currencies match exactly; missing/malformed input is 422
+`validation_failed`, while a valid stale total is 409 `checkout_total_changed`.
+
+`AdoptOrder` currently has no acceptance parameter or receipt. Its only composed
+provider is the nonproduction Fake (`composeFakeCheckout`, `wireStorefrontCheckout`);
+`quoteCheckout.Prepay` adopts the sealed quote-conversion order. There is no real
+provider Capture path today. Adoption/quote authorization or a sealed Orders
+snapshot alone **does not establish payment consent**. C-19b must extend admission
+and persist the above acceptance before enabling a real provider for this source,
+or keep real-provider adoption disabled. Its CI gate must reject missing/stale,
+wrong-buyer/order/version/currency acceptance without a claim or provider effect,
+and prove exact matching consent and stable-key recovery. PSP-PREREQ deliberately
+adds no speculative adoption API or Stripe code.
+
+The existing cart guard is required only when acquiring a new capture claim.
+Receipt-free pre-C-09e `confirming` claims recover their original event/provider
+key; completed attempts and paid sessions replay the persisted result. Neither
+path creates new payment consent or a new business attempt. Event identity,
+payable version, amount, currency, provider reference and claim key checks remain
+mandatory. `ApplyPaymentEvent` records already completed trusted provider facts
+without calling Capture; it must retain actual money even for old sessions and
+must never be treated as permission to initiate capture. No async/batch writer
+may bypass this admission contract when C-19b introduces real-provider IO.
+
 ### 修订后的三行 PR 序列
 
 | PR 号 | 模块与依赖 | 验收 Gate |
