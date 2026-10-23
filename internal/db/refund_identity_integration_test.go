@@ -20,7 +20,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 )
 
 func TestPaymentsRefundDeliveryIdentity(t *testing.T) {
@@ -112,16 +115,45 @@ func TestStripeDashboardRefundDurableUnmatched(t *testing.T) {
 func TestPaymentsLegacyRefundRequiresReconciliation(t *testing.T) {
 	p := newPaymentFactFixture(t)
 	p.receive(t, "capture", payment.StatusCaptured, p.start.AmountMinor)
-	p.receive(t, "legacy-created", payment.StatusPartiallyRefunded, 1)
-	before := p.f.witness(t, p.start.OrderID)
 	var body map[string]any
-	_ = json.Unmarshal(p.raw("new-updated", payment.StatusPartiallyRefunded, 1), &body)
+	_ = json.Unmarshal(p.raw("legacy-created", payment.StatusPartiallyRefunded, 1), &body)
 	body["refund_id"] = "legacy-provider-refund"
+	created, _ := json.Marshal(body)
+	// Seed the previous parser's persisted representation: raw-body hash exists,
+	// but the normalized fact discarded the provider refund ID and used event ID.
+	identity, _ := json.Marshal([4]string{"fake", "test", p.account, "legacy-created"})
+	digest, payload := sha256.Sum256(identity), sha256.Sum256(created)
+	key := hex.EncodeToString(digest[:])
+	err := p.run(p.f.ctx, p.account, func(ctx context.Context, tx pgx.Tx, tenant string, _ time.Time) error {
+		q := db.New(tx)
+		inbox, err := q.AdmitPaymentInbox(ctx, db.AdmitPaymentInboxParams{Account: p.account, EventID: "legacy-created", PayloadHash: payload[:]})
+		if err != nil {
+			return err
+		}
+		if err = q.InsertPaymentEvent(ctx, db.InsertPaymentEventParams{TenantID: mustPGUUID(t, tenant), ID: inbox, ProviderAccountID: p.account, ProviderRef: p.start.Payment.ProviderRef, EventKey: key, ClaimedOrderID: mustPGUUID(t, p.start.OrderID), OrderVersion: p.start.OrderVersion, Status: string(payment.StatusPartiallyRefunded), AmountMinor: 1, Currency: p.start.Currency}); err != nil {
+			return err
+		}
+		done, err := p.f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent(ctx, tx, payment.VerifiedEvent{EventID: key, TenantID: tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Status: payment.StatusPartiallyRefunded, Amount: money.Money{Amount: 1, Currency: p.start.Currency}})
+		if err != nil || !done {
+			return fmt.Errorf("seed legacy refund: applied=%v error=%v", done, err)
+		}
+		if err = q.SetPaymentEventOutcome(ctx, db.SetPaymentEventOutcomeParams{TenantID: mustPGUUID(t, tenant), ID: inbox, Applied: true}); err != nil {
+			return err
+		}
+		return q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: inbox, Success: true})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := p.f.witness(t, p.start.OrderID)
+	body["event_id"] = "new-updated"
 	raw, _ := json.Marshal(body)
 	if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err == nil {
 		t.Fatal("unbound legacy refund stream accepted a new financial identity")
 	}
-	p.receive(t, "legacy-created", payment.StatusPartiallyRefunded, 1)
+	if receipt, err := p.module.Receive(p.f.ctx, created, p.signature(created, p.at)); err != nil || receipt.Status != "processed" {
+		t.Fatalf("legacy exact-body replay lost old financial identity: %+v %v", receipt, err)
+	}
 	if after := p.f.witness(t, p.start.OrderID); after != before {
 		t.Fatal("legacy refund replay/update posted another journal")
 	}

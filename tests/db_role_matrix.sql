@@ -29,7 +29,7 @@ DECLARE
   'ledger_accounts','ledger_transactions','ledger_entries',
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','shipments','shipment_lines','returns','return_lines','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals','quote_conversions',
-  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events',
+  'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events','payment_event_deliveries',
   'site_release_skus','storefront_serving','serving_invalidations','data_rights_exports','data_rights_erasures'];
  role_name text;
  r record;
@@ -88,7 +88,8 @@ BEGIN
       ELSE
        IF t.relname=ANY(ARRAY['checkout_sessions','checkout_attempts']) THEN expected_table := true; END IF;
        allowed_columns := CASE t.relname
-        WHEN 'payment_events' THEN ARRAY['tenant_id','id','provider_account_id','provider_ref','event_key','claimed_order_id','order_version','status','amount_minor','currency']
+        WHEN 'payment_events' THEN ARRAY['tenant_id','id','provider_account_id','provider_ref','event_key','claimed_order_id','order_version','status','amount_minor','currency','provider_refund_id']
+        WHEN 'payment_event_deliveries' THEN ARRAY['tenant_id','id','payment_event_id']
         WHEN 'checkout_sessions' THEN all_columns
         WHEN 'checkout_attempts' THEN all_columns
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']

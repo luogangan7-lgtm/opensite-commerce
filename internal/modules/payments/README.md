@@ -10,6 +10,13 @@ exact-body Inbox receipt. Changed amount/order/currency under the same refund
 identity is rejected. Pending API refund recovery is retryable with the same
 request key; it never proves permanent absence of a provider effect.
 
+Delivery-to-fact bindings persist until the canonical fact reaches a terminal
+outcome, including when several refund deliveries arrive before capture.
+Legacy facts have no recoverable provider refund ID. Exact-body replays retain
+their original journal key; new refund identities on those streams are retained
+as failed Inbox deliveries and rejected for trusted reconciliation. No automatic
+amount-based matching or rewriting of historical financial identities occurs.
+
 Dashboard refunds without `osc_order` are acknowledged as `unmatched`, retained
 as failed Stripe Inbox entries with bounded event ID and SHA-256 payload hash,
 and emit `payment_webhook_reconciliation_required` / `unmatched_refund`.

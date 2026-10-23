@@ -884,7 +884,8 @@
       "go_status": "implemented",
       "owns_tables": [
         "payment_provider_accounts",
-        "payment_events"
+        "payment_events",
+        "payment_event_deliveries"
       ],
       "operations": [
         {
@@ -1855,6 +1856,11 @@
         "payment_events",
         "webhook_inbox"
       ]
+    },
+    {
+      "file": "migrations/pending/c19c-refund-facts_refund_delivery_identity.sql",
+      "owner": "payments",
+      "touches_tables": ["payment_events", "payment_event_deliveries"]
     }
   ]
 }
