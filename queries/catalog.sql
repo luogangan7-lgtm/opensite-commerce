@@ -8,8 +8,12 @@ WHERE tenant_id = sqlc.arg(tenant_id)
 ORDER BY created_at DESC, id DESC LIMIT sqlc.arg(page_size);
 
 -- name: CreateProduct :one
+-- Match CSV's tenant/canonical-code lock before entering the unique index.
+WITH code_lock AS MATERIALIZED (
+ SELECT pg_advisory_xact_lock(hashtextextended('catalog-csv:' || sqlc.arg(tenant_id)::uuid::text || ':p:' || sqlc.arg(product_code)::text, 0))
+)
 INSERT INTO app.products (tenant_id, product_code, lifecycle_status)
-VALUES ($1, $2, 'draft') RETURNING *;
+SELECT sqlc.arg(tenant_id)::uuid, sqlc.arg(product_code)::text, 'draft' FROM code_lock RETURNING *;
 
 -- name: UpdateProduct :one
 UPDATE app.products SET product_code = COALESCE(sqlc.narg(product_code)::text, product_code),

@@ -79,3 +79,38 @@ func TestCSVAdmission(t *testing.T) {
 		})
 	}
 }
+
+type readingPort struct{ contract.CSVPort }
+
+func (readingPort) Preflight(_ context.Context, _ pgx.Tx, input io.Reader) (contract.CSVReport, error) {
+	_, err := io.ReadAll(input)
+	return contract.CSVReport{}, err
+}
+
+func TestCSVUnknownLengthRequestTooLarge(t *testing.T) {
+	for _, operation := range []string{"preflight", "import"} {
+		t.Run(operation, func(t *testing.T) {
+			cfg := catalogcsvhttp.Config{Service: readingPort{}, SubjectCommandConfig: httpapi.SubjectCommandConfig{
+				Subject: func(context.Context) (httpapi.Subject, error) {
+					return httpapi.Subject{Kind: "api_key", ID: tenant}, nil
+				},
+				Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) },
+			}}
+			router := httpapi.New(auth{scope: "catalog:import"}, nil)
+			for _, route := range catalogcsvhttp.New(cfg).Routes() {
+				if err := router.Register(route.Spec, route.Handler); err != nil {
+					t.Fatal(err)
+				}
+			}
+			req := httptest.NewRequest("POST", "/api/v1/t/"+tenant+"/catalog/csv/"+operation, strings.NewReader(strings.Repeat("x", contract.CSVMaxBytes+1)))
+			req.ContentLength = -1
+			req.Header.Set("Content-Type", "application/octet-stream")
+			req.Header.Set("Idempotency-Key", "csv-size-test")
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+			if rr.Code != 413 || !strings.Contains(rr.Body.String(), `"code":"request_too_large"`) {
+				t.Fatalf("%s status=%d body=%s", operation, rr.Code, rr.Body.String())
+			}
+		})
+	}
+}
