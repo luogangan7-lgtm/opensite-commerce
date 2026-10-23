@@ -335,3 +335,53 @@ func TestOperationNamespaceAndFailureCopy(t *testing.T) {
 		t.Fatal("tenant namespace collision")
 	}
 }
+
+func TestObservedCaptureRetainsBindingAndRefundBalance(t *testing.T) {
+	ctx := context.Background()
+	f := paymentfake.New()
+	r := request()
+	created, err := f.CreateIntent(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := payment.VerifiedEvent{EventID: "committed-capture", TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: created.ProviderRef, Status: payment.StatusCaptured, Amount: r.Amount}
+	external := event
+	external.ProviderRef = "fake_external_capture"
+	if err = f.ObserveCaptured(external); err != nil {
+		t.Fatal("external capture fact was rejected", err)
+	}
+	_, err = f.Refund(ctx, operation(r, external.ProviderRef, "external-refund"))
+	code(t, err, payment.ErrorNotFound)
+	for _, mutate := range []func(*payment.VerifiedEvent){func(e *payment.VerifiedEvent) { e.TenantID = "00000000-0000-4000-8000-000000000003" }, func(e *payment.VerifiedEvent) { e.OrderID = "00000000-0000-4000-8000-000000000003" }, func(e *payment.VerifiedEvent) { e.OrderVersion++ }, func(e *payment.VerifiedEvent) { e.Amount.Amount++ }, func(e *payment.VerifiedEvent) { e.Amount.Currency = "EUR" }} {
+		bad := event
+		mutate(&bad)
+		code(t, f.ObserveCaptured(bad), payment.ErrorAmountMismatch)
+	}
+	refund := operation(r, created.ProviderRef, "partial")
+	refund.Amount.Amount = 400
+	_, err = f.Refund(ctx, refund)
+	code(t, err, payment.ErrorStateConflict)
+	if err = f.ObserveCaptured(event); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.Refund(ctx, refund); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.ObserveCaptured(event); err != nil {
+		t.Fatal(err)
+	}
+	rest := operation(r, created.ProviderRef, "rest")
+	rest.Amount.Amount = 600
+	result, err := f.Refund(ctx, rest)
+	if err != nil || result.Status != payment.StatusRefunded {
+		t.Fatalf("full refund: %+v %v", result, err)
+	}
+	if err = f.ObserveCaptured(event); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.Refund(ctx, operation(r, created.ProviderRef, "excess"))
+	code(t, err, payment.ErrorStateConflict)
+	if len(f.Events()) != 3 {
+		t.Fatal("capture observation issued a provider command")
+	}
+}

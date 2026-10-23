@@ -206,3 +206,32 @@ func (f *Fake) Replay(eventID string) (Event, error) {
 	}
 	return Event{}, failure(payment.ErrorNotFound, "event not found")
 }
+
+// ObserveCaptured mirrors an authenticated, committed capture fact, not a new
+// Capture command. Only Payments' post-commit observer may call this in runtime.
+// Observe only locally managed intents; reject mismatched bindings and never
+// regress partial/full refunds. An external fact must not create an intent.
+func (f *Fake) ObserveCaptured(event payment.VerifiedEvent) error {
+	if event.Validate() != nil || event.Status != payment.StatusCaptured {
+		return failure(payment.ErrorStateConflict, "invalid capture observation")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	current, ok := f.intents[event.ProviderRef]
+	if !ok {
+		return nil
+	}
+	r := current.request
+	if r.TenantID != event.TenantID || r.OrderID != event.OrderID || r.OrderVersion != event.OrderVersion || r.Amount != event.Amount {
+		return failure(payment.ErrorAmountMismatch, "payable snapshot mismatch")
+	}
+	switch current.status {
+	case payment.StatusAuthorized:
+		current.status = payment.StatusCaptured
+		f.intents[event.ProviderRef] = current
+	case payment.StatusCaptured, payment.StatusPartiallyRefunded, payment.StatusRefunded:
+	default:
+		return failure(payment.ErrorStateConflict, "capture observation conflicts with payment")
+	}
+	return nil
+}
