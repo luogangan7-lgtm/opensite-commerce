@@ -28,8 +28,8 @@ func stripeTestConfig(t *testing.T) Config {
 	t.Setenv("STRIPE_TEST_WEBHOOK_SECRET", "whsec_isolated_unit_fixture_never_real_secret")
 	t.Setenv("STRIPE_TEST_ACCOUNT_ID", "acct_fixture")
 	t.Setenv("STRIPE_TEST_PAYMENT_METHOD", "pm_card_visa")
-	return Config{Run: func(context.Context, string, func(context.Context, pgx.Tx, string, time.Time) error) error {
-		return errors.New("no database expected")
+	return Config{Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+		return fn(ctx, nil, "10000000-0000-4000-8000-000000000001", time.Now())
 	}, Apply: func(context.Context, pgx.Tx, payment.VerifiedEvent) (bool, error) {
 		return false, errors.New("no fact expected")
 	}, Admit: func(context.Context, payment.CreatePaymentIntent, bool) error { return nil }}
@@ -129,5 +129,64 @@ func TestStripeSignatureRejectsBeforeDatabase(t *testing.T) {
 	}
 	if _, err = s.Receive(context.Background(), raw, sig+",v1="+strings.Repeat("0", 64)); err == nil || calls != 1 {
 		t.Fatal("valid rotating signature failed admission")
+	}
+}
+
+func TestStripeOutboundAccountAuthority(t *testing.T) {
+	for _, mapping := range []string{"missing", "disabled", "foreign", "matching"} {
+		t.Run(mapping, func(t *testing.T) {
+			c := stripeTestConfig(t)
+			t.Setenv("STRIPE_TEST_SECRET_KEY", "sk_test_unit_fixture")
+			committed, runs, calls := false, 0, 0
+			c.Run = func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+				runs++
+				if account != "acct_fixture" {
+					t.Fatal("wrong account lookup")
+				}
+				if mapping == "missing" || mapping == "disabled" {
+					return errors.New("private mapping detail")
+				}
+				tenant := "10000000-0000-4000-8000-000000000001"
+				if mapping == "foreign" {
+					tenant = "10000000-0000-4000-8000-000000000099"
+				}
+				err := fn(ctx, nil, tenant, time.Now())
+				committed = err == nil
+				return err
+			}
+			s, err := NewStripe(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.client.Transport = stripeTransport(func(*http.Request) (*http.Response, error) {
+				calls++
+				if !committed {
+					t.Fatal("network before mapped transaction committed")
+				}
+				return nil, errors.New("network fixture")
+			})
+			r := payment.CreatePaymentIntent{TenantID: "10000000-0000-4000-8000-000000000001", OrderID: "10000000-0000-4000-8000-000000000002", OrderVersion: 1, Amount: money.Money{Amount: 1150, Currency: "USD"}, IdempotencyKey: "attempt-1"}
+			for _, op := range []string{"create", "capture", "cancel", "refund"} {
+				committed, runs, calls = false, 0, 0
+				in := payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: "pi_fixture"}
+				switch op {
+				case "create":
+					_, err = s.CreateIntent(context.Background(), r)
+				case "capture":
+					_, err = s.Capture(context.Background(), in)
+				case "cancel":
+					_, err = s.Cancel(context.Background(), in)
+				case "refund":
+					_, err = s.Refund(context.Background(), in)
+				}
+				want := 0
+				if mapping == "matching" {
+					want = 1
+				}
+				if err == nil || runs != 1 || calls != want || strings.Contains(err.Error(), "private mapping") {
+					t.Fatalf("%s: mapping=%s runs=%d HTTP=%d", op, mapping, runs, calls)
+				}
+			}
+		})
 	}
 }
