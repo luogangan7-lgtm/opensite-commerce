@@ -7,6 +7,25 @@ const fixtureOrigin=process.env.OPENSITE_ADMIN_FIXTURE_ORIGIN??'http://127.0.0.1
 const snapshots=process.env.OPENSITE_ADMIN_NO_SNAPSHOTS!=='1';
 async function audit(page:Page,name?:string){await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));});expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);if(name&&snapshots)await expect(page).toHaveScreenshot(name,{fullPage:true});}
 async function signIn(page:Page){await page.getByLabel('Email').fill('staff@example.invalid');await page.getByLabel('Password',{exact:true}).fill(crypto.randomUUID());await page.getByRole('button',{name:'Sign in',exact:true}).click();}
+test('merchant data privacy explains support deletion without offering a write action',async({page})=>{
+ await fixture(page);await page.goto(`${origin}/t/${tenant}/products`);
+ await page.getByRole('navigation',{name:'Store navigation'}).getByRole('link',{name:'Data privacy',exact:true}).click();
+ await expect(page).toHaveURL(new RegExp(`/t/${tenant}/data-privacy$`));
+ await expect(page.getByRole('heading',{name:'Data privacy',exact:true})).toBeFocused();
+ const main=page.getByRole('main');
+ await expect(main.getByText('To delete shop or customer data, contact support. We will process it within 30 days and provide an export copy.',{exact:true})).toBeVisible();
+ const chinese=main.getByText('如需删除店铺或客户数据，请联系支持，我们会在 30 天内处理并提供导出副本。',{exact:true});
+ await expect(chinese).toBeVisible();await expect(chinese).toHaveAttribute('lang','zh-CN');
+ await expect(main.getByRole('button')).toHaveCount(0);await expect(main.getByRole('form')).toHaveCount(0);
+ const writes:string[]=[];page.on('request',r=>{if(!['GET','HEAD','OPTIONS'].includes(r.method()))writes.push(r.method()+' '+r.url());});
+ await page.reload();await expect(main.getByRole('heading',{name:'Data privacy',exact:true})).toBeVisible();
+ expect(writes).toEqual([]);await audit(page);
+});
+test('merchant data privacy remains behind the session guard',async({page})=>{
+ await fixture(page,{authenticated:false});await page.goto(`${origin}/t/${tenant}/data-privacy`);
+ await expect(page).toHaveURL(/\/login/);await expect(page.getByRole('heading',{name:'Sign in',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Data privacy',exact:true})).toHaveCount(0);
+});
 test('order table keeps identifiers and money readable inside a keyboard scroll region',async({page})=>{
   await fixture(page);await page.goto(`${fixtureOrigin}/t/${tenant}/orders/44444444-4444-4444-8444-444444444444`);
   const table=page.getByRole('table',{name:'Order lines'});await expect(table.getByRole('cell',{name:'USD 22.00',exact:true})).toBeVisible();
