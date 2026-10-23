@@ -1,3 +1,4 @@
+-- stable-id: admin-redrive-probe
 -- Temporary CI-only fault probe; never merge.
 CREATE OR REPLACE FUNCTION app.notification_redrive(p_tenant uuid,p_notification_id uuid,p_key text) RETURNS app.notification_redrive_requests LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
 DECLARE d app.notification_deliveries;r app.notification_redrive_requests; dispatch uuid:=uuidv7(); BEGIN
