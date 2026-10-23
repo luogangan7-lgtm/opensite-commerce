@@ -148,7 +148,9 @@ Fresh Compose HBA confines this identity to the application database over IPv4,
 IPv6 and Unix sockets; wrong passwords and maintenance databases are rejected.
 Bootstrap validates exact membership and effective privileges, owns the pool
 lifecycle, and exposes authorized transactions as `Config.ReturnsCoordinator.Runner`
-for a trusted Returns composition consumer. It does not populate `Returns.Service`.
+for trusted Returns composition. With a configured Payment port, bootstrap binds
+the server-side Payments capture/account readers and populates `Returns.Service`;
+the coordinator credential alone does not enable refunds.
 An absent binding logs the setting names only and preserves current HTTP behavior.
 An invalid configured binding refuses startup without echoing credentials.
 
@@ -165,8 +167,16 @@ policies additionally require the current tenant and operation `refundReturn`.
 It cannot INSERT/claim requests, change claim tokens or complete another operation.
 
 The coordinator must use authenticated tenant transactions through `pgxadapter`
-and server-provided captured-payment/account bindings. Do not provision membership
-in an executor/DDL-owner role. Credentials and provider configuration remain
+and server-provided captured-payment/account bindings. Its exact tenant authority
+capability is EXECUTE on `app.auth_revalidate_tenant(uuid,uuid,text,uuid,text)`,
+the existing boolean SECURITY DEFINER helper also used by runtime/auth/media.
+It checks the live credential, tenant, membership and scope inside each refund
+transaction; this grants no credential reads, table access or grant option.
+`TestReturnsCoordinatorAuthenticatedRefundPG` runs the production bootstrap with
+a dedicated LOGIN and real staff session, exercises HTTP refundReturn through
+the Fake PSP, and requires one refund journal across replay. The foundation pgx
+lane runs this authenticated smoke: service wiring alone cannot prove DB rights.
+Do not provision membership in an executor/DDL-owner role. Credentials and provider configuration remain
 out-of-band. The migrator and restore provision `opensite_returns_login` as the
 eighth component LOGIN, granted only `app_returns_service`, with its independent
 `OPENSITE_RETURNS_DB_PASSWORD` validated before migration or restore target writes.
@@ -203,3 +213,14 @@ DB-clock idle/absolute policy and flooding hardening. The default 30-minute idle
 window exceeds the production request deadline; custom shorter idle policies
 still need H-4 transaction-level policy alignment.
 
+
+## Compensation preparation (C-19d part 1)
+
+`app_payments_service` is an isolated NOLOGIN/NOINHERIT group reserved for the
+closed Payments compensation finalizer. Do not provision a LOGIN or grant group
+membership yet: part 1 grants only schema USAGE, no table/column access or Ledger
+posting. New immutable attempt/reversal tables have no application grants.
+The exact role matrix checks this inert capability across all app tables,
+columns and functions. Returns retains the existing success path until part 2
+atomically transfers posting and introduces the Orders/RMA projection commands.
+This preparation does not enable live or post-success compensation.
