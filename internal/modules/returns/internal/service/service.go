@@ -172,6 +172,11 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 		if !contract.ValidID(journal) {
 			return contract.ErrUnavailable
 		}
+		// FAULT PROBE: restore a second Returns-owned journal outside Payments.
+		posting.SourceType, posting.SourceID, posting.Event = "order", prepared.OrderID, "refund_probe:"+result.RefundID
+		if _, err := s.config.Ledger.Post(ctx, tx, posting); err != nil {
+			return err
+		}
 		out, err = s.repo.Complete(ctx, tx, tenant, prepared, journal)
 		if err != nil {
 			return err

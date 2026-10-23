@@ -90,7 +90,7 @@ func (s *Stripe) Receive(ctx context.Context, raw []byte, signature string) (con
 			o.Amount <= 0 || (money.Money{Amount: o.Amount, Currency: strings.ToUpper(o.Currency)}).Validate() != nil {
 			return zero, invalid()
 		}
-		if o.Status != "succeeded" && o.Status != "failed" && o.Status != "canceled" {
+		if o.Status != "succeeded" && o.Status != "failed" && o.Status != "canceled" && o.Status != "pending" {
 			return contract.Receipt{EventID: e.ID, Status: "ignored"}, nil
 		}
 		if o.Metadata["osc_order"] == "" || o.Status != "succeeded" {
