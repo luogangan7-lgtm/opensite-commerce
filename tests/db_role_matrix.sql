@@ -1289,7 +1289,7 @@ BEGIN
    (f.proname=ANY(names) OR f.proname IN('orders_context','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return','payments_allocate_refund')) THEN
    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_EXECUTOR_FUNCTION %',f.proname; END IF;
   IF has_function_privilege('app_returns_service',f.oid,'EXECUTE') IS DISTINCT FROM
-   (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund','post_ledger','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund')) THEN
+   (f.proname IN('returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund','post_ledger','payments_return_context','payments_lock_return_checkout','payments_bind_return_refund','auth_revalidate_tenant')) THEN
    RAISE EXCEPTION 'FULFILLMENT_MATRIX_FOREIGN_SERVICE_FUNCTION %',f.proname; END IF;
  END LOOP;
  IF(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names) THEN
