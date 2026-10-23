@@ -56,6 +56,8 @@ func TestPGStaffContent(t *testing.T) {
 	listingPath := base + "/listings/" + site + "/en"
 	body := `{"title":"Second","body_blocks":[{"kind":"text","text":"copy"}],"seo":{"title":"SEO"}}`
 	expect(t, r, "GET", content, "", "", 200)
+	expect(t, r, "PUT", base+"/content/fr", body, `"0"`, 200)
+	expect(t, r, "PUT", base+"/content/fr", body, `"0"`, 412)
 	w := expect(t, r, "PUT", content, body, `"1"`, 200)
 	if w.Header().Get("ETag") != `"2"` || w.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("missing private revision headers")
