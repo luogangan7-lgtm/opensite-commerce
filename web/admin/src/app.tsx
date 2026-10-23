@@ -3,6 +3,7 @@
 import {Component,lazy,Suspense,useEffect,useMemo,useRef,useState,type FormEvent,type ReactNode} from 'react';
 import {Link,Navigate,Outlet,Route,Routes,useLocation,useNavigate,useParams} from 'react-router';
 import {Button,EmptyState,FormField,TextInput} from '@opensite/ui';
+import {t} from '@opensite/component-contracts';
 import {APIError,CatalogAPI} from './api';
 import {validateUUID} from './validation';
 import {SessionProvider,useSession} from './session';
@@ -37,8 +38,10 @@ function Login(){const {session,loading,expired,signIn}=useSession();const locat
 function ChooseStore(){const [tenant,setTenant]=useState(''),[error,setError]=useState('');const navigate=useNavigate();return <main id="main" className="admin-page"><h1 tabIndex={-1}>Open a store</h1><p>Your store ID is supplied by your administrator. Access is checked by the server.</p><form className="admin-panel admin-form" onSubmit={e=>{e.preventDefault();if(!validateUUID(tenant)){setError('Enter a valid store ID.');return;}navigate(`/t/${tenant}/products`);}}><FormField id="tenant-id" label="Store ID" error={error}><TextInput required value={tenant} onChange={e=>setTenant(e.target.value.trim())}/></FormField><Button type="submit">Open store</Button></form></main>;}
 function Frame(){const {tenantId=''}=useParams();const {signOut}=useSession();const [error,setError]=useState(''),[busy,setBusy]=useState(false);
  return <div className="admin-shell"><a className="admin-skip" href="#main">Skip to content</a><header className="admin-topbar"><Link to="/" className="admin-brand">OpenSite admin</Link><div className="admin-actions"><Link to="/">Switch store</Link><Button variant="ghost" loading={busy} onClick={()=>{setBusy(true);signOut().catch(()=>setError('Unable to sign out. Retry to revoke your session.')).finally(()=>setBusy(false));}}>Sign out</Button></div></header>{error&&<p role="alert" className="admin-error">{error}</p>}
- <div className="admin-workspace">{tenantId&&<nav className="admin-nav" aria-label="Store navigation"><Link to={`/t/${tenantId}/products`}>Products</Link><Link to={`/t/${tenantId}/orders`}>Orders</Link></nav>}<Outlet/></div></div>;
+ <div className="admin-workspace">{tenantId&&<nav className="admin-nav" aria-label="Store navigation"><Link to={`/t/${tenantId}/products`}>Products</Link><Link to={`/t/${tenantId}/orders`}>Orders</Link><Link to={`/t/${tenantId}/data-privacy`}>{t('privacy.title')}</Link></nav>}<Outlet/></div></div>;
 }
+// Support information only: no customer reads, deletion controls, or mutation requests.
+function DataPrivacy(){return <main id="main" className="admin-page"><h1 tabIndex={-1}>{t('privacy.title')}</h1><section className="admin-stack" aria-label={t('privacy.title')}><p lang="en">{t('privacy.deletion-support')}</p><p lang="zh-CN">{t('privacy.deletion-support-zh')}</p></section></main>;}
 function DomainPage({kind}:{kind:'list'|'create'|'edit'|'orders'|'order'}){const {api}=useSession();const {tenantId='',productId='',orderId=''}=useParams();const valid=validateUUID(tenantId);
  const catalog=useMemo(()=>valid?new CatalogAPI(api,tenantId):null,[api,tenantId,valid]);const orders=useMemo(()=>valid?new OrdersAPI(api):null,[api,tenantId,valid]);
  if(!catalog||!orders)return <main id="main" className="admin-page"><EmptyState headingLevel={1} title="Store unavailable" description="Check the store link with your administrator."/></main>;
@@ -47,5 +50,5 @@ function DomainPage({kind}:{kind:'list'|'create'|'edit'|'orders'|'order'}){const
 }
 export function App(){return <ErrorBoundary><SessionProvider><FocusRoute/><Suspense fallback={<p role="status">Loading…</p>}><Routes>
  {Gallery&&<Route path="/_gallery" element={<Gallery/>}/>}
- <Route path="/login" element={<Login/>}/><Route element={<Guard/>}><Route element={<Frame/>}><Route path="/" element={<ChooseStore/>}/><Route path="/t/:tenantId/products" element={<DomainPage kind="list"/>}/><Route path="/t/:tenantId/products/new" element={<DomainPage kind="create"/>}/><Route path="/t/:tenantId/products/:productId" element={<DomainPage kind="edit"/>}/><Route path="/t/:tenantId/orders" element={<DomainPage kind="orders"/>}/><Route path="/t/:tenantId/orders/:orderId" element={<DomainPage kind="order"/>}/></Route></Route>
+ <Route path="/login" element={<Login/>}/><Route element={<Guard/>}><Route element={<Frame/>}><Route path="/" element={<ChooseStore/>}/><Route path="/t/:tenantId/data-privacy" element={<DataPrivacy/>}/><Route path="/t/:tenantId/products" element={<DomainPage kind="list"/>}/><Route path="/t/:tenantId/products/new" element={<DomainPage kind="create"/>}/><Route path="/t/:tenantId/products/:productId" element={<DomainPage kind="edit"/>}/><Route path="/t/:tenantId/orders" element={<DomainPage kind="orders"/>}/><Route path="/t/:tenantId/orders/:orderId" element={<DomainPage kind="order"/>}/></Route></Route>
  <Route path="*" element={<Navigate to="/" replace/>}/></Routes></Suspense></SessionProvider></ErrorBoundary>;}

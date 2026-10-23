@@ -48,6 +48,12 @@ the corresponding APIs are pending.
 
 ## Acceptance
 
+C-22b adds a session-guarded **Data privacy** page in store navigation. It shows
+the owner-approved English and Chinese support-deletion notice through typed
+messages, including the 30-day processing and export-copy commitment. This is
+information only: no customer data read, deletion control, API, or support
+workflow is implemented here.
+
 `bash scripts/check_all.sh` includes frontend source gates. Bun tests cover
 transport, validation, auth races and exact money formatting. Playwright covers
 login, product list/create/edit, SKU edits/archive, upload/attachment, order
