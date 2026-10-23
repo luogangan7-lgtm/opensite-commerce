@@ -58,7 +58,7 @@ def witness(psql, root):
             'idempotency_records': f"r.actor_kind='customer' AND r.actor_id='{customer}'",
             'inventory_movements': f"r.owner_type='return' AND r.owner_id IN(SELECT id FROM app.returns WHERE tenant_id='{tenant}' AND order_id='{order}')",
             'notification_deliveries': f"r.reference_id='{order}'",
-            'outbox_events': f"r.payload->>'order_id'='{order}' OR r.payload->>'notification_id' IN(SELECT id::text FROM app.notification_deliveries WHERE tenant_id='{tenant}' AND reference_id='{order}')", 
+            'outbox_events': f"r.payload->>'order_id'='{order}' OR r.payload->>'notification_id' IN(SELECT id::text FROM app.notification_deliveries WHERE tenant_id='{tenant}' AND reference_id='{order}')",
         }
         copies = []
         for path in sorted((root / 'modules/privacy').glob('*.json')):

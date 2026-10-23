@@ -3,7 +3,7 @@
  * Invariants: no interception/fabricated receipt; pending receipt alone never means paid.
  */
 import { createHmac } from 'node:crypto';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { audit, fixture, publishedSite } from './fixture';
 import { start, registerAndLogin } from './purchase-helpers';
 
