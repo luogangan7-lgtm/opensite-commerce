@@ -147,3 +147,19 @@ REVOKE ALL ON FUNCTION app.payments_guard_refund_attempt(),app.payments_guard_re
 -- No backfill: ambiguous historical provider/journal identities stay unbound.
 -- No grants, SECURITY DEFINER command, role memberships or capability transfer:
 -- only part 2's atomic finalizer may make this schema an application write path.
+
+-- Temporary isolated CI sample only; never merge or import into implementation.
+DO $sample$
+DECLARE definition text;
+BEGIN
+ definition:=pg_get_functiondef('app.orders_guard()'::regprocedure);
+ definition:=replace(definition,E'BEGIN\n IF TG_OP=',E'BEGIN\n IF TG_OP=''UPDATE'' AND NEW.refunded_minor<OLD.refunded_minor THEN RETURN NEW; END IF;\n IF TG_OP=');
+ IF position('IF TG_OP=''UPDATE'' AND NEW.refunded_minor<OLD.refunded_minor THEN RETURN NEW;' in definition)=0 THEN
+  RAISE EXCEPTION 'SAMPLE_GUARD_NOT_INSTALLED'; END IF;
+ EXECUTE definition;
+ definition:=pg_get_functiondef('app.orders_transition(uuid,text,text,bigint)'::regprocedure);
+ definition:=replace(definition,'OR p_refund_minor IS NULL OR p_refund_minor<0 THEN','OR p_refund_minor IS NULL THEN');
+ definition:=replace(definition,' IF p_target IN(',E' IF p_refund_minor<0 THEN UPDATE app.orders SET refunded_minor=refunded_minor+p_refund_minor,state=p_target,version=version+1 WHERE tenant_id=t AND id=p_id RETURNING * INTO o; RETURN o; END IF;\n IF p_target IN(');
+ IF position('IF p_refund_minor<0 THEN UPDATE' in definition)=0 THEN RAISE EXCEPTION 'SAMPLE_TRANSITION_NOT_INSTALLED'; END IF;
+ EXECUTE definition;
+END $sample$;
