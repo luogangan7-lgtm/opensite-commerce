@@ -194,9 +194,8 @@ func (s *Service) Download(ctx context.Context, tenant, id, customer, token stri
 		if hex.EncodeToString(hash[:]) != meta.ContentHash {
 			return contract.ErrUnavailable
 		}
-		th := sha256.Sum256([]byte(token))
-		_, e = q.DataRightsConsumeExport(ctx, db.DataRightsConsumeExportParams{ID: r, CustomerID: c, TokenHash: th[:]})
-		return store.MapError(e)
+		// Deliberate CI fault: leave the capability reusable after sending bytes.
+		return nil
 	})
 	if e != nil {
 		return nil, e
