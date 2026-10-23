@@ -153,7 +153,7 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 	payload := sha256.Sum256(raw)
 	identity, _ := json.Marshal([4]string{m.config.Provider, "test", in.AccountID, in.EventID})
 	if in.RefundID != "" {
-		identity, _ = json.Marshal([5]string{m.config.Provider, "test", in.AccountID, "refund", in.RefundID})
+		identity, _ = json.Marshal([5]string{m.config.Provider, "test", in.AccountID, "refund", in.EventID})
 	}
 	eventKey := sha256.Sum256(identity)
 	err := m.config.Run(ctx, in.AccountID, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
