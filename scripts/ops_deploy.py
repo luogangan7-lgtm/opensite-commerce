@@ -123,6 +123,8 @@ def provision_sql(database, passwords):
         # Rotation/re-run cannot preserve accidental capability memberships.
         lines.append(f"DO $membership$ DECLARE r record; BEGIN FOR r IN SELECT roleid::regrole::text AS name FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname={literal(login)}) LOOP EXECUTE format('REVOKE %I FROM {login}',r.name); END LOOP; END $membership$;")
         lines.extend([f'GRANT {group} TO {login};', f'GRANT CONNECT ON DATABASE "{database}" TO {login};'])
+        if kind == 'RETURNS':
+            lines.append('GRANT app_runtime TO opensite_returns_login;')
     lines.append('COMMIT;')
     return '\n'.join(lines)
 
