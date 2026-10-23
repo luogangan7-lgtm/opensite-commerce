@@ -34,6 +34,11 @@ async function focusFits(control: Locator, wrapper: Locator) {
 // Native select text can retain pre-font layout metrics after document.fonts.ready.
 // Observe creation, rather than only checking the fonts immediately before capture.
 test('native gallery selects are created only after Inter is loaded', async ({ page }) => {
+  // Keep a cold font response pending while the gallery module is evaluated.
+  let releaseFonts!: () => void;
+  const fontsReleased = new Promise<void>(resolve => { releaseFonts = resolve; });
+  await page.route('**/*.woff2', async route => { await fontsReleased; await route.continue(); });
+  const galleryModule = page.waitForResponse(response => /\/assets\/gallery-[^/]+\.js$/.test(response.url()));
   await page.addInitScript(() => {
     const observations: boolean[] = [];
     Object.assign(window, { gallerySelectFonts: observations });
@@ -49,7 +54,14 @@ test('native gallery selects are created only after Inter is loaded', async ({ p
       }
     }).observe(document, { childList: true, subtree: true });
   });
-  await catalog(page);
+  await page.goto('/_gallery', { waitUntil: 'domcontentloaded' });
+  await (await galleryModule).finished();
+  await page.evaluate(() => new Promise<void>(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  releaseFonts();
+  await expect(page.getByTestId('gallery')).toBeVisible();
+  await page.evaluate(async () => { await document.fonts.ready; });
   const observations = await page.evaluate(() =>
     (window as unknown as { gallerySelectFonts: boolean[] }).gallerySelectFonts);
   expect(observations).toHaveLength(4);
