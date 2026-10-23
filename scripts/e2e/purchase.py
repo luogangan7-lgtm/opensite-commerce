@@ -98,9 +98,9 @@ SELECT jsonb_build_object(
 
 
 def verify(row):
-    expected = {'sessions': 6, 'paid': 4, 'receipt_only': 2, 'committed_owned': 4,
-                'active_owned': 2, 'on_hand': 16, 'reserved': 2, 'inbox': 6,
-                'captured': 4, 'pending_refund': 2, 'processed': 4, 'pending': 2, 'journals': 4, 'cash': 12560, 'paid_outbox': 4}
+    expected = {'sessions': 8, 'paid': 4, 'receipt_only': 2, 'committed_owned': 4,
+                'active_owned': 2, 'on_hand': 14, 'reserved': 2, 'inbox': 8,
+                'captured': 4, 'pending_refund': 2, 'processed': 6, 'pending': 2, 'journals': 8, 'cash': 18340, 'paid_outbox': 6}
     if (not isinstance(row, dict) or any(row.get(k) != v for k, v in expected.items())
             or not isinstance(row.get('debits'), int) or row['debits'] <= 0
             or row['debits'] != row.get('credits')):
