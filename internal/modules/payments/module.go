@@ -175,10 +175,6 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 		if e != nil {
 			return e
 		}
-		if in.RefundID == "" && (in.Status == payment.StatusPartiallyRefunded || in.Status == payment.StatusRefunded) {
-			receipt.Status = "rejected"
-			return q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: inbox, Success: false})
-		}
 		key := hex.EncodeToString(eventKey[:])
 		if in.RefundID != "" {
 			prior, err := q.GetPaymentEvent(ctx, db.GetPaymentEventParams{TenantID: id(tenant), ID: inbox})

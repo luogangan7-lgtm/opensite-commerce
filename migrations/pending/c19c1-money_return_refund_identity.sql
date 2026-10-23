@@ -131,6 +131,7 @@ BEGIN
  IF legacy_parts IS NOT NULL AND (EXISTS(SELECT FROM unnest(legacy_parts) x WHERE x<0)
   OR (SELECT sum(x)::numeric FROM unnest(legacy_parts) x)<>legacy) THEN
   RAISE EXCEPTION 'PAYMENTS_REFUND_COMPONENT_AUTHORITY' USING ERRCODE='23514'; END IF;
+ legacy_parts:=NULL; -- historical independent legacy attribution
  FOR ol IN SELECT * FROM app.order_lines WHERE tenant_id=t AND order_id=p_order ORDER BY id LOOP
   index_v:=array_position(ids,ol.id);
   -- An order-level discount first consumes item income. Any excess consumes
