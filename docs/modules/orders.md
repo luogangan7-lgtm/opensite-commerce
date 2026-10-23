@@ -10,6 +10,22 @@ read-only `GetPayable` port. Every method accepts an already authorized
 tenant must match `app.tenant_id`. Orders opens no connection or pool, imports
 no payment provider, and issues SQL exclusively through generated sqlc queries.
 
+Customer history uses `listCustomerOrders` / `getCustomerOrder` at
+`/api/v1/t/{tenant_id}/customer/orders[/{order_id}]`. Bootstrap admits only a
+fresh, server-validated customer session; staff/API-key/guest credentials cannot
+substitute for it. Every list, detail and line query checks tenant and customer
+ownership in SQL inside the existing read-only tenant snapshot. A sealed guest
+order is readable only through a persisted `customer_guest_order_links` proof
+created by the verified-mailbox claim function; email equality is not proof.
+Other customers' orders return 404. The projection contains order number, state,
+exact money, creation time and frozen line amounts, without contact/address,
+provenance, internal version or staff adjustment fields. Reads make no lifecycle
+transition, acquire no new write locks and introduce no application clock.
+`internal/db/customer_history_integration_test.go` verifies the production SQL
+under runtime RLS, including unverified-email equality, verified linking and
+cross-customer denials; bootstrap and desktop/mobile purchase tests verify the
+customer cookie boundary and actual registered purchase persistence.
+
 `NewQuoteCreator` exposes the optional `CreateFromQuote` transaction port. It
 accepts fixed negotiated money with `QuoteSource` (quote ID, immutable version,
 line number), requires one source quote and distinct line numbers, and forbids

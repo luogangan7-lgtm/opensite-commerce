@@ -37,7 +37,7 @@ ACTIVE_TESTS = {
     "real API denies anonymous catalog reads and creation before data access",
     "real owner session reads and creates tenant catalog through production authorization",
 }
-PURCHASE_TESTS = {"published guest purchase persists captured order", "pending receipt alone never shows paid"}
+PURCHASE_TESTS = {"published guest purchase persists captured order", "pending receipt alone never shows paid", "registered purchase appears only in owned history"}
 ACTIVE_TESTS |= PURCHASE_TESTS
 PAYMENT_TESTS = {"real signed payment webhook rejects forgery and deduplicates concurrent facts"}
 ACTIVE_TESTS |= PAYMENT_TESTS
@@ -103,7 +103,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 32, "skipped": 2, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 34, "skipped": 2, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -255,7 +255,7 @@ def run(receipt_dir):
             command(["bun", "run", "build:admin"], "admin-build", env=clean_env)
             receipt["steps"].append("locked-frontends-built")
             persist()
-            command(compose_command(["up", "-d", "--build", "--wait", "--wait-timeout", "120", "api", "worker"]), "stack-start")
+            command(compose_command(["up", "-d", "--build", "--wait", "--wait-timeout", "120", "api", "worker", "mailpit"]), "stack-start")
             if ops_common.psql("SHOW server_version_num;").strip() != "180006":
                 raise RuntimeError("MVP E2E requires PostgreSQL 18.6")
             ops_drill.healthy("http://127.0.0.1:8080")
@@ -298,15 +298,24 @@ def run(receipt_dir):
             receipt["steps"].append("real-cms-builder-membership-and-serving")
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
             persist()
-            command(compose_command(["up", "-d", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
+            # API/worker/mailpit are already healthy. Recreating API here strands
+            # its loopback SMTP sidecar in the old network namespace.
+            command(compose_command(["up", "-d", "--no-deps", "--wait", "--wait-timeout", "120", "storefront", "admin"]), "frontends-start", timeout=300)
             wait_http("http://127.0.0.1:4321/", 200, b"Made for everyday use")
             wait_http("http://127.0.0.1:4173/", 200, b"<div id=\"root\"")
+            wait_http("http://127.0.0.1:8025/api/v1/messages?limit=1", 200)
             receipt["steps"].append("real-ssr-and-admin-positive-readiness")
             persist()
             result = ROOT / "test-results/e2e/results.json"
             result.unlink(missing_ok=True)  # only this CI harness's own stale result
             receipt["browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "browser"]), "browser", timeout=900, check=False)
             if receipt["browser_exit"] != 0:
+                # Counts only: locate dependency failures without persisting proof tokens or credentials.
+                receipt["customer_registration_diagnostic"] = json.loads(ops_common.psql(
+                    "SELECT jsonb_build_object('customers',count(*),'verified',count(verified_at),"
+                    "'tokens',(SELECT count(*) FROM app.customer_auth_tokens WHERE tenant_id='" + TENANT + "')) "
+                    "FROM app.customers WHERE tenant_id='" + TENANT + "' AND email LIKE 'c09f2-%';"))
+                persist()
                 raise RuntimeError("MVP E2E browser assertions failed")
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
             # Independent persistence witness runs before declaring the browser run PASS.
@@ -319,6 +328,7 @@ def run(receipt_dir):
             receipt["purchase"] = {"status": "FAIL", "facts": purchase_row}
             persist()
             receipt["purchase"] = purchase.verify(purchase_row)
+            receipt["registered_purchase"] = purchase.verify_registered(json.loads(ops_common.psql(purchase.REGISTERED_SQL)))
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-and-accessibility-assertions")
         except BaseException as exc:

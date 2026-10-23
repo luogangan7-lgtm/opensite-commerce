@@ -20,6 +20,15 @@ export async function backendRequest(origin: string, path: string, token: string
   });
   const headers: Record<string,string> = {Accept: 'application/json', ...(token ? {'X-Cart-Token':token} : {}), ...options.headers};
   const common = {headers, signal: AbortSignal.timeout(5000), redirect:'error' as const, parseAs:'text' as const};
+  const history = /^\/api\/v1\/t\/([a-f0-9-]+)\/customer\/orders(?:\/([a-f0-9-]+))?(\?cursor=[A-Za-z0-9_%~-]+)?$/.exec(path);
+  if(history && !options.method){
+    const tenant_id=history[1]!,order_id=history[2];
+    const cursor=history[3]?decodeURIComponent(history[3].slice(8)):undefined;
+    const result=order_id
+      ? await client.GET('/api/v1/t/{tenant_id}/customer/orders/{order_id}',{...common,params:{path:{tenant_id,order_id}}})
+      : await client.GET('/api/v1/t/{tenant_id}/customer/orders',{...common,params:{path:{tenant_id},query:{cursor}}});
+    return {response:result.response,text:result.data??JSON.stringify(result.error)};
+  }
   const customer = /^\/api\/v1\/t\/([a-f0-9-]+)\/customer\/(session|registrations|verifications)$/.exec(path);
   if (customer) {
     const params={path:{tenant_id:customer[1]!},header:{Origin:headers.Origin!,'X-CSRF-Token':headers['X-CSRF-Token']!}};

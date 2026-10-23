@@ -41,6 +41,8 @@ func NewHTTP(config HTTPConfig) *HTTP { return &HTTP{read: config.Read} }
 func (h *HTTP) Routes() []httpapi.Route {
 	base := "/api/v1/t/{tenant_id}/orders"
 	return httpapi.StrictRoutes(h, []httpapi.RouteSpec{
+		{OperationID: "listCustomerOrders", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/customer/orders", Access: httpapi.CustomerSession, MaxBodySize: httpapi.DefaultMaxBodySize},
+		{OperationID: "getCustomerOrder", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/customer/orders/{order_id}", Access: httpapi.CustomerSession, MaxBodySize: httpapi.DefaultMaxBodySize},
 		{OperationID: "listOrders", Method: http.MethodGet, Pattern: base, Access: httpapi.AdminOrAPIKey, Scope: "orders:read", MaxBodySize: httpapi.DefaultMaxBodySize},
 		{OperationID: "getOrder", Method: http.MethodGet, Pattern: base + "/{order_id}", Access: httpapi.AdminOrAPIKey, Scope: "orders:read", MaxBodySize: httpapi.DefaultMaxBodySize},
 	})
