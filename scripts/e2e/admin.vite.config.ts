@@ -2,7 +2,7 @@
  * Dependencies: existing Vite/admin config; caller: CI runner preview command.
  * Invariants: no response mocks, no external proxy target, GitHub Actions only.
  */
-import { defineConfig, mergeConfig } from 'vite';
+import { defineConfig, mergeConfig, type Plugin } from 'vite';
 import admin from '../../web/admin/vite.config';
 
 if (process.env.CI !== 'true' || process.env.GITHUB_ACTIONS !== 'true') {
@@ -29,6 +29,6 @@ export default defineConfig(mergeConfig(admin, {
       const timer = setTimeout(() => { if (!response.destroyed) nextMiddleware(); }, wait);
       response.on('close', () => clearTimeout(timer));
     });
-  } }],
+  } } satisfies Plugin],
   preview: { proxy: { '/api': { target, changeOrigin: false, headers: { Origin: adminOrigin } } } },
 }));
