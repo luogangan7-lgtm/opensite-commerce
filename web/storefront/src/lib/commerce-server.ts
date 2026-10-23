@@ -288,7 +288,7 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
     if (operation === 'preview' && request.method === 'POST') {
       if (!session.c) throw new HTTPError(404);
       const input = await body(request, ['shipping_address']), address = object(input.shipping_address);
-      const previewBody = {cart_id:session.c,shipping_address:{country:string(address.country,2),...(address.subdivision?{region:string(address.subdivision,100)}:{}),...(address.postal_code?{postal_code:string(address.postal_code,32)}:{})}};
+      const previewBody = {cart_id:session.c,shipping_address:{country:string(address.country,2),...(address.subdivision?{region:string(address.subdivision,100)}:{}),postal_code:string(address.postal_code,32)}};
       const response = await upstream(configuration,session,`${base}/checkout/preview`,{method:'POST',body:previewBody,checkout:true,backend:api=>api.previewCheckout(current.tenant,previewBody)});
       return json(preview(response.value));
     }
@@ -312,7 +312,7 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
         return json(checkout((await upstream(configuration,session,'/__fixture/completion')).value));
       }
       if (!fakePaymentEnabled() || !session.checkout || input.checkout_id!==session.checkout) throw new HTTPError(404);
-      const current=checkout((await upstream(configuration,session,`${base}/checkout/${session.checkout}`,{checkout:true,backend:api=>api.readCheckout(current.tenant,session.checkout!)})).value);
+      const current=checkout((await upstream(configuration,session,`${base}/checkout/${session.checkout}`,{checkout:true,backend:api=>api.readCheckout(session.tenant!,session.checkout!)})).value);
       if (input.outcome==='captured') requireAccepted(input.accepted_total,current);
       if (['captured','failed','canceled'].includes(current.payment.status)) return json(current);
       // Authoritative backend state supplies every event field; the browser chooses only a test outcome.
@@ -327,11 +327,11 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
       const receipt=await upstream(configuration,{s:session.s,x:session.x},'/api/v1/testing/payments/fake/webhook',
         {method:'POST',body:event,rawBody:raw,headers:{'X-Fake-Signature':signature},backend:api=>api.fakeWebhook({...event,amount_minor:BigInt(current.amount_minor),order_version:BigInt(current.order_version)},raw,signature)});
       paymentReceipt(receipt.value,event.event_id);
-      return json(checkout((await upstream(configuration,session,`${base}/checkout/${session.checkout}`,{checkout:true,backend:api=>api.readCheckout(current.tenant,session.checkout!)})).value));
+      return json(checkout((await upstream(configuration,session,`${base}/checkout/${session.checkout}`,{checkout:true,backend:api=>api.readCheckout(session.tenant!,session.checkout!)})).value));
     }
     if (operation === 'completion' && request.method === 'GET') {
       if (!configuration.fixture && !session.checkout) return json(null);
-      const value=(await upstream(configuration,session,configuration.fixture ? '/__fixture/completion' : `${base}/checkout/${session.checkout}`,{checkout:true,backend:api=>api.readCheckout(current.tenant,session.checkout!)})).value;return json(value===null?null:checkout(value));
+      const value=(await upstream(configuration,session,configuration.fixture ? '/__fixture/completion' : `${base}/checkout/${session.checkout}`,{checkout:true,backend:api=>api.readCheckout(session.tenant!,session.checkout!)})).value;return json(value===null?null:checkout(value));
     }
     if (configuration.fixture && operation === 'customer/session' && ['POST','DELETE'].includes(request.method)) {
       const input = request.method === 'POST' ? await body(request, ['email','password']) : undefined;

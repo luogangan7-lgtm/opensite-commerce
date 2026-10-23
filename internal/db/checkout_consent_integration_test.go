@@ -230,14 +230,18 @@ func TestCheckoutPGConsentLegacyRecoveryAndPaidReplay(t *testing.T) {
 }
 
 func TestCheckoutPGHTTPConsentInvalid(t *testing.T) {
-	for _, accepted := range []string{`null`, `{}`, `{"amount_minor":0,"currency":"USD"}`, `{"amount_minor":160,"currency":"usd"}`, `"wrong-shape"`} {
+	for _, accepted := range []string{"", `null`, `{}`, `{"amount_minor":0,"currency":"USD"}`, `{"amount_minor":160,"currency":"usd"}`, `"wrong-shape"`} {
 		t.Run(accepted, func(t *testing.T) {
 			f := newCheckoutPGFixture(t, 5, 1)
 			in := f.input()
 			raw, _ := json.Marshal(in)
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(raw, &fields)
-			fields["accepted_total"] = json.RawMessage(accepted)
+			if accepted == "" {
+				delete(fields, "accepted_total")
+			} else {
+				fields["accepted_total"] = json.RawMessage(accepted)
+			}
 			raw, _ = json.Marshal(fields)
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/t/"+f.tenant+"/checkout", strings.NewReader(string(raw)))
 			req.Header.Set("Content-Type", "application/json")
