@@ -7,6 +7,7 @@ import os
 import importlib.util
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -244,6 +245,41 @@ class BrowserReceiptTests(unittest.TestCase):
 
 
 class PurchaseWitnessTests(unittest.TestCase):
+    def test_data_rights_witness_accepts_registry_address_fields_and_refuses_unsafe_names(self):
+        root = Path(__file__).resolve().parents[1]
+        spec = importlib.util.spec_from_file_location('data_rights_registry_witness', root / 'scripts/e2e/datarights.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        facts = dict(erased=True, auth=0, exports=2, revoked=2, journal=1,
+                     paid=True, lines=1, checkout=True, attempts=True,
+                     notification=True, balanced=True, cash=3140)
+        queries = []
+        def psql(sql):
+            queries.append(sql)
+            return json.dumps(facts if "'erased',c.status" in sql else {'rows': 0, 'clean': True})
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            shutil.copytree(root / 'modules/privacy', fixture / 'modules/privacy')
+            (fixture / 'test-results/e2e').mkdir(parents=True)
+            for project in ('desktop', 'mobile'):
+                (fixture / f'test-results/e2e/datarights-{project}.json').write_text(json.dumps({
+                    'project': project, 'customer': 'c0900001-0000-4000-8000-000000000002',
+                    'order': 'c0900001-0000-4000-8000-000000000003',
+                    'exports': ['c0900001-0000-4000-8000-000000000004', 'c0900001-0000-4000-8000-000000000005']}))
+            result = module.witness(psql, fixture)
+            for project in result['projects']:
+                fields = {row['field'] for row in project['registry_copies']}
+                self.assertTrue({'customer_addresses.address_line1', 'customer_addresses.address_line2'} <= fields)
+            policy = fixture / 'modules/privacy/customer.json'
+            data = json.loads(policy.read_text())
+            data['tables']['customer_addresses']['columns']['address_line1;DROP'] = {
+                'classification': 'contact', 'erase': {'strategy': 'scrub'}}
+            policy.write_text(json.dumps(data))
+            queries.clear()
+            with self.assertRaises(RuntimeError):
+                module.witness(psql, fixture)
+            self.assertFalse(any('DROP' in query for query in queries))
+
     def test_data_rights_persistence_rejects_each_broken_invariant(self):
         source = Path(__file__).resolve().parents[1] / 'scripts/e2e/datarights.py'
         spec = importlib.util.spec_from_file_location('data_rights_witness', source)
