@@ -4,12 +4,35 @@ Depends on checks.yml and PyYAML; called by check_all.sh, never executes gates h
 """
 from pathlib import Path
 import json
+import re
 import subprocess
 import unittest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 LANES = {'go', 'offline', 'pg', 'pgx', 'sqlc'}
+
+# A wall-clock bound is a numeric literal or a variable holding one; `sudo` may
+# sit between `timeout` and the command (literal or the SUDO=(sudo) array).
+_BOUND = r'(?:\d+|\$\{?[A-Za-z_]\w*\}?|"\$\{?[A-Za-z_]\w*\}?")'
+_SUDO = r'(?:sudo|\$\{SUDO\[@\]\}|"\$\{SUDO\[@\]\}")'
+APT_CALL_BOUND = re.compile(rf'timeout[ \t]+{_BOUND}(?:[ \t]+{_SUDO})?[ \t]+$')
+SHELL_COMMENT = re.compile(r'(?:^|\s)#.*$')
+
+
+def unbounded_apt_calls(body):
+    """Return [(line, column, line text)] for every `apt-get` lacking a bound.
+
+    Scans every occurrence, not one per line: `timeout 180 apt-get update &&
+    apt-get install x` yields the second call as an offender.
+    """
+    offenders = []
+    for lineno, raw in enumerate(body.splitlines(), 1):
+        code = SHELL_COMMENT.sub('', raw)
+        for match in re.finditer(r'apt-get', code):
+            if not APT_CALL_BOUND.search(code[:match.start()]):
+                offenders.append((lineno, match.start(), code.strip()))
+    return offenders
 
 
 class FoundationLanes(unittest.TestCase):
@@ -83,17 +106,51 @@ class FoundationLanes(unittest.TestCase):
         prerequisite = next(s for s in jobs['frontend']['steps'] if s.get('name') == 'Bun archive extraction prerequisite')
         self.assertIn('scripts/ci_apt_install.sh', prerequisite['run'])
 
+    def assert_apt_calls_bounded(self, body, where):
+        offenders = unbounded_apt_calls(body)
+        self.assertEqual(
+            offenders, [],
+            f'{where}: every apt-get must be immediately preceded by `timeout <n>` '
+            f'(optionally `sudo`) so a stalled mirror cannot hang the lane: {offenders}')
+
     def test_apt_installs_are_time_bounded(self):
         # Incident 39989676720: an unbounded `apt-get update` stalled foundation-pg for 22 min.
         for workflow in sorted((ROOT / '.github/workflows').glob('*.yml')):
-            for number, line in enumerate(workflow.read_text().splitlines(), 1):
-                body = line.split('#', 1)[0]
-                if 'apt-get' in body:
-                    self.assertRegex(body, r'timeout \d+ apt-get', f'{workflow.name}:{number}')
+            document = yaml.safe_load(workflow.read_text()) or {}
+            for job_name, job in (document.get('jobs') or {}).items():
+                for step in job.get('steps') or []:
+                    body = step.get('run')
+                    if body:
+                        self.assert_apt_calls_bounded(
+                            body, f'{workflow.name}:{job_name}:{step.get("name", "?")}')
         helper = (ROOT / 'scripts/ci_apt_install.sh').read_text()
+        # Every apt-get inside the helper too: constants alone are not a bound.
+        self.assert_apt_calls_bounded(helper, 'scripts/ci_apt_install.sh')
         for token in ('UPDATE_TIMEOUT=180', 'INSTALL_TIMEOUT=300', 'ATTEMPTS=3',
                       'Acquire::http::Timeout=20', 'SKIP apt: already present'):
             self.assertIn(token, helper)
+
+    def test_apt_bound_self_check_rejects_partial_and_missing_bound(self):
+        # One bounded call must not launder an unbounded sibling on the same line.
+        partial = 'timeout 180 apt-get update && apt-get install x'
+        second = partial.index('apt-get install')
+        self.assertEqual(
+            [(line, column) for line, column, _ in unbounded_apt_calls(partial)],
+            [(1, second)])
+        with self.assertRaises(AssertionError):
+            self.assert_apt_calls_bounded(partial, 'inline-partial')
+        # Stripping the wrappers while leaving the constants must still fail.
+        bare = 'apt-get update && apt-get install x'
+        self.assertEqual(len(unbounded_apt_calls(bare)), 2)
+        with self.assertRaises(AssertionError):
+            self.assert_apt_calls_bounded(bare, 'inline-bare')
+
+    def test_apt_bound_self_check_accepts_fully_bounded_commands(self):
+        bounded = ('timeout 180 apt-get update -qq'
+                   ' && timeout 300 sudo apt-get install -y x'
+                   ' && timeout "$UPDATE_TIMEOUT" "${SUDO[@]}" apt-get update')
+        self.assertEqual(unbounded_apt_calls(bounded), [])
+        self.assert_apt_calls_bounded(bounded, 'inline-bounded')
 
     def test_required_context_and_all_lane_results(self):
         jobs = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']
