@@ -696,13 +696,16 @@ type AppPaymentRefundTerminal struct {
 }
 
 type AppPaymentReturnRefund struct {
-	TenantID         pgtype.UUID        `json:"tenant_id"`
-	ReturnID         pgtype.UUID        `json:"return_id"`
-	AttemptKey       string             `json:"attempt_key"`
-	ProviderRef      string             `json:"provider_ref"`
-	ProviderRefundID string             `json:"provider_refund_id"`
-	JournalID        pgtype.UUID        `json:"journal_id"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	ReturnID          pgtype.UUID        `json:"return_id"`
+	AttemptKey        string             `json:"attempt_key"`
+	ProviderRef       string             `json:"provider_ref"`
+	ProviderRefundID  string             `json:"provider_refund_id"`
+	JournalID         pgtype.UUID        `json:"journal_id"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	Provider          pgtype.Text        `json:"provider"`
+	ProviderAccountID pgtype.Text        `json:"provider_account_id"`
+	Environment       pgtype.Text        `json:"environment"`
 }
 
 type AppPriceEntry struct {
