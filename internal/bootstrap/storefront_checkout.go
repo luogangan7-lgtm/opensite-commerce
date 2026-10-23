@@ -17,6 +17,7 @@ import (
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
 	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
@@ -58,11 +59,12 @@ func wireStorefrontCheckout(c *Config, r *pgxadapter.QueryRunner) error {
 	if provider == nil {
 		provider = paymentfake.New()
 	}
+	c.Payment = provider
 	c.Checkout.Service = checkout.New(checkout.Config{Run: func(ctx context.Context, t string, fn func(context.Context, pgx.Tx) error) error {
 		return r.RunAuthorizedTx(ctx, t, withCheckoutRuntimeRole(fn))
 	}, Read: func(ctx context.Context, t string, fn func(context.Context, pgx.Tx) error) error {
 		return r.RunAuthorizedTxSnapshot(ctx, t, withCheckoutRuntimeRole(fn))
-	}, Cart: checkout.NewSQLCart(cart.ReadIntent), SnapshotCart: checkout.NewSQLCart(cart.ReadIntentSnapshot), Rules: checkout.NewSQLRules(metadata), Orders: orders.New(), Ledger: ledger.New(), Payment: provider})
+	}, Cart: checkout.NewSQLCart(cart.ReadIntent), SnapshotCart: checkout.NewSQLCart(cart.ReadIntentSnapshot), Rules: checkout.NewSQLRules(metadata), Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: provider})
 	c.Checkout.Resolver, c.Checkout.Origin = resolver, origin
 	return nil
 }

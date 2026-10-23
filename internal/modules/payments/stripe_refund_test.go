@@ -54,7 +54,7 @@ func TestStripePendingRefundRetryable(t *testing.T) {
 	}
 	status = "succeeded"
 	result, err := s.Refund(context.Background(), payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: "pi_fixture"})
-	if err != nil || result.Status != payment.StatusPartiallyRefunded {
+	if err != nil || result.Status != payment.StatusPartiallyRefunded || result.RefundID != "re_fixture" {
 		t.Fatalf("pending refund did not recover after provider success: %+v %v", result, err)
 	}
 }

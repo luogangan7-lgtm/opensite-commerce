@@ -16,6 +16,7 @@ import (
 	customercontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
@@ -79,7 +80,8 @@ func composeFakeCheckout(config Config, runner runtimeQuoteRunner, env fakeCheck
 	}
 	// Adoption uses the sealed Orders snapshot; nil Cart/Rules deliberately expose
 	// no cart-start readiness or unmodeled canonical catalog metadata.
-	service := checkout.New(checkout.Config{Run: runner.run, Orders: orders.New(), Ledger: ledger.New(), Payment: paymentfake.New()})
+	config.Payment = paymentfake.New()
+	service := checkout.New(checkout.Config{Run: runner.run, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: config.Payment})
 	// Preserve the mapped Payments receiver composed by wireFakePayments. Public
 	// callbacks admit completed facts; the retired verifier cannot authorize them.
 	config.Checkout.Service, config.Checkout.Origin = service, config.CustomerOrigin

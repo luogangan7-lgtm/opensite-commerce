@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
+	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 )
@@ -129,16 +130,23 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	if s.config.Payments == nil || s.config.Ledger == nil {
 		return contract.Return{}, contract.ErrUnavailable
 	}
+	poster, ok := s.config.Ledger.(payments.RefundPoster)
+	if !ok {
+		return contract.Return{}, contract.ErrUnavailable
+	}
 	request := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: tenant, OrderID: prepared.OrderID, OrderVersion: prepared.PaymentVersion, Amount: money.Money{Amount: prepared.RefundMinor, Currency: prepared.Currency}, IdempotencyKey: "return:" + prepared.ID + ":" + prepared.RefundKey}, ProviderRef: prepared.ProviderRef}
 	result, err := s.config.Payments.Refund(ctx, request)
 	if err != nil {
 		return contract.Return{}, s.recordProviderFailure(ctx, tenant, prepared, err)
 	}
-	if result.ProviderRef != prepared.ProviderRef || (result.Status != payment.StatusPartiallyRefunded && result.Status != payment.StatusRefunded) {
+	if result.RefundID == "" || result.ProviderRef != prepared.ProviderRef || (result.Status != payment.StatusPartiallyRefunded && result.Status != payment.StatusRefunded) {
 		return contract.Return{}, s.recordProviderFailure(ctx, tenant, prepared, contract.ErrUnavailable)
 	}
 	var out contract.Return
 	err = s.config.Runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		if err := poster.LockReturnCheckout(ctx, tx, prepared.ID); err != nil {
+			return err
+		}
 		latest, exists, err := s.repo.LockPrepared(ctx, tx, tenant, in)
 		if err != nil {
 			return err
@@ -157,7 +165,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 		if err != nil {
 			return err
 		}
-		journal, err := s.config.Ledger.Post(ctx, tx, posting)
+		journal, err := poster.PostReturnRefund(ctx, tx, prepared.ID, prepared.RefundKey, result.RefundID, posting)
 		if err != nil {
 			return err
 		}

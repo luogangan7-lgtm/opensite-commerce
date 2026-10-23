@@ -360,6 +360,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		closeRuntime()
 		return Config{}, nil, err
 	}
+	wireReturns(&config)
 	return config, closeRuntime, nil
 }
 

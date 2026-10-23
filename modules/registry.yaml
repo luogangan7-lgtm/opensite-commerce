@@ -885,7 +885,8 @@
       "owns_tables": [
         "payment_provider_accounts",
         "payment_events",
-        "payment_event_deliveries"
+        "payment_event_deliveries",
+        "payment_return_refunds"
       ],
       "operations": [
         {
@@ -899,7 +900,8 @@
       ],
       "dependencies": [
         "money",
-        "reliability"
+        "reliability",
+        "ledger"
       ],
       "tests": [
         "internal/contracts/payment/v1/payment_test.go",
@@ -1861,6 +1863,7 @@
       "file": "migrations/pending/c19c-refund-facts_refund_delivery_identity.sql",
       "owner": "payments",
       "touches_tables": ["payment_events", "payment_event_deliveries"]
-    }
+    },
+    {"file":"migrations/pending/c19c1-money_return_refund_identity.sql","owner":"payments","touches_tables":["payment_return_refunds","checkout_sessions"]}
   ]
 }

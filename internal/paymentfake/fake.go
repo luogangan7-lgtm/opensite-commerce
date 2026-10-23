@@ -176,6 +176,9 @@ func (f *Fake) apply(ctx context.Context, op Operation, r payment.PaymentOperati
 		return zero, &copied
 	}
 	result := payment.PaymentIntentResult{ProviderRef: ref, Status: current.status}
+	if op == Refund {
+		result.RefundID = "fake_event_" + fingerprint
+	}
 	f.intents[ref] = current
 	f.bindings[key] = binding{fingerprint: fingerprint, result: result, complete: true}
 	f.events = append(f.events, Event{EventID: "fake_event_" + fingerprint, TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: ref, Status: current.status, Amount: r.Amount})

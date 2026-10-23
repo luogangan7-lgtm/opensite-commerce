@@ -15,8 +15,7 @@ UI, no path) and an independent 64-hex `OPENSITE_AUTH_SIGNING_KEY` (for example
 `openssl rand -hex 32`). Compose passes them to the API as `OSC_ADMIN_ORIGIN`
 and `OSC_AUTH_SIGNING_KEY_HEX`; staff login reuses the auth login DSN, and the
 API refuses to start if either value is missing or malformed. Customer authentication
-also requires `OPENSITE_RETURNS_DB_PASSWORD`,
-`OPENSITE_CUSTOMER_AUTH_DB_PASSWORD`, a pinned HTTPS
+also requires `OPENSITE_CUSTOMER_AUTH_DB_PASSWORD`, a pinned HTTPS
 `OPENSITE_STOREFRONT_ORIGIN` and an independent `OPENSITE_CUSTOMER_CSRF_SECRET`
 containing 32–128 CSPRNG bytes encoded with unpadded base64url. Use simple `KEY=value` or single-quoted values, with no
 interpolation or multiline values. The isolated refund coordinator additionally requires

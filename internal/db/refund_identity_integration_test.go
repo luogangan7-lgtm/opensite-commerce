@@ -342,7 +342,7 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	}
 	s := returns.New(returns.Config{Runner: fulfillmentRunner{runner: p.f.runner, role: "service"}, Payments: p.f.provider,
 		Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Paid: r.Amount}},
-		Accounts: fulfillmentAccounts{tenant: p.f.tenant, accounts: accounts}, Ledger: ledger.New()})
+		Accounts: fulfillmentAccounts{tenant: p.f.tenant, accounts: accounts}, Ledger: payments.RefundJournal{Ledger: ledger.New()}})
 	var receipt returnscontract.Return
 	err = p.f.run(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
@@ -367,7 +367,16 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if w := p.witness(t); w.checkout.journals != 2 || w.refunded != completed.RefundMinor || w.checkout.cash != p.start.AmountMinor-completed.RefundMinor {
-		t.Fatalf("RETURNS_DOUBLE_POST_RED: request and provider deliveries must share one journal: %+v", w)
+	// Count both journal identities: the earlier witness counted only order sources
+	// and could not observe the separate return journal at all.
+	var journals, refunded, bindings int64
+	err = p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=$1),
+	  (SELECT refunded_minor FROM app.orders WHERE tenant_id=$1 AND id=$2),
+	  (SELECT count(*) FROM app.payment_return_refunds WHERE tenant_id=$1 AND return_id=$3)`, p.f.tenant, p.start.OrderID, receipt.ID).Scan(&journals, &refunded, &bindings)
+	})
+	w := p.f.witness(t, p.start.OrderID)
+	if err != nil || journals != 2 || bindings != 1 || refunded != completed.RefundMinor || w.cash != p.start.AmountMinor-completed.RefundMinor {
+		t.Fatalf("RETURNS_DOUBLE_POST_RED: journals=%d bindings=%d refunded=%d cash=%d err=%v", journals, bindings, refunded, w.cash, err)
 	}
 }

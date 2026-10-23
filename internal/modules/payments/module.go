@@ -222,7 +222,8 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 			if e != nil {
 				return e
 			}
-			done, applyErr := m.config.Apply(ctx, child, payment.VerifiedEvent{EventID: r.EventKey, TenantID: tenant, OrderID: r.ClaimedOrderID.String(), OrderVersion: r.OrderVersion, ProviderRef: r.ProviderRef, Status: payment.PaymentStatus(r.Status), Amount: money.Money{Amount: r.AmountMinor, Currency: r.Currency}})
+			event := payment.VerifiedEvent{EventID: r.EventKey, TenantID: tenant, OrderID: r.ClaimedOrderID.String(), OrderVersion: r.OrderVersion, ProviderRef: r.ProviderRef, Status: payment.PaymentStatus(r.Status), Amount: money.Money{Amount: r.AmountMinor, Currency: r.Currency}}
+			done, applyErr := m.applyFact(ctx, child, event, r.ProviderRefundID.String)
 			var code pgtype.Text
 			if applyErr != nil {
 				if e = child.Rollback(ctx); e != nil {
