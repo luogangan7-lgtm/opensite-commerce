@@ -1,7 +1,7 @@
 //go:build pgx
 
 // Responsibility: privately compose reviewed runtime transaction capabilities.
-// Dependencies: pgxadapter Open/Runner only; caller: explicit dev/test startup.
+// Dependencies: pgxadapter Open/Runner only; caller: production bootstrap startup.
 // Invariants: effective app_runtime; HTTP quote callers need admitted actors,
 // and payment callbacks enter only through the service's signed-event protocol.
 package bootstrap

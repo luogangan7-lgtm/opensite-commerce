@@ -260,7 +260,7 @@ func TestProductionWiringPG(t *testing.T) {
 			t.Errorf("staff quote negative admission status=%d", w.Code)
 		}
 	}
-	quoteBody := fmt.Sprintf(`{"site_id":%q,"inquiry_id":%q,"company_id":%q,"currency":"USD","expires_at":"2030-01-01T00:00:00Z","lines":[{"product_id":%q,"variant_id":%q,"description":"wiring","quantity":1,"unit_price":100,"tax_category":"standard"}],"destination":{"country":"US"},"shipping_profile_id":%q,"weight_g":1}`, f.site, f.inquiry, f.company, f.product, f.sku, f.profile)
+	quoteBody := fmt.Sprintf(`{"site_id":%q,"inquiry_id":%q,"company_id":%q,"currency":"USD","expires_at":"2030-01-01T00:00:00Z","lines":[{"product_id":%q,"variant_id":%q,"description":"wiring","quantity":1,"unit_price":100,"tax_category":"standard"}],"destination":{"country":"US","subdivision":"CA"},"shipping_profile_id":%q,"weight_g":1}`, f.site, f.inquiry, f.company, f.product, f.sku, f.profile)
 	// Revoke membership after route authentication but before the transaction.
 	// The admitted Quotes actor must not bypass the existing staff write fence.
 	quotePath := "/api/v1/t/" + f.tenant + "/quotes"
