@@ -109,7 +109,7 @@ GRANT EXECUTE ON FUNCTION app.payments_retain_refund_case(jsonb) TO app_runtime,
 -- caller of the public finalizer now commits its case audit in the same transaction.
 ALTER FUNCTION app.payments_finalize_refund(jsonb) RENAME TO payments_finalize_refund_core;
 REVOKE ALL ON FUNCTION app.payments_finalize_refund_core(jsonb) FROM app_payments_ingress;
-CREATE FUNCTION app.payments_finalize_refund(p_fact jsonb) RETURNS jsonb
+CREATE OR REPLACE FUNCTION app.payments_finalize_refund(p_fact jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
 DECLARE cid uuid; result jsonb; f app.payment_refund_terminals; c app.payment_refund_cases;
 BEGIN
