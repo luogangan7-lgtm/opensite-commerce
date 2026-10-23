@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"strings"
@@ -314,6 +315,26 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	over := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: start.OrderID, OrderVersion: start.OrderVersion, Amount: money.Money{Amount: 1, Currency: start.Currency}, IdempotencyKey: "sandbox-over-refund"}, ProviderRef: start.Payment.ProviderRef}
 	if _, err := adapter.Refund(ctx, over); err == nil {
 		t.Fatal("Stripe over-refund admitted")
+	}
+	// The port bounds all provider errors; require a real Stripe 400 as well so
+	// an unrelated network failure cannot satisfy the over-refund assertion.
+	form := url.Values{"payment_intent": {start.Payment.ProviderRef}, "amount": {"1"}}
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.stripe.com/v1/refunds", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal("over-refund request construction failed")
+	}
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("STRIPE_TEST_SECRET_KEY"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Idempotency-Key", "sandbox-over-refund-"+f.tenant)
+	client := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Do(req)
+	if err != nil {
+		t.Fatal("over-refund rejection transport failed")
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 65536))
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Stripe over-refund status=%d want=400", response.StatusCode)
 	}
 	err = f.run(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := coordinator.Request(ctx, tx, f.tenant, rc.RequestInput{OrderID: start.OrderID, ExpectedVersion: version(), IdempotencyKey: "sandbox-over-rma", Kind: rc.ShipmentReturn, Reason: "exhausted quantity", Lines: []rc.Line{{OrderLineID: line, ShipmentLineID: shipmentLine, Quantity: 1}}})
