@@ -241,7 +241,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description C-18a trusted storefront resolver seam. Guest capability or customer session must be verified independently of URL and Host, with exact Origin and session-bound CSRF. This increment has no production resolver; missing resolver rejects. Storefront access carries no employee scope and never falls back to staff authentication. Prices, buyer identity and tenant authorization are not input. quote_id is rejected in this increment; B2B conversion is deferred. */
+        /** @description C-18a trusted storefront resolver seam. Guest capability or customer session must be verified independently of URL and Host, with exact Origin and session-bound CSRF. This increment has no production resolver; missing resolver rejects. Storefront access carries no employee scope and never falls back to staff authentication. Prices, buyer identity and tenant authorization are not input. quote_id is rejected in this increment; B2B conversion is deferred. Acceptance shape is classified before the body schema: a missing accepted_total, a non-object accepted_total, fields other than exactly amount_minor and currency, a non-positive amount, or an invalid currency returns 422 validation_failed. A well-formed total that differs from canonical repricing returns 409 checkout_total_changed. A non-object root body, unknown fields and JSON syntax/size/duplicate-key errors remain 400 invalid_json; other media types remain 415. */
         post: operations["createCheckout"];
         delete?: never;
         options?: never;
