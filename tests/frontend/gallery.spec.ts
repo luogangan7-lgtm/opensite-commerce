@@ -216,3 +216,12 @@ test('production route excludes the component gallery', async ({ page }) => {
   await expect(page.getByTestId('gallery')).toHaveCount(0);
   await expect(page.getByText('OpenSite admin')).toBeVisible();
 });
+
+// Temporary CI fault probes: each missing required font must stop gallery capture.
+for (const weight of ['400', '500']) {
+  test(`fault probe: unavailable Inter ${weight} cannot reach a gallery capture`, async ({ page }) => {
+    await page.route(new RegExp(`inter-latin-${weight}-normal-.*\\.woff2$`), route => route.abort('failed'));
+    await catalog(page);
+    await expect(page).toHaveScreenshot('gallery.png', { fullPage: true });
+  });
+}
