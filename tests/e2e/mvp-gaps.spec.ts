@@ -6,7 +6,9 @@ import { expect, test } from '@playwright/test';
 import { audit, fixture } from './fixture';
 
 const staffSite = 'c3300003-0000-4000-8000-000000000001';
-const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64');
+// Reuse the valid image bytes exercised by the real media integration suite
+// (internal/modules/media/integration_test.go stagingPNG), not a header-only fixture.
+const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415478da636064620600000e0007e99237d40000000049454e44ae426082', 'hex');
 
 test('real staff create SKU → media upload → publish', async ({ page }, info) => {
   test.setTimeout(240_000);
