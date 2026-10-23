@@ -3,6 +3,7 @@ package paymentfake_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"sync"
@@ -71,6 +72,12 @@ func TestLifecycleAndReplay(t *testing.T) {
 	partial, err := f.Refund(context.Background(), refund)
 	if err != nil || partial.Status != payment.StatusPartiallyRefunded {
 		t.Fatalf("refund %+v %v", partial, err)
+	}
+	wire, _ := json.Marshal(f.Events()[2])
+	var event map[string]any
+	_ = json.Unmarshal(wire, &event)
+	if partial.RefundID == "" || event["RefundID"] != partial.RefundID {
+		t.Fatalf("FAKE_IDENTITY_RED: result=%+v event=%s", partial, wire)
 	}
 	replay, err := f.Refund(context.Background(), refund)
 	if err != nil || replay != partial || len(f.Events()) != 3 {

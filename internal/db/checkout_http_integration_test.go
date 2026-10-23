@@ -146,7 +146,7 @@ func TestCheckoutPGHTTPFakeCanceledCallbackAfterCancel(t *testing.T) {
 	var event *payment.VerifiedEvent
 	for _, e := range f.provider.fake.Events() {
 		if e.OrderID == start.OrderID && e.Status == payment.StatusCanceled {
-			v := payment.VerifiedEvent(e)
+			v := e.VerifiedEvent
 			event = &v
 		}
 	}

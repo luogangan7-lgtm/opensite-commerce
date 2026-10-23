@@ -640,6 +640,16 @@ type AppPaymentProviderAccount struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
+type AppPaymentReturnRefund struct {
+	TenantID         pgtype.UUID        `json:"tenant_id"`
+	ReturnID         pgtype.UUID        `json:"return_id"`
+	AttemptKey       string             `json:"attempt_key"`
+	ProviderRef      string             `json:"provider_ref"`
+	ProviderRefundID string             `json:"provider_refund_id"`
+	JournalID        pgtype.UUID        `json:"journal_id"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
 type AppPriceEntry struct {
 	TenantID    pgtype.UUID `json:"tenant_id"`
 	ID          pgtype.UUID `json:"id"`

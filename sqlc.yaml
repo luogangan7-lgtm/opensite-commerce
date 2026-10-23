@@ -43,6 +43,7 @@ sql:
       - "migrations/pending/c20b-hold-owner_inventory_hold_owner.sql"
       - "migrations/pending/c22a-data-rights_data_rights.sql"
       - "migrations/pending/c20a-fulfillment_fulfillment_returns.sql"
+      - "migrations/pending/c19c1-money_return_refund_identity.sql"
       - "migrations/pending/c20a-fulfillment-scopes_fulfillment_role_scopes.sql"
       - "migrations/pending/c18b-quote-conversion_quote_conversion.sql"
       - "migrations/pending/c18b-checkout-source_checkout_source.sql"

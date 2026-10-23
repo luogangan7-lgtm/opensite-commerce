@@ -5,7 +5,6 @@ import unittest
 import os
 import io
 import re
-import secrets
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -22,7 +21,7 @@ class DeployTests(unittest.TestCase):
                       'RETURNS_DEPLOYMENT_RED: returns coordinator pool is not provisioned')
         self.assertEqual(ops.LOGIN_NAMES['RETURNS'], 'opensite_returns_login')
         self.assertEqual(ops.CAPABILITY_GROUPS['RETURNS'], 'app_returns_service')
-        sql = ops.provision_sql('opensite', {kind: secrets.token_urlsafe(32) for kind in ops.LOGIN_ROLES})
+        sql = ops.provision_sql('opensite', self.valid_passwords())
         self.assertIn('GRANT app_returns_service TO opensite_returns_login;', sql)
         self.assertNotIn('GRANT app_returns_service TO opensite_runtime_login;', sql)
         self.assertNotIn('GRANT app_auth TO opensite_returns_login;', sql)
@@ -30,8 +29,8 @@ class DeployTests(unittest.TestCase):
         self.assertIn("'opensite_returns_login'", ops.login_role_audit_sql('opensite'))
 
     def test_missing_returns_secret_refuses_before_writers(self):
-        env = {f'OPENSITE_{kind}_DB_PASSWORD': secrets.token_urlsafe(32) for kind in ops.LOGIN_ROLES}
-        env['POSTGRES_PASSWORD'] = secrets.token_urlsafe(32)
+        env = {f'OPENSITE_{kind}_DB_PASSWORD': value for kind, value in self.valid_passwords().items()}
+        env['POSTGRES_PASSWORD'] = 'nonsecret_fixture_ADMIN_123456789'
         env['OPENSITE_RETURNS_DB_PASSWORD'] = str()
         with patch.dict(os.environ, env, clear=True), patch.object(ops, 'preflight'), \
                 patch.object(ops, 'audit_login_roles') as audit, \
@@ -49,15 +48,15 @@ class DeployTests(unittest.TestCase):
                       'CUSTOMER_AUTH_DEPLOYMENT_RED: customer credential pool is not provisioned')
         self.assertEqual(ops.LOGIN_NAMES['CUSTOMER_AUTH'], 'opensite_customer_auth_login')
         self.assertEqual(ops.CAPABILITY_GROUPS['CUSTOMER_AUTH'], 'app_customer_auth')
-        sql = ops.provision_sql('opensite', {kind: secrets.token_urlsafe(32) for kind in ops.LOGIN_ROLES})
+        sql = ops.provision_sql('opensite', self.valid_passwords())
         self.assertIn('GRANT app_customer_auth TO opensite_customer_auth_login;', sql)
         self.assertNotIn('GRANT app_customer_auth TO opensite_runtime_login;', sql)
         self.assertNotIn('GRANT app_auth TO opensite_customer_auth_login;', sql)
         self.assertIn("'opensite_customer_auth_login'", ops.login_role_audit_sql('opensite'))
 
     def test_missing_customer_auth_secret_refuses_before_writers(self):
-        env = {f'OPENSITE_{kind}_DB_PASSWORD': secrets.token_urlsafe(32) for kind in ops.LOGIN_ROLES}
-        env['POSTGRES_PASSWORD'] = secrets.token_urlsafe(32)
+        env = {f'OPENSITE_{kind}_DB_PASSWORD': value for kind, value in self.valid_passwords().items()}
+        env['POSTGRES_PASSWORD'] = 'nonsecret_fixture_ADMIN_123456789'
         env['OPENSITE_CUSTOMER_AUTH_DB_PASSWORD'] = str()
         with patch.dict(os.environ, env, clear=True), patch.object(ops, 'preflight'), \
                 patch.object(ops, 'audit_login_roles') as audit, \

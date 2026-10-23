@@ -1719,6 +1719,7 @@ export interface components {
             };
         };
         FakePaymentEvent: {
+            refund_id?: string;
             event_id: string;
             account_id: string;
             /** Format: uuid */

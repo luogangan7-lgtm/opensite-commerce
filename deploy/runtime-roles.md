@@ -167,7 +167,14 @@ It cannot INSERT/claim requests, change claim tokens or complete another operati
 The coordinator must use authenticated tenant transactions through `pgxadapter`
 and server-provided captured-payment/account bindings. Do not provision membership
 in an executor/DDL-owner role. Credentials and provider configuration remain
-out-of-band. A missing trusted binding leaves the refund HTTP operation unavailable.
+out-of-band. The migrator and restore provision `opensite_returns_login` as the
+eighth component LOGIN, granted only `app_returns_service`, with its independent
+`OPENSITE_RETURNS_DB_PASSWORD` validated before migration or restore target writes.
+Compose passes this secret only to the migrator and API; the initdb HBA restricts
+this LOGIN to the same application database over TCP4, TCP6 and Unix sockets.
+The shared `LOGIN_ROLES` map includes it in the ops drill and MVP E2E rehearsal.
+The coordinator binding is `OPENSITE_RETURNS_DATABASE_URL`, or environment-backed
+RETURNS components (`OPENSITE_RETURNS_DB_PASSWORD`, `OPENSITE_DB_HOST`, `OPENSITE_DB`). A missing trusted binding leaves the refund HTTP operation unavailable.
 
 
 ### Tenant business authorization (C-02c)

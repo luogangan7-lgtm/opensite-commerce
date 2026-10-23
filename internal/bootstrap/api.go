@@ -19,12 +19,14 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/catalog"
 	customercontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	notificationcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/pricing"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
+	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/carthttp"
@@ -77,6 +79,9 @@ func New(config Config) (server *http.Server, err error) {
 			err = fmt.Errorf("API static composition failed: %v", p)
 		}
 	}()
+	if config.Subject == nil {
+		config.Subject = staffSubject
+	}
 	cartModule := config.Cart
 	if cartModule == nil {
 		cartModule = cart.New(nil, nil)
@@ -261,7 +266,19 @@ func (a routeAuthenticator) Authenticate(ctx context.Context, r *http.Request, s
 	if a.staff == nil {
 		return (httpapi.DenyAuthenticator{}).Authenticate(ctx, r, spec)
 	}
-	return a.staff.Authenticate(ctx, r, spec)
+	ctx, err := a.staff.Authenticate(ctx, r, spec)
+	if err != nil || ctx == nil {
+		return ctx, err
+	}
+	// The API key's issuer is the staff subject, never the key ID. Only the
+	// identity module's admitted principal can supply this projection; tenant,
+	// credential and scope checks have already succeeded on the selected route.
+	if spec.Scope == "quotes:read" || spec.Scope == "quotes:write" {
+		if actor, ok := identity.AuthorizationFromContext(ctx); ok && actor.TenantID == r.PathValue("tenant_id") {
+			ctx = qc.WithTrustedActor(ctx, qc.ActorIdentity{TenantID: actor.TenantID, StaffID: actor.UserID})
+		}
+	}
+	return ctx, nil
 }
 
 // ResolveActor preserves the identity projection of the selected staff

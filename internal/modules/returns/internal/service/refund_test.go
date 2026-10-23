@@ -69,7 +69,7 @@ func (p *paymentTestPort) Refund(ctx context.Context, in payment.PaymentOperatio
 		p.requests[in.IdempotencyKey] = in
 		p.events = append(p.events, in)
 	}
-	return payment.PaymentIntentResult{ProviderRef: in.ProviderRef, Status: payment.StatusPartiallyRefunded}, nil
+	return payment.PaymentIntentResult{ProviderRef: in.ProviderRef, Status: payment.StatusPartiallyRefunded, RefundID: "fixture-refund-" + in.IdempotencyKey}, nil
 }
 func (p *paymentTestPort) Events() []payment.PaymentOperation {
 	return append([]payment.PaymentOperation(nil), p.events...)
@@ -424,4 +424,12 @@ func TestRefundJournalZeroComponentsRemainBalanced(t *testing.T) {
 	if err != nil || len(journal.Entries) != 2 || journal.Validate() != nil {
 		t.Fatalf("zero component journal %+v %v", journal, err)
 	}
+}
+
+func (l *ledgerFake) PostRefund(ctx context.Context, tx pgx.Tx, in ledger.Transaction) (string, error) {
+	return l.Post(ctx, tx, in)
+}
+func (l *ledgerFake) LockReturnCheckout(context.Context, pgx.Tx, string) error { return nil }
+func (l *ledgerFake) PostReturnRefund(ctx context.Context, tx pgx.Tx, _ string, _ string, _ string, in ledger.Transaction) (string, error) {
+	return l.Post(ctx, tx, in)
 }
