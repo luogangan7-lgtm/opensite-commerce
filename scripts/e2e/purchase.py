@@ -72,10 +72,13 @@ def publish(psql, credentials):
 
 
 WITNESS_SQL = f"""
-WITH c AS (SELECT * FROM app.checkout_sessions WHERE tenant_id='{TENANT}'),
+WITH c AS (SELECT c.* FROM app.checkout_sessions c WHERE tenant_id='{TENANT}'
+ AND NOT EXISTS(SELECT FROM app.quote_conversions q WHERE (q.tenant_id,q.order_id)=(c.tenant_id,c.order_id))),
 r AS (SELECT r.*,c.phase,c.order_id FROM c JOIN app.order_lines l ON (l.tenant_id,l.order_id)=(c.tenant_id,c.order_id)
  JOIN app.inventory_reservations r ON (r.tenant_id,r.id)=(l.tenant_id,l.reservation_id)),
-e AS (SELECT e.*,a.code FROM app.ledger_entries e JOIN app.ledger_accounts a ON (a.tenant_id,a.id)=(e.tenant_id,e.account_id) WHERE e.tenant_id='{TENANT}')
+e AS (SELECT e.*,a.code FROM app.ledger_entries e JOIN app.ledger_accounts a ON (a.tenant_id,a.id)=(e.tenant_id,e.account_id)
+ JOIN app.ledger_transactions t ON (t.tenant_id,t.id)=(e.tenant_id,e.transaction_id)
+ WHERE e.tenant_id='{TENANT}' AND t.source_id IN (SELECT order_id::text FROM c))
 SELECT jsonb_build_object(
  'sessions',(SELECT count(*) FROM c),
  'paid',(SELECT count(*) FROM c JOIN app.orders o ON (o.tenant_id,o.id)=(c.tenant_id,c.order_id) WHERE c.phase='paid' AND o.state='paid' AND o.sealed AND o.total_minor=3140 AND c.amount_minor=3140 AND c.currency='USD'),
@@ -84,16 +87,16 @@ SELECT jsonb_build_object(
  'active_owned',(SELECT count(*) FROM r WHERE phase='ready' AND state='active' AND owner_type='order' AND owner_id=order_id AND holder_hash IS NULL AND sku_id='{SKU}' AND quantity=1),
  'on_hand',(SELECT on_hand FROM app.stock_levels WHERE tenant_id='{TENANT}' AND sku_id='{SKU}'),
  'reserved',(SELECT reserved FROM app.stock_levels WHERE tenant_id='{TENANT}' AND sku_id='{SKU}'),
- 'inbox',(SELECT count(*) FROM app.webhook_inbox WHERE tenant_id='{TENANT}' AND provider='fake' AND provider_account_id='c09d-e2e' ),
- 'processed',(SELECT count(*) FROM app.webhook_inbox WHERE tenant_id='{TENANT}' AND provider_account_id='c09d-e2e' AND status='processed' AND processed_at IS NOT NULL),
- 'pending',(SELECT count(*) FROM app.webhook_inbox WHERE tenant_id='{TENANT}' AND provider_account_id='c09d-e2e' AND status='pending' AND processed_at IS NULL),
+ 'inbox',(SELECT count(*) FROM app.webhook_inbox WHERE tenant_id='{TENANT}' AND provider='fake' AND provider_account_id='c09d-e2e' AND provider_event_id NOT LIKE 'b2b:%' ),
+ 'processed',(SELECT count(*) FROM app.webhook_inbox WHERE tenant_id='{TENANT}' AND provider_account_id='c09d-e2e' AND provider_event_id NOT LIKE 'b2b:%' AND status='processed' AND processed_at IS NOT NULL),
+ 'pending',(SELECT count(*) FROM app.webhook_inbox WHERE tenant_id='{TENANT}' AND provider_account_id='c09d-e2e' AND provider_event_id NOT LIKE 'b2b:%' AND status='pending' AND processed_at IS NULL),
  'captured',(SELECT count(*) FROM app.payment_events WHERE tenant_id='{TENANT}' AND provider_account_id='c09d-e2e' AND status='captured' AND applied AND amount_minor=3140 AND currency='USD'),
  'pending_refund',(SELECT count(*) FROM app.payment_events WHERE tenant_id='{TENANT}' AND provider_account_id='c09d-e2e' AND status='refunded' AND NOT applied AND error_code IS NULL),
- 'journals',(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id='{TENANT}'),
+ 'journals',(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id='{TENANT}' AND source_id IN (SELECT order_id::text FROM c)),
  'debits',(SELECT sum(amount) FROM e WHERE side='debit'),
  'credits',(SELECT sum(amount) FROM e WHERE side='credit'),
  'cash',(SELECT sum(CASE WHEN side='debit' THEN amount ELSE -amount END) FROM e WHERE code='cash'),
- 'paid_outbox',(SELECT count(*) FROM app.outbox_events WHERE tenant_id='{TENANT}' AND event_type='order.paid'));
+ 'paid_outbox',(SELECT count(*) FROM app.outbox_events WHERE tenant_id='{TENANT}' AND event_type='order.paid' AND payload->>'order_id' IN (SELECT order_id::text FROM c)));
 """
 
 
