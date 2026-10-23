@@ -224,6 +224,13 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	if err != nil || refundedRows != 2 {
 		t.Fatal("persisted refund facts missing")
 	}
+	var returnBindings int
+	err = f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "SELECT count(*) FROM app.payment_return_refunds WHERE tenant_id=$1 AND order_id=$2", f.tenant, start.OrderID).Scan(&returnBindings)
+	})
+	if err != nil || returnBindings != 2 {
+		t.Fatalf("RETURNS_SANDBOX_RED: need two persisted coordinator refund bindings, got=%d err=%v", returnBindings, err)
+	}
 	cancelStart := f.start(t)
 	canceled, err := svc.Cancel(checkoutRequestContext(ctx), f.actor, ch.CancelInput{CheckoutID: cancelStart.CheckoutID, IdempotencyKey: "sandbox-cancel"})
 	if err != nil || canceled.State != "cancelled" {
