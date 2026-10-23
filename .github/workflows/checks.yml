@@ -111,8 +111,7 @@ jobs:
       - name: Prepare independent pgx and sqlc databases
         if: matrix.lane == 'pgx' || matrix.lane == 'sqlc'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client
+          ./scripts/ci_apt_install.sh postgresql-client
           ./scripts/migrate_river.sh
           ./scripts/migrate.sh
       - name: Go / PageGraph / LocalFS / Tenant Transaction
@@ -134,8 +133,7 @@ jobs:
       - name: All-migration Go and DB role-scope parity
         if: matrix.lane == 'pgx'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client
+          ./scripts/ci_apt_install.sh postgresql-client
           go test -tags pgx -count=1 -timeout=5m -v -run '^TestC02cRoleScopesMirrorPostgres$' ./internal/modules/identity
       - name: CI pin policy and offline gates
         if: matrix.lane == 'offline'
@@ -173,8 +171,7 @@ jobs:
       - name: PostgreSQL 18 forward-only migrations and security
         if: matrix.lane == 'pg'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client
+          ./scripts/ci_apt_install.sh postgresql-client
           ./scripts/check_pg.sh
           python3 tests/test_inventory_race_sync.py
           ./scripts/check_pg_races.sh
@@ -348,7 +345,7 @@ jobs:
         with:
           go-version: '1.27.2'
       - name: Bun archive extraction prerequisite
-        run: apt-get -o Acquire::Retries=3 update -qq && apt-get -o Acquire::Retries=3 install -y -qq --no-install-recommends unzip postgresql-client
+        run: ./scripts/ci_apt_install.sh --no-install-recommends unzip postgresql-client
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: '1.3.12'
@@ -428,7 +425,9 @@ jobs:
         with:
           go-version: '1.27.2'
       - name: Bun archive extraction prerequisite
-        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends unzip postgresql-client
+        # The golden producer may not run repository code before its writer
+        # (scripts/frontend/workflow-provenance.ts), so the bounds are inlined here.
+        run: timeout 180 apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=20 && timeout 300 apt-get install -y -qq --no-install-recommends unzip postgresql-client
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: '1.3.12'
