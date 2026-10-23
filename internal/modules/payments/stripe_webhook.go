@@ -91,7 +91,7 @@ func (s *Stripe) Receive(ctx context.Context, raw []byte, signature string) (con
 			return zero, invalid()
 		}
 		if o.Metadata["osc_order"] == "" {
-			return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp)
+			return contract.Receipt{EventID: e.ID, Status: "ignored"}, nil
 		}
 		if o.Status != "succeeded" {
 			return contract.Receipt{EventID: e.ID, Status: "ignored"}, nil
