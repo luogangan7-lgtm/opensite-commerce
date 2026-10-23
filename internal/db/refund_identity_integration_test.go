@@ -108,3 +108,45 @@ func TestStripeDashboardRefundDurableUnmatched(t *testing.T) {
 		t.Fatalf("unmatched retention/journal: facts=%d journals=%d err=%v", facts, journals, err)
 	}
 }
+
+func TestPaymentsLegacyRefundRequiresReconciliation(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	p.receive(t, "capture", payment.StatusCaptured, p.start.AmountMinor)
+	p.receive(t, "legacy-created", payment.StatusPartiallyRefunded, 1)
+	before := p.f.witness(t, p.start.OrderID)
+	var body map[string]any
+	_ = json.Unmarshal(p.raw("new-updated", payment.StatusPartiallyRefunded, 1), &body)
+	body["refund_id"] = "legacy-provider-refund"
+	raw, _ := json.Marshal(body)
+	if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err == nil {
+		t.Fatal("unbound legacy refund stream accepted a new financial identity")
+	}
+	p.receive(t, "legacy-created", payment.StatusPartiallyRefunded, 1)
+	if after := p.f.witness(t, p.start.OrderID); after != before {
+		t.Fatal("legacy refund replay/update posted another journal")
+	}
+}
+
+func TestPaymentsRefundAliasesConvergeAfterCapture(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	for _, event := range []string{"before-created", "before-updated"} {
+		var body map[string]any
+		_ = json.Unmarshal(p.raw(event, payment.StatusPartiallyRefunded, 1), &body)
+		body["refund_id"] = "before-provider-refund"
+		raw, _ := json.Marshal(body)
+		if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p.receive(t, "capture", payment.StatusCaptured, p.start.AmountMinor)
+	var pending int
+	err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND status<>'processed'", p.f.tenant).Scan(&pending)
+	})
+	if err != nil || pending != 0 {
+		t.Fatalf("refund aliases stranded after capture: %d %v", pending, err)
+	}
+	if w := p.witness(t); w.refunded != 1 || w.checkout.journals != 2 {
+		t.Fatalf("out-of-order refund money: %+v", w)
+	}
+}
