@@ -230,7 +230,7 @@ func TestCheckoutPGConsentLegacyRecoveryAndPaidReplay(t *testing.T) {
 }
 
 func TestCheckoutPGHTTPConsentInvalid(t *testing.T) {
-	for _, accepted := range []string{"", `null`, `{}`, `{"amount_minor":0,"currency":"USD"}`, `{"amount_minor":160,"currency":"usd"}`, `"wrong-shape"`} {
+	for _, accepted := range []string{"", `null`, `{}`, `{"amount_minor":0,"currency":"USD"}`, `{"amount_minor":160,"currency":"usd"}`, `"wrong-shape"`, `[]`, `{"amount_minor":160,"currency":"USD","accepted":true}`, `{"Amount_minor":160,"currency":"USD"}`} {
 		t.Run(accepted, func(t *testing.T) {
 			f := newCheckoutPGFixture(t, 5, 1)
 			in := f.input()
