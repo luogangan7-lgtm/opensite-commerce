@@ -1,9 +1,9 @@
 //go:build pgx
 
-// Responsibility: open only the dedicated returns coordinator capability.
+// Responsibility: open dedicated Returns or Payments coordinator capabilities.
 // Dependencies: checked QueryRunner and PostgreSQL catalogs; caller: bootstrap.
 // Invariants: no mixed/administrative capability or extra effective grants;
-// request callbacks use RunAuthorizedTx, never a raw connection or pool.
+// Callbacks use authorized requests or mapped payment facts, never a raw pool.
 package pgxadapter
 
 import (
@@ -24,7 +24,7 @@ func OpenPaymentsRunner(ctx context.Context, dsn string) (*QueryRunner, error) {
 func openCoordinatorRunner(ctx context.Context, dsn, capability string) (*QueryRunner, error) {
 	runner, err := OpenQueryRunner(ctx, dsn)
 	if err != nil {
-		return nil, errors.New("returns database is unavailable or misconfigured")
+		return nil, errors.New("coordinator database is unavailable or misconfigured")
 	}
 	err = runner.runner.inMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var safe bool
@@ -63,13 +63,13 @@ func openCoordinatorRunner(ctx context.Context, dsn, capability string) (*QueryR
      OR has_sequence_privilege(r.oid,c.oid,'USAGE WITH GRANT OPTION,SELECT WITH GRANT OPTION,UPDATE WITH GRANT OPTION') ELSE false END)
    FROM pg_roles r CROSS JOIN pg_roles g WHERE r.rolname=session_user AND g.rolname=$1`, capability).Scan(&safe)
 		if err != nil || !safe {
-			return errors.New("returns database capability is invalid")
+			return errors.New("coordinator database capability is invalid")
 		}
 		return nil
 	})
 	if err != nil {
 		runner.Close()
-		return nil, errors.New("returns database capability is invalid")
+		return nil, errors.New("coordinator database capability is invalid")
 	}
 	runner.paymentIngress = capability == "app_payments_ingress"
 	return runner, nil

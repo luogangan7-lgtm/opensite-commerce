@@ -6,6 +6,12 @@
 -- Caller: Payments finalizer only; generic transitions retain all original restrictions.
 ALTER TABLE app.returns DROP CONSTRAINT returns_status_check;
 ALTER TABLE app.returns ADD CONSTRAINT returns_status_check CHECK(status IN('requested','received','refund_pending','refund_reconcile','refund_failed','refunded','completed','refund_compensated'));
+-- A compensated receipt retains its original attempt and posting evidence.
+ALTER TABLE app.returns DROP CONSTRAINT returns_check3,DROP CONSTRAINT returns_check5;
+ALTER TABLE app.returns ADD CONSTRAINT returns_refund_attempt_state CHECK(
+ (status IN('refund_pending','refund_reconcile','refund_failed','refunded','refund_compensated'))=(refund_key IS NOT NULL));
+ALTER TABLE app.returns ADD CONSTRAINT returns_refund_posted_state CHECK(
+ (status IN('refunded','refund_compensated'))=(ledger_transaction_id IS NOT NULL AND refunded_at IS NOT NULL));
 CREATE OR REPLACE FUNCTION app.orders_guard() RETURNS trigger LANGUAGE plpgsql
 SET search_path=pg_catalog,app,pg_temp AS $fn$
 BEGIN
