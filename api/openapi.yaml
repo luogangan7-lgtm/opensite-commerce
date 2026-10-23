@@ -69,6 +69,7 @@ paths:
       x-required-scope: catalog:write
       description: If-Match is the latest locale content revision, quoted; use zero for the first revision. Listing writes pin the explicit content_revision.
       parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
         - {$ref: '#/components/parameters/IfMatch'}
         - {$ref: '#/components/parameters/OriginIfCookie'}
         - {$ref: '#/components/parameters/CSRFTokenIfCookie'}
@@ -120,6 +121,7 @@ paths:
       x-required-scope: catalog:write
       description: If-Match is the latest locale content revision, quoted; use zero for the first revision. Listing writes pin the explicit content_revision.
       parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
         - {$ref: '#/components/parameters/IfMatch'}
         - {$ref: '#/components/parameters/OriginIfCookie'}
         - {$ref: '#/components/parameters/CSRFTokenIfCookie'}

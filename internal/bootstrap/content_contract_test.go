@@ -37,6 +37,7 @@ func TestStaffContentRoles(t *testing.T) {
 		} {
 			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Idempotency-Key", "content-contract-request")
 			if tc.version != "" {
 				req.Header.Set("If-Match", tc.version)
 			}
