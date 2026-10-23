@@ -285,6 +285,12 @@ def run(receipt_dir):
             if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", owner_tenant):
                 raise RuntimeError("MVP E2E owner bootstrap did not create exactly one owner tenant")
             os.environ["E2E_OWNER_TENANT_ID"] = owner_tenant
+            # Deployment authorizes refresh by tenant UUID; bootstrap creates a new one.
+            variables["OPENSITE_SERVING_REFRESH_TENANTS"] = f"{TENANT},{owner_tenant}"
+            os.environ["OPENSITE_SERVING_REFRESH_TENANTS"] = variables["OPENSITE_SERVING_REFRESH_TENANTS"]
+            env_file.write_text("".join(f"{key}={value}\n" for key, value in variables.items()))
+            # Mailpit shares API's network namespace, so recreate both together.
+            command(compose_command(["up", "-d", "--no-deps", "--force-recreate", "--wait", "--wait-timeout", "120", "api", "mailpit"]), "staff-refresh-start", timeout=300)
             receipt["owner_bootstrap"]["status"] = "PASS"
             receipt["publication"] = purchase.publish(ops_common.psql, credentials)
             # Owned C19 SQL orders are read through real owner session authorization.
