@@ -123,8 +123,8 @@ test('missing build define forbids HTTP before upstream IO',async()=>{
 test('production build output pins the HTTP capability to literal false',()=>{
   const dir=new URL('../../dist/server/',import.meta.url);
   const output=readdirSync(dir,{recursive:true}).filter(p=>String(p).endsWith('.mjs')).map(p=>readFileSync(new URL(String(p),dir),'utf8')).join('\n');
-  expect(output).toMatch(/commerceTestHTTP\s*=\s*false\b/);
-  expect(output).not.toContain('__OSC_COMMERCE_TEST_HTTP__');
+  expect(/commerceBuildCapabilities\s*=\s*Object\.freeze\(\{\s*testHTTP:\s*false\b/.test(output)).toBe(true);
+  expect(output.includes('__OSC_COMMERCE_TEST_HTTP__')).toBe(false);
 });
 test('production build pin forbids HTTP even if runtime flags claim test',async()=>{
   const build=globalThis as typeof globalThis & {__OSC_COMMERCE_TEST_HTTP__?:boolean};
