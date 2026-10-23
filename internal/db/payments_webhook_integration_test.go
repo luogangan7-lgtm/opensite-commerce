@@ -563,3 +563,50 @@ func TestPaymentsPGRejectedRefundDoesNotPoisonCapture(t *testing.T) {
 		t.Fatalf("rejected peer poisoned capture: %+v", w)
 	}
 }
+
+// A committed fact may update the simulation; a transaction rollback may not.
+func TestFakeCaptureObservationAfterCommitPG(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	applier := p.f.service.(checkoutcontract.PaymentEventApplier)
+	rollback := true
+	calls := 0
+	module, err := payments.New(payments.Config{Key: p.key, Apply: applier.ApplyPaymentEvent, Run: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+		return p.run(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
+			if err := fn(ctx, tx, tenant, at); err != nil {
+				return err
+			}
+			if rollback {
+				return errors.New("injected commit rollback")
+			}
+			return nil
+		})
+	}, ObserveCommittedCapture: func(event payment.VerifiedEvent) error {
+		calls++
+		if calls == 1 {
+			return errors.New("lost post-commit observation")
+		}
+		if p.f.witness(t, p.start.OrderID).state != "paid" {
+			t.Fatal("capture observer preceded commit")
+		}
+		return p.f.provider.fake.ObserveCaptured(event)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := p.raw("observed", payment.StatusCaptured, p.start.AmountMinor)
+	if _, err = module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err == nil || calls != 0 {
+		t.Fatalf("rollback observed: calls=%d err=%v", calls, err)
+	}
+	rollback = false
+	if _, err = module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err == nil {
+		t.Fatal("observer failure was hidden")
+	}
+	for range 2 {
+		if _, err = module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls < 3 {
+		t.Fatal("committed capture replay not observed")
+	}
+}
