@@ -85,5 +85,5 @@ def witness(psql, root):
                     copies.append({'field': table + '.' + field, **copy})
         if len(copies) < 20:
             raise RuntimeError('Data-rights privacy registry copy inventory unexpectedly shrank')
-        results.append({'project': project, 'facts': row, 'registry_copies': copies})
+        results.append({'project': project, 'exports': exports, 'facts': row, 'registry_copies': copies})
     return {'status': 'PASS', 'projects': results}
