@@ -386,7 +386,8 @@ BEGIN
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
-   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
+   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger','ledger_post_core',
+   'payments_post_refund_compensation','payments_guard_compensation_source','payments_assert_compensation_journal',
    'fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json','fulfillment_header_guard','fulfillment_line_guard',
    'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund',
    'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return',
@@ -421,7 +422,8 @@ BEGIN
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
    'buyer_roles_seed_for_tenant','customer_credentials_touch_updated_at',
-   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger',
+   'guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger','ledger_post_core',
+   'payments_post_refund_compensation','payments_guard_compensation_source','payments_assert_compensation_journal',
    'fulfillment_allocate','fulfillment_return_json','fulfillment_shipment_json','fulfillment_header_guard','fulfillment_line_guard',
    'fulfillment_create_shipment','returns_create','returns_receive','returns_refund_snapshot','returns_prepare_refund','returns_complete_refund','returns_lock_refund','returns_fail_refund',
    'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return',
@@ -551,7 +553,7 @@ SELECT 'PASS: customer trigger exact signature, privileged table owner, SECURITY
 DO $ledger$
 DECLARE r record; t record; a record; f record; privilege text; role_name text;
  expected_table boolean; expected_column boolean; allowed text[];
- names text[]:=ARRAY['guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger'];
+ names text[]:=ARRAY['guard_ledger_account','guard_ledger_transaction','guard_ledger_entry','assert_ledger_balance','post_ledger','ledger_post_core'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_ledger_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole
@@ -613,7 +615,7 @@ BEGIN
   ELSIF has_function_privilege(r.oid,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'ledger has foreign routine capability: %',f.proname;
   END IF;
  END LOOP;
- IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>5
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=ANY(names))<>cardinality(names)
  OR NOT EXISTS(SELECT FROM pg_proc WHERE oid='app.post_ledger(uuid,text,text,text,text,uuid[],text[],bigint[])'::regprocedure AND prorettype='uuid'::regtype) THEN
   RAISE EXCEPTION 'ledger routine contract incomplete';
  END IF;
@@ -1536,28 +1538,59 @@ BEGIN
  END LOOP;
 END $payment_return_matrix$;
 
--- C-19d part 1: the dedicated capability is inert until atomic finalization.
+-- Compensation is an unreachable Payments capability, never generic Ledger SQL.
 DO $compensation_matrix$
-DECLARE r record; t record; a record; p text; f record; expected boolean;
+DECLARE r record; t record; a record; f record; role_name text; privilege text;
+ expected boolean; allowed text[];
+ names text[]:=ARRAY['payments_post_refund_compensation','payments_guard_compensation_source',
+  'payments_assert_compensation_journal','payments_guard_refund_reversal'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_payments_service';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
  OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
  OR NOT has_schema_privilege(r.rolname,'app','USAGE') OR has_schema_privilege(r.rolname,'app','CREATE')
  OR has_schema_privilege(r.rolname,'app','USAGE WITH GRANT OPTION') THEN RAISE EXCEPTION 'C19D_MATRIX unsafe role'; END IF;
- FOR t IN SELECT c.oid FROM pg_class c WHERE c.relnamespace='app'::regnamespace AND c.relkind IN('r','p') LOOP
-  FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
-   IF has_table_privilege(r.rolname,t.oid,p) THEN RAISE EXCEPTION 'C19D_MATRIX unexpected table privilege'; END IF;
-  END LOOP;
-  FOR a IN SELECT attnum FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
-   FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
-    IF has_column_privilege(r.rolname,t.oid,a.attnum,p) THEN RAISE EXCEPTION 'C19D_MATRIX unexpected column privilege'; END IF;
-   END LOOP;
+ FOR t IN SELECT c.oid,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=privilege='SELECT' AND t.relname=ANY(ARRAY['ledger_accounts','ledger_transactions','ledger_entries','payment_refund_attempts','payment_refund_reversals']);
+   allowed:=ARRAY[]::text[];
+   IF expected THEN
+    SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+   ELSIF privilege='INSERT' THEN
+    allowed:=CASE t.relname WHEN 'ledger_transactions' THEN ARRAY['tenant_id','id','currency','source_type','source_id','event']
+     WHEN 'ledger_entries' THEN ARRAY['tenant_id','transaction_id','line_no','account_id','currency','side','amount'] ELSE allowed END;
+   ELSIF privilege='UPDATE' AND t.relname='ledger_transactions' THEN allowed:=ARRAY['status','posted_at']; END IF;
+   IF has_table_privilege('app_payments_service',t.oid,privilege) IS DISTINCT FROM expected
+    OR has_table_privilege('app_payments_service',t.oid,privilege||' WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'COMPENSATION_MATRIX_TABLE % %',t.relname,privilege; END IF;
+   IF privilege=ANY(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) THEN
+    FOR a IN SELECT attnum,attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     IF has_column_privilege('app_payments_service',t.oid,a.attnum,privilege) IS DISTINCT FROM (a.attname::text=ANY(allowed))
+      OR has_column_privilege('app_payments_service',t.oid,a.attnum,privilege||' WITH GRANT OPTION') THEN
+      RAISE EXCEPTION 'COMPENSATION_MATRIX_COLUMN %.% %',t.relname,a.attname,privilege; END IF;
+    END LOOP;
+   END IF;
   END LOOP;
  END LOOP;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
-  expected:=EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE');
-  IF has_function_privilege(r.rolname,f.oid,'EXECUTE') IS DISTINCT FROM expected
-   OR has_function_privilege(r.rolname,f.oid,'EXECUTE WITH GRANT OPTION') THEN RAISE EXCEPTION 'C19D_MATRIX unexpected routine %',f.proname; END IF;
+  IF f.proname=ANY(names) AND (f.proowner<>'app_payments_service'::regrole
+   OR f.prosecdef IS DISTINCT FROM (f.proname<>'payments_guard_compensation_source')
+   OR f.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, app, pg_temp']::text[]
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0)) THEN
+   RAISE EXCEPTION 'COMPENSATION_MATRIX_DEFINITION %',f.proname; END IF;
+  IF has_function_privilege('app_payments_service',f.oid,'EXECUTE') IS DISTINCT FROM (f.proname=ANY(names) OR f.proname='ledger_post_core') THEN
+   RAISE EXCEPTION 'COMPENSATION_MATRIX_FOREIGN_FUNCTION %',f.proname; END IF;
+  IF f.proname=ANY(names) OR f.proname='ledger_post_core' THEN
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+    expected:=role_name='app_payments_service' OR (role_name='app_ledger_executor' AND f.proname='ledger_post_core');
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
+     OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') IS DISTINCT FROM (role_name=f.proowner::regrole::text) THEN
+     RAISE EXCEPTION 'COMPENSATION_MATRIX_EXECUTE % %',role_name,f.proname; END IF;
+   END LOOP;
+  END IF;
  END LOOP;
+ IF(SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names))<>cardinality(names) THEN
+  RAISE EXCEPTION 'COMPENSATION_MATRIX_FUNCTION_SET'; END IF;
 END $compensation_matrix$;
+SELECT 'PASS: exact compensation capability and private posting core' AS result;

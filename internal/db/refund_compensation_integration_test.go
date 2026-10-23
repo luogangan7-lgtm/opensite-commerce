@@ -45,6 +45,9 @@ func TestRefundCompensationIdentityFences(t *testing.T) {
 			}
 			defer nested.Rollback(ctx)
 			_, err = nested.Exec(ctx, query, args...)
+			if err == nil {
+				_, err = nested.Exec(ctx, "SET CONSTRAINTS ALL IMMEDIATE")
+			}
 			var pg interface{ SQLState() string }
 			if !errors.As(err, &pg) || pg.SQLState() != code {
 				return fmt.Errorf("C19D expected %s, got %v", code, err)
@@ -72,7 +75,7 @@ func TestRefundCompensationIdentityFences(t *testing.T) {
 		// A balanced, posted journal with the correct source is still insufficient
 		// when its sides do not reverse the original. The savepoint rolls it back.
 		badWitness := `WITH bad AS (
- SELECT app.post_ledger($1,$3,'payment_refund',$2,'posted_to_compensated/v1',
+ SELECT app.payments_post_refund_compensation($1,$3,'payment_refund',$2,'posted_to_compensated/v1',
  array_agg(account_id ORDER BY line_no),array_agg(side ORDER BY line_no),array_agg(amount ORDER BY line_no)) AS id
  FROM app.ledger_entries WHERE tenant_id=$1 AND transaction_id=$4)
  INSERT INTO app.payment_refund_reversals(tenant_id,provider,provider_account_id,environment,provider_refund_id,original_journal_id,reversal_journal_id)
@@ -80,9 +83,13 @@ func TestRefundCompensationIdentityFences(t *testing.T) {
 		if err := reject(badWitness, "23514", p.f.tenant, source, p.start.Currency, original, p.account); err != nil {
 			return err
 		}
-		query := `SELECT app.post_ledger($1,$3,'payment_refund',$2,'posted_to_compensated/v1',
+		query := `SELECT app.payments_post_refund_compensation($1,$3,'payment_refund',$2,'posted_to_compensated/v1',
    array_agg(account_id ORDER BY line_no),array_agg(CASE side WHEN 'debit' THEN 'credit' ELSE 'debit' END ORDER BY line_no),array_agg(amount ORDER BY line_no))
    FROM app.ledger_entries WHERE tenant_id=$1 AND transaction_id=$4`
+		// A canonical journal alone must fail the deferred transaction gate.
+		if err := reject(query, "23514", p.f.tenant, source, p.start.Currency, original); err != nil {
+			return fmt.Errorf("FIX328_ORPHAN_JOURNAL_RED: %w", err)
+		}
 		if err := tx.QueryRow(ctx, query, p.f.tenant, source, p.start.Currency, original).Scan(&reversal); err != nil {
 			return err
 		}
@@ -94,14 +101,20 @@ func TestRefundCompensationIdentityFences(t *testing.T) {
 		if _, err := tx.Exec(ctx, witness, p.f.tenant, p.account, original, reversal); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, "SET CONSTRAINTS ALL IMMEDIATE"); err != nil {
+			return fmt.Errorf("FIX328 legitimate pair: %w", err)
+		}
 		var replay string
 		if err := tx.QueryRow(ctx, query, p.f.tenant, source, p.start.Currency, original).Scan(&replay); err != nil || replay != reversal {
 			return fmt.Errorf("C19D replay journal: %s %v", replay, err)
 		}
+		if _, err := tx.Exec(ctx, "SET CONSTRAINTS ALL DEFERRED"); err != nil {
+			return err
+		}
 		// Try to post the reversal again under an alias and commit its witness.
 		// The SQL proof rejects it and the savepoint removes the second journal.
 		secondReversal := `WITH extra AS (
- SELECT app.post_ledger($1,$3,'payment_refund',$2||':duplicate','posted_to_compensated/v1',
+ SELECT app.payments_post_refund_compensation($1,$3,'payment_refund',$2||':duplicate','posted_to_compensated/v1',
  array_agg(account_id ORDER BY line_no),array_agg(CASE side WHEN 'debit' THEN 'credit' ELSE 'debit' END ORDER BY line_no),array_agg(amount ORDER BY line_no)) AS id
  FROM app.ledger_entries WHERE tenant_id=$1 AND transaction_id=$4)
  INSERT INTO app.payment_refund_reversals(tenant_id,provider,provider_account_id,environment,provider_refund_id,original_journal_id,reversal_journal_id)

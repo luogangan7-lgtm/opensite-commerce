@@ -65,9 +65,13 @@ one whole atomic command; it has no implementation or composed caller yet.
 original journal. RMA bindings also require a matching applied account-mapped
 fact; old unproven identities are not backfilled. `payment_refund_reversals`
 requires that original plus a posted, exactly swapped journal with the canonical
-transition identity. Both tables are immutable and FORCE RLS. No application
-role has table/column rights; the isolated `app_payments_service` group is
-unprovisioned and has no posting capability. These tables are not effective
+transition identity. Both tables are immutable and FORCE RLS. Generic `post_ledger` callers cannot
+use the compensation namespace. The isolated `app_payments_service` group is
+unprovisioned (NOLOGIN, no members): it owns the dedicated posting command and
+reads the proof tables, but cannot insert witnesses. Ledger insertion requires
+the canonical refund key, and deferred constraints require exactly one matching
+posted journal and witness at commit in either insertion order. No application
+role can invoke that command or write these tables. These tables are not effective
 financial state or a declaration that projections were compensated.
 
 Part 2 must compose the single atomic Payments finalizer, net Orders budget and

@@ -1868,6 +1868,7 @@
       "owner": "payments",
       "touches_tables": ["payment_events", "payment_event_deliveries"]
     },
+    {"file":"migrations/pending/c19d-ledger_refund_compensation_boundary.sql","owner":"ledger","touches_tables":["ledger_accounts","ledger_transactions","ledger_entries","payment_refund_reversals"]},
     {"file":"migrations/pending/c19d-identity_refund_compensation_identity.sql","owner":"payments","touches_tables":["payment_refund_attempts","payment_refund_reversals"]},
     {"file":"migrations/pending/c19c1-money_return_refund_identity.sql","owner":"payments","touches_tables":["payment_return_refunds","checkout_sessions","returns","return_lines"]}
   ]
