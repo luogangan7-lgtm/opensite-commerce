@@ -41,11 +41,10 @@ PURCHASE_TESTS = {"published guest purchase persists captured order", "pending r
 ACTIVE_TESTS |= PURCHASE_TESTS
 PAYMENT_TESTS = {"real signed payment webhook rejects forgery and deduplicates concurrent facts"}
 ACTIVE_TESTS |= PAYMENT_TESTS
-ADMIN_TESTS = {"real admin orders list and detail use persisted orders and staff scopes"}
+ADMIN_TESTS = {"real admin orders list and detail use persisted orders and staff scopes",
+               "real staff create SKU → media upload → publish"}
 ACTIVE_TESTS |= ADMIN_TESTS
-GAP_TESTS = {
-    "FIXME staff create SKU → media upload → publish",
-}
+GAP_TESTS = set()
 
 
 class CIOnlyError(RuntimeError):
@@ -103,7 +102,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 34, "skipped": 2, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 36, "skipped": 0, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -294,6 +293,19 @@ def run(receipt_dir):
                             f"WHERE m.tenant_id='{owner_tenant}' AND m.role='owner' "
                             "AND t.id IN ('c1900010-0000-4000-8000-000000000001',"
                             "'c1900010-0000-4000-8000-000000000002');")
+            # Identity/site-only prerequisites; every new catalog/publication fact is an HTTP write.
+            ops_common.psql(f"""UPDATE app.tenants SET settlement_currency='USD' WHERE id='{owner_tenant}';
+              INSERT INTO app.users(email,password_hash)
+                SELECT 'staff-'||r||'@example.test',u.password_hash FROM app.users u
+                CROSS JOIN unnest(ARRAY['viewer','content_editor']) r
+                WHERE u.id=(SELECT user_id FROM app.tenant_memberships WHERE tenant_id='{owner_tenant}' AND role='owner');
+              INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
+                SELECT '{owner_tenant}',id,split_part(split_part(email,'@',1),'staff-',2) FROM app.users WHERE email IN ('staff-viewer@example.test','staff-content_editor@example.test');
+              INSERT INTO app.organizations(tenant_id,id,display_name) VALUES ('{owner_tenant}','c3300002-0000-4000-8000-000000000001','Staff E2E');
+              INSERT INTO app.sites(tenant_id,id,organization_id,name) VALUES ('{owner_tenant}','c3300003-0000-4000-8000-000000000001','c3300002-0000-4000-8000-000000000001','Staff E2E');
+              UPDATE app.site_domains SET status='disabled' WHERE normalized_hostname='localhost';
+              INSERT INTO app.site_domains(tenant_id,site_id,hostname,status,verified_at)
+                VALUES ('{owner_tenant}','c3300003-0000-4000-8000-000000000001','localhost','verified',clock_timestamp());""")
             os.environ["E2E_RELEASE_ID"] = receipt["publication"]["release_id"]
             receipt["steps"].append("real-cms-builder-membership-and-serving")
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
@@ -318,6 +330,13 @@ def run(receipt_dir):
                 persist()
                 raise RuntimeError("MVP E2E browser assertions failed")
             receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
+            staff = json.loads(ops_common.psql(f"""SELECT jsonb_build_object(
+              'sealed',(SELECT count(*) FROM app.site_releases WHERE tenant_id='{owner_tenant}' AND site_id='c3300003-0000-4000-8000-000000000001' AND sealed),
+              'serving',(SELECT count(*) FROM app.storefront_serving WHERE tenant_id='{owner_tenant}' AND site_id='c3300003-0000-4000-8000-000000000001'),
+              'skus',(SELECT count(*) FROM app.site_release_skus m JOIN app.sites s ON (s.tenant_id,s.id,s.published_release_id)=(m.tenant_id,m.site_id,m.release_id) WHERE m.tenant_id='{owner_tenant}' AND m.site_id='c3300003-0000-4000-8000-000000000001' AND m.sku_code IN ('STAFF-DESKTOP','STAFF-MOBILE')));"""))
+            if staff != {'sealed': 2, 'serving': 1, 'skus': 2}:
+                raise RuntimeError('Staff sealed release/serving/SKU persistence witness differs')
+            receipt['staff_publication'] = staff
             # Independent persistence witness runs before declaring the browser run PASS.
             payment_rows = json.loads(ops_common.psql(PAYMENT_WITNESS_SQL).strip())
             receipt["payment_webhook"] = {"status": "FAIL", "projects": payment_rows}
