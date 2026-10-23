@@ -430,6 +430,13 @@ def run(receipt_dir):
             (ROOT / 'test-results/e2e/results.json').write_text(json.dumps(combined))
             receipt["browser_stats"] = verify_browser_report(combined)
             receipt["datarights"] = datarights.witness(ops_common.psql, ROOT)
+            for journey in receipt["datarights"]["projects"]:
+                for export in journey["exports"]:  # UUID-validated by the witness.
+                    command(compose_command(["exec", "-T", "api", "/bin/sh", "-c",
+                        'test ! -e "$1" && test ! -L "$1"', "privacy-artifact-check",
+                        f"/var/lib/opensite/media/data-rights/{TENANT}/{export}.json"]),
+                        "privacy-artifact-absent-" + export, timeout=10)
+            receipt["datarights"]["artifacts_removed"] = 4
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-and-accessibility-assertions")
         except BaseException as exc:
