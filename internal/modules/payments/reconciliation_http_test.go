@@ -31,7 +31,7 @@ func TestRefundCaseReadAdmission(t *testing.T) {
 	} {
 		router := httpapi.New(caseAuth{deny: tc.deny}, nil)
 		for _, route := range NewReconciliationHTTP(nil).Routes() {
-			if err := router.Handle(route); err != nil {
+			if err := router.Register(route.Spec, route.Handler); err != nil {
 				t.Fatal(err)
 			}
 		}

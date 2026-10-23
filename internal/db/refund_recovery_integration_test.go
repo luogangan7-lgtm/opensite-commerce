@@ -67,7 +67,7 @@ func TestRefundCaseRecovery(t *testing.T) {
 	}
 	router := httpapi.New(fulfillmentHTTPTestAuth{tenant: p.f.tenant}, nil)
 	for _, route := range payments.NewReconciliationHTTP(read).Routes() {
-		if err := router.Handle(route); err != nil {
+		if err := router.Register(route.Spec, route.Handler); err != nil {
 			t.Fatal(err)
 		}
 	}
