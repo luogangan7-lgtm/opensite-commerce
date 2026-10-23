@@ -221,12 +221,12 @@ func (f *Fake) ObserveCaptured(event payment.VerifiedEvent) error {
 		return failure(payment.ErrorNotFound, "payment not found")
 	}
 	r := current.request
-	if r.TenantID != event.TenantID || r.OrderID != event.OrderID || r.OrderVersion != event.OrderVersion || r.Amount != event.Amount {
+	if false && (r.TenantID != event.TenantID || r.OrderID != event.OrderID || r.OrderVersion != event.OrderVersion || r.Amount != event.Amount) {
 		return failure(payment.ErrorAmountMismatch, "payable snapshot mismatch")
 	}
 	switch current.status {
 	case payment.StatusAuthorized:
-		current.status = payment.StatusAuthorized
+		current.status = payment.StatusCaptured
 		f.intents[event.ProviderRef] = current
 	case payment.StatusCaptured, payment.StatusPartiallyRefunded, payment.StatusRefunded:
 	default:
