@@ -74,9 +74,41 @@ func (q *Queries) GetPaymentEvent(ctx context.Context, arg GetPaymentEventParams
 	return i, err
 }
 
+const getPaymentEventByKey = `-- name: GetPaymentEventByKey :one
+SELECT tenant_id, id, provider, provider_account_id, environment, provider_ref, event_key, claimed_order_id, order_version, status, amount_minor, currency, applied, error_code, created_at FROM app.payment_events WHERE tenant_id=$1 AND event_key=$2
+`
+
+type GetPaymentEventByKeyParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	EventKey string      `json:"event_key"`
+}
+
+func (q *Queries) GetPaymentEventByKey(ctx context.Context, arg GetPaymentEventByKeyParams) (AppPaymentEvent, error) {
+	row := q.db.QueryRow(ctx, getPaymentEventByKey, arg.TenantID, arg.EventKey)
+	var i AppPaymentEvent
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.Provider,
+		&i.ProviderAccountID,
+		&i.Environment,
+		&i.ProviderRef,
+		&i.EventKey,
+		&i.ClaimedOrderID,
+		&i.OrderVersion,
+		&i.Status,
+		&i.AmountMinor,
+		&i.Currency,
+		&i.Applied,
+		&i.ErrorCode,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertPaymentEvent = `-- name: InsertPaymentEvent :exec
 INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(tenant_id,id) DO NOTHING
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING
 `
 
 type InsertPaymentEventParams struct {
