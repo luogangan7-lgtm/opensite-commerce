@@ -279,8 +279,10 @@ func TestStripeRefundFailedAfterSuccessReconciles(t *testing.T) {
 			err = f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
 				return tx.QueryRow(ctx, "SELECT count(*) FROM app.webhook_inbox i WHERE tenant_id=$1 AND provider='stripe' AND provider_event_id='evt_terminal' AND status='failed' AND octet_length(payload_hash)=32 AND NOT EXISTS(SELECT FROM app.payment_events e WHERE (e.tenant_id,e.id)=(i.tenant_id,i.id))", f.tenant).Scan(&retained)
 			})
-			if err != nil || retained != 1 || f.witness(t, start.OrderID).journals != 3 || f.witness(t, start.OrderID).cash != start.AmountMinor {
-				t.Fatalf("REFUND_REVERSAL_RED: terminal failure needs exactly one persisted reversal: count=%d err=%v", retained, err)
+			// Owner split: reversal is C-19d. A journaled success remains immutable
+			// while terminal provider facts are retained for reconciliation.
+			if err != nil || retained != 1 || f.witness(t, start.OrderID) != posted {
+				t.Fatalf("terminal failure must retain reconciliation without changing posted money: count=%d err=%v", retained, err)
 			}
 		})
 	}

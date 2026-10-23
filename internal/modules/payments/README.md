@@ -17,9 +17,13 @@ their original journal key; new refund identities on those streams are retained
 as failed Inbox deliveries and rejected for trusted reconciliation. No automatic
 amount-based matching or rewriting of historical financial identities occurs.
 
-Refund facts that are not succeeded, including matched failed/canceled transitions
-following success, use the same reconciliation path as metadata-free refunds.
+Valid pending and other nonterminal refund facts are ignored without entering
+unmatched reconciliation. Matched failed/canceled transitions following success
+are retained for reconciliation with reason `refund_terminal_after_match`;
+metadata-free terminal refunds retain reason `unmatched_refund`.
 They never silently disappear or automatically reverse an existing journal.
+**reversal: C-19d** owns the future compensation contract; C-19c-1 preserves the
+frozen Orders/Returns transitions and the existing posted-money counters.
 Ledger's generic new-event/swapped-side reversal primitive does not define a
 provider-refund failure reversal identity, order transition or authorized entry
 point; trusted reconciliation must establish those before any corrective posting.
