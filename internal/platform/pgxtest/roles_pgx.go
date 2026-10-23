@@ -75,7 +75,6 @@ func NewRole(t *testing.T, ctx context.Context, target, name, password string, i
 	t.Helper()
 	s := roleSessionFor(t, ctx)
 	r := &FixtureRole{session: s, name: name, target: target}
-	t.Cleanup(func() { r.Drop(t, ctx) })
 	inheritance := "NOINHERIT"
 	if inherit {
 		inheritance = "INHERIT"
@@ -85,6 +84,8 @@ func NewRole(t *testing.T, ctx context.Context, target, name, password string, i
 		t.Fatal("role fixture credential quoting failed")
 	}
 	r.exec(t, ctx, sql)
+	// A failed CREATE must never register deletion of a pre-existing role.
+	t.Cleanup(func() { r.Drop(t, ctx) })
 	for _, membership := range memberships {
 		r.Grant(t, ctx, membership, "")
 	}
