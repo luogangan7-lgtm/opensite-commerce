@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/jackc/pgx/v5/pgconn"
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"testing"
@@ -149,8 +148,8 @@ func (p *paymentFactFixture) rejectCompensationMutation(t *testing.T, role, stat
 		_, err := tx.Exec(ctx, statement, p.f.tenant)
 		return err
 	})
-	var pg *pgconn.PgError
-	if !errors.As(err, &pg) || pg.Code != "23514" {
+	var pg interface{ SQLState() string }
+	if !errors.As(err, &pg) || pg.SQLState() != "23514" {
 		t.Fatalf("C19D2_INDEPENDENT_WITNESS_RED %s: %v", role, err)
 	}
 }

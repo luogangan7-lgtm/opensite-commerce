@@ -140,7 +140,7 @@ func TestRefundCompensationIdentityFences(t *testing.T) {
 		if err := reject("TRUNCATE app.payment_refund_attempts CASCADE", "23514"); err != nil {
 			return err
 		}
-		if err := reject("TRUNCATE app.payment_refund_reversals", "23514"); err != nil {
+		if err := reject("TRUNCATE app.payment_refund_reversals CASCADE", "23514"); err != nil {
 			return err
 		}
 		// Give the fixture only SELECT in a savepoint to exercise FORCE RLS itself,

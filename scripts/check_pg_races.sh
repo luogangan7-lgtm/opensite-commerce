@@ -1580,7 +1580,7 @@ echo 'PASS: fulfillment shipment/ship-cancel/return and RR stale-snapshot quanti
 # C19d2 gate131: a posted RMA is compensated once, across synchronized RC/RR/SERIALIZABLE contenders.
 for isolation in 'read committed' 'repeatable read' 'serializable'; do
  read -r T OID LID SKU <<<"$(fulfillment_fixture true)"
- RID=$(sql <<SQL | tail -1
+ RID="$(sql <<SQL | tail -1
 BEGIN;SELECT set_config('app.tenant_id','$T',true);SET LOCAL ROLE app_runtime;
 SELECT app.returns_create('$OID',2,'c19d2-rma','unshipped_cancel','c19d2','[{"order_line_id":"$LID","quantity":2}]')->>'id' AS rid \gset
 RESET ROLE;

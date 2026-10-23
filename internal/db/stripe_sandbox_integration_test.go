@@ -69,6 +69,14 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		t.Setenv("STRIPE_TEST_PAYMENT_METHOD", method)
 		var svc ch.Service
 		adapter, err := payments.NewStripe(payments.Config{Run: runner.RunStripePaymentTx,
+			TerminalRun: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+				return runner.RunStripePaymentTx(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
+					if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_payments_ingress"); err != nil {
+						return err
+					}
+					return fn(ctx, tx, tenant, at)
+				})
+			},
 			Apply: func(ctx context.Context, tx pgx.Tx, e payment.VerifiedEvent) (bool, error) {
 				return svc.(ch.PaymentEventApplier).ApplyPaymentEvent(ctx, tx, e)
 			},
@@ -344,6 +352,52 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		t.Fatalf("Returns over-refund admission: %v", err)
 	}
 	assertRefunds(total, 2)
+	// Stripe documents pm_card_refundFail as succeeded -> failed. Both facts
+	// below are real CLI-forwarded signatures; the finalizer retrieves the real
+	// current object. No fixture signs or fabricates a terminal provider fact.
+	failSvc, failAdapter := compose("pm_card_refundFail")
+	f.service = failSvc
+	failStart := f.start(t)
+	if paid, err := failSvc.Confirm(checkoutRequestContext(ctx), f.event(failStart, payment.StatusAuthorized)); err != nil || paid.State != "paid" {
+		t.Fatalf("C19D2_SANDBOX_CAPTURE_RED: %v", err)
+	}
+	wait("payment_intent.succeeded", failStart.OrderID)
+	failBefore := f.witness(t, failStart.OrderID)
+	op := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: f.tenant,
+		OrderID: failStart.OrderID, OrderVersion: failStart.OrderVersion, Amount: money.Money{Amount: 1, Currency: failStart.Currency},
+		IdempotencyKey: "sandbox-posted-failure"}, ProviderRef: failStart.Payment.ProviderRef}
+	if _, err := failAdapter.Refund(ctx, op); err != nil {
+		t.Fatalf("C19D2_SANDBOX_SUCCESS_RED: %v", err)
+	}
+	created := wait("refund.created", failStart.OrderID)
+	assertEvent(created.id)
+	if w := f.witness(t, failStart.OrderID); w.cash != failBefore.cash-1 || w.state != "partially_refunded" {
+		t.Fatalf("C19D2_SANDBOX_JOURNALED_SUCCESS_RED: %+v", w)
+	}
+	failed := wait("refund.failed", failStart.OrderID)
+	compensated := f.witness(t, failStart.OrderID)
+	var reversals, inbox int
+	var refunded, components int64
+	err = f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT
+ (SELECT count(*) FROM app.payment_refund_reversals WHERE tenant_id=$1),
+ (SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider_event_id=$3 AND status='processed'),
+ o.refunded_minor,c.refunded_net_minor+c.refunded_tax_minor+c.refunded_shipping_minor
+ FROM app.orders o JOIN app.checkout_sessions c ON (c.tenant_id,c.order_id)=(o.tenant_id,o.id)
+ WHERE o.tenant_id=$1 AND o.id=$2`, f.tenant, failStart.OrderID, failed.id).Scan(&reversals, &inbox, &refunded, &components)
+	})
+	if err != nil || reversals != 1 || inbox != 1 || refunded != 0 || components != 0 || compensated.cash != failBefore.cash || compensated.state != "paid" || compensated.journals != failBefore.journals+1 {
+		t.Fatalf("C19D2_SANDBOX_COMPENSATION_RED: reversals=%d inbox=%d net=%d components=%d witness=%+v err=%v", reversals, inbox, refunded, components, compensated, err)
+	}
+	for _, d := range []stripeDelivery{failed, created, failed} {
+		if post(d, d.raw) != 200 {
+			t.Fatal("C19D2_SANDBOX_REPLAY_RED")
+		}
+	}
+	if f.witness(t, failStart.OrderID) != compensated {
+		t.Fatal("C19D2_SANDBOX_REPLAY_MONEY_RED")
+	}
+	t.Log("PASS C19D2: real TEST succeeded -> failed refund, one posted reversal and capacity restoration; signed duplicate/stale-success replay inert")
 	cancelStart := f.start(t)
 	canceled, err := svc.Cancel(checkoutRequestContext(ctx), f.actor, ch.CancelInput{CheckoutID: cancelStart.CheckoutID, IdempotencyKey: "sandbox-cancel"})
 	if err != nil || canceled.State != "cancelled" {

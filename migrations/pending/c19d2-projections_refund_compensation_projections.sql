@@ -1,5 +1,6 @@
 -- stable-id: c19d2-projections
 -- depends-on: c19d2-terminal
+-- depends-on: c22a-data-rights
 -- Responsibility: domain-owned compensation ports and independent posted-witness guards.
 -- Dependencies: immutable Payments terminal receipt, Ledger witness, frozen domain snapshots.
 -- Caller: Payments finalizer only; generic transitions retain all original restrictions.
@@ -8,6 +9,13 @@ ALTER TABLE app.returns ADD CONSTRAINT returns_status_check CHECK(status IN('req
 CREATE OR REPLACE FUNCTION app.orders_guard() RETURNS trigger LANGUAGE plpgsql
 SET search_path=pg_catalog,app,pg_temp AS $fn$
 BEGIN
+ IF TG_OP='UPDATE' AND current_user='app_data_rights_executor' THEN
+  IF (to_jsonb(NEW)-ARRAY['shipping_snapshot','guest_contact']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['shipping_snapshot','guest_contact'])
+   OR NEW.shipping_snapshot IS DISTINCT FROM jsonb_build_object('erased',true,'amount_minor',OLD.shipping_minor,'currency',OLD.currency)
+   OR NEW.guest_contact IS DISTINCT FROM (CASE WHEN OLD.guest_contact IS NULL THEN NULL ELSE jsonb_build_object('email','erased-'||OLD.id::text||'@invalid.test','erased',true) END) THEN
+   RAISE EXCEPTION 'ORDER_PRIVACY_SCRUB_ONLY' USING ERRCODE='55000'; END IF;
+  RETURN NEW;
+ END IF;
  IF TG_OP='INSERT' THEN
   IF current_user<>'app_orders_executor' OR NEW.state<>'pending_payment' OR NEW.version<>1
    OR NEW.sealed OR NEW.refunded_minor<>0 THEN
