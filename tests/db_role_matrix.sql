@@ -1463,3 +1463,38 @@ DO $listing_guard$ DECLARE f record; role_name text; BEGIN
   END IF;
  END LOOP;
 END $listing_guard$;
+
+-- Provisioning is out-of-band. Audit a representative LOGIN against the exact
+-- app_returns_service matrix above; real provisioned identities run in the drill.
+BEGIN;
+CREATE ROLE matrix_returns_login LOGIN INHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+GRANT app_returns_service TO matrix_returns_login;
+DO $coordinator$
+DECLARE t record; a record; f record; p text;
+BEGIN
+ IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='matrix_returns_login' AND rolcanlogin AND rolinherit
+   AND NOT(rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication))
+ OR EXISTS(SELECT FROM pg_roles WHERE rolname='app_returns_service' AND (rolcanlogin OR rolinherit OR rolbypassrls))
+ OR (SELECT count(*) FROM pg_auth_members WHERE member='matrix_returns_login'::regrole)<>1
+ OR NOT EXISTS(SELECT FROM pg_auth_members WHERE member='matrix_returns_login'::regrole
+  AND roleid='app_returns_service'::regrole AND set_option AND inherit_option AND NOT admin_option) THEN
+  RAISE EXCEPTION 'RETURNS_LOGIN_MATRIX_ROLE'; END IF;
+ FOR t IN SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname IN('app','queue') AND c.relkind IN('r','p') LOOP
+  FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   IF has_table_privilege('matrix_returns_login',t.oid,p) IS DISTINCT FROM has_table_privilege('app_returns_service',t.oid,p) THEN
+    RAISE EXCEPTION 'RETURNS_LOGIN_MATRIX_TABLE'; END IF;
+  END LOOP;
+  FOR a IN SELECT attnum FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+   FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
+    IF has_column_privilege('matrix_returns_login',t.oid,a.attnum,p) IS DISTINCT FROM has_column_privilege('app_returns_service',t.oid,a.attnum,p) THEN
+     RAISE EXCEPTION 'RETURNS_LOGIN_MATRIX_COLUMN'; END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN('app','queue') LOOP
+  IF has_function_privilege('matrix_returns_login',f.oid,'EXECUTE') IS DISTINCT FROM has_function_privilege('app_returns_service',f.oid,'EXECUTE') THEN
+   RAISE EXCEPTION 'RETURNS_LOGIN_MATRIX_FUNCTION'; END IF;
+ END LOOP;
+END $coordinator$;
+ROLLBACK;

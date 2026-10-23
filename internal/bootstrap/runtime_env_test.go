@@ -54,7 +54,7 @@ func TestReturnsBindingMissingLogsSettingWithoutEnablingRefund(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer closeRuntime()
-	if config.Returns.Service != nil {
+	if config.Returns.Service != nil || config.ReturnsCoordinator.Runner != nil {
 		t.Fatal("RETURNS_BINDING_RED: credential alone enabled refund")
 	}
 	if !strings.Contains(output.String(), "OPENSITE_RETURNS_DATABASE_URL") {

@@ -10,6 +10,7 @@ credentials outside migrations.
 |---|---|---|
 | `app_runtime` | Tenant-scoped domain queries | FORCE RLS, no credential hashes, no DDL/DELETE/TRUNCATE |
 | `app_auth` | Credential/session lookup | Not exposed to public/Agent query APIs |
+| `app_returns_service` | Trusted refund coordination | Dedicated private login; never runtime, renderer or public |
 | `app_customer_auth` | Tenant customer proof/session functions | Dedicated login; never combined with runtime or employee auth |
 | `app_domain_resolver` | Verified hostname lookup | No credential or media access |
 | `app_media_service` | Controlled media lifecycle queries | Separate trusted service pool; no general runtime credential access |
@@ -41,7 +42,7 @@ only tenant `id,status` for suspension checks. API keys remain tenant-bound.
 
 **No credentials or application LOGIN role is created by migrations.** A
 production operator must provision separate login identities out-of-band. The
-local Compose migrator provisions environment-backed logins for these five API
+local Compose migrator provisions environment-backed logins for these six API
 capabilities and separate queue/outbox capabilities; see [README.md](README.md) for the rehearsal and password policy.
 Use `psql` interactively with a privileged administrator and commands such as:
 
@@ -130,13 +131,27 @@ or logged. SMTP remains disabled unless explicitly configured for loopback and
 non-production use; customer challenges are restricted to test recipients.
 The local migrator/restore validates the independent customer login credential
 before migration or target-database writes. Fresh Compose HBA rules fence this
-login to the same exact application database as the other six component logins.
+login to the same exact application database as the other seven component logins.
 The recovery drill includes real local proof/login/cart witnesses and restores
 the authentication tables with the all-table archive; see [README.md](README.md).
 
 ### Fulfillment and refund coordinator
 
 `app_returns_service` is a separate NOLOGIN, NOINHERIT, NOBYPASSRLS capability.
+The eighth local component identity is `opensite_returns_login`, granted only
+`app_returns_service`, with LOGIN/INHERIT and NOSUPERUSER/NOBYPASSRLS/NOCREATEDB/
+NOCREATEROLE/NOREPLICATION; the capability itself remains NOINHERIT. Supply
+`OPENSITE_RETURNS_DATABASE_URL`, or `OPENSITE_RETURNS_DB_PASSWORD` together with
+`OPENSITE_DB_HOST` and `OPENSITE_DB` (default `opensite`). The local migrator and
+restore require an independent valid password before migration/target writes.
+Fresh Compose HBA confines this identity to the application database over IPv4,
+IPv6 and Unix sockets; wrong passwords and maintenance databases are rejected.
+Bootstrap validates exact membership and effective privileges, owns the pool
+lifecycle, and exposes authorized transactions as `Config.ReturnsCoordinator.Runner`
+for a trusted Returns composition consumer. It does not populate `Returns.Service`.
+An absent binding logs the setting names only and preserves current HTTP behavior.
+An invalid configured binding refuses startup without echoing credentials.
+
 Only a trusted refund coordinator may receive a dedicated login with that role;
 never grant it to `app_runtime`, the Astro renderer or a public query identity.
 Migration grants permit frozen order/return reads and the controlled refund
