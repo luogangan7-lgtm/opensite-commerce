@@ -10,6 +10,8 @@ services:
       service: worker
     network_mode: service:api
     ports: !reset []
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck", "http://127.0.0.1:8083/healthz"]
     environment:
       OSC_WORKER_ADDR: :8083
       OUTBOX_ENABLED: "true"

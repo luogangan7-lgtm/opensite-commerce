@@ -3,7 +3,7 @@ import {expect, test} from 'bun:test';
 import {AdminAPI} from './api';
 import {NotificationsAPI, parseFailures} from './notifications';
 const tenant='c1900010-0000-4000-8000-000000000001', id='c1900003-0000-4000-8000-000000000001';
-const failure={id,event_id:id,template_key:'order.shipped',status:'dead_letter',attempts:1,generation:1,created_at:'2026-10-24T00:00:00Z',updated_at:'2026-10-24T00:00:00Z',safe_error:'NOTIFICATION_SEND_FAILED'};
+const failure={id,event_id:id,template_key:'order.shipped',status:'dead_letter',attempts:1,generation:1,created_at:'2026-10-24T00:00:00Z',updated_at:'2026-10-24T00:00:00Z',safe_error:'NOTIFICATION_SEND_FAILED'} as const;
 test('notification metadata is bounded, projected and contains no contact data',()=>{
  expect(parseFailures({items:[{...failure,recipient:'private@example.test',subject:'private'}]})).toEqual([failure]);
  for(const value of [{items:Array(101).fill(failure)},{items:[{...failure,status:'sent'}]},{items:[{...failure,attempts:-1}]},{items:[{...failure,safe_error:'private@example.test'}]},{items:[{...failure,generation:1.5}]}]) expect(()=>parseFailures(value)).toThrow();

@@ -16,15 +16,22 @@ def seed(psql):
       SELECT t.id,u.id,'viewer' FROM app.tenants t CROSS JOIN app.users u
       WHERE t.id IN ('c1900010-0000-4000-8000-000000000001','c1900010-0000-4000-8000-000000000002')
         AND u.email='staff-viewer@example.test';
-    INSERT INTO app.outbox_events(tenant_id,id,event_type,payload,delivery_target,dedup_key)
-      SELECT ('c1900010-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,
-        ('c3400001-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'order.fulfilled',
-        jsonb_build_object('order_id','c1900003-0000-4000-8000-'||lpad(n::text,12,'0')),
-        'orders.events','admin-redrive-'||n FROM generate_series(1,2) n;
-    UPDATE app.outbox_events e SET attempts=9 FROM app.notification_deliveries d
-      WHERE (d.tenant_id,d.dispatch_event_id)=(e.tenant_id,e.id)
-        AND d.source_event_id::text IN ('c3400001-0000-4000-8000-000000000001','c3400001-0000-4000-8000-000000000002');
     COMMIT;""")
+    for n in (1, 2):
+        tenant = f'c1900010-0000-4000-8000-{n:012d}'
+        source = f'c3400001-0000-4000-8000-{n:012d}'
+        # Fanout executes as its FORCE-RLS executor, so source fixtures need
+        # exactly the same tenant context as real business-event producers.
+        psql(f"""BEGIN;
+        SELECT set_config('app.tenant_id','{tenant}',true);
+        INSERT INTO app.outbox_events(tenant_id,id,event_type,payload,delivery_target,dedup_key)
+          VALUES('{tenant}','{source}','order.fulfilled',
+            jsonb_build_object('order_id','c1900003-0000-4000-8000-{n:012d}'),
+            'orders.events','admin-redrive-{n}');
+        UPDATE app.outbox_events e SET attempts=9 FROM app.notification_deliveries d
+          WHERE (d.tenant_id,d.dispatch_event_id)=(e.tenant_id,e.id)
+            AND d.tenant_id='{tenant}' AND d.source_event_id='{source}';
+        COMMIT;""")
 
 
 def await_failure(psql):

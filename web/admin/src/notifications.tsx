@@ -55,7 +55,7 @@ export function NotificationFailuresPage({api}:{api:NotificationsAPI}){
   }finally{pending.current=null;if(mounted.current)setBusy(false);}
  }
  const pages=Math.max(1,Math.ceil(rows.length/10)),current=Math.min(page,pages-1);
- return <section className="admin-page" aria-labelledby="notifications-title"><h1 id="notifications-title">Notification failures</h1>
+ return <section className="admin-page" aria-label="Notification recovery"><h1 id="notifications-title">Notification failures</h1>
   <p>Review failed deliveries. Only known dead-letter failures can be redriven; unknown outcomes require investigation.</p>
   <p role="status" aria-live="polite">{notice}</p>
   {denied?<EmptyState headingLevel={2} title="No access" description="Notification recovery is unavailable for this session."/>:<>
