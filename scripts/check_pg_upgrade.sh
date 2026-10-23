@@ -159,6 +159,7 @@ OPS_METRICS_DB=""
 INVENTORY_DB=""
 INVENTORY_OWNER_DB=""
 PRICING_DB=""
+LISTING_DB=""
 IDENTITY_DB=""
 LOGIN_DB=""
 CHECKOUT_DB=""
@@ -171,7 +172,7 @@ CLOCK_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1339,7 +1340,7 @@ result=$(db "$LISTING_DB" -c "SELECT (to_jsonb(l)-'version'=w.snapshot) AND l.ve
 [[ $result == t ]] || bad "listing upgrade changed content or state: $result"
 result=$(db "$LISTING_DB" -c "UPDATE app.product_listings SET slug='updated' RETURNING version;")
 [[ $result == 2 ]] || bad "listing legacy write failed to advance version: $result"
-admin -c "DROP DATABASE $LISTING_DB" >/dev/null
+admin -c "DROP DATABASE $LISTING_DB" >/dev/null; LISTING_DB=""
 pass 'listing upgrade preserves old state and legacy writes advance listing version'
 
 # Aggregate only after all module upgrade steps.

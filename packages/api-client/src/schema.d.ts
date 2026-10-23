@@ -2948,7 +2948,7 @@ export interface operations {
             200: {
                 headers: {
                     "Cache-Control"?: "no-store";
-                    /** @description Quoted listing row version */
+                    /** @description Quoted listing row version, independent of locale content revision. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -3002,7 +3002,7 @@ export interface operations {
             200: {
                 headers: {
                     "Cache-Control"?: "no-store";
-                    /** @description Quoted listing row version */
+                    /** @description Quoted listing row version, independent of locale content revision. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
