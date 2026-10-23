@@ -44,13 +44,10 @@ ACTIVE_TESTS |= PAYMENT_TESTS
 ADMIN_TESTS = {"real admin orders list and detail use persisted orders and staff scopes",
                "real staff create SKU → media upload → publish"}
 ACTIVE_TESTS |= ADMIN_TESTS
-<<<<<<< HEAD
 RMA_TESTS = {"real shipment → return → refund journey"}
 ACTIVE_TESTS |= RMA_TESTS
-=======
 B2B_TESTS = {"real B2B inquiry quote approval prepayment order"}
 ACTIVE_TESTS |= B2B_TESTS
->>>>>>> origin/main
 GAP_TESTS = set()
 
 
@@ -94,11 +91,7 @@ def verify_browser_report(report):
                         raise RuntimeError("MVP E2E duplicate browser assertion")
                     observed[key] = [item.get("status") for item in test.get("results", [])]
                     filename = Path(spec.get("file", "")).name
-<<<<<<< HEAD
-                    expected_file = "rma.spec.ts" if spec.get("title") in RMA_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
-=======
-                    expected_file = "b2b.spec.ts" if spec.get("title") in B2B_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
->>>>>>> origin/main
+                    expected_file = "rma.spec.ts" if spec.get("title") in RMA_TESTS else "b2b.spec.ts" if spec.get("title") in B2B_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
                         "purchase.spec.ts" if spec.get("title") in PURCHASE_TESTS else (
                         "payments.spec.ts" if spec.get("title") in PAYMENT_TESTS else (
                         "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts")))
@@ -113,7 +106,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 38, "skipped": 0, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 40, "skipped": 0, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -180,11 +173,7 @@ def run(receipt_dir):
 
     ops_common.compose_command = compose_command
     import ops_drill
-<<<<<<< HEAD
-    from e2e import purchase, rma
-=======
-    from e2e import purchase, b2b
->>>>>>> origin/main
+    from e2e import purchase, rma, b2b
     # Includes the dedicated RETURNS coordinator; one registry drives all secrets.
     from ops_deploy import LOGIN_ROLES
 
@@ -389,16 +378,13 @@ def run(receipt_dir):
             persist()
             receipt["purchase"] = purchase.verify(purchase_row)
             receipt["registered_purchase"] = purchase.verify_registered(json.loads(ops_common.psql(purchase.REGISTERED_SQL)))
-<<<<<<< HEAD
             rma_rows = json.loads(ops_common.psql(rma.WITNESS_SQL))
             receipt["rma"] = {"status": "FAIL", "facts": rma_rows}
             persist()
             receipt["rma"] = rma.verify(rma_rows)
-=======
             receipt["b2b"] = {"status": "FAIL"}
             persist()
             receipt["b2b"] = verify_b2b_witness(json.loads(ops_common.psql(b2b.WITNESS_SQL)))
->>>>>>> origin/main
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-and-accessibility-assertions")
         except BaseException as exc:
