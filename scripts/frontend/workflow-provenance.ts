@@ -19,9 +19,11 @@ const POSTGRES_SERVICE = { postgres: {
   options: '--health-cmd "pg_isready -U postgres -d opensite" --health-interval 5s --health-timeout 5s --health-retries 20',
 } };
 // Allowed pre-writer commands install pinned tools/modules only; lifecycle scripts are disabled.
+// The apt line is a literal (not scripts/ci_apt_install.sh) on purpose: repository code may
+// not run before the writer, so its mirror bounds are inlined here instead.
 const PRE_WRITER_RUNS = new Set([
   'git config --global --add safe.directory "$GITHUB_WORKSPACE"',
-  'apt-get update -qq && apt-get install -y -qq --no-install-recommends unzip postgresql-client',
+  'timeout 180 apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=20 && timeout 300 apt-get install -y -qq --no-install-recommends unzip postgresql-client',
   'go mod download',
   'bun install --frozen-lockfile --ignore-scripts',
 ]);

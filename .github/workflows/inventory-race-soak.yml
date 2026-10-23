@@ -32,8 +32,7 @@ jobs:
           go-version: '1.27.2'
       - name: Prepare disposable PostgreSQL fixture
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client
+          ./scripts/ci_apt_install.sh postgresql-client
           go mod download
           mkdir -p .work/inventory-race-soak
           bash scripts/check_pg.sh > .work/inventory-race-soak/fixture.log 2>&1
