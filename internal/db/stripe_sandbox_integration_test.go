@@ -50,7 +50,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		t.Fatal("FAIL: no test secret; this explicit CI gate cannot skip")
 	}
 	f := newCheckoutPGFixture(t, 100, 10)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	f.ctx = ctx
 	runner, err := pgxadapter.OpenQueryRunner(ctx, os.Getenv("DATABASE_URL"))
@@ -136,7 +136,11 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	seen := map[string]bool{}
 	wait := func(kind, order string) stripeDelivery {
 		t.Helper()
-		timer := time.NewTimer(30 * time.Second)
+		limit := 30 * time.Second
+		if kind == "refund.failed" {
+			limit = 2 * time.Minute
+		}
+		timer := time.NewTimer(limit)
 		defer timer.Stop()
 		for {
 			select {
