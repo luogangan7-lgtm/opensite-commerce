@@ -158,7 +158,7 @@ func (a *ConversionApplication) GetConversion(ctx context.Context, quoteID strin
 
 func quoteOrder(q c.Quote, id, customer, key string, labels map[string]string) (oc.CreateInput, error) {
 	invalid := func() (oc.CreateInput, error) { return oc.CreateInput{}, c.ErrInvalid }
-	if q.Status != "approved" || q.Version < 1 || !c.ValidID(q.ID) || !c.ValidID(id) || !c.ValidID(customer) || q.Currency != q.Snapshot.Currency || len(q.Snapshot.Lines) == 0 || q.Snapshot.Total <= 0 {
+	if (q.Status != "approved" && q.Status != "sent" && q.Status != "accepted_pending_approval") || q.Version < 1 || !c.ValidID(q.ID) || !c.ValidID(id) || !c.ValidID(customer) || q.Currency != q.Snapshot.Currency || len(q.Snapshot.Lines) == 0 || q.Snapshot.Total <= 0 {
 		return invalid()
 	}
 	out := oc.CreateInput{ID: id, IdempotencyKey: key, Buyer: oc.Buyer{CustomerID: customer}, Currency: q.Currency, Shipping: q.Snapshot.Shipping, ReservationTTLSeconds: 900}
