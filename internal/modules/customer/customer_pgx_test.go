@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/netip"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -63,6 +64,7 @@ type customerPGFixture struct {
 	mailbox              *customerPGMailbox
 	tenant, other, email string
 	ip                   netip.Addr
+	customerDSN          string
 }
 
 func customerPGBytes(t *testing.T, size int) []byte {
@@ -82,6 +84,11 @@ func customerPGCredential(t *testing.T) string {
 func customerPG(t *testing.T) customerPGFixture {
 	t.Helper()
 	ownerDSN, customerDSN := os.Getenv("DATABASE_URL"), os.Getenv("CUSTOMER_AUTH_TEST_DATABASE_URL")
+	return customerPGWithDSNs(t, ownerDSN, customerDSN)
+}
+
+func customerPGWithDSNs(t *testing.T, ownerDSN, customerDSN string) customerPGFixture {
+	t.Helper()
 	if ownerDSN == "" || customerDSN == "" {
 		if os.Getenv("CUSTOMER_AUTH_REQUIRE_PG") == "1" {
 			t.Fatal("NOT_RUN: CUSTOMER_AUTH_PG_DSN_MISSING")
@@ -114,7 +121,7 @@ func customerPG(t *testing.T) customerPGFixture {
 	if err != nil {
 		t.Fatal("CUSTOMER_PG_SERVICE_CONFIG_FAILED")
 	}
-	f := customerPGFixture{ctx: ctx, owner: owner, runtime: runtime, service: service, mailbox: mailbox, tenant: uuid.NewString(), other: uuid.NewString(), email: uuid.NewString() + "@example.invalid", ip: netip.MustParseAddr("192.0.2.81")}
+	f := customerPGFixture{ctx: ctx, owner: owner, runtime: runtime, service: service, mailbox: mailbox, tenant: uuid.NewString(), other: uuid.NewString(), email: uuid.NewString() + "@example.invalid", ip: netip.MustParseAddr("192.0.2.81"), customerDSN: customerDSN}
 	f.fixture(t, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `INSERT INTO app.tenants(id,name) VALUES($1,'customer-go-gate'),($2,'customer-go-gate-other')`, f.tenant, f.other)
 		return err
@@ -493,7 +500,7 @@ func TestCustomerPGEqualIdleAndAbsoluteDeadlinesShareOneDatabaseInstant(t *testi
 // Executor authority is part of the caller capability: owning trusted proof
 // functions must never grant permission to replace objects in their schema.
 func TestCustomerPGRejectsExecutorPrivilegeDrift(t *testing.T) {
-	f := customerPG(t)
+	f := customerPrivilegePG(t)
 	// Register cleanup before injection; it must run even when the assertion
 	// fails or the request context expires. Other customer PG tests are serial.
 	defer func() {
@@ -510,7 +517,8 @@ func TestCustomerPGRejectsExecutorPrivilegeDrift(t *testing.T) {
 		_, err := tx.Exec(ctx, `GRANT CREATE ON SCHEMA app TO app_customer_executor`)
 		return err
 	})
-	runner, err := pgxadapter.OpenCustomerRunner(f.ctx, os.Getenv("CUSTOMER_AUTH_TEST_DATABASE_URL"))
+	assertCustomerSharedCapability(t, f.ctx)
+	runner, err := pgxadapter.OpenCustomerRunner(f.ctx, f.customerDSN)
 	if runner != nil {
 		runner.Close()
 	}
@@ -523,7 +531,7 @@ func TestCustomerPGRejectsExecutorPrivilegeDrift(t *testing.T) {
 // Inject effective column privileges, including PUBLIC, to prove startup rejects
 // direct reader or broader private-writer authority on the new global table.
 func TestCustomerPGRejectsGlobalCounterPrivilegeDrift(t *testing.T) {
-	f := customerPG(t)
+	f := customerPrivilegePG(t)
 	for _, tc := range []struct {
 		name, grant, revoke string
 	}{
@@ -546,7 +554,8 @@ func TestCustomerPGRejectsGlobalCounterPrivilegeDrift(t *testing.T) {
 				_, err := tx.Exec(ctx, tc.grant)
 				return err
 			})
-			runner, err := pgxadapter.OpenCustomerRunner(f.ctx, os.Getenv("CUSTOMER_AUTH_TEST_DATABASE_URL"))
+			assertCustomerSharedCapability(t, f.ctx)
+			runner, err := pgxadapter.OpenCustomerRunner(f.ctx, f.customerDSN)
 			if runner != nil {
 				runner.Close()
 			}
@@ -554,5 +563,35 @@ func TestCustomerPGRejectsGlobalCounterPrivilegeDrift(t *testing.T) {
 				t.Fatal("CUSTOMER_PG_GLOBAL_PRIVILEGE_DRIFT_RED: global counter privilege accepted")
 			}
 		})
+	}
+}
+
+// Privilege probes commit catalog changes visible to every concurrent package.
+// Tenant UUIDs cannot isolate schema/table ACLs: require a separate database.
+func customerPrivilegePG(t *testing.T) customerPGFixture {
+	t.Helper()
+	f := customerPG(t)
+	source, err := url.Parse(os.Getenv("DATABASE_URL"))
+	if err != nil {
+		t.Fatal("CUSTOMER_PG_SOURCE_URL_INVALID")
+	}
+	var database string
+	f.fixture(t, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "SELECT current_database()").Scan(&database)
+	})
+	if database == strings.TrimPrefix(source.Path, "/") {
+		t.Fatal("CUSTOMER_PG_PRIVILEGE_ISOLATION_RED: committed privilege probes share the normal pgx database")
+	}
+	return f
+}
+
+func assertCustomerSharedCapability(t *testing.T, ctx context.Context) {
+	t.Helper()
+	runner, err := pgxadapter.OpenCustomerRunner(ctx, os.Getenv("CUSTOMER_AUTH_TEST_DATABASE_URL"))
+	if runner != nil {
+		runner.Close()
+	}
+	if err != nil {
+		t.Fatalf("CUSTOMER_PG_SHARED_CAPABILITY_RED: private privilege drift affected normal startup: %v", err)
 	}
 }
