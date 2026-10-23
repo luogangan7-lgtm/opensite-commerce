@@ -3,6 +3,8 @@
 # Invariant: public requests use resolver-only credentials, never admin/runtime fallback.
 services:
   api:
+    ports:
+      - "127.0.0.1:8082:8082"
     environment:
       OSC_PUBLIC_DATABASE_URL: "host=postgres port=5432 dbname=${OPENSITE_DB} user=opensite_domain_login password=${OPENSITE_DOMAIN_DB_PASSWORD} sslmode=disable"
       OPENSITE_CMS_PREVIEW_KEY: ${OPENSITE_CMS_PREVIEW_KEY}
@@ -15,6 +17,27 @@ services:
       OPENSITE_FAKE_PSP: "1"
       OPENSITE_ENVIRONMENT: test
       OPENSITE_FAKE_WEBHOOK_KEY: ${OPENSITE_FAKE_WEBHOOK_KEY:?set isolated CI Fake key}
+  # Same production binary/database, separate opt-in from storefront cart checkout.
+  # Share loopback SMTP with api; no mock routes or business fixture writes.
+  b2b-api:
+    extends:
+      # Paths resolve against the first Compose file (deploy/compose.yaml).
+      file: compose.yaml
+      service: api
+    network_mode: service:api
+    ports: !reset []
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck", "http://127.0.0.1:8082/healthz"]
+    environment:
+      OSC_API_ADDR: :8082
+      OPENSITE_STOREFRONT_KEY: ""
+      OPENSITE_CHECKOUT_FAKE_ENABLED: "true"
+      OPENSITE_CHECKOUT_FAKE_SIGNING_KEY: ${OPENSITE_FAKE_WEBHOOK_KEY}
+      OPENSITE_SERVING_REFRESH_TENANTS: ""
+      OSC_PUBLIC_DATABASE_URL: "host=postgres port=5432 dbname=${OPENSITE_DB} user=opensite_domain_login password=${OPENSITE_DOMAIN_DB_PASSWORD} sslmode=disable"
+      OPENSITE_ENVIRONMENT: test
+      OPENSITE_FAKE_PSP: "1"
+      OPENSITE_FAKE_WEBHOOK_KEY: ${OPENSITE_FAKE_WEBHOOK_KEY}
   storefront:
     image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
     working_dir: /workspace

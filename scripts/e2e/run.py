@@ -44,8 +44,13 @@ ACTIVE_TESTS |= PAYMENT_TESTS
 ADMIN_TESTS = {"real admin orders list and detail use persisted orders and staff scopes",
                "real staff create SKU → media upload → publish"}
 ACTIVE_TESTS |= ADMIN_TESTS
+<<<<<<< HEAD
 RMA_TESTS = {"real shipment → return → refund journey"}
 ACTIVE_TESTS |= RMA_TESTS
+=======
+B2B_TESTS = {"real B2B inquiry quote approval prepayment order"}
+ACTIVE_TESTS |= B2B_TESTS
+>>>>>>> origin/main
 GAP_TESTS = set()
 
 
@@ -89,7 +94,11 @@ def verify_browser_report(report):
                         raise RuntimeError("MVP E2E duplicate browser assertion")
                     observed[key] = [item.get("status") for item in test.get("results", [])]
                     filename = Path(spec.get("file", "")).name
+<<<<<<< HEAD
                     expected_file = "rma.spec.ts" if spec.get("title") in RMA_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
+=======
+                    expected_file = "b2b.spec.ts" if spec.get("title") in B2B_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
+>>>>>>> origin/main
                         "purchase.spec.ts" if spec.get("title") in PURCHASE_TESTS else (
                         "payments.spec.ts" if spec.get("title") in PAYMENT_TESTS else (
                         "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts")))
@@ -154,6 +163,11 @@ def verify_payment_witness(rows):
     return {"status": "PASS", "projects": rows}
 
 
+def verify_b2b_witness(rows):
+    from e2e.b2b import verify
+    return verify(rows)
+
+
 def run(receipt_dir):
     # Import application-side tooling only after main's CI guard. Reuse its
     # stdin PostgreSQL secret transport and permission/job witnesses unchanged.
@@ -166,7 +180,11 @@ def run(receipt_dir):
 
     ops_common.compose_command = compose_command
     import ops_drill
+<<<<<<< HEAD
     from e2e import purchase, rma
+=======
+    from e2e import purchase, b2b
+>>>>>>> origin/main
     # Includes the dedicated RETURNS coordinator; one registry drives all secrets.
     from ops_deploy import LOGIN_ROLES
 
@@ -183,6 +201,7 @@ def run(receipt_dir):
                "status": "RUNNING", "steps": [], "browser_exit": None, "cleanup": "NOT_RUN",
                "payment_webhook": {"status": "NOT_RUN"},
                "purchase": {"status": "NOT_RUN"},
+               "b2b": {"status": "NOT_RUN"},
                "owner_bootstrap": {"status": "NOT_RUN", "available": (ROOT / "cmd/bootstrap-admin").is_dir()},
                "seed_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                for path in [ROOT / "tests/fixtures/storefront_seed.sql", ROOT / "scripts/e2e/seed.sql"]}}
@@ -298,6 +317,7 @@ def run(receipt_dir):
             command(compose_command(["up", "-d", "--no-deps", "--force-recreate", "--wait", "--wait-timeout", "120", "api", "mailpit"]), "staff-refresh-start", timeout=300)
             receipt["owner_bootstrap"]["status"] = "PASS"
             receipt["publication"] = purchase.publish(ops_common.psql, credentials)
+            b2b.seed(ops_common.psql)
             # Owned C19 SQL orders are read through real owner session authorization.
             ops_common.psql("INSERT INTO app.tenant_memberships(tenant_id,user_id,role) "
                             "SELECT t.id,m.user_id,'owner' FROM app.tenants t CROSS JOIN app.tenant_memberships m "
@@ -335,6 +355,8 @@ def run(receipt_dir):
             wait_http("http://127.0.0.1:4173/", 200, b"<div id=\"root\"")
             wait_http("http://127.0.0.1:8025/api/v1/messages?limit=1", 200)
             receipt["steps"].append("real-ssr-and-admin-positive-readiness")
+            command(compose_command(["up", "-d", "--build", "--no-deps", "b2b-api"]), "b2b-api-start", timeout=300)
+            ops_drill.healthy("http://127.0.0.1:8082")
             persist()
             result = ROOT / "test-results/e2e/results.json"
             result.unlink(missing_ok=True)  # only this CI harness's own stale result
@@ -367,10 +389,16 @@ def run(receipt_dir):
             persist()
             receipt["purchase"] = purchase.verify(purchase_row)
             receipt["registered_purchase"] = purchase.verify_registered(json.loads(ops_common.psql(purchase.REGISTERED_SQL)))
+<<<<<<< HEAD
             rma_rows = json.loads(ops_common.psql(rma.WITNESS_SQL))
             receipt["rma"] = {"status": "FAIL", "facts": rma_rows}
             persist()
             receipt["rma"] = rma.verify(rma_rows)
+=======
+            receipt["b2b"] = {"status": "FAIL"}
+            persist()
+            receipt["b2b"] = verify_b2b_witness(json.loads(ops_common.psql(b2b.WITNESS_SQL)))
+>>>>>>> origin/main
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-and-accessibility-assertions")
         except BaseException as exc:

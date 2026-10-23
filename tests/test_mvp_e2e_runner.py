@@ -50,6 +50,24 @@ class CIOnlyRunnerTests(unittest.TestCase):
 
 
 class BrowserReceiptTests(unittest.TestCase):
+    def test_b2b_journey_is_mandatory_and_persisted(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('b2b_runner', source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertIn('real B2B inquiry quote approval prepayment order', module.ACTIVE_TESTS)
+        row = {'project': 'desktop', 'approved': True, 'immutable': True, 'paid': True,
+               'total': 2700, 'order_total': 2700, 'approvals': 1, 'conversions': 1,
+               'payments': 1, 'facts': 1, 'journals': 1, 'debits': 5400, 'credits': 5400}
+        rows = [row, {**row, 'project': 'mobile'}]
+        self.assertEqual(module.verify_b2b_witness(rows)['status'], 'PASS')
+        for field in row.keys() - {'project'}:
+            broken = {**row, field: False if isinstance(row[field], bool) else row[field] + 1}
+            with self.subTest(field=field), self.assertRaises(RuntimeError):
+                module.verify_b2b_witness([broken, rows[1]])
+        with self.assertRaises(RuntimeError):
+            module.verify_b2b_witness([row, row])
+
     def verify(self, report):
         source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
         spec = importlib.util.spec_from_file_location('mvp_e2e_runner', source)
@@ -83,7 +101,11 @@ class BrowserReceiptTests(unittest.TestCase):
         specs = []
         for title in module.ACTIVE_TESTS | module.GAP_TESTS:
             gap = title in module.GAP_TESTS
+<<<<<<< HEAD
             filename = ('rma.spec.ts' if title in module.RMA_TESTS else 'mvp-gaps.spec.ts' if gap or title in module.ADMIN_TESTS else 'purchase.spec.ts' if title in module.PURCHASE_TESTS
+=======
+            filename = ('b2b.spec.ts' if title in module.B2B_TESTS else 'mvp-gaps.spec.ts' if gap or title in module.ADMIN_TESTS else 'purchase.spec.ts' if title in module.PURCHASE_TESTS
+>>>>>>> origin/main
                         else 'payments.spec.ts' if title in module.PAYMENT_TESTS
                         else 'admin.spec.ts' if title.startswith('real ') else 'storefront.spec.ts')
             specs.append({'title': title, 'file': filename, 'tests': [
@@ -106,6 +128,18 @@ class BrowserReceiptTests(unittest.TestCase):
                          'events': 1, 'applied': 1, 'journals': 1, 'debits': 540, 'credits': 540,
                          'cash': 270, 'receivable': 0, 'paid_outbox': 1})
         return rows
+
+    def test_b2b_cannot_be_removed_skipped_or_reclassified(self):
+        module = self.runner()
+        for mutation in ('remove', 'wrong_file', 'skip', 'wrong_project'):
+            report = self.browser_report(module)
+            journey = next(s for s in report['suites'][0]['specs'] if s['title'] in module.B2B_TESTS)
+            if mutation == 'remove': report['suites'][0]['specs'].remove(journey)
+            elif mutation == 'wrong_file': journey['file'] = 'purchase.spec.ts'
+            elif mutation == 'wrong_project': journey['tests'][0]['projectName'] = 'tablet'
+            else: journey['tests'][0]['results'] = [{'status': 'skipped'}]
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                module.verify_browser_report(report)
 
     def test_payment_is_required_in_both_projects_and_exact_spec(self):
         module = self.runner()
