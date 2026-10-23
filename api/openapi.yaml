@@ -38,7 +38,7 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog:write
-      responses:
+      responses: &StaffContentResponses
         '200':
           description: Private locale state; revision zero represents no content yet.
           headers:
@@ -76,28 +76,7 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/StaffProductContentInput'}
-      responses:
-        '200':
-          description: Private locale state; revision zero represents no content yet.
-          headers:
-            Cache-Control: {schema: {type: string, const: no-store}}
-            ETag: {schema: {type: string}, description: Quoted latest content revision.}
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/StaffProductContent'}
-        '400': {$ref: '#/components/responses/BadRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
-        '500': {$ref: '#/components/responses/InternalServerError'}
-        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+      responses: *StaffContentResponses
   /api/v1/t/{tenant_id}/products/{product_id}/listings/{site_id}/{locale}:
     parameters:
       - {$ref: '#/components/parameters/TenantId'}
@@ -110,7 +89,7 @@ paths:
       x-opensite-status: implemented
       x-opensite-access: AdminOrAPIKey
       x-required-scope: catalog:write
-      responses:
+      responses: &StaffListingResponses
         '200':
           description: Private locale state; revision zero represents no content yet.
           headers:
@@ -148,28 +127,7 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/StaffProductListingInput'}
-      responses:
-        '200':
-          description: Private locale state; revision zero represents no content yet.
-          headers:
-            Cache-Control: {schema: {type: string, const: no-store}}
-            ETag: {schema: {type: string}, description: Quoted latest content revision.}
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/StaffProductListing'}
-        '400': {$ref: '#/components/responses/BadRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '412': {$ref: '#/components/responses/PreconditionFailed'}
-        '413': {$ref: '#/components/responses/PayloadTooLarge'}
-        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
-        '422': {$ref: '#/components/responses/UnprocessableEntity'}
-        '428': {$ref: '#/components/responses/PreconditionRequired'}
-        '429': {$ref: '#/components/responses/TooManyRequests'}
-        '500': {$ref: '#/components/responses/InternalServerError'}
-        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+      responses: *StaffListingResponses
   /api/v1/t/{tenant_id}/price-lists:
     parameters:
       - {$ref: '#/components/parameters/TenantId'}

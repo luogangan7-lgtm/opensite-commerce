@@ -4,6 +4,51 @@
  */
 
 export interface paths {
+    "/api/v1/t/{tenant_id}/products/{product_id}/content/{locale}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                product_id: components["parameters"]["ProductId"];
+                locale: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getProductContent"];
+        /** @description If-Match is the latest locale content revision, quoted; use zero for the first revision. Listing writes pin the explicit content_revision. */
+        put: operations["setProductContent"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/products/{product_id}/listings/{site_id}/{locale}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                product_id: components["parameters"]["ProductId"];
+                site_id: string;
+                locale: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getProductListing"];
+        /** @description If-Match is the latest locale content revision, quoted; use zero for the first revision. Listing writes pin the explicit content_revision. */
+        put: operations["setProductListing"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/t/{tenant_id}/price-lists": {
         parameters: {
             query?: never;
@@ -1446,6 +1491,47 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        StaffProductContentInput: {
+            title: string;
+            body_blocks: {
+                [key: string]: unknown;
+            }[];
+            seo: {
+                [key: string]: unknown;
+            };
+        };
+        StaffProductContent: {
+            locale: string;
+            /** Format: int64 */
+            revision: number;
+            title: string;
+            body_blocks: {
+                [key: string]: unknown;
+            }[];
+            seo: {
+                [key: string]: unknown;
+            };
+        };
+        StaffProductListingInput: {
+            slug: string;
+            listed: boolean;
+            /** Format: int64 */
+            content_revision: number;
+        };
+        StaffProductListing: {
+            /** Format: uuid */
+            site_id: string;
+            locale: string;
+            slug: string;
+            listed: boolean;
+            /** Format: int64 */
+            content_revision: number;
+            /**
+             * Format: int64
+             * @description Latest content revision used by If-Match.
+             */
+            revision: number;
+        };
         /** @description Complete replacement; omitted optional fields are cleared. Windows use [starts_at,ends_at). Currency must equal tenant settlement currency; unset returns 409 settlement_currency_required. Archived lists are terminal. */
         StaffPriceListInput: {
             currency: string;
@@ -2749,6 +2835,192 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getProductContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                product_id: components["parameters"]["ProductId"];
+                locale: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Private locale state; revision zero represents no content yet. */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    /** @description Quoted latest content revision. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffProductContent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    setProductContent: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                product_id: components["parameters"]["ProductId"];
+                locale: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffProductContentInput"];
+            };
+        };
+        responses: {
+            /** @description Private locale state; revision zero represents no content yet. */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    /** @description Quoted latest content revision. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffProductContent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getProductListing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                product_id: components["parameters"]["ProductId"];
+                site_id: string;
+                locale: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Private locale state; revision zero represents no content yet. */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    /** @description Quoted latest content revision. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffProductListing"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    setProductListing: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+                /** @description Required and checked for exact admin origin when authenticating with adminSession. API-key bearer requests are exempt from the cookie CSRF/Origin checks. */
+                Origin?: components["parameters"]["OriginIfCookie"];
+                /** @description Required session-bound HMAC CSRF token when authenticating with adminSession; not required for API-key bearer calls. */
+                "X-CSRF-Token"?: components["parameters"]["CSRFTokenIfCookie"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                product_id: components["parameters"]["ProductId"];
+                site_id: string;
+                locale: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffProductListingInput"];
+            };
+        };
+        responses: {
+            /** @description Private locale state; revision zero represents no content yet. */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    /** @description Quoted latest content revision. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffProductListing"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     listPriceLists: {
         parameters: {
             query?: {
