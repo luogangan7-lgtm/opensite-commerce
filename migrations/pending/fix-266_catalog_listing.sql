@@ -24,7 +24,7 @@ DECLARE row_new jsonb; row_old jsonb; doc jsonb; t uuid; key uuid; why text; BEG
  IF TG_TABLE_NAME='product_listings' THEN
   INSERT INTO app.serving_invalidations(tenant_id,site_id,reason)
   SELECT sv.tenant_id,sv.site_id,'product' FROM app.storefront_serving sv
-  WHERE sv.tenant_id=t AND sv.site_id=(doc->>'site_id')::uuid;
+  WHERE sv.tenant_id=t AND sv.site_id=(doc->>'site_id')::uuid AND false;
   RETURN NULL;
  ELSIF TG_TABLE_NAME='product_content_revisions' THEN
   INSERT INTO app.serving_invalidations(tenant_id,site_id,reason)
