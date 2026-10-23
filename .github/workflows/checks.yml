@@ -55,7 +55,7 @@ jobs:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     # 2026-10-23 measurement: max of last 10 successful main lane runs = 7.2 min (foundation-offline); 3x -> 22.
-    timeout-minutes: 45
+    timeout-minutes: 22
     strategy:
       fail-fast: false
       matrix:
@@ -205,52 +205,6 @@ jobs:
           # The full bootstrap suite exceeded Go's 10m package default on slow
           # runners (39779427428, attempts 1-2); keep it bounded within this 45m job.
           go test -race -tags pgx -count=1 -timeout=15m ./...
-      - name: FIX-339 temporary role fixture mutation proofs
-        if: matrix.lane == 'pgx'
-        run: |
-          python3 - <<'PYPROBE'
-          from pathlib import Path
-          import re
-          import os
-          from urllib.parse import urlparse
-          import subprocess
-          
-          dsn = urlparse(os.environ['DATABASE_URL'])
-          psql_env = dict(os.environ, PGHOST=dsn.hostname, PGPORT=str(dsn.port or 5432), PGUSER=dsn.username, PGPASSWORD=dsn.password, PGDATABASE=dsn.path[1:])
-          helper = Path("internal/platform/pgxtest/roles_pgx.go")
-          original = helper.read_text()
-          raw = Path("internal/platform/pgxtest/raw_role_probe_pgx_test.go")
-          command = ["go", "test", "-tags", "pgx", "-count=1", "-timeout=90s", "-run", "^TestFixtureRolesLifecyclePostgres$", "./internal/platform/pgxtest"]
-          def red(label, cmd, needle):
-              result = subprocess.run(cmd, capture_output=True, text=True, timeout=150)
-              output = result.stdout + result.stderr
-              print(label, "status", result.returncode, flush=True)
-              print("\n".join(line for line in output.splitlines() if re.search(r"FAIL|fixture|raw_role", line)), flush=True)
-              assert result.returncode != 0 and needle in output, label + " did not fail for its expected reason"
-          try:
-              raw.write_text('package pgxtest\nimport("context"; "github.com/jackc/pgx/v5")\nfunc rawRoleProbe(ctx context.Context,tx pgx.Tx){_,_=tx.Exec(ctx,"CREATE ROLE osc_raw_probe")}\n')
-              red("RAW CALL RED", ["python3", "tests/test_pg_role_fixture.py"], "raw_role_probe_pgx_test.go")
-              raw.unlink()
-              changed = original.replace('"SELECT pg_advisory_lock($1)", fixtureInitializationLockKey', '"SELECT pg_advisory_lock($1)", fixtureInitializationLockKey+1')
-              assert changed != original
-              helper.write_text(changed)
-              red("WRONG KEY RED", command, "role fixture lacks common database lock")
-              helper.write_text(original.replace("context.WithoutCancel(ctx)", "ctx"))
-              red("CANCELLED CLEANUP RED", command, "role fixture cleanup connection failed")
-          finally:
-              helper.write_text(original)
-              raw.unlink(missing_ok=True)
-              # Only this contract's unique fixture namespace in this job's disposable PG.
-              cleanup = subprocess.run(["psql", "-X", "-At", "-v", "ON_ERROR_STOP=1", "-c", "SELECT format('DROP OWNED BY %I; DROP ROLE %I;',rolname,rolname) FROM pg_roles WHERE rolname LIKE 'osc_role_%'"], capture_output=True, text=True, check=True, timeout=30, env=psql_env)
-              subprocess.run(["psql", "-X", "-v", "ON_ERROR_STOP=1"], input=cleanup.stdout, text=True, check=True, timeout=30, env=psql_env)
-          subprocess.run(["python3", "tests/test_pg_role_fixture.py"], check=True, timeout=30)
-          subprocess.run(command, check=True, timeout=150)
-          print("RESTORED GREEN: raw-call guard and role lifecycle", flush=True)
-          PYPROBE
-      - name: FIX-339 temporary cross-package stress count5
-        if: matrix.lane == 'pgx'
-        run: |
-          go test -race -tags pgx -count=5 -timeout=35m ./internal/modules/identity ./internal/modules/fulfillment ./internal/bootstrap ./internal/modules/publish/... ./internal/platform/httpapi/datarightshttp ./internal/db ./internal/tenanttx/pgxadapter ./internal/platform/pgxtest
       - name: sqlc v1.31.1 (verified release artifact)
         if: matrix.lane == 'sqlc'
         run: |
@@ -320,52 +274,6 @@ jobs:
         with:
           bun-version: '1.3.12'
       - run: bun install --frozen-lockfile
-      - name: FIX-339 temporary role fixture mutation proofs
-        if: matrix.lane == 'pgx'
-        run: |
-          python3 - <<'PYPROBE'
-          from pathlib import Path
-          import re
-          import os
-          from urllib.parse import urlparse
-          import subprocess
-          
-          dsn = urlparse(os.environ['DATABASE_URL'])
-          psql_env = dict(os.environ, PGHOST=dsn.hostname, PGPORT=str(dsn.port or 5432), PGUSER=dsn.username, PGPASSWORD=dsn.password, PGDATABASE=dsn.path[1:])
-          helper = Path("internal/platform/pgxtest/roles_pgx.go")
-          original = helper.read_text()
-          raw = Path("internal/platform/pgxtest/raw_role_probe_pgx_test.go")
-          command = ["go", "test", "-tags", "pgx", "-count=1", "-timeout=90s", "-run", "^TestFixtureRolesLifecyclePostgres$", "./internal/platform/pgxtest"]
-          def red(label, cmd, needle):
-              result = subprocess.run(cmd, capture_output=True, text=True, timeout=150)
-              output = result.stdout + result.stderr
-              print(label, "status", result.returncode, flush=True)
-              print("\n".join(line for line in output.splitlines() if re.search(r"FAIL|fixture|raw_role", line)), flush=True)
-              assert result.returncode != 0 and needle in output, label + " did not fail for its expected reason"
-          try:
-              raw.write_text('package pgxtest\nimport("context"; "github.com/jackc/pgx/v5")\nfunc rawRoleProbe(ctx context.Context,tx pgx.Tx){_,_=tx.Exec(ctx,"CREATE ROLE osc_raw_probe")}\n')
-              red("RAW CALL RED", ["python3", "tests/test_pg_role_fixture.py"], "raw_role_probe_pgx_test.go")
-              raw.unlink()
-              changed = original.replace('"SELECT pg_advisory_lock($1)", fixtureInitializationLockKey', '"SELECT pg_advisory_lock($1)", fixtureInitializationLockKey+1')
-              assert changed != original
-              helper.write_text(changed)
-              red("WRONG KEY RED", command, "role fixture lacks common database lock")
-              helper.write_text(original.replace("context.WithoutCancel(ctx)", "ctx"))
-              red("CANCELLED CLEANUP RED", command, "role fixture cleanup connection failed")
-          finally:
-              helper.write_text(original)
-              raw.unlink(missing_ok=True)
-              # Only this contract's unique fixture namespace in this job's disposable PG.
-              cleanup = subprocess.run(["psql", "-X", "-At", "-v", "ON_ERROR_STOP=1", "-c", "SELECT format('DROP OWNED BY %I; DROP ROLE %I;',rolname,rolname) FROM pg_roles WHERE rolname LIKE 'osc_role_%'"], capture_output=True, text=True, check=True, timeout=30, env=psql_env)
-              subprocess.run(["psql", "-X", "-v", "ON_ERROR_STOP=1"], input=cleanup.stdout, text=True, check=True, timeout=30, env=psql_env)
-          subprocess.run(["python3", "tests/test_pg_role_fixture.py"], check=True, timeout=30)
-          subprocess.run(command, check=True, timeout=150)
-          print("RESTORED GREEN: raw-call guard and role lifecycle", flush=True)
-          PYPROBE
-      - name: FIX-339 temporary cross-package stress count5
-        if: matrix.lane == 'pgx'
-        run: |
-          go test -race -tags pgx -count=5 -timeout=35m ./internal/modules/identity ./internal/modules/fulfillment ./internal/bootstrap ./internal/modules/publish/... ./internal/platform/httpapi/datarightshttp ./internal/db ./internal/tenanttx/pgxadapter ./internal/platform/pgxtest
       - name: sqlc v1.31.1 (verified release artifact)
         run: |
           curl -fsSL --retry 3 \
