@@ -44,7 +44,7 @@ type paymentFactFixture struct {
 	providerCommands atomic.Int32
 }
 
-func newPaymentFactFixture(t *testing.T) *paymentFactFixture {
+func newPaymentFactFixture(t *testing.T, configure ...func(*checkoutPGFixture)) *paymentFactFixture {
 	t.Helper()
 	f := newCheckoutPGFixture(t, 10, 2)
 	p := &paymentFactFixture{f: f, account: "acct_" + uuid.NewString(), key: []byte("isolated-payment-fixture-key-32-bytes")}
@@ -56,6 +56,9 @@ func newPaymentFactFixture(t *testing.T) *paymentFactFixture {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, apply := range configure {
+		apply(f)
 	}
 	p.start = f.start(t)
 	f.provider.before = func(context.Context, paymentfake.Operation) error {

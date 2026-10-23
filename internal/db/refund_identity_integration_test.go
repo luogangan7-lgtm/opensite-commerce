@@ -388,13 +388,11 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	_ = json.Unmarshal(p.raw("rma-without-identity", payment.StatusPartiallyRefunded, completed.RefundMinor), &missingBody)
 	delete(missingBody, "refund_id")
 	missing, _ := json.Marshal(missingBody)
-	if got, err := p.module.Receive(p.f.ctx, missing, p.signature(missing, p.at)); err != nil || got.Status != "rejected" {
-		t.Fatalf("IDENTITYLESS_REFUND_RED: receipt=%+v err=%v", got, err)
-	}
+	identityReceipt, identityErr := p.module.Receive(p.f.ctx, missing, p.signature(missing, p.at))
 	var quarantined int
 	if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, "SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider_event_id='rma-without-identity' AND status='failed' AND octet_length(payload_hash)=32", p.f.tenant).Scan(&quarantined)
-	}); err != nil || quarantined != 1 {
+	}); err != nil {
 		t.Fatalf("identity-less refund not durably quarantined: %d %v", quarantined, err)
 	}
 	// Count both journal identities: the earlier witness counted only order sources
@@ -406,15 +404,28 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	  (SELECT count(*) FROM app.payment_return_refunds WHERE tenant_id=$1 AND return_id=$3)`, p.f.tenant, p.start.OrderID, receipt.ID).Scan(&journals, &refunded, &bindings)
 	})
 	w := p.f.witness(t, p.start.OrderID)
+	if identityErr != nil || identityReceipt.Status != "rejected" || quarantined != 1 {
+		t.Errorf("IDENTITYLESS_REFUND_RED: receipt=%+v err=%v quarantined=%d", identityReceipt, identityErr, quarantined)
+	}
 	if err != nil || journals != 2 || bindings != 1 || refunded != completed.RefundMinor || w.cash != p.start.AmountMinor-completed.RefundMinor {
 		t.Fatalf("RETURNS_DOUBLE_POST_RED: journals=%d bindings=%d refunded=%d cash=%d err=%v", journals, bindings, refunded, w.cash, err)
 	}
 }
 
 func TestMixedRefundComponents(t *testing.T) {
-	for _, steps := range [][]int64{{55, 0}, {0, 55, 0}, {1, 54, 0, 1, 0}} {
+	for _, steps := range [][]int64{{55, 0}, {55, 0, 0}, {0, 55, 0}, {1, 54, 0, 1, 0}} {
 		t.Run(fmt.Sprint(steps), func(t *testing.T) {
-			p := newPaymentFactFixture(t)
+			p := newPaymentFactFixture(t, func(f *checkoutPGFixture) {
+				if len(steps) == 2 {
+					f.cart.cart.Lines[0].Quantity = 1
+					if err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+						_, err := tx.Exec(ctx, "UPDATE app.shipping_rates SET amount=0 WHERE tenant_id=$1", f.tenant)
+						return err
+					}); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
 			p.f.provider.before = nil
 			r := payment.CreatePaymentIntent{TenantID: p.f.tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}, IdempotencyKey: "mixed-capture"}
 			if _, err := p.f.provider.Capture(p.f.ctx, payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: p.start.Payment.ProviderRef}); err != nil {
@@ -461,9 +472,10 @@ func TestMixedRefundComponents(t *testing.T) {
 				}
 				total += amount
 				var net, tax, shipping int64
+				var bounded bool
 				if err := p.f.runner.InTenant(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-					return tx.QueryRow(ctx, "SELECT refunded_net_minor,refunded_tax_minor,refunded_shipping_minor FROM app.checkout_sessions WHERE tenant_id=$1 AND order_id=$2", p.f.tenant, r.OrderID).Scan(&net, &tax, &shipping)
-				}); err != nil || net > 200 || tax > 20 || shipping > 50 || net+tax+shipping != total {
+					return tx.QueryRow(ctx, "SELECT refunded_net_minor,refunded_tax_minor,refunded_shipping_minor,refunded_net_minor BETWEEN 0 AND items_net_minor AND refunded_tax_minor BETWEEN 0 AND tax_minor AND refunded_shipping_minor BETWEEN 0 AND shipping_minor FROM app.checkout_sessions WHERE tenant_id=$1 AND order_id=$2", p.f.tenant, r.OrderID).Scan(&net, &tax, &shipping, &bounded)
+				}); err != nil || !bounded || net+tax+shipping != total {
 					t.Fatalf("MIXED_COMPONENT_RED: parts=%d/%d/%d total=%d err=%v", net, tax, shipping, total, err)
 				}
 			}
