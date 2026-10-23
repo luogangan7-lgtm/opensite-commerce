@@ -40,7 +40,7 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getProductListing"];
-        /** @description If-Match is the latest locale content revision, quoted; use zero for the first revision. Listing writes pin the explicit content_revision. */
+        /** @description If-Match must equal the ETag returned by GET for this listing. It is a quoted listing row version (zero for an absent listing), independent of content revisions. Every listing write advances it, including legacy SQL writes. Listing writes pin the explicit content_revision. */
         put: operations["setProductListing"];
         post?: never;
         delete?: never;
@@ -1528,7 +1528,7 @@ export interface components {
             content_revision: number;
             /**
              * Format: int64
-             * @description Latest content revision used by If-Match.
+             * @description Listing row version used by If-Match; independent of content revisions.
              */
             revision: number;
         };
@@ -2944,11 +2944,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Private locale state; revision zero represents no content yet. */
+            /** @description Private listing state; revision zero represents no listing yet. */
             200: {
                 headers: {
                     "Cache-Control"?: "no-store";
-                    /** @description Quoted latest content revision. */
+                    /** @description Quoted listing row version, independent of locale content revision. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2998,11 +2998,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Private locale state; revision zero represents no content yet. */
+            /** @description Private listing state; revision zero represents no listing yet. */
             200: {
                 headers: {
                     "Cache-Control"?: "no-store";
-                    /** @description Quoted latest content revision. */
+                    /** @description Quoted listing row version, independent of locale content revision. */
                     ETag?: string;
                     [name: string]: unknown;
                 };

@@ -159,6 +159,7 @@ OPS_METRICS_DB=""
 INVENTORY_DB=""
 INVENTORY_OWNER_DB=""
 PRICING_DB=""
+LISTING_DB=""
 IDENTITY_DB=""
 LOGIN_DB=""
 CHECKOUT_DB=""
@@ -171,7 +172,7 @@ CLOCK_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1314,6 +1315,33 @@ db "$DB" -f tests/db_staff_pricing.sql >/dev/null
 db "$DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $DB"; PRICING_DB=""
 pass 'staff pricing upgrade preserves existing currency and initializes CAS version'
+
+# FIX-266: preserve pre-existing listing content/state while adding its own CAS version.
+listing_files=(migrations/[0-9][0-9][0-9]_catalog_listing.sql)
+[[ ${#listing_files[@]} == 1 ]] || { bad 'exactly one catalog listing migration required'; exit 1; }
+LISTING_DB=upgrade_listing_$$; DB=$LISTING_DB
+admin -c "CREATE DATABASE $LISTING_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f == "${listing_files[0]}" ]] && break
+ apply_forward "$LISTING_DB" "$f"
+done
+db "$LISTING_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('listing-existing') RETURNING id AS t \gset
+SELECT set_config('app.tenant_id',:'t',false);
+INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','listing') RETURNING id AS o \gset
+INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','listing') RETURNING id AS s \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','LISTING') RETURNING id AS p \gset
+INSERT INTO app.product_content_revisions(tenant_id,product_id,locale,revision,title) VALUES(:'t',:'p','en',7,'Unchanged');
+INSERT INTO app.product_listings(tenant_id,site_id,product_id,locale,slug,status,published_content_revision) VALUES(:'t',:'s',:'p','en','unchanged','published',7);
+CREATE TABLE public.listing_witness AS SELECT to_jsonb(l) AS snapshot FROM app.product_listings l;
+SQL
+apply_forward "$LISTING_DB" "${listing_files[0]}"
+result=$(db "$LISTING_DB" -c "SELECT (to_jsonb(l)-'version'=w.snapshot) AND l.version=1 FROM app.product_listings l CROSS JOIN public.listing_witness w;")
+[[ $result == t ]] || bad "listing upgrade changed content or state: $result"
+result=$(db "$LISTING_DB" -c "UPDATE app.product_listings SET slug='updated' RETURNING version;")
+[[ $result == 2 ]] || bad "listing legacy write failed to advance version: $result"
+admin -c "DROP DATABASE $LISTING_DB" >/dev/null; LISTING_DB=""
+pass 'listing upgrade preserves old state and legacy writes advance listing version'
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
