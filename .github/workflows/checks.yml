@@ -55,7 +55,7 @@ jobs:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     # 2026-10-23 measurement: max of last 10 successful main lane runs = 7.2 min (foundation-offline); 3x -> 22.
-    timeout-minutes: 45 # FIX-FIXTURE-046 temporary count=10 stress budget
+    timeout-minutes: 22
     strategy:
       fail-fast: false
       matrix:
@@ -208,8 +208,6 @@ jobs:
           # The full bootstrap suite exceeded Go's 10m package default on slow
           # runners (39779427428, attempts 1-2); keep it bounded within this 45m job.
           go test -race -tags pgx -count=1 -timeout=15m ./...
-          # FIX-FIXTURE-046 temporary stress: include the cluster role writer.
-          go test -race -tags pgx -count=10 -timeout=35m ./internal/modules/identity ./internal/modules/fulfillment ./internal/tenanttx/pgxadapter
       - name: sqlc v1.31.1 (verified release artifact)
         if: matrix.lane == 'sqlc'
         run: |
