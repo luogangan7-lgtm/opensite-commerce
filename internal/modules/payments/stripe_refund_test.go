@@ -54,7 +54,7 @@ func TestStripePendingRefundRetryable(t *testing.T) {
 	}
 	status = "succeeded"
 	result, err := s.Refund(context.Background(), payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: "pi_fixture"})
-	if err != nil || result.Status != payment.StatusPartiallyRefunded {
+	if err != nil || result.Status != payment.StatusPartiallyRefunded || result.RefundID != "re_fixture" {
 		t.Fatalf("pending refund did not recover after provider success: %+v %v", result, err)
 	}
 }
@@ -116,5 +116,27 @@ func TestStripeNewRefundTerminalNoEffect(t *testing.T) {
 				t.Fatalf("new %s refund error contract: posts=%d err=%v", status, posts, err)
 			}
 		})
+	}
+}
+
+func TestStripePendingRefundDoesNotReconcile(t *testing.T) {
+	c := stripeTestConfig(t)
+	t.Setenv("STRIPE_TEST_SECRET_KEY", "sk_test_unit_fixture")
+	calls := 0
+	c.Run = func(context.Context, string, func(context.Context, pgx.Tx, string, time.Time) error) error {
+		calls++
+		return errors.New("PENDING_RECONCILIATION_RED")
+	}
+	s, err := NewStripe(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"id":"evt_pending","type":"refund.created","livemode":false,"data":{"object":{"id":"re_pending","payment_intent":"pi_pending","status":"pending","amount":300,"currency":"usd","metadata":{"osc_order":"10000000-0000-4000-8000-000000000002","osc_version":"1"}}}}`)
+	mac := hmac.New(sha256.New, s.config.Key)
+	mac.Write([]byte("123."))
+	mac.Write(raw)
+	r, err := s.Receive(context.Background(), raw, "t=123,v1="+hex.EncodeToString(mac.Sum(nil)))
+	if err != nil || calls != 0 || r.Status != "ignored" {
+		t.Fatalf("PENDING_RECONCILIATION_RED: pending fact reached unmatched path: calls=%d receipt=%+v err=%v", calls, r, err)
 	}
 }

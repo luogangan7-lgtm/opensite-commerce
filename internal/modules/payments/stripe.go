@@ -225,6 +225,7 @@ func (s *Stripe) Refund(ctx context.Context, r payment.PaymentOperation) (paymen
 		return payment.PaymentIntentResult{}, err
 	}
 	found := false
+	refundID := ""
 	for _, v := range list.Data {
 		if v.Metadata["osc_key"] == key {
 			if v.Amount != r.Amount.Amount {
@@ -234,6 +235,10 @@ func (s *Stripe) Refund(ctx context.Context, r payment.PaymentOperation) (paymen
 				return payment.PaymentIntentResult{}, err
 			}
 			found = true
+			if refundID != "" && refundID != v.ID {
+				return payment.PaymentIntentResult{}, stripeError(payment.ErrorStateConflict)
+			}
+			refundID = v.ID
 		}
 	}
 	if !found {
@@ -250,6 +255,7 @@ func (s *Stripe) Refund(ctx context.Context, r payment.PaymentOperation) (paymen
 		if err := stripeRefundStatus(refund.Status); err != nil {
 			return payment.PaymentIntentResult{}, err
 		}
+		refundID = refund.ID
 	}
 	o, err = s.intent(ctx, r)
 	if err != nil {
@@ -265,7 +271,7 @@ func (s *Stripe) Refund(ctx context.Context, r payment.PaymentOperation) (paymen
 	if charge.AmountRefunded == o.Amount {
 		status = payment.StatusRefunded
 	}
-	return payment.PaymentIntentResult{ProviderRef: r.ProviderRef, Status: status}, nil
+	return payment.PaymentIntentResult{ProviderRef: r.ProviderRef, Status: status, RefundID: refundID}, nil
 }
 
 // Both creation and durable recovery use the same terminal effect proof.

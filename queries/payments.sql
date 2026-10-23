@@ -28,3 +28,15 @@ INSERT INTO app.payment_event_deliveries(tenant_id,id,payment_event_id) VALUES($
 SELECT id FROM app.payment_event_deliveries WHERE tenant_id=$1 AND payment_event_id=$2 ORDER BY id;
 -- name: FinishPaymentInbox :exec
 SELECT app.finish_payment_inbox(sqlc.arg(id)::uuid,sqlc.arg(success)::boolean);
+-- name: GetPaymentReturnContext :one
+SELECT app.payments_return_context(sqlc.narg(order_id)::uuid,sqlc.arg(currency)::text)::jsonb AS result;
+-- name: LockPaymentReturnCheckout :exec
+SELECT app.payments_lock_return_checkout(sqlc.arg(return_id)::uuid);
+-- name: BindPaymentReturnRefund :exec
+SELECT app.payments_bind_return_refund(sqlc.arg(return_id)::uuid,sqlc.arg(attempt_key)::text,sqlc.arg(provider_refund_id)::text,sqlc.arg(journal_id)::uuid);
+-- name: MatchPaymentReturnRefund :one
+SELECT app.payments_match_return_refund(sqlc.arg(order_id)::uuid,sqlc.arg(provider_ref)::text,sqlc.arg(provider_refund_id)::text,sqlc.arg(payment_version)::bigint,sqlc.arg(amount_minor)::bigint,sqlc.arg(currency)::text)::text AS result;
+-- name: AllocatePaymentRefund :one
+SELECT (parts->0->>'income_minor')::bigint AS income_minor,(parts->0->>'tax_minor')::bigint AS tax_minor,
+ (parts->0->>'shipping_minor')::bigint AS shipping_minor FROM
+ (SELECT app.payments_allocate_refund(sqlc.arg(order_id)::uuid,NULL,sqlc.arg(amount_minor)::bigint) AS parts) allocation;

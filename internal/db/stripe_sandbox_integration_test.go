@@ -2,7 +2,7 @@
 
 // Responsibility: real Stripe TEST API commands plus CLI-forwarded signed events.
 // Dependencies: disposable PG fixture, production Stripe port/mapped runner and
-// Checkout/Orders/Ledger contracts. Caller: optional stripe-sandbox CI only.
+// Checkout/Orders/Returns/Ledger contracts. Caller: optional stripe-sandbox CI only.
 // Invariants: durable consent, one event application, bounded failures, balanced
 // payment/refund journals. Event bodies/signatures stay only in process memory.
 package db_test
@@ -11,11 +11,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -24,9 +28,13 @@ import (
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout"
 	ch "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment"
+	fc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
+	rc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -74,7 +82,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		rules := checkout.NewSQLRules(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 100}}}})
-		svc = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: ledger.New(), Payment: adapter})
+		svc = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: adapter})
 		return svc, adapter
 	}
 	svc, adapter := compose("pm_card_visa")
@@ -189,41 +197,153 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	if err != nil || replay != paid {
 		t.Fatalf("capture replay failed: %v", err)
 	}
-	for i, amount := range []int64{300, start.AmountMinor - 300} {
-		in := payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: start.OrderID, OrderVersion: start.OrderVersion, Amount: money.Money{Amount: amount, Currency: start.Currency}, IdempotencyKey: []string{"sandbox-partial", "sandbox-final"}[i]}
-		op := payment.PaymentOperation{CreatePaymentIntent: in, ProviderRef: start.Payment.ProviderRef}
-		result, err := adapter.Refund(ctx, op)
-		if err != nil {
-			t.Fatalf("refund failed: %v", err)
+	// Use the same persisted Payments readers and closed coordinator commands as
+	// bootstrap; no caller-supplied amount, capture or account fixture is trusted.
+	journal := payments.RefundJournal{Ledger: ledger.New()}
+	coordinator := returns.New(returns.Config{Runner: fulfillmentRunner{runner: f.runner, role: "service"}, Payments: adapter,
+		Captures: sandboxReturnReaders{journal}, Accounts: sandboxReturnReaders{journal}, Ledger: journal})
+	var line, shipmentLine string
+	version := func() int64 {
+		t.Helper()
+		var v int64
+		if err := f.runner.InTenant(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, "SELECT version FROM app.orders WHERE tenant_id=$1 AND id=$2", f.tenant, start.OrderID).Scan(&v)
+		}); err != nil {
+			t.Fatal(err)
 		}
-		want := payment.StatusPartiallyRefunded
-		if i == 1 {
-			want = payment.StatusRefunded
+		return v
+	}
+	err = f.run(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, "SELECT id::text FROM app.order_lines WHERE tenant_id=$1 AND order_id=$2", f.tenant, start.OrderID).Scan(&line); err != nil {
+			return err
 		}
-		if result.Status != want {
-			t.Fatal("refund provider state mismatch")
+		shipment, err := fulfillment.New().CreateShipment(ctx, tx, f.tenant, fc.CreateInput{OrderID: start.OrderID, ExpectedVersion: version(), IdempotencyKey: "sandbox-ship", Carrier: "manual", TrackingNumber: "sandbox", Lines: []fc.Line{{OrderLineID: line, Quantity: 10}}})
+		if err == nil {
+			shipmentLine = shipment.Lines[0].ID
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRefunds := func(amount int64, count int) {
+		t.Helper()
+		var bindings, receipts, journals, unbalanced, facts int
+		var refunded, parts, returned int64
+		err := f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `SELECT
+			 (SELECT count(*) FROM app.payment_return_refunds WHERE tenant_id=$1),
+			 (SELECT count(*) FROM app.returns r JOIN app.payment_return_refunds b ON (b.tenant_id,b.return_id,b.journal_id)=(r.tenant_id,r.id,r.ledger_transaction_id) WHERE r.tenant_id=$1 AND r.status='refunded' AND r.kind='shipment_return'),
+			 (SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=$1 AND status='posted'),
+			 (SELECT count(*) FROM (SELECT x.id FROM app.ledger_transactions x LEFT JOIN app.ledger_entries e ON (e.tenant_id,e.transaction_id)=(x.tenant_id,x.id) WHERE x.tenant_id=$1 GROUP BY x.id HAVING coalesce(sum(CASE WHEN e.side='debit' THEN e.amount ELSE -e.amount END),0)<>0) unbalanced),
+			 (SELECT count(*) FROM app.payment_events e JOIN app.payment_return_refunds b ON (b.tenant_id,b.provider_ref,b.provider_refund_id)=(e.tenant_id,e.provider_ref,e.provider_refund_id) JOIN app.returns r ON (r.tenant_id,r.id)=(b.tenant_id,b.return_id) WHERE e.tenant_id=$1 AND e.provider='stripe' AND e.status='partially_refunded' AND e.applied AND e.amount_minor=r.refund_minor AND e.currency=r.currency AND e.order_version=r.payment_version AND e.claimed_order_id=r.order_id),
+			 (SELECT refunded_minor FROM app.orders WHERE tenant_id=$1 AND id=$2),
+			 (SELECT refunded_net_minor+refunded_tax_minor+refunded_shipping_minor FROM app.checkout_sessions WHERE tenant_id=$1 AND order_id=$2),
+			 (SELECT coalesce(sum(refund_minor),0)::bigint FROM app.returns WHERE tenant_id=$1 AND status='refunded')`, f.tenant, start.OrderID).Scan(&bindings, &receipts, &journals, &unbalanced, &facts, &refunded, &parts, &returned)
+		})
+		w := f.witness(t, start.OrderID)
+		state := "partially_refunded"
+		if amount == start.AmountMinor {
+			state = "refunded"
+		}
+		if err != nil || bindings != count || receipts != count || journals != count+1 || unbalanced != 0 || facts != count || refunded != amount || parts != amount || returned != amount || w.cash != start.AmountMinor-amount || w.state != state {
+			t.Fatalf("RETURNS_SANDBOX_RED: bindings=%d receipts=%d journals=%d unbalanced=%d facts=%d orders/checkout/returns=%d/%d/%d witness=%+v err=%v", bindings, receipts, journals, unbalanced, facts, refunded, parts, returned, w, err)
+		}
+	}
+	var refunds []stripeDelivery
+	var total int64
+	for i, quantity := range []int64{3, 7} {
+		key := fmt.Sprintf("sandbox-rma-%d", i)
+		var rma rc.Return
+		err = f.run(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			var err error
+			rma, err = coordinator.Request(ctx, tx, f.tenant, rc.RequestInput{OrderID: start.OrderID, ExpectedVersion: version(), IdempotencyKey: key, Kind: rc.ShipmentReturn, Reason: "sandbox return", Lines: []rc.Line{{OrderLineID: line, ShipmentLineID: shipmentLine, Quantity: quantity}}})
+			return err
+		})
+		if err != nil || rma.Status != "requested" {
+			t.Fatalf("RMA request: %+v %v", rma, err)
+		}
+		unreceived := f.witness(t, start.OrderID)
+		if _, err := coordinator.Refund(ctx, f.tenant, rc.RefundInput{ReturnID: rma.ID, ExpectedVersion: rma.OrderVersion, IdempotencyKey: key + "-too-early"}); !errors.Is(err, rc.ErrConflict) {
+			t.Fatalf("unreceived RMA admitted refund: %v", err)
+		}
+		if f.witness(t, start.OrderID) != unreceived {
+			t.Fatal("unreceived RMA moved money")
+		}
+		err = f.run(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			var err error
+			rma, err = coordinator.Receive(ctx, tx, f.tenant, rc.ReceiveInput{ReturnID: rma.ID, ExpectedVersion: version(), IdempotencyKey: key + "-receive", Restock: false})
+			return err
+		})
+		if err != nil || rma.Status != "received" {
+			t.Fatalf("RMA receive: %+v %v", rma, err)
+		}
+		in := rc.RefundInput{ReturnID: rma.ID, ExpectedVersion: rma.OrderVersion, IdempotencyKey: key + "-refund"}
+		completed, err := coordinator.Refund(ctx, f.tenant, in)
+		if err != nil || completed.Status != "refunded" || completed.RefundMinor <= 0 {
+			t.Fatalf("coordinator refund: %+v %v", completed, err)
+		}
+		if replay, err := coordinator.Refund(ctx, f.tenant, in); err != nil || !reflect.DeepEqual(replay, completed) {
+			t.Fatalf("coordinator replay: %+v %v", replay, err)
 		}
 		refund := wait("refund.created", start.OrderID)
-		assertEvent(refund.id)
-		if _, err := adapter.Refund(ctx, op); err != nil {
-			t.Fatalf("stable refund replay failed: %v", err)
-		}
+		// A CLI delivery may beat coordinator finalization. Exact replay converges
+		// its pending receipt after the persisted provider-ID binding commits.
 		if post(refund, refund.raw) != 200 {
 			t.Fatal("refund duplicate rejected")
 		}
 		assertEvent(refund.id)
+		refunds = append(refunds, refund)
+		total += completed.RefundMinor
+		if i == 0 && total >= start.AmountMinor {
+			t.Fatal("first refund must be partial")
+		}
+		assertRefunds(total, i+1)
 	}
-	refunded := f.witness(t, start.OrderID)
-	if refunded.state != "refunded" || refunded.journals != 3 || refunded.debits != refunded.credits || refunded.cash != 0 {
-		t.Fatalf("refund conservation %+v", refunded)
+	if total != start.AmountMinor {
+		t.Fatalf("full refund total=%d want=%d", total, start.AmountMinor)
 	}
-	var refundedRows int64
-	err = f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		return tx.QueryRow(ctx, "SELECT count(*) FROM app.payment_events WHERE tenant_id=$1 AND provider='stripe' AND status='partially_refunded' AND applied", f.tenant).Scan(&refundedRows)
+	// Replay the old capture and partial refund after the final refund, newest
+	// first: signed provider facts must not regress state or post more money.
+	for _, d := range []stripeDelivery{refunds[1], refunds[0], capture, refunds[0]} {
+		if post(d, d.raw) != 200 {
+			t.Fatal("out-of-order delivery rejected")
+		}
+		assertEvent(d.id)
+	}
+	assertRefunds(total, 2)
+	over := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: start.OrderID, OrderVersion: start.OrderVersion, Amount: money.Money{Amount: 1, Currency: start.Currency}, IdempotencyKey: "sandbox-over-refund"}, ProviderRef: start.Payment.ProviderRef}
+	if _, err := adapter.Refund(ctx, over); err == nil {
+		t.Fatal("Stripe over-refund admitted")
+	}
+	// The port bounds all provider errors; require a real Stripe 400 as well so
+	// an unrelated network failure cannot satisfy the over-refund assertion.
+	form := url.Values{"payment_intent": {start.Payment.ProviderRef}, "amount": {"1"}}
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.stripe.com/v1/refunds", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal("over-refund request construction failed")
+	}
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("STRIPE_TEST_SECRET_KEY"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Idempotency-Key", "sandbox-over-refund-"+f.tenant)
+	client := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Do(req)
+	if err != nil {
+		t.Fatal("over-refund rejection transport failed")
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 65536))
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Stripe over-refund status=%d want=400", response.StatusCode)
+	}
+	err = f.run(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := coordinator.Request(ctx, tx, f.tenant, rc.RequestInput{OrderID: start.OrderID, ExpectedVersion: version(), IdempotencyKey: "sandbox-over-rma", Kind: rc.ShipmentReturn, Reason: "exhausted quantity", Lines: []rc.Line{{OrderLineID: line, ShipmentLineID: shipmentLine, Quantity: 1}}})
+		return err
 	})
-	if err != nil || refundedRows != 2 {
-		t.Fatal("persisted refund facts missing")
+	if !errors.Is(err, rc.ErrConflict) {
+		t.Fatalf("Returns over-refund admission: %v", err)
 	}
+	assertRefunds(total, 2)
 	cancelStart := f.start(t)
 	canceled, err := svc.Cancel(checkoutRequestContext(ctx), f.actor, ch.CancelInput{CheckoutID: cancelStart.CheckoutID, IdempotencyKey: "sandbox-cancel"})
 	if err != nil || canceled.State != "cancelled" {
@@ -249,5 +369,17 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	if w := f.witness(t, declineStart.OrderID); w.journals != 0 || w.state == "paid" {
 		t.Fatal("decline posted money")
 	}
-	t.Log("PASS: TEST MODE pay/decline/cancel/partial+full refund, exact webhook replay and persisted balanced journals")
+	t.Log("PASS: TEST MODE pay/decline/cancel, received Returns partial+full refund, over-refund rejection, duplicate/out-of-order signed replay; Orders/Returns/Payments/Ledger agree")
+}
+
+// Persisted readers mirror bootstrap's consumer adapters over Payments ports.
+type sandboxReturnReaders struct{ journal payments.RefundJournal }
+
+func (r sandboxReturnReaders) CapturedPayment(ctx context.Context, tx pgx.Tx, tenant, order string) (rc.CapturedPayment, error) {
+	c, err := r.journal.PaidContext(ctx, tx, order)
+	return rc.CapturedPayment{TenantID: tenant, OrderID: order, ProviderRef: c.ProviderRef, OrderVersion: c.PaymentVersion, Paid: money.Money{Amount: c.AmountMinor, Currency: c.Currency}}, err
+}
+func (r sandboxReturnReaders) RefundAccounts(ctx context.Context, tx pgx.Tx, tenant, currency string) (rc.RefundAccounts, error) {
+	c, err := r.journal.RefundAccounts(ctx, tx, currency)
+	return rc.RefundAccounts{Income: c.Accounts["revenue"], Tax: c.Accounts["tax_payable"], Shipping: c.Accounts["shipping_revenue"], Cash: c.Accounts["cash"]}, err
 }

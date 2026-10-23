@@ -17,9 +17,13 @@ their original journal key; new refund identities on those streams are retained
 as failed Inbox deliveries and rejected for trusted reconciliation. No automatic
 amount-based matching or rewriting of historical financial identities occurs.
 
-Refund facts that are not succeeded, including matched failed/canceled transitions
-following success, use the same reconciliation path as metadata-free refunds.
+Valid pending and other nonterminal refund facts are ignored without entering
+unmatched reconciliation. Matched failed/canceled transitions following success
+are retained for reconciliation with reason `refund_terminal_after_match`;
+metadata-free terminal refunds retain reason `unmatched_refund`.
 They never silently disappear or automatically reverse an existing journal.
+**reversal: C-19d** owns the future compensation contract; C-19c-1 preserves the
+frozen Orders/Returns transitions and the existing posted-money counters.
 Ledger's generic new-event/swapped-side reversal primitive does not define a
 provider-refund failure reversal identity, order transition or authorized entry
 point; trusted reconciliation must establish those before any corrective posting.
@@ -40,3 +44,12 @@ monitor unresolved Inbox facts and provider balances, support authenticated
 matching with audit evidence, and prove one journal across request/webhook
 replays before live keys or production refunds can be enabled. A successful
 sandbox check does not satisfy this live acceptance requirement.
+
+Refund components are allocated by Payments' closed
+`app.payments_allocate_refund(uuid,jsonb,bigint)` command for both ordinary
+facts and quantity-bounded RMA creation. It takes the Orders physical fence,
+locks RMAs by UUID, and subtracts frozen receipts plus Checkout's actual ordinary
+component counters. Orders-only legacy credit keeps its prior waterfall.
+The existing Checkout component CHECKs remain the final cap guard. Identity-less
+refund deliveries retain a failed Inbox/hash without a normalized money fact;
+Fake events and results carry the same durable refund identity.

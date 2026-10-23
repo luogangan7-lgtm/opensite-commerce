@@ -3,6 +3,17 @@
   "module": "payments",
   "note": "Only normalized Fake/Stripe facts: no raw body, contact data, secret or provider metadata. Account, intent and refund identifiers are provider-issued opaque operational identifiers; delivery bindings contain only tenant-scoped foreign keys. Amounts are integer bookkeeping. Raw body digest/reference lives in reliability inbox. Account binding is immutable provisioning authority.",
   "tables": {
+    "payment_return_refunds": {
+      "columns": {
+        "tenant_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Permanent refund journal identity needed for recovery and reconciliation."},
+        "return_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Permanent refund journal identity needed for recovery and reconciliation."},
+        "attempt_key": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Frozen RMA refund key prevents a retry from creating another financial obligation."},
+        "provider_ref": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Opaque provider intent reference binds the confirmed refund to its captured payment."},
+        "provider_refund_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Opaque provider refund identity prevents duplicate money posting across deliveries."},
+        "journal_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Permanent journal foreign key proves the single posted refund."},
+        "created_at": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "DB timestamp for permanent refund recovery and reconciliation evidence."}
+      }
+    },
     "payment_provider_accounts": {
       "columns": {
         "tenant_id": {

@@ -25,9 +25,12 @@ const (
 
 // Event deliberately differs from VerifiedEvent: the fake performs no production
 // verification. Test consumers can inspect/replay its stable ID and fields.
-type Event payment.VerifiedEvent
+type Event struct {
+	payment.VerifiedEvent
+	RefundID string
+}
 
-func (e Event) Validate() error { return payment.VerifiedEvent(e).Validate() }
+func (e Event) Validate() error { return e.VerifiedEvent.Validate() }
 
 type binding struct {
 	fingerprint string
@@ -176,9 +179,12 @@ func (f *Fake) apply(ctx context.Context, op Operation, r payment.PaymentOperati
 		return zero, &copied
 	}
 	result := payment.PaymentIntentResult{ProviderRef: ref, Status: current.status}
+	if op == Refund {
+		result.RefundID = "fake_event_" + fingerprint
+	}
 	f.intents[ref] = current
 	f.bindings[key] = binding{fingerprint: fingerprint, result: result, complete: true}
-	f.events = append(f.events, Event{EventID: "fake_event_" + fingerprint, TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: ref, Status: current.status, Amount: r.Amount})
+	f.events = append(f.events, Event{RefundID: result.RefundID, VerifiedEvent: payment.VerifiedEvent{EventID: "fake_event_" + fingerprint, TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: ref, Status: current.status, Amount: r.Amount}})
 	return result, nil
 }
 

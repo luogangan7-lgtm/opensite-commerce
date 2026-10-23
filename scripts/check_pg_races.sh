@@ -1500,6 +1500,19 @@ SELECT app.post_ledger('$T','USD','return','$RID','refund',ARRAY['$INCOME','$TAX
 COMMIT;SELECT :'jid';
 SQL
 )
+# Payments gate130: concurrent completion binds one provider refund to one RMA
+# attempt. Existing parent/RMA locks fence both the budget and permanent identity.
+gate_close 130
+money_complete="SELECT app.payments_lock_return_checkout('$RID'); SELECT app.returns_lock_refund('$RID','same-refund'); SELECT app.payments_bind_return_refund('$RID','same-refund','refund-gate130','$JID'); SELECT app.returns_complete_refund('$RID','same-refund','captured-race','$JID')->>'id';"
+tx payment_return_first app_returns_service "$T" "$money_complete $(park 130)" &
+await payment_return_first advisory
+tx payment_return_second app_returns_service "$T" "$money_complete" &
+await payment_return_second "${ROWLOCK[@]}"
+gate_open 130; wait
+expect payment_return_first ok; expect payment_return_second ok
+result payment_return_first "$RID"; result payment_return_second "$RID"
+[[ $(sql <<<"SELECT count(*)||'|'||(SELECT refunded_minor FROM app.orders WHERE tenant_id='$T') FROM app.payment_return_refunds WHERE tenant_id='$T';") == '1|14' ]] || fail=1
+echo 'PASS: Payments gate130 concurrent return refund binding and completion count once'
 gate_close 126
 same_complete="SELECT app.returns_complete_refund('$RID','same-refund','captured-race','$JID')->>'id';"
 tx fulfill_same_complete_a app_returns_service "$T" "$same_complete $(park 126)" &
