@@ -68,7 +68,7 @@ export function NotificationFailuresPage({api}:{api:NotificationsAPI}){
   </>}
   <Dialog open={!!selection} onOpenChange={open=>{if(!open&&!busy)setSelection(undefined);}} title="Redrive notification?" description="Queue one new delivery attempt. A queued receipt does not confirm email delivery.">
    {selection&&<p>{selection.row.id}</p>}{mutationError&&<p className="admin-error" role="alert">{mutationError}</p>}
-   <div className="admin-actions"><Button variant="secondary" disabled={busy} onClick={()=>setSelection(undefined)}>Cancel</Button><Button loading={busy} onClick={confirm}>Confirm redrive</Button></div>
+   <div className="admin-actions"><Button variant="secondary" disabled={busy} onClick={()=>setSelection(undefined)}>Cancel redrive</Button><Button loading={busy} onClick={confirm}>Confirm redrive</Button></div>
   </Dialog>
  </section>;
 }

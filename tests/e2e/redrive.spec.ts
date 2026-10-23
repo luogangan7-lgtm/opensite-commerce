@@ -25,7 +25,7 @@ test('real admin notification failure redrive delivers once with scoped isolatio
  await page.keyboard.press('Enter');
  const dialog=page.getByRole('dialog',{name:'Redrive notification?'});
  await expect(dialog).toBeVisible();
- await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+ await dialog.getByRole('button',{name:'Cancel redrive',exact:true}).click();
  await expect(row.getByRole('button',{name:'Redrive',exact:true})).toBeFocused();
  await row.getByRole('button',{name:'Redrive',exact:true}).click();
  const redriven=page.waitForResponse(r=>r.url()===`${base}/${failed.id}/redrive`&&r.request().method()==='POST');

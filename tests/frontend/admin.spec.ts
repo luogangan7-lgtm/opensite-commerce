@@ -146,7 +146,7 @@ test('notification snapshot pages and confirmation retain safe recovery states',
  const trigger=page.getByRole('row').filter({hasText:id}).getByRole('button',{name:'Redrive',exact:true});
  await trigger.focus();await page.keyboard.press('Enter');
  const dialog=page.getByRole('dialog',{name:'Redrive notification?'});
- await expect(dialog.getByRole('button',{name:'Cancel',exact:true})).toBeFocused();
+ await expect(dialog.getByRole('button',{name:'Cancel redrive',exact:true})).toBeFocused();
  await page.keyboard.press('Escape');await expect(trigger).toBeFocused();expect(keys).toEqual([]);
  await trigger.click();await dialog.getByRole('button',{name:'Confirm redrive',exact:true}).click();
  await expect(dialog.getByRole('alert')).toContainText('Retry uses the same request key');
