@@ -30,6 +30,8 @@ export function PriceEditor({ api, variantId, archived }: { api: CatalogAPI; var
   const [lists, setLists] = useState<PriceList[]>([]), [next, setNext] = useState<string>();
   const [selected, setSelected] = useState(''), [list, setList] = useState<PriceList>();
   const [minor, setMinor] = useState(''), [saved, setSaved] = useState(false);
+  const [minorError, setMinorError] = useState('');
+  const minorInput = useRef<HTMLInputElement>(null);
   const [denied, setDenied] = useState(false);
   useEffect(() => {
     const abort = new AbortController();
@@ -40,6 +42,7 @@ export function PriceEditor({ api, variantId, archived }: { api: CatalogAPI; var
   if (denied) return null;
   function load(id: string) {
     setSelected(id); setList(undefined); setMinor(''); setSaved(false);
+    setMinorError(''); minorInput.current?.setCustomValidity('');
     if (id) void action.run(signal => api.priceList(id, signal), value => { setList(value); action.reloaded(); });
   }
   return <section className="admin-panel" aria-labelledby="price-heading"><h3 id="price-heading">{t('catalog.variant-price')}</h3>
@@ -50,8 +53,8 @@ export function PriceEditor({ api, variantId, archived }: { api: CatalogAPI; var
       </Select></FormField>
       <div className="admin-actions"><Button variant="secondary" disabled={action.busy} onClick={() => void action.run(signal => api.priceLists(undefined, signal), value => { setLists(value.items); setNext(value.next_cursor); })}>{t('catalog.reload-price-lists')}</Button>
         {next && <Button variant="secondary" disabled={action.busy} onClick={() => void action.run(signal => api.priceLists(next, signal), value => { setLists(old => [...old, ...value.items.filter(item => !old.some(existing => existing.id === item.id))]); setNext(value.next_cursor); })}>{t('catalog.more-price-lists')}</Button>}</div>
-      <FormField id="price-minor" label={t('catalog.price-in-minor-units')} help={list ? `${list.currency} · Whole minor units; for example 3456 means 34.56 for USD.` : 'Choose a list to load its currency and current version.'}>
-        <TextInput inputMode="numeric" required pattern="(0|[1-9][0-9]{0,18})" maxLength={19} value={minor} disabled={!list || action.busy || archived} onChange={event => { setMinor(event.target.value); setSaved(false); event.target.setCustomValidity(priceIssue(event.target.value)); }} />
+      <FormField id="price-minor" label={t('catalog.price-in-minor-units')} error={minorError || undefined} help={list ? `${list.currency} · Whole minor units; for example 3456 means 34.56 for USD.` : 'Choose a list to load its currency and current version.'}>
+        <TextInput ref={minorInput} inputMode="numeric" required pattern="(0|[1-9][0-9]{0,18})" maxLength={19} value={minor} disabled={!list || action.busy || archived} onInvalid={event => setMinorError(priceIssue(event.currentTarget.value))} onChange={event => { const issue = priceIssue(event.target.value); setMinor(event.target.value); setSaved(false); setMinorError(issue); event.target.setCustomValidity(issue); }} />
       </FormField>
       <Notice error={action.error} />
       {action.conflict && <p>{t('catalog.your-price-draft-is-retained-reload')}</p>}

@@ -70,6 +70,10 @@ test('price keyboard submission associates and announces invalid amounts', async
    expect(writes).toBe(0);
  }
  await audit(page);
+ await page.getByRole('button', { name: 'Reload price from server', exact: true }).click();
+ await expect(amount).toBeEnabled();
+ await expect(amount).toHaveValue('');
+ await expect(page.locator('#price-minor-error')).toHaveCount(0);
  await amount.fill('3456');
  await expect(amount).not.toHaveAttribute('aria-invalid', 'true');
  await expect(amount).toHaveAttribute('aria-describedby', 'price-minor-help');

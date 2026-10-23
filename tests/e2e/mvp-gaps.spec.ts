@@ -117,12 +117,26 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
   });
   expect(published.status()).toBe(201);
   const release = await published.json();
+  expect(release.release_id).toMatch(/^[0-9a-f-]{36}$/);
+  expect(release.release_id).not.toBe(publishBase.base_release_id);
+  const history = await page.request.get(`${base}/sites/${staffSite}/releases`);
+  expect(history.status()).toBe(200);
+  expect(await history.json()).toContainEqual(expect.objectContaining({
+    release_id: release.release_id, publication_revision: release.publication_revision, manifest_hash: release.manifest_hash,
+  }));
+  const identity = { tenant_id: tenant, site_id: staffSite, release_id: release.release_id };
+  let serving: unknown;
+  // getPublishedSite reads the real serving body. Identity and purchasable SKU must
+  // match in the SAME response; a previous release with identical content cannot pass.
   await expect.poll(async () => {
     const response = await page.request.get(`${fixture.api}/api/v1/public/sites/current?host=localhost`);
-    return response.status() === 200 ? (await response.json()).products.find((p: { slug: string }) => p.slug === slug) : null;
-  }).toMatchObject({ name: title + ' edited', skus: expect.arrayContaining([
-    expect.objectContaining({ sku_id: sku.id, sku_code: slug.toUpperCase(), price_minor: '3456', currency: 'USD' }),
-  ]) });
+    serving = response.status() === 200 ? await response.json() : null;
+    return serving;
+  }).toMatchObject({ ...identity, products: expect.arrayContaining([expect.objectContaining({
+    slug, name: title + ' edited', skus: expect.arrayContaining([
+      expect.objectContaining({ sku_id: sku.id, sku_code: slug.toUpperCase(), price_minor: '3456', currency: 'USD' }),
+    ]),
+  })]) });
   await page.goto(`http://localhost:4322/products/${slug}`);
   await expect(page.getByRole('heading', { name: title + ' edited', exact: true })).toBeVisible();
   await expect(page.getByText('$34.56', { exact: false })).toBeVisible();
@@ -133,7 +147,7 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
   for (const path of [`/products/${product.id}/content/en`, `/products/${product.id}/listings/${staffSite}/en`, `/price-lists/${list.id}/variants/${sku.id}/prices/1`]) {
     expect((await page.request.put(`${fixture.admin}/api/v1/t/${fixture.tenantId}${path}`, { headers: { ...headers, 'If-Match': '"0"', 'Idempotency-Key': crypto.randomUUID() }, data: {} })).status()).toBe(404);
   }
-  await info.attach('staff-publication', { body: JSON.stringify({ product: product.id, sku: sku.id, release: release.release_id }), contentType: 'application/json' });
+  await info.attach('staff-publication', { body: JSON.stringify({ product: product.id, sku: sku.id, publication: release, serving }), contentType: 'application/json' });
   for (const role of ['viewer', 'content_editor']) {
     await page.goto(`${fixture.admin}/`);
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
