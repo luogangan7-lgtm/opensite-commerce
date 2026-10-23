@@ -339,8 +339,8 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := returns.New(returns.Config{Runner: fulfillmentRunner{runner: p.f.runner, role: "service"}, Payments: p.f.provider,
-	 Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Paid: r.Amount}},
-	 Accounts: fulfillmentAccounts{tenant: p.f.tenant, accounts: accounts}, Ledger: ledger.New()})
+		Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Paid: r.Amount}},
+		Accounts: fulfillmentAccounts{tenant: p.f.tenant, accounts: accounts}, Ledger: ledger.New()})
 	var receipt returnscontract.Return
 	err = p.f.run(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
