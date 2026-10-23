@@ -1,8 +1,8 @@
 # Payment refund facts
 
 Authority: `docs/architecture/V1_DECISIONS.md` §6. Payments owns money refunds;
-Returns owns RMA/receipt/restock; Orders owns order state. C-19c unification is
-still pending; this PR must not enable the combined Returns/Stripe flow yet.
+Returns owns RMA/receipt/restock; Orders owns order state. Payments owns the
+single refund journal path and the C-19d terminal-fact finalizer described below.
 
 Stripe `refund.created` and `refund.updated` succeeded deliveries share the
 provider refund ID as their financial identity. Each delivery retains its own
@@ -18,15 +18,12 @@ as failed Inbox deliveries and rejected for trusted reconciliation. No automatic
 amount-based matching or rewriting of historical financial identities occurs.
 
 Valid pending and other nonterminal refund facts are ignored without entering
-unmatched reconciliation. Matched failed/canceled transitions following success
-are retained for reconciliation with reason `refund_terminal_after_match`;
-metadata-free terminal refunds retain reason `unmatched_refund`.
-They never silently disappear or automatically reverse an existing journal.
-**reversal: C-19d** owns the future compensation contract; C-19c-1 preserves the
-frozen Orders/Returns transitions and the existing posted-money counters.
-Ledger's generic new-event/swapped-side reversal primitive does not define a
-provider-refund failure reversal identity, order transition or authorized entry
-point; trusted reconciliation must establish those before any corrective posting.
+unmatched reconciliation. Confirmed failed/canceled transitions enter the dedicated C-19d finalizer when
+that capability is configured. Unconfirmed retrieval and ambiguous legacy
+bindings remain retained reconciliation cases. Without the capability, matched
+terminal facts retain `refund_terminal_after_match` and metadata-free facts
+retain `unmatched_refund`; neither posts a reversal. The generic Ledger primitive
+alone cannot authorize financial projection changes.
 Terminal failed/canceled API refunds return permanent `NoSideEffect` proof on
 both creation and durable recovery; pending/unknown states remain retryable.
 
@@ -37,7 +34,8 @@ No raw provider payload, credential, or customer data is retained. They produce
 no normalized order event and no journal. Reconciliation can list failed Stripe
 Inbox rows having no associated `payment_events` row, retrieve the immutable
 provider event by its event ID, then establish a trusted order/attempt binding.
-The current implementation does not provide a matching/replay operator command.
+Part 3 exposes an explicit trusted terminal replay port; no public financial
+mutation route is added.
 
 **Live-mode prerequisite (NOT_RUN):** an owned reconciliation workflow must
 monitor unresolved Inbox facts and provider balances, support authenticated

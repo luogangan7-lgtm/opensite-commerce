@@ -656,6 +656,39 @@ type AppPaymentRefundAttempt struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
+type AppPaymentRefundCase struct {
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	ID                pgtype.UUID        `json:"id"`
+	Provider          string             `json:"provider"`
+	ProviderAccountID string             `json:"provider_account_id"`
+	Environment       string             `json:"environment"`
+	CaseKey           string             `json:"case_key"`
+	ProviderRefundID  pgtype.Text        `json:"provider_refund_id"`
+	ProviderRef       pgtype.Text        `json:"provider_ref"`
+	Reason            string             `json:"reason"`
+	EvidenceHash      []byte             `json:"evidence_hash"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppPaymentRefundCaseDelivery struct {
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	CaseID    pgtype.UUID        `json:"case_id"`
+	InboxID   pgtype.UUID        `json:"inbox_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppPaymentRefundCaseResolution struct {
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	CaseID            pgtype.UUID        `json:"case_id"`
+	Outcome           string             `json:"outcome"`
+	Reason            string             `json:"reason"`
+	Verifier          pgtype.UUID        `json:"verifier"`
+	EvidenceHash      []byte             `json:"evidence_hash"`
+	OriginalJournalID pgtype.UUID        `json:"original_journal_id"`
+	ReversalJournalID pgtype.UUID        `json:"reversal_journal_id"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
 type AppPaymentRefundReversal struct {
 	TenantID          pgtype.UUID        `json:"tenant_id"`
 	Provider          string             `json:"provider"`

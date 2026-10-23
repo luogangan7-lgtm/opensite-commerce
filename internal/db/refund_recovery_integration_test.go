@@ -12,13 +12,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
 func TestRefundCaseRecovery(t *testing.T) {
@@ -47,6 +50,37 @@ func TestRefundCaseRecovery(t *testing.T) {
 	first := caseID
 	if err := retain(); err != nil || caseID != first {
 		t.Fatalf("case dedup: %s %s %v", first, caseID, err)
+	}
+	read := func(ctx context.Context, tenant string, fn func(*db.Queries) error) error {
+		return p.f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, "SET TRANSACTION READ ONLY"); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", tenant); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+				return err
+			}
+			return fn(db.New(tx))
+		})
+	}
+	router := httpapi.New(fulfillmentHTTPTestAuth{tenant: p.f.tenant}, nil)
+	for _, route := range payments.NewReconciliationHTTP(read).Routes() {
+		if err := router.Handle(route); err != nil {
+			t.Fatal(err)
+		}
+	}
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest("GET", "/api/v1/t/"+p.f.tenant+"/payments/refund-cases", nil))
+	var page struct {
+		Count int `json:"open_count"`
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || response.Code != 200 || response.Header().Get("Cache-Control") != "no-store" || page.Count != 1 || len(page.Items) != 1 || page.Items[0].ID != caseID {
+		t.Fatalf("C19D3_STAFF_READ_RED status=%d body=%s err=%v", response.Code, response.Body.String(), err)
 	}
 	before := p.witness(t)
 	abort := errors.New("crash before case/financial commit")
