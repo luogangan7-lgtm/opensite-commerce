@@ -9,7 +9,7 @@ const staffSite = 'c3300003-0000-4000-8000-000000000001';
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64');
 
 test('real staff create SKU → media upload → publish', async ({ page }, info) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const tenant = fixture.ownerTenantId, base = `${fixture.admin}/api/v1/t/${tenant}`;
   const slug = `staff-${info.project.name}`, title = `Staff product ${info.project.name}`;
   await page.goto(`${fixture.admin}/t/${tenant}/products/new`);
@@ -41,7 +41,11 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
   await page.getByRole('button', { name: 'Reload price lists', exact: true }).click();
   await page.getByLabel('Price list', { exact: true }).selectOption(list.id);
   await page.getByLabel('Price in minor units', { exact: true }).fill('3456');
+  const priceWrite = page.waitForResponse(r => r.url() === `${base}/price-lists/${list.id}/variants/${sku.id}/prices/1` && r.request().method() === 'PUT');
   await page.getByRole('button', { name: 'Save price', exact: true }).click();
+  const savedPrice = await priceWrite;
+  expect(savedPrice.status()).toBe(200);
+  expect(savedPrice.request().postDataJSON()).toEqual({ unit_amount: 3456 });
   await expect(page.getByRole('status').filter({ hasText: 'Price saved' })).toBeVisible();
   // Native/JS validation and the independent real API both reject invalid money.
   for (const invalid of ['-1', '9223372036854775808']) {
@@ -55,11 +59,14 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
   await page.getByLabel('Price in minor units', { exact: true }).fill('3456');
   // Force a genuine stale price-list version; the editor must retain the draft.
   const current = await (await page.request.get(`${base}/price-lists/${list.id}`)).json();
-  expect((await write(`/price-lists/${list.id}/variants/${sku.id}/prices/1`, { unit_amount: 3456 }, `"${current.version}"`)).status()).toBe(200);
+  expect((await write(`/price-lists/${list.id}/variants/${sku.id}/prices/1`, { unit_amount: 7890 }, `"${current.version}"`)).status()).toBe(200);
   await page.getByRole('button', { name: 'Save price', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save price', exact: true })).toBeDisabled();
   await expect(page.getByLabel('Price in minor units', { exact: true })).toHaveValue('3456');
   await page.getByRole('button', { name: 'Reload price from server', exact: true }).click();
+  await page.getByLabel('Price in minor units', { exact: true }).fill('3456');
+  await page.getByRole('button', { name: 'Save price', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Price saved' })).toBeVisible();
   await page.getByLabel('Media file').setInputFiles({ name: 'staff.png', mimeType: 'image/png', buffer: png });
   await page.getByRole('button', { name: 'Upload media', exact: true }).click();
   await expect(page.getByLabel('Media ID', { exact: true })).not.toHaveValue('');
@@ -126,6 +133,9 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
   await expect(page.getByRole('option', { name: new RegExp(slug.toUpperCase()) })).toHaveCount(1);
   await audit(page, info);
   expect((await page.request.get(`${fixture.admin}/api/v1/t/${fixture.tenantId}/products/${product.id}`)).status()).toBe(404);
+  for (const path of [`/products/${product.id}/content/en`, `/products/${product.id}/listings/${staffSite}/en`, `/price-lists/${list.id}/variants/${sku.id}/prices/1`]) {
+    expect((await page.request.put(`${fixture.admin}/api/v1/t/${fixture.tenantId}${path}`, { headers: { ...headers, 'If-Match': '"0"', 'Idempotency-Key': crypto.randomUUID() }, data: {} })).status()).toBe(404);
+  }
   await info.attach('staff-publication', { body: JSON.stringify({ product: product.id, sku: sku.id, release: release.release_id }), contentType: 'application/json' });
   for (const role of ['viewer', 'content_editor']) {
     await page.goto(`${fixture.admin}/`);

@@ -179,6 +179,7 @@ export class CatalogAPI {
     if (priceIssue(minor)) throw new APIError(422, 'invalid_input', priceIssue(minor));
     return this.value(await this.staff.PUT('/api/v1/t/{tenant_id}/price-lists/{price_list_id}/variants/{variant_id}/prices/{min_quantity}', {
       params: { path: { tenant_id: this.tenantId, price_list_id: id(list.id), variant_id: id(variantId), min_quantity: 1 }, header: { 'If-Match': versionHeader(list.version) } },
+      // The schema uses JS number; serialize the validated int64 literal without Number conversion.
       body: { unit_amount: 0 }, bodySerializer: () => `{"unit_amount":${minor}}`, signal,
     }));
   }

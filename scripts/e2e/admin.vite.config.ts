@@ -19,5 +19,16 @@ const adminOrigin = process.env.E2E_ADMIN_ORIGIN ?? '';
 if (!/^https:\/\/[a-z0-9.-]+$/.test(adminOrigin)) throw new Error('E2E_ADMIN_ORIGIN must be an HTTPS origin');
 
 export default defineConfig(mergeConfig(admin, {
+  // All CI browsers share one proxy IP. Pace real requests below H4's fixed
+  // 60/minute session admission; never disable or expand the production limit.
+  plugins: [{ name: 'e2e-session-budget', configurePreviewServer(server) {
+    let next = 0;
+    server.middlewares.use('/api', (_request, response, nextMiddleware) => {
+      const now = Date.now(), wait = Math.max(0, next - now);
+      next = Math.max(now, next) + 1100;
+      const timer = setTimeout(() => { if (!response.destroyed) nextMiddleware(); }, wait);
+      response.on('close', () => clearTimeout(timer));
+    });
+  } }],
   preview: { proxy: { '/api': { target, changeOrigin: false, headers: { Origin: adminOrigin } } } },
 }));
