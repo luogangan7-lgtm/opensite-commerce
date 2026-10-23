@@ -100,9 +100,20 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
     data: { locale: 'en', title: 'Staff shop', description: 'Staff publication' } });
   expect(draftResponse.status()).toBe(201);
   const draft = await draftResponse.json();
+  // A brand-new site has no published root page to clone into its first draft.
+  if (!draft.pages.some((p: { path: string }) => p.path === '/')) {
+    const home = await page.request.post(`${drafts}/${draft.draft_id}/pages`, {
+      headers: { ...headers, 'Idempotency-Key': crypto.randomUUID(), 'If-Match': draftResponse.headers().etag },
+      data: { page_key: 'home', locale: 'en', path: '/', document: { title: 'Staff shop', description: 'Staff home', blocks: [{ kind: 'heading', text: 'Staff shop' }] }, media_ids: [] },
+    });
+    expect(home.status()).toBe(201);
+  }
+  const ready = await page.request.get(`${drafts}/${draft.draft_id}`);
+  expect(ready.status()).toBe(200);
+  const publishBase = await ready.json();
   const published = await page.request.post(`${drafts}/${draft.draft_id}/publish`, {
-    headers: { ...headers, 'Idempotency-Key': crypto.randomUUID(), 'If-Match': draftResponse.headers().etag },
-    data: { expected_release_id: draft.base_release_id, expected_publication_revision: draft.publication_revision, renderer_build_id: 'admin-pricing-3' },
+    headers: { ...headers, 'Idempotency-Key': crypto.randomUUID(), 'If-Match': ready.headers().etag },
+    data: { expected_release_id: publishBase.base_release_id, expected_publication_revision: publishBase.publication_revision, renderer_build_id: 'admin-pricing-3' },
   });
   expect(published.status()).toBe(201);
   const release = await published.json();
