@@ -404,7 +404,8 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	  (SELECT count(*) FROM app.payment_return_refunds WHERE tenant_id=$1 AND return_id=$3)`, p.f.tenant, p.start.OrderID, receipt.ID).Scan(&journals, &refunded, &bindings)
 	})
 	w := p.f.witness(t, p.start.OrderID)
-	if identityErr != nil || identityReceipt.Status != "rejected" || quarantined != 1 || unidentified != 0 {
+	var identityConflict *apperrors.Error
+	if !errors.As(identityErr, &identityConflict) || identityConflict.Status != 409 || identityConflict.Code != "payment_conflict" || identityReceipt.Status != "rejected" || quarantined != 1 || unidentified != 0 {
 		t.Errorf("IDENTITYLESS_REFUND_RED: receipt=%+v err=%v quarantined=%d", identityReceipt, identityErr, quarantined)
 	}
 	if err != nil || journals != 2 || bindings != 1 || refunded != completed.RefundMinor || w.cash != p.start.AmountMinor-completed.RefundMinor {
