@@ -96,7 +96,7 @@ paths:
           description: Private listing state; revision zero represents no listing yet.
           headers:
             Cache-Control: {schema: {type: string, const: no-store}}
-            ETag: {schema: {type: string}, description: Quoted listing row version, independent of locale content revision.}
+            ETag: {schema: {type: string}, description: "Quoted listing row version, independent of locale content revision."}
           content:
             application/json:
               schema: {$ref: '#/components/schemas/StaffProductListing'}
