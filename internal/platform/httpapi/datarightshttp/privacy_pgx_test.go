@@ -3,7 +3,8 @@
 // Responsibilities: prove HTTP replay, native River enqueue, failure rollback,
 // signed worker duplicates and capability custody against disposable real PG.
 // Dependencies: approved pgxadapter transactions and public service/contracts;
-// focused integration gate runs with C22A_DATABASE_URL, no raw connections.
+// focused integration gate runs with C22A_DATABASE_URL plus pgxtest.NewRole's
+// DATABASE_URL lock connection, no raw connections.
 package datarightshttp_test
 
 import (
@@ -72,6 +73,12 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 	maintenanceDSN := os.Getenv("C22A_MAINTENANCE_DATABASE_URL")
 	if maintenanceDSN == "" {
 		t.Fatal("C22A_MAINTENANCE_DATABASE_URL required")
+	}
+	// pgxtest.NewRole always locks through DATABASE_URL (roles_pgx.go:43); this
+	// fixture declares only C22A_*, so name that dependency instead of letting
+	// the helper fail with a generic connection error.
+	if os.Getenv("DATABASE_URL") == "" {
+		t.Fatal("DATABASE_URL required by pgxtest.NewRole lock connection")
 	}
 	admin, closeAdmin, err := pgxadapter.Open(ctx, maintenanceDSN)
 	if err != nil {
