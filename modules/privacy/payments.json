@@ -1,7 +1,7 @@
 {
   "version": 1,
   "module": "payments",
-  "note": "Only normalized Fake facts: no raw body, contact data, secret or provider metadata. Account and intent identifiers are provider-issued opaque operational identifiers; amounts are integer bookkeeping. Raw body digest/reference lives in reliability inbox. Account binding is immutable provisioning authority.",
+  "note": "Only normalized Fake/Stripe facts: no raw body, contact data, secret or provider metadata. Account, intent and refund identifiers are provider-issued opaque operational identifiers; delivery bindings contain only tenant-scoped foreign keys. Amounts are integer bookkeeping. Raw body digest/reference lives in reliability inbox. Account binding is immutable provisioning authority.",
   "tables": {
     "payment_provider_accounts": {
       "columns": {
@@ -45,6 +45,9 @@
         "provider_ref": {
           "classification": "operational"
         },
+        "provider_refund_id": {
+          "classification": "operational"
+        },
         "event_key": {
           "classification": "operational"
         },
@@ -70,6 +73,19 @@
           "classification": "operational"
         },
         "created_at": {
+          "classification": "operational"
+        }
+      }
+    },
+    "payment_event_deliveries": {
+      "columns": {
+        "tenant_id": {
+          "classification": "operational"
+        },
+        "id": {
+          "classification": "operational"
+        },
+        "payment_event_id": {
           "classification": "operational"
         }
       }

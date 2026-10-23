@@ -30,11 +30,12 @@ def main():
     if not re.fullmatch(r'acct_[A-Za-z0-9]+', account):
         raise SystemExit('FAIL: invalid test account identity')
     env['STRIPE_TEST_ACCOUNT_ID'] = account
+    env['STRIPE_API_KEY'] = key
     listener = subprocess.Popen([
-        'stripe', '--api-key', key, 'listen', '--forward-to',
+        'stripe', 'listen', '--forward-to',
         'http://127.0.0.1:8787/api/v1/payments/stripe/webhook', '--events',
-        'payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled,refund.created',
-    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        'payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled,refund.created,refund.updated',
+    ], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     secrets = queue.Queue(maxsize=1)
 
     def consume():

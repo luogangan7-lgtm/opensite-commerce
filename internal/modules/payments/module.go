@@ -42,6 +42,7 @@ type envelope struct {
 	Status       payment.PaymentStatus `json:"status"`
 	AmountMinor  int64                 `json:"amount_minor"`
 	Currency     string                `json:"currency"`
+	RefundID     string                `json:"refund_id,omitempty"`
 }
 
 var accountPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
@@ -122,6 +123,10 @@ func (m *Module) verify(raw []byte, signature string) (envelope, int64, error) {
 	if !accountPattern.MatchString(in.AccountID) || len(in.ProviderRef) > 200 || strings.ContainsAny(in.ProviderRef, "\r\n\x00") {
 		return in, 0, invalid()
 	}
+	if len(in.RefundID) > 200 || strings.ContainsFunc(in.RefundID, func(c rune) bool { return c < '!' || c > '~' }) ||
+		(in.RefundID != "" && in.Status != payment.StatusPartiallyRefunded && in.Status != payment.StatusRefunded) {
+		return in, 0, invalid()
+	}
 	switch in.Status {
 	case payment.StatusCaptured, payment.StatusFailed, payment.StatusCanceled, payment.StatusPartiallyRefunded, payment.StatusRefunded:
 	default:
@@ -147,6 +152,9 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 	receipt := contract.Receipt{EventID: in.EventID, Status: "pending"}
 	payload := sha256.Sum256(raw)
 	identity, _ := json.Marshal([4]string{m.config.Provider, "test", in.AccountID, in.EventID})
+	if in.RefundID != "" {
+		identity, _ = json.Marshal([5]string{m.config.Provider, "test", in.AccountID, "refund", in.RefundID})
+	}
 	eventKey := sha256.Sum256(identity)
 	err := m.config.Run(ctx, in.AccountID, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
 		delta := at.Sub(time.Unix(stamp, 0))
@@ -167,8 +175,40 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 		if e != nil {
 			return e
 		}
-		e = q.InsertPaymentEvent(ctx, db.InsertPaymentEventParams{TenantID: id(tenant), ID: inbox, ProviderAccountID: in.AccountID, ProviderRef: in.ProviderRef, EventKey: hex.EncodeToString(eventKey[:]), ClaimedOrderID: id(in.OrderID), OrderVersion: in.OrderVersion, Status: string(in.Status), AmountMinor: in.AmountMinor, Currency: in.Currency})
+		key := hex.EncodeToString(eventKey[:])
+		if in.RefundID != "" {
+			prior, err := q.GetPaymentEvent(ctx, db.GetPaymentEventParams{TenantID: id(tenant), ID: inbox})
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			if err == nil && !prior.ProviderRefundID.Valid {
+				// Exact-body replay of a legacy delivery retains its old journal key.
+				key = prior.EventKey
+			} else {
+				legacy, err := q.HasLegacyPaymentRefund(ctx, db.HasLegacyPaymentRefundParams{TenantID: id(tenant), ProviderAccountID: in.AccountID, ProviderRef: in.ProviderRef, Provider: m.config.Provider})
+				if err != nil {
+					return err
+				}
+				if legacy {
+					// No payload/refund ID survived the old parser. Retain the new
+					// delivery for reconciliation rather than infer its money identity.
+					receipt.Status = "rejected"
+					return q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: inbox, Success: false})
+				}
+			}
+		}
+		e = q.InsertPaymentEvent(ctx, db.InsertPaymentEventParams{TenantID: id(tenant), ID: inbox, ProviderAccountID: in.AccountID, ProviderRef: in.ProviderRef, EventKey: key, ClaimedOrderID: id(in.OrderID), OrderVersion: in.OrderVersion, Status: string(in.Status), AmountMinor: in.AmountMinor, Currency: in.Currency, ProviderRefundID: pgtype.Text{String: in.RefundID, Valid: in.RefundID != ""}})
 		if e != nil {
+			return e
+		}
+		bound, e := q.GetPaymentEventByKey(ctx, db.GetPaymentEventByKeyParams{TenantID: id(tenant), EventKey: key})
+		if e != nil {
+			return e
+		}
+		if bound.ProviderRef != in.ProviderRef || bound.ClaimedOrderID != id(in.OrderID) || bound.OrderVersion != in.OrderVersion || bound.Status != string(in.Status) || bound.AmountMinor != in.AmountMinor || bound.Currency != in.Currency {
+			return apperrors.New(409, "payment_conflict", "Refund fact identity is bound to different content")
+		}
+		if e = q.BindPaymentDelivery(ctx, db.BindPaymentDeliveryParams{TenantID: id(tenant), ID: inbox, PaymentEventID: bound.ID}); e != nil {
 			return e
 		}
 		rows, e := q.ListPendingPaymentEvents(ctx, db.ListPendingPaymentEventsParams{TenantID: id(tenant), ProviderAccountID: in.AccountID, ProviderRef: in.ProviderRef})
@@ -205,8 +245,17 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 			if e = q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: r.ID, Success: done}); e != nil {
 				return e
 			}
+			aliases, e := q.ListPaymentDeliveries(ctx, db.ListPaymentDeliveriesParams{TenantID: r.TenantID, PaymentEventID: r.ID})
+			if e != nil {
+				return e
+			}
+			for _, alias := range aliases {
+				if e = q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: alias, Success: done}); e != nil {
+					return e
+				}
+			}
 		}
-		current, e := q.GetPaymentEvent(ctx, db.GetPaymentEventParams{TenantID: id(tenant), ID: inbox})
+		current, e := q.GetPaymentEventByKey(ctx, db.GetPaymentEventByKeyParams{TenantID: id(tenant), EventKey: key})
 		if e != nil {
 			return e
 		}
@@ -214,6 +263,9 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 			receipt.Status = "processed"
 		} else if current.ErrorCode.Valid {
 			receipt.Status = "rejected"
+		}
+		if current.ID != inbox && (current.Applied || current.ErrorCode.Valid) {
+			return q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: inbox, Success: current.Applied})
 		}
 		return nil
 	})

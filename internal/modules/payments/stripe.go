@@ -1,7 +1,7 @@
 // Responsibility: Stripe TEST MODE implementation of the existing Payment Port.
 // Dependencies: net/http, env-only credentials, mapped DB account and Checkout;
 // callers: bootstrap/CI. No live keys, customer data, redirect or endpoint override.
-// Provider errors are bounded; uncertain effects never get NoSideEffect proof.
+// Provider errors are bounded; only terminal failed/canceled refunds prove no effect.
 package payments
 
 import (
@@ -227,8 +227,11 @@ func (s *Stripe) Refund(ctx context.Context, r payment.PaymentOperation) (paymen
 	found := false
 	for _, v := range list.Data {
 		if v.Metadata["osc_key"] == key {
-			if v.Amount != r.Amount.Amount || v.Status != "succeeded" {
+			if v.Amount != r.Amount.Amount {
 				return payment.PaymentIntentResult{}, stripeError(payment.ErrorStateConflict)
+			}
+			if err := stripeRefundStatus(v.Status); err != nil {
+				return payment.PaymentIntentResult{}, err
 			}
 			found = true
 		}
@@ -244,8 +247,8 @@ func (s *Stripe) Refund(ctx context.Context, r payment.PaymentOperation) (paymen
 		if err = s.request(ctx, "POST", "refunds", key, f, &refund); err != nil {
 			return payment.PaymentIntentResult{}, err
 		}
-		if refund.Status != "succeeded" {
-			return payment.PaymentIntentResult{}, stripeError(payment.ErrorRetryable)
+		if err := stripeRefundStatus(refund.Status); err != nil {
+			return payment.PaymentIntentResult{}, err
 		}
 	}
 	o, err = s.intent(ctx, r)
@@ -263,4 +266,17 @@ func (s *Stripe) Refund(ctx context.Context, r payment.PaymentOperation) (paymen
 		status = payment.StatusRefunded
 	}
 	return payment.PaymentIntentResult{ProviderRef: r.ProviderRef, Status: status}, nil
+}
+
+// Both creation and durable recovery use the same terminal effect proof.
+// Pending/unknown states cannot release a reservation while money may still move.
+func stripeRefundStatus(status string) error {
+	switch status {
+	case "succeeded":
+		return nil
+	case "failed", "canceled":
+		return &payment.PaymentError{Code: payment.ErrorNonRetryable, Message: "Stripe refund terminated without effect", NoSideEffect: true}
+	default:
+		return stripeError(payment.ErrorRetryable)
+	}
 }

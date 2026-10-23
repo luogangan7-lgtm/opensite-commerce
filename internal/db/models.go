@@ -622,6 +622,13 @@ type AppPaymentEvent struct {
 	Applied           bool               `json:"applied"`
 	ErrorCode         pgtype.Text        `json:"error_code"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	ProviderRefundID  pgtype.Text        `json:"provider_refund_id"`
+}
+
+type AppPaymentEventDelivery struct {
+	TenantID       pgtype.UUID `json:"tenant_id"`
+	ID             pgtype.UUID `json:"id"`
+	PaymentEventID pgtype.UUID `json:"payment_event_id"`
 }
 
 type AppPaymentProviderAccount struct {
