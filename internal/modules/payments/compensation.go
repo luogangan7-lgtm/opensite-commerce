@@ -66,3 +66,16 @@ func (m *Module) receiveTerminal(ctx context.Context, raw []byte, in envelope, s
 	}
 	return out, err
 }
+
+func retainRefundCase(ctx context.Context, q *db.Queries, in envelope, hash [32]byte, reason string) error {
+	if in.RefundID == "" {
+		return nil
+	}
+	raw, err := json.Marshal(map[string]string{"account_id": in.AccountID, "refund_id": in.RefundID,
+		"provider_ref": in.ProviderRef, "event_id": in.EventID, "payload_hash": hex.EncodeToString(hash[:]), "reason": reason})
+	if err != nil {
+		return err
+	}
+	_, err = q.RetainRefundCase(ctx, raw)
+	return err
+}

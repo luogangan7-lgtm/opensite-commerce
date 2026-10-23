@@ -153,6 +153,7 @@ func New(config Config) (server *http.Server, err error) {
 		stripeRoute = payments.StripeRoute(config.Stripe)
 	}
 	routes = append(routes, stripeRoute)
+	routes = append(routes, payments.NewReconciliationHTTP(config.Orders.Read).Routes()...)
 	routes = append(routes, catalog.New(config.Catalog).Routes()...)
 	routes = append(routes, pricing.New(config.Pricing).Routes()...)
 	routes = append(routes, media.New(config.Media).Routes()...)

@@ -889,9 +889,13 @@
         "payment_return_refunds",
         "payment_refund_attempts",
         "payment_refund_reversals",
-        "payment_refund_terminals"
+        "payment_refund_terminals",
+        "payment_refund_cases",
+        "payment_refund_case_deliveries",
+        "payment_refund_case_resolutions"
       ],
       "operations": [
+        {"operation_id":"listRefundCases","status":"implemented"},
         {
           "operation_id": "receiveFakePaymentEvent",
           "status": "implemented"
@@ -907,6 +911,9 @@
         "ledger"
       ],
       "tests": [
+        "internal/db/refund_recovery_integration_test.go",
+        "internal/modules/payments/reconciliation_http_test.go",
+        "tests/db_refund_recovery.sql",
         "internal/contracts/payment/v1/payment_test.go",
         "internal/paymentfake/fake_test.go",
         "internal/db/payments_webhook_integration_test.go",
@@ -920,7 +927,7 @@
         "tests/db_stripe_sandbox.sql",
         "internal/db/stripe_sandbox_integration_test.go"
       ],
-      "scopes": [],
+      "scopes": ["returns:write"],
       "legacy_go_paths": [
         "internal/contracts/payment/v1",
         "internal/paymentfake"
@@ -1877,6 +1884,7 @@
       "owner": "payments",
       "touches_tables": ["payment_events", "payment_event_deliveries"]
     },
+    {"file":"migrations/pending/c19d3-recovery_refund_reconciliation.sql","owner":"payments","touches_tables":["payment_refund_cases","payment_refund_case_deliveries","payment_refund_case_resolutions"]},
     {"file":"migrations/pending/c19d2-terminal_refund_compensation_terminal.sql","owner":"payments","touches_tables":["payment_refund_terminals","payment_return_refunds","checkout_sessions"]},
     {"file":"migrations/pending/c19d2-projections_refund_compensation_projections.sql","owner":"orders","touches_tables":["orders","returns","checkout_sessions"]},
     {"file":"migrations/pending/c19d2-finalizer_atomic_refund_compensation.sql","owner":"payments","touches_tables":["payment_refund_attempts","payment_refund_reversals","payment_refund_terminals","checkout_sessions","webhook_inbox"]},

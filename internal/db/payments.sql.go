@@ -412,6 +412,17 @@ func (q *Queries) MatchPaymentReturnRefund(ctx context.Context, arg MatchPayment
 	return result, err
 }
 
+const openRefundCases = `-- name: OpenRefundCases :one
+SELECT app.payments_open_refund_cases($1::uuid)::jsonb AS result
+`
+
+func (q *Queries) OpenRefundCases(ctx context.Context, afterID pgtype.UUID) ([]byte, error) {
+	row := q.db.QueryRow(ctx, openRefundCases, afterID)
+	var result []byte
+	err := row.Scan(&result)
+	return result, err
+}
+
 const postPaymentReturnRefund = `-- name: PostPaymentReturnRefund :one
 SELECT app.payments_post_return_refund($1::uuid,$2::text,$3::text)::uuid AS id
 `
@@ -427,6 +438,38 @@ func (q *Queries) PostPaymentReturnRefund(ctx context.Context, arg PostPaymentRe
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const refundCaseEvidence = `-- name: RefundCaseEvidence :one
+SELECT app.payments_refund_case_evidence($1::text,$2::text)::jsonb AS result
+`
+
+type RefundCaseEvidenceParams struct {
+	EventID   string `json:"event_id"`
+	AccountID string `json:"account_id"`
+}
+
+func (q *Queries) RefundCaseEvidence(ctx context.Context, arg RefundCaseEvidenceParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, refundCaseEvidence, arg.EventID, arg.AccountID)
+	var result []byte
+	err := row.Scan(&result)
+	return result, err
+}
+
+const replayRefundCase = `-- name: ReplayRefundCase :one
+SELECT app.payments_replay_refund_case($1::uuid,$2::jsonb)::jsonb AS result
+`
+
+type ReplayRefundCaseParams struct {
+	CaseID pgtype.UUID `json:"case_id"`
+	Fact   []byte      `json:"fact"`
+}
+
+func (q *Queries) ReplayRefundCase(ctx context.Context, arg ReplayRefundCaseParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, replayRefundCase, arg.CaseID, arg.Fact)
+	var result []byte
+	err := row.Scan(&result)
+	return result, err
 }
 
 const resolveFakePaymentAccount = `-- name: ResolveFakePaymentAccount :one
@@ -447,6 +490,20 @@ func (q *Queries) ResolveFakePaymentAccount(ctx context.Context, account string)
 	return i, err
 }
 
+const resolveRefundCase = `-- name: ResolveRefundCase :exec
+SELECT app.payments_resolve_refund_case($1::uuid,$2::jsonb)
+`
+
+type ResolveRefundCaseParams struct {
+	CaseID     pgtype.UUID `json:"case_id"`
+	Resolution []byte      `json:"resolution"`
+}
+
+func (q *Queries) ResolveRefundCase(ctx context.Context, arg ResolveRefundCaseParams) error {
+	_, err := q.db.Exec(ctx, resolveRefundCase, arg.CaseID, arg.Resolution)
+	return err
+}
+
 const resolveStripePaymentAccount = `-- name: ResolveStripePaymentAccount :one
 SELECT tenant_id::uuid,at_time::timestamptz FROM app.resolve_stripe_payment_account($1::text)
 `
@@ -461,6 +518,18 @@ func (q *Queries) ResolveStripePaymentAccount(ctx context.Context, account strin
 	var i ResolveStripePaymentAccountRow
 	err := row.Scan(&i.TenantID, &i.AtTime)
 	return i, err
+}
+
+const retainRefundCase = `-- name: RetainRefundCase :one
+SELECT app.payments_retain_refund_case($1::jsonb)::uuid AS id
+`
+
+// Responsibility: Payments' closed reconciliation ports; no cross-module DML.
+func (q *Queries) RetainRefundCase(ctx context.Context, fact []byte) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, retainRefundCase, fact)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const setPaymentEventOutcome = `-- name: SetPaymentEventOutcome :exec

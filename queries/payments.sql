@@ -47,3 +47,15 @@ SELECT app.payments_finalize_refund(sqlc.arg(fact)::jsonb)::jsonb AS result;
 SELECT app.payments_refund_terminal(sqlc.arg(account)::text,sqlc.arg(provider_refund_id)::text,sqlc.arg(order_id)::uuid,sqlc.arg(provider_ref)::text,sqlc.arg(payment_version)::bigint,sqlc.arg(amount_minor)::bigint,sqlc.arg(currency)::text)::boolean AS terminal;
 -- name: PostPaymentReturnRefund :one
 SELECT app.payments_post_return_refund(sqlc.arg(return_id)::uuid,sqlc.arg(attempt_key)::text,sqlc.arg(provider_refund_id)::text)::uuid AS id;
+
+-- Responsibility: Payments' closed reconciliation ports; no cross-module DML.
+-- name: RetainRefundCase :one
+SELECT app.payments_retain_refund_case(sqlc.arg(fact)::jsonb)::uuid AS id;
+-- name: RefundCaseEvidence :one
+SELECT app.payments_refund_case_evidence(sqlc.arg(event_id)::text,sqlc.arg(account_id)::text)::jsonb AS result;
+-- name: ReplayRefundCase :one
+SELECT app.payments_replay_refund_case(sqlc.arg(case_id)::uuid,sqlc.arg(fact)::jsonb)::jsonb AS result;
+-- name: ResolveRefundCase :exec
+SELECT app.payments_resolve_refund_case(sqlc.arg(case_id)::uuid,sqlc.arg(resolution)::jsonb);
+-- name: OpenRefundCases :one
+SELECT app.payments_open_refund_cases(sqlc.narg(after_id)::uuid)::jsonb AS result;

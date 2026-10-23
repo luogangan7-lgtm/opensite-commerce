@@ -1625,6 +1625,49 @@ SQL
  fi
 done
 
+# C19d3 gate132: recovery races signed finalization through the same financial owner.
+for isolation in 'read committed' 'repeatable read' 'serializable'; do
+ read -r T OID LID SKU <<<"$(fulfillment_fixture true)"
+ RID="$(sql <<SQL | tail -1
+BEGIN;SELECT set_config('app.tenant_id','$T',true);SET LOCAL ROLE app_runtime;
+SELECT app.returns_create('$OID',2,'c19d2-rma','unshipped_cancel','c19d2','[{"order_line_id":"$LID","quantity":2}]')->>'id' AS rid \gset
+RESET ROLE;
+SELECT id AS income FROM app.ledger_accounts WHERE tenant_id='$T' AND code='revenue' \gset
+SELECT id AS tax FROM app.ledger_accounts WHERE tenant_id='$T' AND code='tax_payable' \gset
+SELECT id AS shipping FROM app.ledger_accounts WHERE tenant_id='$T' AND code='shipping_revenue' \gset
+SELECT id AS cash FROM app.ledger_accounts WHERE tenant_id='$T' AND code='cash' \gset
+SET LOCAL ROLE app_returns_service;
+SELECT app.returns_prepare_refund(:'rid',3,'c19d2-money','captured-race',1,:'income',:'tax',:'shipping',:'cash');
+SELECT app.payments_post_return_refund(:'rid','c19d2-money','c19d2-refund') AS jid \gset
+SELECT app.returns_complete_refund(:'rid','c19d2-money','captured-race',:'jid');
+COMMIT; SELECT :'rid';
+SQL
+ )"
+ terminal="SELECT app.payments_finalize_refund(jsonb_build_object('tenant_id','$T','provider','fake','account_id','c19d2-$T','refund_id','c19d2-refund',
+ 'event_id','c19d2-terminal','provider_ref','captured-race','order_id','$OID','order_version',1,'amount_minor',14,'currency','USD','status','failed',
+ 'timestamp',extract(epoch FROM clock_timestamp())::bigint,'payload_hash',encode(sha256('terminal'::bytea),'hex')));"
+ fact=${terminal#"SELECT app.payments_finalize_refund("}; fact=${fact%");"}
+ tx c19d3_retain app_payments_ingress "$T" "SELECT app.payments_retain_refund_case(($fact)||jsonb_build_object('reason','unmatched_refund'));";expect c19d3_retain ok
+ CASE_ID=$(sql <<<"SELECT id FROM app.payment_refund_cases WHERE tenant_id='$T';" | tail -1)
+ replay="SELECT app.payments_replay_refund_case('$CASE_ID',$fact);"
+ gate_close 132
+ tx c19d3_first app_payments_ingress "$T" "$replay $(park 132)" & first=$!
+ await c19d3_first advisory
+ tx c19d3_second app_payments_ingress "$T" "$terminal" "SET default_transaction_isolation='$isolation';" & second=$!
+ await c19d3_second advisory
+ gate_open 132
+ await_job c19d3_first "$first";await_job c19d3_second "$second"
+ expect c19d3_first ok
+ if [[ $isolation == 'read committed' ]]; then expect c19d3_second ok; else expect c19d3_second 40001; fi
+ tx c19d3_retry app_payments_ingress "$T" "$terminal";expect c19d3_retry ok
+ got=$(sql <<<"SELECT o.state||'|'||o.refunded_minor||'|'||r.status||'|'||(SELECT count(*) FROM app.payment_refund_reversals WHERE tenant_id='$T')||'|'||c.refunded_net_minor||'|'||c.refunded_tax_minor||'|'||c.refunded_shipping_minor FROM app.orders o JOIN app.returns r ON(r.tenant_id,r.order_id)=(o.tenant_id,o.id) JOIN app.checkout_sessions c ON(c.tenant_id,c.order_id)=(o.tenant_id,o.id) WHERE o.tenant_id='$T';")
+ if [[ $got == 'paid|0|refund_compensated|1|0|0|0' ]]; then
+  echo "PASS C19D3 gate132 exactly-once compensation $isolation"
+ else
+  echo "FAIL C19D3_RECOVERY_RACE $isolation $got";fail=1
+ fi
+done
+
 # C-19a gates93/94: actual inbox unique-key contention and public stream lock.
 # Separate connections must be observed blocked before release; no timed ordering.
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('payments-gate93') RETURNING id;" | tail -1)

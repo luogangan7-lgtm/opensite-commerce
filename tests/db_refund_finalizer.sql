@@ -21,7 +21,7 @@ BEGIN
   END LOOP;
  END LOOP;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
-  expected:=f.proname IN('payments_finalize_refund','resolve_fake_payment_account','resolve_stripe_payment_account');
+  expected:=f.proname IN('payments_finalize_refund','resolve_fake_payment_account','resolve_stripe_payment_account','payments_retain_refund_case','payments_refund_case_evidence','payments_replay_refund_case','payments_resolve_refund_case');
   IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM expected
    OR has_function_privilege(r.oid,f.oid,'EXECUTE WITH GRANT OPTION') THEN RAISE EXCEPTION 'C19D2_INGRESS_FUNCTION %',f.proname; END IF;
  END LOOP;
