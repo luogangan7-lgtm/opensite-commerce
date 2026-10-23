@@ -24,6 +24,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	orderscontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
@@ -100,7 +101,7 @@ func newCheckoutAdoptionPG(t *testing.T) checkoutAdoptionPG {
 	}
 	op := &checkoutAdoptionOrdersProbe{Service: orders.New()}
 	pp := &checkoutAdoptionPaymentProbe{checkoutPaymentProbe: f.provider}
-	f.service = checkout.New(checkout.Config{Run: f.run, Orders: op, Ledger: ledger.New(), Payment: pp})
+	f.service = checkout.New(checkout.Config{Run: f.run, Orders: op, Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: pp})
 	adopter, ok := any(f.service).(checkoutExistingOrderAdopter)
 	if !ok {
 		t.Fatal("FIX57_ADOPTION_MISSING: production checkout.New cannot adopt an existing sealed customer order")

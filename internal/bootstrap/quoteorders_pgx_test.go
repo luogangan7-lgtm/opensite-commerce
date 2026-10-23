@@ -27,6 +27,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	oc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
@@ -186,7 +187,7 @@ func quoteOrdersDB(t *testing.T, expiry time.Duration) *quoteOrderFixture {
 	}
 	f.fake = paymentfake.New()
 	f.prepay = &quoteOrderPaymentProbe{fake: f.fake}
-	f.checkout = checkout.New(checkout.Config{Run: f.runner.InTenant, Orders: orders.New(), Ledger: ledger.New(), Payment: f.prepay})
+	f.checkout = checkout.New(checkout.Config{Run: f.runner.InTenant, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: f.prepay})
 	f.app, err = bootstrap.NewQuoteConversion(bootstrap.QuoteConversionConfig{Runner: f.runner, Quotes: m, Orders: orders.NewQuoteCreator()}, f.checkout)
 	if err != nil {
 		t.Fatal(err)

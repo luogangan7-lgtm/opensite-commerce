@@ -17,6 +17,7 @@ import (
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
 )
 
@@ -78,7 +79,7 @@ func (p *checkoutFailureRacePort) Capture(ctx context.Context, in payment.Paymen
 }
 func checkoutFailureRaceService(f *checkoutPGFixture, p payment.Port) checkoutcontract.Service {
 	rules := checkout.NewSQLRules(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 100}}}})
-	return checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: ledger.New(), Payment: p})
+	return checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: p})
 }
 func checkoutFailureRaceAwait(t *testing.T, ctx context.Context, ch <-chan struct{}) {
 	t.Helper()
