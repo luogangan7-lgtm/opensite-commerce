@@ -1039,7 +1039,8 @@
       ],
       "scopes": [
         "quotes:read",
-        "quotes:write"
+        "quotes:write",
+        "quotes:convert"
       ],
       "note": "C-17a immutable approved quote snapshots; C-18b conversion receipts and scoped internal Orders keys. FIX-57 typed bootstrap composition adopts sealed Orders through unified checkout; only signed verified Confirm can capture/post Ledger/write order.paid. Unconfigured buyer admission remains closed; explicit development/test Fake only."
     },
