@@ -24,13 +24,13 @@ func TestPGListingFollowups(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var product, site string
-	run := func(fn func(context.Context, pgx.Tx) error) {
+	run := func(t *testing.T, fn func(context.Context, pgx.Tx) error) {
 		t.Helper()
 		if err := runner.InTenant(ctx, a, fn); err != nil {
 			t.Fatal(err)
 		}
 	}
-	run(func(ctx context.Context, tx pgx.Tx) error {
+	run(t, func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := NewCSV().Import(ctx, tx, strings.NewReader(csvPGInput([]string{"LISTING", "First", "", "en"}))); err != nil {
 			return err
 		}
@@ -54,7 +54,7 @@ func TestPGListingFollowups(t *testing.T) {
 	path := "/api/v1/t/" + a + "/products/" + product + "/listings/" + site + "/en"
 	body := `{"slug":"winner","listed":true,"content_revision":1}`
 	t.Run("unserved queue", func(t *testing.T) {
-		run(func(ctx context.Context, tx pgx.Tx) error {
+		run(t, func(ctx context.Context, tx pgx.Tx) error {
 			var n int
 			err := tx.QueryRow(ctx, `SELECT count(*) FROM app.serving_invalidations WHERE tenant_id=$1 AND site_id=$2`, a, site).Scan(&n)
 			if n != 0 {
@@ -73,7 +73,7 @@ func TestPGListingFollowups(t *testing.T) {
 		}
 	})
 	t.Run("slug conflict rollback", func(t *testing.T) {
-		run(func(ctx context.Context, tx pgx.Tx) error {
+		run(t, func(ctx context.Context, tx pgx.Tx) error {
 			if _, err := NewCSV().Import(ctx, tx, strings.NewReader(csvPGInput([]string{"LISTING-OTHER", "Other", "", "en"}))); err != nil {
 				return err
 			}
@@ -178,7 +178,7 @@ func TestPGListingFollowups(t *testing.T) {
 		if one != 200 || two != 412 {
 			t.Errorf("LISTING_RACE statuses %d/%d want 200/412", one, two)
 		}
-		run(func(ctx context.Context, tx pgx.Tx) error {
+		run(t, func(ctx context.Context, tx pgx.Tx) error {
 			var slug string
 			err := tx.QueryRow(ctx, `SELECT slug FROM app.product_listings WHERE tenant_id=$1 AND site_id=$2 AND product_id=$3 AND locale='en'`, a, site, product).Scan(&slug)
 			if slug != "race-winner" {
@@ -189,16 +189,27 @@ func TestPGListingFollowups(t *testing.T) {
 	})
 	t.Run("legacy writes advance listing ETag", func(t *testing.T) {
 		before := expect(t, r, "GET", path, "", "", 200).Header().Get("ETag")
-		run(func(ctx context.Context, tx pgx.Tx) error {
+		run(t, func(ctx context.Context, tx pgx.Tx) error {
 			_, err := tx.Exec(ctx, `UPDATE app.product_listings SET slug='legacy' WHERE tenant_id=$1 AND site_id=$2 AND product_id=$3 AND locale='en'`, a, site, product)
 			return err
 		})
 		after := expect(t, r, "GET", path, "", "", 200).Header().Get("ETag")
+		run(t, func(ctx context.Context, tx pgx.Tx) error {
+			version, err := contentVersion(before)
+			if err != nil {
+				return err
+			}
+			n, err := db.New(tx).WriteCatalogListing(ctx, db.WriteCatalogListingParams{TenantID: dbID(uuid.MustParse(a)), SiteID: dbID(uuid.MustParse(site)), ProductID: dbID(uuid.MustParse(product)), Locale: "en", Slug: "sql-stale", Listed: true, ContentRevision: 1, ExpectedVersion: version})
+			if n != 0 {
+				return fmt.Errorf("LISTING_SQL_CAS affected %d want 0", n)
+			}
+			return err
+		})
 		if before == after {
 			t.Error("LISTING_LEGACY did not advance ETag")
 		}
 		expect(t, r, "PUT", path, body, before, 412)
-		run(func(ctx context.Context, tx pgx.Tx) error {
+		run(t, func(ctx context.Context, tx pgx.Tx) error {
 			_, err := NewCSV().Import(ctx, tx, strings.NewReader(csvPGInput([]string{"LISTING", "Content only", "", "en"})))
 			return err
 		})
@@ -224,7 +235,7 @@ func TestPGListingFollowups(t *testing.T) {
 		}
 		initial := expect(t, r, "GET", path, "", "", 200).Header().Get("ETag")
 		expect(t, r, "PUT", path, body, initial, 200)
-		run(func(ctx context.Context, tx pgx.Tx) error {
+		run(t, func(ctx context.Context, tx pgx.Tx) error {
 			if _, err := NewCSV().Import(ctx, tx, strings.NewReader(csvPGInput([]string{"LISTING", "Served content", "", "en"}))); err != nil {
 				return err
 			}

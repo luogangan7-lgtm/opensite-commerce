@@ -111,9 +111,6 @@ func (s *Service) GetProductListing(ctx context.Context, r httpapi.GetProductLis
 	var result httpapi.StaffProductListing
 	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
 		var err error
-		if n != 1 {
-			return stale()
-		}
 		result, err = listing(ctx, q, r.TenantId, r.ProductId, r.SiteId, r.Locale)
 		return err
 	})
