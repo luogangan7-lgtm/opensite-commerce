@@ -58,7 +58,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
       currency: 'USD', expires_at: '2030-01-01T00:00:00Z',
       lines: [{ product_id: 'c0900007-0000-4000-8000-000000000002', variant_id: 'c2400008-0000-4000-8000-000000000002',
         description: 'Negotiated ceramic mugs', quantity: 2, unit_price: 1000, tax_category: 'standard' }],
-      destination: { country: 'US' }, shipping_profile_id: 'c2400014-0000-4000-8000-000000000001', weight_g: 200,
+      destination: { country: 'US', subdivision: '' }, shipping_profile_id: 'c2400014-0000-4000-8000-000000000001', weight_g: 200,
     } });
     expect(quoteResponse.status(), await quoteResponse.text()).toBe(201);
     const quote = await quoteResponse.json();
