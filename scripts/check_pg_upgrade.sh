@@ -169,10 +169,11 @@ PAYMENTS_DB=""
 FULFILLMENT_DB=""
 CONVERSION_DB=""
 CLOCK_DB=""
+RECOVERY_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1343,6 +1344,33 @@ result=$(db "$LISTING_DB" -c "UPDATE app.product_listings SET slug='updated' RET
 admin -c "DROP DATABASE $LISTING_DB" >/dev/null; LISTING_DB=""
 pass 'listing upgrade preserves old state and legacy writes advance listing version'
 
+# C19d3: populated pre-recovery quarantine is imported without guessing money.
+recovery_files=(migrations/[0-9][0-9][0-9]_refund_reconciliation.sql)
+[[ ${#recovery_files[@]} == 1 ]] || { bad 'exactly one reconciliation migration required'; exit 1; }
+RECOVERY_DB=upgrade_refund_recovery_$$
+admin -c "CREATE DATABASE $RECOVERY_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${recovery_files[0]} ]] || break
+ apply_forward "$RECOVERY_DB" "$f"
+done
+db "$RECOVERY_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('recovery-upgrade') RETURNING id AS t \gset
+INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment)
+ VALUES(:'t','stripe','acct_recovery_upgrade','test');
+INSERT INTO app.webhook_inbox(tenant_id,provider,provider_account_id,environment,provider_event_id,payload_hash,payload_reference,status)
+ VALUES(:'t','stripe','acct_recovery_upgrade','test','evt_recovery_upgrade',sha256('retained-only'::bytea),'payment-event:retained','failed');
+SQL
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${recovery_files[0]} ]] && continue
+ apply_forward "$RECOVERY_DB" "$f"
+done
+result=$(db "$RECOVERY_DB" -c "SELECT count(*)||'|'||bool_and(c.provider_refund_id IS NULL AND c.provider_ref IS NULL AND c.evidence_hash=i.payload_hash)||'|'||(SELECT count(*) FROM app.payment_refund_case_resolutions)||'|'||(SELECT count(*) FROM app.payment_refund_reversals) FROM app.payment_refund_cases c JOIN app.payment_refund_case_deliveries d ON(d.tenant_id,d.case_id)=(c.tenant_id,c.id) JOIN app.webhook_inbox i ON(i.tenant_id,i.id)=(d.tenant_id,d.inbox_id);")
+[[ $result == '1|true|0|0' ]] || bad "C19D3_UPGRADE_QUARANTINE $result"
+db "$RECOVERY_DB" -f tests/db_role_matrix.sql >/dev/null
+db "$RECOVERY_DB" -f tests/db_refund_recovery.sql >/dev/null
+admin -c "DROP DATABASE $RECOVERY_DB" >/dev/null; RECOVERY_DB=""
+pass 'reconciliation upgrade preserves original Inbox evidence without invented bindings or money'
+
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
 # Quotes takes over the existing005 inquiry table without rebuilding contacts.
@@ -1727,6 +1755,33 @@ result=$(db "$DB" -c "SELECT (SELECT count(*) FROM app.payment_refund_attempts)|
 admin -c "DROP DATABASE $DB"; FULFILLMENT_DB=""
 pass 'fulfillment upgrade preserves paid inventory and compensates only unshipped quantities'
 
+
+# C19d3: populated pre-recovery quarantine is imported without guessing money.
+recovery_files=(migrations/[0-9][0-9][0-9]_refund_reconciliation.sql)
+[[ ${#recovery_files[@]} == 1 ]] || { bad 'exactly one reconciliation migration required'; exit 1; }
+RECOVERY_DB=upgrade_refund_recovery_$$
+admin -c "CREATE DATABASE $RECOVERY_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${recovery_files[0]} ]] || break
+ apply_forward "$RECOVERY_DB" "$f"
+done
+db "$RECOVERY_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('recovery-upgrade') RETURNING id AS t \gset
+INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment)
+ VALUES(:'t','stripe','acct_recovery_upgrade','test');
+INSERT INTO app.webhook_inbox(tenant_id,provider,provider_account_id,environment,provider_event_id,payload_hash,payload_reference,status)
+ VALUES(:'t','stripe','acct_recovery_upgrade','test','evt_recovery_upgrade',sha256('retained-only'::bytea),'payment-event:retained','failed');
+SQL
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${recovery_files[0]} ]] && continue
+ apply_forward "$RECOVERY_DB" "$f"
+done
+result=$(db "$RECOVERY_DB" -c "SELECT count(*)||'|'||bool_and(c.provider_refund_id IS NULL AND c.provider_ref IS NULL AND c.evidence_hash=i.payload_hash)||'|'||(SELECT count(*) FROM app.payment_refund_case_resolutions)||'|'||(SELECT count(*) FROM app.payment_refund_reversals) FROM app.payment_refund_cases c JOIN app.payment_refund_case_deliveries d ON(d.tenant_id,d.case_id)=(c.tenant_id,c.id) JOIN app.webhook_inbox i ON(i.tenant_id,i.id)=(d.tenant_id,d.inbox_id);")
+[[ $result == '1|true|0|0' ]] || bad "C19D3_UPGRADE_QUARANTINE $result"
+db "$RECOVERY_DB" -f tests/db_role_matrix.sql >/dev/null
+db "$RECOVERY_DB" -f tests/db_refund_recovery.sql >/dev/null
+admin -c "DROP DATABASE $RECOVERY_DB" >/dev/null; RECOVERY_DB=""
+pass 'reconciliation upgrade preserves original Inbox evidence without invented bindings or money'
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1

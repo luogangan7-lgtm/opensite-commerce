@@ -87,7 +87,49 @@ success command. Both success entrypoints honor terminal tombstones. Historic RM
 receipts, stock and allocations remain immutable; compensated entitlements stay
 sealed and unavailable to other RMAs. Replacement attempts remain disabled here.
 
-Part 3 adds retained cases/leases, recovery/operator entrypoints, observability
-and actual Stripe lifecycle acceptance. An uncertain provider retrieval retains a
+Part 3 provides retained cases, explicit recovery/operator ports and observability.
+Actual Stripe post-success lifecycle acceptance remains NOT_RUN. An uncertain provider retrieval retains a
 failed Inbox without releasing money. No replacement refund is automatic; live
 enablement and real post-success Stripe lifecycle acceptance remain separate.
+
+## Reconciliation and recovery (part 3)
+
+`payment_refund_cases`, contributing `payment_refund_case_deliveries` and
+`payment_refund_case_resolutions` are tenant-bound, FORCE RLS, append-only.
+Known refunds share provider/account/test/refund identity; old unbound Inbox
+rows retain account/event identity and their original hash. No amount-based
+legacy journal matching is attempted. The public finalizer atomically appends
+verified resolution only with the persisted terminal/posted reversal witness.
+Case/audit failure rolls back the financial transaction. No process clock or
+provider event creation time orders financial state.
+
+`Stripe.ReplayRefundCase(eventID)` reads retained evidence, commits, retrieves
+the immutable event and current refund outside DB locks, and enters the same
+Part 2 finalizer through the dedicated ingress pool. Only confirmed terminal
+failed/canceled observations may replay; succeeded/nonterminal or conflicting
+facts remain open for investigation. Replay preserves the original Inbox hash.
+Legacy bindings that the finalizer cannot prove remain quarantined. There is
+no background claim/lease worker or automatic PSP mutation in this bounded card.
+
+`ResolveRefundCase` is a trusted composition port, with no public mutation route.
+It requires a current owner/admin session or scoped API-key credential, bounded
+reason (`external_verified`, `duplicate_confirmed`, `no_posting_required`) and
+SHA-256 evidence reference. SQL revalidates authority under locks, preserves the
+verifier and DB time, and changes no journal, capacity, RMA or Inbox receipt.
+A later verified terminal observation appends its own financial resolution;
+the prior operator decision remains visible in history.
+
+Staff GET `/api/v1/t/{tenant_id}/payments/refund-cases` uses the existing
+`returns:write` refund scope, authorized read-only snapshot, ID cursor and
+100-item bound. It returns only opaque case IDs, bounded reasons and timestamps;
+count and oldest age cover the full tenant backlog. `payment_refund_cases_open`
+logs those two measurements when read; the existing reconciliation warning
+continues on quarantine and `refund_compensation_completed` marks recovery.
+
+Operational procedure: inspect the tenant backlog, investigate immutable event
+and authenticated account/capture binding, then explicitly invoke verified
+replay or record the reviewed non-posting reason/evidence through the trusted
+port. Retrieval errors leave the case open; retry is an explicit supervised
+operation. Never send a replacement refund from this procedure. Escalate aging
+or contradictory bindings to the Payments owner; production enablement and
+provider-balance reconciliation acceptance remain separate owner gates.

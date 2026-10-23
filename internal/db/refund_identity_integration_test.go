@@ -239,6 +239,7 @@ func TestStripeRefundFailedAfterSuccess(t *testing.T) {
 						return fn(ctx, tx, tenant, at)
 					})
 				}
+				retrievalDown := false
 				config := payments.Config{Run: run, Apply: f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent, Admit: func(context.Context, payment.CreatePaymentIntent, bool) error { return nil }}
 				if enabled {
 					config.TerminalRun = func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
@@ -251,6 +252,12 @@ func TestStripeRefundFailedAfterSuccess(t *testing.T) {
 					}
 					old := http.DefaultTransport
 					http.DefaultTransport = compensationTransport(func(req *http.Request) (*http.Response, error) {
+						if retrievalDown {
+							return &http.Response{StatusCode: 503, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
+						}
+						if req.Method == "GET" && req.URL.Path == "/v1/events/evt_terminal" {
+							return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"id":"evt_terminal","type":"refund.failed","livemode":false,"data":{"object":{"id":"re_transition","payment_intent":"pi_refundtransition","status":"` + terminal + `","amount":1,"currency":"usd"}}}`)), Header: make(http.Header)}, nil
+						}
 						if req.Method != "GET" || req.URL.Path != "/v1/refunds/re_transition" {
 							return nil, fmt.Errorf("unexpected provider command %s", req.Method)
 						}
@@ -298,6 +305,17 @@ func TestStripeRefundFailedAfterSuccess(t *testing.T) {
 					t.Fatalf("refund was not journaled exactly once: %+v", posted)
 				}
 				if enabled {
+					retrievalDown = true
+					if deliver("evt_terminal", "refund.failed", terminal, 1) != "unmatched" || f.witness(t, start.OrderID).cash != posted.cash {
+						t.Fatal("C19D3 retrieval outage lost quarantine")
+					}
+					retrievalDown = false
+					for i := 0; i < 2; i++ {
+						receipt, err := s.ReplayRefundCase(f.ctx, "evt_terminal")
+						if err != nil || receipt.Status != "processed" {
+							t.Fatalf("C19D3_STRIPE_RECOVERY_RED: %+v %v", receipt, err)
+						}
+					}
 					for i := 0; i < 2; i++ {
 						if deliver("evt_terminal", "refund.failed", terminal, 1) != "processed" {
 							t.Fatal("C19D2_SIGNED_STRIPE_RED")

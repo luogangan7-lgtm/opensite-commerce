@@ -4422,6 +4422,41 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+  /api/v1/t/{tenant_id}/payments/refund-cases:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+    get:
+      tags: [Payments]
+      operationId: listRefundCases
+      x-opensite-status: implemented
+      x-opensite-access: AdminOrAPIKey
+      x-required-scope: returns:write
+      description: Open refund reconciliation cases. Existing owner/admin refund authority; opaque case IDs and bounded reasons only. Page by the last item ID; count and oldest age cover all open cases in this tenant.
+      parameters:
+        - name: after_id
+          in: query
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Up to 100 open cases, with tenant-wide backlog metrics.
+          headers:
+            Cache-Control:
+              required: true
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefundCasePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   securitySchemes:
     customerSession:
@@ -4767,6 +4802,26 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    RefundCasePage:
+      type: object
+      additionalProperties: false
+      required: [items, open_count, oldest_age_seconds]
+      properties:
+        open_count: {type: integer, format: int64, minimum: 0}
+        oldest_age_seconds: {type: integer, format: int64, minimum: 0}
+        items:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, reason, created_at]
+            properties:
+              id: {type: string, format: uuid}
+              reason:
+                type: string
+                enum: [unmatched_refund, refund_terminal_after_match, refund_terminal_retrieval_failed, refund_terminal_unconfirmed, terminal_unbound]
+              created_at: {type: string, format: date-time}
     StaffProductContentInput:
       type: object
       additionalProperties: false
