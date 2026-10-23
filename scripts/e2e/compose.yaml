@@ -21,7 +21,8 @@ services:
   # Share loopback SMTP with api; no mock routes or business fixture writes.
   b2b-api:
     extends:
-      file: ../../deploy/compose.yaml
+      # Paths resolve against the first Compose file (deploy/compose.yaml).
+      file: compose.yaml
       service: api
     network_mode: service:api
     ports: !reset []
