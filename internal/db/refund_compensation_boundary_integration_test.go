@@ -132,11 +132,13 @@ func TestRefundCompensationCommitPair(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(func(ctx context.Context, tx pgx.Tx) error {
+	err := run(func(ctx context.Context, tx pgx.Tx) error {
 		_, err := post(ctx, tx, source+":alias")
 		return err
-	}); err == nil {
-		t.Fatal("FIX328_ALIAS_RED: a second compensation committed")
+	})
+	var pg interface{ SQLState() string }
+	if !errors.As(err, &pg) || pg.SQLState() != "23514" {
+		t.Fatalf("FIX328_ALIAS_RED: expected canonical-key rejection, got %v", err)
 	}
 	if err := run(func(ctx context.Context, tx pgx.Tx) error {
 		var journals, witnesses int

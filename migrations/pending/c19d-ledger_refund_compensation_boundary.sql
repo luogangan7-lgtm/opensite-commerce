@@ -13,7 +13,7 @@ ALTER FUNCTION app.ledger_post_core(uuid,text,text,text,text,uuid[],text[],bigin
 REVOKE ALL ON FUNCTION app.ledger_post_core(uuid,text,text,text,text,uuid[],text[],bigint[]) FROM app_runtime,app_returns_service;
 GRANT EXECUTE ON FUNCTION app.ledger_post_core(uuid,text,text,text,text,uuid[],text[],bigint[]) TO app_payments_service;
 
-CREATE FUNCTION app.post_ledger(p_tenant uuid,p_currency text,p_source_type text,p_source_id text,p_event text,
+CREATE OR REPLACE FUNCTION app.post_ledger(p_tenant uuid,p_currency text,p_source_type text,p_source_id text,p_event text,
  p_accounts uuid[],p_sides text[],p_amounts bigint[]) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,app,pg_temp AS $$ BEGIN
  IF p_source_type='payment_refund' OR p_event='posted_to_compensated/v1' THEN
@@ -72,6 +72,8 @@ CREATE FUNCTION app.payments_assert_compensation_journal() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
 DECLARE j app.ledger_transactions;
 BEGIN
+ -- Checkout journals include accrual AND settlement, so total credits are 2A.
+ -- The immutable cash leg is the refund amount for both ordinary and RMA paths.
  SELECT * INTO STRICT j FROM app.ledger_transactions WHERE tenant_id=NEW.tenant_id AND id=NEW.id;
  IF j.source_type='payment_refund' OR j.event='posted_to_compensated/v1' THEN
   IF j.status<>'posted' OR (SELECT count(*) FROM app.payment_refund_reversals w
@@ -80,8 +82,9 @@ BEGIN
     AND w.transition=j.event AND j.source_type='payment_refund' AND j.currency=a.currency
     AND j.source_id=encode(sha256(convert_to(length(a.provider)||':'||a.provider||length(a.provider_account_id)||':'||a.provider_account_id
      ||length(a.provider_refund_id)||':'||a.provider_refund_id,'UTF8')),'hex')
-    AND a.amount_minor=(SELECT sum(e.amount) FROM app.ledger_entries e WHERE e.tenant_id=j.tenant_id
-     AND e.transaction_id=j.id AND e.side='credit'))<>1 THEN
+    AND a.amount_minor=(SELECT sum(e.amount) FROM app.ledger_entries e
+     JOIN app.ledger_accounts ac ON (ac.tenant_id,ac.id)=(e.tenant_id,e.account_id)
+     WHERE e.tenant_id=j.tenant_id AND e.transaction_id=j.id AND e.side='debit' AND ac.code='cash'))<>1 THEN
    RAISE EXCEPTION 'PAYMENTS_COMPENSATION_WITNESS_REQUIRED' USING ERRCODE='23514'; END IF;
  END IF;
  RETURN NULL;

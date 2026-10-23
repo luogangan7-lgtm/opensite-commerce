@@ -22,7 +22,7 @@ BEGIN
  END LOOP;
  FOR f IN SELECT * FROM pg_proc WHERE oid IN('app.payments_guard_refund_attempt()'::regprocedure,'app.payments_guard_refund_reversal()'::regprocedure) LOOP
   IF f.prosecdef IS DISTINCT FROM (f.proname='payments_guard_refund_reversal') OR f.prorettype<>'trigger'::regtype
-   OR f.proowner<>CASE WHEN f.proname='payments_guard_refund_reversal' THEN 'app_payments_service'::regrole ELSE (SELECT relowner FROM pg_class WHERE oid='app.payment_refund_attempts'::regclass) END
+   OR f.proowner<>(CASE WHEN f.proname='payments_guard_refund_reversal' THEN 'app_payments_service'::regrole ELSE (SELECT relowner FROM pg_class WHERE oid='app.payment_refund_attempts'::regclass) END)
    OR f.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, app, pg_temp']::text[]
    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0) THEN
    RAISE EXCEPTION 'C19D_GATE guard definition'; END IF;
