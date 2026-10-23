@@ -492,6 +492,7 @@ func TestMixedRefundComponents(t *testing.T) {
 				}
 				return input
 			})
+			forbidCommands := p.f.provider.before
 			p.f.provider.before = nil
 			r := payment.CreatePaymentIntent{TenantID: p.f.tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}, IdempotencyKey: "mixed-capture"}
 			if _, err := p.f.provider.Capture(p.f.ctx, payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: p.start.Payment.ProviderRef}); err != nil {
@@ -589,6 +590,10 @@ func TestMixedRefundComponents(t *testing.T) {
 					}{fmt.Sprintf("mixed-%d", i), amount})
 				}
 			}
+			// The setup deliberately captured and issued RMA refunds. From this
+			// boundary the fact consumer must issue no further provider command.
+			p.seededCaptures = p.f.provider.captures.Load()
+			p.f.provider.before = forbidCommands
 			for i, identity := range identities {
 				p.terminalFact(t, fmt.Sprintf("mixed-terminal-%d", i), identity.id, identity.amount)
 				p.terminalFact(t, fmt.Sprintf("mixed-terminal-%d", i), identity.id, identity.amount)

@@ -42,6 +42,7 @@ type paymentFactFixture struct {
 	key              []byte
 	at               time.Time
 	providerCommands atomic.Int32
+	seededCaptures   int32
 }
 
 func newPaymentFactFixture(t *testing.T, configure ...func(*checkoutPGFixture) checkoutcontract.StartInput) *paymentFactFixture {
@@ -159,7 +160,7 @@ func (p *paymentFactFixture) witness(t *testing.T) paymentFactWitness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.providerCommands.Load() != 0 || p.f.provider.captures.Load() != 0 || p.f.provider.cancels.Load() != 0 {
+	if p.providerCommands.Load() != 0 || p.f.provider.captures.Load() != p.seededCaptures || p.f.provider.cancels.Load() != 0 {
 		t.Fatal("fact consumer issued provider Capture/Cancel/Refund")
 	}
 	return w
