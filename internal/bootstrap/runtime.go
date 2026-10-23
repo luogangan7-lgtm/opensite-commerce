@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -293,6 +294,26 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		config.Routes = append(config.Routes, tenantAuth.Routes()...)
 		config.Routes = append(config.Routes, staff.Routes()...)
 	}
+	returnsURL, err := environmentDSN("OPENSITE_RETURNS_DATABASE_URL", "RETURNS", "opensite_returns_login")
+	if err != nil {
+		closeRuntime()
+		return Config{}, nil, err
+	}
+	if returnsURL == "" {
+		logger := config.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Info("returns coordinator unavailable: set OPENSITE_RETURNS_DATABASE_URL or OPENSITE_RETURNS_DB_PASSWORD")
+	} else {
+		runner, err := pgxadapter.OpenReturnsRunner(startup, returnsURL)
+		if err != nil {
+			closeRuntime()
+			return Config{}, nil, err
+		}
+		runners = append(runners, runner)
+		config.ReturnsCoordinator.Runner = returnsCoordinatorRunner{runner}
+	}
 	customerURL, err := environmentDSN("OPENSITE_CUSTOMER_AUTH_DATABASE_URL", "CUSTOMER_AUTH", "opensite_customer_auth_login")
 	if err != nil {
 		closeRuntime()
@@ -375,4 +396,12 @@ func environmentDSN(variable, kind, login string) (string, error) {
 	}
 	dsn := url.URL{Scheme: "postgresql", User: url.UserPassword(login, password), Host: host + ":5432", Path: "/" + database, RawQuery: "sslmode=disable"}
 	return dsn.String(), nil
+}
+
+// returnsCoordinatorRunner lends authorized tenant transactions, never a pool.
+// Trusted capture/account/payment composition remains the Returns consumer's job.
+type returnsCoordinatorRunner struct{ runner *pgxadapter.QueryRunner }
+
+func (r returnsCoordinatorRunner) InTenant(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+	return r.runner.RunAuthorizedTx(ctx, tenant, fn)
 }

@@ -66,6 +66,8 @@ type Config struct {
 	Customer                 customercontract.Service
 	CustomerOrigin           string
 	CustomerSecret           []byte
+	// ReturnsCoordinator is an unconsumed trusted composition seam; it enables no HTTP operation.
+	ReturnsCoordinator returns.Config
 }
 
 func New(config Config) (server *http.Server, err error) {

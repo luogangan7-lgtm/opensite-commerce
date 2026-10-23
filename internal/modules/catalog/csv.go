@@ -82,7 +82,7 @@ func parseCSV(input io.Reader) ([]csvRow, contract.CSVReport, error) {
 		for i := range record {
 			record[i] = unescapeSpreadsheetCell(record[i])
 		}
-		row := csvRow{ProductCode: strings.ToUpper(strings.TrimSpace(record[0])), Title: record[1], SKU: strings.ToUpper(strings.TrimSpace(record[2])), Locale: strings.ToLower(strings.TrimSpace(record[3])), Number: number}
+		row := csvRow{ProductCode: record[0], Title: record[1], SKU: strings.Trim(record[2], " \t\r\n\v\f"), Locale: strings.ToLower(strings.TrimSpace(record[3])), Number: number}
 		if normalized, codeErr := normalizeCode(row.ProductCode); codeErr != nil {
 			csvProblem(&report, number, "product_code", "invalid_code", "Product code must contain 1–128 ASCII letters, digits, dot, underscore or hyphen")
 		} else {
@@ -117,9 +117,6 @@ func parseCSV(input io.Reader) ([]csvRow, contract.CSVReport, error) {
 			skus[row.SKU] = row.ProductCode
 		}
 		rows = append(rows, row)
-	}
-	if report.Rows == 0 {
-		csvProblem(&report, 1, "", "empty_csv", "At least one data row is required")
 	}
 	return rows, report, nil
 }

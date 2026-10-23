@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/jackc/pgx/v5"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
@@ -75,7 +76,12 @@ func AdmitCommand(route Route) Route {
 		}
 		raw, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
 		if err != nil {
-			WriteProblem(w, r, apperrors.New(400, "invalid_request", "Unable to read command"))
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				WriteProblem(w, r, apperrors.New(413, "request_too_large", "Request body exceeds the route limit"))
+			} else {
+				WriteProblem(w, r, apperrors.New(400, "invalid_request", "Unable to read command"))
+			}
 			return
 		}
 		if route.Spec.MaxBodySize == 0 && len(raw) != 0 {

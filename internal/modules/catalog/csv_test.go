@@ -55,3 +55,16 @@ func TestCSVRejectNonCanonicalCodes(t *testing.T) {
 		}
 	}
 }
+
+func TestCSVRejectUnicodeBeforeCanonicalization(t *testing.T) {
+	for _, code := range []string{"ß", "ı", "ſ", "\u00a0P1\u00a0"} {
+		for _, field := range []int{0, 2} {
+			record := []string{"P1", "Title", "S1", "en"}
+			record[field] = code
+			_, report, err := parseCSV(strings.NewReader(strings.Join(csvHeader, ",") + "\n" + strings.Join(record, ",") + "\n"))
+			if err != nil || len(report.Errors) != 1 {
+				t.Fatalf("Unicode code %q field %d: %+v %v", code, field, report, err)
+			}
+		}
+	}
+}

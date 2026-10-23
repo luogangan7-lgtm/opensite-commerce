@@ -15,7 +15,8 @@ UI, no path) and an independent 64-hex `OPENSITE_AUTH_SIGNING_KEY` (for example
 `openssl rand -hex 32`). Compose passes them to the API as `OSC_ADMIN_ORIGIN`
 and `OSC_AUTH_SIGNING_KEY_HEX`; staff login reuses the auth login DSN, and the
 API refuses to start if either value is missing or malformed. Customer authentication
-also requires `OPENSITE_CUSTOMER_AUTH_DB_PASSWORD`, a pinned HTTPS
+also requires `OPENSITE_RETURNS_DB_PASSWORD`,
+`OPENSITE_CUSTOMER_AUTH_DB_PASSWORD`, a pinned HTTPS
 `OPENSITE_STOREFRONT_ORIGIN` and an independent `OPENSITE_CUSTOMER_CSRF_SECRET`
 containing 32–128 CSPRNG bytes encoded with unpadded base64url. Use simple `KEY=value` or single-quoted values, with no
 interpolation or multiline values. Never commit the file or print resolved
@@ -41,6 +42,17 @@ migration and verifies its separately configured runtime, auth, domain and
 media and customer-auth pools. Staff login (`/api/v1/auth/*`) is installed on the auth pool's
 DSN; the domain consumer remains pending its application wiring. The separate media identity
 uses the existing media capability rather than granting it to runtime.
+
+The eighth LOGIN, `opensite_returns_login`, receives only `app_returns_service`.
+Set an independent `OPENSITE_RETURNS_DB_PASSWORD` for migration/restore and API;
+non-Compose API deployments may instead supply `OPENSITE_RETURNS_DATABASE_URL`.
+The credential is never shared with workers or the renderer. Startup validates
+its exact capability and exposes only authenticated tenant transactions at
+`Config.ReturnsCoordinator.Runner`; the refund HTTP operation keeps its existing
+behavior until trusted capture/account/provider bindings consume that seam.
+Missing configuration names its setting in a startup log without a value.
+The operations drill checks the same HBA and permission boundaries before and
+after restore, including real password authentication for this identity.
 
 Customer login (`/api/v1/t/{tenant_id}/customer/*`) uses only
 `opensite_customer_auth_login` → `app_customer_auth`; it never receives staff
@@ -90,7 +102,7 @@ refuses deployment. Another database containing both the
 Plain databases are permitted. V1 database names must be lowercase ASCII
 identifiers (letters, numbers and underscores, maximum 63 characters).
 On a fresh Compose volume, the initdb hook places exact target-database SCRAM
-rules before the existing administrator rules. The seven application LOGINs are
+rules before the existing administrator rules. The eight application LOGINs are
 refused connections to maintenance/plain databases and physical replication,
 over Unix sockets, IPv4 and IPv6. This leaves unrelated database ACLs intact.
 The hook runs only at initialization. For an existing volume, back up the
@@ -165,7 +177,7 @@ bash scripts/ops_drill.sh --receipt-dir work/C23a/evidence
 
 The drill generates private temporary secrets and an unpredictable project
 name. It starts Compose, verifies real password logins and restricted grants,
-tests all seven LOGINs over TCP4/TCP6/Unix with wrong passwords and other databases,
+tests all eight LOGINs over TCP4/TCP6/Unix with wrong passwords and other databases,
 and refuses direct credential grants, permissive RLS policies and LOGIN-owned objects before writes.
 It creates/removes its own second-database negative fixture, seeds nonempty
 database, queue and media witnesses, and checks API/worker metrics. It performs
