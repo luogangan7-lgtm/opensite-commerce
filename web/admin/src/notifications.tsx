@@ -15,7 +15,7 @@ function uuid(value:unknown):string{return typeof value==='string'&&validateUUID
 function integer(value:unknown,min:number):number{return typeof value==='number'&&Number.isInteger(value)&&value>=min&&value<=2147483647?value:invalid();}
 function date(value:unknown):string{return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/.test(value)&&Number.isFinite(Date.parse(value))?value:invalid();}
 export function parseFailures(value:unknown):Failure[]{
- const items=record(value).items;if(!Array.isArray(items)||items.length>100)return invalid();
+ const items=record(value).items;if(!Array.isArray(items)||items.length>1000)return invalid();
  return items.map(value=>{const r=record(value);
   if(!templates.includes(String(r.template_key))||!['failed','dead_letter','uncertain'].includes(String(r.status)))return invalid();
   if(r.safe_error!==undefined&&(typeof r.safe_error!=='string'||!/^[A-Z0-9_]{1,128}$/.test(r.safe_error)))return invalid();
