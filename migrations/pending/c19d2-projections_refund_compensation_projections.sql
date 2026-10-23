@@ -73,7 +73,13 @@ SET search_path=pg_catalog,app,pg_temp AS $$
 BEGIN
  IF current_user<>'app_fulfillment_executor' OR TG_OP='DELETE' THEN
   RAISE EXCEPTION 'FULFILLMENT_CONTROLLED_COMMAND_REQUIRED' USING ERRCODE='55000'; END IF;
- IF TG_OP='INSERT' THEN RETURN NEW; END IF;
+ IF TG_OP='INSERT' THEN
+  IF TG_TABLE_NAME='returns' THEN
+   IF NEW.status='refund_compensated' THEN
+    RAISE EXCEPTION 'C19D2_RETURN_WITNESS_REQUIRED' USING ERRCODE='23514'; END IF;
+  END IF;
+  RETURN NEW;
+ END IF;
  IF OLD.sealed AND (NOT NEW.sealed OR
   (to_jsonb(NEW)-ARRAY['creation_response','receive_response','order_version','status','restocked','received_at','receive_key','receive_hash','refund_key','refund_hash',
     'refund_expected_version','provider_ref','payment_version','income_account_id','tax_account_id','shipping_account_id','cash_account_id','ledger_transaction_id','refunded_at'])

@@ -108,8 +108,9 @@ type TerminalObservation struct {
 	Revision          int64  `json:"revision"`
 }
 type CompensationReceipt struct {
-	OriginalJournalID string `json:"original_journal_id"`
-	ReversalJournalID string `json:"reversal_journal_id"`
+	OriginalJournalID      string `json:"original_journal_id"`
+	ReversalJournalID      string `json:"reversal_journal_id"`
+	ReconciliationRequired bool   `json:"reconciliation_required,omitempty"`
 }
 
 // RefundCompensator commits through Payments and closed domain projection ports.

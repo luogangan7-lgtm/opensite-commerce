@@ -5,6 +5,21 @@
   "tables": {
     "payment_return_refunds": {
       "columns": {
+        "provider": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Original authenticated provider is frozen when the RMA refund posts; null historical bindings require reconciliation."
+        },
+        "provider_account_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Original opaque provider account prevents cross-account compensation."
+        },
+        "environment": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Original test environment is part of the frozen refund authority."
+        },
         "tenant_id": {
           "classification": "financial_obligation",
           "retention": "financial-obligation",

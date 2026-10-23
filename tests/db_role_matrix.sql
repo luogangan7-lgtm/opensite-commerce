@@ -1044,7 +1044,7 @@ END $quotes$;
 SELECT 'PASS: quotes exact table/column/function grants, bounded definer authority and FORCE RLS' AS result;
 -- CMS controlled functions and capability flag must have exact effective ACLs.
 DO $cms_matrix$
-DECLARE f record; role_name text; expected boolean;
+DECLARE f record; role_name text; expected boolean; col text; privilege text;
  names text[]:=ARRAY['cms_context','cms_revision_immutable','cms_draft_guard','cms_validate_document','cms_products','cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history',
   'cms_release_skus_immutable','cms_seal_skus','cms_serving_put','cms_serving_invalidate'];
  public_names text[]:=ARRAY['cms_read_draft','cms_create_draft','cms_apply','cms_publish','cms_restore','cms_release_history','cms_seal_skus','cms_serving_put'];
@@ -1529,6 +1529,17 @@ DECLARE f record; role_name text; expected boolean;
 BEGIN
  IF NOT EXISTS(SELECT FROM pg_class WHERE oid='app.payment_return_refunds'::regclass AND relrowsecurity AND relforcerowsecurity) THEN
   RAISE EXCEPTION 'PAYMENT_RETURN_FORCE_RLS'; END IF;
+ -- Original provider authority remains private and immutable through every
+ -- service role, including the Returns coordinator which calls the binder.
+ FOREACH col IN ARRAY ARRAY['provider','provider_account_id','environment'] LOOP
+  FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
+    IF has_column_privilege(role_name,'app.payment_return_refunds',col,privilege)
+      IS DISTINCT FROM (role_name='app_payments_service' AND privilege='SELECT') THEN
+     RAISE EXCEPTION 'PAYMENT_RETURN_BINDING_ACL % % %',role_name,col,privilege; END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
  FOR f IN SELECT p.*,v.signature FROM (VALUES('payments_allocate_refund(uuid,jsonb,bigint)'),('payments_return_context(uuid,text)'),('payments_lock_return_checkout(uuid)'),
   ('payments_bind_return_refund(uuid,text,text,uuid)'),('payments_match_return_refund(uuid,text,text,bigint,bigint,text)')) v(signature)
  LEFT JOIN pg_proc p ON p.oid=to_regprocedure('app.'||v.signature) LOOP

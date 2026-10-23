@@ -3,6 +3,45 @@
 -- Responsibility: immutable verified terminal observations and atomic projection receipts.
 -- Dependencies: authenticated mapping and posted Ledger proof; caller: closed Payments finalizer.
 -- Invariant: one terminal tombstone per refund, even when failure beats success.
+-- Persist original authenticated capture authority at RMA posting, never from
+-- a later terminal delivery. Historical or ambiguous bindings stay unresolved.
+ALTER TABLE app.payment_return_refunds
+ ADD COLUMN provider text,
+ ADD COLUMN provider_account_id text,
+ ADD COLUMN environment text,
+ ADD CHECK((provider IS NULL AND provider_account_id IS NULL AND environment IS NULL)
+  OR (provider IS NOT NULL AND provider_account_id IS NOT NULL AND environment IS NOT NULL AND environment='test')),
+ ADD FOREIGN KEY(tenant_id,provider,provider_account_id,environment)
+  REFERENCES app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment);
+CREATE OR REPLACE FUNCTION app.payments_bind_return_refund(p_return uuid,p_key text,p_refund text,p_journal uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
+DECLARE t uuid:=nullif(current_setting('app.tenant_id',true),'')::uuid; r app.returns; b app.payment_return_refunds;
+ original_provider text; original_account text; original_environment text;
+BEGIN
+ PERFORM app.returns_lock_refund(p_return,p_key);
+ SELECT * INTO STRICT r FROM app.returns WHERE tenant_id=t AND id=p_return;
+ IF p_refund IS NULL OR p_refund !~ '^[!-~]{1,200}$' OR r.status NOT IN('refund_pending','refund_reconcile','refunded')
+ OR NOT EXISTS(SELECT FROM app.ledger_transactions j WHERE j.tenant_id=t AND j.id=p_journal
+  AND j.status='posted' AND j.currency=r.currency AND j.source_type='return' AND j.source_id=r.id::text AND j.event='refund') THEN
+  RAISE EXCEPTION 'PAYMENTS_RETURN_REFUND_PROOF' USING ERRCODE='23514'; END IF;
+ SELECT * INTO b FROM app.payment_return_refunds WHERE tenant_id=t AND return_id=p_return AND attempt_key=p_key;
+ IF FOUND THEN
+  IF b.provider_ref IS DISTINCT FROM r.provider_ref OR b.provider_refund_id IS DISTINCT FROM p_refund OR b.journal_id IS DISTINCT FROM p_journal THEN
+   RAISE EXCEPTION 'PAYMENTS_REFUND_KEY_REUSED' USING ERRCODE='23505'; END IF;
+  RETURN;
+ END IF;
+ SELECT min(e.provider),min(e.provider_account_id),min(e.environment)
+ INTO original_provider,original_account,original_environment
+ FROM app.payment_events e JOIN app.checkout_sessions c ON (c.tenant_id,c.order_id)=(e.tenant_id,e.claimed_order_id)
+ WHERE e.tenant_id=t AND e.claimed_order_id=r.order_id AND e.provider_ref=r.provider_ref AND e.order_version=r.payment_version
+  AND e.status='captured' AND e.applied AND e.amount_minor=c.amount_minor AND e.currency=c.currency
+ HAVING count(DISTINCT (e.provider,e.provider_account_id,e.environment))=1;
+ INSERT INTO app.payment_return_refunds(tenant_id,return_id,attempt_key,provider_ref,provider_refund_id,journal_id,provider,provider_account_id,environment)
+ VALUES(t,p_return,p_key,r.provider_ref,p_refund,p_journal,original_provider,original_account,original_environment);
+ UPDATE app.checkout_sessions SET refunded_net_minor=refunded_net_minor+r.income_minor,
+  refunded_tax_minor=refunded_tax_minor+r.tax_minor,refunded_shipping_minor=refunded_shipping_minor+r.shipping_minor,
+  updated_at=clock_timestamp() WHERE tenant_id=t AND order_id=r.order_id;
+END $$;
 CREATE TABLE app.payment_refund_terminals (
  tenant_id uuid NOT NULL, provider text NOT NULL, provider_account_id text NOT NULL,
  environment text NOT NULL DEFAULT 'test' CHECK(environment='test'), provider_refund_id text NOT NULL,

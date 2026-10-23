@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
+	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 )
 
 type Finalizer struct{}
@@ -46,15 +47,20 @@ func (m *Module) receiveTerminal(ctx context.Context, raw []byte, in envelope, s
 		return out, errors.New("refund compensation capability unavailable")
 	}
 	hash := sha256.Sum256(raw)
+	var reconcile bool
 	err := m.config.TerminalRun(ctx, in.AccountID, func(ctx context.Context, tx pgx.Tx, tenant string, _ time.Time) error {
-		_, err := (Finalizer{}).Compensate(ctx, tx, contract.CompensationInput{
+		receipt, err := (Finalizer{}).Compensate(ctx, tx, contract.CompensationInput{
 			Identity: contract.RefundIdentity{TenantID: tenant, Provider: m.config.Provider, AccountID: in.AccountID, RefundID: in.RefundID},
 			Observation: contract.TerminalObservation{EventID: in.EventID, OrderID: in.OrderID, OrderVersion: in.OrderVersion,
 				ProviderRef: in.ProviderRef, Status: string(in.Status), AmountMinor: in.AmountMinor, Currency: in.Currency,
 				PayloadHash: hex.EncodeToString(hash[:]), Timestamp: stamp},
 		})
+		reconcile = receipt.ReconciliationRequired
 		return err
 	})
+	if err == nil && reconcile {
+		return out, apperrors.New(409, "payment_conflict", "Payment event requires reconciliation")
+	}
 	if err == nil {
 		out.Status = "processed"
 	}

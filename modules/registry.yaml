@@ -1877,7 +1877,7 @@
       "owner": "payments",
       "touches_tables": ["payment_events", "payment_event_deliveries"]
     },
-    {"file":"migrations/pending/c19d2-terminal_refund_compensation_terminal.sql","owner":"payments","touches_tables":["payment_refund_terminals"]},
+    {"file":"migrations/pending/c19d2-terminal_refund_compensation_terminal.sql","owner":"payments","touches_tables":["payment_refund_terminals","payment_return_refunds","checkout_sessions"]},
     {"file":"migrations/pending/c19d2-projections_refund_compensation_projections.sql","owner":"orders","touches_tables":["orders","returns","checkout_sessions"]},
     {"file":"migrations/pending/c19d2-finalizer_atomic_refund_compensation.sql","owner":"payments","touches_tables":["payment_refund_attempts","payment_refund_reversals","payment_refund_terminals","checkout_sessions","webhook_inbox"]},
     {"file":"migrations/pending/c19d-ledger_refund_compensation_boundary.sql","owner":"ledger","touches_tables":["ledger_accounts","ledger_transactions","ledger_entries","payment_refund_reversals"]},

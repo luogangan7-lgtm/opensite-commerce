@@ -44,7 +44,17 @@ BEGIN
  SELECT * INTO b FROM app.payment_return_refunds WHERE tenant_id=t AND provider_ref=ref AND provider_refund_id=refund;
  SELECT * INTO e FROM app.payment_events WHERE tenant_id=t AND provider=p AND provider_account_id=account
   AND environment='test' AND provider_refund_id=refund AND applied AND status IN('partially_refunded','refunded');
- IF FOUND OR b.journal_id IS NOT NULL THEN
+ -- Reject before any attempt, terminal or money write. A mismatched RMA or an
+ -- identity-less posted stream is not proof that this refund was never posted.
+ IF (b.journal_id IS NOT NULL AND (b.provider,b.provider_account_id,b.environment) IS DISTINCT FROM (p,account,'test'::text))
+  OR (b.journal_id IS NULL AND e.id IS NULL AND (
+   EXISTS(SELECT FROM app.payment_events x WHERE x.tenant_id=t AND x.provider_ref=ref AND x.applied
+    AND x.status IN('partially_refunded','refunded') AND (x.provider_refund_id IS NULL OR x.provider_refund_id=refund))
+   OR EXISTS(SELECT FROM app.returns r WHERE r.tenant_id=t AND r.order_id=oid AND r.status IN('refund_pending','refund_reconcile','refunded')))) THEN
+  PERFORM app.finish_payment_inbox(inbox,false);
+  RETURN jsonb_build_object('reconciliation_required',true);
+ END IF;
+ IF e.id IS NOT NULL OR b.journal_id IS NOT NULL THEN
   IF e.id IS NOT NULL AND (e.claimed_order_id,e.provider_ref,e.order_version,e.amount_minor,e.currency::text)
    IS DISTINCT FROM (oid,ref,ver,amt,cur) THEN RAISE EXCEPTION 'C19D2_SUCCESS_BINDING' USING ERRCODE='23514'; END IF;
   IF b.journal_id IS NOT NULL THEN
@@ -162,6 +172,7 @@ BEGIN
  ELSE
   IF NOT EXISTS(SELECT FROM app.payment_return_refunds b JOIN app.returns r ON (r.tenant_id,r.id)=(b.tenant_id,b.return_id)
    WHERE b.tenant_id=NEW.tenant_id AND b.return_id=NEW.return_id AND b.attempt_key=NEW.attempt_key
+   AND (b.provider,b.provider_account_id,b.environment)=(NEW.provider,NEW.provider_account_id,NEW.environment)
    AND b.provider_ref=NEW.provider_ref AND b.provider_refund_id=NEW.provider_refund_id AND b.journal_id=j.id
    AND r.order_id=NEW.order_id AND r.refund_minor=NEW.amount_minor AND r.currency=NEW.currency AND r.status='refunded'
    AND j.source_type='return' AND j.source_id=NEW.return_id::text AND j.event='refund')

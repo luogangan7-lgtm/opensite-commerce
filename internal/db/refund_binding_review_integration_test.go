@@ -102,6 +102,33 @@ END $fixture$`)
  SELECT (jsonb_populate_record(NULL::app.returns,to_jsonb(r)||jsonb_build_object(
  'id',gen_random_uuid(),'creation_key','forged-compensated','receive_key','forged-receive',
  'refund_key','forged-refund','status','refund_compensated'))).* FROM app.returns r WHERE tenant_id=$1`)
+	// Rejection must leave the real provider able to finalize the original
+	// refund without waiting for a success webhook or creating a new attempt.
+	if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true),set_config('app.payment_provider','stripe',true)", p.f.tenant); err != nil {
+			return err
+		}
+		var bound bool
+		if err := tx.QueryRow(ctx, `SELECT provider='stripe' AND provider_account_id=$2 AND environment='test'
+ FROM app.payment_return_refunds WHERE tenant_id=$1`, p.f.tenant, stripeAccount).Scan(&bound); err != nil || !bound {
+			return errors.New("FIX341 original Stripe account not persisted at refund time")
+		}
+		if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_payments_ingress"); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `SELECT app.payments_finalize_refund(jsonb_build_object(
+ 'tenant_id',$1::text,'provider','stripe','account_id',$2::text,'refund_id','re_original_stripe',
+ 'provider_ref',$3::text,'order_id',$4::text,'order_version',$5::bigint,'amount_minor',$6::bigint,
+ 'currency',$7::text,'event_id','stripe-original-terminal','payload_hash',repeat('3',64),
+ 'status','failed','timestamp',extract(epoch FROM clock_timestamp())::bigint))`,
+			p.f.tenant, stripeAccount, p.start.Payment.ProviderRef, p.start.OrderID, p.start.OrderVersion, amount, p.start.Currency)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if w := p.f.witness(t, p.start.OrderID); w.cash != p.start.AmountMinor {
+		t.Fatalf("FIX341 original provider did not restore exact capacity: %+v", w)
+	}
 }
 
 func (p *paymentFactFixture) rejectTerminalBinding(t *testing.T, event, refund string, amount int64) {
