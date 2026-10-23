@@ -101,7 +101,7 @@ class BrowserReceiptTests(unittest.TestCase):
         specs = []
         for title in module.ACTIVE_TESTS | module.GAP_TESTS:
             gap = title in module.GAP_TESTS
-            filename = ('redrive.spec.ts' if title in module.REDRIVE_TESTS else 'b2b.spec.ts' if title in module.B2B_TESTS else 'mvp-gaps.spec.ts' if gap or title in module.ADMIN_TESTS else 'purchase.spec.ts' if title in module.PURCHASE_TESTS
+            filename = ('redrive.spec.ts' if title in module.REDRIVE_TESTS else 'rma.spec.ts' if title in module.RMA_TESTS else 'b2b.spec.ts' if title in module.B2B_TESTS else 'mvp-gaps.spec.ts' if gap or title in module.ADMIN_TESTS else 'purchase.spec.ts' if title in module.PURCHASE_TESTS
                         else 'payments.spec.ts' if title in module.PAYMENT_TESTS
                         else 'admin.spec.ts' if title.startswith('real ') else 'storefront.spec.ts')
             specs.append({'title': title, 'file': filename, 'tests': [
@@ -109,7 +109,7 @@ class BrowserReceiptTests(unittest.TestCase):
                  'annotations': [{'type': 'fixme'}] if gap else [],
                  'results': [{'status': 'skipped' if gap else 'passed'}]}
                 for project in ('desktop', 'mobile')]})
-        return {'stats': {'expected': 40, 'skipped': 0, 'unexpected': 0, 'flaky': 0},
+        return {'stats': {'expected': 42, 'skipped': 0, 'unexpected': 0, 'flaky': 0},
                 'suites': [{'specs': specs}]}
 
     def rows(self):
@@ -140,7 +140,7 @@ class BrowserReceiptTests(unittest.TestCase):
     def test_payment_is_required_in_both_projects_and_exact_spec(self):
         module = self.runner()
         report = self.browser_report(module)
-        self.assertEqual(module.verify_browser_report(report)['expected'], 40)
+        self.assertEqual(module.verify_browser_report(report)['expected'], 42)
         for mutation in ('remove', 'wrong_file', 'skip'):
             changed = json.loads(json.dumps(report))
             payment = next(s for s in changed['suites'][0]['specs'] if s['title'] in module.PAYMENT_TESTS)
@@ -161,6 +161,23 @@ class BrowserReceiptTests(unittest.TestCase):
             else: admin['tests'][0]['expectedStatus'] = 'skipped'
             with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
                 module.verify_browser_report(report)
+
+    def test_rma_journey_is_required_in_both_projects(self):
+        module = self.runner()
+        title = 'real shipment → partial → full refund journey'
+        self.assertIn(title, module.ACTIVE_TESTS)
+        self.assertEqual(module.RMA_TESTS, {'real shipment → partial → full refund journey'})
+        report = self.browser_report(module)
+        self.assertEqual(module.verify_browser_report(report),
+                         {'expected': 42, 'skipped': 0, 'unexpected': 0, 'flaky': 0})
+        for mutation in ('remove', 'wrong_file', 'skip'):
+            changed = json.loads(json.dumps(report))
+            rma = next(s for s in changed['suites'][0]['specs'] if s['title'] == title)
+            if mutation == 'remove': changed['suites'][0]['specs'].remove(rma)
+            elif mutation == 'wrong_file': rma['file'] = 'purchase.spec.ts'
+            else: rma['tests'][0]['results'] = [{'status': 'skipped'}]
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                module.verify_browser_report(changed)
 
     def test_staff_publication_cannot_be_removed_or_skipped(self):
         module = self.runner()
@@ -216,10 +233,10 @@ class PurchaseWitnessTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('mvp_purchase', source)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        row = {'sessions': 6, 'paid': 4, 'receipt_only': 2, 'committed_owned': 4,
-               'active_owned': 2, 'on_hand': 16, 'reserved': 2, 'inbox': 6,
-               'captured': 4, 'pending_refund': 2, 'processed': 4, 'pending': 2,
-               'journals': 4, 'cash': 12560, 'paid_outbox': 4, 'debits': 6280, 'credits': 6280}
+        row = {'sessions': 8, 'paid': 4, 'receipt_only': 2, 'committed_owned': 4,
+               'active_owned': 2, 'on_hand': 16, 'reserved': 2, 'inbox': 8,
+               'captured': 4, 'pending_refund': 2, 'processed': 6, 'pending': 2,
+               'journals': 10, 'cash': 12560, 'paid_outbox': 6, 'debits': 59800, 'credits': 59800}
         self.assertEqual(module.verify(row)['status'], 'PASS')
         for key in row:
             with self.subTest(key=key), self.assertRaises(RuntimeError):
@@ -242,6 +259,37 @@ class PurchaseWitnessTests(unittest.TestCase):
                 module.verify_registered([{**rows[0], key: None}, rows[1]])
         with self.assertRaises(RuntimeError):
             module.verify_registered(rows[:1])
+
+    def test_rma_persistence_cannot_be_replaced_by_browser_green(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/rma.py'
+        spec = importlib.util.spec_from_file_location('rma_witness', source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        rows = [dict(project=project, order_id=project, return_id=f'{project}-{n}',
+                     journal_id=f'journal-{project}-{n}', shipment_line_id=f'shipment-{project}-{n}',
+                     state='refunded', total=5780, refunded=5780,
+                     refund=2890, status='refunded', restocked=True, shipments=2, shipped=2,
+                     returns=2, returned_quantity=1, movements=1, restored=1, journals=1, binding=1,
+                     total_journals=2, total_restored=2,
+                     debits=2890, credits=2890, income=2400, tax=240, shipping=250,
+                     original_income=4800, original_tax=480, original_shipping=500,
+                     cumulative_income=4800, cumulative_tax=480, cumulative_shipping=500,
+                     checkout_income=4800, checkout_tax=480, checkout_shipping=500,
+                     ledger_income=2400, ledger_tax=240, ledger_shipping=250, ledger_cash=2890)
+                for project in ('desktop', 'mobile') for n in (1, 2)]
+        self.assertEqual(module.verify(rows)['status'], 'PASS')
+        for key in rows[0]:
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                module.verify([{**rows[0], key: None}, *rows[1:]])
+        for changed in ([], rows[:2], [rows[0], rows[0], *rows[2:]],
+                        [{**rows[0], 'movements': 2}, *rows[1:]],
+                        [{**rows[0], 'state': 'partially_refunded', 'refunded': 2890}, *rows[1:]],
+                        [{**rows[0], 'total_journals': 3}, *rows[1:]],
+                        [{**rows[0], 'cumulative_tax': 481}, *rows[1:]],
+                        [{**rows[0], 'original_income': 4801}, *rows[1:]],
+                        [rows[0], {**rows[1], 'journal_id': rows[0]['journal_id']}, *rows[2:]],
+                        [rows[0], {**rows[1], 'shipment_line_id': rows[0]['shipment_line_id']}, *rows[2:]]):
+            with self.assertRaises(RuntimeError): module.verify(changed)
 
     def test_purchase_cannot_be_removed_skipped_or_reclassified(self):
         module = BrowserReceiptTests().runner()
