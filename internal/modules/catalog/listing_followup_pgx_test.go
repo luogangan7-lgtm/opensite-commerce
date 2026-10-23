@@ -2,7 +2,7 @@
 
 // Responsibility: regress listing lost updates and serving invalidation scope.
 // Dependencies: dedicated PG18 fixture, production SQL/HTTP; caller: CI pgx/races.
-// Invariant: two stale writers yield one winner; persisted queue and state agree.
+// Invariant: two stale writers yield one winner; no-op updates keep the DB version.
 package catalog
 
 import (
@@ -246,6 +246,31 @@ func TestPGListingFollowups(t *testing.T) {
 			}
 			return err
 		})
+	})
+	t.Run("no-op update keeps listing version", func(t *testing.T) {
+		version := func(t *testing.T) int64 {
+			t.Helper()
+			var n int64
+			run(t, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, `SELECT version FROM app.product_listings WHERE tenant_id=$1 AND site_id=$2 AND product_id=$3 AND locale='en'`, a, site, product).Scan(&n)
+			})
+			return n
+		}
+		before := version(t)
+		run(t, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE app.product_listings SET slug=slug,status=status WHERE tenant_id=$1 AND site_id=$2 AND product_id=$3 AND locale='en'`, a, site, product)
+			return err
+		})
+		if after := version(t); after != before {
+			t.Errorf("LISTING_NOOP_VERSION bumped %d -> %d", before, after)
+		}
+		run(t, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE app.product_listings SET slug='version-bump' WHERE tenant_id=$1 AND site_id=$2 AND product_id=$3 AND locale='en'`, a, site, product)
+			return err
+		})
+		if after := version(t); after != before+1 {
+			t.Errorf("LISTING_REAL_VERSION %d -> %d want +1", before, after)
+		}
 	})
 
 }

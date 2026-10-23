@@ -1825,6 +1825,11 @@
       "file": "migrations/pending/fix-266_catalog_listing.sql",
       "owner": "catalog",
       "touches_tables": ["product_listings", "serving_invalidations", "storefront_serving", "product_content_revisions", "site_release_skus"]
+    },
+    {
+      "file": "migrations/pending/ds-277_catalog_listing_version.sql",
+      "owner": "catalog",
+      "touches_tables": ["product_listings"]
     }
   ]
 }
