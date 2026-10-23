@@ -19,7 +19,7 @@ class FoundationLanes(unittest.TestCase):
         # Authoritative serial inventory: checks.yml@be0a6413 (including #44).
         # Existing boundaries remain whole; no command sampling/filtering.
         inventory = {
-            'go test -race -count=1 ./...': "matrix.lane == 'go'",
+            'go test -race -count=1 -timeout=15m ./...': "matrix.lane == 'go'",
             'go vet ./...': "matrix.lane == 'go'",
             'bash scripts/check_all.sh': "matrix.lane == 'offline'",
             'python3 scripts/check_ci_pins.py': "matrix.lane == 'offline'",
