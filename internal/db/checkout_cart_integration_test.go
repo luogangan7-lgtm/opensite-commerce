@@ -23,6 +23,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	orderscontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
 )
 
@@ -63,7 +64,7 @@ func realCheckoutCart(t *testing.T, f *checkoutPGFixture, customer bool, currenc
 			}
 			return fn(ctx, tx)
 		})
-	}, SnapshotCart: checkout.NewSQLCart(cart.ReadIntentSnapshot), Run: f.run, Cart: checkout.NewSQLCart(cart.ReadIntent), Rules: rules, Orders: orders.New(), Ledger: ledger.New(), Payment: f.provider})
+	}, SnapshotCart: checkout.NewSQLCart(cart.ReadIntentSnapshot), Run: f.run, Cart: checkout.NewSQLCart(cart.ReadIntent), Rules: rules, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: f.provider})
 }
 
 func TestCheckoutPGRealCartGuestAndCustomer(t *testing.T) {

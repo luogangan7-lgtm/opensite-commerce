@@ -49,6 +49,7 @@ type NextAction struct {
 
 type PaymentIntentResult struct {
 	ProviderRef string
+	RefundID    string // Durable provider refund identity, present only for confirmed refunds.
 	Status      PaymentStatus
 	NextAction  NextAction
 }

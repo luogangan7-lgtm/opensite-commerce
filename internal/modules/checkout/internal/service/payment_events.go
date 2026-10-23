@@ -19,7 +19,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/internal/store"
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 )
 
 var _ contract.PaymentEventApplier = (*Service)(nil)
@@ -168,42 +168,11 @@ func factJournal(ctx context.Context, q *db.Queries, row db.AppCheckoutSession, 
 	return journal(row, eventKey, accounts)
 }
 
-func refundParts(row db.AppCheckoutSession, delta money.Money) ([]money.Money, int64, error) {
-	original := []int64{row.ItemsNetMinor, row.TaxMinor, row.ShippingMinor}
-	refunded := []int64{row.RefundedNetMinor, row.RefundedTaxMinor, row.RefundedShippingMinor}
-	remaining := make([]int64, 3)
-	var used int64
-	for i := range original {
-		if refunded[i] < 0 || refunded[i] > original[i] {
-			return nil, 0, contract.ErrConflict
-		}
-		remaining[i] = original[i] - refunded[i]
-		// Each nonnegative component is bounded by the immutable total, so this
-		// subtraction checks both the aggregate bound and addition overflow.
-		if refunded[i] > row.AmountMinor-used {
-			return nil, 0, contract.ErrConflict
-		}
-		used += refunded[i]
-	}
-	if delta.Currency != row.Currency || delta.Amount <= 0 || delta.Amount > row.AmountMinor-used {
-		return nil, 0, contract.ErrConflict
-	}
-	parts, err := delta.Allocate(remaining)
-	if err != nil {
-		return nil, 0, contract.ErrInvalid
-	}
-	for i := range parts {
-		if parts[i].Amount < 0 || parts[i].Amount > remaining[i] {
-			return nil, 0, contract.ErrConflict
-		}
-	}
-	return parts, used + delta.Amount, nil
-}
-
 func (s *Service) applyRefundFact(ctx context.Context, tx pgx.Tx, q *db.Queries, row db.AppCheckoutSession, event payment.VerifiedEvent) error {
-	parts, cumulative, err := refundParts(row, event.Amount)
+	parts, err := q.AllocatePaymentRefund(ctx, db.AllocatePaymentRefundParams{OrderID: row.OrderID, AmountMinor: event.Amount.Amount})
+	cumulative := row.RefundedNetMinor + row.RefundedTaxMinor + row.RefundedShippingMinor + event.Amount.Amount
 	if err != nil {
-		return err
+		return store.MapError(err)
 	}
 	target := orders.PartiallyRefunded
 	if cumulative == row.AmountMinor {
@@ -218,7 +187,7 @@ func (s *Service) applyRefundFact(ctx context.Context, tx pgx.Tx, q *db.Queries,
 		return contract.ErrConflict
 	}
 	deltaRow := row
-	deltaRow.AmountMinor, deltaRow.ItemsNetMinor, deltaRow.TaxMinor, deltaRow.ShippingMinor = event.Amount.Amount, parts[0].Amount, parts[1].Amount, parts[2].Amount
+	deltaRow.AmountMinor, deltaRow.ItemsNetMinor, deltaRow.TaxMinor, deltaRow.ShippingMinor = event.Amount.Amount, parts.IncomeMinor, parts.TaxMinor, parts.ShippingMinor
 	posting, err := factJournal(ctx, q, deltaRow, refundKey)
 	if err != nil {
 		return err
@@ -230,9 +199,13 @@ func (s *Service) applyRefundFact(ctx context.Context, tx pgx.Tx, q *db.Queries,
 			posting.Entries[i].Side = ledger.Debit
 		}
 	}
-	if _, err = s.config.Ledger.Post(ctx, tx, posting); err != nil {
+	poster, ok := s.config.Ledger.(payments.RefundPoster)
+	if !ok {
+		return contract.ErrUnavailable
+	}
+	if _, err = poster.PostRefund(ctx, tx, posting); err != nil {
 		return err
 	}
-	_, err = q.UpdateCheckoutRefundTotals(ctx, db.UpdateCheckoutRefundTotalsParams{TenantID: row.TenantID, ID: row.ID, RefundedNetMinor: row.RefundedNetMinor + parts[0].Amount, RefundedTaxMinor: row.RefundedTaxMinor + parts[1].Amount, RefundedShippingMinor: row.RefundedShippingMinor + parts[2].Amount})
+	_, err = q.UpdateCheckoutRefundTotals(ctx, db.UpdateCheckoutRefundTotalsParams{TenantID: row.TenantID, ID: row.ID, RefundedNetMinor: row.RefundedNetMinor + parts.IncomeMinor, RefundedTaxMinor: row.RefundedTaxMinor + parts.TaxMinor, RefundedShippingMinor: row.RefundedShippingMinor + parts.ShippingMinor})
 	return store.MapError(err)
 }

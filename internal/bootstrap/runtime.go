@@ -373,6 +373,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		config.QuotesInquiryResolver = quoteInquiryResolver(public)
 	}
+	wireReturns(&config)
 	return config, closeRuntime, nil
 }
 

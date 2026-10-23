@@ -5030,6 +5030,7 @@ components:
       additionalProperties: false
       required: [event_id, account_id, order_id, order_version, provider_ref, status, amount_minor, currency]
       properties:
+        refund_id: {type: string, minLength: 1, maxLength: 200, pattern: '^[!-~]+$'}
         event_id: {type: string, minLength: 1, maxLength: 128}
         account_id: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$'}
         order_id: {type: string, format: uuid}

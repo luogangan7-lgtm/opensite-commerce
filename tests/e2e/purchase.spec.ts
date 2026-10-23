@@ -75,7 +75,8 @@ test('pending receipt alone never shows paid', async ({ page, request }, info) =
   const checkout = await start(page);
   const key = process.env.OPENSITE_FAKE_WEBHOOK_KEY;
   if (!key) throw new Error('Missing isolated CI signing key');
-  const event = { event_id: `c09d:${info.project.name}:refund-before-capture`, account_id: 'c09d-e2e',
+  const event = { event_id: `c09d:${info.project.name}:refund-before-capture`,
+    refund_id: `c09d:${info.project.name}:refund`, account_id: 'c09d-e2e',
     order_id: checkout.order_id, order_version: Number(checkout.order_version),
     provider_ref: checkout.payment.provider_ref, status: 'refunded', amount_minor: 3140, currency: 'USD' };
   const raw = JSON.stringify(event), timestamp = String(Math.floor(Date.now() / 1000));

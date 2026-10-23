@@ -23,7 +23,10 @@ quantity. Each line's component budget is allocated by cumulative integer floors
 This is monotone, has no negative rounding delta and consumes every remainder
 when all units are returned **without earlier direct Orders refunds**.
 
-Legacy direct refunds have no income/tax/shipping attribution. Subtract every
+Payments owns the shared `payments_allocate_refund` component command used by
+ordinary refunds and RMA creation. Checkout-backed refunds subtract their actual
+persisted net/tax/shipping counters, excluding completed RMA parts.
+Orders-only legacy direct refunds have no income/tax/shipping attribution. Subtract every
 immutable return-line allocation from the original component caps first, then
 consume legacy credit from the remaining caps in stable order: order-line UUID,
 then income, tax and shipping. Remaining quantities share only those remaining

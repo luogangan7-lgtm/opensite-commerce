@@ -27,6 +27,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	orderscontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
@@ -171,7 +172,7 @@ func newCheckoutPGFixture(t *testing.T, stock, quantity int64) *checkoutPGFixtur
 		t.Fatal(err)
 	}
 	rules := checkout.NewSQLRules(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 100}}}})
-	f.service = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: ledger.New(), Payment: f.provider})
+	f.service = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: f.provider})
 	t.Cleanup(func() {
 		if n := f.provider.violations.Load(); n != 0 {
 			t.Errorf("provider IO observed in %d transactions", n)
