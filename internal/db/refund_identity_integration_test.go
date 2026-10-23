@@ -251,7 +251,7 @@ func TestStripeRefundFailedAfterSuccess(t *testing.T) {
 						if req.Method != "GET" || req.URL.Path != "/v1/refunds/re_transition" {
 							return nil, fmt.Errorf("unexpected provider command %s", req.Method)
 						}
-						return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"id":"re_transition","payment_intent":"pi_refundtransition","status":"` + terminal + `","amount":1,"currency":"usd","livemode":false}`)), Header: make(http.Header)}, nil
+						return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"id":"re_transition","payment_intent":"pi_refundtransition","status":"` + terminal + `","amount":1,"currency":"usd"}`)), Header: make(http.Header)}, nil
 					})
 					t.Cleanup(func() { http.DefaultTransport = old })
 				}
@@ -605,6 +605,15 @@ func TestMixedRefundComponents(t *testing.T) {
 				}
 				if current != frozen || active != 0 {
 					return fmt.Errorf("C19D2_FROZEN_RMA_RED: snapshot changed or %d uncompensated", active)
+				}
+				var rmas, returnEvents, orderEvents int
+				if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.returns WHERE tenant_id=$1),
+ (SELECT count(*) FROM app.outbox_events WHERE tenant_id=$1 AND event_type='return.refund_compensated'),
+ (SELECT count(*) FROM app.outbox_events WHERE tenant_id=$1 AND event_type='order.refund_compensated')`, p.f.tenant).Scan(&rmas, &returnEvents, &orderEvents); err != nil {
+					return err
+				}
+				if returnEvents != rmas || orderEvents != len(identities) {
+					return fmt.Errorf("C19D2_OUTBOX_ONCE_RED: returns=%d/%d orders=%d/%d", returnEvents, rmas, orderEvents, len(identities))
 				}
 				return nil
 			}); err != nil {

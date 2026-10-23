@@ -1250,6 +1250,8 @@ BEGIN
      OR privilege='INSERT' AND role_name='app_fulfillment_executor' AND t.relname=ANY(tables) THEN
      expected_table:=true;
      SELECT array_agg(attname::text) INTO allowed FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+    ELSIF privilege='INSERT' AND role_name='app_fulfillment_executor' AND t.relname='outbox_events' THEN
+     allowed:=ARRAY['tenant_id','event_type','payload','delivery_target','dedup_key'];
     ELSIF privilege='SELECT' AND role_name='app_returns_service' AND t.relname='orders' THEN
      allowed:=ARRAY['tenant_id','id','total_minor','currency'];
     ELSIF privilege='SELECT' AND role_name='app_returns_service' AND t.relname='idempotency_records' THEN

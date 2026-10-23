@@ -102,8 +102,10 @@ func (s *Stripe) Receive(ctx context.Context, raw []byte, signature string) (con
 			if err := s.request(ctx, "GET", "refunds/"+o.ID, "", nil, &current); err != nil {
 				return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp, "refund_terminal_retrieval_failed")
 			}
+			// Refund has no livemode field in Stripe's schema. Test-key scope,
+			// signed event mode and the mapped account establish the environment.
 			if current.ID != o.ID || current.PaymentIntent != o.PaymentIntent || current.Amount != o.Amount ||
-				current.Currency != o.Currency || current.Livemode == nil || *current.Livemode ||
+				current.Currency != o.Currency || (current.Livemode != nil && *current.Livemode) ||
 				(current.Status != "failed" && current.Status != "canceled") {
 				return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp, "refund_terminal_unconfirmed")
 			}
