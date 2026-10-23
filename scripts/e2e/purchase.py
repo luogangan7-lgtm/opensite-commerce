@@ -78,7 +78,7 @@ r AS (SELECT r.*,c.phase,c.order_id FROM c JOIN app.order_lines l ON (l.tenant_i
  JOIN app.inventory_reservations r ON (r.tenant_id,r.id)=(l.tenant_id,l.reservation_id)),
 e AS (SELECT e.*,a.code FROM app.ledger_entries e JOIN app.ledger_accounts a ON (a.tenant_id,a.id)=(e.tenant_id,e.account_id)
  JOIN app.ledger_transactions t ON (t.tenant_id,t.id)=(e.tenant_id,e.transaction_id)
- WHERE e.tenant_id='{TENANT}' AND t.source_id IN (SELECT order_id::text FROM c))
+ WHERE e.tenant_id='{TENANT}' AND (t.source_id IN (SELECT order_id::text FROM c) OR t.source_id IN (SELECT r.id::text FROM app.returns r WHERE r.tenant_id='{TENANT}' AND r.order_id IN (SELECT order_id FROM c))))
 SELECT jsonb_build_object(
  'sessions',(SELECT count(*) FROM c),
  'paid',(SELECT count(*) FROM c JOIN app.orders o ON (o.tenant_id,o.id)=(c.tenant_id,c.order_id) WHERE c.phase='paid' AND o.state='paid' AND o.sealed AND o.total_minor=3140 AND c.amount_minor=3140 AND c.currency='USD'),
@@ -92,7 +92,7 @@ SELECT jsonb_build_object(
  'pending',(SELECT count(*) FROM app.webhook_inbox WHERE tenant_id='{TENANT}' AND provider_account_id='c09d-e2e' AND provider_event_id NOT LIKE 'b2b:%' AND status='pending' AND processed_at IS NULL),
  'captured',(SELECT count(*) FROM app.payment_events WHERE tenant_id='{TENANT}' AND provider_account_id='c09d-e2e' AND status='captured' AND applied AND amount_minor=3140 AND currency='USD'),
  'pending_refund',(SELECT count(*) FROM app.payment_events WHERE tenant_id='{TENANT}' AND provider_account_id='c09d-e2e' AND status='refunded' AND NOT applied AND error_code IS NULL),
- 'journals',(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id='{TENANT}' AND source_id IN (SELECT order_id::text FROM c)),
+ 'journals',(SELECT count(*) FROM app.ledger_transactions WHERE tenant_id='{TENANT}' AND (source_id IN (SELECT order_id::text FROM c) OR source_id IN (SELECT r.id::text FROM app.returns r WHERE r.tenant_id='{TENANT}' AND r.order_id IN (SELECT order_id FROM c)))),
  'debits',(SELECT sum(amount) FROM e WHERE side='debit'),
  'credits',(SELECT sum(amount) FROM e WHERE side='credit'),
  'cash',(SELECT sum(CASE WHEN side='debit' THEN amount ELSE -amount END) FROM e WHERE code='cash'),
@@ -101,9 +101,9 @@ SELECT jsonb_build_object(
 
 
 def verify(row):
-    expected = {'sessions': 6, 'paid': 4, 'receipt_only': 2, 'committed_owned': 4,
-                'active_owned': 2, 'on_hand': 16, 'reserved': 2, 'inbox': 6,
-                'captured': 4, 'pending_refund': 2, 'processed': 4, 'pending': 2, 'journals': 4, 'cash': 12560, 'paid_outbox': 4}
+    expected = {'sessions': 8, 'paid': 4, 'receipt_only': 2, 'committed_owned': 4,
+                'active_owned': 2, 'on_hand': 16, 'reserved': 2, 'inbox': 8,
+                'captured': 4, 'pending_refund': 2, 'processed': 6, 'pending': 2, 'journals': 10, 'cash': 12560, 'paid_outbox': 6}
     if (not isinstance(row, dict) or any(row.get(k) != v for k, v in expected.items())
             or not isinstance(row.get('debits'), int) or row['debits'] <= 0
             or row['debits'] != row.get('credits')):
