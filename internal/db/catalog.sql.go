@@ -114,8 +114,11 @@ func (q *Queries) CountCatalogProductOptions(ctx context.Context, arg CountCatal
 }
 
 const createProduct = `-- name: CreateProduct :one
+WITH code_lock AS MATERIALIZED (
+ SELECT pg_advisory_xact_lock(hashtextextended('catalog-csv:' || $1::uuid::text || ':p:' || $2::text, 0))
+)
 INSERT INTO app.products (tenant_id, product_code, lifecycle_status)
-VALUES ($1, $2, 'draft') RETURNING tenant_id, id, product_code, product_code_normalized, lifecycle_status, created_at, version
+SELECT $1::uuid, $2::text, 'draft' FROM code_lock RETURNING tenant_id, id, product_code, product_code_normalized, lifecycle_status, created_at, version
 `
 
 type CreateProductParams struct {
@@ -123,6 +126,7 @@ type CreateProductParams struct {
 	ProductCode string      `json:"product_code"`
 }
 
+// Match CSV's tenant/canonical-code lock before entering the unique index.
 func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (AppProduct, error) {
 	row := q.db.QueryRow(ctx, createProduct, arg.TenantID, arg.ProductCode)
 	var i AppProduct

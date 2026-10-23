@@ -15,7 +15,8 @@ UI, no path) and an independent 64-hex `OPENSITE_AUTH_SIGNING_KEY` (for example
 `openssl rand -hex 32`). Compose passes them to the API as `OSC_ADMIN_ORIGIN`
 and `OSC_AUTH_SIGNING_KEY_HEX`; staff login reuses the auth login DSN, and the
 API refuses to start if either value is missing or malformed. Customer authentication
-also requires `OPENSITE_CUSTOMER_AUTH_DB_PASSWORD`, a pinned HTTPS
+also requires `OPENSITE_RETURNS_DB_PASSWORD`,
+`OPENSITE_CUSTOMER_AUTH_DB_PASSWORD`, a pinned HTTPS
 `OPENSITE_STOREFRONT_ORIGIN` and an independent `OPENSITE_CUSTOMER_CSRF_SECRET`
 containing 32–128 CSPRNG bytes encoded with unpadded base64url. Use simple `KEY=value` or single-quoted values, with no
 interpolation or multiline values. The isolated refund coordinator additionally requires
@@ -43,6 +44,17 @@ migration and verifies its separately configured runtime, auth, domain and
 media and customer-auth pools. Staff login (`/api/v1/auth/*`) is installed on the auth pool's
 DSN; the domain consumer remains pending its application wiring. The separate media identity
 uses the existing media capability rather than granting it to runtime.
+
+The eighth LOGIN, `opensite_returns_login`, receives only `app_returns_service`.
+Set an independent `OPENSITE_RETURNS_DB_PASSWORD` for migration/restore and API;
+non-Compose API deployments may instead supply `OPENSITE_RETURNS_DATABASE_URL`.
+The credential is never shared with workers or the renderer. Startup validates
+its exact capability and exposes only authenticated tenant transactions at
+`Config.ReturnsCoordinator.Runner`; the refund HTTP operation keeps its existing
+behavior until trusted capture/account/provider bindings consume that seam.
+Missing configuration names its setting in a startup log without a value.
+The operations drill checks the same HBA and permission boundaries before and
+after restore, including real password authentication for this identity.
 
 Customer login (`/api/v1/t/{tenant_id}/customer/*`) uses only
 `opensite_customer_auth_login` → `app_customer_auth`; it never receives staff

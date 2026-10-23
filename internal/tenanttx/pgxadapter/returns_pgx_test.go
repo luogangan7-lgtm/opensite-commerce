@@ -1,0 +1,90 @@
+//go:build pgx
+
+// Responsibility: exercise coordinator login rejection on disposable CI PostgreSQL.
+// Dependencies: pgxadapter maintenance fixture and real capability catalogs.
+// Invariants: exact group only; missing authorization never reaches callbacks.
+package pgxadapter_test
+
+import (
+	"context"
+	"net/url"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
+)
+
+func TestReturnsCoordinatorDedicatedLoginPostgres(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		pgxtest.Skip(t, "NOT_RUN: disposable PostgreSQL required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	admin, err := pgxadapter.OpenAuthorization(ctx, dsn)
+	if err != nil {
+		t.Fatal("maintenance fixture unavailable")
+	}
+	defer admin.Close(context.Background())
+	login := "c19c_" + uuid.NewString()[:8]
+	exec := func(sql string) {
+		t.Helper()
+		if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error { _, err := tx.Exec(ctx, sql); return err }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec("CREATE ROLE " + login + " LOGIN INHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD 'ci_returns_fixture_only_123456789'; GRANT app_returns_service TO " + login)
+	defer exec("DROP OWNED BY " + login + "; DROP ROLE " + login)
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal("invalid fixture DSN")
+	}
+	exec("GRANT CONNECT ON DATABASE " + pgx.Identifier{u.Path[1:]}.Sanitize() + " TO " + login)
+	u.User = url.UserPassword(login, "ci_returns_fixture_only_123456789")
+	open := func() (*pgxadapter.QueryRunner, error) { return pgxadapter.OpenReturnsRunner(ctx, u.String()) }
+	runner, err := open()
+	if err != nil {
+		t.Fatal("dedicated returns login rejected:", err)
+	}
+	called := false
+	if err := runner.RunAuthorizedTx(ctx, "11111111-1111-4111-8111-111111111111", func(context.Context, pgx.Tx) error { called = true; return nil }); err == nil || called {
+		t.Fatal("unauthenticated returns callback admitted")
+	}
+	runner.Close()
+	t.Setenv("OPENSITE_RETURNS_DATABASE_URL", u.String())
+	config, closeRuntime, err := bootstrap.FromEnvironment(ctx, bootstrap.Config{})
+	if err != nil {
+		t.Fatal("coordinator bootstrap rejected:", err)
+	}
+	if config.ReturnsCoordinator.Runner == nil || config.Returns.Service != nil {
+		closeRuntime()
+		t.Fatal("returns binding missing or enabled refund without trusted readers")
+	}
+	closeRuntime()
+	for _, fault := range []struct{ add, undo string }{
+		{"GRANT app_runtime TO " + login, "REVOKE app_runtime FROM " + login},
+		{"GRANT SELECT(password_hash) ON app.users TO " + login, "REVOKE SELECT(password_hash) ON app.users FROM " + login},
+		{"ALTER ROLE " + login + " BYPASSRLS", "ALTER ROLE " + login + " NOBYPASSRLS"},
+		{"ALTER ROLE " + login + " NOINHERIT", "ALTER ROLE " + login + " INHERIT"},
+	} {
+		exec(fault.add)
+		bad, err := open()
+		if bad != nil {
+			bad.Close()
+		}
+		exec(fault.undo)
+		if err == nil {
+			t.Fatal("unsafe coordinator capability accepted")
+		}
+	}
+	runner, err = open()
+	if err != nil {
+		t.Fatal("restored coordinator rejected")
+	}
+	runner.Close()
+}

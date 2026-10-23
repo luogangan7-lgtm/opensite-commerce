@@ -20,3 +20,10 @@
 ## 许可证
 
 Apache-2.0（见 [LICENSE](LICENSE)，随 PR-01 代码包导入）。owner 可以另行更换。
+
+本地部署的第八个独立 LOGIN 为 `opensite_returns_login`，只授予
+`app_returns_service`。API 使用 `OPENSITE_RETURNS_DATABASE_URL` 或独立的
+`OPENSITE_RETURNS_DB_PASSWORD` 数据库组件配置；迁移与恢复在写入前校验凭据。
+启动仅提供 `Config.ReturnsCoordinator.Runner` 可信组合入口，尚未接入退款行为。
+缺失配置会记录设置名并保留当前不可用行为。详见
+[运行时角色契约](deploy/runtime-roles.md#fulfillment-and-refund-coordinator)。

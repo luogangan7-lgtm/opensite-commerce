@@ -15,7 +15,10 @@ const CSVMaxBytes = 1 << 20
 const CSVMaxRows = 1000
 
 // CSV uses the exact header product_code,title,sku,locale. Codes/SKUs normalize
-// to trimmed uppercase; locale normalizes lowercase. An empty SKU represents a
+// using ASCII whitespace trimming and ASCII uppercase; non-ASCII codes fail.
+// Locale normalizes lowercase. The exact header alone is a valid zero-row,
+// zero-write import/preflight and is the export of an empty catalog; empty bytes
+// remain invalid. An empty SKU represents a
 // product without a variant. Only option-free catalogs are supported. Export
 // contains only active products with lowercase locale tags. Products without
 // content export their code as draft title and en as locale. Export

@@ -50,7 +50,7 @@ func (csvStore) preflight(ctx context.Context, tx pgx.Tx, input io.Reader) ([]cs
 	// lock or insert, in one global order: new products/SKUs created by another
 	// batch are then visible as existing rows instead of failing 23505 or
 	// deadlocking on uncommitted unique-index entries.
-	// ponytail: CSV-only advisory locks; catalog API writers can still race a new code.
+	// CreateProduct uses the same tenant/canonical-code key before its insert.
 	keys := make([]string, 0, 2*len(rows))
 	for _, row := range rows {
 		keys = append(keys, "p:"+row.ProductCode)

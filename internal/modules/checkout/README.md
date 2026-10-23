@@ -43,8 +43,12 @@ payable even if live prices change; changed consent cannot reuse that key.
 
 The immutable `address_snapshot.accepted_total` is the durable consent receipt,
 written with the existing snapshot and protected by the existing guard/grants.
-No new table or migration is needed. A new Capture claim (`ready -> confirming`) rechecks this
-receipt against the locked immutable amount/currency and payable version.
+No new table or migration is needed. The receipt has no version field: it carries
+only `amount_minor` and `currency`. A new Capture claim (`ready -> confirming`)
+rechecks those two receipt fields against the checkout row's locked immutable
+`amount_minor` and `currency`. The separate immutable `payable_version` column is
+checked against the verified event's `order_version` (and against the payment
+intent's order version on real-provider admission), never against the receipt.
 Terminal paid/attempt replays and already persisted confirming claims do not
 require a retroactive receipt; they retain their exact original identity/key. Legacy cart sessions with
 no receipt cannot issue a new Capture; uncertain old claims stay preserved for

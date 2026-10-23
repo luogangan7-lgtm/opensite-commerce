@@ -200,6 +200,8 @@ var reviewedAdapterExports = []string{
 	"func:OpenMigrationPool",
 	"func:OpenQueryRunner",
 	"func:OpenQueuePool",
+	// Returns coordinator exposes checked transactions only; its pool stays private.
+	"func:OpenReturnsRunner",
 	// Dedicated bounded staff lane exposes a runner, never a raw connection.
 	"func:OpenStaffAuthentication",
 	"method:CommandTag.Delete",
