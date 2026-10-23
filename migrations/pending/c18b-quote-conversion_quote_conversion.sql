@@ -62,7 +62,7 @@ DECLARE q app.quotes; BEGIN
   RAISE EXCEPTION 'QUOTE_CONVERSION_NOT_FOUND' USING ERRCODE='P0002'; END IF;
  -- Authorized history remains replayable after expiry; it cannot create again.
  IF NOT EXISTS(SELECT FROM app.quote_conversions WHERE tenant_id=p_tenant AND quote_id=p_quote)
- AND (q.status NOT IN('sent','accepted_pending_approval','approved') OR q.expires_at<=clock_timestamp()) THEN
+ AND (q.status<>'approved' OR q.expires_at<=clock_timestamp()) THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_NOT_APPROVED_OR_EXPIRED' USING ERRCODE='22023'; END IF;
  RETURN q;
 END $$;
@@ -85,7 +85,7 @@ DECLARE q app.quotes; c app.quote_conversions; o record; BEGIN
  IF EXISTS(SELECT FROM app.quote_conversions WHERE tenant_id=p_tenant AND quote_id=p_quote) THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_ALREADY_CONVERTED' USING ERRCODE='55000'; END IF;
  -- Expiry is checked again after key/quote/stock waits, immediately before binding.
- IF q.status NOT IN('sent','accepted_pending_approval','approved') OR q.expires_at<=clock_timestamp() THEN
+ IF q.status<>'approved' OR q.expires_at<=clock_timestamp() THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_NOT_APPROVED_OR_EXPIRED' USING ERRCODE='22023'; END IF;
  IF q.version<>p_quote_version THEN RAISE EXCEPTION 'QUOTE_CONVERSION_VERSION' USING ERRCODE='P0003'; END IF;
  SELECT tenant_id,id,customer_id,order_number,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor,sealed,state
