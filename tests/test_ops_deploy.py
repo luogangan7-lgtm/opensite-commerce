@@ -17,6 +17,15 @@ class DeployTests(unittest.TestCase):
     def valid_passwords(self):
         return {kind: f'nonsecret_fixture_{kind}_123456789' for kind in ops.LOGIN_ROLES}
 
+    def test_returns_login_has_only_trusted_coordinator_capability(self):
+        self.assertEqual(ops.LOGIN_ROLES.get('RETURNS'),
+                         ('opensite_returns_login', 'app_returns_service'),
+                         'RETURNS_LOGIN_RED: dedicated refund coordinator is missing')
+        sql = ops.provision_sql('opensite', {kind: secrets.token_urlsafe(32) for kind in ops.LOGIN_ROLES})
+        self.assertIn('GRANT app_returns_service TO opensite_returns_login;', sql)
+        self.assertNotIn('GRANT app_returns_service TO opensite_runtime_login;', sql)
+        self.assertIn("'opensite_returns_login'", ops.login_role_audit_sql('opensite'))
+
     def test_customer_auth_login_has_only_its_capability(self):
         self.assertIn('CUSTOMER_AUTH', ops.LOGIN_ROLES,
                       'CUSTOMER_AUTH_DEPLOYMENT_RED: customer credential pool is not provisioned')

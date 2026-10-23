@@ -27,6 +27,8 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
+	returnscontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 )
@@ -277,8 +279,8 @@ func TestStripeRefundFailedAfterSuccessReconciles(t *testing.T) {
 			err = f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
 				return tx.QueryRow(ctx, "SELECT count(*) FROM app.webhook_inbox i WHERE tenant_id=$1 AND provider='stripe' AND provider_event_id='evt_terminal' AND status='failed' AND octet_length(payload_hash)=32 AND NOT EXISTS(SELECT FROM app.payment_events e WHERE (e.tenant_id,e.id)=(i.tenant_id,i.id))", f.tenant).Scan(&retained)
 			})
-			if err != nil || retained != 1 || f.witness(t, start.OrderID) != posted {
-				t.Fatalf("reconciliation retention or second journal: count=%d err=%v", retained, err)
+			if err != nil || retained != 1 || f.witness(t, start.OrderID).journals != 3 || f.witness(t, start.OrderID).cash != start.AmountMinor {
+				t.Fatalf("REFUND_REVERSAL_RED: terminal failure needs exactly one persisted reversal: count=%d err=%v", retained, err)
 			}
 		})
 	}
@@ -311,5 +313,59 @@ func TestPaymentsFactReadFailureIsBounded(t *testing.T) {
 	}
 	if w := p.witness(t); w.inbox != 0 || w.events != 0 || w.checkout.journals != 0 {
 		t.Fatalf("failed fact read persisted partial work: %+v", w)
+	}
+}
+
+func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	p.f.provider.before = nil
+	r := payment.CreatePaymentIntent{TenantID: p.f.tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}, IdempotencyKey: "capture-for-return"}
+	if _, err := p.f.provider.Capture(p.f.ctx, payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: p.start.Payment.ProviderRef}); err != nil {
+		t.Fatal(err)
+	}
+	p.receive(t, "capture-for-return", payment.StatusCaptured, p.start.AmountMinor)
+	var line string
+	var version int64
+	var accounts returnscontract.RefundAccounts
+	err := p.f.runner.InTenant(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT (SELECT version FROM app.orders WHERE tenant_id=$1 AND id=$2),
+		 (SELECT id::text FROM app.order_lines WHERE tenant_id=$1 AND order_id=$2 LIMIT 1),
+		 (SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='revenue'),
+		 (SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='tax_payable'),
+		 (SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='shipping_revenue'),
+		 (SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='cash')`, p.f.tenant, p.start.OrderID).Scan(&version, &line, &accounts.Income, &accounts.Tax, &accounts.Shipping, &accounts.Cash)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := returns.New(returns.Config{Runner: fulfillmentRunner{runner: p.f.runner, role: "service"}, Payments: p.f.provider,
+	 Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Paid: r.Amount}},
+	 Accounts: fulfillmentAccounts{tenant: p.f.tenant, accounts: accounts}, Ledger: ledger.New()})
+	var receipt returnscontract.Return
+	err = p.f.run(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var err error
+		receipt, err = s.Request(ctx, tx, p.f.tenant, returnscontract.RequestInput{OrderID: r.OrderID, ExpectedVersion: version, IdempotencyKey: "single-rma", Kind: returnscontract.UnshippedCancel, Reason: "refund authority regression", Lines: []returnscontract.Line{{OrderLineID: line, Quantity: 1}}})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := s.Refund(p.f.ctx, p.f.tenant, returnscontract.RefundInput{ReturnID: receipt.ID, ExpectedVersion: receipt.OrderVersion, IdempotencyKey: "single-money"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := p.f.provider.fake.Events()
+	fact := events[len(events)-1]
+	for _, delivery := range []string{"rma-created", "rma-updated", "rma-created"} {
+		var body map[string]any
+		_ = json.Unmarshal(p.raw(delivery, payment.StatusPartiallyRefunded, completed.RefundMinor), &body)
+		body["refund_id"] = fact.EventID
+		raw, _ := json.Marshal(body)
+		if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if w := p.witness(t); w.checkout.journals != 2 || w.refunded != completed.RefundMinor || w.checkout.cash != p.start.AmountMinor-completed.RefundMinor {
+		t.Fatalf("RETURNS_DOUBLE_POST_RED: request and provider deliveries must share one journal: %+v", w)
 	}
 }
