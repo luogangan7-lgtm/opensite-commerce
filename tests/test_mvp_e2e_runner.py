@@ -209,9 +209,9 @@ class PurchaseWitnessTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         row = {'sessions': 8, 'paid': 4, 'receipt_only': 2, 'committed_owned': 4,
-               'active_owned': 2, 'on_hand': 14, 'reserved': 2, 'inbox': 8,
+               'active_owned': 2, 'on_hand': 16, 'reserved': 2, 'inbox': 8,
                'captured': 4, 'pending_refund': 2, 'processed': 6, 'pending': 2,
-               'journals': 8, 'cash': 18340, 'paid_outbox': 6, 'debits': 6280, 'credits': 6280}
+               'journals': 10, 'cash': 12560, 'paid_outbox': 6, 'debits': 6280, 'credits': 6280}
         self.assertEqual(module.verify(row)['status'], 'PASS')
         for key in row:
             with self.subTest(key=key), self.assertRaises(RuntimeError):
@@ -240,19 +240,30 @@ class PurchaseWitnessTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('rma_witness', source)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        rows = [dict(project=project, state='partially_refunded', total=5780, refunded=2890,
+        rows = [dict(project=project, order_id=project, return_id=f'{project}-{n}',
+                     journal_id=f'journal-{project}-{n}', shipment_line_id=f'shipment-{project}-{n}',
+                     state='refunded', total=5780, refunded=5780,
                      refund=2890, status='refunded', restocked=True, shipments=2, shipped=2,
-                     returns=1, movements=1, restored=1, journals=1, binding=1,
+                     returns=2, returned_quantity=1, movements=1, restored=1, journals=1, binding=1,
+                     total_journals=2, total_restored=2,
                      debits=2890, credits=2890, income=2400, tax=240, shipping=250,
                      original_income=4800, original_tax=480, original_shipping=500,
-                     checkout_income=2400, checkout_tax=240, checkout_shipping=250,
+                     cumulative_income=4800, cumulative_tax=480, cumulative_shipping=500,
+                     checkout_income=4800, checkout_tax=480, checkout_shipping=500,
                      ledger_income=2400, ledger_tax=240, ledger_shipping=250, ledger_cash=2890)
-                for project in ('desktop', 'mobile')]
+                for project in ('desktop', 'mobile') for n in (1, 2)]
         self.assertEqual(module.verify(rows)['status'], 'PASS')
         for key in rows[0]:
             with self.subTest(key=key), self.assertRaises(RuntimeError):
-                module.verify([{**rows[0], key: None}, rows[1]])
-        for changed in ([], rows[:1], [rows[0], rows[0]], [{**rows[0], 'movements': 2}, rows[1]]):
+                module.verify([{**rows[0], key: None}, *rows[1:]])
+        for changed in ([], rows[:2], [rows[0], rows[0], *rows[2:]],
+                        [{**rows[0], 'movements': 2}, *rows[1:]],
+                        [{**rows[0], 'state': 'partially_refunded', 'refunded': 2890}, *rows[1:]],
+                        [{**rows[0], 'total_journals': 3}, *rows[1:]],
+                        [{**rows[0], 'cumulative_tax': 481}, *rows[1:]],
+                        [{**rows[0], 'original_income': 4801}, *rows[1:]],
+                        [rows[0], {**rows[1], 'journal_id': rows[0]['journal_id']}, *rows[2:]],
+                        [rows[0], {**rows[1], 'shipment_line_id': rows[0]['shipment_line_id']}, *rows[2:]]):
             with self.assertRaises(RuntimeError): module.verify(changed)
 
     def test_purchase_cannot_be_removed_skipped_or_reclassified(self):

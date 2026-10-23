@@ -82,7 +82,7 @@ test('real shipment → return → refund journey', async ({ page, request }, in
   expect(refunded).toMatchObject({ id: rma.id, status: 'refunded', restocked: true, refund_minor: '2890' });
   expect(await accepted('refundReturn', await write(returnPath + '/refund', {}, received.order_version, refundKey), 200)).toEqual(refunded);
   order = await read();
-  expect(order.state).toBe('partially_refunded');
+  expect(order.state).toBe('refunded');
   // Returning an already returned shipment unit would exceed its original entitlement.
   const excess = await write(orderPath + '/returns', requestReturn, order.version);
   expect([409, 422]).toContain(excess.status());
