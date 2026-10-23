@@ -109,7 +109,7 @@ func (q *Queries) InsertPaymentEvent(ctx context.Context, arg InsertPaymentEvent
 }
 
 const listPendingPaymentEvents = `-- name: ListPendingPaymentEvents :many
-SELECT tenant_id, id, provider, provider_account_id, environment, provider_ref, event_key, claimed_order_id, order_version, status, amount_minor, currency, applied, error_code, created_at FROM app.payment_events WHERE tenant_id=$1 AND provider_account_id=$2 AND provider_ref=$3 AND NOT applied
+SELECT tenant_id, id, provider, provider_account_id, environment, provider_ref, event_key, claimed_order_id, order_version, status, amount_minor, currency, applied, error_code, created_at FROM app.payment_events WHERE tenant_id=$1 AND provider_account_id=$2 AND provider_ref=$3 AND provider=coalesce(nullif(current_setting('app.payment_provider',true),''),'fake') AND NOT applied
 ORDER BY CASE status WHEN 'captured' THEN 0 WHEN 'failed' THEN 2 WHEN 'canceled' THEN 2 ELSE 1 END,created_at,id FOR UPDATE
 `
 
@@ -185,6 +185,22 @@ type ResolveFakePaymentAccountRow struct {
 func (q *Queries) ResolveFakePaymentAccount(ctx context.Context, account string) (ResolveFakePaymentAccountRow, error) {
 	row := q.db.QueryRow(ctx, resolveFakePaymentAccount, account)
 	var i ResolveFakePaymentAccountRow
+	err := row.Scan(&i.TenantID, &i.AtTime)
+	return i, err
+}
+
+const resolveStripePaymentAccount = `-- name: ResolveStripePaymentAccount :one
+SELECT tenant_id::uuid,at_time::timestamptz FROM app.resolve_stripe_payment_account($1::text)
+`
+
+type ResolveStripePaymentAccountRow struct {
+	TenantID pgtype.UUID        `json:"tenant_id"`
+	AtTime   pgtype.Timestamptz `json:"at_time"`
+}
+
+func (q *Queries) ResolveStripePaymentAccount(ctx context.Context, account string) (ResolveStripePaymentAccountRow, error) {
+	row := q.db.QueryRow(ctx, resolveStripePaymentAccount, account)
+	var i ResolveStripePaymentAccountRow
 	err := row.Scan(&i.TenantID, &i.AtTime)
 	return i, err
 }
