@@ -31,14 +31,14 @@ test('automatic API observation includes headers cookies nested bodies and gener
 });
 
 if (process.env.E2E_PRIVACY_BROWSER_SMOKE === 'true') test('automatic browser observation survives redirects and context teardown', async ({ browser }) => {
-  const secret = randomBytes(24).toString('hex'), found = new Set<string>();
+  const secret = randomBytes(24).toString('hex'), csrf = randomBytes(24).toString('hex'), found = new Set<string>();
   const server = createServer((req, res) => {
     if (req.url === '/redirect') {
       res.writeHead(302, { location: '/', 'content-type': 'text/html', 'set-cookie': `session=${secret}` });
       res.end();
     } else {
       res.writeHead(200, { 'content-type': 'text/html' });
-      res.end(`<input name="csrf_token" value="${secret}">`);
+      res.end(`<input name="csrf_token" value="${csrf}">`);
     }
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -51,6 +51,6 @@ if (process.env.E2E_PRIVACY_BROWSER_SMOKE === 'true') test('automatic browser ob
     await page.goto(`http://127.0.0.1:${(server.address() as { port: number }).port}/redirect`);
     await page.context().close();
     await finish();
-    expect(found.has(secret)).toBe(true);
+    expect(found.has(secret) && found.has(csrf)).toBe(true);
   } finally { await context.dispose(); server.close(); }
 });
