@@ -9,7 +9,7 @@ import { fixture, publishedSite, audit, rememberSensitive, fillPassword } from '
 import { start, registerAndLogin } from './purchase-helpers';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
-test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+test.use({ trace: 'retain-on-failure', video: 'off', screenshot: 'off' });
 
 test('real registered customer export and erasure journey', async ({ page, request }, info) => {
   test.setTimeout(1_100_000); // Real DB capability TTL is 15 minutes, never shortened.
@@ -98,6 +98,7 @@ test('real registered customer export and erasure journey', async ({ page, reque
     return { path, link: link.href, expires: view!.download_expires_at, id: created.request_id };
   };
   const first = await ready();
+  throw new Error('FIX-374 trace probe: stop after actual ready capability');
   expect((await page.request.get(first.path.replace(fixture.tenantId, fixture.ownerTenantId))).status()).toBe(404);
   expect((await post(first.link.replace(fixture.tenantId, fixture.ownerTenantId))).status()).toBe(404);
   const download = await post(first.link);
