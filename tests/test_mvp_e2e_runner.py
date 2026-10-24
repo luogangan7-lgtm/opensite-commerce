@@ -152,6 +152,15 @@ class BrowserReceiptTests(unittest.TestCase):
                 result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
                 self.assertNotEqual(result.returncode, 0, message)
                 self.assertNotIn('reply:', result.stdout + result.stderr, 'gate must not echo source')
+            for expression in ("let label='safe'; label=await response.text(); expect(status, label)",
+                               "expect.poll(() => status, {message: await response.text()})",
+                               "expect(status, responseBody.status())",
+                               "expect.poll(() => status, {message: body})",
+                               "expect(status, {...responseBody})",
+                               "import {expect as check} from '@playwright/test'; check(status, body)") :
+                source.write_text(expression)
+                result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
+                self.assertNotEqual(result.returncode, 0)
             source.write_text("expect(status, 'safe operation status').toBe(200); expect(await response.json()).toEqual({});")
             result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
