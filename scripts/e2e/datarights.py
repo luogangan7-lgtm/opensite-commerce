@@ -72,8 +72,10 @@ def witness(psql, root):
                         fields.append(name)
                 if not fields:
                     continue
-                if table not in predicates or any(not re.fullmatch(r'[a-z_]+', name) for name in [table, *fields]):
-                    raise RuntimeError('Data-rights registry ownership coverage changed; review witness joins')
+                if table not in predicates:
+                    raise RuntimeError('Data-rights registry ownership coverage changed: ' + table)
+                if any(not re.fullmatch(r'[a-z_][a-z0-9_]*', name) for name in [table, *fields]):
+                    raise RuntimeError('Data-rights registry has an unsafe SQL identifier: ' + table)
                 for field in fields:
                     copy = json.loads(psql(f"""SELECT jsonb_build_object('rows',count(*),'clean',coalesce(bool_and(
                       coalesce((to_jsonb(r)->'{field}')::text,'') NOT LIKE '%e2edr-{project}@example.test%'
