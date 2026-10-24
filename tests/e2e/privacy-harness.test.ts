@@ -1,5 +1,5 @@
 /** Offline regression for the real APIRequestContext wrapper (no browser/container).
- * CI-only check_all invokes Bun; assertion failures never print observed values.
+ * CI-only check_all invokes Node; assertion failures never print observed values.
  */
 import { test, expect } from '@playwright/test';
 import { createServer } from 'node:http';
@@ -27,5 +27,30 @@ test('automatic API observation includes headers cookies nested bodies and gener
       data: { password: samples[6], nested: { secret_key: samples[7] } } });
     await finish();
     expect(samples.every(value => found.has(value))).toBe(true);
+  } finally { await context.dispose(); server.close(); }
+});
+
+if (process.env.E2E_PRIVACY_BROWSER_SMOKE === 'true') test('automatic browser observation survives redirects and context teardown', async ({ browser }) => {
+  const secret = randomBytes(24).toString('hex'), found = new Set<string>();
+  const server = createServer((req, res) => {
+    if (req.url === '/redirect') {
+      res.writeHead(302, { location: '/', 'content-type': 'text/html', 'set-cookie': `session=${secret}` });
+      res.end();
+    } else {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(`<input name="csrf_token" value="${secret}">`);
+    }
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const context = await factory.newContext();
+  const finish = installPrivacy(browser, context, { request: factory }, async (...values) => {
+    values.forEach(value => found.add(value));
+  });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${(server.address() as { port: number }).port}/redirect`);
+    await page.context().close();
+    await finish();
+    expect(found.has(secret)).toBe(true);
   } finally { await context.dispose(); server.close(); }
 });

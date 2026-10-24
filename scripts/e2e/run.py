@@ -358,13 +358,20 @@ def run(receipt_dir):
         except BaseException:
             os.killpg(proc.pid, signal.SIGTERM)
             try:
-                proc.communicate(timeout=5)
+                output, _ = proc.communicate(timeout=5)
             except subprocess.TimeoutExpired:
                 os.killpg(proc.pid, signal.SIGKILL)
-                proc.communicate(timeout=5)
+                output, _ = proc.communicate(timeout=5)
+            (receipt_dir / (name + ".log")).write_bytes(redact(output))
+            if name in ('browser', 'privacy-browser', 'privacy-observer-smoke'):
+                for marker in (b'Private CI', b'TimeoutError', b'Error:', b'passed', b'failed'):
+                    print('CI browser diagnostic ' + marker.decode().replace(':', '') + '=' + str(output.count(marker)), flush=True)
             raise
         (receipt_dir / (name + ".log")).write_bytes(redact(output))
         if check and proc.returncode:
+            if name == 'privacy-observer-smoke':
+                for marker in (b'Private CI', b'TimeoutError', b'Error:', b'passed', b'failed'):
+                    print('CI browser diagnostic ' + marker.decode().replace(':', '') + '=' + str(output.count(marker)), flush=True)
             raise RuntimeError(f"MVP E2E {name} failed (exit {proc.returncode}; see service logs)")
         return proc.returncode
 
@@ -519,6 +526,9 @@ def run(receipt_dir):
             persist()
             result = ROOT / "test-results/e2e/base/results.json"
             result.unlink(missing_ok=True)  # only this CI harness's own stale result
+            command(compose_command(["run", "--rm", "--no-deps", "--env", "E2E_PRIVACY_BROWSER_SMOKE=true", "browser",
+                "node", "node_modules/@playwright/test/cli.js", "test", "--config", "scripts/e2e/privacy-unit.config.ts"]),
+                "privacy-observer-smoke", timeout=90)
             receipt["browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "--env", "E2E_BROWSER_PHASE=base", "browser"]), "browser", timeout=900, check=False)
             if receipt["browser_exit"] != 0:
                 # Counts only: locate dependency failures without persisting proof tokens or credentials.
@@ -609,11 +619,14 @@ def run(receipt_dir):
                 receipt['artifact_privacy'] = verify_artifact_privacy(
                     [receipt_dir, ROOT / 'test-results/e2e', ROOT / 'playwright-report/e2e'],
                     set(credentials.values()) | collector.read_private_values() | {collector.key})
-            except RuntimeError:
+            except RuntimeError as exc:
                 receipt['status'] = 'FAIL'
                 receipt['artifact_privacy'] = {'status': 'FAIL'}
                 persist()
                 print('FAIL: sensitive artifact gate; upload withheld, evidence preserved on runner', flush=True)
+                for diagnostic in ('sensitive value found in CI artifacts', 'sensitive observer incomplete',
+                                   'sensitive value collector rejected input', 'sensitive artifact archive rejected'):
+                    print('CI privacy diagnostic ' + diagnostic + '=' + str(int(str(exc) == diagnostic)), flush=True)
                 raise
             else:
                 persist()
