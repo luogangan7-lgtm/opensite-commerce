@@ -98,15 +98,35 @@ class BrowserReceiptTests(unittest.TestCase):
             self.assertEqual(rejected.exception.code, 400)
             self.assertTrue(collector.invalid)
 
-    def test_sensitive_specs_disable_capture_but_public_specs_keep_traces(self):
+    def test_global_capture_defaults_and_shared_observation_are_mandatory(self):
         root = Path(__file__).resolve().parents[1]
-        for name in ('admin', 'b2b', 'datarights', 'mvp-gaps', 'payments', 'purchase', 'redrive', 'rma'):
-            source = (root / f'tests/e2e/{name}.spec.ts').read_text()
-            with self.subTest(spec=name):
-                self.assertIn("test.use({ trace: 'off', video: 'off', screenshot: 'off' })", source)
-                self.assertNotIn('page.screenshot(', source)
-        self.assertNotIn("trace: 'off'", (root / 'tests/e2e/storefront.spec.ts').read_text())
-        self.assertIn("trace: 'retain-on-failure'", (root / 'playwright.e2e.config.ts').read_text())
+        config = (root / 'playwright.e2e.config.ts').read_text()
+        self.assertIn("trace: 'off', video: 'off', screenshot: 'off'", config)
+        for path in (root / 'tests/e2e').glob('*.spec.ts'):
+            source = path.read_text()
+            self.assertNotRegex(source, r"import\s*\{[^}]*\btest\b[^}]*\}\s*from ['\"]@playwright/test")
+        self.assertIn('installPrivacy', (root / 'tests/e2e/fixture.ts').read_text())
+        runner = (root / 'scripts/e2e/run.py').read_text()
+        self.assertIn('collector.read_private_values()', runner)
+
+    def test_assertion_message_gate_rejects_bodies_and_aliases(self):
+        root = Path(__file__).resolve().parents[1]
+        gate = root / 'scripts/e2e/check-assertion-messages.ts'
+        self.assertTrue(gate.is_file(), 'shared assertion-message gate missing')
+        self.assertIn('check-assertion-messages.ts', (root / 'scripts/check_all.sh').read_text())
+        unsafe = ["await response.text()", "await response.json()", "JSON.stringify(data)",
+                  "body", "responseBody", "`reply: ${body}`", "alias", "getBody()"]
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'sample.ts'
+            for message in unsafe:
+                source.write_text("const body = await response.text(); const alias = body; "
+                                  f"expect(status, {message}).toBe(200);")
+                result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
+                self.assertNotEqual(result.returncode, 0, message)
+                self.assertNotIn('reply:', result.stdout + result.stderr, 'gate must not echo source')
+            source.write_text("expect(status, 'safe operation status').toBe(200); expect(await response.json()).toEqual({});")
+            result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_artifact_gate_is_on_failure_path_and_blocks_upload(self):
         root = Path(__file__).resolve().parents[1]
