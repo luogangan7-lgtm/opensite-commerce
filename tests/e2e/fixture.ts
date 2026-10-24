@@ -123,8 +123,8 @@ export const test = base.extend<{ _privacy: void }>({
       try { await finish(); await privateMessage({ phase: 'end' }); }
       catch (error) {
         await privateMessage({ phase: 'failed' });
-        const known = ['Private CI network observation failed', 'Private CI API observation failed', 'Private CI sensitive-value registration failed'];
-        throw new Error(error instanceof Error && known.includes(error.message) ? error.message : 'Private CI privacy fixture failed');
+        const known = /^Private CI (request|response) observation (closed|unavailable|registration|type|other)$/;
+        throw new Error(error instanceof Error && known.test(error.message) ? error.message : 'Private CI privacy fixture failed');
       }
     }
   }, { auto: true }],

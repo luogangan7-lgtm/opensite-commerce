@@ -8,7 +8,7 @@ export function installPrivacy(browser: Browser, request: APIRequestContext, pla
   save: (...values: string[]) => Promise<void>) {
   const seen = new WeakSet<object>(), values = new Set<string>(), pending = new Set<Promise<void>>();
   const restore: (() => void)[] = [];
-  let failed = false;
+  let failed = '';
   const sensitive = /csrf|token|secret|password|proof|key/i;
   const add = (value: string) => { if (value) values.add(value); };
   function url(value: string) {
@@ -59,15 +59,20 @@ export function installPrivacy(browser: Browser, request: APIRequestContext, pla
     const batch = [...values]; values.clear();
     for (let i = 0; i < batch.length; i += 128) await save(...batch.slice(i, i + 128));
   }
-  function track(work: () => Promise<void>) {
-    const task = work().catch(() => { failed = true; }).finally(() => pending.delete(task));
+  function track(work: () => Promise<void>, stage = 'response') {
+    const task = work().catch(error => {
+      const message = error instanceof Error ? error.message : '';
+      const kind = /closed|disposed/i.test(message) ? 'closed' : /unavailable|No resource/i.test(message) ? 'unavailable'
+        : /registration failed/.test(message) ? 'registration' : error instanceof TypeError ? 'type' : 'other';
+      failed ||= `Private CI ${stage} observation ${kind}`;
+    }).finally(() => pending.delete(task));
     pending.add(task);
     return task;
   }
   async function drain() {
     while (pending.size) await Promise.all([...pending]);
     await flush();
-    if (failed) throw new Error('Private CI network observation failed');
+    if (failed) throw new Error(failed);
   }
   function patch<T extends object, K extends keyof T>(object: T, key: K, value: T[K]) {
     const original = object[key]; object[key] = value;
@@ -97,7 +102,7 @@ export function installPrivacy(browser: Browser, request: APIRequestContext, pla
         for (const cookie of (await context.storageState()).cookies) add(cookie.value);
         await response(result);
       });
-      if (failed) throw new Error('Private CI API observation failed');
+      if (failed) throw new Error(failed);
       return result;
     });
   }
@@ -105,7 +110,7 @@ export function installPrivacy(browser: Browser, request: APIRequestContext, pla
     if (seen.has(context)) return;
     seen.add(context); api(context.request);
     const onRequest = (item: import('@playwright/test').Request) => {
-      track(async () => { url(item.url()); headers(pairs(await item.allHeaders())); body(item.postData()); await flush(); });
+      track(async () => { url(item.url()); headers(pairs(await item.allHeaders())); body(item.postData()); await flush(); }, 'request');
     };
     const onResponse = (item: Response) => { track(() => response(item)); };
     context.on('request', onRequest); context.on('response', onResponse);
