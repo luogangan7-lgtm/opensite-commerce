@@ -78,13 +78,13 @@ export function installPrivacy(browser: Browser, request: APIRequestContext, pla
     const original = object[key]; object[key] = value;
     restore.push(() => { object[key] = original; });
   }
-  async function response(value: APIResponse | Response) {
+  async function response(value: APIResponse | Response, complete = true) {
     const items = await value.headersArray();
     headers(items);
     const type = items.find(item => item.name.toLowerCase() === 'content-type')?.value ?? '';
     // Browser protocols expose redirect headers/cookies, but not redirect bodies.
     const browserRedirect = 'request' in value && value.status() >= 300 && value.status() < 400;
-    if (!browserRedirect && /json|text\/html/i.test(type)) body(await value.text());
+    if (complete && !browserRedirect && /json|text\/html/i.test(type)) body(await value.text());
     await flush();
   }
   function api(context: APIRequestContext) {
@@ -112,9 +112,12 @@ export function installPrivacy(browser: Browser, request: APIRequestContext, pla
     const onRequest = (item: import('@playwright/test').Request) => {
       track(async () => { url(item.url()); headers(pairs(await item.allHeaders())); body(item.postData()); await flush(); }, 'request');
     };
-    const onResponse = (item: Response) => { track(() => response(item)); };
-    context.on('request', onRequest); context.on('response', onResponse);
-    restore.push(() => { context.off('request', onRequest); context.off('response', onResponse); });
+    const onResponse = (item: Response) => { track(() => response(item, false)); };
+    const onFinished = (item: import('@playwright/test').Request) => {
+      track(async () => { const result = await item.response(); if (result) await response(result); });
+    };
+    context.on('request', onRequest); context.on('response', onResponse); context.on('requestfinished', onFinished);
+    restore.push(() => { context.off('request', onRequest); context.off('response', onResponse); context.off('requestfinished', onFinished); });
     const close = context.close.bind(context);
     patch(context, 'close', async options => { await drain(); await close(options); });
   }
