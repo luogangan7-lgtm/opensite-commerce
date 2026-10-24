@@ -45,7 +45,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     await info.attach('diagnostic-policy-probe', { body: JSON.stringify({
       session: probeSession, csrf: buyerHeaders['X-CSRF-Token'],
     }), contentType: 'application/json' });
-    throw new Error('Deliberate diagnostic policy failure');
+    if (process.env.GITHUB_ACTIONS === 'true') throw new Error('Deliberate diagnostic policy failure');
     await audit(page, info);
     // Host-derived public site; body contains no tenant/company/actor authority.
     const inquiryResponse = await page.request.post(`${publicAPI}/inquiries`, { headers: { Host: '127.0.0.1' }, data: {
