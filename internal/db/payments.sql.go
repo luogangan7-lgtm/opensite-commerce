@@ -284,7 +284,9 @@ func (q *Queries) IsPaymentRefundTerminal(ctx context.Context, arg IsPaymentRefu
 }
 
 const listPaymentDeliveries = `-- name: ListPaymentDeliveries :many
-SELECT id FROM app.payment_event_deliveries WHERE tenant_id=$1 AND payment_event_id=$2 ORDER BY id
+SELECT d.id,i.provider_event_id,i.payload_hash FROM app.payment_event_deliveries d
+JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(d.tenant_id,d.id)
+WHERE d.tenant_id=$1 AND d.payment_event_id=$2 ORDER BY d.id
 `
 
 type ListPaymentDeliveriesParams struct {
@@ -292,19 +294,25 @@ type ListPaymentDeliveriesParams struct {
 	PaymentEventID pgtype.UUID `json:"payment_event_id"`
 }
 
-func (q *Queries) ListPaymentDeliveries(ctx context.Context, arg ListPaymentDeliveriesParams) ([]pgtype.UUID, error) {
+type ListPaymentDeliveriesRow struct {
+	ID              pgtype.UUID `json:"id"`
+	ProviderEventID string      `json:"provider_event_id"`
+	PayloadHash     []byte      `json:"payload_hash"`
+}
+
+func (q *Queries) ListPaymentDeliveries(ctx context.Context, arg ListPaymentDeliveriesParams) ([]ListPaymentDeliveriesRow, error) {
 	rows, err := q.db.Query(ctx, listPaymentDeliveries, arg.TenantID, arg.PaymentEventID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []pgtype.UUID
+	var items []ListPaymentDeliveriesRow
 	for rows.Next() {
-		var id pgtype.UUID
-		if err := rows.Scan(&id); err != nil {
+		var i ListPaymentDeliveriesRow
+		if err := rows.Scan(&i.ID, &i.ProviderEventID, &i.PayloadHash); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

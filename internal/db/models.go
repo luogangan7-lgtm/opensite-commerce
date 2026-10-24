@@ -687,6 +687,7 @@ type AppPaymentRefundCaseResolution struct {
 	OriginalJournalID pgtype.UUID        `json:"original_journal_id"`
 	ReversalJournalID pgtype.UUID        `json:"reversal_journal_id"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	TerminalRefundID  pgtype.Text        `json:"terminal_refund_id"`
 }
 
 type AppPaymentRefundReversal struct {

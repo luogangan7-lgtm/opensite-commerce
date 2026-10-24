@@ -472,6 +472,11 @@
     },
     "payment_refund_case_resolutions": {
       "columns": {
+        "terminal_refund_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Bounded provider refund identity links immutable reconciliation evidence to an existing verified terminal; no customer contact data."
+        },
         "tenant_id": {
           "classification": "financial_obligation",
           "retention": "financial-obligation",

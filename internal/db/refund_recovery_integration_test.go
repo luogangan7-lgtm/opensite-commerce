@@ -228,3 +228,119 @@ func TestRefundCaseOperatorAndAudit(t *testing.T) {
 		t.Fatal("operator resolved without reason")
 	}
 }
+
+func TestRefundCaseQueuedRejectionRetainsEveryDelivery(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	p.receive(t, "queued-full", payment.StatusRefunded, p.start.AmountMinor)
+	for _, event := range []string{"queued-extra", "queued-alias"} {
+		var body map[string]any
+		_ = json.Unmarshal(p.raw(event, payment.StatusPartiallyRefunded, 1), &body)
+		body["refund_id"] = "queued-extra"
+		raw, _ := json.Marshal(body)
+		if receipt, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err != nil || receipt.Status != "pending" {
+			t.Fatalf("queue refund: %+v %v", receipt, err)
+		}
+	}
+	p.receive(t, "draining-capture", payment.StatusCaptured, p.start.AmountMinor)
+	if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var failed, retained, cases int
+		err := tx.QueryRow(ctx, `SELECT count(*),count(d.inbox_id),count(DISTINCT c.id)
+ FROM app.webhook_inbox i LEFT JOIN app.payment_refund_case_deliveries d ON (d.tenant_id,d.inbox_id)=(i.tenant_id,i.id)
+ LEFT JOIN app.payment_refund_cases c ON (c.tenant_id,c.id)=(d.tenant_id,d.case_id)
+  AND c.provider_refund_id='queued-extra' AND c.evidence_hash=(SELECT payload_hash FROM app.webhook_inbox WHERE tenant_id=$1 AND provider_event_id='queued-extra')
+ WHERE i.tenant_id=$1 AND i.provider_event_id IN('queued-extra','queued-alias') AND i.status='failed'`, p.f.tenant).Scan(&failed, &retained, &cases)
+		if err == nil && (failed != 2 || retained != 2 || cases != 1) {
+			return fmt.Errorf("C19DP2_QUEUED_CASE_RED failed=%d retained=%d cases=%d", failed, retained, cases)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRefundCaseUnboundDeliveriesResolveOneTerminal(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	p.receive(t, "capture", payment.StatusCaptured, p.start.AmountMinor)
+	p.receive(t, "posted-refund", payment.StatusPartiallyRefunded, 1)
+	before := p.witness(t)
+	var original, reversal string
+	for n, event := range []string{"legacy-terminal-one", "legacy-terminal-two"} {
+		hash := sha256.Sum256([]byte(event))
+		var cid string
+		// Model the existing backfill exactly: neither order reference nor refund
+		// identity survived, only each original delivery and its immutable hash.
+		if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", p.f.tenant); err != nil {
+				return err
+			}
+			return tx.QueryRow(ctx, `WITH i AS (
+ INSERT INTO app.webhook_inbox(tenant_id,provider,provider_account_id,environment,provider_event_id,payload_hash,payload_reference,status)
+ VALUES($1,'fake',$2,'test',$3,$4,'hash-only','failed') RETURNING id), c AS (
+ INSERT INTO app.payment_refund_cases(tenant_id,provider,provider_account_id,case_key,reason,evidence_hash)
+ VALUES($1,'fake',$2,'event:'||$3,'unmatched_refund',$4) RETURNING id)
+ INSERT INTO app.payment_refund_case_deliveries(tenant_id,case_id,inbox_id) SELECT $1,c.id,i.id FROM c,i RETURNING case_id::text`, p.f.tenant, p.account, event, hash[:]).Scan(&cid)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		replay := func(amount int64) error {
+			return p.runTerminal(p.f.ctx, p.account, func(ctx context.Context, tx pgx.Tx, tenant string, _ time.Time) error {
+				fact, _ := json.Marshal(map[string]any{"tenant_id": tenant, "provider": "fake", "account_id": p.account,
+					"refund_id": "posted-refund", "provider_ref": p.start.Payment.ProviderRef, "event_id": event,
+					"payload_hash": hex.EncodeToString(hash[:]), "status": "failed", "amount_minor": amount, "currency": p.start.Currency, "order_version": 0})
+				_, err := tx.Exec(ctx, "SELECT app.payments_replay_refund_case($1::uuid,$2::jsonb)", cid, fact)
+				return err
+			})
+		}
+		if n == 1 && replay(2) == nil {
+			t.Fatal("C19DP2_CONFLICT_RED second delivery changed terminal amount")
+		}
+		if n == 1 {
+			err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+				if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", p.f.tenant); err != nil {
+					return err
+				}
+				_, err := tx.Exec(ctx, `INSERT INTO app.payment_refund_case_resolutions(tenant_id,case_id,outcome,reason,evidence_hash,original_journal_id,reversal_journal_id,terminal_refund_id)
+ VALUES($1,$2,'resolved_compensated','verified_terminal',$3,$4,$5,'different-refund')`, p.f.tenant, cid, hash[:], original, reversal)
+				return err
+			})
+			var pg interface{ SQLState() string }
+			if !errors.As(err, &pg) || pg.SQLState() != "23514" {
+				t.Fatalf("C19DP2_FORGED_TERMINAL_RED: %v", err)
+			}
+		}
+		for range 2 {
+			if err := replay(1); err != nil {
+				t.Fatalf("C19DP2_UNBOUND_REPLAY_RED delivery=%d: %v", n, err)
+			}
+		}
+		if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+			var gotOriginal, gotReversal string
+			if err := tx.QueryRow(ctx, `SELECT original_journal_id::text,reversal_journal_id::text FROM app.payment_refund_case_resolutions
+ WHERE tenant_id=$1 AND case_id=$2 AND outcome='resolved_compensated'`, p.f.tenant, cid).Scan(&gotOriginal, &gotReversal); err != nil {
+				return err
+			}
+			if n == 0 {
+				original, reversal = gotOriginal, gotReversal
+			} else if original != gotOriginal || reversal != gotReversal {
+				return fmt.Errorf("C19DP2_SECOND_COMPENSATION_RED resolutions reference different journals")
+			}
+			var reversals, terminals, processed, journals int
+			if err := tx.QueryRow(ctx, `SELECT
+ (SELECT count(*) FROM app.payment_refund_reversals WHERE tenant_id=$1),
+ (SELECT count(*) FROM app.payment_refund_terminals WHERE tenant_id=$1),
+ (SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider_event_id=$2 AND payload_hash=$3 AND status='processed'),
+ (SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=$1 AND status='posted')`, p.f.tenant, event, hash[:]).Scan(&reversals, &terminals, &processed, &journals); err != nil {
+				return err
+			}
+			if reversals != 1 || terminals != 1 || processed != 1 || journals != 3 {
+				return fmt.Errorf("C19DP2_SECOND_COMPENSATION_RED reversals=%d terminals=%d processed=%d journals=%d", reversals, terminals, processed, journals)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if after := p.witness(t); after.refunded != 0 || after.checkout.cash != before.checkout.cash+1 {
+		t.Fatalf("C19DP2_MONEY_RED before=%+v after=%+v", before, after)
+	}
+}
