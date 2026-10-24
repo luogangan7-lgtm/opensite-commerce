@@ -38,6 +38,14 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
   try {
     const email = `b2b-${info.project.name}-buyer@example.test`;
     const buyerHeaders = await login(page, email);
+    // Probe only: these values have no per-spec registration; shared observation must catch both.
+    const probeCookies = await page.context().cookies();
+    const probeSession = probeCookies.find(cookie => /session/i.test(cookie.name))?.value;
+    if (!probeSession || !buyerHeaders['X-CSRF-Token']) throw new Error('Probe precondition absent');
+    await info.attach('diagnostic-policy-probe', { body: JSON.stringify({
+      session: probeSession, csrf: buyerHeaders['X-CSRF-Token'],
+    }), contentType: 'application/json' });
+    throw new Error('Deliberate diagnostic policy failure');
     await audit(page, info);
     // Host-derived public site; body contains no tenant/company/actor authority.
     const inquiryResponse = await page.request.post(`${publicAPI}/inquiries`, { headers: { Host: '127.0.0.1' }, data: {
