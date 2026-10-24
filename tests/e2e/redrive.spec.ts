@@ -4,6 +4,9 @@
 import {expect,test} from '@playwright/test';
 import {audit,fixture} from './fixture';
 
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 test('real admin notification failure redrive delivers once with scoped isolation',async({page},info)=>{
  const suffix=info.project.name==='desktop'?'000000000001':'000000000002';
  const tenant=`c1900010-0000-4000-8000-${suffix}`, event=`c3400001-0000-4000-8000-${suffix}`;

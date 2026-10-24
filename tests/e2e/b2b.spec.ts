@@ -8,6 +8,9 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { audit, fixture, publishedSite } from './fixture';
 
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 const api = 'http://127.0.0.1:8082';
 const tenant = `${api}/api/v1/t/${fixture.tenantId}`;
 const publicAPI = `${api}/api/public/v1`;

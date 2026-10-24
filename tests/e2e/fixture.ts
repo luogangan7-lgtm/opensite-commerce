@@ -99,3 +99,16 @@ export async function audit(page: Page, info: TestInfo): Promise<void> {
   expect(report.violations.filter(violation => ['serious', 'critical'].includes(violation.impact ?? '')),
     'Real page has serious/critical accessibility violations; fix the UI rather than excluding rules').toEqual([]);
 }
+
+/** Register capabilities through native Node IO, outside Playwright reports/traces. */
+export async function rememberSensitive(...values: string[]): Promise<void> {
+  try {
+    const response = await fetch(origin('E2E_SECRET_COLLECTOR_URL'), {
+      method: 'POST', headers: { Authorization: required('E2E_SECRET_COLLECTOR_KEY'), 'Content-Type': 'application/json' },
+      body: JSON.stringify(values.filter(value => value.length >= 8)), signal: AbortSignal.timeout(5000),
+    });
+    if (response.status !== 204) throw new Error();
+  } catch {
+    throw new Error('Private CI sensitive-value registration failed');
+  }
+}

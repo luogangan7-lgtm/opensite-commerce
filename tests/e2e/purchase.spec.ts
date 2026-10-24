@@ -7,6 +7,9 @@ import { expect, test } from '@playwright/test';
 import { audit, fixture, publishedSite } from './fixture';
 import { start, registerAndLogin } from './purchase-helpers';
 
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 const api = `${fixture.storefront}/purchase/api`;
 test('published guest purchase persists captured order', async ({ page, request }, info) => {
   const site = await publishedSite(request);
@@ -78,10 +81,10 @@ test('registered purchase appears only in owned history',async({page,request},in
   const history=await list.json();expect(history.items).toHaveLength(1);expect(history.items[0]).toMatchObject({id:checkout.order_id,state:'paid',total_minor:'3140'});
   await page.goto(`${fixture.storefront}/account/orders`);
   await expect(page.getByRole('button',{name:`Order #${history.items[0].order_number}`,exact:true})).toBeVisible();
-  await audit(page,info);await info.attach('history-list',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  await audit(page,info);
   await page.getByRole('button',{name:`Order #${history.items[0].order_number}`,exact:true}).click();
   await expect(page.getByRole('region',{name:'Order details'})).toContainText('C24-CANVAS-TOTE');
-  await audit(page,info);await info.attach('history-detail',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  await audit(page,info);
   const oldSession=(await page.context().cookies()).find(c=>c.name==='__Host-osc_customer_session');
   expect(oldSession).toBeDefined();
   await page.goto(`${fixture.storefront}/account`);await page.getByRole('button',{name:'Sign out',exact:true}).click();

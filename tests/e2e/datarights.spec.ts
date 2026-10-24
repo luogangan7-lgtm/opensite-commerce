@@ -5,8 +5,11 @@
  */
 import { writeFile } from 'node:fs/promises';
 import { test, expect, type APIResponse } from '@playwright/test';
-import { fixture, publishedSite, audit } from './fixture';
+import { fixture, publishedSite, audit, rememberSensitive } from './fixture';
 import { start, registerAndLogin } from './purchase-helpers';
+
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
 test('real registered customer export and erasure journey', async ({ page, request }, info) => {
   test.setTimeout(1_100_000); // Real DB capability TTL is 15 minutes, never shortened.
@@ -43,6 +46,12 @@ test('real registered customer export and erasure journey', async ({ page, reque
   } });
   const accepted = async (operation: string, response: APIResponse, status: number) => {
     const body = await response.json();
+    if (body.download_url) {
+      let token = '';
+      try { token = new URL(body.download_url, fixture.admin).searchParams.get('token') ?? ''; }
+      catch { throw new Error('Invalid export capability URL'); }
+      await rememberSensitive(token);
+    }
     if (response.status() === 503 || body.code === 'route_not_found')
       throw new Error(`BLOCKED ${operation} request_id=${response.headers()['x-request-id']}: ${response.status()} ${JSON.stringify(body)}`);
     expect(response.status(), `${operation}: ${JSON.stringify(body)}`).toBe(status);

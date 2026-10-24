@@ -6,6 +6,9 @@ import { createHmac } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import { fixture } from './fixture';
 
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 test('real signed payment webhook rejects forgery and deduplicates concurrent facts', async ({ request }, testInfo) => {
   const index = testInfo.project.name === 'desktop' ? 1 : testInfo.project.name === 'mobile' ? 2 : 0;
   if (!index) throw new Error('Unknown payment fixture project');

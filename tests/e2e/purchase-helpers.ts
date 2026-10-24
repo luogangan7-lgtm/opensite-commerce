@@ -2,7 +2,7 @@
  * Depends on the real BFF and published fixture; no interception or SQL writes.
  */
 import { expect, type Page } from '@playwright/test';
-import { fixture } from './fixture';
+import { fixture, rememberSensitive } from './fixture';
 const api = `${fixture.storefront}/purchase/api`;
 export async function start(page: Page, customer = false, quantity = 1) {
   await page.goto(`${fixture.storefront}/products/${fixture.productSlug}`);
@@ -62,6 +62,7 @@ export async function registerAndLogin(page: Page, email: string) {
   expect(messageId).toMatch(/^[A-Za-z0-9-]{1,128}$/);
   const message=await (await page.request.get(`http://127.0.0.1:8025/api/v1/message/${messageId}`)).json();
   const proof=new URL(message.Text.trim().split('\n').at(-1));
+  await rememberSensitive(new URLSearchParams(proof.hash.slice(1)).get('token') ?? '', proof.href);
   expect(proof.origin).toBe('https://store.e2e.test');expect(proof.pathname).toBe('/customer/verify');
   expect(new URLSearchParams(proof.hash.slice(1)).get('tenant')).toBe(fixture.tenantId);
   await page.goto(`${fixture.storefront}/customer/verify${proof.hash}`);

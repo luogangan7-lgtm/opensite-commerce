@@ -5,6 +5,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { assertPublicOnly, audit, fixture } from './fixture';
 
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 const sessionCookie = '__Host-osc_admin_session';
 const hasSession = async (page: Page) =>
   (await page.context().cookies()).some(cookie => cookie.name === sessionCookie);

@@ -23,12 +23,13 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Typecheck the separate real-stack acceptance suite
         run: bun node_modules/typescript/bin/tsc --project tsconfig.e2e.json
-      - name: Build and exercise the disposable full stack
-        run: python3 scripts/e2e/run.py --receipt-dir work/C24a/ci
       - name: Reuse the real disposable backup volume-loss restore drill
         run: bash scripts/ops_drill.sh --receipt-dir work/C24a/ci/drill
+      - name: Build and exercise the disposable full stack
+        id: e2e
+        run: python3 scripts/e2e/run.py --receipt-dir work/C24a/ci
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
+        if: always() && steps.e2e.outputs.artifact_safe == 'true'
         with:
           name: mvp-e2e-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

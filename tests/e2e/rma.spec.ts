@@ -7,6 +7,9 @@ import { test, expect, type APIResponse } from '@playwright/test';
 import { fixture, publishedSite, audit } from './fixture';
 import { start } from './purchase-helpers';
 
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 test('real shipment → partial → full refund journey', async ({ page, request }, info) => {
   test.setTimeout(180_000);
   await publishedSite(request);

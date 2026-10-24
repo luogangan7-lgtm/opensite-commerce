@@ -77,6 +77,16 @@ class BrowserReceiptTests(unittest.TestCase):
             report.write_text('getCustomerDataExport status=200 code=none')
             self.assertEqual(runner.verify_artifact_privacy([root], [token])['status'], 'PASS')
 
+    def test_sensitive_specs_disable_capture_but_public_specs_keep_traces(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ('admin', 'b2b', 'datarights', 'mvp-gaps', 'payments', 'purchase', 'redrive', 'rma'):
+            source = (root / f'tests/e2e/{name}.spec.ts').read_text()
+            with self.subTest(spec=name):
+                self.assertIn("test.use({ trace: 'off', video: 'off', screenshot: 'off' })", source)
+                self.assertNotIn('page.screenshot(', source)
+        self.assertNotIn("trace: 'off'", (root / 'tests/e2e/storefront.spec.ts').read_text())
+        self.assertIn("trace: 'retain-on-failure'", (root / 'playwright.e2e.config.ts').read_text())
+
     def test_artifact_gate_is_on_failure_path_and_blocks_upload(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / 'scripts/e2e/run.py').read_text()

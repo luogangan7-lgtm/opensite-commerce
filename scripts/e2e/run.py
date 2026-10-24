@@ -8,6 +8,8 @@ all waits are bounded and finally destroys only this invocation's own project.
 import argparse
 import base64
 import hashlib
+import io
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
 from pathlib import Path
@@ -17,6 +19,8 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import zipfile
 import time
 import urllib.error
 import urllib.request
@@ -166,6 +170,110 @@ def verify_b2b_witness(rows):
     return verify(rows)
 
 
+def verify_artifact_privacy(roots, sensitive):
+    """Fail closed on this run's secrets, including Playwright HTML's packed ZIP.
+
+    No paths/values are returned on failure and evidence is never rewritten.
+    Bounded expansion rejects unreadable/oversize archives instead of skipping.
+    """
+    needles = {value.encode() for value in sensitive if value}
+    budget = 512 * 1024 * 1024
+    files = 0
+
+    def inspect(payload, depth=0):
+        nonlocal budget
+        budget -= len(payload)
+        if budget < 0 or depth > 4:
+            raise RuntimeError('sensitive artifact scan exceeded bounds')
+        if any(needle in payload for needle in needles):
+            raise RuntimeError('sensitive value found in CI artifacts')
+        if payload.startswith(b'PK'):
+            try:
+                with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                    if len(archive.infolist()) > 10000:
+                        raise RuntimeError('sensitive artifact archive exceeded bounds')
+                    for member in archive.infolist():
+                        inspect(member.filename.encode(), depth + 1)
+                        if member.file_size > min(budget, 100 * 1024 * 1024):
+                            raise RuntimeError('sensitive artifact archive exceeded bounds')
+                        inspect(archive.read(member), depth + 1)
+            except (OSError, ValueError, zipfile.BadZipFile, RuntimeError):
+                raise RuntimeError('sensitive artifact archive rejected') from None
+        # HTML reporter embeds its JSON/step titles in a base64 ZIP, not DOM text.
+        for packed in re.findall(rb'data:application/zip;base64,([A-Za-z0-9+/=]+)', payload):
+            try:
+                decoded = base64.b64decode(packed, validate=True)
+            except ValueError:
+                raise RuntimeError('sensitive artifact encoding rejected') from None
+            if not decoded.startswith(b'PK'):
+                raise RuntimeError('sensitive artifact encoding rejected')
+            inspect(decoded, depth + 1)
+
+    try:
+        for root in roots:
+            for path in Path(root).rglob('*'):
+                if path.is_symlink():
+                    raise RuntimeError('sensitive artifact symlink rejected')
+                if path.is_file():
+                    if path.stat().st_size > 100 * 1024 * 1024:
+                        raise RuntimeError('sensitive artifact file exceeded bounds')
+                    inspect(str(path.relative_to(root)).encode())
+                    inspect(path.read_bytes())
+                    files += 1
+    except OSError:
+        raise RuntimeError('sensitive artifact scan unreadable') from None
+    return {'status': 'PASS', 'files': files, 'registered_values': len(needles)}
+
+
+class SecretCollector:
+    """Private loopback ingress from native Node fetch, never Playwright IO.
+
+    Values remain in runner memory; no request logging, URL secrets or uploads.
+    Called by run; its credentials are passed only to the disposable browser.
+    """
+    def __init__(self, sensitive):
+        self.values = sensitive
+        self.key = secrets.token_hex(32)
+        self.invalid = False
+        collector = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+
+            def do_POST(self):
+                self.connection.settimeout(5)
+                try:
+                    size = int(self.headers.get('Content-Length', '0'))
+                    if (self.path != '/' or self.headers.get('Authorization') != collector.key
+                            or not 0 < size <= 65536):
+                        raise ValueError()
+                    values = json.loads(self.rfile.read(size))
+                    if (not isinstance(values, list) or len(values) > 256
+                            or any(not isinstance(v, str) or not 8 <= len(v) <= 8192 for v in values)
+                            or len(collector.values) + len(values) > 10000):
+                        raise ValueError()
+                    collector.values.update(values)
+                    self.send_response(204)
+                except (ValueError, OSError):
+                    collector.invalid = True
+                    self.send_response(400)
+                self.end_headers()
+
+        self.server = HTTPServer(('127.0.0.1', 0), Handler)
+        self.server.timeout = 10
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=10)
+
+
 def run(receipt_dir):
     # Import application-side tooling only after main's CI guard. Reuse its
     # stdin PostgreSQL secret transport and permission/job witnesses unchanged.
@@ -201,12 +309,13 @@ def run(receipt_dir):
                "seed_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                for path in [ROOT / "tests/fixtures/storefront_seed.sql", ROOT / "scripts/e2e/seed.sql"]}}
     credentials = {}
+    sensitive = set()
 
     def persist():
         (receipt_dir / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
 
     def redact(payload):
-        for value in credentials.values():
+        for value in set(credentials.values()) | set(sensitive):
             payload = payload.replace(value.encode(), b"[REDACTED]")
         return payload
 
@@ -232,7 +341,7 @@ def run(receipt_dir):
 
     # Store secrets outside the workspace mounted by frontend/browser services.
     # No inherited .env, target database/project/credentials or external URL.
-    with tempfile.TemporaryDirectory(prefix="opensite-e2e-") as private:
+    with tempfile.TemporaryDirectory(prefix="opensite-e2e-") as private, SecretCollector(sensitive) as collector:
         env_file = Path(private) / ".env"
         credentials = {"POSTGRES_PASSWORD": secrets.token_hex(32), "JOB_SIGNING_KEY": secrets.token_hex(32),
                        "OPENSITE_AUTH_SIGNING_KEY": secrets.token_hex(32),
@@ -244,9 +353,12 @@ def run(receipt_dir):
                        "OPENSITE_E2E_OWNER_PASSWORD": secrets.token_hex(32),
                        "OPENSITE_E2E_BOOTSTRAP_PASSWORD": secrets.token_hex(32),
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
+        sensitive.add("CI-only-c09f2-password!")
         privacy_settings = privacy.environment(credentials['OPENSITE_RUNTIME_DB_PASSWORD'])
         credentials.update({key: value for key, value in privacy_settings.items() if key != 'PRIVACY_EXPORT_WORKER_ENABLED'})
         variables = dict(credentials, COMPOSE_PROJECT_NAME=project, OPENSITE_DB="opensite",
+                         E2E_SECRET_COLLECTOR_URL=f"http://127.0.0.1:{collector.server.server_port}",
+                         E2E_SECRET_COLLECTOR_KEY=collector.key,
                          PRIVACY_EXPORT_WORKER_ENABLED='true',
                          OPENSITE_API_PORT="8080", OPENSITE_WORKER_PORT="8081", JOB_TENANTS=TENANT,
                          OPENSITE_SERVING_REFRESH_TENANTS=TENANT,
@@ -462,9 +574,28 @@ def run(receipt_dir):
                 receipt["status"] = "FAIL"
                 receipt["collection_errors"] = cleanup_errors
             persist()
-            os.environ.clear()
-            os.environ.update(saved)
-            ops_common.compose_command = base_compose_command
+            try:
+                if collector.invalid:
+                    raise RuntimeError('sensitive value collector rejected input')
+                receipt['artifact_privacy'] = verify_artifact_privacy(
+                    [receipt_dir, ROOT / 'test-results/e2e', ROOT / 'playwright-report/e2e'],
+                    set(credentials.values()) | sensitive | {collector.key})
+            except RuntimeError:
+                receipt['status'] = 'FAIL'
+                receipt['artifact_privacy'] = {'status': 'FAIL'}
+                persist()
+                print('FAIL: sensitive artifact gate; upload withheld, evidence preserved on runner', flush=True)
+                raise
+            else:
+                persist()
+                if os.environ.get('GITHUB_OUTPUT'):
+                    with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                        output.write('artifact_safe=true\n')
+                print('PASS: sensitive artifact gate; files=' + str(receipt['artifact_privacy']['files']), flush=True)
+            finally:
+                os.environ.clear()
+                os.environ.update(saved)
+                ops_common.compose_command = base_compose_command
             if cleanup_errors:
                 raise RuntimeError("MVP E2E service evidence or owned cleanup failed")
     print("PASS: MVP E2E in GitHub Actions; exact SHA/run and browser counts in receipt.json", flush=True)

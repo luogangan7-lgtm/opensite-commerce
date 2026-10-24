@@ -5,6 +5,9 @@
 import { expect, test } from '@playwright/test';
 import { audit, fixture } from './fixture';
 
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 const staffSite = 'c3300003-0000-4000-8000-000000000001';
 // Reuse the valid image bytes exercised by the real media integration suite
 // (internal/modules/media/integration_test.go stagingPNG), not a header-only fixture.
