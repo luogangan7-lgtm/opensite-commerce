@@ -22,7 +22,9 @@ jobs:
       - name: Install the existing frozen frontend dependencies
         run: bun install --frozen-lockfile
       - name: Typecheck the separate real-stack acceptance suite
-        run: bun node_modules/typescript/bin/tsc --project tsconfig.e2e.json
+        run: |
+          bun scripts/e2e/check-assertion-messages.ts
+          bun node_modules/typescript/bin/tsc --project tsconfig.e2e.json
       - name: Reuse the real disposable backup volume-loss restore drill
         run: bash scripts/ops_drill.sh --receipt-dir work/C24a/ci/drill
       - name: Build and exercise the disposable full stack
