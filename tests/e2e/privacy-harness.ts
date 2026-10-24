@@ -88,6 +88,7 @@ export function installPrivacy(browser: Browser, request: APIRequestContext, pla
       url(typeof target === 'string' ? target : target.url());
       if (typeof target !== 'string') { headers(pairs(target.headers())); body(target.postData()); }
       headers(pairs(options.headers)); body(options.data); fields(options.form); fields(options.multipart); fields(options.params);
+      for (const cookie of (await context.storageState()).cookies) add(cookie.value);
       await flush(); // Generated credentials are recorded before a possibly failing write.
       const result = await fetch(target, options);
       await track(async () => {
