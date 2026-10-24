@@ -19,6 +19,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  maxFailures: 1,
   forbidOnly: true,
   updateSnapshots: 'none',
   outputDir: `test-results/e2e/${phase}`,
