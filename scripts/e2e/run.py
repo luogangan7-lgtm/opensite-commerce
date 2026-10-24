@@ -8,6 +8,8 @@ all waits are bounded and finally destroys only this invocation's own project.
 import argparse
 import base64
 import hashlib
+import io
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
 from pathlib import Path
@@ -17,6 +19,8 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import zipfile
 import time
 import urllib.error
 import urllib.request
@@ -51,6 +55,8 @@ B2B_TESTS = {"real B2B inquiry quote approval prepayment order"}
 ACTIVE_TESTS |= B2B_TESTS
 REDRIVE_TESTS = {"real admin notification failure redrive delivers once with scoped isolation"}
 ACTIVE_TESTS |= REDRIVE_TESTS
+DATARIGHTS_TESTS = {"real registered customer export and erasure journey"}
+ACTIVE_TESTS |= DATARIGHTS_TESTS
 GAP_TESTS = set()
 
 
@@ -94,7 +100,7 @@ def verify_browser_report(report):
                         raise RuntimeError("MVP E2E duplicate browser assertion")
                     observed[key] = [item.get("status") for item in test.get("results", [])]
                     filename = Path(spec.get("file", "")).name
-                    expected_file = "redrive.spec.ts" if spec.get("title") in REDRIVE_TESTS else "rma.spec.ts" if spec.get("title") in RMA_TESTS else "b2b.spec.ts" if spec.get("title") in B2B_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
+                    expected_file = "datarights.spec.ts" if spec.get("title") in DATARIGHTS_TESTS else "redrive.spec.ts" if spec.get("title") in REDRIVE_TESTS else "rma.spec.ts" if spec.get("title") in RMA_TESTS else "b2b.spec.ts" if spec.get("title") in B2B_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
                         "purchase.spec.ts" if spec.get("title") in PURCHASE_TESTS else (
                         "payments.spec.ts" if spec.get("title") in PAYMENT_TESTS else (
                         "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts")))
@@ -109,7 +115,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 42, "skipped": 0, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 44, "skipped": 0, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -164,6 +170,141 @@ def verify_b2b_witness(rows):
     return verify(rows)
 
 
+def verify_artifact_privacy(roots, sensitive):
+    """Fail closed on this run's secrets, including Playwright HTML's packed ZIP.
+
+    No paths/values are returned on failure and evidence is never rewritten.
+    Bounded expansion rejects unreadable/oversize archives instead of skipping.
+    """
+    needles = {value.encode() for value in sensitive if value}
+    budget = 512 * 1024 * 1024
+    files = 0
+
+    def inspect(payload, depth=0):
+        nonlocal budget
+        budget -= len(payload)
+        if budget < 0 or depth > 4:
+            raise RuntimeError('sensitive artifact scan exceeded bounds')
+        if any(needle in payload for needle in needles):
+            raise RuntimeError('sensitive value found in CI artifacts')
+        if payload.startswith(b'PK'):
+            try:
+                with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                    if len(archive.infolist()) > 10000:
+                        raise RuntimeError('sensitive artifact archive exceeded bounds')
+                    for member in archive.infolist():
+                        inspect(member.filename.encode(), depth + 1)
+                        if member.file_size > min(budget, 100 * 1024 * 1024):
+                            raise RuntimeError('sensitive artifact archive exceeded bounds')
+                        inspect(archive.read(member), depth + 1)
+            except (OSError, ValueError, zipfile.BadZipFile, RuntimeError):
+                raise RuntimeError('sensitive artifact archive rejected') from None
+        # HTML reporter embeds its JSON/step titles in a base64 ZIP, not DOM text.
+        for packed in re.findall(rb'data:application/zip;base64,([A-Za-z0-9+/=]+)', payload):
+            try:
+                decoded = base64.b64decode(packed, validate=True)
+            except ValueError:
+                raise RuntimeError('sensitive artifact encoding rejected') from None
+            if not decoded.startswith(b'PK'):
+                raise RuntimeError('sensitive artifact encoding rejected')
+            inspect(decoded, depth + 1)
+
+    try:
+        for root in roots:
+            for path in Path(root).rglob('*'):
+                if path.is_symlink():
+                    raise RuntimeError('sensitive artifact symlink rejected')
+                if path.is_file():
+                    if path.stat().st_size > 100 * 1024 * 1024:
+                        raise RuntimeError('sensitive artifact file exceeded bounds')
+                    inspect(str(path.relative_to(root)).encode())
+                    inspect(path.read_bytes())
+                    files += 1
+    except OSError:
+        raise RuntimeError('sensitive artifact scan unreadable') from None
+    return {'status': 'PASS', 'files': files, 'registered_values': len(needles)}
+
+
+class SecretCollector:
+    """Private loopback ingress from native Node fetch, never Playwright IO.
+
+    Values also persist in a private run file; no request logging or uploads.
+    Called by run; its credentials are passed only to the disposable browser.
+    """
+    def __init__(self, sensitive, private_file=None):
+        self.values = sensitive
+        self.key = secrets.token_hex(32)
+        self.invalid = False
+        self.active = 0
+        self.private_file = private_file
+        if private_file is not None:
+            private_file.touch(mode=0o600, exist_ok=False)
+        collector = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+
+            def do_POST(self):
+                self.connection.settimeout(5)
+                try:
+                    size = int(self.headers.get('Content-Length', '0'))
+                    if (self.path != '/' or self.headers.get('Authorization') != collector.key
+                            or not 0 < size <= 65536):
+                        raise ValueError()
+                    values = json.loads(self.rfile.read(size))
+                    if isinstance(values, dict):
+                        phase = values.get('phase')
+                        if phase == 'begin':
+                            collector.active += 1
+                        elif phase == 'end' and collector.active > 0:
+                            collector.active -= 1
+                        elif phase == 'failed':
+                            collector.invalid = True  # Acknowledge delivery; still deny final upload.
+                        else:
+                            raise ValueError()
+                        values = []
+                    if (not isinstance(values, list) or len(values) > 256
+                            or any(not isinstance(v, str) or not 1 <= len(v) <= 8192 for v in values)
+                            or len(collector.values) + len(values) > 10000):
+                        raise ValueError()
+                    collector.record(values)
+                    self.send_response(204)
+                except (ValueError, OSError):
+                    collector.invalid = True
+                    self.send_response(400)
+                self.end_headers()
+
+        self.server = HTTPServer(('127.0.0.1', 0), Handler)
+        self.server.timeout = 10
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def record(self, values):
+        self.values.update(values)
+        if self.private_file is not None:
+            with self.private_file.open('a') as output:
+                output.write(json.dumps(values) + '\n')
+
+    def read_private_values(self):
+        if self.invalid or self.active:
+            raise RuntimeError('sensitive observer incomplete')
+        if self.private_file is None:
+            raise RuntimeError('sensitive private file missing')
+        try:
+            return {v for line in self.private_file.read_text().splitlines() for v in json.loads(line)}
+        except (OSError, ValueError, TypeError):
+            raise RuntimeError('sensitive private file unreadable') from None
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=10)
+
+
 def run(receipt_dir):
     # Import application-side tooling only after main's CI guard. Reuse its
     # stdin PostgreSQL secret transport and permission/job witnesses unchanged.
@@ -177,7 +318,7 @@ def run(receipt_dir):
 
     ops_common.compose_command = compose_command
     import ops_drill
-    from e2e import purchase, rma, b2b, privacy
+    from e2e import purchase, rma, b2b, privacy, datarights
     # Includes the dedicated RETURNS coordinator; one registry drives all secrets.
     from ops_deploy import LOGIN_ROLES
 
@@ -199,14 +340,25 @@ def run(receipt_dir):
                "seed_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                for path in [ROOT / "tests/fixtures/storefront_seed.sql", ROOT / "scripts/e2e/seed.sql"]}}
     credentials = {}
+    sensitive = set()
 
     def persist():
         (receipt_dir / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
 
     def redact(payload):
-        for value in credentials.values():
+        for value in set(credentials.values()) | set(sensitive):
             payload = payload.replace(value.encode(), b"[REDACTED]")
         return payload
+
+    def browser_diagnostic(output):
+        # Whitelisted counters and source locations only; never assertion bodies.
+        markers = [f'Private CI {stage} observation {kind}'.encode() for stage in ('request', 'response')
+                   for kind in ('closed', 'unavailable', 'registration', 'type', 'other')]
+        for marker in [*markers, b'TimeoutError', b'passed', b'failed']:
+            print('CI browser diagnostic ' + marker.decode().replace(':', '') + '=' + str(output.count(marker)), flush=True)
+        for location in sorted(set(re.findall(rb'tests/e2e/[a-z-]+\.(?:spec|test|ts)[^\s]*?:[0-9]+(?::[0-9]+)?', output))):
+            if re.fullmatch(rb'tests/e2e/[a-z-]+(?:\.(?:spec|test))?\.ts:[0-9]+(?::[0-9]+)?', location):
+                print('CI browser location ' + location.decode(), flush=True)
 
     def command(args, name, timeout=900, env=None, check=True):
         # Kill the entire owned CLI process group on timeout/interruption;
@@ -218,19 +370,24 @@ def run(receipt_dir):
         except BaseException:
             os.killpg(proc.pid, signal.SIGTERM)
             try:
-                proc.communicate(timeout=5)
+                output, _ = proc.communicate(timeout=5)
             except subprocess.TimeoutExpired:
                 os.killpg(proc.pid, signal.SIGKILL)
-                proc.communicate(timeout=5)
+                output, _ = proc.communicate(timeout=5)
+            (receipt_dir / (name + ".log")).write_bytes(redact(output))
+            if name in ('browser', 'privacy-browser', 'privacy-observer-smoke'):
+                browser_diagnostic(output)
             raise
         (receipt_dir / (name + ".log")).write_bytes(redact(output))
+        if proc.returncode and name in ('browser', 'privacy-browser', 'privacy-observer-smoke'):
+            browser_diagnostic(output)
         if check and proc.returncode:
             raise RuntimeError(f"MVP E2E {name} failed (exit {proc.returncode}; see service logs)")
         return proc.returncode
 
     # Store secrets outside the workspace mounted by frontend/browser services.
     # No inherited .env, target database/project/credentials or external URL.
-    with tempfile.TemporaryDirectory(prefix="opensite-e2e-") as private:
+    with tempfile.TemporaryDirectory(prefix="opensite-e2e-") as private, SecretCollector(sensitive, Path(private) / "observed.jsonl") as collector:
         env_file = Path(private) / ".env"
         credentials = {"POSTGRES_PASSWORD": secrets.token_hex(32), "JOB_SIGNING_KEY": secrets.token_hex(32),
                        "OPENSITE_AUTH_SIGNING_KEY": secrets.token_hex(32),
@@ -244,7 +401,10 @@ def run(receipt_dir):
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
         privacy_settings = privacy.environment(credentials['OPENSITE_RUNTIME_DB_PASSWORD'])
         credentials.update({key: value for key, value in privacy_settings.items() if key != 'PRIVACY_EXPORT_WORKER_ENABLED'})
+        collector.record(list(credentials.values()) + [collector.key])
         variables = dict(credentials, COMPOSE_PROJECT_NAME=project, OPENSITE_DB="opensite",
+                         E2E_SECRET_COLLECTOR_URL=f"http://127.0.0.1:{collector.server.server_port}",
+                         E2E_SECRET_COLLECTOR_KEY=collector.key,
                          PRIVACY_EXPORT_WORKER_ENABLED='true',
                          OPENSITE_API_PORT="8080", OPENSITE_WORKER_PORT="8081", JOB_TENANTS=TENANT,
                          OPENSITE_SERVING_REFRESH_TENANTS=TENANT,
@@ -342,6 +502,16 @@ def run(receipt_dir):
               INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
               SELECT t.id,u.id,'owner' FROM app.tenants t CROSS JOIN app.users u
               WHERE u.email='rma-staff@example.test' AND t.id IN ('{TENANT}','{owner_tenant}');""")
+            # Privacy staff identities only; all asserted customer/export/erase facts are HTTP writes.
+            ops_common.psql(f"""INSERT INTO app.users(email,password_hash)
+              SELECT 'datarights-'||r||'@example.test',u.password_hash FROM app.users u
+              CROSS JOIN unnest(ARRAY['owner','catalog_editor','viewer']) r
+              WHERE u.email='{variables['OPENSITE_E2E_OWNER_EMAIL']}';
+              INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
+              SELECT t.id,u.id,split_part(split_part(u.email,'@',1),'datarights-',2)
+              FROM app.tenants t CROSS JOIN app.users u WHERE u.email IN
+                ('datarights-owner@example.test','datarights-catalog_editor@example.test','datarights-viewer@example.test')
+              AND t.id IN ('{TENANT}','{owner_tenant}');""")
             os.environ["E2E_RELEASE_ID"] = receipt["publication"]["release_id"]
             receipt["steps"].append("real-cms-builder-membership-and-serving")
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
@@ -364,9 +534,12 @@ def run(receipt_dir):
             command(compose_command(["up", "-d", "--build", "--no-deps", "b2b-api"]), "b2b-api-start", timeout=300)
             ops_drill.healthy("http://127.0.0.1:8082")
             persist()
-            result = ROOT / "test-results/e2e/results.json"
+            result = ROOT / "test-results/e2e/base/results.json"
             result.unlink(missing_ok=True)  # only this CI harness's own stale result
-            receipt["browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "browser"]), "browser", timeout=900, check=False)
+            command(compose_command(["run", "--rm", "--no-deps", "--env", "E2E_PRIVACY_BROWSER_SMOKE=true", "browser",
+                "node", "node_modules/@playwright/test/cli.js", "test", "--config", "scripts/e2e/privacy-unit.config.ts"]),
+                "privacy-observer-smoke", timeout=90)
+            receipt["browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "--env", "E2E_BROWSER_PHASE=base", "browser"]), "browser", timeout=900, check=False)
             if receipt["browser_exit"] != 0:
                 # Counts only: locate dependency failures without persisting proof tokens or credentials.
                 receipt["customer_registration_diagnostic"] = json.loads(ops_common.psql(
@@ -375,7 +548,8 @@ def run(receipt_dir):
                     "FROM app.customers WHERE tenant_id='" + TENANT + "' AND email LIKE 'c09f2-%';"))
                 persist()
                 raise RuntimeError("MVP E2E browser assertions failed")
-            receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
+            base_report = json.loads(result.read_text())
+            receipt["base_browser_stats"] = base_report["stats"]
             command(compose_command(["stop", "--timeout", "30", "notification-worker"]), "notification-worker-stop", timeout=60)
             receipt['notification_redrive'] = redrive.verify(json.loads(ops_common.psql(redrive.WITNESS_SQL)))
             receipt['notification_mailpit'] = redrive.mailpit_witness()
@@ -405,6 +579,25 @@ def run(receipt_dir):
             receipt["b2b"] = {"status": "FAIL"}
             persist()
             receipt["b2b"] = verify_b2b_witness(json.loads(ops_common.psql(b2b.WITNESS_SQL)))
+            # Existing short-lived stock witnesses are fixed before the real 15-minute TTL cases.
+            # A second real browser process adds privacy; no asserted SQL state is rewritten.
+            receipt["privacy_browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "--env", "E2E_BROWSER_PHASE=privacy", "browser"]), "privacy-browser", timeout=2700, check=False)
+            if receipt["privacy_browser_exit"] != 0:
+                raise RuntimeError("MVP E2E privacy browser assertions failed")
+            privacy_report = json.loads((ROOT / 'test-results/e2e/privacy/results.json').read_text())
+            combined = {"suites": base_report["suites"] + privacy_report["suites"], "stats": {
+                key: base_report["stats"][key] + privacy_report["stats"][key]
+                for key in ("expected", "skipped", "unexpected", "flaky")}}
+            (ROOT / 'test-results/e2e/results.json').write_text(json.dumps(combined))
+            receipt["browser_stats"] = verify_browser_report(combined)
+            receipt["datarights"] = datarights.witness(ops_common.psql, ROOT)
+            for journey in receipt["datarights"]["projects"]:
+                for export in journey["exports"]:  # UUID-validated by the witness.
+                    command(compose_command(["exec", "-T", "api", "/bin/sh", "-c",
+                        'test ! -e "$1" && test ! -L "$1"', "privacy-artifact-check",
+                        f"/var/lib/opensite/media/data-rights/{TENANT}/{export}.json"]),
+                        "privacy-artifact-absent-" + export, timeout=10)
+            receipt["datarights"]["artifacts_removed"] = 4
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-and-accessibility-assertions")
         except BaseException as exc:
@@ -430,9 +623,31 @@ def run(receipt_dir):
                 receipt["status"] = "FAIL"
                 receipt["collection_errors"] = cleanup_errors
             persist()
-            os.environ.clear()
-            os.environ.update(saved)
-            ops_common.compose_command = base_compose_command
+            try:
+                if collector.invalid:
+                    raise RuntimeError('sensitive value collector rejected input')
+                receipt['artifact_privacy'] = verify_artifact_privacy(
+                    [receipt_dir, ROOT / 'test-results/e2e', ROOT / 'playwright-report/e2e'],
+                    set(credentials.values()) | collector.read_private_values() | {collector.key})
+            except RuntimeError as exc:
+                receipt['status'] = 'FAIL'
+                receipt['artifact_privacy'] = {'status': 'FAIL'}
+                persist()
+                print('FAIL: sensitive artifact gate; upload withheld, evidence preserved on runner', flush=True)
+                for diagnostic in ('sensitive value found in CI artifacts', 'sensitive observer incomplete',
+                                   'sensitive value collector rejected input', 'sensitive artifact archive rejected'):
+                    print('CI privacy diagnostic ' + diagnostic + '=' + str(int(str(exc) == diagnostic)), flush=True)
+                raise
+            else:
+                persist()
+                if os.environ.get('GITHUB_OUTPUT'):
+                    with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                        output.write('artifact_safe=true\n')
+                print('PASS: sensitive artifact gate; files=' + str(receipt['artifact_privacy']['files']), flush=True)
+            finally:
+                os.environ.clear()
+                os.environ.update(saved)
+                ops_common.compose_command = base_compose_command
             if cleanup_errors:
                 raise RuntimeError("MVP E2E service evidence or owned cleanup failed")
     print("PASS: MVP E2E in GitHub Actions; exact SHA/run and browser counts in receipt.json", flush=True)

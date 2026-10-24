@@ -4,13 +4,19 @@ Runs in the foundation CI via test_ops_drill; no containers are needed for these
 negative cases. A fake Docker executable witnesses any attempted side effect.
 """
 import os
+import base64
+import io
+import zipfile
 import importlib.util
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import urllib.request
+import urllib.error
 import unittest
 
 
@@ -50,6 +56,135 @@ class CIOnlyRunnerTests(unittest.TestCase):
 
 
 class BrowserReceiptTests(unittest.TestCase):
+    def test_artifact_gate_rejects_raw_and_packed_run_secrets_without_echoing(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('artifact_runner', source)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        token = 'run-generated-download-capability-' + 'z' * 43
+        packed = io.BytesIO()
+        with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('test.json', json.dumps({'title': 'getCustomerDataExport: ' + token}))
+        cases = [token.encode(), packed.getvalue(),
+                 b'<script>data:application/zip;base64,' + base64.b64encode(packed.getvalue()) + b'</script>']
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            report = root / 'report.html'
+            for payload in cases:
+                report.write_bytes(payload)
+                with self.subTest(kind=len(payload)), self.assertRaisesRegex(RuntimeError, 'sensitive') as caught:
+                    runner.verify_artifact_privacy([root], [token])
+                self.assertNotIn(token, str(caught.exception))
+                self.assertEqual(report.read_bytes(), payload, 'gate must preserve evidence')
+            report.write_text('getCustomerDataExport status=200 code=none')
+            self.assertEqual(runner.verify_artifact_privacy([root], [token])['status'], 'PASS')
+
+    def test_private_collector_registers_values_and_rejects_unauthorized_ingress(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('collector_runner', source)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        values = set()
+        with runner.SecretCollector(values) as collector:
+            url = f'http://127.0.0.1:{collector.server.server_port}'
+            payload = json.dumps(['synthetic-private-proof']).encode()
+            request = urllib.request.Request(url, data=payload, headers={'Authorization': collector.key})
+            with urllib.request.urlopen(request, timeout=5) as response:
+                self.assertEqual(response.status, 204)
+            self.assertEqual(values, {'synthetic-private-proof'})
+            request = urllib.request.Request(url, data=payload)
+            with self.assertRaises(urllib.error.HTTPError) as rejected:
+                urllib.request.urlopen(request, timeout=5)
+            self.assertEqual(rejected.exception.code, 400)
+            self.assertTrue(collector.invalid)
+
+    def test_global_capture_defaults_and_shared_observation_are_mandatory(self):
+        root = Path(__file__).resolve().parents[1]
+        config = (root / 'playwright.e2e.config.ts').read_text()
+        self.assertIn("trace: 'off', video: 'off', screenshot: 'off'", config)
+        for path in (root / 'tests/e2e').rglob('*.spec.ts'):
+            source = path.read_text()
+            self.assertNotIn('page.screenshot(', source)
+            self.assertNotRegex(source, r"(?:trace|video|screenshot): ['\"](?!off['\"])")
+            self.assertNotRegex(source, r"import\s*\{[^}]*\btest\b[^}]*\}\s*from ['\"]@playwright/test")
+        self.assertIn('installPrivacy', (root / 'tests/e2e/fixture.ts').read_text())
+        runner = (root / 'scripts/e2e/run.py').read_text()
+        self.assertIn('collector.read_private_values()', runner)
+
+    def test_private_file_is_scanned_and_incomplete_observers_fail_closed(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('private_file_runner', source)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        with tempfile.TemporaryDirectory() as temporary:
+            private = Path(temporary) / 'observed.jsonl'
+            with runner.SecretCollector(set(), private) as collector:
+                url = f'http://127.0.0.1:{collector.server.server_port}'
+                def send(value):
+                    request = urllib.request.Request(url, data=json.dumps(value).encode(), headers={'Authorization': collector.key})
+                    with urllib.request.urlopen(request, timeout=5) as response:
+                        self.assertEqual(response.status, 204)
+                send({'phase': 'begin'})
+                send(['unregistered-session-from-shared-hook'])
+                with self.assertRaisesRegex(RuntimeError, 'incomplete'):
+                    collector.read_private_values()
+                send({'phase': 'end'})
+                self.assertEqual(private.stat().st_mode & 0o777, 0o600)
+                values = collector.read_private_values()
+                report = Path(temporary) / 'report'
+                report.mkdir()
+                (report / 'failed.html').write_text('unregistered-session-from-shared-hook')
+                with self.assertRaisesRegex(RuntimeError, 'sensitive'):
+                    runner.verify_artifact_privacy([report], values)
+                send({'phase': 'failed'})
+                self.assertTrue(collector.invalid)
+                with self.assertRaisesRegex(RuntimeError, 'incomplete'):
+                    collector.read_private_values()
+
+    def test_assertion_message_gate_rejects_bodies_and_aliases(self):
+        root = Path(__file__).resolve().parents[1]
+        gate = root / 'scripts/e2e/check-assertion-messages.ts'
+        self.assertTrue(gate.is_file(), 'shared assertion-message gate missing')
+        self.assertIn('check-assertion-messages.ts', (root / 'scripts/check_all.sh').read_text())
+        self.assertIn('bun scripts/e2e/check-assertion-messages.ts', (root / '.github/workflows/mvp-e2e.yml').read_text())
+        unsafe = ["await response.text()", "await response.json()", "JSON.stringify(data)",
+                  "body", "responseBody", "`reply: ${body}`", "alias", "getBody()"]
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'sample.ts'
+            for message in unsafe:
+                source.write_text("const body = await response.text(); const alias = body; "
+                                  f"expect(status, {message}).toBe(200);")
+                result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
+                self.assertNotEqual(result.returncode, 0, message)
+                self.assertNotIn('reply:', result.stdout + result.stderr, 'gate must not echo source')
+            for expression in ("let label='safe'; label=await response.text(); expect(status, label)",
+                               "expect.poll(() => status, {message: await response.text()})",
+                               "expect(status, responseBody.status())",
+                               "expect.poll(() => status, {message: body})",
+                               "expect(status, {...responseBody})",
+                               "import {expect as check} from '@playwright/test'; check(status, body)",
+                               "expect(status, {message:'safe', ...responseBody})",
+                               "const label=await response.text(); function f(){const label='safe'}; expect(status,label)") :
+                source.write_text(expression)
+                result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
+                self.assertNotEqual(result.returncode, 0)
+            nested = Path(temporary) / 'tests/e2e/nested'
+            nested.mkdir(parents=True)
+            (nested / 'sample.spec.ts').write_text("expect(status, await response.text()).toBe(200)")
+            result = subprocess.run(['bun', str(gate)], cwd=temporary, capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('nested/sample.spec.ts', result.stderr)
+            source.write_text("expect(status, 'safe operation status').toBe(200); expect(await response.json()).toEqual({});")
+            result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_artifact_gate_is_on_failure_path_and_blocks_upload(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / 'scripts/e2e/run.py').read_text()
+        self.assertIn('verify_artifact_privacy', source[source.index('        finally:'):])
+        workflow = (root / '.github/workflows/mvp-e2e.yml').read_text()
+        self.assertIn("steps.e2e.outputs.artifact_safe == 'true'", workflow)
+
     def test_b2b_journey_is_mandatory_and_persisted(self):
         source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
         spec = importlib.util.spec_from_file_location('b2b_runner', source)
@@ -101,7 +236,7 @@ class BrowserReceiptTests(unittest.TestCase):
         specs = []
         for title in module.ACTIVE_TESTS | module.GAP_TESTS:
             gap = title in module.GAP_TESTS
-            filename = ('redrive.spec.ts' if title in module.REDRIVE_TESTS else 'rma.spec.ts' if title in module.RMA_TESTS else 'b2b.spec.ts' if title in module.B2B_TESTS else 'mvp-gaps.spec.ts' if gap or title in module.ADMIN_TESTS else 'purchase.spec.ts' if title in module.PURCHASE_TESTS
+            filename = ('datarights.spec.ts' if title in module.DATARIGHTS_TESTS else 'redrive.spec.ts' if title in module.REDRIVE_TESTS else 'rma.spec.ts' if title in module.RMA_TESTS else 'b2b.spec.ts' if title in module.B2B_TESTS else 'mvp-gaps.spec.ts' if gap or title in module.ADMIN_TESTS else 'purchase.spec.ts' if title in module.PURCHASE_TESTS
                         else 'payments.spec.ts' if title in module.PAYMENT_TESTS
                         else 'admin.spec.ts' if title.startswith('real ') else 'storefront.spec.ts')
             specs.append({'title': title, 'file': filename, 'tests': [
@@ -109,7 +244,7 @@ class BrowserReceiptTests(unittest.TestCase):
                  'annotations': [{'type': 'fixme'}] if gap else [],
                  'results': [{'status': 'skipped' if gap else 'passed'}]}
                 for project in ('desktop', 'mobile')]})
-        return {'stats': {'expected': 42, 'skipped': 0, 'unexpected': 0, 'flaky': 0},
+        return {'stats': {'expected': 44, 'skipped': 0, 'unexpected': 0, 'flaky': 0},
                 'suites': [{'specs': specs}]}
 
     def rows(self):
@@ -140,7 +275,7 @@ class BrowserReceiptTests(unittest.TestCase):
     def test_payment_is_required_in_both_projects_and_exact_spec(self):
         module = self.runner()
         report = self.browser_report(module)
-        self.assertEqual(module.verify_browser_report(report)['expected'], 42)
+        self.assertEqual(module.verify_browser_report(report)['expected'], 44)
         for mutation in ('remove', 'wrong_file', 'skip'):
             changed = json.loads(json.dumps(report))
             payment = next(s for s in changed['suites'][0]['specs'] if s['title'] in module.PAYMENT_TESTS)
@@ -169,13 +304,29 @@ class BrowserReceiptTests(unittest.TestCase):
         self.assertEqual(module.RMA_TESTS, {'real shipment → partial → full refund journey'})
         report = self.browser_report(module)
         self.assertEqual(module.verify_browser_report(report),
-                         {'expected': 42, 'skipped': 0, 'unexpected': 0, 'flaky': 0})
+                         {'expected': 44, 'skipped': 0, 'unexpected': 0, 'flaky': 0})
         for mutation in ('remove', 'wrong_file', 'skip'):
             changed = json.loads(json.dumps(report))
             rma = next(s for s in changed['suites'][0]['specs'] if s['title'] == title)
             if mutation == 'remove': changed['suites'][0]['specs'].remove(rma)
             elif mutation == 'wrong_file': rma['file'] = 'purchase.spec.ts'
             else: rma['tests'][0]['results'] = [{'status': 'skipped'}]
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                module.verify_browser_report(changed)
+
+    def test_data_rights_journey_is_mandatory(self):
+        module = self.runner()
+        title = 'real registered customer export and erasure journey'
+        self.assertIn(title, module.ACTIVE_TESTS)
+        self.assertEqual(module.DATARIGHTS_TESTS, {title})
+        report = self.browser_report(module)
+        self.assertEqual(module.verify_browser_report(report)['expected'], 44)
+        for mutation in ('remove', 'wrong_file', 'skip'):
+            changed = json.loads(json.dumps(report))
+            case = next(s for s in changed['suites'][0]['specs'] if s['title'] == title)
+            if mutation == 'remove': changed['suites'][0]['specs'].remove(case)
+            elif mutation == 'wrong_file': case['file'] = 'purchase.spec.ts'
+            else: case['tests'][0]['results'] = [{'status': 'skipped'}]
             with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
                 module.verify_browser_report(changed)
 
@@ -228,6 +379,54 @@ class BrowserReceiptTests(unittest.TestCase):
 
 
 class PurchaseWitnessTests(unittest.TestCase):
+    def test_data_rights_witness_accepts_registry_address_fields_and_refuses_unsafe_names(self):
+        root = Path(__file__).resolve().parents[1]
+        spec = importlib.util.spec_from_file_location('data_rights_registry_witness', root / 'scripts/e2e/datarights.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        facts = dict(erased=True, auth=0, exports=2, revoked=2, journal=1,
+                     paid=True, lines=1, checkout=True, attempts=True,
+                     notification=True, balanced=True, cash=3140)
+        queries = []
+        def psql(sql):
+            queries.append(sql)
+            return json.dumps(facts if "'erased',c.status" in sql else {'rows': 0, 'clean': True})
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            shutil.copytree(root / 'modules/privacy', fixture / 'modules/privacy')
+            (fixture / 'test-results/e2e').mkdir(parents=True)
+            for project in ('desktop', 'mobile'):
+                (fixture / f'test-results/e2e/datarights-{project}.json').write_text(json.dumps({
+                    'project': project, 'customer': 'c0900001-0000-4000-8000-000000000002',
+                    'order': 'c0900001-0000-4000-8000-000000000003',
+                    'exports': ['c0900001-0000-4000-8000-000000000004', 'c0900001-0000-4000-8000-000000000005']}))
+            result = module.witness(psql, fixture)
+            for project in result['projects']:
+                fields = {row['field'] for row in project['registry_copies']}
+                self.assertTrue({'customer_addresses.address_line1', 'customer_addresses.address_line2'} <= fields)
+            policy = fixture / 'modules/privacy/customer.json'
+            data = json.loads(policy.read_text())
+            data['tables']['customer_addresses']['columns']['address_line1;DROP'] = {
+                'classification': 'contact', 'erase': {'strategy': 'scrub'}}
+            policy.write_text(json.dumps(data))
+            queries.clear()
+            with self.assertRaises(RuntimeError):
+                module.witness(psql, fixture)
+            self.assertFalse(any('DROP' in query for query in queries))
+
+    def test_data_rights_persistence_rejects_each_broken_invariant(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/datarights.py'
+        spec = importlib.util.spec_from_file_location('data_rights_witness', source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        row = dict(erased=True, auth=0, exports=2, revoked=2, journal=1,
+                   paid=True, lines=1, checkout=True, attempts=True,
+                   notification=True, balanced=True, cash=3140)
+        self.assertEqual(module.verify(row), row)
+        for key in row:
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                module.verify({**row, key: None})
+
     def test_browser_pass_cannot_replace_owned_order_stock_inbox_and_ledger(self):
         source = Path(__file__).resolve().parents[1] / 'scripts/e2e/purchase.py'
         spec = importlib.util.spec_from_file_location('mvp_purchase', source)

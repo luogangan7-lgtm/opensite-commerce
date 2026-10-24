@@ -3,7 +3,8 @@
  * Invariants: CI opt-in, explicit loopback origins, seeded host identity, no route interception.
  */
 import AxeBuilder from '@axe-core/playwright';
-import { expect, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
+import { test as base, expect, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
+import { installPrivacy } from './privacy-harness';
 import type { PublishedSite } from '../../packages/api-client/src';
 
 if (process.env.GITHUB_ACTIONS !== 'true' || process.env.OPENSITE_MVP_E2E !== '1') {
@@ -98,4 +99,47 @@ export async function audit(page: Page, info: TestInfo): Promise<void> {
   });
   expect(report.violations.filter(violation => ['serious', 'critical'].includes(violation.impact ?? '')),
     'Real page has serious/critical accessibility violations; fix the UI rather than excluding rules').toEqual([]);
+}
+
+/** Authenticated native IO never enters Playwright traces/step parameters. */
+async function privateMessage(payload: unknown): Promise<void> {
+  try {
+    const response = await fetch(origin('E2E_SECRET_COLLECTOR_URL'), {
+      method: 'POST', headers: { Authorization: required('E2E_SECRET_COLLECTOR_KEY'), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(5000),
+    });
+    if (response.status !== 204) throw new Error();
+  } catch { throw new Error('Private CI sensitive-value registration failed'); }
+}
+export const rememberSensitive = (...values: string[]) => privateMessage(values.filter(Boolean));
+
+export const test = base.extend<{ _privacy: void }>({
+  _privacy: [async ({ browser, page, request, playwright }, use) => {
+    void page; // Drain observation before Playwright tears down its default page.
+    await privateMessage({ phase: 'begin' });
+    const finish = installPrivacy(browser, request, playwright, rememberSensitive);
+    try { await use(); }
+    finally {
+      try { await finish(); await privateMessage({ phase: 'end' }); }
+      catch (error) {
+        await privateMessage({ phase: 'failed' });
+        const known = /^Private CI (request|response) observation (closed|unavailable|registration|type|other)$/;
+        throw new Error(error instanceof Error && known.test(error.message) ? error.message : 'Private CI privacy fixture failed');
+      }
+    }
+  }, { auto: true }],
+});
+
+/** Fill real password controls without Playwright's value-bearing Fill step.
+ * Native input events still drive the shipped form; sensitive specs disable capture.
+ */
+export async function fillPassword(page: Page, value: string): Promise<void> {
+  await rememberSensitive(value);
+  await page.getByLabel('Password', { exact: true }).evaluate((element, password) => {
+    if (!(element instanceof HTMLInputElement) || element.type !== 'password')
+      throw new Error('Expected password control');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, password);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
 }

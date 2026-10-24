@@ -2,7 +2,7 @@
  * Depends on the real BFF and published fixture; no interception or SQL writes.
  */
 import { expect, type Page } from '@playwright/test';
-import { fixture } from './fixture';
+import { fixture, rememberSensitive, fillPassword } from './fixture';
 const api = `${fixture.storefront}/purchase/api`;
 export async function start(page: Page, customer = false, quantity = 1) {
   await page.goto(`${fixture.storefront}/products/${fixture.productSlug}`);
@@ -43,3 +43,40 @@ export async function start(page: Page, customer = false, quantity = 1) {
   return checkout;
 }
 
+
+export async function registerAndLogin(page: Page, email: string) {
+  const password = fixture.ownerPassword;
+  await page.goto(`${fixture.storefront}/account`);
+  await expect(page.locator('[data-customer-ready]')).toBeVisible();
+  await page.getByLabel('Email', {exact:true}).fill(email);
+  await fillPassword(page, password);
+  await page.getByRole('button',{name:'Register',exact:true}).click();
+  await expect(page.getByRole('status')).toContainText('verification email has been sent');
+  let messageId='';
+  await expect.poll(async()=>{
+    const listing=await page.request.get('http://127.0.0.1:8025/api/v1/messages?limit=50');
+    const data=await listing.json();
+    messageId=data.messages.find((m:{ID:string;To:{Address:string}[]})=>m.To.some(to=>to.Address===email))?.ID??'';
+    return messageId;
+  }).not.toBe('');
+  expect(messageId).toMatch(/^[A-Za-z0-9-]{1,128}$/);
+  const message=await (await page.request.get(`http://127.0.0.1:8025/api/v1/message/${messageId}`)).json();
+  let proof: URL;
+  try { proof = new URL(message.Text.trim().split('\n').at(-1)); }
+  catch { throw new Error('Invalid SMTP proof URL'); }
+  await rememberSensitive(new URLSearchParams(proof.hash.slice(1)).get('token') ?? '', proof.href);
+  expect(proof.origin).toBe('https://store.e2e.test');expect(proof.pathname).toBe('/customer/verify');
+  expect(new URLSearchParams(proof.hash.slice(1)).get('tenant')).toBe(fixture.tenantId);
+  // One real navigation: the island consumes/clears the fragment on mount.
+  // Evaluate arguments are absent from HTML step params; capture stays off.
+  await page.evaluate(url => { location.assign(url); }, `${fixture.storefront}/customer/verify${proof.hash}`);
+  await expect(page.getByRole('button',{name:'Verify email',exact:true})).toBeEnabled();
+  await expect(page).toHaveURL(`${fixture.storefront}/customer/verify`);
+  await page.getByRole('button',{name:'Verify email',exact:true}).click();
+  await expect(page.getByRole('status').filter({hasText:'Email verified.'})).toBeVisible();
+  await page.goto(`${fixture.storefront}/account`);
+  await page.getByLabel('Email',{exact:true}).fill(email);await fillPassword(page, password);
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await expect(page.getByRole('link',{name:'Order history',exact:true})).toBeVisible();
+  await rememberSensitive(...(await page.context().cookies()).map(cookie => cookie.value));
+}

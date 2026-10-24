@@ -8,6 +8,8 @@ GOPROXY=off GOSUMDB=off go run ./cmd/preflight fixtures/home-valid.json
 if GOPROXY=off GOSUMDB=off go run ./cmd/preflight fixtures/home-invalid.json; then
  echo "ERROR: invalid fixture was accepted" >&2; exit 1
 fi
+bun scripts/e2e/check-assertion-messages.ts
+node node_modules/@playwright/test/cli.js test --config scripts/e2e/privacy-unit.config.ts
 python3 scripts/check_contract.py
 python3 scripts/check_ci_pins.py
 python3 scripts/check_modules.py
