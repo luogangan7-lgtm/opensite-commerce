@@ -102,7 +102,7 @@ class BrowserReceiptTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         config = (root / 'playwright.e2e.config.ts').read_text()
         self.assertIn("trace: 'off', video: 'off', screenshot: 'off'", config)
-        for path in (root / 'tests/e2e').glob('*.spec.ts'):
+        for path in (root / 'tests/e2e').rglob('*.spec.ts'):
             source = path.read_text()
             self.assertNotIn('page.screenshot(', source)
             self.assertNotRegex(source, r"(?:trace|video|screenshot): ['\"](?!off['\"])")
@@ -164,6 +164,12 @@ class BrowserReceiptTests(unittest.TestCase):
                 source.write_text(expression)
                 result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
                 self.assertNotEqual(result.returncode, 0)
+            nested = Path(temporary) / 'tests/e2e/nested'
+            nested.mkdir(parents=True)
+            (nested / 'sample.spec.ts').write_text("expect(status, await response.text()).toBe(200)")
+            result = subprocess.run(['bun', str(gate)], cwd=temporary, capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('nested/sample.spec.ts', result.stderr)
             source.write_text("expect(status, 'safe operation status').toBe(200); expect(await response.json()).toEqual({});")
             result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
