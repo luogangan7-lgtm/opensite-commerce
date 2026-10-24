@@ -4,6 +4,9 @@ Runs in the foundation CI via test_ops_drill; no containers are needed for these
 negative cases. A fake Docker executable witnesses any attempted side effect.
 """
 import os
+import base64
+import io
+import zipfile
 import importlib.util
 import hashlib
 import json
@@ -51,6 +54,36 @@ class CIOnlyRunnerTests(unittest.TestCase):
 
 
 class BrowserReceiptTests(unittest.TestCase):
+    def test_artifact_gate_rejects_raw_and_packed_run_secrets_without_echoing(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('artifact_runner', source)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        token = 'run-generated-download-capability-' + 'z' * 43
+        packed = io.BytesIO()
+        with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('test.json', json.dumps({'title': 'getCustomerDataExport: ' + token}))
+        cases = [token.encode(), packed.getvalue(),
+                 b'<script>data:application/zip;base64,' + base64.b64encode(packed.getvalue()) + b'</script>']
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            report = root / 'report.html'
+            for payload in cases:
+                report.write_bytes(payload)
+                with self.subTest(kind=len(payload)), self.assertRaisesRegex(RuntimeError, 'sensitive') as caught:
+                    runner.verify_artifact_privacy([root], [token])
+                self.assertNotIn(token, str(caught.exception))
+                self.assertEqual(report.read_bytes(), payload, 'gate must preserve evidence')
+            report.write_text('getCustomerDataExport status=200 code=none')
+            self.assertEqual(runner.verify_artifact_privacy([root], [token])['status'], 'PASS')
+
+    def test_artifact_gate_is_on_failure_path_and_blocks_upload(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / 'scripts/e2e/run.py').read_text()
+        self.assertIn('verify_artifact_privacy', source[source.index('        finally:'):])
+        workflow = (root / '.github/workflows/mvp-e2e.yml').read_text()
+        self.assertIn("steps.e2e.outputs.artifact_safe == 'true'", workflow)
+
     def test_b2b_journey_is_mandatory_and_persisted(self):
         source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
         spec = importlib.util.spec_from_file_location('b2b_runner', source)
