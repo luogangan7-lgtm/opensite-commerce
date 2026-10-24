@@ -266,10 +266,7 @@ class SecretCollector:
                             or any(not isinstance(v, str) or not 1 <= len(v) <= 8192 for v in values)
                             or len(collector.values) + len(values) > 10000):
                         raise ValueError()
-                    collector.values.update(values)
-                    if collector.private_file is not None:
-                        with collector.private_file.open('a') as output:
-                            output.write(json.dumps(values) + '\n')
+                    collector.record(values)
                     self.send_response(204)
                 except (ValueError, OSError):
                     collector.invalid = True
@@ -279,6 +276,12 @@ class SecretCollector:
         self.server = HTTPServer(('127.0.0.1', 0), Handler)
         self.server.timeout = 10
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def record(self, values):
+        self.values.update(values)
+        if self.private_file is not None:
+            with self.private_file.open('a') as output:
+                output.write(json.dumps(values) + '\n')
 
     def read_private_values(self):
         if self.invalid or self.active:
@@ -381,6 +384,7 @@ def run(receipt_dir):
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
         privacy_settings = privacy.environment(credentials['OPENSITE_RUNTIME_DB_PASSWORD'])
         credentials.update({key: value for key, value in privacy_settings.items() if key != 'PRIVACY_EXPORT_WORKER_ENABLED'})
+        collector.record(list(credentials.values()) + [collector.key])
         variables = dict(credentials, COMPOSE_PROJECT_NAME=project, OPENSITE_DB="opensite",
                          E2E_SECRET_COLLECTOR_URL=f"http://127.0.0.1:{collector.server.server_port}",
                          E2E_SECRET_COLLECTOR_KEY=collector.key,

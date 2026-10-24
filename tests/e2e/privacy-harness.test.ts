@@ -4,7 +4,7 @@
 import { test, expect } from 'bun:test';
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { request as factory, type Browser, type Playwright } from '@playwright/test';
+import { request as factory, type Browser } from '@playwright/test';
 import { installPrivacy } from './privacy-harness';
 
 test('automatic API observation includes headers cookies nested bodies and generated credentials', async () => {
@@ -19,7 +19,7 @@ test('automatic API observation includes headers cookies nested bodies and gener
   const context = await factory.newContext();
   const found = new Set<string>();
   const browser = { contexts: () => [], newContext: async () => { throw new Error('unused'); } } as unknown as Browser;
-  const finish = installPrivacy(browser, context, { request: factory } as Playwright,
+  const finish = installPrivacy(browser, context, { request: factory },
     async (...values) => { values.forEach(value => found.add(value)); });
   try {
     const port = (server.address() as { port: number }).port;

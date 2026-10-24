@@ -2,9 +2,9 @@
  * Depends only on public Playwright APIs; never logs values or changes HTTP behavior.
  * Pending response reads drain before context closure and before collector completion.
  */
-import type { APIRequestContext, APIResponse, Browser, BrowserContext, Playwright, Response } from '@playwright/test';
+import type { APIRequestContext, APIResponse, Browser, BrowserContext, Response } from '@playwright/test';
 
-export function installPrivacy(browser: Browser, request: APIRequestContext, playwright: Playwright,
+export function installPrivacy(browser: Browser, request: APIRequestContext, playwright: { request: typeof import('@playwright/test').request },
   save: (...values: string[]) => Promise<void>) {
   const seen = new WeakSet<object>(), values = new Set<string>(), pending = new Set<Promise<void>>();
   const restore: (() => void)[] = [];
