@@ -11,7 +11,8 @@ export function violations(source: string): number[] {
   const definitions = new Map<string, ts.Expression>();
   const walk = (node: ts.Node, visit: (node: ts.Node) => void) => { visit(node); ts.forEachChild(node, child => walk(child, visit)); };
   walk(file, node => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer)
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
+        ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const))
       definitions.set(node.name.text, node.initializer);
   });
   function safe(node: ts.Node, seen = new Set<string>()): boolean {
@@ -24,16 +25,20 @@ export function violations(source: string): number[] {
     if (ts.isTemplateExpression(node)) return node.templateSpans.every(span => safe(span.expression, seen));
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken)
       return safe(node.left, seen) && safe(node.right, seen);
-    // Numeric status is safe; arbitrary helper calls and JSON/body aliases are not.
-    return ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === 'status' && node.arguments.length === 0;
+    return false; // Calls, mutable aliases and unknown expressions fail closed.
   }
   const lines: number[] = [];
   walk(file, node => {
     if (ts.isCallExpression(node) &&
-        (node.expression.getText(file) === 'expect' || node.expression.getText(file) === 'expect.soft') &&
-        node.arguments[1] && !safe(node.arguments[1]))
-      lines.push(file.getLineAndCharacterOfPosition(node.arguments[1].getStart(file)).line + 1);
+        ['expect', 'expect.soft', 'expect.poll'].includes(node.expression.getText(file)) &&
+        node.arguments[1]) {
+      const arg = node.arguments[1];
+      const message = ts.isObjectLiteralExpression(arg)
+        ? arg.properties.find(prop => ts.isPropertyAssignment(prop) && prop.name.getText(file).replace(/["']/g, '') === 'message')
+        : arg;
+      if (message && !safe(ts.isPropertyAssignment(message) ? message.initializer : message))
+        lines.push(file.getLineAndCharacterOfPosition(arg.getStart(file)).line + 1);
+    }
   });
   return lines;
 }
