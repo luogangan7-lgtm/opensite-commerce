@@ -9,7 +9,7 @@ import { installPrivacy } from './privacy-harness';
 
 // In the real-stack lane, the regression's own secrets also enter the run collector.
 const test = process.env.E2E_PRIVACY_BROWSER_SMOKE === 'true'
-  ? (require('./fixture') as typeof import('./fixture')).test : baseTest;
+  ? (await import('./fixture')).test : baseTest;
 
 test('automatic API observation includes headers cookies nested bodies and generated credentials', async () => {
   const samples = Array.from({ length: 8 }, () => randomBytes(24).toString('hex'));
