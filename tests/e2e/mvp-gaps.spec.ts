@@ -3,7 +3,7 @@
  * Invariants: FIXME is never PASS; removing it requires a real scenario, not an empty body.
  */
 import { expect, test } from '@playwright/test';
-import { audit, fixture } from './fixture';
+import { audit, fixture, fillPassword } from './fixture';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
 test.use({ trace: 'off', video: 'off', screenshot: 'off' });
@@ -19,7 +19,7 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
   const slug = `staff-${info.project.name}`, title = `Staff product ${info.project.name}`;
   await page.goto(`${fixture.admin}/t/${tenant}/products/new`);
   await page.getByLabel('Email', { exact: true }).fill(fixture.ownerEmail);
-  await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+  await fillPassword(page, fixture.ownerPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByLabel('Product code', { exact: true }).fill(slug);
   await page.getByLabel('Lifecycle', { exact: true }).selectOption('ready');
@@ -155,7 +155,7 @@ test('real staff create SKU → media upload → publish', async ({ page }, info
     await page.goto(`${fixture.admin}/`);
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
     await page.getByLabel('Email', { exact: true }).fill(`staff-${role}@example.test`);
-    await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+    await fillPassword(page, fixture.ownerPassword);
     const signedIn = page.waitForResponse(r => r.url() === `${fixture.admin}/api/v1/auth/login` && r.request().method() === 'POST');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     expect((await signedIn).status()).toBe(201);
@@ -183,7 +183,7 @@ test('real admin orders list and detail use persisted orders and staff scopes', 
   await page.goto(`${fixture.admin}/t/${tenant}/orders`);
   await expect(page).toHaveURL(`${fixture.admin}/login`);
   await page.getByLabel('Email', { exact: true }).fill(fixture.ownerEmail);
-  await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+  await fillPassword(page, fixture.ownerPassword);
   const listed = page.waitForResponse(r => r.url().startsWith(base + '?') && r.request().method() === 'GET');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('table', { name: 'Order list' })).toBeVisible();

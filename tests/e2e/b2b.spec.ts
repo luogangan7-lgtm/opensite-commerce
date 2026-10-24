@@ -6,7 +6,7 @@
  */
 import { createHmac, randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
-import { audit, fixture, publishedSite } from './fixture';
+import { audit, fixture, publishedSite, fillPassword } from './fixture';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
 test.use({ trace: 'off', video: 'off', screenshot: 'off' });
@@ -19,7 +19,7 @@ async function login(page: Page, email: string) {
   await page.goto(`${fixture.storefront}/account`);
   await expect(page.locator('[data-customer-ready]')).toBeVisible();
   await page.getByLabel('Email', { exact: true }).fill(email);
-  await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+  await fillPassword(page, fixture.ownerPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Order history', exact: true })).toBeVisible();
   const response = await page.request.get(`${tenant}/customer/session`, { headers: { Origin: storeOrigin } });
@@ -48,7 +48,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     expect(inquiry.status).toBe('received');
     await staff.goto(`${fixture.admin}/login`);
     await staff.getByLabel('Email', { exact: true }).fill('b2b-staff@example.test');
-    await staff.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+    await fillPassword(staff, fixture.ownerPassword);
     await staff.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(staff.getByRole('heading', { name: 'Open a store', exact: true })).toBeVisible();
     const staffSession = await (await staff.request.get(`${fixture.admin}/api/v1/auth/session`)).json();

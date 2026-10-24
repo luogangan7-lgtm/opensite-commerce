@@ -2,7 +2,7 @@
  * Dependencies: owned final-attempt source fixtures in run.py; no intercepted routes.
  * Invariants: one delivery after replay, scope denial and cross-tenant isolation. */
 import {expect,test} from '@playwright/test';
-import {audit,fixture} from './fixture';
+import {audit,fixture, fillPassword } from './fixture';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
 test.use({ trace: 'off', video: 'off', screenshot: 'off' });
@@ -13,7 +13,7 @@ test('real admin notification failure redrive delivers once with scoped isolatio
  const base=`${fixture.admin}/api/v1/t/${tenant}/notifications`;
  await page.goto(`${fixture.admin}/t/${tenant}/notifications`);
  await page.getByLabel('Email',{exact:true}).fill(fixture.ownerEmail);
- await page.getByLabel('Password',{exact:true}).fill(fixture.ownerPassword);
+ await fillPassword(page, fixture.ownerPassword);
  await page.getByRole('button',{name:'Sign in',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Notification failures',exact:true})).toBeVisible();
  const response=await page.request.get(`${base}/failures?limit=100`);
@@ -60,7 +60,7 @@ test('real admin notification failure redrive delivers once with scoped isolatio
  await expect(page.getByRole('row').filter({hasText:failed.id})).toHaveCount(0);
  await page.getByRole('button',{name:'Sign out',exact:true}).click();
  await page.getByLabel('Email',{exact:true}).fill('staff-viewer@example.test');
- await page.getByLabel('Password',{exact:true}).fill(fixture.ownerPassword);
+ await fillPassword(page, fixture.ownerPassword);
  await page.getByRole('button',{name:'Sign in',exact:true}).click();
  await expect(page.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();
  await page.goto(`${fixture.admin}/t/${tenant}/notifications`);

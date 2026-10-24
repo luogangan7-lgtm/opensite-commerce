@@ -5,7 +5,7 @@
  */
 import { writeFile } from 'node:fs/promises';
 import { test, expect, type APIResponse } from '@playwright/test';
-import { fixture, publishedSite, audit, rememberSensitive } from './fixture';
+import { fixture, publishedSite, audit, rememberSensitive, fillPassword } from './fixture';
 import { start, registerAndLogin } from './purchase-helpers';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
@@ -36,7 +36,7 @@ test('real registered customer export and erasure journey', async ({ page, reque
     const signout = page.getByRole('button', { name: 'Sign out', exact: true });
     if (csrf) await signout.click();
     await page.getByLabel('Email', { exact: true }).fill(email);
-    await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+    await fillPassword(page, fixture.ownerPassword);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
     csrf = (await (await page.request.get(`${fixture.admin}/api/v1/auth/session`)).json()).csrf_token;
@@ -126,7 +126,7 @@ test('real registered customer export and erasure journey', async ({ page, reque
   expect((await page.request.get(history)).status()).toBe(401);
   await page.goto(`${fixture.storefront}/account`);
   await page.getByLabel('Email', { exact: true }).fill(email);
-  await page.getByLabel('Password', { exact: true }).fill('CI-only-c09f2-password!');
+  await fillPassword(page, fixture.ownerPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Order history', exact: true })).toHaveCount(0);
