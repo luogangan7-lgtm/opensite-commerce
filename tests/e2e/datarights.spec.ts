@@ -86,6 +86,7 @@ test('real registered customer export and erasure journey', async ({ page, reque
     return { path, link: link.href, expires: view!.download_expires_at, id: created.request_id };
   };
   const first = await ready();
+  throw new Error('FIX-374 old assertion probe: stop after actual ready capability');
   expect((await page.request.get(first.path.replace(fixture.tenantId, fixture.ownerTenantId))).status()).toBe(404);
   expect((await post(first.link.replace(fixture.tenantId, fixture.ownerTenantId))).status()).toBe(404);
   const download = await post(first.link);
