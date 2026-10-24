@@ -5,7 +5,7 @@
  */
 import { writeFile } from 'node:fs/promises';
 import { test, expect, type APIResponse } from '@playwright/test';
-import { fixture, publishedSite, audit, rememberSensitive } from './fixture';
+import { fixture, publishedSite, audit, rememberSensitive, fillPassword } from './fixture';
 import { start, registerAndLogin } from './purchase-helpers';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
@@ -28,6 +28,7 @@ test('real registered customer export and erasure journey', async ({ page, reque
   expect((await (await page.request.get(history)).json()).items).toHaveLength(1);
   const oldCustomerSession = (await page.context().cookies()).find(c => c.name === '__Host-osc_customer_session');
   expect(oldCustomerSession).toBeDefined();
+  await rememberSensitive(...(await page.context().cookies()).map(cookie => cookie.value));
   const base = `${fixture.admin}/api/v1/t/${fixture.tenantId}/customers/${customer}`;
   let csrf = '';
   const login = async (email: string) => {
@@ -36,25 +37,36 @@ test('real registered customer export and erasure journey', async ({ page, reque
     const signout = page.getByRole('button', { name: 'Sign out', exact: true });
     if (csrf) await signout.click();
     await page.getByLabel('Email', { exact: true }).fill(email);
-    await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+    await fillPassword(page, fixture.ownerPassword);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
     csrf = (await (await page.request.get(`${fixture.admin}/api/v1/auth/session`)).json()).csrf_token;
+    await rememberSensitive(csrf, ...(await page.context().cookies()).map(cookie => cookie.value));
   };
-  const post = (path: string) => page.request.post(path, { headers: {
-    Origin: fixture.admin, 'X-CSRF-Token': csrf, 'Idempotency-Key': crypto.randomUUID(),
-  } });
+  const post = (path: string) => {
+    // The instrumented API step title contains only the URL argument. Keep the
+    // capability in params, which are excluded by this spec's trace policy.
+    const url = new URL(path);
+    const params = Object.fromEntries(url.searchParams);
+    url.search = '';
+    return page.request.post(url.href, { params, headers: {
+      Origin: fixture.admin, 'X-CSRF-Token': csrf, 'Idempotency-Key': crypto.randomUUID(),
+    } });
+  };
   const accepted = async (operation: string, response: APIResponse, status: number) => {
-    const body = await response.json();
+    let body;
+    try { body = await response.json(); }
+    catch { throw new Error(`${operation}: status=${response.status()} code=invalid_json`); }
     if (body.download_url) {
       let token = '';
       try { token = new URL(body.download_url, fixture.admin).searchParams.get('token') ?? ''; }
       catch { throw new Error('Invalid export capability URL'); }
       await rememberSensitive(token);
     }
-    if (response.status() === 503 || body.code === 'route_not_found')
-      throw new Error(`BLOCKED ${operation} request_id=${response.headers()['x-request-id']}: ${response.status()} ${JSON.stringify(body)}`);
-    expect(response.status(), `${operation}: ${JSON.stringify(body)}`).toBe(status);
+    const code = body.code === 'route_not_found' ? 'route_not_found' : response.ok() ? 'none' : 'unknown';
+    const label = `${operation}: status=${response.status()} code=${code}`;
+    if (response.status() === 503 || code === 'route_not_found') throw new Error(label);
+    expect(response.status(), label).toBe(status);
     return body;
   };
   for (const role of ['catalog_editor', 'viewer']) {
@@ -82,7 +94,7 @@ test('real registered customer export and erasure journey', async ({ page, reque
     const link = new URL(view!.download_url, fixture.admin);
     expect(link.origin).toBe(fixture.admin);
     expect(link.pathname).toBe(new URL(path).pathname + '/download');
-    expect(link.searchParams.get('token')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(/^[A-Za-z0-9_-]{43}$/.test(link.searchParams.get('token') ?? ''), 'export capability shape').toBe(true);
     return { path, link: link.href, expires: view!.download_expires_at, id: created.request_id };
   };
   const first = await ready();
@@ -125,7 +137,7 @@ test('real registered customer export and erasure journey', async ({ page, reque
   expect((await page.request.get(history)).status()).toBe(401);
   await page.goto(`${fixture.storefront}/account`);
   await page.getByLabel('Email', { exact: true }).fill(email);
-  await page.getByLabel('Password', { exact: true }).fill('CI-only-c09f2-password!');
+  await fillPassword(page, fixture.ownerPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Order history', exact: true })).toHaveCount(0);

@@ -4,7 +4,7 @@
  */
 import { createHmac } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { audit, fixture, publishedSite } from './fixture';
+import { audit, fixture, publishedSite, fillPassword } from './fixture';
 import { start, registerAndLogin } from './purchase-helpers';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
@@ -106,7 +106,7 @@ test('registered purchase appears only in owned history',async({page,request},in
   expect((await page.request.get(backend)).status()).toBe(401);
   expect((await page.request.get(`${api}/history`)).status()).toBe(401);
   await page.context().clearCookies();
-  await page.goto(`${fixture.admin}/login`);await page.getByLabel('Email',{exact:true}).fill(fixture.ownerEmail);await page.getByLabel('Password',{exact:true}).fill(fixture.ownerPassword);
+  await page.goto(`${fixture.admin}/login`);await page.getByLabel('Email',{exact:true}).fill(fixture.ownerEmail);await fillPassword(page, fixture.ownerPassword);
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Open a store',exact:true})).toBeVisible();
   expect((await page.request.get(backend)).status()).toBe(401);

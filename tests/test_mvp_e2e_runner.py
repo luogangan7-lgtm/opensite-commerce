@@ -15,6 +15,8 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import urllib.request
+import urllib.error
 import unittest
 
 
@@ -76,6 +78,25 @@ class BrowserReceiptTests(unittest.TestCase):
                 self.assertEqual(report.read_bytes(), payload, 'gate must preserve evidence')
             report.write_text('getCustomerDataExport status=200 code=none')
             self.assertEqual(runner.verify_artifact_privacy([root], [token])['status'], 'PASS')
+
+    def test_private_collector_registers_values_and_rejects_unauthorized_ingress(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('collector_runner', source)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        values = set()
+        with runner.SecretCollector(values) as collector:
+            url = f'http://127.0.0.1:{collector.server.server_port}'
+            payload = json.dumps(['synthetic-private-proof']).encode()
+            request = urllib.request.Request(url, data=payload, headers={'Authorization': collector.key})
+            with urllib.request.urlopen(request, timeout=5) as response:
+                self.assertEqual(response.status, 204)
+            self.assertEqual(values, {'synthetic-private-proof'})
+            request = urllib.request.Request(url, data=payload)
+            with self.assertRaises(urllib.error.HTTPError) as rejected:
+                urllib.request.urlopen(request, timeout=5)
+            self.assertEqual(rejected.exception.code, 400)
+            self.assertTrue(collector.invalid)
 
     def test_sensitive_specs_disable_capture_but_public_specs_keep_traces(self):
         root = Path(__file__).resolve().parents[1]

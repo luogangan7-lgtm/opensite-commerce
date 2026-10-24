@@ -112,3 +112,17 @@ export async function rememberSensitive(...values: string[]): Promise<void> {
     throw new Error('Private CI sensitive-value registration failed');
   }
 }
+
+/** Fill real password controls without Playwright's value-bearing Fill step.
+ * Native input events still drive the shipped form; sensitive specs disable capture.
+ */
+export async function fillPassword(page: Page, value: string): Promise<void> {
+  await rememberSensitive(value);
+  await page.getByLabel('Password', { exact: true }).evaluate((element, password) => {
+    if (!(element instanceof HTMLInputElement) || element.type !== 'password')
+      throw new Error('Expected password control');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, password);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
+}

@@ -4,7 +4,7 @@
  * SQL is reserved for run.py's independent persisted witnesses, never business setup.
  */
 import { test, expect, type APIResponse } from '@playwright/test';
-import { fixture, publishedSite, audit } from './fixture';
+import { fixture, publishedSite, audit, fillPassword } from './fixture';
 import { start } from './purchase-helpers';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
@@ -24,7 +24,7 @@ test('real shipment → partial → full refund journey', async ({ page, request
   const orderPath = `/orders/${checkout.order_id}`;
   await page.goto(`${fixture.admin}/t/${fixture.tenantId}${orderPath}`);
   await page.getByLabel('Email', { exact: true }).fill('rma-staff@example.test');
-  await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+  await fillPassword(page, fixture.ownerPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('cell', { name: 'C24-CANVAS-TOTE', exact: true })).toBeVisible();
   const session = await (await page.request.get(`${fixture.admin}/api/v1/auth/session`)).json();
@@ -39,11 +39,15 @@ test('real shipment → partial → full refund journey', async ({ page, request
       'Idempotency-Key': key, 'If-Match': `"${version}"`,
     } });
   const accepted = async (op: string, response: APIResponse, status: number) => {
-    const body = await response.json();
+    let body;
+    try { body = await response.json(); }
+    catch { throw new Error(`${op}: status=${response.status()} code=invalid_json`); }
+    const code = body.code === 'route_not_found' ? 'route_not_found' : response.ok() ? 'none' : 'unknown';
+    const label = `${op}: status=${response.status()} code=${code}`;
     if (response.status() === 503 || body.code === 'route_not_found' ||
         (op === 'refundReturn' && response.status() !== status))
-      throw new Error(`BLOCKED ${op} request_id=${response.headers()['x-request-id']}: ${response.status()} ${JSON.stringify(body)}`);
-    expect(response.status(), `${op}: ${JSON.stringify(body)}`).toBe(status);
+      throw new Error(label);
+    expect(response.status(), label).toBe(status);
     return body;
   };
   let order = await read();

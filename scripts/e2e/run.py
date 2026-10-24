@@ -353,7 +353,6 @@ def run(receipt_dir):
                        "OPENSITE_E2E_OWNER_PASSWORD": secrets.token_hex(32),
                        "OPENSITE_E2E_BOOTSTRAP_PASSWORD": secrets.token_hex(32),
                        **{f"OPENSITE_{kind}_DB_PASSWORD": secrets.token_hex(32) for kind in LOGIN_ROLES}}
-        sensitive.add("CI-only-c09f2-password!")
         privacy_settings = privacy.environment(credentials['OPENSITE_RUNTIME_DB_PASSWORD'])
         credentials.update({key: value for key, value in privacy_settings.items() if key != 'PRIVACY_EXPORT_WORKER_ENABLED'})
         variables = dict(credentials, COMPOSE_PROJECT_NAME=project, OPENSITE_DB="opensite",
