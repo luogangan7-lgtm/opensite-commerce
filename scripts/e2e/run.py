@@ -259,6 +259,8 @@ class SecretCollector:
                             collector.active += 1
                         elif phase == 'end' and collector.active > 0:
                             collector.active -= 1
+                        elif phase == 'failed':
+                            collector.invalid = True  # Acknowledge delivery; still deny final upload.
                         else:
                             raise ValueError()
                         values = []
