@@ -35,9 +35,12 @@ test('automatic API observation includes headers cookies nested bodies and gener
 });
 
 if (process.env.E2E_PRIVACY_BROWSER_SMOKE === 'true') test('automatic browser observation survives redirects and context teardown', async ({ browser }) => {
-  const secret = randomBytes(24).toString('hex'), csrf = randomBytes(24).toString('hex'), found = new Set<string>();
+  const secret = randomBytes(24).toString('hex'), csrf = randomBytes(24).toString('hex'), aborted = randomBytes(24).toString('hex'), found = new Set<string>();
   const server = createServer((req, res) => {
-    if (req.url === '/redirect') {
+    if (req.url === '/interrupted') {
+      res.writeHead(200, { 'content-type': 'application/json', 'x-csrf-token': aborted });
+      res.write('{'); // Deliberately unfinished body; the next real navigation cancels it.
+    } else if (req.url === '/redirect') {
       res.writeHead(302, { location: '/', 'content-type': 'text/html', 'set-cookie': `session=${secret}` });
       res.end();
     } else {
@@ -52,9 +55,11 @@ if (process.env.E2E_PRIVACY_BROWSER_SMOKE === 'true') test('automatic browser ob
   });
   try {
     const page = await browser.newPage();
-    await page.goto(`http://127.0.0.1:${(server.address() as { port: number }).port}/redirect`);
+    const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    await page.goto(`${url}/interrupted`, { waitUntil: 'commit' });
+    await page.goto(`${url}/redirect`);
     await page.context().close();
     await finish();
-    expect(found.has(secret) && found.has(csrf)).toBe(true);
-  } finally { await context.dispose(); server.close(); }
+    expect(found.has(secret) && found.has(csrf) && found.has(aborted)).toBe(true);
+  } finally { await context.dispose(); server.closeAllConnections(); server.close(); }
 });

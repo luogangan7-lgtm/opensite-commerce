@@ -352,7 +352,9 @@ def run(receipt_dir):
 
     def browser_diagnostic(output):
         # Whitelisted counters and source locations only; never assertion bodies.
-        for marker in (b'observation closed', b'observation unavailable', b'observation registration', b'observation type', b'observation other', b'TimeoutError', b'passed', b'failed'):
+        markers = [f'Private CI {stage} observation {kind}'.encode() for stage in ('request', 'response')
+                   for kind in ('closed', 'unavailable', 'registration', 'type', 'other')]
+        for marker in [*markers, b'TimeoutError', b'passed', b'failed']:
             print('CI browser diagnostic ' + marker.decode().replace(':', '') + '=' + str(output.count(marker)), flush=True)
         for location in sorted(set(re.findall(rb'tests/e2e/[a-z-]+\.(?:spec|test|ts)[^\s]*?:[0-9]+(?::[0-9]+)?', output))):
             if re.fullmatch(rb'tests/e2e/[a-z-]+(?:\.(?:spec|test))?\.ts:[0-9]+(?::[0-9]+)?', location):

@@ -62,7 +62,7 @@ export function installPrivacy(browser: Browser, request: APIRequestContext, pla
   function track(work: () => Promise<void>, stage = 'response') {
     const task = work().catch(error => {
       const message = error instanceof Error ? error.message : '';
-      const kind = /closed|disposed/i.test(message) ? 'closed' : /unavailable|No resource/i.test(message) ? 'unavailable'
+      const kind = /closed|disposed/i.test(message) ? 'closed' : /unavailable|No resource|No data found|Could not load body/i.test(message) ? 'unavailable'
         : /registration failed/.test(message) ? 'registration' : error instanceof TypeError ? 'type' : 'other';
       failed ||= `Private CI ${stage} observation ${kind}`;
     }).finally(() => pending.delete(task));
