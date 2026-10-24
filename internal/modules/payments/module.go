@@ -202,7 +202,10 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 					// No payload/refund ID survived the old parser. Retain the new
 					// delivery for reconciliation rather than infer its money identity.
 					receipt.Status = "rejected"
-					return q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: inbox, Success: false})
+					if err := q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: inbox, Success: false}); err != nil {
+						return err
+					}
+					return retainRefundCase(ctx, q, in, payload, "unmatched_refund")
 				}
 			}
 		}
@@ -263,8 +266,17 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 				return e
 			}
 			for _, alias := range aliases {
-				if e = q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: alias, Success: done}); e != nil {
+				if e = q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: alias.ID, Success: done}); e != nil {
 					return e
+				}
+				if code.Valid && r.ProviderRefundID.Valid {
+					// A different incoming event may drain this queued refund. Its
+					// aliases retain their own immutable evidence, never that event's.
+					fact := envelope{AccountID: r.ProviderAccountID, ProviderRef: r.ProviderRef,
+						RefundID: r.ProviderRefundID.String, EventID: alias.ProviderEventID}
+					if e = retainRefundCase(ctx, q, fact, [32]byte(alias.PayloadHash), "unmatched_refund"); e != nil {
+						return e
+					}
 				}
 			}
 		}
@@ -280,6 +292,9 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 			receipt.Status = "processed"
 		} else if current.ErrorCode.Valid {
 			receipt.Status = "rejected"
+			if err := retainRefundCase(ctx, q, in, payload, "unmatched_refund"); err != nil {
+				return err
+			}
 		}
 		if current.ID != inbox && (current.Applied || current.ErrorCode.Valid) {
 			return q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: inbox, Success: current.Applied})

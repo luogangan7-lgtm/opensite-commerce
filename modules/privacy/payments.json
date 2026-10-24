@@ -385,6 +385,148 @@
           "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
         }
       }
+    },
+    "payment_refund_cases": {
+      "columns": {
+        "tenant_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "provider": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "provider_account_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "environment": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "case_key": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "provider_refund_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "provider_ref": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "reason": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "evidence_hash": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.",
+          "structure": "refund_evidence_digest"
+        },
+        "created_at": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        }
+      }
+    },
+    "payment_refund_case_deliveries": {
+      "columns": {
+        "tenant_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "case_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "inbox_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "created_at": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        }
+      }
+    },
+    "payment_refund_case_resolutions": {
+      "columns": {
+        "terminal_refund_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Bounded provider refund identity links immutable reconciliation evidence to an existing verified terminal; no customer contact data."
+        },
+        "tenant_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "case_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "outcome": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "reason": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "verifier": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Opaque staff identity retained to audit an explicit refund reconciliation resolution; no customer identity or contact data."
+        },
+        "evidence_hash": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.",
+          "structure": "refund_evidence_digest"
+        },
+        "original_journal_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "reversal_journal_id": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        },
+        "created_at": {
+          "classification": "financial_obligation",
+          "retention": "financial-obligation",
+          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
+        }
+      }
     }
+  },
+  "structures": {
+    "refund_evidence_digest": "Exactly 32 SHA-256 digest bytes of retained provider or operator evidence; no raw payload, contact data or credential."
   }
 }

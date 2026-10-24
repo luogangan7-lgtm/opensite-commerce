@@ -249,3 +249,7 @@ type GetCustomerOrderRequestObject = generated.GetCustomerOrderRequestObject
 type GetCustomerOrderResponseObject = generated.GetCustomerOrderResponseObject
 type GetCustomerOrder200JSONResponse = generated.GetCustomerOrder200JSONResponse
 type GetCustomerOrder200ResponseHeaders = generated.GetCustomerOrder200ResponseHeaders
+
+// Payments staff reconciliation uses the platform contract port.
+type ListRefundCasesRequestObject = generated.ListRefundCasesRequestObject
+type ListRefundCasesResponseObject = generated.ListRefundCasesResponseObject

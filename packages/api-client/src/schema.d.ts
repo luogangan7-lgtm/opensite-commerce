@@ -1504,10 +1504,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/payments/refund-cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** @description Open refund reconciliation cases. Existing owner/admin refund authority; opaque case IDs and bounded reasons only. Page by the last item ID; count and oldest age cover all open cases in this tenant. */
+        get: operations["listRefundCases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        RefundCasePage: {
+            /** Format: int64 */
+            open_count: number;
+            /** Format: int64 */
+            oldest_age_seconds: number;
+            items: {
+                /** Format: uuid */
+                id: string;
+                /** @enum {string} */
+                reason: "unmatched_refund" | "refund_terminal_after_match" | "refund_terminal_retrieval_failed" | "refund_terminal_unconfirmed" | "terminal_unbound";
+                /** Format: date-time */
+                created_at: string;
+            }[];
+        };
         StaffProductContentInput: {
             title: string;
             body_blocks: {
@@ -7195,6 +7229,44 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    listRefundCases: {
+        parameters: {
+            query?: {
+                after_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Up to 100 open cases, with tenant-wide backlog metrics. */
+            200: {
+                headers: {
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefundCasePage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
 }

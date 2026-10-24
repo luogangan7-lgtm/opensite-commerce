@@ -100,14 +100,14 @@ func (s *Stripe) Receive(ctx context.Context, raw []byte, signature string) (con
 			}
 			var current stripeObject
 			if err := s.request(ctx, "GET", "refunds/"+o.ID, "", nil, &current); err != nil {
-				return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp, "refund_terminal_retrieval_failed")
+				return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp, "refund_terminal_retrieval_failed", o.ID)
 			}
 			// Refund has no livemode field in Stripe's schema. Test-key scope,
 			// signed event mode and the mapped account establish the environment.
 			if current.ID != o.ID || current.PaymentIntent != o.PaymentIntent || current.Amount != o.Amount ||
 				current.Currency != o.Currency || (current.Livemode != nil && *current.Livemode) ||
 				(current.Status != "failed" && current.Status != "canceled") {
-				return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp, "refund_terminal_unconfirmed")
+				return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp, "refund_terminal_unconfirmed", o.ID)
 			}
 			version, _ := strconv.ParseInt(current.Metadata["osc_version"], 10, 64)
 			return s.Module.receiveTerminal(ctx, raw, envelope{EventID: e.ID, AccountID: s.account, OrderID: current.Metadata["osc_order"],
@@ -119,7 +119,7 @@ func (s *Stripe) Receive(ctx context.Context, raw []byte, signature string) (con
 			if o.Metadata["osc_order"] != "" {
 				reason = "refund_terminal_after_match"
 			}
-			return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp, reason)
+			return s.unmatchedRefund(ctx, raw, e.ID, o.PaymentIntent, timestamp, reason, o.ID)
 		}
 		ref = o.PaymentIntent
 		refundID = o.ID
@@ -142,7 +142,7 @@ func (s *Stripe) Receive(ctx context.Context, raw []byte, signature string) (con
 // Keep a bounded event identity/hash in the existing reconciliation inbox, not
 // the raw payload. The provider event ID retrieves the full fact during matching.
 // No domain consumer is called until trusted order/attempt matching exists.
-func (s *Stripe) unmatchedRefund(ctx context.Context, raw []byte, event, ref string, stamp int64, reason string) (contract.Receipt, error) {
+func (s *Stripe) unmatchedRefund(ctx context.Context, raw []byte, event, ref string, stamp int64, reason, refundID string) (contract.Receipt, error) {
 	hash := sha256.Sum256(raw)
 	err := s.config.Run(ctx, s.account, func(ctx context.Context, tx pgx.Tx, _ string, at time.Time) error {
 		if delta := at.Sub(time.Unix(stamp, 0)); delta > 5*time.Minute || delta < -5*time.Minute {
@@ -160,7 +160,15 @@ func (s *Stripe) unmatchedRefund(ctx context.Context, raw []byte, event, ref str
 		if err != nil {
 			return err
 		}
-		return q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: inbox, Success: false})
+		if err := q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: inbox, Success: false}); err != nil {
+			return err
+		}
+		fact, err := json.Marshal(map[string]string{"account_id": s.account, "event_id": event, "refund_id": refundID, "provider_ref": ref, "payload_hash": hex.EncodeToString(hash[:]), "reason": reason})
+		if err != nil {
+			return err
+		}
+		_, err = q.RetainRefundCase(ctx, fact)
+		return err
 	})
 	if err != nil {
 		return contract.Receipt{}, apperrors.New(503, "payment_unavailable", "Unmatched refund retention unavailable")
