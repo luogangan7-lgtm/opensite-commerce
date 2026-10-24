@@ -136,6 +136,10 @@ class BrowserReceiptTests(unittest.TestCase):
                 (report / 'failed.html').write_text('unregistered-session-from-shared-hook')
                 with self.assertRaisesRegex(RuntimeError, 'sensitive'):
                     runner.verify_artifact_privacy([report], values)
+                send({'phase': 'failed'})
+                self.assertTrue(collector.invalid)
+                with self.assertRaisesRegex(RuntimeError, 'incomplete'):
+                    collector.read_private_values()
 
     def test_assertion_message_gate_rejects_bodies_and_aliases(self):
         root = Path(__file__).resolve().parents[1]

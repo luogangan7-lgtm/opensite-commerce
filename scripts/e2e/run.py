@@ -259,6 +259,8 @@ class SecretCollector:
                             collector.active += 1
                         elif phase == 'end' and collector.active > 0:
                             collector.active -= 1
+                        elif phase == 'failed':
+                            collector.invalid = True  # Acknowledge delivery; still deny final upload.
                         else:
                             raise ValueError()
                         values = []
@@ -348,6 +350,14 @@ def run(receipt_dir):
             payload = payload.replace(value.encode(), b"[REDACTED]")
         return payload
 
+    def browser_diagnostic(output):
+        # Whitelisted counters and source locations only; never assertion bodies.
+        for marker in (b'Private CI network', b'Private CI API', b'Private CI sensitive-value', b'TimeoutError', b'Error:', b'passed', b'failed'):
+            print('CI browser diagnostic ' + marker.decode().replace(':', '') + '=' + str(output.count(marker)), flush=True)
+        for location in sorted(set(re.findall(rb'tests/e2e/[a-z-]+\.(?:spec|test|ts)[^\s]*?:[0-9]+(?::[0-9]+)?', output))):
+            if re.fullmatch(rb'tests/e2e/[a-z-]+(?:\.(?:spec|test))?\.ts:[0-9]+(?::[0-9]+)?', location):
+                print('CI browser location ' + location.decode(), flush=True)
+
     def command(args, name, timeout=900, env=None, check=True):
         # Kill the entire owned CLI process group on timeout/interruption;
         # finally below also removes the invocation's containers and volumes.
@@ -364,14 +374,12 @@ def run(receipt_dir):
                 output, _ = proc.communicate(timeout=5)
             (receipt_dir / (name + ".log")).write_bytes(redact(output))
             if name in ('browser', 'privacy-browser', 'privacy-observer-smoke'):
-                for marker in (b'Private CI', b'TimeoutError', b'Error:', b'passed', b'failed'):
-                    print('CI browser diagnostic ' + marker.decode().replace(':', '') + '=' + str(output.count(marker)), flush=True)
+                browser_diagnostic(output)
             raise
         (receipt_dir / (name + ".log")).write_bytes(redact(output))
+        if proc.returncode and name in ('browser', 'privacy-browser', 'privacy-observer-smoke'):
+            browser_diagnostic(output)
         if check and proc.returncode:
-            if name == 'privacy-observer-smoke':
-                for marker in (b'Private CI', b'TimeoutError', b'Error:', b'passed', b'failed'):
-                    print('CI browser diagnostic ' + marker.decode().replace(':', '') + '=' + str(output.count(marker)), flush=True)
             raise RuntimeError(f"MVP E2E {name} failed (exit {proc.returncode}; see service logs)")
         return proc.returncode
 
