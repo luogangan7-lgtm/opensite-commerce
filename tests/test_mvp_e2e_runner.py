@@ -157,7 +157,9 @@ class BrowserReceiptTests(unittest.TestCase):
                                "expect(status, responseBody.status())",
                                "expect.poll(() => status, {message: body})",
                                "expect(status, {...responseBody})",
-                               "import {expect as check} from '@playwright/test'; check(status, body)") :
+                               "import {expect as check} from '@playwright/test'; check(status, body)",
+                               "expect(status, {message:'safe', ...responseBody})",
+                               "const label=await response.text(); function f(){const label='safe'}; expect(status,label)") :
                 source.write_text(expression)
                 result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
                 self.assertNotEqual(result.returncode, 0)
