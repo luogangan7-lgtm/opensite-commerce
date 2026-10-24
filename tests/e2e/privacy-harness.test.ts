@@ -1,7 +1,7 @@
 /** Offline regression for the real APIRequestContext wrapper (no browser/container).
  * CI-only check_all invokes Bun; assertion failures never print observed values.
  */
-import { test, expect } from 'bun:test';
+import { test, expect } from '@playwright/test';
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { request as factory, type Browser } from '@playwright/test';
