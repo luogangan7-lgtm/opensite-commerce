@@ -114,16 +114,18 @@ async function privateMessage(payload: unknown): Promise<void> {
 export const rememberSensitive = (...values: string[]) => privateMessage(values.filter(Boolean));
 
 export const test = base.extend<{ _privacy: void }>({
-  _privacy: [async ({ browser, context, request, playwright }, use) => {
-    void context; // Resolve the default context before installing observation.
+  _privacy: [async ({ browser, page, request, playwright }, use) => {
+    void page; // Drain observation before Playwright tears down its default page.
     await privateMessage({ phase: 'begin' });
     const finish = installPrivacy(browser, request, playwright, rememberSensitive);
-    try {
-      try { await use(); } finally { await finish(); }
-      await privateMessage({ phase: 'end' });
-    } catch {
-      await privateMessage({ phase: 'failed' });
-      throw new Error('Private CI privacy fixture failed');
+    try { await use(); }
+    finally {
+      try { await finish(); await privateMessage({ phase: 'end' }); }
+      catch (error) {
+        await privateMessage({ phase: 'failed' });
+        const known = ['Private CI network observation failed', 'Private CI API observation failed', 'Private CI sensitive-value registration failed'];
+        throw new Error(error instanceof Error && known.includes(error.message) ? error.message : 'Private CI privacy fixture failed');
+      }
     }
   }, { auto: true }],
 });
