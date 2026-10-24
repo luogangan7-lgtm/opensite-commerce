@@ -77,7 +77,9 @@ export function installPrivacy(browser: Browser, request: APIRequestContext, pla
     const items = await value.headersArray();
     headers(items);
     const type = items.find(item => item.name.toLowerCase() === 'content-type')?.value ?? '';
-    if (/json|text\/html/i.test(type)) body(await value.text());
+    // Browser protocols expose redirect headers/cookies, but not redirect bodies.
+    const browserRedirect = 'request' in value && value.status() >= 300 && value.status() < 400;
+    if (!browserRedirect && /json|text\/html/i.test(type)) body(await value.text());
     await flush();
   }
   function api(context: APIRequestContext) {
