@@ -5,7 +5,8 @@
  * Quote/inquiry/approval UI does not exist: those steps use their real HTTP APIs.
  */
 import { createHmac, randomUUID } from 'node:crypto';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixture';
 import { audit, fixture, publishedSite, fillPassword } from './fixture';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
@@ -63,7 +64,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
         description: 'Negotiated ceramic mugs', quantity: 2, unit_price: 1000, tax_category: 'standard' }],
       destination: { country: 'US', subdivision: '' }, shipping_profile_id: 'c2400014-0000-4000-8000-000000000001', weight_g: 200,
     } });
-    expect(quoteResponse.status(), await quoteResponse.text()).toBe(201);
+    expect(quoteResponse.status(), 'Quote create status').toBe(201);
     const quote = await quoteResponse.json();
     expect(quote).toMatchObject({ status: 'draft', snapshot: { subtotal: 2000, tax_amount: 200, shipping_amount: 500, total: 2700 } });
     const sellerURL = `${tenant}/quotes/${quote.id}`, buyerURL = `${publicAPI}/quotes/${quote.id}`;
@@ -97,7 +98,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     expect((await transition(staff, sellerURL, 'withdraw', staffHeaders, approved.headers().etag)).status()).toBe(409);
     expect((await transition(staff, sellerURL, 'send', staffHeaders, approved.headers().etag)).status()).toBe(409);
     const conversion = await convert();
-    expect(conversion.status(), await conversion.text()).toBe(201);
+    expect(conversion.status(), 'Quote conversion status').toBe(201);
     const receipt = await conversion.json();
     expect(receipt).toMatchObject({ quote_id: quote.id, amount: '2700', currency: 'USD', state: 'pending_payment' });
     expect(receipt.provider_ref).toMatch(/^fake_/);
@@ -120,7 +121,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     for (let attempt = 0; attempt < 2; attempt++) {
       const payment = await request.post(`${api}/api/v1/testing/payments/fake/webhook`, { data: raw,
         headers: { 'Content-Type': 'application/json', 'X-Fake-Signature': signature } });
-      expect(payment.status(), await payment.text()).toBe(200);
+      expect(payment.status(), 'Payment status').toBe(200);
       expect(await payment.json()).toEqual({ event_id: event.event_id, status: 'processed' });
     }
     const persisted = await page.request.get(orderURL, { headers: buyerHeaders });

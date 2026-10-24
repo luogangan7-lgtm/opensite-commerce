@@ -3,7 +3,8 @@
  * No fulfillment write UI exists; use its public API and render the real order UI.
  * SQL is reserved for run.py's independent persisted witnesses, never business setup.
  */
-import { test, expect, type APIResponse } from '@playwright/test';
+import { expect, type APIResponse } from '@playwright/test';
+import { test } from './fixture';
 import { fixture, publishedSite, audit, fillPassword } from './fixture';
 import { start } from './purchase-helpers';
 
@@ -47,7 +48,7 @@ test('real shipment → partial → full refund journey', async ({ page, request
     if (response.status() === 503 || body.code === 'route_not_found' ||
         (op === 'refundReturn' && response.status() !== status))
       throw new Error(label);
-    expect(response.status(), label).toBe(status);
+    expect(response.status(), 'Return operation status').toBe(status);
     return body;
   };
   let order = await read();

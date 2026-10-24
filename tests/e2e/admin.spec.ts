@@ -2,7 +2,8 @@
  * Dependencies: production admin static build, same-origin proxy to the actual API, owner from cmd/bootstrap-admin.
  * Invariants: no simulated identity, cookie fabrication or API interception; the session cookie is only observed.
  */
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixture';
 import { assertPublicOnly, audit, fixture, fillPassword } from './fixture';
 
 // Credentials/capabilities must never enter automatic capture artifacts.

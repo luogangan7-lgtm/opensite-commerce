@@ -2,7 +2,8 @@
  * Dependencies: real pending feature PRs; caller: CI E2E and acceptance matrix.
  * Invariants: FIXME is never PASS; removing it requires a real scenario, not an empty body.
  */
-import { expect, test } from '@playwright/test';
+import { expect} from '@playwright/test';
+import { test } from './fixture';
 import { audit, fixture, fillPassword } from './fixture';
 
 // Credentials/capabilities must never enter automatic capture artifacts.

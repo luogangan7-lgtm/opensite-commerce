@@ -4,7 +4,8 @@
  * SQL witnesses in run.py are read-only; no clock or business-state fixture writes.
  */
 import { writeFile } from 'node:fs/promises';
-import { test, expect, type APIResponse } from '@playwright/test';
+import { expect, type APIResponse } from '@playwright/test';
+import { test } from './fixture';
 import { fixture, publishedSite, audit, rememberSensitive, fillPassword } from './fixture';
 import { start, registerAndLogin } from './purchase-helpers';
 
@@ -66,7 +67,7 @@ test('real registered customer export and erasure journey', async ({ page, reque
     const code = body.code === 'route_not_found' ? 'route_not_found' : response.ok() ? 'none' : 'unknown';
     const label = `${operation}: status=${response.status()} code=${code}`;
     if (response.status() === 503 || code === 'route_not_found') throw new Error(label);
-    expect(response.status(), label).toBe(status);
+    expect(response.status(), 'Privacy operation status').toBe(status);
     return body;
   };
   for (const role of ['catalog_editor', 'viewer']) {

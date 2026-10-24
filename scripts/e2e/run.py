@@ -228,13 +228,17 @@ def verify_artifact_privacy(roots, sensitive):
 class SecretCollector:
     """Private loopback ingress from native Node fetch, never Playwright IO.
 
-    Values remain in runner memory; no request logging, URL secrets or uploads.
+    Values also persist in a private run file; no request logging or uploads.
     Called by run; its credentials are passed only to the disposable browser.
     """
-    def __init__(self, sensitive):
+    def __init__(self, sensitive, private_file=None):
         self.values = sensitive
         self.key = secrets.token_hex(32)
         self.invalid = False
+        self.active = 0
+        self.private_file = private_file
+        if private_file is not None:
+            private_file.touch(mode=0o600, exist_ok=False)
         collector = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -249,11 +253,23 @@ class SecretCollector:
                             or not 0 < size <= 65536):
                         raise ValueError()
                     values = json.loads(self.rfile.read(size))
+                    if isinstance(values, dict):
+                        phase = values.get('phase')
+                        if phase == 'begin':
+                            collector.active += 1
+                        elif phase == 'end' and collector.active > 0:
+                            collector.active -= 1
+                        else:
+                            raise ValueError()
+                        values = []
                     if (not isinstance(values, list) or len(values) > 256
-                            or any(not isinstance(v, str) or not 8 <= len(v) <= 8192 for v in values)
+                            or any(not isinstance(v, str) or not 1 <= len(v) <= 8192 for v in values)
                             or len(collector.values) + len(values) > 10000):
                         raise ValueError()
                     collector.values.update(values)
+                    if collector.private_file is not None:
+                        with collector.private_file.open('a') as output:
+                            output.write(json.dumps(values) + '\n')
                     self.send_response(204)
                 except (ValueError, OSError):
                     collector.invalid = True
@@ -263,6 +279,16 @@ class SecretCollector:
         self.server = HTTPServer(('127.0.0.1', 0), Handler)
         self.server.timeout = 10
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def read_private_values(self):
+        if self.invalid or self.active:
+            raise RuntimeError('sensitive observer incomplete')
+        if self.private_file is None:
+            raise RuntimeError('sensitive private file missing')
+        try:
+            return {v for line in self.private_file.read_text().splitlines() for v in json.loads(line)}
+        except (OSError, ValueError, TypeError):
+            raise RuntimeError('sensitive private file unreadable') from None
 
     def __enter__(self):
         self.thread.start()
@@ -341,7 +367,7 @@ def run(receipt_dir):
 
     # Store secrets outside the workspace mounted by frontend/browser services.
     # No inherited .env, target database/project/credentials or external URL.
-    with tempfile.TemporaryDirectory(prefix="opensite-e2e-") as private, SecretCollector(sensitive) as collector:
+    with tempfile.TemporaryDirectory(prefix="opensite-e2e-") as private, SecretCollector(sensitive, Path(private) / "observed.jsonl") as collector:
         env_file = Path(private) / ".env"
         credentials = {"POSTGRES_PASSWORD": secrets.token_hex(32), "JOB_SIGNING_KEY": secrets.token_hex(32),
                        "OPENSITE_AUTH_SIGNING_KEY": secrets.token_hex(32),
@@ -578,7 +604,7 @@ def run(receipt_dir):
                     raise RuntimeError('sensitive value collector rejected input')
                 receipt['artifact_privacy'] = verify_artifact_privacy(
                     [receipt_dir, ROOT / 'test-results/e2e', ROOT / 'playwright-report/e2e'],
-                    set(credentials.values()) | sensitive | {collector.key})
+                    set(credentials.values()) | collector.read_private_values() | {collector.key})
             except RuntimeError:
                 receipt['status'] = 'FAIL'
                 receipt['artifact_privacy'] = {'status': 'FAIL'}

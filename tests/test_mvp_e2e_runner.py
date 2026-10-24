@@ -104,10 +104,38 @@ class BrowserReceiptTests(unittest.TestCase):
         self.assertIn("trace: 'off', video: 'off', screenshot: 'off'", config)
         for path in (root / 'tests/e2e').glob('*.spec.ts'):
             source = path.read_text()
+            self.assertNotIn('page.screenshot(', source)
+            self.assertNotRegex(source, r"(?:trace|video|screenshot): ['\"](?!off['\"])")
             self.assertNotRegex(source, r"import\s*\{[^}]*\btest\b[^}]*\}\s*from ['\"]@playwright/test")
         self.assertIn('installPrivacy', (root / 'tests/e2e/fixture.ts').read_text())
         runner = (root / 'scripts/e2e/run.py').read_text()
         self.assertIn('collector.read_private_values()', runner)
+
+    def test_private_file_is_scanned_and_incomplete_observers_fail_closed(self):
+        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
+        spec = importlib.util.spec_from_file_location('private_file_runner', source)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        with tempfile.TemporaryDirectory() as temporary:
+            private = Path(temporary) / 'observed.jsonl'
+            with runner.SecretCollector(set(), private) as collector:
+                url = f'http://127.0.0.1:{collector.server.server_port}'
+                def send(value):
+                    request = urllib.request.Request(url, data=json.dumps(value).encode(), headers={'Authorization': collector.key})
+                    with urllib.request.urlopen(request, timeout=5) as response:
+                        self.assertEqual(response.status, 204)
+                send({'phase': 'begin'})
+                send(['unregistered-session-from-shared-hook'])
+                with self.assertRaisesRegex(RuntimeError, 'incomplete'):
+                    collector.read_private_values()
+                send({'phase': 'end'})
+                self.assertEqual(private.stat().st_mode & 0o777, 0o600)
+                values = collector.read_private_values()
+                report = Path(temporary) / 'report'
+                report.mkdir()
+                (report / 'failed.html').write_text('unregistered-session-from-shared-hook')
+                with self.assertRaisesRegex(RuntimeError, 'sensitive'):
+                    runner.verify_artifact_privacy([report], values)
 
     def test_assertion_message_gate_rejects_bodies_and_aliases(self):
         root = Path(__file__).resolve().parents[1]

@@ -1,7 +1,8 @@
 /** CI real notification recovery: production UI/HTTP, actual SMTP and Mailpit.
  * Dependencies: owned final-attempt source fixtures in run.py; no intercepted routes.
  * Invariants: one delivery after replay, scope denial and cross-tenant isolation. */
-import {expect,test} from '@playwright/test';
+import {expect} from '@playwright/test';
+import { test } from './fixture';
 import {audit,fixture, fillPassword } from './fixture';
 
 // Credentials/capabilities must never enter automatic capture artifacts.

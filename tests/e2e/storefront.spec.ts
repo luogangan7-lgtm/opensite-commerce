@@ -2,7 +2,8 @@
  * Dependencies: disposable PostgreSQL release seed, API and standalone Astro; caller: CI E2E.
  * Invariants: visible loaded content and exact sealed release, no mocks or unpublished/foreign data.
  */
-import { expect, test } from '@playwright/test';
+import { expect} from '@playwright/test';
+import { test } from './fixture';
 import { assertPublicOnly, audit, fixture, publishedSite } from './fixture';
 
 const pages = [

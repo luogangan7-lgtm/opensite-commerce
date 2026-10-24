@@ -31,7 +31,7 @@ export default defineConfig({
     browserName: 'chromium', baseURL: fixture.storefront,
     locale: 'en-US', timezoneId: 'UTC', colorScheme: 'light',
     reducedMotion: 'reduce', deviceScaleFactor: 1,
-    trace: 'retain-on-failure', screenshot: 'only-on-failure',
+    trace: 'off', video: 'off', screenshot: 'off',
   },
   projects: [
     { name: 'desktop', use: { viewport: { width: 1280, height: 800 } } },

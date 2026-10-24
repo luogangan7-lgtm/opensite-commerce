@@ -3,7 +3,8 @@
  * Caller: CI desktop/mobile acceptance. No route interception or purchase UI claim.
  */
 import { createHmac } from 'node:crypto';
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixture';
 import { fixture } from './fixture';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
