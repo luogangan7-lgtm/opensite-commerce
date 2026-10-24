@@ -49,7 +49,7 @@ export function violations(source: string): number[] {
   return lines;
 }
 const paths = process.argv.slice(2);
-for (const path of paths.length ? paths : readdirSync('tests/e2e', { recursive: true }).filter(name => name.endsWith('.ts')).map(name => join('tests/e2e', name))) {
+for (const path of paths.length ? paths : readdirSync('tests/e2e', { recursive: true, encoding: 'utf8' }).filter(name => name.endsWith('.ts')).map(name => join('tests/e2e', name))) {
   for (const line of violations(readFileSync(path, 'utf8'))) {
     console.error(`FAIL: unsafe assertion message ${path}:${line}`); process.exitCode = 1;
   }
