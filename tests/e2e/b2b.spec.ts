@@ -64,7 +64,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
         description: 'Negotiated ceramic mugs', quantity: 2, unit_price: 1000, tax_category: 'standard' }],
       destination: { country: 'US', subdivision: '' }, shipping_profile_id: 'c2400014-0000-4000-8000-000000000001', weight_g: 200,
     } });
-    expect(quoteResponse.status(), 'Quote create status').toBe(201);
+    expect(quoteResponse.status(), await quoteResponse.text()).toBe(201);
     const quote = await quoteResponse.json();
     expect(quote).toMatchObject({ status: 'draft', snapshot: { subtotal: 2000, tax_amount: 200, shipping_amount: 500, total: 2700 } });
     const sellerURL = `${tenant}/quotes/${quote.id}`, buyerURL = `${publicAPI}/quotes/${quote.id}`;
