@@ -67,10 +67,9 @@ export async function registerAndLogin(page: Page, email: string) {
   await rememberSensitive(new URLSearchParams(proof.hash.slice(1)).get('token') ?? '', proof.href);
   expect(proof.origin).toBe('https://store.e2e.test');expect(proof.pathname).toBe('/customer/verify');
   expect(new URLSearchParams(proof.hash.slice(1)).get('tenant')).toBe(fixture.tenantId);
-  // Keep the proof out of Playwright's navigation step title; capture is off.
-  await page.goto(`${fixture.storefront}/customer/verify`);
-  await page.evaluate(fragment => { location.hash = fragment; }, proof.hash);
-  await page.reload();
+  // One real navigation: the island consumes/clears the fragment on mount.
+  // Evaluate arguments are absent from HTML step params; capture stays off.
+  await page.evaluate(url => { location.assign(url); }, `${fixture.storefront}/customer/verify${proof.hash}`);
   await expect(page.getByRole('button',{name:'Verify email',exact:true})).toBeEnabled();
   await expect(page).toHaveURL(`${fixture.storefront}/customer/verify`);
   await page.getByRole('button',{name:'Verify email',exact:true}).click();
