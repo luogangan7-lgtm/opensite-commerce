@@ -142,6 +142,7 @@ class BrowserReceiptTests(unittest.TestCase):
         gate = root / 'scripts/e2e/check-assertion-messages.ts'
         self.assertTrue(gate.is_file(), 'shared assertion-message gate missing')
         self.assertIn('check-assertion-messages.ts', (root / 'scripts/check_all.sh').read_text())
+        self.assertIn('bun scripts/e2e/check-assertion-messages.ts', (root / '.github/workflows/mvp-e2e.yml').read_text())
         unsafe = ["await response.text()", "await response.json()", "JSON.stringify(data)",
                   "body", "responseBody", "`reply: ${body}`", "alias", "getBody()"]
         with tempfile.TemporaryDirectory() as temporary:
