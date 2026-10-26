@@ -149,6 +149,23 @@ class PgUrlHelper(unittest.TestCase):
             self.url_for('postgres://u@db/orig?DBNAME=orig&sslmode=disable', 'tmp_case'),
             'postgres://u@db/tmp_case?sslmode=disable')
 
+    def test_query_only_uris_preserve_the_authority(self):
+        # libpq allows the database to be supplied only as `?dbname=`; the path
+        # may be absent with or without the trailing slash. The host/authority
+        # must survive so the URI still points at the same server.
+        self.assertEqual(
+            self.url_for('postgres://u@db/?dbname=orig', 'tmp_slash'),
+            'postgres://u@db/tmp_slash')
+        self.assertEqual(
+            self.url_for('postgres://u@db?dbname=orig', 'tmp_query'),
+            'postgres://u@db/tmp_query')
+        self.assertEqual(
+            self.url_for('postgres://u:p@db:5432?sslmode=disable&dbname=orig', 'tmp_params'),
+            'postgres://u:p@db:5432/tmp_params?sslmode=disable')
+        self.assertEqual(
+            self.url_for('postgres:///orig?dbname=orig', 'tmp_hostless'),
+            'postgres:///tmp_hostless')
+
     def test_db_scripts_use_the_helper_and_assert_the_exact_database(self):
         for name in ('check_pg_upgrade.sh', 'check_pg_races.sh'):
             source = (ROOT / 'scripts' / name).read_text()
@@ -159,10 +176,13 @@ class PgUrlHelper(unittest.TestCase):
 class FinalLandingGate(unittest.TestCase):
     """#5: proposal validation and final landing are distinct, exact-SHA gates."""
 
-    def landing(self, root, *args):
+    LANES = ('go', 'offline', 'pg', 'pgx', 'sqlc')
+    RUN_ENV = {'GITHUB_RUN_ID': '12345', 'GITHUB_RUN_ATTEMPT': '1'}
+
+    def landing(self, root, *args, env=None):
         script = ROOT / 'scripts' / 'check_landing.py'
         self.assertTrue(script.is_file(), 'scripts/check_landing.py is the landing gate')
-        return run(['python3', str(script), '--root', str(root), *args])
+        return run(['python3', str(script), '--root', str(root), *args], env=env)
 
     @staticmethod
     def make_repo(temp, pending=(), numbered=(1, 2)):
@@ -175,6 +195,29 @@ class FinalLandingGate(unittest.TestCase):
                 f'-- stable-id: {stable_id}\nSELECT 1;\n')
         return root
 
+    @staticmethod
+    def changed(temp, rows=()):
+        """The trusted `git diff --name-status base head -- migrations` listing."""
+        path = Path(temp) / 'changed-migrations.txt'
+        path.write_text(''.join(f'{status}\t{name}\n' for status, name in rows))
+        return path
+
+    def lane_identities(self, temp, sha, lanes=None, overrides=None):
+        """One independently recorded checkout identity per prerequisite lane."""
+        directory = Path(temp) / 'lane-identities'
+        directory.mkdir()
+        for lane in lanes or self.LANES:
+            payload = {
+                'lane': lane,
+                'event_sha': sha,
+                'checked_out_sha': sha,
+                'run_id': self.RUN_ENV['GITHUB_RUN_ID'],
+                'run_attempt': self.RUN_ENV['GITHUB_RUN_ATTEMPT'],
+            }
+            payload.update((overrides or {}).get(lane, {}))
+            (directory / f'lane-{lane}.json').write_text(json.dumps(payload, sort_keys=True) + '\n')
+        return directory
+
     def test_proposal_mode_validates_but_does_not_claim_final(self):
         with tempfile.TemporaryDirectory() as temp:
             root = self.make_repo(temp, pending=('c22a-data-rights',))
@@ -186,70 +229,227 @@ class FinalLandingGate(unittest.TestCase):
     def test_final_mode_rejects_retained_proposals(self):
         with tempfile.TemporaryDirectory() as temp:
             root = self.make_repo(temp, pending=('c22a-data-rights',))
+            lanes = self.lane_identities(temp, 'a' * 40)
             result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
-                                  '--expected-sha', 'a' * 40)
+                                  '--expected-sha', 'a' * 40,
+                                  '--lane-identities', str(lanes), env=self.RUN_ENV)
             self.assertNotEqual(result.returncode, 0, combined(result))
             self.assertIn('FINAL_LANDING_PENDING', combined(result))
 
     def test_final_mode_rejects_a_numbering_gap(self):
         with tempfile.TemporaryDirectory() as temp:
             root = self.make_repo(temp, numbered=(1, 3))
+            lanes = self.lane_identities(temp, 'a' * 40)
             result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
-                                  '--expected-sha', 'a' * 40)
+                                  '--expected-sha', 'a' * 40,
+                                  '--lane-identities', str(lanes), env=self.RUN_ENV)
             self.assertNotEqual(result.returncode, 0, combined(result))
             self.assertIn('contiguous', combined(result))
 
     def test_final_mode_rejects_a_synthetic_or_stale_sha(self):
         with tempfile.TemporaryDirectory() as temp:
             root = self.make_repo(temp)
+            lanes = self.lane_identities(temp, 'a' * 40)
             result = self.landing(root, '--mode', 'final', '--sha', 'b' * 40,
-                                  '--expected-sha', 'a' * 40)
+                                  '--expected-sha', 'a' * 40,
+                                  '--lane-identities', str(lanes), env=self.RUN_ENV)
             self.assertNotEqual(result.returncode, 0, combined(result))
             self.assertIn('FINAL_LANDING_SHA_MISMATCH', combined(result))
 
     def test_final_mode_writes_the_exact_sha_receipt(self):
         with tempfile.TemporaryDirectory() as temp:
             root = self.make_repo(temp, numbered=(1, 2, 3))
+            lanes = self.lane_identities(temp, 'c' * 40)
             receipt = Path(temp) / 'receipt.json'
             result = self.landing(root, '--mode', 'final', '--sha', 'c' * 40,
-                                  '--expected-sha', 'c' * 40, '--receipt', str(receipt))
+                                  '--expected-sha', 'c' * 40,
+                                  '--lane-identities', str(lanes),
+                                  '--receipt', str(receipt), env=self.RUN_ENV)
             self.assertEqual(result.returncode, 0, combined(result))
             payload = json.loads(receipt.read_text())
             self.assertEqual(payload['mode'], 'final')
             self.assertEqual(payload['source_sha'], 'c' * 40)
             self.assertEqual(payload['pending'], 0)
             self.assertEqual(payload['numbered'], 3)
+            self.assertEqual(sorted(row['lane'] for row in payload['lane_identities']),
+                             sorted(self.LANES))
 
-    def test_ci_binds_the_landing_check_to_the_exact_head_sha(self):
+    def test_final_mode_requires_independently_recorded_lane_identities(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40, env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            self.assertIn('FINAL_LANDING_LANE_IDENTITIES', combined(result))
+
+    def test_final_mode_rejects_a_lane_that_tested_a_synthetic_merge(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            lanes = self.lane_identities(
+                temp, 'a' * 40, overrides={'offline': {'checked_out_sha': 'd' * 40}})
+            result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40,
+                                  '--lane-identities', str(lanes), env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            self.assertIn('FINAL_LANDING_LANE_IDENTITY', combined(result))
+
+    def test_final_mode_rejects_a_missing_lane_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            lanes = self.lane_identities(temp, 'a' * 40, lanes=('go', 'offline', 'pg', 'pgx'))
+            result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40,
+                                  '--lane-identities', str(lanes), env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            self.assertIn('sqlc', combined(result))
+
+    def test_auto_mode_requires_a_trusted_landing_decision(self):
+        # No diff and no trusted policy: auto must not silently become proposal.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp, pending=('c22a-data-rights',))
+            result = self.landing(root, '--mode', 'auto', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40, env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            self.assertIn('FINAL_LANDING_DECISION_UNKNOWN', combined(result))
+
+    def test_unmarked_landing_change_is_forced_to_final(self):
+        # Deleting a proposal and adding a numbered migration is a landing even
+        # without the optional [final-landing] marker.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp, pending=('c20a-fulfillment',))
+            changed = self.changed(temp, [
+                ('D', 'migrations/pending/c22a-data-rights_data_rights.sql'),
+                ('A', 'migrations/003_data_rights.sql'),
+            ])
+            lanes = self.lane_identities(temp, 'a' * 40)
+            result = self.landing(root, '--mode', 'auto', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40,
+                                  '--changed-paths', str(changed),
+                                  '--lane-identities', str(lanes), env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            self.assertIn('FINAL_LANDING_PENDING', combined(result))
+
+    def test_explicit_proposal_mode_cannot_override_landing_changes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp, pending=('c22a-data-rights',))
+            changed = self.changed(temp, [
+                ('D', 'migrations/pending/c22a-data-rights_data_rights.sql'),
+            ])
+            result = self.landing(root, '--mode', 'proposal', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40,
+                                  '--changed-paths', str(changed), env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            self.assertIn('FINAL_LANDING_REQUIRED', combined(result))
+
+    def test_a_complete_landing_change_passes_and_records_why(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp, numbered=(1, 2))
+            changed = self.changed(temp, [
+                ('D', 'migrations/pending/c22a-data-rights_data_rights.sql'),
+                ('A', 'migrations/003_data_rights.sql'),
+            ])
+            lanes = self.lane_identities(temp, 'a' * 40)
+            receipt = Path(temp) / 'receipt.json'
+            result = self.landing(root, '--mode', 'auto', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40,
+                                  '--changed-paths', str(changed),
+                                  '--lane-identities', str(lanes),
+                                  '--receipt', str(receipt), env=self.RUN_ENV)
+            self.assertEqual(result.returncode, 0, combined(result))
+            payload = json.loads(receipt.read_text())
+            self.assertEqual(payload['mode'], 'final')
+            self.assertTrue(payload['landing_reasons'], payload)
+
+    def test_trusted_policy_selects_final_without_a_marker(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp, numbered=(1, 2))
+            changed = self.changed(temp, [])
+            lanes = self.lane_identities(temp, 'a' * 40)
+            receipt = Path(temp) / 'receipt.json'
+            result = self.landing(
+                root, '--mode', 'auto', '--sha', 'a' * 40, '--expected-sha', 'a' * 40,
+                '--changed-paths', str(changed), '--lane-identities', str(lanes),
+                '--receipt', str(receipt),
+                env={**self.RUN_ENV, 'FINAL_LANDING_POLICY': '1'})
+            self.assertEqual(result.returncode, 0, combined(result))
+            self.assertEqual(json.loads(receipt.read_text())['mode'], 'final')
+
+    def test_ci_binds_landing_mode_to_changes_policy_and_lane_identities(self):
         jobs = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']
         foundation = jobs['foundation']
         self.assertEqual(foundation['needs'], ['foundation-lane'])
-        body = '\n'.join(step.get('run', '') for step in foundation['steps'])
-        self.assertIn('scripts/check_landing.py', body)
-        self.assertIn('github.event.pull_request.head.sha', body)
-        marker = '\n'.join(
-            step.get('env', {}).get('FINAL_LANDING', '') for step in foundation['steps'])
-        self.assertIn('final-landing', marker)
+        runs = '\n'.join(step.get('run', '') for step in foundation['steps'])
+        self.assertIn('scripts/check_landing.py --mode auto', runs)
+        self.assertIn('--changed-paths', runs)
+        self.assertIn('--lane-identities', runs)
+        # The observed checkout and the event head stay independent inputs.
+        self.assertIn('HEAD_SHA="$(git rev-parse HEAD)"', runs)
+        self.assertIn('--sha "$HEAD_SHA"', runs)
+        self.assertIn('--expected-sha "$EVENT_HEAD_SHA"', runs)
+        # The optional marker may add final validation; it never selects proposal.
+        self.assertNotIn('mode=proposal', runs)
+        self.assertIn('git diff --name-status', runs)
+        self.assertIn('merge-base', runs)
+        # Prerequisite lanes test the exact PR head, never the synthetic merge.
+        lane_steps = jobs['foundation-lane']['steps']
+        checkout = next(s for s in lane_steps
+                        if s.get('uses', '').startswith('actions/checkout@'))
+        self.assertEqual(checkout['with']['ref'],
+                         '${{ github.event.pull_request.head.sha || github.sha }}')
+        record = next(s for s in lane_steps if 'checked_out_sha' in s.get('run', ''))
+        self.assertIn('rev-parse', record['run'])
+        upload = next(s for s in lane_steps
+                      if s.get('uses', '').startswith('actions/upload-artifact@')
+                      and 'lane-identity' in s.get('with', {}).get('name', ''))
+        self.assertIn('${{ github.run_attempt }}', upload['with']['name'])
+        self.assertIn('${{ matrix.lane }}', upload['with']['name'])
+        download = next(s for s in foundation['steps']
+                        if s.get('uses', '').startswith('actions/download-artifact@'))
+        self.assertIn('lane-identity-${{ github.run_id }}-${{ github.run_attempt }}-*',
+                      download['with']['pattern'])
 
 
 class PendingMigrationDependency(unittest.TestCase):
     """#225: the scope union must depend on the scopes migration explicitly."""
 
+    STABLE_ID = 'c22a-data-rights'
+
+    def find(self, root):
+        helper = ROOT / 'scripts' / 'pending_migrations.py'
+        result = run(['python3', str(helper), 'find-stable-id', self.STABLE_ID, str(root)])
+        self.assertEqual(result.returncode, 0, combined(result))
+        return Path(result.stdout.strip())
+
     def test_c22a_depends_on_fulfillment_scopes(self):
-        path = 'migrations/pending/c22a-data-rights_data_rights.sql'
-        local = ROOT / path
-        if local.is_file():
-            text = local.read_text()
-        else:
-            # CI's ci-normalize already landed proposals in this ephemeral tree;
-            # HEAD still carries the authored proposal header.
-            result = run(['git', 'show', f'HEAD:{path}'])
-            self.assertEqual(result.returncode, 0, result.stderr)
-            text = result.stdout
+        # Works in both layouts: still a proposal (pending/) or already landed
+        # as a numbered file by CI's ci-normalize or by the integrator.
+        text = self.find(ROOT).read_text()
         headers = text.splitlines()
         deps = [line.split(':', 1)[1].strip() for line in headers if line.startswith('-- depends-on:')]
         self.assertIn('c20a-fulfillment-scopes', deps)
         self.assertNotIn('c20a-fulfillment', deps)
+
+    def test_lookup_covers_pending_and_numbered_layouts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            pending_dir = root / 'migrations' / 'pending'
+            pending_dir.mkdir(parents=True)
+            (root / 'migrations' / '001_init.sql').write_text('-- stable-id: 001-init\nSELECT 1;\n')
+            pending = pending_dir / f'{self.STABLE_ID}_data_rights.sql'
+            pending.write_text(f'-- stable-id: {self.STABLE_ID}\nSELECT 1;\n')
+            self.assertEqual(self.find(root), pending.resolve())
+            landed = root / 'migrations' / '002_data_rights.sql'
+            pending.rename(landed)
+            self.assertEqual(self.find(root), landed.resolve())
+
+    def test_missing_stable_id_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'migrations').mkdir()
+            (root / 'migrations' / '001_init.sql').write_text('-- stable-id: 001-init\nSELECT 1;\n')
+            helper = ROOT / 'scripts' / 'pending_migrations.py'
+            result = run(['python3', str(helper), 'find-stable-id', self.STABLE_ID, str(root)])
+            self.assertNotEqual(result.returncode, 0, combined(result))
 
 
 class AptTotalBudget(unittest.TestCase):
