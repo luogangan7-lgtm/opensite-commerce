@@ -99,7 +99,7 @@ test('price keyboard submission associates and announces invalid amounts', async
    await expect(amount).toHaveAccessibleDescription(/Enter whole minor units from 0 to 9223372036854775807\./);
    expect(writes).toBe(0);
  }
- await audit(page);
+ await audit(page,'admin-price-invalid.png');
  await page.getByRole('button', { name: 'Reload price from server', exact: true }).click();
  await expect(amount).toBeEnabled();
  await expect(amount).toHaveValue('');
@@ -145,7 +145,7 @@ test('content and listing preserve opaque ETags and retain conflicting drafts',a
  await expect(page.getByRole('button',{name:'Save listing',exact:true})).toBeEnabled();
  await page.getByLabel('Title',{exact:true}).fill('A detailed multilingual product title 商品说明 '.repeat(8));
  await page.getByLabel('Body blocks JSON',{exact:true}).fill(JSON.stringify([{type:'paragraph',text:'Product content details 商品内容 '.repeat(20)}]));
- await page.getByLabel('Slug',{exact:true}).fill('long-product-publication-slug-'.repeat(6));
+ await page.getByLabel('Slug',{exact:true}).fill('long-product-publication-slug-'.repeat(6).slice(0,-1));
  await audit(page,'admin-publication-long.png');
  await page.route('**/api/v1/t/*/products/*/content/en',route=>route.fulfill({status:503,json:{detail:'PRIVATE SERVER DETAIL'}}));
  await page.getByRole('button',{name:'Load content',exact:true}).click();
@@ -252,7 +252,7 @@ test('production partial and full refunds preserve read-only totals and long ord
  const sku='LONG-SKU-WITH-MULTILINGUAL-CONTENT-商品-'.repeat(5);
  await page.route('**/api/v1/t/*/orders**',route=>{
   const detail=new URL(route.request().url()).pathname.endsWith(orderId);
-  const value={...order,state,lines:[{...order.lines[0],sku_code:sku}],adjustments:[{...order.adjustments[0],reason:'Customer requested adjustment with detailed order context '.repeat(6)}]};
+  const value={...order,state,total_minor:'5780',tax_total_minor:'480',shipping:{...order.shipping,amount_minor:'500'},lines:[{...order.lines[0],sku_code:sku,quantity:2,unit_price_minor:'2400',tax_minor:'480',line_total_minor:'5280'}],adjustments:[]};
   return route.fulfill({json:detail?value:{items:[{...value,customer_kind:'guest'}]},headers:detail?{ETag:'"1"'}:{}});
  });
  for(state of ['partially_refunded','refunded']){
@@ -263,7 +263,7 @@ test('production partial and full refunds preserve read-only totals and long ord
   await expect(page.getByRole('heading',{name:'Order 1001',exact:true})).toBeVisible();
   await expect(page.getByText(state.replaceAll('_',' '),{exact:true})).toBeVisible();
   await expect(page.getByRole('cell',{name:sku,exact:true})).toBeVisible();
-  await expect(page.getByText('USD 26.00',{exact:true})).toBeVisible();
+  await expect(page.getByText('USD 57.80',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:/refund|ship/i})).toHaveCount(0);
   await expect(page.getByText(/CONTRACT FIXTURE/)).toHaveCount(0);
   await audit(page,`admin-production-order-${state.replaceAll('_','-')}-long.png`);

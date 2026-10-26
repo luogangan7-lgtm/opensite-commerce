@@ -16,7 +16,7 @@ interface Props {
   title: string; description: string; canonical: string | undefined; siteTitle?: string; locale?: string;
   navigation?: { label: string; href: string }[]; noindex?: boolean; homeHref?: string | undefined;
 }
-const { title, description, canonical, siteTitle, locale = 'en', navigation = [], noindex = false, homeHref = '/' } = Astro.props;
+const { title, description, canonical, siteTitle, locale = 'en', navigation = [], noindex = false, homeHref } = Astro.props;
 const ui = copy(locale);
 const purchaseUI = commerceCopy(locale);
 const links = [...navigation.filter(link => !['/cart', '/account'].includes(link.href)), { label: purchaseUI.cart, href: '/cart' }, { label: purchaseUI.account, href: '/account' }]

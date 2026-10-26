@@ -186,6 +186,23 @@ test('checkout requires confirmation of an updated server total and reuses ambig
   await expect.poll(()=>accepted).toEqual({amount_minor:'9999',currency:'USD'});
 });
 
+test('changed currency and int64 server total remain gated by explicit consent', async ({ page }) => {
+  await add(page); await review(page);
+  await page.route(`${api}/checkout`, async route => {
+    const response = await route.fetch();
+    expect(response.status()).toBe(201);
+    await route.fulfill({ response, json: { ...await response.json(), amount_minor: '9223372036854775807', currency: 'JPY' } });
+  });
+  await page.getByRole('button', { name: 'Start test checkout', exact: true }).click();
+  const capture = page.getByRole('button', { name: 'Fake payment: capture', exact: true });
+  await expect(capture).toBeDisabled();
+  await expect(page.locator('.payment-result')).toContainText('9,223,372,036,854,775,807');
+  await quality(page, 'checkout-long-changed-currency-disabled');
+  await page.getByRole('button', { name: 'Confirm updated total', exact: true }).click();
+  await expect(capture).toBeEnabled();
+  await quality(page, 'checkout-long-changed-currency-confirmed');
+});
+
 for (const outcome of ['fail', 'cancel'] as const) test(`commerce fixture Fake ${outcome} never opens paid confirmation`, async ({ page }) => {
   await add(page); await review(page); await start(page);
   await page.getByRole('button', { name: `Fake payment: ${outcome}`, exact: true }).click();
@@ -283,6 +300,10 @@ test('routed real-mode account registration session and sign-out loading', async
   await expect(page.locator('[data-fixture-notice]')).toHaveCount(0);
   await expect(page.getByRole('main')).toContainText('Registration requires 12–1024 UTF-8 bytes.');
   await quality(page, 'account-real-long-help');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByLabel('Email', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByLabel('Password', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+  await quality(page, 'account-real-validation');
   await page.route(`${realSite}/purchase/api/customer/register`, route => route.fulfill({ status: 202, json: { status: 'verification_pending' } }), { times: 1 });
   await page.getByLabel('Email', { exact: true }).fill('visual-registration@example.test');
   await page.getByLabel('Password', { exact: true }).fill('visual-only-password');
@@ -306,7 +327,7 @@ test('routed real-mode account registration session and sign-out loading', async
   await page.getByRole('button', { name: 'Sign out', exact: true }).click(); await gate.started;
   try {
     await expect(page.locator('[data-customer-ready]')).toHaveAttribute('aria-busy', 'true');
-    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeDisabled();
+    await expect(page.locator('[data-customer-ready] button[aria-busy="true"]')).toBeDisabled();
     await quality(page, 'account-real-loading');
   } finally { gate.release(); }
   await expect(page.getByRole('status')).toHaveText('You are signed out.');
@@ -336,6 +357,14 @@ test('real-mode account remains explicitly disabled without a configured custome
   await expect(page.locator('[data-fixture-notice]')).toHaveCount(0);
   await quality(page, 'account-real-disabled');
 });
+test('invalid mailbox fragment is cleared and leaves verification disabled', async ({ page }) => {
+  await page.goto(`${realSite}/customer/verify#token=invalid-proof`);
+  await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
+  await expect(page.getByRole('status')).toHaveText('Open the verification link from your email.');
+  expect(new URL(page.url()).hash).toBe('');
+  expect(await page.content()).not.toContain('invalid-proof');
+  await quality(page, 'verification-invalid');
+});
 for (const outcome of ['success', 'error'] as const) test(`routed real-mode mailbox verification ${outcome}`, async ({ page }) => {
   const origin = realSite, proof = 'V'.repeat(43);
   await page.route(`${origin}/purchase/api/context`, route => route.fulfill({ json: { enabled: true, fixture: false, actor: 'guest', csrf: 'visual-test', products: [] } }));
@@ -348,9 +377,10 @@ for (const outcome of ['success', 'error'] as const) test(`routed real-mode mail
   await page.getByRole('button', { name: 'Verify email', exact: true }).click(); await gate.started;
   try {
     await expect(page.locator('[data-customer-verification]')).toHaveAttribute('aria-busy', 'true');
-    await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
+    await expect(page.locator('[data-customer-verification] button[aria-busy="true"]')).toBeDisabled();
     if (outcome === 'success') await quality(page, 'verification-loading');
   } finally { gate.release(); }
+  await expect(page.locator('[data-customer-verification]')).toHaveAttribute('aria-busy', 'false');
   await expect(page.getByRole('status')).toContainText(outcome === 'success' ? 'Email verified.' : 'Verification could not be completed.');
   await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
   expect(await page.content()).not.toContain(proof);

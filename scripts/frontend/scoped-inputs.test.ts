@@ -183,3 +183,11 @@ test('C-08d: storefront scopes include the River migrator their fixture runs', a
     expect(inputs.some(path => path.startsWith('cmd/river-migrate/') && path.endsWith('.go'))).toBe(true);
   }
 });
+test('account history and verification renderer inputs belong to commerce provenance', async () => {
+  const { scopeInputs } = await loadInputs();
+  const inputs = scopeInputs('storefront-commerce');
+  for (const path of ['pages/account/orders.astro', 'pages/customer/verify.astro',
+    'components/OrderHistory.tsx', 'components/CustomerVerification.tsx']) {
+    expect(inputs).toContain(`web/storefront/src/${path}`);
+  }
+});
