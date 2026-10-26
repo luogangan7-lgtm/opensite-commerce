@@ -1807,6 +1807,167 @@ else
 fi
 admin -c "DROP DATABASE $PRIVACY_HARDENING_DB" >/dev/null; PRIVACY_HARDENING_DB=""
 
+# A converter erased under the predecessor schema still owns its immutable
+# receipt, but the legacy notification owner omitted quote.converted. Populate
+# that history before upgrading; fresh-schema erasure tests cannot expose it.
+PRIVACY_HARDENING_DB=privacy_conversion_upgrade_$$
+admin -c "CREATE DATABASE $PRIVACY_HARDENING_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${privacy_bounds[0]} ]] || break
+ apply_forward "$PRIVACY_HARDENING_DB" "$f"
+done
+db "$PRIVACY_HARDENING_DB" <<'SQL' >/dev/null
+CREATE TABLE public.privacy_conversion_upgrade_witness(
+ tenant_id uuid,customer_id uuid,notification_id uuid,erased boolean,
+ customer jsonb,delivery jsonb,dispatch jsonb,source jsonb,quote jsonb,receipt jsonb,order_snapshot jsonb
+);
+DO $fixture$
+DECLARE t uuid;c uuid;a uuid;u uuid;org uuid;s uuid;i uuid;co uuid;q uuid;o uuid;e uuid;
+ d app.notification_deliveries;tenant_no integer;subject_no integer;contact text;worker uuid:=uuidv7();
+BEGIN
+ FOR tenant_no IN 1..2 LOOP
+  INSERT INTO app.tenants(name) VALUES('privacy-conversion-upgrade-'||tenant_no) RETURNING id INTO t;
+  PERFORM set_config('app.tenant_id',t::text,true);
+  INSERT INTO app.users(email,password_hash) VALUES(uuidv7()::text||'@staff.invalid','fixture') RETURNING id INTO u;
+  INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES(t,u,'admin');
+  INSERT INTO app.organizations(tenant_id,display_name) VALUES(t,'privacy upgrade') RETURNING id INTO org;
+  INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(t,org,'privacy upgrade') RETURNING id INTO s;
+  INSERT INTO app.buyer_companies(tenant_id,name) VALUES(t,'privacy upgrade') RETURNING id INTO co;
+  INSERT INTO app.customers(tenant_id,email) VALUES(t,'acceptor@example.invalid') RETURNING id INTO a;
+  INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code) VALUES(t,co,a,'purchaser');
+  FOR subject_no IN 1..3 LOOP
+   contact:='legacy-converter-'||tenant_no||'-'||subject_no||'@example.invalid';
+   INSERT INTO app.customers(tenant_id,email) VALUES(t,contact) RETURNING id INTO c;
+   INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code) VALUES(t,co,c,'approver');
+   INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message) VALUES(t,s,'inquiry@example.invalid','upgrade') RETURNING id INTO i;
+   SET LOCAL ROLE app_runtime;
+   q:=app.create_quote(t,s,i,co,u,'USD',100,0,0,100,'{}',clock_timestamp()+interval '1 hour',
+    '[{"line_no":1,"description":"upgrade","quantity":1,"unit_price":100,"line_total":100,"snapshot":{}}]');
+   PERFORM app.transition_quote(t,q,1,'send','staff',u);
+   PERFORM app.transition_quote(t,q,2,'accept','customer',a);
+   PERFORM app.transition_quote(t,q,3,'approve','customer',c);
+   RESET ROLE;
+   o:=uuidv7();
+   SET LOCAL ROLE app_orders_executor;
+   INSERT INTO app.orders(tenant_id,id,customer_id,order_number,creation_key,request_hash,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+    VALUES(t,o,c,subject_no,'conversion-upgrade-'||subject_no,sha256('conversion'::bytea),'USD',100,0,0,'{}',100);
+   SET LOCAL ROLE app_quotes_executor;
+   INSERT INTO app.quote_conversions(tenant_id,quote_id,buyer_company_id,customer_id,order_id,quote_version,idempotency_key,request_hash,order_number,currency,total_minor)
+    VALUES(t,q,co,c,o,4,'conversion-upgrade',sha256('conversion'::bytea),subject_no,'USD',100);
+   RESET ROLE;
+   INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+    VALUES(t,'quote.converted',jsonb_build_object('quote_id',q,'order_id',o,'quote_version',4),'quotes','converted:'||q) RETURNING id INTO e;
+   SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=e;
+   IF subject_no<3 THEN
+    -- Keep both historical and current dispatch generations. One current
+    -- delivery is pending, the other failed, when its owner is erased.
+    UPDATE app.notification_deliveries SET status='dead_letter' WHERE tenant_id=t AND id=d.id;
+    UPDATE app.outbox_events SET status='dead_letter' WHERE tenant_id=t AND id=d.dispatch_event_id;
+    SET LOCAL ROLE app_runtime;
+    PERFORM app.notification_redrive(t,d.id,'pre-upgrade-generation');
+    PERFORM app.data_rights_erase_customer(c,'service',u);
+    RESET ROLE;
+    UPDATE app.notification_deliveries SET status=CASE WHEN subject_no=1 THEN 'pending' ELSE 'failed' END WHERE tenant_id=t AND id=d.id;
+    SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=t AND id=d.id;
+    IF d.recipient<>contact OR d.status NOT IN('pending','failed')
+     OR NOT EXISTS(SELECT FROM app.data_rights_erasures WHERE tenant_id=t AND customer_id=c) THEN
+     RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE predecessor fixture did not retain erased converter email';
+    END IF;
+    -- Valid lease proves this is a reachable sending bug, not inert history.
+    -- Roll back the admission probe so the upgrade sees pending/failed rows.
+    BEGIN
+     UPDATE app.outbox_events SET status='processing',lease_owner=worker,lease_until=clock_timestamp()+interval '1 hour',attempts=1
+      WHERE tenant_id=t AND id=d.dispatch_event_id;
+     PERFORM set_config('app.outbox_worker',worker::text,true);
+     PERFORM set_config('app.outbox_attempt','1',true);
+     SET LOCAL ROLE app_outbox_worker;
+     d:=app.notification_begin(t,d.dispatch_event_id,d.id);
+     RESET ROLE;
+     IF d.status<>'sending' OR d.send_token IS NULL THEN
+      RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE predecessor send was not reachable';
+     END IF;
+     RAISE SQLSTATE 'P0004' USING MESSAGE='rollback admission probe';
+    EXCEPTION WHEN assert_failure THEN NULL;
+    END;
+   END IF;
+   INSERT INTO public.privacy_conversion_upgrade_witness
+    SELECT t,c,d.id,subject_no<3,to_jsonb(cu),to_jsonb(nd),to_jsonb(de),to_jsonb(se),to_jsonb(qu),to_jsonb(cr),to_jsonb(ord)
+    FROM app.customers cu,app.notification_deliveries nd,app.outbox_events de,app.outbox_events se,app.quotes qu,app.quote_conversions cr,app.orders ord
+    WHERE cu.tenant_id=t AND cu.id=c AND nd.tenant_id=t AND nd.id=d.id AND de.tenant_id=t AND de.id=nd.dispatch_event_id
+     AND se.tenant_id=t AND se.id=e AND qu.tenant_id=t AND qu.id=q AND cr.tenant_id=t AND cr.quote_id=q AND ord.tenant_id=t AND ord.id=o;
+  END LOOP;
+ END LOOP;
+END $fixture$;
+SQL
+apply_forward "$PRIVACY_HARDENING_DB" "${privacy_bounds[0]}"
+if ! out=$(db "$PRIVACY_HARDENING_DB" 2>&1 <<'SQL'
+DO $check$
+DECLARE w record;d app.notification_deliveries;worker uuid:=uuidv7();claimed uuid[];
+BEGIN
+ IF (SELECT count(*) FROM public.privacy_conversion_upgrade_witness)<>6 THEN RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE missing witnesses'; END IF;
+ FOR w IN SELECT * FROM public.privacy_conversion_upgrade_witness ORDER BY tenant_id,customer_id LOOP
+  PERFORM set_config('app.tenant_id',w.tenant_id::text,true);
+  SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=w.tenant_id AND id=w.notification_id;
+  IF w.erased THEN
+   IF d.recipient IS DISTINCT FROM 'erased-'||d.id||'@invalid.test' OR d.status<>'dead_letter'
+    OR d.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR d.send_token IS NOT NULL OR d.lease_worker IS NOT NULL OR d.lease_attempt IS NOT NULL THEN
+    RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE retained erased converter recipient or send capability';
+   END IF;
+   IF (SELECT count(*) FROM app.outbox_events WHERE tenant_id=w.tenant_id AND delivery_target='notifications.email'
+     AND payload=jsonb_build_object('notification_id',d.id) AND status='dead_letter' AND last_error='PRIVACY_ERASED' AND lease_owner IS NULL AND lease_until IS NULL)<>2 THEN
+    RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE did not retire every dispatch generation';
+   END IF;
+   BEGIN
+    SET LOCAL ROLE app_outbox_worker;
+    PERFORM app.notification_begin(w.tenant_id,d.dispatch_event_id,d.id);
+    RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE admitted retired dispatch';
+   EXCEPTION WHEN insufficient_privilege THEN
+    IF SQLERRM<>'NOTIFICATIONS_LEASE_FENCE' THEN RAISE; END IF;
+   END;
+   RESET ROLE;
+   BEGIN
+    SET LOCAL ROLE app_runtime;
+    PERFORM app.notification_redrive(w.tenant_id,d.id,'post-upgrade-redrive');
+    RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE redrove erased notification';
+   EXCEPTION WHEN object_not_in_prerequisite_state THEN
+    IF SQLERRM<>'PRIVACY_NOTIFICATION_IMMUTABLE' THEN RAISE; END IF;
+   END;
+   RESET ROLE;
+  ELSIF (SELECT to_jsonb(cu) FROM app.customers cu WHERE cu.tenant_id=w.tenant_id AND cu.id=w.customer_id) IS DISTINCT FROM w.customer
+   OR to_jsonb(d) IS DISTINCT FROM w.delivery
+   OR (SELECT to_jsonb(de) FROM app.outbox_events de WHERE de.tenant_id=w.tenant_id AND de.id=d.dispatch_event_id) IS DISTINCT FROM w.dispatch
+   OR (SELECT to_jsonb(se) FROM app.outbox_events se WHERE se.tenant_id=w.tenant_id AND se.id=d.source_event_id) IS DISTINCT FROM w.source
+   OR (SELECT to_jsonb(qu) FROM app.quotes qu WHERE qu.tenant_id=w.tenant_id AND qu.id=d.reference_id) IS DISTINCT FROM w.quote THEN
+   RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE changed non-erased customer or notification';
+  END IF;
+  IF (SELECT to_jsonb(cr) FROM app.quote_conversions cr WHERE cr.tenant_id=w.tenant_id AND cr.quote_id=d.reference_id) IS DISTINCT FROM w.receipt
+   OR (SELECT to_jsonb(ord) FROM app.orders ord WHERE ord.tenant_id=w.tenant_id AND ord.id=(w.receipt->>'order_id')::uuid) IS DISTINCT FROM w.order_snapshot THEN
+   RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE changed immutable conversion or financial evidence';
+  END IF;
+ END LOOP;
+ FOR w IN SELECT DISTINCT tenant_id FROM public.privacy_conversion_upgrade_witness LOOP
+  PERFORM set_config('app.tenant_id',w.tenant_id::text,true);
+  SET LOCAL ROLE app_outbox_worker;
+  SELECT array_agg(e.id) INTO claimed FROM app.claim_notification_outbox(w.tenant_id,worker,1000,60) e;
+  RESET ROLE;
+  IF EXISTS(SELECT FROM public.privacy_conversion_upgrade_witness v JOIN app.notification_deliveries nd
+    ON nd.tenant_id=v.tenant_id AND nd.id=v.notification_id WHERE v.tenant_id=w.tenant_id AND v.erased AND nd.dispatch_event_id=ANY(claimed)) THEN
+   RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE claimed erased notification';
+  END IF;
+  IF NOT EXISTS(SELECT FROM public.privacy_conversion_upgrade_witness v WHERE v.tenant_id=w.tenant_id AND NOT v.erased
+   AND (v.delivery->>'dispatch_event_id')::uuid=ANY(claimed)) THEN
+   RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE non-erased notification no longer dispatchable';
+  END IF;
+ END LOOP;
+END $check$;
+SQL
+); then
+ bad "privacy legacy conversion populated upgrade: $out"
+else
+ pass 'privacy upgrade scrubs already-erased converters, retires all generations, rejects dispatch/redrive and preserves unrelated/financial rows'
+fi
+admin -c "DROP DATABASE $PRIVACY_HARDENING_DB" >/dev/null; PRIVACY_HARDENING_DB=""
+
 # B369: preserve an existing manual audit verbatim while replacing its identity.
 # Discover the integration-assigned number and apply every predecessor, including
 # other modules; never compare numeric strings with leading zeroes.
