@@ -177,10 +177,11 @@ FULFILLMENT_DB=""
 CONVERSION_DB=""
 CLOCK_DB=""
 RECOVERY_DB=""
+AUDIT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$AUDIT_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1762,6 +1763,39 @@ db "$RECOVERY_DB" -f tests/db_role_matrix.sql >/dev/null
 db "$RECOVERY_DB" -f tests/db_refund_recovery.sql >/dev/null
 admin -c "DROP DATABASE $RECOVERY_DB" >/dev/null; RECOVERY_DB=""
 pass 'reconciliation upgrade preserves original Inbox evidence without invented bindings or money'
+
+# B369: preserve an existing manual audit verbatim while replacing its identity.
+# Discover the integration-assigned number and apply every predecessor, including
+# other modules; never compare numeric strings with leading zeroes.
+audit_files=(migrations/[0-9][0-9][0-9]_refund_resolution_identity.sql)
+[[ ${#audit_files[@]} == 1 ]] || { bad 'exactly one refund audit identity migration required'; exit 1; }
+AUDIT_DB=upgrade_refund_audit_$$
+admin -c "CREATE DATABASE $AUDIT_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${audit_files[0]} ]] || break
+ apply_forward "$AUDIT_DB" "$f"
+done
+db "$AUDIT_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('audit-upgrade') RETURNING id AS t \gset
+SELECT set_config('app.tenant_id',:'t',false);
+INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment)
+ VALUES(:'t','fake','acct_audit_upgrade','test');
+INSERT INTO app.payment_refund_cases(tenant_id,provider,provider_account_id,case_key,provider_refund_id,provider_ref,reason,evidence_hash)
+ VALUES(:'t','fake','acct_audit_upgrade','refund:upgrade','upgrade','capture','unmatched_refund',sha256('original'::bytea)) RETURNING id AS c \gset
+INSERT INTO app.payment_refund_case_resolutions(tenant_id,case_id,outcome,reason,verifier,evidence_hash)
+ VALUES(:'t',:'c','resolved_no_posting','no_posting_required',uuidv7(),sha256('staff'::bytea));
+SQL
+before_audit=$(db "$AUDIT_DB" -c "SELECT row_to_json(r)::text FROM app.payment_refund_case_resolutions r;")
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${audit_files[0]} ]] && continue
+ apply_forward "$AUDIT_DB" "$f"
+done
+after_audit=$(db "$AUDIT_DB" -c "SELECT row_to_json(r)::text FROM app.payment_refund_case_resolutions r;")
+[[ -n $before_audit && $before_audit == "$after_audit" ]] || bad 'B369_UPGRADE_REWROTE_AUDIT'
+db "$AUDIT_DB" -f tests/db_role_matrix.sql >/dev/null
+db "$AUDIT_DB" -f tests/db_refund_recovery.sql >/dev/null
+admin -c "DROP DATABASE $AUDIT_DB" >/dev/null; AUDIT_DB=""
+pass 'B369 upgrade preserves manual verifier, evidence, outcome and DB timestamp verbatim'
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1

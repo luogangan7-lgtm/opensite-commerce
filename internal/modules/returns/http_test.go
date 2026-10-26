@@ -18,6 +18,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/internal/store"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
@@ -445,5 +447,24 @@ func TestHTTPRefundWithoutAtomicCompleterFailsClosed(t *testing.T) {
 	httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("refund", `{}`, `"4"`, "same"))
 	if w.Code != 503 || service.calls != 0 || claims.completions != 0 {
 		t.Fatalf("unsafe simple Refund fallback: %d calls=%d completions=%d", w.Code, service.calls, claims.completions)
+	}
+}
+
+func TestHTTPTrustedLedgerDatabaseErrors(t *testing.T) {
+	for _, tc := range []struct { code, message string; want int }{
+		{"23514", "FULFILLMENT_LEDGER_ACCOUNT_CONFIG", 503},
+		{"23514", "FULFILLMENT_LEDGER_RECEIPT", 503},
+		{"40001", "PRIVATE serialization", 503},
+		{"40P01", "PRIVATE deadlock", 503},
+		{"08006", "PRIVATE database unavailable", 503},
+		{"23514", "PRIVATE refund budget conflict", 409},
+	} {
+		t.Run(tc.code+"/"+tc.message, func(t *testing.T) {
+			err := store.MapError(&pgxadapter.PgError{Code: tc.code, Message: tc.message})
+			s := NewHTTP(HTTPConfig{Idempotency: claimConfig(t, &httpClaims{}), Service: &httpService{err: err}, Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }})
+			w := httptest.NewRecorder()
+			httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("refund", `{}`, `"4"`, "ledger-error"))
+			if w.Code != tc.want || strings.Contains(w.Body.String(), "PRIVATE") || strings.Contains(w.Body.String(), "FULFILLMENT_") || strings.Contains(w.Body.String(), "SQLSTATE") { t.Fatalf("unsafe trusted posting error: status=%d want=%d %s", w.Code, tc.want, w.Body.String()) }
+		})
 	}
 }
