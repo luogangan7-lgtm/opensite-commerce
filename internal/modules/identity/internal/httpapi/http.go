@@ -38,11 +38,14 @@ type Handler struct {
 func New(s *login.Service, origin string, idle time.Duration, trusted ...netip.Prefix) *Handler {
 	return &Handler{service: s, origin: origin, idle: idle, trusted: append([]netip.Prefix(nil), trusted...)}
 }
+func adminSessionSpec() platform.RouteSpec {
+	return platform.RouteSpec{OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.AuthenticatedSelf}
+}
 func (h *Handler) Routes() []platform.Route {
 	return []platform.Route{
 		{Spec: platform.RouteSpec{OperationID: "getAdminLoginChallenge", Method: "GET", Pattern: "/api/v1/auth/login", Access: platform.Public}, Handler: http.HandlerFunc(h.challenge)},
 		{Spec: platform.RouteSpec{OperationID: "createStaffLoginSession", Method: "POST", Pattern: "/api/v1/auth/login", Access: platform.Public, MaxBodySize: 4096}, Handler: http.HandlerFunc(h.create)},
-		{Spec: platform.RouteSpec{OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.AuthenticatedSelf}, Handler: http.HandlerFunc(h.session)},
+		{Spec: adminSessionSpec(), Handler: http.HandlerFunc(h.session)},
 		{Spec: platform.RouteSpec{OperationID: "logoutCurrentStaffSession", Method: "POST", Pattern: "/api/v1/auth/logout", Access: platform.AuthenticatedSelf}, Handler: http.HandlerFunc(h.logout)},
 	}
 }
@@ -123,7 +126,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, sessionBody(result.Session, result.CSRFToken))
 }
 func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
-	spec := platform.RouteSpec{OperationID: "getAdminSession", Method: "GET", Pattern: "/api/v1/auth/session", Access: platform.AuthenticatedSelf}
+	spec := adminSessionSpec()
 	if _, err := h.admitted(r.Context(), r, spec); err != nil {
 		writeError(w, r, err)
 		return

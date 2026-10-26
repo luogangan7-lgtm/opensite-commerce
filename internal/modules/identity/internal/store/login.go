@@ -15,6 +15,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	identityadapter "github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
 
 type authRunner interface {
@@ -32,14 +33,22 @@ type LoginRepository struct {
 var _ login.Repository = (*LoginRepository)(nil)
 
 func OpenLogin(ctx context.Context, dsn string, idleTimeout time.Duration) (*LoginRepository, error) {
+	return openLogin(ctx, dsn, idleTimeout, func(ctx context.Context, dsn string) (authRunner, error) {
+		return identityadapter.OpenStaffAuthentication(ctx, dsn)
+	})
+}
+
+// The private factory lets tests hold an acquired credential callback without
+// competing with the production SQL lock timeout. Production always opens twice.
+func openLogin(ctx context.Context, dsn string, idleTimeout time.Duration, open func(context.Context, string) (authRunner, error)) (*LoginRepository, error) {
 	if idleTimeout < time.Second {
 		return nil, login.ErrDatabase
 	}
-	runner, err := identityadapter.OpenStaffAuthentication(ctx, dsn)
+	runner, err := open(ctx, dsn)
 	if err != nil {
 		return nil, login.ErrDatabase
 	}
-	sessions, err := identityadapter.OpenStaffAuthentication(ctx, dsn)
+	sessions, err := open(ctx, dsn)
 	if err != nil {
 		_ = runner.Close(ctx)
 		return nil, login.ErrDatabase
@@ -55,7 +64,7 @@ func OpenLogin(ctx context.Context, dsn string, idleTimeout time.Duration) (*Log
 
 // run delegates all queue/deadline/role policy to the query-only adapter port.
 func (r *LoginRepository) run(ctx context.Context, fn func(context.Context, *db.Queries) error) error {
-	return r.runLane(ctx, r.runner, fn)
+	return r.runLane(observability.WithAuthenticationLane(ctx, "staff_credential"), r.runner, fn)
 }
 func (r *LoginRepository) runLane(ctx context.Context, runner authRunner, fn func(context.Context, *db.Queries) error) error {
 	err := runner.RunAuthentication(ctx, fn)
@@ -205,7 +214,7 @@ func (r *LoginRepository) LookupSession(ctx context.Context, hash [32]byte, at t
 		return login.Session{}, login.ErrSession
 	}
 	var row db.LoginLookupSessionRow
-	err := r.runLane(ctx, r.sessionRunner, func(ctx context.Context, q *db.Queries) error {
+	err := r.runLane(observability.WithAuthenticationLane(ctx, "staff_session"), r.sessionRunner, func(ctx context.Context, q *db.Queries) error {
 		var err error
 		row, err = q.LoginLookupSession(ctx, db.LoginLookupSessionParams{At: stamp(at), TokenHash: hash[:], IdleSeconds: int64(idle / time.Second)})
 		if errors.Is(err, pgx.ErrNoRows) {

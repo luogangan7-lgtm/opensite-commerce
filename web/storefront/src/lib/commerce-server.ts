@@ -60,7 +60,7 @@ function readSession(cookies: Jar): Session | null {
   try {
     const session = JSON.parse(Buffer.from(encoded, 'base64url').toString()) as Session;
     if (!TOKEN.test(session.s) || !Number.isSafeInteger(session.x) || session.x <= Date.now() || session.x > Date.now() + 3_600_000 ||
-        (session.u !== undefined && !UUID.test(session.u)) || (session.tenant !== undefined && !UUID.test(session.tenant)) || (session.checkout !== undefined && !UUID.test(session.checkout)) || (session.c !== undefined && !UUID.test(session.c)) || (session.t !== undefined && !TOKEN.test(session.t)) || (!!session.t && !session.c)) return null;
+        (session.u !== undefined && !UUID.test(session.u)) || (session.tenant !== undefined && !UUID.test(session.tenant)) || (session.checkout !== undefined && !UUID.test(session.checkout)) || (session.c !== undefined && !UUID.test(session.c)) || (session.t !== undefined && !TOKEN.test(session.t)) || (!!session.t && !session.c) || (session.c !== undefined && session.t === undefined && session.u === undefined)) return null;
     return session;
   } catch { return null; }
 }
@@ -245,7 +245,7 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
       const path=operation==='customer/register'?'registrations':operation==='customer/verify'?'verifications':operation==='customer/session'?'session':null;
       if(!path||!(request.method==='POST'||(path==='session'&&request.method==='DELETE')))throw new HTTPError(404);
       const input=request.method==='POST'?await body(request,path==='verifications'?['token']:['email','password']):undefined;
-      await changeCustomer(configuration.origin,current.tenant,cookies,path,request.method,input);
+      await changeCustomer(configuration.origin,current.tenant,cookies,path,request.method,input,session.a);
       if(path==='session'){
         // A new identity must never inherit another buyer's cart, checkout or anonymous capability.
         delete session.c;delete session.t;delete session.checkout;delete session.u;delete session.a;

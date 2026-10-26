@@ -30,14 +30,25 @@ func TestH4ASessionConcurrencyAndDeadline(t *testing.T) {
 			_, _, err := service.Authenticate(ctx, token)
 			results <- err
 		}()
-		<-repo.lookupBlock
+		select {
+		case <-repo.lookupBlock:
+		case err := <-results:
+			t.Fatalf("admitted lookup returned before readiness: %v", err)
+		case <-ctx.Done():
+			t.Fatal("session readiness deadline", ctx.Err())
+		}
 	}
 	if _, _, err := service.Authenticate(ctx, token); !errors.Is(err, login.ErrRateLimited) {
 		t.Fatal("third concurrent lookup must be rejected before storage")
 	}
 	for i := 0; i < cap(results); i++ {
-		if err := <-results; !errors.Is(err, login.ErrDatabase) || time.Since(started) > 2500*time.Millisecond {
-			t.Fatal("admitted lookup ignored internal deadline", err)
+		select {
+		case err := <-results:
+			if !errors.Is(err, login.ErrDatabase) || time.Since(started) > 2500*time.Millisecond {
+				t.Fatal("admitted lookup ignored internal deadline", err)
+			}
+		case <-ctx.Done():
+			t.Fatal("session result deadline", ctx.Err())
 		}
 	}
 }

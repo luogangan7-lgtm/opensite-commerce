@@ -7,6 +7,7 @@
 package login
 
 import (
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 	"context"
 	"errors"
 	"net/mail"
@@ -282,14 +283,18 @@ func (s *Service) Authenticate(ctx context.Context, rawToken string, clientIP ..
 	if len(clientIP) > 0 {
 		ip = rateLimitIP(clientIP[0])
 	}
+	started := time.Now()
 	if !s.admitSession(ip, s.cfg.Now()) || ctx.Err() != nil {
+		observability.ObserveAuthentication(ctx, "session_admission", "denied", started)
 		return Actor{}, Session{}, ErrRateLimited
 	}
 	select {
 	case s.sessionSlots <- struct{}{}:
 	default:
+		observability.ObserveAuthentication(ctx, "session_admission", "denied", started)
 		return Actor{}, Session{}, ErrRateLimited
 	}
+	observability.ObserveAuthentication(ctx, "session_admission", "admitted", started)
 	defer func() { <-s.sessionSlots }()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
