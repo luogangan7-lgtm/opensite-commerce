@@ -165,7 +165,7 @@ BEGIN
  UPDATE app.inventory_movements m SET reason='[erased]' FROM app.returns r
   WHERE (r.tenant_id,r.id)=(m.tenant_id,m.owner_id) AND m.tenant_id=t AND m.owner_type='return' AND r.order_id=ANY(owned);GET DIAGNOSTICS nmovement=ROW_COUNT;
  PERFORM id FROM app.data_rights_exports WHERE tenant_id=t AND customer_id=p_customer ORDER BY id FOR UPDATE;
- SELECT coalesce(jsonb_agg(id ORDER BY id),'[]'::jsonb) INTO requests FROM (SELECT id FROM app.data_rights_exports WHERE tenant_id=t AND customer_id=p_customer ORDER BY id LIMIT 100) cleanup;
+ SELECT coalesce(jsonb_agg(id ORDER BY id),'[]'::jsonb) INTO requests FROM (SELECT id FROM app.data_rights_exports WHERE tenant_id=t AND customer_id=p_customer ORDER BY id) cleanup;
  UPDATE app.data_rights_exports SET status='revoked',token_hash=NULL,content_hash=NULL WHERE tenant_id=t AND customer_id=p_customer;
  -- Lock all existing dispatch generations before their delivery rows, matching
  -- begin/finish. Payload binds a delivery ID; emails never establish ownership.
