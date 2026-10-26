@@ -22,6 +22,8 @@ type Service struct {
 	root string
 	key  []byte
 	run  func(context.Context, string, func(context.Context, pgx.Tx) error) error
+	// Optional directory-sync observer for storage fault and durability probes.
+	syncDir func(*os.Root, string) error
 }
 
 func New(c contract.Config) (*Service, error) {

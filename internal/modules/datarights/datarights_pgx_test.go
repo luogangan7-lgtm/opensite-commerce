@@ -89,6 +89,19 @@ func TestExportLifecycleAndErasure(t *testing.T) {
 	if e != nil || status.DownloadToken == "" || status.DownloadExpiresAt.After(time.Now().Add(15*time.Minute)) {
 		t.Fatal("ready capability", e)
 	}
+	rotated, err := datarights.New(contract.Config{Run: run, Root: root, TokenKey: []byte("11234567890123456789012345678901")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = run(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		out, err := rotated.Status(ctx, tx, tenant, id, customer)
+		if err == nil && out.DownloadToken != "" {
+			return errors.New("rotated key advertised a capability absent from the database")
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if _, e = s.Download(ctx, tenant, id, other, status.DownloadToken); !errors.Is(e, contract.ErrNotFound) {
 		t.Fatal("subject fence", e)
 	}
@@ -248,5 +261,91 @@ func TestExportLifecycleAndErasure(t *testing.T) {
 	})
 	if e != nil {
 		t.Fatal(e)
+	}
+}
+
+// Permanent errors must be returned only after the terminal metadata commits.
+// The worker cancels these errors, so leaving pending loses every retry path.
+func TestPermanentExportFailuresCommitTerminalState(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		pgxtest.Skip(t, "NOT_RUN: expendable migrated PostgreSQL required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	r, closePool, err := pgxadapter.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closePool()
+	run := func(ctx context.Context, tenant string, fn func(context.Context, pgx.Tx) error) error {
+		return r.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+				return err
+			}
+			return fn(ctx, tx)
+		})
+	}
+	s, err := datarights.New(contract.Config{Run: run, Root: t.TempDir(), TokenKey: []byte("01234567890123456789012345678901")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, state string
+		want        error
+	}{
+		{"expired", "expired", contract.ErrConflict},
+		{"records", "failed", contract.ErrInvalid},
+		{"bytes", "failed", contract.ErrInvalid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var tenant, customer string
+			id := uuid.NewString()
+			if err := r.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+				if err := tx.QueryRow(ctx, "INSERT INTO app.tenants(name) VALUES('privacy-terminal-go') RETURNING id::text").Scan(&tenant); err != nil {
+					return err
+				}
+				return tx.QueryRow(ctx, "INSERT INTO app.customers(tenant_id,email) VALUES($1,'terminal@example.invalid') RETURNING id::text", tenant).Scan(&customer)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := run(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+				_, err := s.RequestExport(ctx, tx, tenant, contract.RequestInput{ID: id, CustomerID: customer, ActorKind: "user", ActorID: uuid.NewString()})
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+				var err error
+				switch tc.name {
+				case "expired":
+					_, err = tx.Exec(ctx, "UPDATE app.data_rights_exports SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND id=$2", tenant, id)
+				case "records":
+					_, err = tx.Exec(ctx, "INSERT INTO app.customer_addresses(tenant_id,customer_id,recipient,address_line1,city,country_code) SELECT $1,$2,'Private','Private','Private','US' FROM generate_series(1,10001)", tenant, customer)
+				case "bytes":
+					_, err = tx.Exec(ctx, "UPDATE app.customers SET display_name=repeat('x',10485761) WHERE tenant_id=$1 AND id=$2", tenant, customer)
+				}
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			for range 2 {
+				if err := s.BuildExport(ctx, tenant, id); !errors.Is(err, tc.want) {
+					t.Fatalf("permanent build error = %v, want %v", err, tc.want)
+				}
+				if err := r.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+					var state string
+					if err := tx.QueryRow(ctx, "SELECT status FROM app.data_rights_exports WHERE tenant_id=$1 AND id=$2", tenant, id).Scan(&state); err != nil {
+						return err
+					}
+					if state != tc.state {
+						return errors.New("permanent failure did not commit terminal state: " + state)
+					}
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 }

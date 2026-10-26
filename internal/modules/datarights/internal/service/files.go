@@ -91,7 +91,13 @@ func (s *Service) write(tenant, id string, b []byte) error {
 	if e = r.Rename(tmp, p); e != nil {
 		return e
 	}
-	d, e := r.Open(filepath.Dir(p))
+	return s.syncDirectory(r, filepath.Dir(p))
+}
+func (s *Service) syncDirectory(r *os.Root, path string) error {
+	if s.syncDir != nil {
+		return s.syncDir(r, path)
+	}
+	d, e := r.Open(path)
 	if e != nil {
 		return e
 	}
