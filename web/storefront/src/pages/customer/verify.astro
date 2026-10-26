@@ -9,6 +9,6 @@ const locale='en', ui=commerceCopy(locale,false);
 Astro.response.headers.set('Cache-Control','no-store');
 Astro.response.headers.set('Referrer-Policy','no-referrer');
 ---
-<Shell locale={locale} title={ui.verifyTitle} description={ui.verifyDescription} canonical={undefined} noindex>
+<Shell homeHref="/" locale={locale} title={ui.verifyTitle} description={ui.verifyDescription} canonical={undefined} noindex>
   <h1>{ui.verifyTitle}</h1><CustomerVerification locale={locale} client:load />
 </Shell>

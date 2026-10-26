@@ -11,7 +11,7 @@ const ui = copy();
 const title = status === 404 ? ui.notFound : ui.unavailable;
 const description = status === 404 ? ui.notFoundDescription : ui.unavailableDescription;
 ---
-<Shell title={title} description={description} canonical={canonical} noindex>
+<Shell homeHref="/" title={title} description={description} canonical={canonical} noindex>
   <section class="error-page" data-storefront-status={status}>
     <h1>{title}</h1><p>{description}</p>
     <div class="error-actions">
