@@ -144,7 +144,7 @@
 .os-table th,
 .os-table td { padding-block: var(--space-3); padding-inline: var(--space-4); border-block-end: var(--border-width) solid var(--color-border); overflow-wrap: anywhere; }
 .os-table th { background: var(--color-canvas); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); }
-.os-table__state { padding-block: var(--space-8); color: var(--color-muted); text-align: center; }
+.os-table__state { position: sticky; inset-inline-start: 0; padding-block: var(--space-3); padding-inline: var(--space-4); border-block-end: var(--border-width) solid var(--color-border); color: var(--color-muted); text-align: center; overflow-wrap: anywhere; }
 .os-empty-state { padding-block: var(--space-8); padding-inline: var(--space-4); text-align: center; }
 .os-empty-state h3 { margin-block: var(--space-0) var(--space-2); font-size: var(--font-size-lg); line-height: var(--line-height-heading); }
 .os-empty-state p { margin-block: var(--space-0); margin-inline: var(--space-0); color: var(--color-muted); overflow-wrap: anywhere; }
