@@ -1893,6 +1893,7 @@
       "touches_tables": ["payment_events", "payment_event_deliveries"]
     },
     {"file":"migrations/pending/c19d3-recovery_refund_reconciliation.sql","owner":"payments","touches_tables":["payment_refund_cases","payment_refund_case_deliveries","payment_refund_case_resolutions"]},
+    {"file":"migrations/pending/b-ledger-audit_refund_resolution_identity.sql","owner":"payments","touches_tables":["payment_refund_case_resolutions"]},
     {"file":"migrations/pending/c19dp2-completeness_refund_case_completeness.sql","owner":"payments","touches_tables":["payment_refund_case_resolutions"]},
     {"file":"migrations/pending/c19d2-terminal_refund_compensation_terminal.sql","owner":"payments","touches_tables":["payment_refund_terminals","payment_return_refunds","checkout_sessions"]},
     {"file":"migrations/pending/c19d2-projections_refund_compensation_projections.sql","owner":"orders","touches_tables":["orders","returns","checkout_sessions"]},
