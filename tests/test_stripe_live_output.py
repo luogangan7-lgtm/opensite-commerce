@@ -22,6 +22,18 @@ CANARIES = ['https://invoice.example.test/private-canary', 'owner-canary@example
 
 
 class OutputCanaries(unittest.TestCase):
+    def test_AB_reruns_refused_before_child(self):
+        for phase in ('A', 'B'):
+            for attempt in ('2', '99', '', '0', 'invalid'):
+                with self.subTest(phase=phase, attempt=attempt), tempfile.TemporaryDirectory() as tmp:
+                    env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch',
+                               GITHUB_REF='refs/heads/main', GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40,
+                               GITHUB_RUN_ATTEMPT=attempt, STRIPE_SMOKE_RUN_ID='12345', STRIPE_SMOKE_PHASE=phase,
+                               RUNNER_TEMP=tmp, GITHUB_STEP_SUMMARY=str(Path(tmp) / 'summary'))
+                    with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run') as child:
+                        with self.assertRaises(SystemExit): runner.main()
+                        child.assert_not_called()
+
     def test_R_requires_original_run_before_child(self):
         env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REF='refs/heads/main',
                    GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40, STRIPE_SMOKE_RUN_ID='12345', STRIPE_SMOKE_PHASE='R',

@@ -5,7 +5,9 @@ Dependencies: PyYAML and committed workflows. No workflow or provider execution.
 from pathlib import Path
 import copy
 import re
+import tempfile
 import unittest
+from unittest.mock import patch
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,6 +47,58 @@ def validate(document, workflows):
 
 
 class LiveWorkflowGate(unittest.TestCase):
+    def test_second_secret_consumer_expression_forms(self):
+        original = yaml.safe_load(LIVE.read_text())
+        for secret in ('STRIPE_API', 'STRIPE_SMOKE_EMAIL', 'STRIPE_SMOKE_ACCOUNT'):
+            for expression in (f'secrets.{secret}', f"secrets['{secret}']", f'secrets["{secret}"]', f"secrets [ '{secret}' ]", f'env.{secret}', f"env['{secret}']"):
+                with self.subTest(expression=expression):
+                    bad = copy.deepcopy(original)
+                    bad['jobs']['live']['steps'].append({'env': {'ALIAS': '${{ ' + expression + ' }}'}, 'run': 'echo unsafe'})
+                    with self.assertRaisesRegex(AssertionError, 'LIVE_SINGLE_SECRET_CONSUMER'):
+                        validate(bad, {})
+
+    def test_secret_ownership_all_workflow_blocks(self):
+        original = yaml.safe_load(LIVE.read_text())
+        for secret in ('STRIPE_API', 'STRIPE_SMOKE_EMAIL', 'STRIPE_SMOKE_ACCOUNT'):
+            for expression in (f'secrets.{secret}', f"secrets['{secret}']", f'secrets["{secret}"]'):
+                for block in ('workflow', 'job', 'step'):
+                    with self.subTest(secret=secret, expression=expression, block=block):
+                        bad = copy.deepcopy(original)
+                        target = bad if block == 'workflow' else bad['jobs']['live'] if block == 'job' else bad['jobs']['live']['steps'][0]
+                        target['env'] = {'ALIAS': '${{ ' + expression + ' }}'}
+                        with self.assertRaises(AssertionError): validate(bad, {})
+                        other = yaml.safe_dump({'jobs': {'another': {'env': {'ALIAS': '${{ ' + expression + ' }}'}}})
+                        with self.assertRaisesRegex(AssertionError, 'LIVE_SECRET_OWNERSHIP'):
+                            validate(original, {'other.yml': other})
+
+    def test_production_composition_all_paths_and_symbols(self):
+        original = yaml.safe_load(LIVE.read_text())
+        for name in ('internal/another/stripe_live.go', 'internal/modules/payments/stripe_live.go', 'cmd/live/main.go', 'tools/live.go'):
+            for call in ('payments.NewStripeLiveSmoke(c, o)', 'payments. NewStripeLiveSmoke (c, o)', 'payments.NewStripeLiveSmoke'):
+                with self.subTest(path=name, call=call), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    (root / 'internal').mkdir()
+                    path = root / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text('package rogue\nfunc boot() { _ = ' + call + ' }\n')
+                    with patch.dict(validate.__globals__, ROOT=root):
+                        with self.assertRaisesRegex(AssertionError, 'LIVE_NO_PRODUCTION_COMPOSITION'):
+                            validate(original, {})
+
+    def test_constructor_declaration_only_exemption(self):
+        original = yaml.safe_load(LIVE.read_text())
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / 'internal/modules/payments/stripe_live.go'
+            path.parent.mkdir(parents=True)
+            declaration = 'package payments\nfunc NewStripeLiveSmoke(c Config, o LiveSmokeOptions) (*StripeLiveSmoke, error) { return nil, nil }\n'
+            path.write_text(declaration + '// NewStripeLiveSmoke(c, o) is forbidden here\nvar label = "NewStripeLiveSmoke(c, o)"\n')
+            with patch.dict(validate.__globals__, ROOT=root):
+                validate(original, {})
+                path.write_text(declaration + 'func rogue() { _ = NewStripeLiveSmoke(c, o) }\n')
+                with self.assertRaisesRegex(AssertionError, 'LIVE_NO_PRODUCTION_COMPOSITION'):
+                    validate(original, {})
+
     def test_committed_workflow(self):
         self.assertTrue(LIVE.is_file(), 'LIVE_WORKFLOW_MISSING')
         validate(yaml.safe_load(LIVE.read_text()), {p.name:p.read_text() for p in LIVE.parent.glob('*.y*ml')})

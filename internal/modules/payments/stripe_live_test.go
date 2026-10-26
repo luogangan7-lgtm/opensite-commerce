@@ -159,3 +159,62 @@ func TestStripeLiveAdmissionOffline(t *testing.T){
 	for _,attempt:=range []int{-1,1}{o:=f.s.options;o.Phase="R";o.RefundAttempt=attempt;if _,e:=NewStripeLiveSmoke(f.s.config,o);e==nil{t.Fatal("invalid refund attempt")}}
 	t.Setenv("GITHUB_REF","refs/heads/feature");if _,e:=NewStripeLiveSmoke(f.s.config,f.s.options);e==nil{t.Fatal("non-main admission")}
 }
+
+// The fake deliberately does not retain idempotency keys. Durable provider
+// metadata must stop a fresh adapter from creating a second payable identity.
+func TestStripeLiveExpiredCreateKeysOffline(t *testing.T) {
+	for _,phase:=range []string{"A","B"}{t.Run(phase,func(t *testing.T){
+		f:=newLiveFake(t,phase,0)
+		t.Setenv("GITHUB_RUN_ATTEMPT","1")
+		exists:=false;creates:=0;posts:=0
+		collection:="/v1/invoices";prefix:="in";if phase=="A"{collection="/v1/payment_intents";prefix="pi"}
+		transport:=stripeTransport(func(r *http.Request)(*http.Response,error){
+			if r.Method=="GET"&&(r.URL.Path=="/v1/invoices"||r.URL.Path=="/v1/payment_intents"||r.URL.Path=="/v1/customers"){
+				data:=[]any{};if exists&&r.URL.Path==collection{data=append(data,map[string]any{"id":prefix+"_durable","metadata":map[string]string{"osc_smoke":"123456","osc_phase":phase}})}
+				body,_:=json.Marshal(map[string]any{"data":data,"has_more":false})
+				return &http.Response{StatusCode:200,Header:make(http.Header),Body:io.NopCloser(strings.NewReader(string(body)))},nil
+			}
+			if r.Method=="POST"{posts++;if r.URL.Path==collection{creates++;exists=true}}
+			return f.roundTrip(r)
+		})
+		f.s.client.Transport=transport
+		run:=func()error{if phase=="A"{_,e:=f.s.Execute(context.Background());return e};_,e:=f.s.CreateIntent(context.Background(),f.s.bound);return e}
+		if run()!=nil||creates!=1{t.Fatal("first create failed")}
+		before:=posts
+		// Discard all adapter memory, preserving only fake provider objects.
+		g:=newLiveFake(t,phase,0);g.s.client.Transport=transport;f.s=g.s
+		if run()==nil||creates!=1||posts!=before{t.Fatal("expired idempotency key created another smoke object instead of reporting recovery")}
+	})}
+}
+
+func TestStripeLiveRerunRejectedBeforeNetworkOffline(t *testing.T) {
+	for _,phase:=range []string{"A","B"}{for _,attempt:=range []string{"2","99","","0","invalid"}{t.Run(phase+"_"+attempt,func(t *testing.T){
+		f:=newLiveFake(t,phase,0);t.Setenv("GITHUB_RUN_ATTEMPT",attempt)
+		_,e:=NewStripeLiveSmoke(f.s.config,f.s.options)
+		if e==nil||len(f.requests)!=0{t.Fatal("A/B rerun admitted before provider access")}
+	})}}
+}
+
+func TestStripeLiveCreationLookupFailsClosedOffline(t *testing.T) {
+	for _,phase:=range []string{"A","B"}{for _,collection:=range []string{"invoices","payment_intents","customers"}{for _,scenario:=range []string{"existing_second_page","unknown_history","duplicate_cursor"}{t.Run(phase+"_"+collection+"_"+scenario,func(t *testing.T){
+		f:=newLiveFake(t,phase,0);t.Setenv("GITHUB_RUN_ATTEMPT","1");posts:=0;pages:=0
+		prefix:=map[string]string{"invoices":"in","payment_intents":"pi","customers":"cus"}[collection]
+		f.s.client.Transport=stripeTransport(func(r *http.Request)(*http.Response,error){
+			if r.Method=="POST"{posts++;return f.roundTrip(r)}
+			data:=[]any{};more:=false
+			if r.URL.Path=="/v1/"+collection{
+				pages++
+				if scenario=="unknown_history"{return nil,errors.New("provider history unavailable")}
+				metadata:=map[string]string{"osc_smoke":"different"}
+				if pages>1&&scenario=="existing_second_page"{metadata["osc_smoke"]="123456"}
+				data=append(data,map[string]any{"id":prefix+"_page"+strings.Repeat("x",pages),"metadata":metadata})
+				more=pages==1||scenario=="duplicate_cursor"
+				if scenario=="duplicate_cursor"{data=[]any{map[string]any{"id":prefix+"_repeat","metadata":metadata}}}
+			}
+			body,_:=json.Marshal(map[string]any{"data":data,"has_more":more})
+			return &http.Response{StatusCode:200,Header:make(http.Header),Body:io.NopCloser(strings.NewReader(string(body)))},nil
+		})
+		var e error;if phase=="A"{_,e=f.s.Execute(context.Background())}else{_,e=f.s.CreateIntent(context.Background(),f.s.bound)}
+		if e==nil||posts!=0||pages==0{t.Fatal("creation bypassed complete durable provider lookup")}
+	})}}}
+}
