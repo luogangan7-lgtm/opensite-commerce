@@ -12,6 +12,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=scripts/lib/pg_url.sh
+source "$ROOT/scripts/lib/pg_url.sh"
 if [[ -n "${DATABASE_URL:-}" ]]; then
   PSQL=(psql "$DATABASE_URL" -X -q -At -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
 else
@@ -842,17 +844,18 @@ echo "race auth cleanup skips locks and preserves renewed rows: $got (expected 1
 BOOTSTRAP_DB=bootstrap_race_$$_$RANDOM
 sql -c "CREATE DATABASE $BOOTSTRAP_DB" >/dev/null
 if [[ -n "${DATABASE_URL:-}" ]]; then
- bootstrap_base="${DATABASE_URL%%\?*}"; bootstrap_query=""
- [[ $DATABASE_URL != *\?* ]] || bootstrap_query="?${DATABASE_URL#*\?}"
- PSQL=(psql "${bootstrap_base%/*}/$BOOTSTRAP_DB$bootstrap_query" -X -q -At -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
+ bootstrap_url="$(pg_url_for_database "$DATABASE_URL" "$BOOTSTRAP_DB")"
+ PSQL=(psql "$bootstrap_url" -X -q -At -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
 else
  PSQL=(docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -At -U postgres -d "$BOOTSTRAP_DB" -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
 fi
+actual_db=$(sql -c 'SELECT current_database()')
+[[ $actual_db == "$BOOTSTRAP_DB" ]] || { echo "FAIL: bootstrap target is $actual_db, not $BOOTSTRAP_DB (dbname override)" >&2; exit 1; }
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  # Queue authorization depends on River's schema in this fresh database too.
  if [[ $f == *_queue_authorization.sql ]]; then
   if [[ -n "${DATABASE_URL:-}" ]]; then
-   DATABASE_URL="${bootstrap_base%/*}/$BOOTSTRAP_DB$bootstrap_query" ./scripts/migrate_river.sh
+   DATABASE_URL="$bootstrap_url" ./scripts/migrate_river.sh
   else
    RIVER_DATABASE_NAME="$BOOTSTRAP_DB" ./scripts/migrate_river.sh
   fi

@@ -15,11 +15,11 @@ import (
 
 type countingExpirer struct {
 	calls, sweeps int
-	err error
+	err           error
 }
 
 func (s *countingExpirer) Expire(context.Context, string, int) error { s.calls++; return s.err }
-func (s *countingExpirer) Sweep(context.Context, string) error { s.sweeps++; return nil }
+func (s *countingExpirer) Sweep(context.Context, string) error       { s.sweeps++; return nil }
 func TestWorkerValidatesBeforeService(t *testing.T) {
 	s, _ := NewSigner([]byte("disposable-test-signing-key-32bytes"))
 	a, _ := s.inventoryArgs("11111111-1111-4111-8111-111111111111", 100)

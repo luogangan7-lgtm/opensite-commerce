@@ -41,7 +41,7 @@ func TestStaffPricingAdmission(t *testing.T) {
 		role = pricingAuth(name)
 		for _, tc := range []struct {
 			method, path, body, version string
-			want                       int
+			want                        int
 		}{
 			{"GET", base, "", "", 503},
 			{"GET", list, "", "", 503},

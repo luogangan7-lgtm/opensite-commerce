@@ -12,7 +12,7 @@ async function firstVisitWriteProbe(page:Page){await page.route('**/__first_visi
 function recordWrites(page:Page,writes:string[],probes:string[]){page.on('request',request=>{if(['GET','HEAD','OPTIONS'].includes(request.method()))return;const entry=`${request.method()} ${request.url()}`;if(new URL(request.url()).pathname==='/__first_visit_write')probes.push(entry);else writes.push(entry);});}
 test('merchant data privacy explains support deletion without offering a write action',async({page})=>{
  const state=await fixture(page);const writes:string[]=[],probes:string[]=[];
- await firstVisitWriteProbe(page);
+ await firstVisitWriteProbe(page);recordWrites(page,writes,probes);
  await page.goto(`${origin}/t/${tenant}/products`);
  await page.getByRole('navigation',{name:'Store navigation'}).getByRole('link',{name:'Data privacy',exact:true}).click();
  await expect(page).toHaveURL(new RegExp(`/t/${tenant}/data-privacy$`));
@@ -22,19 +22,14 @@ test('merchant data privacy explains support deletion without offering a write a
  const chinese=main.getByText('如需删除店铺或客户数据，请联系支持，我们会在 30 天内处理并提供导出副本。',{exact:true});
  await expect(chinese).toBeVisible();await expect(chinese).toHaveAttribute('lang','zh-CN');
  await expect(main.getByRole('button')).toHaveCount(0);await expect(main.getByRole('form')).toHaveCount(0);
- // The isolation control is attached after first navigation on purpose in this
- // tests-first commit: it must stay RED until the write listener moves earlier.
- recordWrites(page,writes,probes);
  await page.reload();await expect(main.getByRole('heading',{name:'Data privacy',exact:true})).toBeVisible();
  expect(probes).toHaveLength(1);expect(writes).toEqual([]);expect(state.writes).toEqual([]);await audit(page,'admin-data-privacy.png');
 });
 test('merchant data privacy direct entry observes its first navigation',async({page})=>{
  const state=await fixture(page);const writes:string[]=[],probes:string[]=[];
- await firstVisitWriteProbe(page);
+ await firstVisitWriteProbe(page);recordWrites(page,writes,probes);
  await page.goto(`${origin}/t/${tenant}/data-privacy`);
  await expect(page.getByRole('heading',{name:'Data privacy',exact:true})).toBeFocused();
- // Late on purpose in this tests-first commit, matching the regression above.
- recordWrites(page,writes,probes);
  await page.reload();await expect(page.getByRole('heading',{name:'Data privacy',exact:true})).toBeFocused();
  expect(probes).toHaveLength(1);expect(writes).toEqual([]);expect(state.writes).toEqual([]);await audit(page);
 });

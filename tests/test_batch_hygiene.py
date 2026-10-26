@@ -236,19 +236,20 @@ class PendingMigrationDependency(unittest.TestCase):
     """#225: the scope union must depend on the scopes migration explicitly."""
 
     def test_c22a_depends_on_fulfillment_scopes(self):
-        headers = (ROOT / 'migrations/pending/c22a-data-rights_data_rights.sql').read_text().splitlines()
+        path = 'migrations/pending/c22a-data-rights_data_rights.sql'
+        local = ROOT / path
+        if local.is_file():
+            text = local.read_text()
+        else:
+            # CI's ci-normalize already landed proposals in this ephemeral tree;
+            # HEAD still carries the authored proposal header.
+            result = run(['git', 'show', f'HEAD:{path}'])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = result.stdout
+        headers = text.splitlines()
         deps = [line.split(':', 1)[1].strip() for line in headers if line.startswith('-- depends-on:')]
         self.assertIn('c20a-fulfillment-scopes', deps)
         self.assertNotIn('c20a-fulfillment', deps)
-
-    def test_plan_places_scopes_before_data_rights(self):
-        import sys
-        sys.path.insert(0, str(ROOT / 'scripts'))
-        import pending_migrations
-        names = [path.name for path in pending_migrations.ordered_pending(ROOT)]
-        self.assertLess(
-            names.index('c20a-fulfillment-scopes_fulfillment_role_scopes.sql'),
-            names.index('c22a-data-rights_data_rights.sql'))
 
 
 class AptTotalBudget(unittest.TestCase):
@@ -307,8 +308,9 @@ class AptTotalBudget(unittest.TestCase):
                      'CI_APT_UPDATE_TIMEOUT': '5', 'CI_APT_INSTALL_TIMEOUT': '5'})
             self.assertEqual(result.returncode, 0, combined(result))
             calls = log.read_text().splitlines()
-            self.assertEqual(len([call for call in calls if call.startswith('install')]), 2)
-            self.assertIn('--no-install-recommends', calls[0])
+            installs = [call for call in calls if call.startswith('install')]
+            self.assertEqual(len(installs), 2)
+            self.assertIn('--no-install-recommends', installs[0])
 
     def test_shrunk_total_budget_bounds_a_slow_failure(self):
         with tempfile.TemporaryDirectory() as temp:

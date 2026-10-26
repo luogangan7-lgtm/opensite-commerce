@@ -250,6 +250,40 @@ jobs:
           sys.exit(0 if results and all(x.get('result') == 'success' for x in results.values()) else 1)
           PYTHON
 
+  # Proposal validation and final landing are different decisions. Ordinary PRs
+  # (including migration proposals) get a validated proposal receipt. A landing
+  # commit/PR marks itself [final-landing]; only then must migrations/pending be
+  # empty and numbered history contiguous, bound to the exact tested head SHA
+  # rather than the synthetic pull_request merge commit. This runs after the
+  # required foundation context, so a landing PR cannot merge on partial gates.
+  final-landing:
+    name: final-landing
+    if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    needs: [foundation]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Final landing or proposal receipt (exact head SHA)
+        env:
+          FINAL_LANDING: "${{ (contains(github.event.pull_request.body || '', '[final-landing]') || contains(github.event.head_commit.message || '', '[final-landing]')) && '1' || '0' }}"
+        run: |
+          HEAD_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          mode=proposal
+          if [ "$FINAL_LANDING" = 1 ]; then mode=final; fi
+          python3 scripts/check_landing.py --mode "$mode" --sha "$HEAD_SHA" --expected-sha "$HEAD_SHA" --receipt final-landing-receipt.json
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: final-landing-${{ github.run_id }}
+          path: final-landing-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+
   # Generated code is never hand-merged: on drift this job uploads the exact patch
   # produced by the pinned generators; apply it with scripts/apply_generated_patch.sh.
   # PR code is untrusted here: read-only token, no secrets, nothing is committed.
