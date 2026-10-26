@@ -177,7 +177,8 @@ class FinalLandingGate(unittest.TestCase):
     """#5: proposal validation and final landing are distinct, exact-SHA gates."""
 
     LANES = ('go', 'offline', 'pg', 'pgx', 'sqlc')
-    RUN_ENV = {'GITHUB_RUN_ID': '12345', 'GITHUB_RUN_ATTEMPT': '1'}
+    RUN_ID = '12345'
+    RUN_ENV = {'GITHUB_RUN_ID': RUN_ID, 'GITHUB_RUN_ATTEMPT': '1'}
 
     def landing(self, root, *args, env=None):
         script = ROOT / 'scripts' / 'check_landing.py'
@@ -217,6 +218,57 @@ class FinalLandingGate(unittest.TestCase):
             payload.update((overrides or {}).get(lane, {}))
             (directory / f'lane-{lane}.json').write_text(json.dumps(payload, sort_keys=True) + '\n')
         return directory
+
+    def nested_lane_identities(self, temp, sha, attempts):
+        """One artifact directory per (lane, attempt), as a re-run leaves them.
+
+        A failed attempt still uploads its receipt (the upload step is
+        ``if: always()``), so a re-run lane can have receipts from several
+        attempts while untouched lanes keep only their first one.
+        """
+        directory = Path(temp) / 'lane-identities'
+        for lane, lane_attempts in attempts.items():
+            for attempt in lane_attempts:
+                payload = {
+                    'lane': lane,
+                    'event_sha': sha,
+                    'checked_out_sha': sha,
+                    'run_id': self.RUN_ENV['GITHUB_RUN_ID'],
+                    'run_attempt': str(attempt),
+                }
+                target = (directory /
+                          f"lane-identity-{self.RUN_ENV['GITHUB_RUN_ID']}-{attempt}-{lane}" /
+                          f'lane-{lane}.json')
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(json.dumps(payload, sort_keys=True) + '\n')
+        return directory
+
+    def lane_jobs(self, temp, results=None, sha=None, run_id=None):
+        """GitHub's job results for this run, across attempts, as CI fetches them.
+
+        ``results`` maps a lane to ``[(attempt, conclusion), ...]``; the default
+        is a clean run where every lane succeeded in attempt 1.
+        """
+        sha = sha or 'a' * 40
+        run_id = self.RUN_ID if run_id is None else run_id
+        if results is None:
+            results = {lane: [(1, 'success')] for lane in self.LANES}
+        rows, job_id = [], 1000
+        for lane, lane_results in results.items():
+            for attempt, conclusion in lane_results:
+                job_id += 1
+                rows.append(json.dumps({
+                    'id': job_id,
+                    'run_id': int(run_id),
+                    'run_attempt': attempt,
+                    'name': f'foundation-{lane}',
+                    'head_sha': sha,
+                    'status': 'completed',
+                    'conclusion': conclusion,
+                }, sort_keys=True))
+        path = Path(temp) / 'lane-jobs.jsonl'
+        path.write_text(''.join(f'{row}\n' for row in rows))
+        return path
 
     def test_proposal_mode_validates_but_does_not_claim_final(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -260,10 +312,12 @@ class FinalLandingGate(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = self.make_repo(temp, numbered=(1, 2, 3))
             lanes = self.lane_identities(temp, 'c' * 40)
+            jobs = self.lane_jobs(temp, sha='c' * 40)
             receipt = Path(temp) / 'receipt.json'
             result = self.landing(root, '--mode', 'final', '--sha', 'c' * 40,
                                   '--expected-sha', 'c' * 40,
                                   '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs),
                                   '--receipt', str(receipt), env=self.RUN_ENV)
             self.assertEqual(result.returncode, 0, combined(result))
             payload = json.loads(receipt.read_text())
@@ -287,9 +341,11 @@ class FinalLandingGate(unittest.TestCase):
             root = self.make_repo(temp)
             lanes = self.lane_identities(
                 temp, 'a' * 40, overrides={'offline': {'checked_out_sha': 'd' * 40}})
+            jobs = self.lane_jobs(temp)
             result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
                                   '--expected-sha', 'a' * 40,
-                                  '--lane-identities', str(lanes), env=self.RUN_ENV)
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs), env=self.RUN_ENV)
             self.assertNotEqual(result.returncode, 0, combined(result))
             self.assertIn('FINAL_LANDING_LANE_IDENTITY', combined(result))
 
@@ -297,11 +353,114 @@ class FinalLandingGate(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = self.make_repo(temp)
             lanes = self.lane_identities(temp, 'a' * 40, lanes=('go', 'offline', 'pg', 'pgx'))
+            jobs = self.lane_jobs(temp)
+            result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40,
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs), env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            self.assertIn('sqlc', combined(result))
+
+    def test_final_mode_requires_github_job_results_for_the_receipts(self):
+        # A receipt alone cannot prove its attempt succeeded: failed attempts
+        # upload one too.  Without GitHub's job results the gate must fail closed.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            lanes = self.lane_identities(temp, 'a' * 40)
             result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
                                   '--expected-sha', 'a' * 40,
                                   '--lane-identities', str(lanes), env=self.RUN_ENV)
             self.assertNotEqual(result.returncode, 0, combined(result))
-            self.assertIn('sqlc', combined(result))
+            self.assertIn('FINAL_LANDING_LANE_JOBS', combined(result))
+
+    def test_final_mode_rejects_job_results_from_another_run(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            lanes = self.lane_identities(temp, 'a' * 40)
+            jobs = self.lane_jobs(temp, run_id='99999')
+            result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40,
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs), env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            self.assertIn('FINAL_LANDING_LANE_JOBS', combined(result))
+
+    def test_final_mode_rejects_job_results_for_another_sha(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            lanes = self.lane_identities(temp, 'a' * 40)
+            jobs = self.lane_jobs(temp, sha='f' * 40)
+            result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40,
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs), env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            self.assertIn('FINAL_LANDING_LANE_JOBS', combined(result))
+
+    def test_final_mode_rejects_a_receipt_from_an_unsuccessful_attempt(self):
+        # pgx failed; its always-uploaded attempt-1 receipt must not count as a
+        # successful lane identity just because the file exists.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            lanes = self.lane_identities(temp, 'a' * 40)
+            jobs = self.lane_jobs(temp, {**{
+                lane: [(1, 'success')] for lane in self.LANES if lane != 'pgx'},
+                'pgx': [(1, 'failure')]})
+            result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40,
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs), env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            output = combined(result)
+            self.assertIn('pgx', output)
+            self.assertIn('no successful', output)
+
+    def test_final_mode_accepts_mixed_attempt_receipts_after_a_partial_rerun(self):
+        # Attempt 1: four lanes succeeded, pgx failed.  Attempt 2 re-runs only
+        # pgx, so the four successful lanes keep attempt-1 receipts.  Dropping
+        # them because they are not from the current attempt breaks a re-run
+        # even though every lane ultimately succeeded.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            sha = 'e' * 40
+            jobs = self.lane_jobs(temp, {**{
+                lane: [(1, 'success')] for lane in self.LANES if lane != 'pgx'},
+                'pgx': [(1, 'failure'), (2, 'success')]}, sha=sha)
+            lanes = self.nested_lane_identities(temp, sha, {
+                'go': [1], 'offline': [1], 'pg': [1], 'sqlc': [1], 'pgx': [1, 2]})
+            receipt = Path(temp) / 'receipt.json'
+            result = self.landing(root, '--mode', 'final', '--sha', sha,
+                                  '--expected-sha', sha,
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs),
+                                  '--receipt', str(receipt), env=self.RUN_ENV)
+            self.assertEqual(result.returncode, 0, combined(result))
+            payload = json.loads(receipt.read_text())
+            attempts = {row['lane']: row['run_attempt']
+                        for row in payload['lane_identities']}
+            self.assertEqual(attempts['pgx'], '2')
+            self.assertEqual(attempts['go'], '1')
+            self.assertEqual(attempts['sqlc'], '1')
+
+    def test_final_mode_prefers_the_latest_successful_attempt(self):
+        # Re-running every job gives each lane receipts from every attempt; the
+        # latest attempt whose job GitHub reports successful is the evidence.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            jobs = self.lane_jobs(temp, {lane: [(1, 'success'), (2, 'success')]
+                                         for lane in self.LANES})
+            lanes = self.nested_lane_identities(
+                temp, 'a' * 40, {lane: [1, 2] for lane in self.LANES})
+            receipt = Path(temp) / 'receipt.json'
+            result = self.landing(root, '--mode', 'final', '--sha', 'a' * 40,
+                                  '--expected-sha', 'a' * 40,
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs),
+                                  '--receipt', str(receipt), env=self.RUN_ENV)
+            self.assertEqual(result.returncode, 0, combined(result))
+            payload = json.loads(receipt.read_text())
+            self.assertEqual({row['run_attempt'] for row in payload['lane_identities']},
+                             {'2'})
 
     def test_auto_mode_requires_a_trusted_landing_decision(self):
         # No diff and no trusted policy: auto must not silently become proposal.
@@ -349,11 +508,13 @@ class FinalLandingGate(unittest.TestCase):
                 ('A', 'migrations/003_data_rights.sql'),
             ])
             lanes = self.lane_identities(temp, 'a' * 40)
+            jobs = self.lane_jobs(temp)
             receipt = Path(temp) / 'receipt.json'
             result = self.landing(root, '--mode', 'auto', '--sha', 'a' * 40,
                                   '--expected-sha', 'a' * 40,
                                   '--changed-paths', str(changed),
                                   '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs),
                                   '--receipt', str(receipt), env=self.RUN_ENV)
             self.assertEqual(result.returncode, 0, combined(result))
             payload = json.loads(receipt.read_text())
@@ -365,11 +526,12 @@ class FinalLandingGate(unittest.TestCase):
             root = self.make_repo(temp, numbered=(1, 2))
             changed = self.changed(temp, [])
             lanes = self.lane_identities(temp, 'a' * 40)
+            jobs = self.lane_jobs(temp)
             receipt = Path(temp) / 'receipt.json'
             result = self.landing(
                 root, '--mode', 'auto', '--sha', 'a' * 40, '--expected-sha', 'a' * 40,
                 '--changed-paths', str(changed), '--lane-identities', str(lanes),
-                '--receipt', str(receipt),
+                '--lane-jobs', str(jobs), '--receipt', str(receipt),
                 env={**self.RUN_ENV, 'FINAL_LANDING_POLICY': '1'})
             self.assertEqual(result.returncode, 0, combined(result))
             self.assertEqual(json.loads(receipt.read_text())['mode'], 'final')
@@ -405,8 +567,19 @@ class FinalLandingGate(unittest.TestCase):
         self.assertIn('${{ matrix.lane }}', upload['with']['name'])
         download = next(s for s in foundation['steps']
                         if s.get('uses', '').startswith('actions/download-artifact@'))
-        self.assertIn('lane-identity-${{ github.run_id }}-${{ github.run_attempt }}-*',
-                      download['with']['pattern'])
+        pattern = download['with']['pattern']
+        # A failed-job re-run keeps earlier attempts: pinning the download to
+        # the current attempt drops the receipts of lanes that never re-ran.
+        self.assertIn('lane-identity-${{ github.run_id }}-*', pattern)
+        self.assertNotIn('github.run_attempt', pattern)
+        self.assertNotEqual(download['with'].get('merge-multiple'), True,
+                            'per-attempt artifacts must keep distinct directories')
+        jobs_step = next(s for s in foundation['steps']
+                         if 'jobs?filter=all' in s.get('run', ''))
+        self.assertIn('--paginate', jobs_step['run'])
+        self.assertIn('.jobs[]', jobs_step['run'])
+        # Receipts are checked against GitHub's own per-attempt job results.
+        self.assertIn('--lane-jobs', runs)
 
 
 class PendingMigrationDependency(unittest.TestCase):
