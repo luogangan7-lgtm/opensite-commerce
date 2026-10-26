@@ -6,7 +6,7 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, type APIResponse } from '@playwright/test';
 import { test } from './fixture';
-import { fixture, publishedSite, audit, rememberSensitive, fillPassword } from './fixture';
+import { fixture, publishedSite, audit, fillPassword } from './fixture';
 import { start, registerAndLogin } from './purchase-helpers';
 
 // Credentials/capabilities must never enter automatic capture artifacts.
@@ -29,7 +29,6 @@ test('real registered customer export and erasure journey', async ({ page, reque
   expect((await (await page.request.get(history)).json()).items).toHaveLength(1);
   const oldCustomerSession = (await page.context().cookies()).find(c => c.name === '__Host-osc_customer_session');
   expect(oldCustomerSession).toBeDefined();
-  await rememberSensitive(...(await page.context().cookies()).map(cookie => cookie.value));
   const base = `${fixture.admin}/api/v1/t/${fixture.tenantId}/customers/${customer}`;
   let csrf = '';
   const login = async (email: string) => {
@@ -42,7 +41,6 @@ test('real registered customer export and erasure journey', async ({ page, reque
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
     csrf = (await (await page.request.get(`${fixture.admin}/api/v1/auth/session`)).json()).csrf_token;
-    await rememberSensitive(csrf, ...(await page.context().cookies()).map(cookie => cookie.value));
   };
   const post = (path: string) => {
     // The instrumented API step title contains only the URL argument. Keep the
@@ -59,10 +57,8 @@ test('real registered customer export and erasure journey', async ({ page, reque
     try { body = await response.json(); }
     catch { throw new Error(`${operation}: status=${response.status()} code=invalid_json`); }
     if (body.download_url) {
-      let token = '';
-      try { token = new URL(body.download_url, fixture.admin).searchParams.get('token') ?? ''; }
+      try { new URL(body.download_url, fixture.admin); }
       catch { throw new Error('Invalid export capability URL'); }
-      await rememberSensitive(token);
     }
     const code = body.code === 'route_not_found' ? 'route_not_found' : response.ok() ? 'none' : 'unknown';
     const label = `${operation}: status=${response.status()} code=${code}`;

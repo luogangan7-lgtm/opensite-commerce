@@ -2,7 +2,7 @@
  * Depends on the real BFF and published fixture; no interception or SQL writes.
  */
 import { expect, type Page } from '@playwright/test';
-import { fixture, rememberSensitive, fillPassword } from './fixture';
+import { fixture, fillPassword } from './fixture';
 const api = `${fixture.storefront}/purchase/api`;
 export async function start(page: Page, customer = false, quantity = 1) {
   await page.goto(`${fixture.storefront}/products/${fixture.productSlug}`);
@@ -64,7 +64,6 @@ export async function registerAndLogin(page: Page, email: string) {
   let proof: URL;
   try { proof = new URL(message.Text.trim().split('\n').at(-1)); }
   catch { throw new Error('Invalid SMTP proof URL'); }
-  await rememberSensitive(new URLSearchParams(proof.hash.slice(1)).get('token') ?? '', proof.href);
   expect(proof.origin).toBe('https://store.e2e.test');expect(proof.pathname).toBe('/customer/verify');
   expect(new URLSearchParams(proof.hash.slice(1)).get('tenant')).toBe(fixture.tenantId);
   // One real navigation: the island consumes/clears the fragment on mount.
@@ -78,5 +77,4 @@ export async function registerAndLogin(page: Page, email: string) {
   await page.getByLabel('Email',{exact:true}).fill(email);await fillPassword(page, password);
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await expect(page.getByRole('link',{name:'Order history',exact:true})).toBeVisible();
-  await rememberSensitive(...(await page.context().cookies()).map(cookie => cookie.value));
 }

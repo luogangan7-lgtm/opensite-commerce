@@ -24,7 +24,7 @@ export default defineConfig({
   updateSnapshots: 'none',
   outputDir: `test-results/e2e/${phase}`,
   reporter: [
-    ['list'],
+    ['./scripts/e2e/summary-reporter.ts', { outputFile: `test-results/e2e/${phase}/summary.json` }],
     ['json', { outputFile: `test-results/e2e/${phase}/results.json` }],
     ['html', { open: 'never', outputFolder: `playwright-report/e2e/${phase}` }],
   ],

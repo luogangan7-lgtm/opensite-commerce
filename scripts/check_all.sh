@@ -10,7 +10,6 @@ if GOPROXY=off GOSUMDB=off go run ./cmd/preflight fixtures/home-invalid.json; th
 fi
 bun scripts/e2e/check-assertion-messages.ts
 bun tests/e2e/summary-reporter.test.ts
-node node_modules/@playwright/test/cli.js test --config scripts/e2e/privacy-unit.config.ts
 python3 scripts/check_contract.py
 python3 scripts/check_ci_pins.py
 python3 scripts/check_modules.py

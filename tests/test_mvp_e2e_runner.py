@@ -4,9 +4,6 @@ Runs in the foundation CI via test_ops_drill; no containers are needed for these
 negative cases. A fake Docker executable witnesses any attempted side effect.
 """
 import os
-import base64
-import io
-import zipfile
 import importlib.util
 import hashlib
 import json
@@ -15,8 +12,6 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import urllib.request
-import urllib.error
 import unittest
 
 
@@ -65,49 +60,7 @@ class BrowserReceiptTests(unittest.TestCase):
             with self.subTest(extra=extra), self.assertRaisesRegex(RuntimeError, 'upload allowlist'):
                 runner.verify_upload_paths(workflow.replace('path: ' + summary, 'path: |\n            ' + summary + '\n            ' + extra))
 
-    def test_artifact_gate_rejects_raw_and_packed_run_secrets_without_echoing(self):
-        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
-        spec = importlib.util.spec_from_file_location('artifact_runner', source)
-        runner = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(runner)
-        token = 'run-generated-download-capability-' + 'z' * 43
-        packed = io.BytesIO()
-        with zipfile.ZipFile(packed, 'w', zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr('test.json', json.dumps({'title': 'getCustomerDataExport: ' + token}))
-        cases = [token.encode(), packed.getvalue(),
-                 b'<script>data:application/zip;base64,' + base64.b64encode(packed.getvalue()) + b'</script>']
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            report = root / 'report.html'
-            for payload in cases:
-                report.write_bytes(payload)
-                with self.subTest(kind=len(payload)), self.assertRaisesRegex(RuntimeError, 'sensitive') as caught:
-                    runner.verify_artifact_privacy([root], [token])
-                self.assertNotIn(token, str(caught.exception))
-                self.assertEqual(report.read_bytes(), payload, 'gate must preserve evidence')
-            report.write_text('getCustomerDataExport status=200 code=none')
-            self.assertEqual(runner.verify_artifact_privacy([root], [token])['status'], 'PASS')
-
-    def test_private_collector_registers_values_and_rejects_unauthorized_ingress(self):
-        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
-        spec = importlib.util.spec_from_file_location('collector_runner', source)
-        runner = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(runner)
-        values = set()
-        with runner.SecretCollector(values) as collector:
-            url = f'http://127.0.0.1:{collector.server.server_port}'
-            payload = json.dumps(['synthetic-private-proof']).encode()
-            request = urllib.request.Request(url, data=payload, headers={'Authorization': collector.key})
-            with urllib.request.urlopen(request, timeout=5) as response:
-                self.assertEqual(response.status, 204)
-            self.assertEqual(values, {'synthetic-private-proof'})
-            request = urllib.request.Request(url, data=payload)
-            with self.assertRaises(urllib.error.HTTPError) as rejected:
-                urllib.request.urlopen(request, timeout=5)
-            self.assertEqual(rejected.exception.code, 400)
-            self.assertTrue(collector.invalid)
-
-    def test_global_capture_defaults_and_shared_observation_are_mandatory(self):
+    def test_global_capture_defaults_and_allowlisted_reporter_are_mandatory(self):
         root = Path(__file__).resolve().parents[1]
         config = (root / 'playwright.e2e.config.ts').read_text()
         self.assertIn("trace: 'off', video: 'off', screenshot: 'off'", config)
@@ -116,39 +69,10 @@ class BrowserReceiptTests(unittest.TestCase):
             self.assertNotIn('page.screenshot(', source)
             self.assertNotRegex(source, r"(?:trace|video|screenshot): ['\"](?!off['\"])")
             self.assertNotRegex(source, r"import\s*\{[^}]*\btest\b[^}]*\}\s*from ['\"]@playwright/test")
-        self.assertIn('installPrivacy', (root / 'tests/e2e/fixture.ts').read_text())
-        runner = (root / 'scripts/e2e/run.py').read_text()
-        self.assertIn('collector.read_private_values()', runner)
-
-    def test_private_file_is_scanned_and_incomplete_observers_fail_closed(self):
-        source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
-        spec = importlib.util.spec_from_file_location('private_file_runner', source)
-        runner = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(runner)
-        with tempfile.TemporaryDirectory() as temporary:
-            private = Path(temporary) / 'observed.jsonl'
-            with runner.SecretCollector(set(), private) as collector:
-                url = f'http://127.0.0.1:{collector.server.server_port}'
-                def send(value):
-                    request = urllib.request.Request(url, data=json.dumps(value).encode(), headers={'Authorization': collector.key})
-                    with urllib.request.urlopen(request, timeout=5) as response:
-                        self.assertEqual(response.status, 204)
-                send({'phase': 'begin'})
-                send(['unregistered-session-from-shared-hook'])
-                with self.assertRaisesRegex(RuntimeError, 'incomplete'):
-                    collector.read_private_values()
-                send({'phase': 'end'})
-                self.assertEqual(private.stat().st_mode & 0o777, 0o600)
-                values = collector.read_private_values()
-                report = Path(temporary) / 'report'
-                report.mkdir()
-                (report / 'failed.html').write_text('unregistered-session-from-shared-hook')
-                with self.assertRaisesRegex(RuntimeError, 'sensitive'):
-                    runner.verify_artifact_privacy([report], values)
-                send({'phase': 'failed'})
-                self.assertTrue(collector.invalid)
-                with self.assertRaisesRegex(RuntimeError, 'incomplete'):
-                    collector.read_private_values()
+        self.assertIn('summary-reporter.ts', config)
+        self.assertNotIn("['list']", config)
+        self.assertNotIn("['line']", config)
+        self.assertNotIn('installPrivacy', (root / 'tests/e2e/fixture.ts').read_text())
 
     def test_assertion_message_gate_rejects_bodies_and_aliases(self):
         root = Path(__file__).resolve().parents[1]
@@ -190,9 +114,9 @@ class BrowserReceiptTests(unittest.TestCase):
     def test_artifact_gate_is_on_failure_path_and_blocks_upload(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / 'scripts/e2e/run.py').read_text()
-        self.assertIn('verify_artifact_privacy', source[source.index('        finally:'):])
+        self.assertIn('verify_upload_paths', source[source.index('        finally:'):])
         workflow = (root / '.github/workflows/mvp-e2e.yml').read_text()
-        self.assertIn("steps.e2e.outputs.artifact_safe == 'true'", workflow)
+        self.assertIn("steps.e2e.outputs.summary_safe == 'true'", workflow)
 
     def test_b2b_journey_is_mandatory_and_persisted(self):
         source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'

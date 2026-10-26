@@ -31,11 +31,9 @@ jobs:
         id: e2e
         run: python3 scripts/e2e/run.py --receipt-dir work/C24a/ci
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always() && steps.e2e.outputs.artifact_safe == 'true'
+        if: always() && steps.e2e.outputs.summary_safe == 'true'
         with:
           name: mvp-e2e-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            work/C24a/ci
-            test-results/e2e
-            playwright-report/e2e
+          path: test-results/e2e/summary.json
+          if-no-files-found: error
           retention-days: 7
