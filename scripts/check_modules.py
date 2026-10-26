@@ -532,11 +532,45 @@ def raw_connection_allowed(relative):
 MAINTENANCE_ALLOWED_DIRS = (Path("internal/modules/identity/internal/store"),)
 
 
+# Auth capabilities are reviewed per FILE, including tests and method values.
+AUTH_CALLERS = {
+    "OpenAuthorization": {
+        "internal/tenanttx/pgxadapter/identity.go",
+        "internal/tenanttx/pgxadapter/export_surface_test.go",
+        "internal/modules/tenant/internal/store/auth.go",
+        "internal/tenanttx/pgxadapter/authentication_pgx_test.go",
+        "internal/tenanttx/pgxadapter/returns_pgx_test.go",
+        "internal/tenanttx/pgxadapter/authorization_test.go",
+    },
+    "OpenStaffAuthentication": {
+        "internal/tenanttx/pgxadapter/identity.go",
+        "internal/tenanttx/pgxadapter/export_surface_test.go",
+        "internal/modules/identity/internal/store/login.go",
+        "internal/tenanttx/pgxadapter/h4a_queue_test.go",
+        "internal/modules/identity/internal/store/h4a_pgx_test.go",
+    },
+    "RunAuthentication": {
+        "internal/tenanttx/pgxadapter/identity.go",
+        "internal/tenanttx/pgxadapter/export_surface_test.go",
+        "internal/modules/identity/internal/store/login.go",
+        "internal/modules/identity/internal/store/login_test.go",
+        "internal/modules/tenant/internal/store/auth.go",
+        "internal/tenanttx/pgxadapter/authentication_test.go",
+        "internal/tenanttx/pgxadapter/authentication_pgx_test.go",
+        "internal/tenanttx/pgxadapter/h4a_queue_test.go",
+        "internal/modules/identity/internal/store/h4a_pgx_test.go",
+    },
+}
+
+
 def check_maintenance(text, relative):
     relative = Path(relative)
+    tokens, _ = go_imports(text)
+    for symbol, callers in AUTH_CALLERS.items():
+        require(symbol not in tokens or relative.as_posix() in callers,
+                "MODULE_AUTH_CALLER", f"{relative}: {symbol}")
     if relative.name.endswith("_test.go"):
         return
-    tokens, _ = go_imports(text)
     # The private entry point may only be called; a method value or alias would export it.
     require(not any(tokens[i] == "." and tokens[i + 1] == "inMaintenance" and tokens[i + 2:i + 3] != ["("]
                     for i in range(len(tokens) - 1)),

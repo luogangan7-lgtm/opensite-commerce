@@ -71,9 +71,13 @@ export async function readCustomer(origin:string,tenant:string,cookies:Jar):Prom
   if(actual.length!==wanted.length||!timingSafeEqual(actual,wanted))throw new CustomerError(502);
   return {id:customer.customer_id,headers:{Origin:customerOrigin(),Cookie:`${SESSION}=${token}`,'X-CSRF-Token':expected}};
 }
-export async function changeCustomer(origin:string,tenant:string,cookies:Jar,path:string,method:string,input?:unknown){
+export async function changeCustomer(origin:string,tenant:string,cookies:Jar,path:string,method:string,input?:unknown,verified?:CustomerIdentity){
   proof(tenant,cookies.get(SESSION)?.value??'configuration-check');
-  const raw=await call(origin,tenant,cookies);
+  // The BFF passes only this request's DB-validated identity. Recheck cookie custody;
+  // identity-changing writes are followed by a fresh read in commerce-server.
+  const token=cookies.get(SESSION)?.value;
+  if(verified&&(!token||verified.headers.Cookie!==`${SESSION}=${token}`||verified.headers['X-CSRF-Token']!==proof(tenant,token)))throw new CustomerError(401,'unauthenticated');
+  const raw=verified?{csrf_token:verified.headers['X-CSRF-Token']}:await call(origin,tenant,cookies);
   if(typeof raw?.csrf_token!=='string'||raw.csrf_token.length>256)throw new CustomerError(502);
   await call(origin,tenant,cookies,path,method,input,raw.csrf_token);
 }

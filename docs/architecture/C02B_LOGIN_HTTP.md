@@ -110,3 +110,33 @@ the 03b generated-server POC is outside this repair's scope. Registry and
 OpenAPI include all four implemented operations now. Target-host Argon2 timing,
 real browser/proxy integration, signing-key rotation and shared multi-instance IP/global
 admission are deployment acceptance work and are NOT_RUN in this card.
+
+## Session admission availability (b-auth)
+
+The existing API `/metrics` collector now reports process-local, bounded-label
+`opensite_auth_operations_total{stage,outcome}` and
+`opensite_auth_duration_seconds{stage}` histograms. `session_admission` counts
+`admitted`/`denied` before storage; it never labels IPs, tokens or tenants.
+`staff_session_queue` measures actual pool acquisition; `staff_session_pool`
+includes acquisition, role validation, callback and commit. Credential operations
+use `staff_credential_queue`/`staff_credential_pool`; unclassified adapter calls
+use `staff_queue`/`staff_pool`. Pool outcomes are `ok`, `error`, `timeout`;
+SQL lock/statement timeouts and expired caller/operation contexts count as timeout.
+Metrics are scoped to the API server collector, not persistent identity state.
+
+Initial operational warning thresholds (evaluate only while requests are present):
+
+- Admission denial ratio above 1% over 5 minutes:
+  `sum(rate(opensite_auth_operations_total{stage="session_admission",outcome="denied"}[5m])) / clamp_min(sum(rate(opensite_auth_operations_total{stage="session_admission"}[5m])), 0.001) > 0.01`.
+- Session acquisition p95 above 250ms for 5 minutes:
+  `histogram_quantile(0.95, sum by (le) (rate(opensite_auth_duration_seconds_bucket{stage="staff_session_queue"}[5m]))) > 0.25`.
+- Session pool timeout ratio above 1% over 5 minutes:
+  `sum(rate(opensite_auth_operations_total{stage="staff_session_pool",outcome="timeout"}[5m])) / clamp_min(sum(rate(opensite_auth_operations_total{stage="staff_session_pool"}[5m])), 0.001) > 0.01`.
+
+Escalate at 5% denials or timeouts for 2 minutes. These are documented alert
+policies for the deployment monitor, not claims of an installed alerting service.
+Before scaling, collect per-instance admitted/denied rates, queue p95/p99,
+timeout ratios and representative burst arrival rates. Production traffic has
+not been measured by this card; CI load is not a capacity estimate. Preserve the
+600/minute global, 60/minute IP, two-inflight session limits, one session DB
+connection, 500ms lock/1500ms statement/2s operation budgets until that review.

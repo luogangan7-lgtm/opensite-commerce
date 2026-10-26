@@ -4,6 +4,7 @@
 package observability
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sort"
@@ -29,6 +30,8 @@ type Metrics struct {
 	mu        sync.Mutex
 	requests  map[requestKey]uint64
 	durations map[string]latency
+	auth map[authKey]uint64
+	authDurations map[string]latency
 }
 
 // Wrap must enclose the recovery transport so counters reflect the committed
@@ -58,7 +61,7 @@ func (m *Metrics) Wrap(next http.Handler) http.Handler {
 			}
 			m.observe(r.Method, status, time.Since(start).Seconds())
 		}()
-		next.ServeHTTP(response, r)
+		next.ServeHTTP(response, r.WithContext(context.WithValue(r.Context(), metricsKey{}, m)))
 	})
 }
 
@@ -96,6 +99,7 @@ func (m *Metrics) observe(method string, status int, seconds float64) {
 }
 
 func (m *Metrics) write(w http.ResponseWriter) {
+	m.writeAuthentication(w)
 	// Copy under lock: a slow scraper cannot block completed requests while writing.
 	m.mu.Lock()
 	requests := make(map[requestKey]uint64, len(m.requests))
