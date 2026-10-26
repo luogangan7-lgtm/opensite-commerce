@@ -197,6 +197,11 @@ test('changed currency and int64 server total remain gated by explicit consent',
   const capture = page.getByRole('button', { name: 'Fake payment: capture', exact: true });
   await expect(capture).toBeDisabled();
   await expect(page.locator('.payment-result')).toContainText('9,223,372,036,854,775,807');
+  const amountLines=await page.locator('.payment-result .product-price').evaluate(el=>{
+    const range=document.createRange();range.selectNodeContents(el);
+    return Array.from(range.getClientRects()).length;
+  });
+  expect(amountLines).toBe(1);
   await quality(page, 'checkout-long-changed-currency-disabled');
   await page.getByRole('button', { name: 'Confirm updated total', exact: true }).click();
   await expect(capture).toBeEnabled();

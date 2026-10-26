@@ -13,6 +13,17 @@ async function holdResponse(page:Page,url:string){
  await page.route(url,async route=>{started();await pending;await route.fallback();},{times:1});
  return {ready,release};
 }
+async function statusFitsVisibleTable(page:Page,caption:string,text:string){
+ const region=await page.getByRole('region',{name:caption,exact:true}).boundingBox();
+ if(!region)throw new Error('Expected visible table region');
+ const message=page.getByText(text,{exact:true});await expect(message).toBeVisible();
+ const fragments=await message.evaluate(el=>{
+  const range=document.createRange();range.selectNodeContents(el);
+  return Array.from(range.getClientRects(),rect=>({left:rect.left,right:rect.right}));
+ });
+ expect(fragments.length).toBeGreaterThan(0);
+ for(const rect of fragments){expect(rect.left).toBeGreaterThanOrEqual(region.x);expect(rect.right).toBeLessThanOrEqual(region.x+region.width);}
+}
 async function signIn(page:Page){await page.getByLabel('Email').fill('staff@example.invalid');await page.getByLabel('Password',{exact:true}).fill(crypto.randomUUID());await page.getByRole('button',{name:'Sign in',exact:true}).click();}
 test('merchant data privacy explains support deletion without offering a write action',async({page})=>{
  await fixture(page);await page.goto(`${origin}/t/${tenant}/products`);
@@ -292,4 +303,25 @@ test('production publication access has deterministic loading, retry and low-per
  await expect(page.getByRole('button',{name:'Save price',exact:true})).toHaveCount(0);
  await expect(page.getByText('PRIVATE SERVER DETAIL')).toHaveCount(0);
  await audit(page,'admin-publication-forbidden.png');
+});
+
+for(const area of ['orders','notifications'] as const)test(`${area} loading status fits the visible table without horizontal scrolling`,async({page})=>{
+ await fixture(page);
+ if(area==='notifications')await page.route('**/api/v1/t/*/notifications/**',route=>route.fulfill({json:{items:[]}}));
+ const pending=await holdResponse(page,area==='orders'?'**/api/v1/t/*/orders?*':'**/api/v1/t/*/notifications/failures?*');
+ await page.goto(`${origin}/t/${tenant}/${area}`);await pending.ready;
+ try{await statusFitsVisibleTable(page,area==='orders'?'Order list':'Notification failures','Loading…');}
+ finally{pending.release();}
+});
+test('empty order list message fits the visible table without horizontal scrolling',async({page})=>{
+ await fixture(page,{empty:true});await page.goto(`${origin}/t/${tenant}/orders`);
+ await statusFitsVisibleTable(page,'Order list','No orders match this filter.');
+});
+test('empty order lines use order-domain copy and fit the visible table',async({page})=>{
+ await fixture(page);
+ await page.route(`**/api/v1/t/*/orders/${orderId}`,route=>route.fulfill({json:{...order,lines:[],adjustments:[]},headers:{ETag:'"1"'}}));
+ await page.goto(`${origin}/t/${tenant}/orders/${orderId}`);
+ await expect(page.getByRole('heading',{name:'Order 1001',exact:true})).toBeVisible();
+ await statusFitsVisibleTable(page,'Order lines','No order lines in this snapshot.');
+ await expect(page.getByText('No component states to display',{exact:true})).toHaveCount(0);
 });
