@@ -577,6 +577,98 @@ class FinalLandingGate(unittest.TestCase):
             self.assertEqual(result.returncode, 0, combined(result))
             self.assertEqual(json.loads(receipt.read_text())['mode'], 'final')
 
+    MARKER = '[final-landing]'
+
+    def marker_decision(self, body):
+        """The marker decision the workflow computes from the PR body."""
+        script = ROOT / 'scripts' / 'final_landing_marker.py'
+        self.assertTrue(
+            script.is_file(),
+            'scripts/final_landing_marker.py must decide the standalone marker; '
+            'a substring match on prose selects final by accident')
+        result = run(['python3', str(script)],
+                     env={**self.RUN_ENV, 'FINAL_LANDING_BODY': body})
+        self.assertEqual(result.returncode, 0, combined(result))
+        return result.stdout.strip()
+
+    def test_inline_marker_mention_does_not_select_final(self):
+        # #434 (main run 40403380987): #398's squash message mentioned the
+        # marker in prose, the push run selected final and failed on pending
+        # proposals even though no proposal was removed.
+        prose = ('Rework the old decision.\n'
+                 f'The squash message of #398 mentioned {self.MARKER} inline, '
+                 'so this must stay proposal mode.\n')
+        self.assertEqual(self.marker_decision(prose), '0')
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp, pending=('c22a-data-rights',))
+            changed = self.changed(temp, [])
+            result = self.landing(
+                root, '--mode', 'auto', '--sha', 'a' * 40, '--expected-sha', 'a' * 40,
+                '--changed-paths', str(changed),
+                env={**self.RUN_ENV, 'FINAL_LANDING': self.marker_decision(prose)})
+            self.assertEqual(result.returncode, 0, combined(result))
+            self.assertIn('PROPOSAL MODE', result.stdout)
+            self.assertNotIn('FINAL_LANDING_PENDING', combined(result))
+
+    def test_standalone_marker_line_in_pr_body_still_selects_final(self):
+        body = f'Land the data-rights proposal.\n\n{self.MARKER}\n\nNotes follow.\n'
+        self.assertEqual(self.marker_decision(body), '1')
+        # Only a standalone line counts, never a mention inside a sentence.
+        self.assertEqual(self.marker_decision(f'add {self.MARKER} here\n'), '0')
+        self.assertEqual(self.marker_decision(f'prefix{self.MARKER}\n'), '0')
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp, numbered=(1, 2))
+            changed = self.changed(temp, [])
+            lanes = self.lane_identities(temp, 'a' * 40)
+            jobs = self.lane_jobs(temp)
+            result = self.landing(
+                root, '--mode', 'auto', '--sha', 'a' * 40, '--expected-sha', 'a' * 40,
+                '--changed-paths', str(changed), '--lane-identities', str(lanes),
+                '--lane-jobs', str(jobs),
+                env={**self.RUN_ENV, 'FINAL_LANDING': self.marker_decision(body)})
+            self.assertEqual(result.returncode, 0, combined(result))
+            self.assertIn('FINAL LANDING OK', result.stdout)
+
+    def test_removed_proposal_still_forces_final_without_a_marker(self):
+        # Dropping commit-message matching must not weaken the landing gate: a
+        # removed proposal selects final from the trusted diff alone.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp, numbered=(1, 2))
+            changed = self.changed(temp, [
+                ('D', 'migrations/pending/c22a-data-rights_data_rights.sql'),
+                ('A', 'migrations/003_data_rights.sql'),
+            ])
+            lanes = self.lane_identities(temp, 'a' * 40)
+            jobs = self.lane_jobs(temp)
+            receipt = Path(temp) / 'receipt.json'
+            result = self.landing(
+                root, '--mode', 'auto', '--sha', 'a' * 40, '--expected-sha', 'a' * 40,
+                '--changed-paths', str(changed), '--lane-identities', str(lanes),
+                '--lane-jobs', str(jobs), '--receipt', str(receipt),
+                env={**self.RUN_ENV, 'FINAL_LANDING': '0'})
+            self.assertEqual(result.returncode, 0, combined(result))
+            payload = json.loads(receipt.read_text())
+            self.assertEqual(payload['mode'], 'final')
+            self.assertTrue(payload['landing_reasons'], payload)
+
+    def test_ci_reads_the_marker_only_as_a_standalone_pr_body_line(self):
+        jobs = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']
+        foundation = jobs['foundation']
+        steps = foundation['steps']
+        marker = [step for step in steps
+                  if 'final_landing_marker.py' in step.get('run', '')]
+        self.assertEqual(len(marker), 1,
+                         'the marker must be computed once from the PR body JSON')
+        self.assertIn('github.event.pull_request.body',
+                      marker[0]['env'].get('FINAL_LANDING_BODY', ''))
+        # Push events have no PR body, and a commit message that merely
+        # mentions the marker must never select final landing mode.
+        self.assertNotIn('head_commit.message', yaml.safe_dump(foundation))
+        final = next(step for step in steps
+                     if 'check_landing.py --mode auto' in step.get('run', ''))
+        self.assertIn('steps.marker.outputs',
+                      final['env'].get('FINAL_LANDING', ''))
+
     def test_ci_binds_landing_mode_to_changes_policy_and_lane_identities(self):
         jobs = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']
         foundation = jobs['foundation']
