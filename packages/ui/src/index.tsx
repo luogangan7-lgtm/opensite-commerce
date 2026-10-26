@@ -146,13 +146,13 @@ export function DataTable({ columns, rows, caption, loading = false, emptyLabel 
         <caption>{caption}</caption>
         <thead><tr>{columns.map(column => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead>
         <tbody>
-          {!loading && rows.map(row => <tr key={row.id}>{columns.map(column => <td key={column.key}>{row[column.key]}</td>)}</tr>)}
+          {loading || rows.length === 0 ? (
+            <tr><td colSpan={Math.max(columns.length, 1)} className="os-table__state">
+              <span role="status">{loading ? t('common.loading') : (emptyLabel ?? t('table.empty'))}</span>
+            </td></tr>
+          ) : rows.map(row => <tr key={row.id}>{columns.map(column => <td key={column.key}>{row[column.key]}</td>)}</tr>)}
         </tbody>
       </table>
-      {/* Status belongs to the visible region, not the potentially wider column grid. */}
-      {(loading || rows.length === 0) && <div className="os-table__state" role="status">
-        {loading ? t('common.loading') : (emptyLabel ?? t('table.empty'))}
-      </div>}
     </div>
   );
 }
