@@ -192,18 +192,26 @@ func TestReturnsPGTrustedLedgerFailureRecovery(t *testing.T) {
 				return err
 			}); err != nil { t.Fatal(err) }
 			input := returnscontract.RefundInput{ReturnID: ret.ID, ExpectedVersion: ret.OrderVersion, IdempotencyKey: "trusted-ledger-refund"}
-			setAccountStatus := func(status string) {
-				t.Helper()
-				if err := f.maint.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
-					_, err := tx.Exec(ctx, "UPDATE app.ledger_accounts SET status=$2 WHERE tenant_id=$1 AND code='sales'", f.tenant, status)
-					return err
-				}); err != nil { t.Fatal(err) }
-			}
 			if failure == "account binding" {
-				setAccountStatus("inactive")
+				var accounts returnscontract.RefundAccounts
+				if err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+					return tx.QueryRow(ctx, `SELECT
+					 (SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='sales'),
+					 (SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='tax'),
+					 (SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='shipping'),
+					 (SELECT id::text FROM app.ledger_accounts WHERE tenant_id=$1 AND code='cash')`, f.tenant).Scan(&accounts.Income, &accounts.Tax, &accounts.Shipping, &accounts.Cash)
+				}); err != nil { t.Fatal(err) }
+				// Distinct valid IDs, but wrong trusted revenue/asset bindings:
+				// reach SQL account validation without mutating permanent accounts.
+				accounts.Income, accounts.Cash = accounts.Cash, accounts.Income
+				original := f.returns
+				capture := f.payments.Events()[1]
+				f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Ledger: f.journal,
+					Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: f.tenant, OrderID: f.order.ID, OrderVersion: capture.OrderVersion, ProviderRef: capture.ProviderRef, Paid: capture.Amount}},
+					Accounts: fulfillmentAccounts{tenant: f.tenant, accounts: accounts}})
 				if _, err := f.returns.Refund(f.ctx, f.tenant, input); !errors.Is(err, returnscontract.ErrUnavailable) { t.Fatalf("trusted account failure must be unavailable: %v", err) }
 				if len(f.payments.Events()) != 2 { t.Fatal("invalid trusted account reached provider") }
-				setAccountStatus("active")
+				f.returns = original
 			} else {
 				f.journal.fail = true
 				if _, err := f.returns.Refund(f.ctx, f.tenant, input); !errors.Is(err, returnscontract.ErrUnavailable) { t.Fatalf("post-PSP failure must be unavailable: %v", err) }

@@ -65,17 +65,21 @@ jobs:
           if probe == 'source':
               path = Path('internal/modules/checkout/internal/service/stripe_admission.go')
               old = 'r.SourceKind != "cart" || '
-              new = ''
+              source = path.read_text()
+              assert source.count(old) == 1, 'mutation anchor drift'
+              path.write_text(source.replace(old, '', 1))
           else:
-              path = Path('internal/db/payments_webhook_integration_test.go')
-              old = '\tm, err := payments.New(payments.Config{Key: p.key'
-              new = ('\toriginal := apply\n'
-                     '\tapply = func(ctx context.Context, tx pgx.Tx, event payment.VerifiedEvent) (bool, error) {\n'
-                     '\t\t_, _ = p.f.provider.' + probe + '(ctx, payment.PaymentOperation{})\n'
-                     '\t\treturn original(ctx, tx, event)\n\t}\n' + old)
-          source = path.read_text()
-          assert source.count(old) == 1, 'mutation anchor drift'
-          path.write_text(source.replace(old, new, 1))
+              # Inject specifically AFTER the lawful Returns refund/replay, at
+              # the RMA fact-consumption boundary; setup Capture cannot kill it.
+              path = Path('internal/db/refund_identity_integration_test.go')
+              source = path.read_text()
+              start = source.index('func TestReturnsAndProviderFactHaveOneRefundJournal(')
+              end = source.index('\nfunc ', start + 5)
+              target = source[start:end]
+              old = '\t\tif _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err != nil {'
+              assert target.count(old) == 1, 'refund consumer mutation anchor drift'
+              new = '\t\t_, _ = p.f.provider.' + probe + '(p.f.ctx, payment.PaymentOperation{})\n' + old
+              path.write_text(source[:start] + target.replace(old, new, 1) + source[end:])
           PYCODE
       - name: Accepted baseline or exact failing mutation witness
         shell: bash
