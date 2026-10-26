@@ -36,6 +36,29 @@ def unbounded_apt_calls(body):
 
 
 class FoundationLanes(unittest.TestCase):
+    def test_external_smtp_workflow_is_owner_gated(self):
+        path = ROOT / '.github/workflows/smtp-external-test.yml'
+        self.assertTrue(path.is_file(), 'SMTP_EXTERNAL_WORKFLOW_REQUIRED')
+        document = yaml.safe_load(path.read_text())
+        # PyYAML YAML 1.1 reads the unquoted key `on` as True.
+        self.assertEqual(document.get('on', document.get(True)), {'workflow_dispatch': None},
+                         'SMTP_EXTERNAL_DISPATCH_ONLY')
+        self.assertEqual(document['permissions'], {'contents': 'read'})
+        self.assertEqual(set(document['jobs']), {'smtp-test'})
+        job = document['jobs']['smtp-test']
+        self.assertEqual(job['environment'], 'smtp-test')
+        self.assertEqual(job['if'], "github.ref == 'refs/heads/main'")
+        self.assertLessEqual(job['timeout-minutes'], 5)
+        for other in (ROOT / '.github/workflows').glob('*'):
+            if other != path and other.suffix in ('.yml', '.yaml'):
+                self.assertNotIn('SMTP_TEST_', other.read_text(), 'SMTP_EXTERNAL_SECRET_ISOLATION')
+        for folder in ('cmd/server', 'cmd/worker', 'internal/bootstrap'):
+            for source in (ROOT / folder).rglob('*.go'):
+                if source.name.endswith('_test.go'):
+                    continue
+                self.assertNotIn('ExternalTestSenderFromEnv', source.read_text(),
+                                 'SMTP_EXTERNAL_PRODUCTION_WIRING')
+
     def test_existing_gate_inventory_and_fixture_order(self):
         parts = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']['foundation-lane']
         steps = parts['steps']
