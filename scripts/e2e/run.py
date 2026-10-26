@@ -51,6 +51,8 @@ B2B_TESTS = {"real B2B inquiry quote approval prepayment order"}
 ACTIVE_TESTS |= B2B_TESTS
 REDRIVE_TESTS = {"real admin notification failure redrive delivers once with scoped isolation"}
 ACTIVE_TESTS |= REDRIVE_TESTS
+DATARIGHTS_TESTS = {"real registered customer export and erasure journey"}
+ACTIVE_TESTS |= DATARIGHTS_TESTS
 GAP_TESTS = set()
 
 
@@ -94,7 +96,7 @@ def verify_browser_report(report):
                         raise RuntimeError("MVP E2E duplicate browser assertion")
                     observed[key] = [item.get("status") for item in test.get("results", [])]
                     filename = Path(spec.get("file", "")).name
-                    expected_file = "redrive.spec.ts" if spec.get("title") in REDRIVE_TESTS else "rma.spec.ts" if spec.get("title") in RMA_TESTS else "b2b.spec.ts" if spec.get("title") in B2B_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
+                    expected_file = "datarights.spec.ts" if spec.get("title") in DATARIGHTS_TESTS else "redrive.spec.ts" if spec.get("title") in REDRIVE_TESTS else "rma.spec.ts" if spec.get("title") in RMA_TESTS else "b2b.spec.ts" if spec.get("title") in B2B_TESTS else "mvp-gaps.spec.ts" if spec.get("title") in GAP_TESTS | ADMIN_TESTS else (
                         "purchase.spec.ts" if spec.get("title") in PURCHASE_TESTS else (
                         "payments.spec.ts" if spec.get("title") in PAYMENT_TESTS else (
                         "admin.spec.ts" if spec.get("title", "").startswith("real ") else "storefront.spec.ts")))
@@ -109,7 +111,7 @@ def verify_browser_report(report):
     expected.update({(project, title): ["skipped"] for project in ("desktop", "mobile") for title in GAP_TESTS})
     stats = report.get("stats", {})
     if observed != expected or any(stats.get(key) != value for key, value in
-                                   {"expected": 42, "skipped": 0, "unexpected": 0, "flaky": 0}.items()):
+                                   {"expected": 44, "skipped": 0, "unexpected": 0, "flaky": 0}.items()):
         raise RuntimeError("MVP E2E requires the exact desktop/mobile assertion and declared FIXME inventory")
     return stats
 
@@ -164,6 +166,30 @@ def verify_b2b_witness(rows):
     return verify(rows)
 
 
+SUMMARY_PATH = 'test-results/e2e/summary.json'
+
+
+def verify_upload_paths(workflow):
+    """The sole artifact path is one summary file; directories/globs fail closed."""
+    uploads = list(re.finditer(r'(?m)^ *uses: *actions/upload-artifact@|^ *- uses: *actions/upload-artifact@', workflow))
+    if len(uploads) != 1:
+        raise RuntimeError('MVP E2E upload allowlist differs')
+    block = workflow[uploads[0].end():].split('\n      - ', 1)[0]
+    lines = block.splitlines()
+    paths = []
+    for i, line in enumerate(lines):
+        if re.match(r'^ *path:', line):
+            indent = len(line) - len(line.lstrip())
+            value = line.strip().removeprefix('path:').strip()
+            # Reject YAML block/folded scalars and implicit continuation lines.
+            if i + 1 < len(lines) and lines[i + 1].strip() and len(lines[i + 1]) - len(lines[i + 1].lstrip()) > indent:
+                raise RuntimeError('MVP E2E upload allowlist differs')
+            paths.append(value)
+    if paths != [SUMMARY_PATH]:
+        raise RuntimeError('MVP E2E upload allowlist differs')
+    return paths
+
+
 def run(receipt_dir):
     # Import application-side tooling only after main's CI guard. Reuse its
     # stdin PostgreSQL secret transport and permission/job witnesses unchanged.
@@ -177,10 +203,11 @@ def run(receipt_dir):
 
     ops_common.compose_command = compose_command
     import ops_drill
-    from e2e import purchase, rma, b2b, privacy
+    from e2e import purchase, rma, b2b, privacy, datarights
     # Includes the dedicated RETURNS coordinator; one registry drives all secrets.
     from ops_deploy import LOGIN_ROLES
 
+    verify_upload_paths((ROOT / '.github/workflows/mvp-e2e.yml').read_text())
     receipt_dir = receipt_dir.resolve()
     if not receipt_dir.is_relative_to(ROOT / "work/C24a"):
         raise RuntimeError("MVP E2E receipts must remain in work/C24a")
@@ -204,9 +231,23 @@ def run(receipt_dir):
         (receipt_dir / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
 
     def redact(payload):
-        for value in credentials.values():
+        for value in set(credentials.values()):
             payload = payload.replace(value.encode(), b"[REDACTED]")
         return payload
+
+    summary_file = ROOT / SUMMARY_PATH
+    summary_file.write_text('[]\n')
+    for phase in ('base', 'privacy'):
+        (ROOT / f'test-results/e2e/{phase}/summary.json').unlink(missing_ok=True)
+
+    def browser_summary(name):
+        phase = 'base' if name == 'browser' else 'privacy'
+        phase_file = ROOT / f'test-results/e2e/{phase}/summary.json'
+        rows = json.loads(phase_file.read_text()) if phase_file.is_file() else []
+        existing = json.loads(summary_file.read_text())
+        summary_file.write_text(json.dumps(existing + rows) + '\n')
+        for row in rows:
+            print(json.dumps(row, separators=(',', ':')), flush=True)
 
     def command(args, name, timeout=900, env=None, check=True):
         # Kill the entire owned CLI process group on timeout/interruption;
@@ -218,12 +259,17 @@ def run(receipt_dir):
         except BaseException:
             os.killpg(proc.pid, signal.SIGTERM)
             try:
-                proc.communicate(timeout=5)
+                output, _ = proc.communicate(timeout=5)
             except subprocess.TimeoutExpired:
                 os.killpg(proc.pid, signal.SIGKILL)
-                proc.communicate(timeout=5)
+                output, _ = proc.communicate(timeout=5)
+            (receipt_dir / (name + ".log")).write_bytes(redact(output))
+            if name in ('browser', 'privacy-browser'):
+                browser_summary(name)
             raise
         (receipt_dir / (name + ".log")).write_bytes(redact(output))
+        if name in ('browser', 'privacy-browser'):
+            browser_summary(name)
         if check and proc.returncode:
             raise RuntimeError(f"MVP E2E {name} failed (exit {proc.returncode}; see service logs)")
         return proc.returncode
@@ -342,6 +388,16 @@ def run(receipt_dir):
               INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
               SELECT t.id,u.id,'owner' FROM app.tenants t CROSS JOIN app.users u
               WHERE u.email='rma-staff@example.test' AND t.id IN ('{TENANT}','{owner_tenant}');""")
+            # Privacy staff identities only; all asserted customer/export/erase facts are HTTP writes.
+            ops_common.psql(f"""INSERT INTO app.users(email,password_hash)
+              SELECT 'datarights-'||r||'@example.test',u.password_hash FROM app.users u
+              CROSS JOIN unnest(ARRAY['owner','catalog_editor','viewer']) r
+              WHERE u.email='{variables['OPENSITE_E2E_OWNER_EMAIL']}';
+              INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
+              SELECT t.id,u.id,split_part(split_part(u.email,'@',1),'datarights-',2)
+              FROM app.tenants t CROSS JOIN app.users u WHERE u.email IN
+                ('datarights-owner@example.test','datarights-catalog_editor@example.test','datarights-viewer@example.test')
+              AND t.id IN ('{TENANT}','{owner_tenant}');""")
             os.environ["E2E_RELEASE_ID"] = receipt["publication"]["release_id"]
             receipt["steps"].append("real-cms-builder-membership-and-serving")
             receipt["steps"].append("deterministic-seed-rerun-and-real-signed-worker-job")
@@ -364,9 +420,9 @@ def run(receipt_dir):
             command(compose_command(["up", "-d", "--build", "--no-deps", "b2b-api"]), "b2b-api-start", timeout=300)
             ops_drill.healthy("http://127.0.0.1:8082")
             persist()
-            result = ROOT / "test-results/e2e/results.json"
+            result = ROOT / "test-results/e2e/base/results.json"
             result.unlink(missing_ok=True)  # only this CI harness's own stale result
-            receipt["browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "browser"]), "browser", timeout=900, check=False)
+            receipt["browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "--env", "E2E_BROWSER_PHASE=base", "browser"]), "browser", timeout=900, check=False)
             if receipt["browser_exit"] != 0:
                 # Counts only: locate dependency failures without persisting proof tokens or credentials.
                 receipt["customer_registration_diagnostic"] = json.loads(ops_common.psql(
@@ -375,7 +431,8 @@ def run(receipt_dir):
                     "FROM app.customers WHERE tenant_id='" + TENANT + "' AND email LIKE 'c09f2-%';"))
                 persist()
                 raise RuntimeError("MVP E2E browser assertions failed")
-            receipt["browser_stats"] = verify_browser_report(json.loads(result.read_text()))
+            base_report = json.loads(result.read_text())
+            receipt["base_browser_stats"] = base_report["stats"]
             command(compose_command(["stop", "--timeout", "30", "notification-worker"]), "notification-worker-stop", timeout=60)
             receipt['notification_redrive'] = redrive.verify(json.loads(ops_common.psql(redrive.WITNESS_SQL)))
             receipt['notification_mailpit'] = redrive.mailpit_witness()
@@ -405,6 +462,25 @@ def run(receipt_dir):
             receipt["b2b"] = {"status": "FAIL"}
             persist()
             receipt["b2b"] = verify_b2b_witness(json.loads(ops_common.psql(b2b.WITNESS_SQL)))
+            # Existing short-lived stock witnesses are fixed before the real 15-minute TTL cases.
+            # A second real browser process adds privacy; no asserted SQL state is rewritten.
+            receipt["privacy_browser_exit"] = command(compose_command(["run", "--rm", "--no-deps", "--env", "E2E_BROWSER_PHASE=privacy", "browser"]), "privacy-browser", timeout=2700, check=False)
+            if receipt["privacy_browser_exit"] != 0:
+                raise RuntimeError("MVP E2E privacy browser assertions failed")
+            privacy_report = json.loads((ROOT / 'test-results/e2e/privacy/results.json').read_text())
+            combined = {"suites": base_report["suites"] + privacy_report["suites"], "stats": {
+                key: base_report["stats"][key] + privacy_report["stats"][key]
+                for key in ("expected", "skipped", "unexpected", "flaky")}}
+            (ROOT / 'test-results/e2e/results.json').write_text(json.dumps(combined))
+            receipt["browser_stats"] = verify_browser_report(combined)
+            receipt["datarights"] = datarights.witness(ops_common.psql, ROOT)
+            for journey in receipt["datarights"]["projects"]:
+                for export in journey["exports"]:  # UUID-validated by the witness.
+                    command(compose_command(["exec", "-T", "api", "/bin/sh", "-c",
+                        'test ! -e "$1" && test ! -L "$1"', "privacy-artifact-check",
+                        f"/var/lib/opensite/media/data-rights/{TENANT}/{export}.json"]),
+                        "privacy-artifact-absent-" + export, timeout=10)
+            receipt["datarights"]["artifacts_removed"] = 4
             receipt["status"] = "PASS"
             receipt["steps"].append("browser-and-accessibility-assertions")
         except BaseException as exc:
@@ -430,9 +506,15 @@ def run(receipt_dir):
                 receipt["status"] = "FAIL"
                 receipt["collection_errors"] = cleanup_errors
             persist()
-            os.environ.clear()
-            os.environ.update(saved)
-            ops_common.compose_command = base_compose_command
+            try:
+                verify_upload_paths((ROOT / '.github/workflows/mvp-e2e.yml').read_text())
+                if os.environ.get('GITHUB_OUTPUT'):
+                    with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                        output.write('summary_safe=true\n')
+            finally:
+                os.environ.clear()
+                os.environ.update(saved)
+                ops_common.compose_command = base_compose_command
             if cleanup_errors:
                 raise RuntimeError("MVP E2E service evidence or owned cleanup failed")
     print("PASS: MVP E2E in GitHub Actions; exact SHA/run and browser counts in receipt.json", flush=True)

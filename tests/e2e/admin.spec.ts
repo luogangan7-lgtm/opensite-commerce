@@ -2,8 +2,12 @@
  * Dependencies: production admin static build, same-origin proxy to the actual API, owner from cmd/bootstrap-admin.
  * Invariants: no simulated identity, cookie fabrication or API interception; the session cookie is only observed.
  */
-import { expect, test, type Page } from '@playwright/test';
-import { assertPublicOnly, audit, fixture } from './fixture';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixture';
+import { assertPublicOnly, audit, fixture, fillPassword } from './fixture';
+
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
 const sessionCookie = '__Host-osc_admin_session';
 const hasSession = async (page: Page) =>
@@ -23,7 +27,7 @@ test('real admin login rejects malformed and unknown credentials without a sessi
     if (request.url() === `${fixture.admin}/api/v1/auth/login` && request.method() === 'POST') loginAttempts++;
   });
   await page.getByLabel('Email', { exact: true }).fill('invalid-email');
-  await page.getByLabel('Password', { exact: true }).fill(crypto.randomUUID());
+  await fillPassword(page, crypto.randomUUID());
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   expect(await page.getByLabel('Email', { exact: true }).evaluate(element =>
     (element as HTMLInputElement).validity.typeMismatch)).toBe(true);
@@ -60,7 +64,7 @@ test('real guarded catalog route sends anonymous visitors to login without priva
 test('real bootstrapped owner logs in, holds a session and signs out', async ({ page }, info) => {
   await page.goto(`${fixture.admin}/login`);
   await page.getByLabel('Email', { exact: true }).fill(fixture.ownerEmail);
-  await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+  await fillPassword(page, fixture.ownerPassword);
   const login = page.waitForResponse(response =>
     response.url() === `${fixture.admin}/api/v1/auth/login` && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -115,7 +119,7 @@ test('real owner session reads and creates tenant catalog through production aut
   test.setTimeout(150_000);
   await page.goto(`${fixture.admin}/login`);
   await page.getByLabel('Email', { exact: true }).fill(fixture.ownerEmail);
-  await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+  await fillPassword(page, fixture.ownerPassword);
   const login = page.waitForResponse(response =>
     response.url() === `${fixture.admin}/api/v1/auth/login` && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();

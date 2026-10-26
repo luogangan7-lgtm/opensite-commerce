@@ -3,9 +3,13 @@
  * Invariants: no interception/fabricated receipt; pending receipt alone never means paid.
  */
 import { createHmac } from 'node:crypto';
-import { expect, test, type Page } from '@playwright/test';
-import { audit, fixture, publishedSite } from './fixture';
-import { start } from './purchase-helpers';
+import { expect} from '@playwright/test';
+import { test } from './fixture';
+import { audit, fixture, publishedSite, fillPassword } from './fixture';
+import { start, registerAndLogin } from './purchase-helpers';
+
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
 const api = `${fixture.storefront}/purchase/api`;
 test('published guest purchase persists captured order', async ({ page, request }, info) => {
@@ -64,36 +68,6 @@ test('pending receipt alone never shows paid', async ({ page, request }, info) =
   await audit(page, info);
 });
 
-async function registerAndLogin(page: Page, email: string) {
-  const password='CI-only-c09f2-password!';
-  await page.goto(`${fixture.storefront}/account`);
-  await expect(page.locator('[data-customer-ready]')).toBeVisible();
-  await page.getByLabel('Email', {exact:true}).fill(email);
-  await page.getByLabel('Password', {exact:true}).fill(password);
-  await page.getByRole('button',{name:'Register',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('verification email has been sent');
-  let messageId='';
-  await expect.poll(async()=>{
-    const listing=await page.request.get('http://127.0.0.1:8025/api/v1/messages?limit=50');
-    const data=await listing.json();
-    messageId=data.messages.find((m:{ID:string;To:{Address:string}[]})=>m.To.some(to=>to.Address===email))?.ID??'';
-    return messageId;
-  }).not.toBe('');
-  expect(messageId).toMatch(/^[A-Za-z0-9-]{1,128}$/);
-  const message=await (await page.request.get(`http://127.0.0.1:8025/api/v1/message/${messageId}`)).json();
-  const proof=new URL(message.Text.trim().split('\n').at(-1));
-  expect(proof.origin).toBe('https://store.e2e.test');expect(proof.pathname).toBe('/customer/verify');
-  expect(new URLSearchParams(proof.hash.slice(1)).get('tenant')).toBe(fixture.tenantId);
-  await page.goto(`${fixture.storefront}/customer/verify${proof.hash}`);
-  await expect(page.getByRole('button',{name:'Verify email',exact:true})).toBeEnabled();
-  await expect(page).toHaveURL(`${fixture.storefront}/customer/verify`);
-  await page.getByRole('button',{name:'Verify email',exact:true}).click();
-  await expect(page.getByRole('status').filter({hasText:'Email verified.'})).toBeVisible();
-  await page.goto(`${fixture.storefront}/account`);
-  await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);
-  await page.getByRole('button',{name:'Sign in',exact:true}).click();
-  await expect(page.getByRole('link',{name:'Order history',exact:true})).toBeVisible();
-}
 
 test('registered purchase appears only in owned history',async({page,request},info)=>{
   test.setTimeout(90_000);
@@ -108,10 +82,10 @@ test('registered purchase appears only in owned history',async({page,request},in
   const history=await list.json();expect(history.items).toHaveLength(1);expect(history.items[0]).toMatchObject({id:checkout.order_id,state:'paid',total_minor:'3140'});
   await page.goto(`${fixture.storefront}/account/orders`);
   await expect(page.getByRole('button',{name:`Order #${history.items[0].order_number}`,exact:true})).toBeVisible();
-  await audit(page,info);await info.attach('history-list',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  await audit(page,info);
   await page.getByRole('button',{name:`Order #${history.items[0].order_number}`,exact:true}).click();
   await expect(page.getByRole('region',{name:'Order details'})).toContainText('C24-CANVAS-TOTE');
-  await audit(page,info);await info.attach('history-detail',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  await audit(page,info);
   const oldSession=(await page.context().cookies()).find(c=>c.name==='__Host-osc_customer_session');
   expect(oldSession).toBeDefined();
   await page.goto(`${fixture.storefront}/account`);await page.getByRole('button',{name:'Sign out',exact:true}).click();
@@ -133,7 +107,7 @@ test('registered purchase appears only in owned history',async({page,request},in
   expect((await page.request.get(backend)).status()).toBe(401);
   expect((await page.request.get(`${api}/history`)).status()).toBe(401);
   await page.context().clearCookies();
-  await page.goto(`${fixture.admin}/login`);await page.getByLabel('Email',{exact:true}).fill(fixture.ownerEmail);await page.getByLabel('Password',{exact:true}).fill(fixture.ownerPassword);
+  await page.goto(`${fixture.admin}/login`);await page.getByLabel('Email',{exact:true}).fill(fixture.ownerEmail);await fillPassword(page, fixture.ownerPassword);
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Open a store',exact:true})).toBeVisible();
   expect((await page.request.get(backend)).status()).toBe(401);

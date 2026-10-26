@@ -5,8 +5,12 @@
  * Quote/inquiry/approval UI does not exist: those steps use their real HTTP APIs.
  */
 import { createHmac, randomUUID } from 'node:crypto';
-import { expect, test, type Page } from '@playwright/test';
-import { audit, fixture, publishedSite } from './fixture';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixture';
+import { audit, fixture, publishedSite, fillPassword } from './fixture';
+
+// Credentials/capabilities must never enter automatic capture artifacts.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
 const api = 'http://127.0.0.1:8082';
 const tenant = `${api}/api/v1/t/${fixture.tenantId}`;
@@ -16,7 +20,7 @@ async function login(page: Page, email: string) {
   await page.goto(`${fixture.storefront}/account`);
   await expect(page.locator('[data-customer-ready]')).toBeVisible();
   await page.getByLabel('Email', { exact: true }).fill(email);
-  await page.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+  await fillPassword(page, fixture.ownerPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Order history', exact: true })).toBeVisible();
   const response = await page.request.get(`${tenant}/customer/session`, { headers: { Origin: storeOrigin } });
@@ -45,7 +49,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     expect(inquiry.status).toBe('received');
     await staff.goto(`${fixture.admin}/login`);
     await staff.getByLabel('Email', { exact: true }).fill('b2b-staff@example.test');
-    await staff.getByLabel('Password', { exact: true }).fill(fixture.ownerPassword);
+    await fillPassword(staff, fixture.ownerPassword);
     await staff.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(staff.getByRole('heading', { name: 'Open a store', exact: true })).toBeVisible();
     const staffSession = await (await staff.request.get(`${fixture.admin}/api/v1/auth/session`)).json();
@@ -60,7 +64,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
         description: 'Negotiated ceramic mugs', quantity: 2, unit_price: 1000, tax_category: 'standard' }],
       destination: { country: 'US', subdivision: '' }, shipping_profile_id: 'c2400014-0000-4000-8000-000000000001', weight_g: 200,
     } });
-    expect(quoteResponse.status(), await quoteResponse.text()).toBe(201);
+    expect(quoteResponse.status(), 'Quote create status').toBe(201);
     const quote = await quoteResponse.json();
     expect(quote).toMatchObject({ status: 'draft', snapshot: { subtotal: 2000, tax_amount: 200, shipping_amount: 500, total: 2700 } });
     const sellerURL = `${tenant}/quotes/${quote.id}`, buyerURL = `${publicAPI}/quotes/${quote.id}`;
@@ -94,7 +98,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     expect((await transition(staff, sellerURL, 'withdraw', staffHeaders, approved.headers().etag)).status()).toBe(409);
     expect((await transition(staff, sellerURL, 'send', staffHeaders, approved.headers().etag)).status()).toBe(409);
     const conversion = await convert();
-    expect(conversion.status(), await conversion.text()).toBe(201);
+    expect(conversion.status(), 'Quote conversion status').toBe(201);
     const receipt = await conversion.json();
     expect(receipt).toMatchObject({ quote_id: quote.id, amount: '2700', currency: 'USD', state: 'pending_payment' });
     expect(receipt.provider_ref).toMatch(/^fake_/);
@@ -117,7 +121,7 @@ test('real B2B inquiry quote approval prepayment order', async ({ page, browser,
     for (let attempt = 0; attempt < 2; attempt++) {
       const payment = await request.post(`${api}/api/v1/testing/payments/fake/webhook`, { data: raw,
         headers: { 'Content-Type': 'application/json', 'X-Fake-Signature': signature } });
-      expect(payment.status(), await payment.text()).toBe(200);
+      expect(payment.status(), 'Payment status').toBe(200);
       expect(await payment.json()).toEqual({ event_id: event.event_id, status: 'processed' });
     }
     const persisted = await page.request.get(orderURL, { headers: buyerHeaders });
