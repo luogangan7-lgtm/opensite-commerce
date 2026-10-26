@@ -101,8 +101,24 @@ func TestPGListingFollowups(t *testing.T) {
 		label := "listing-race-" + uuid.NewString()
 		ready, release := make(chan struct{}), make(chan struct{})
 		held := make(chan error, 1)
+		holderCtx, holderCancel := context.WithCancel(ctx)
+		stopped := make(chan struct{})
+		defer func() {
+			select {
+			case <-release:
+			default:
+				close(release)
+			}
+			holderCancel()
+			select {
+			case <-stopped:
+			case <-time.After(5 * time.Second):
+				t.Error("listing holder did not stop after cancellation")
+			}
+		}()
 		go func() {
-			held <- admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			defer close(stopped)
+			held <- admin.InMaintenance(holderCtx, func(ctx context.Context, tx pgx.Tx) error {
 				if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, gate); err != nil {
 					return err
 				}
@@ -115,14 +131,9 @@ func TestPGListingFollowups(t *testing.T) {
 				}
 			})
 		}()
-		<-ready
-		defer func() {
-			select {
-			case <-release:
-			default:
-				close(release)
-			}
-		}()
+		if err := waitListingHolder(ctx, ready, held); err != nil {
+			t.Fatal(err)
+		}
 		router := func(suffix string, park bool) *Service {
 			return New(Config{Run: func(ctx context.Context, tenant string, fn func(*db.Queries) error) error {
 				return runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
@@ -273,4 +284,41 @@ func TestPGListingFollowups(t *testing.T) {
 		}
 	})
 
+}
+
+// The helper is shared with the real holder setup above, so these failures exercise
+// the exact wait used by the PostgreSQL race, including pre-callback failures.
+func waitListingHolder(ctx context.Context, ready <-chan struct{}, done <-chan error) error {
+	select {
+	case <-ready:
+		return nil
+	case err := <-done:
+		return fmt.Errorf("holder exited before ready: %v", err)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func TestListingHolderStartupFailure(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		ctx, cancel := context.WithCancel(context.Background())
+		ready, done, result := make(chan struct{}), make(chan error, 1), make(chan error, 1)
+		if canceled {
+			cancel()
+		} else {
+			done <- fmt.Errorf("holder never entered callback")
+		}
+		go func() { result <- waitListingHolder(ctx, ready, done) }()
+		select {
+		case err := <-result:
+			if err == nil {
+				t.Error("ListingHolder_STARTUP: failed holder accepted")
+			}
+		case <-time.After(time.Second):
+			t.Error("ListingHolder_STARTUP: ready wait ignored startup failure/cancellation")
+			close(ready)
+			<-result
+		}
+		cancel()
+	}
 }

@@ -50,6 +50,10 @@ BEGIN
  IF (SELECT version FROM app.price_lists WHERE price_lists.id=list_key)<>2 OR (SELECT unit_amount FROM app.price_entries WHERE price_list_id=list_key)<>125 THEN RAISE EXCEPTION 'STAFF_PRICING_GATE rollback'; END IF;
  PERFORM app.pricing_write_entry(list_key,sku,1,NULL,2);
  IF EXISTS(SELECT FROM app.price_entries WHERE price_list_id=list_key) THEN RAISE EXCEPTION 'STAFF_PRICING_GATE clear'; END IF;
+ l:=app.pricing_write_entry(list_key,sku,1,NULL,3);
+ IF (l->>'version')::bigint<>3 OR (SELECT version FROM app.price_lists WHERE id=list_key)<>3 THEN
+  RAISE EXCEPTION 'PRICING_CLEAR_MISSING_NOOP'; END IF;
+ PERFORM pg_temp.pricing_reject(format('SELECT app.pricing_write_entry(%L,%L,1,NULL,2)',list_key,sku),'P4120');
  PERFORM app.pricing_write_list(list_key,3,body||'{"status":"archived"}'::jsonb);
  PERFORM pg_temp.pricing_reject(format('SELECT app.pricing_write_entry(%L,%L,1,1,4)',list_key,sku),'P4092');
  PERFORM pg_temp.pricing_reject(format('SELECT app.pricing_write_list(%L,4,%L)',list_key,body),'P4092');
