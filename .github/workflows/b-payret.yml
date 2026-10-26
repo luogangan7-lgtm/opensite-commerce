@@ -1,0 +1,96 @@
+name: b-payret-regressions
+on:
+  pull_request:
+  push:
+    branches: [codex/b-payret-probes]
+permissions:
+  contents: read
+jobs:
+  posting-and-transport:
+    if: github.event_name == 'pull_request' && github.head_ref == 'codex/b-payret'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - name: Trusted posting and transport regressions
+        run: go test -race -count=1 -v ./internal/modules/returns/... ./internal/modules/payments
+  fact-and-source:
+    if: github.event_name == 'push' || github.head_ref == 'codex/b-payret'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        probe: ${{ fromJSON(github.event_name == 'push' && '["Capture","Cancel","Refund","source"]' || '["baseline"]') }}
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      OPENSITE_REQUIRE_PGX_FIXTURES: '1'
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      PROBE: ${{ matrix.probe }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - name: Disposable migrated PostgreSQL
+        run: |
+          go mod download
+          python3 scripts/pending_migrations.py ci-normalize
+          ./scripts/ci_apt_install.sh postgresql-client
+          bash scripts/migrate_river.sh
+          bash scripts/migrate.sh
+      - name: Inject one defect in this disposable CI checkout
+        if: matrix.probe != 'baseline'
+        run: |
+          python3 - <<'PYCODE'
+          import os
+          from pathlib import Path
+          probe = os.environ['PROBE']
+          if probe == 'source':
+              path = Path('internal/modules/checkout/internal/service/stripe_admission.go')
+              old = 'r.SourceKind != "cart" || '
+              new = ''
+          else:
+              path = Path('internal/db/payments_webhook_integration_test.go')
+              old = '\tm, err := payments.New(payments.Config{Key: p.key'
+              new = ('\toriginal := apply\n'
+                     '\tapply = func(ctx context.Context, tx pgx.Tx, event payment.VerifiedEvent) (bool, error) {\n'
+                     '\t\t_, _ = p.f.provider.' + probe + '(ctx, payment.PaymentOperation{})\n'
+                     '\t\treturn original(ctx, tx, event)\n\t}\n' + old)
+          source = path.read_text()
+          assert source.count(old) == 1, 'mutation anchor drift'
+          path.write_text(source.replace(old, new, 1))
+          PYCODE
+      - name: Accepted baseline or exact failing mutation witness
+        shell: bash
+        run: |
+          pattern='^(TestReturnsAndProviderFactHaveOneRefundJournal|TestStripePGConsent.*)$'
+          if [[ "$PROBE" == baseline ]]; then
+            go test -race -tags pgx -count=1 -v -timeout=10m -run "$pattern" ./internal/db
+          else
+            set +e
+            go test -race -tags pgx -count=1 -v -timeout=10m -run "$pattern" ./internal/db 2>&1 | tee "$RUNNER_TEMP/b-payret-$PROBE.log"
+            result=${PIPESTATUS[0]}
+            set -e
+            test "$result" -ne 0
+            marker=RETURNS_FACT_COMMAND_RED
+            if [[ "$PROBE" == source ]]; then marker=ADOPT_SOURCE_RED; fi
+            grep -q "$marker" "$RUNNER_TEMP/b-payret-$PROBE.log"
+            echo "Mutation $PROBE rejected by $marker; candidate head $GITHUB_SHA"
+          fi
