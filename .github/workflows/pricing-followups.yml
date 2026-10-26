@@ -1,0 +1,71 @@
+# Responsibility: independent causal regressions for b-pricing; no failure masks another.
+# Dependencies: pinned foundation toolchain and disposable PG; called by PR CI.
+name: pricing-followups
+on:
+  pull_request:
+    paths:
+      - 'internal/modules/pricing/**'
+      - 'internal/modules/catalog/**'
+      - 'internal/modules/media/**'
+      - 'internal/modules/publish/**'
+      - 'internal/tenanttx/pgxadapter/**'
+      - 'migrations/**'
+      - 'tests/db_*pricing.sql'
+      - 'tests/db_storefront_serving.sql'
+      - 'tests/test_modules.py'
+      - 'scripts/check_modules.py'
+      - '.github/workflows/pricing-followups.yml'
+permissions:
+  contents: read
+jobs:
+  regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_PASSWORD: ci_test_only
+          POSTGRES_DB: opensite
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      GOTOOLCHAIN: local
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      C07_FIXTURE_PASSWORD: ci_catalog_test_only
+      C07_DATABASE_URL: postgres://c07_runtime:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
+      C07_MEDIA_DATABASE_URL: postgres://c07_media:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
+      C22A_DATABASE_URL: postgres://c07_runtime:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
+      C22A_MAINTENANCE_DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      OPENSITE_REQUIRE_PGX_FIXTURES: '1'
+      OPENSITE_DISPOSABLE_PG: '1'
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - name: Migrate disposable PostgreSQL
+        id: setup
+        run: |
+          ./scripts/ci_apt_install.sh postgresql-client
+          go mod download
+          python3 scripts/pending_migrations.py ci-normalize
+          ./scripts/migrate_river.sh
+          ./scripts/migrate.sh
+      - name: Missing tier preserves version
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_staff_pricing.sql
+      - name: OLD and NEW price-entry invalidation
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_storefront_serving.sql
+      - name: Trusted transaction review file negative control
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: python3 -m unittest tests.test_modules.GovernanceTests.test_trusted_tx_call_in_export_review_red
+      - name: Catalog holder and media HTTP negative gates
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: ./scripts/check_catalog_api.sh
+      - name: Publish candidate race and holder startup gates
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: go test -race -tags pgx -count=1 -timeout=5m -v -run 'TestServingPublishCandidateInvalidationPG|TestServingHolderStartupFailure' ./internal/modules/publish

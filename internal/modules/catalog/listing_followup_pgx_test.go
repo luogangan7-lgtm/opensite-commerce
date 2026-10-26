@@ -115,7 +115,9 @@ func TestPGListingFollowups(t *testing.T) {
 				}
 			})
 		}()
-		<-ready
+		if err := waitListingHolder(ctx, ready, held); err != nil {
+			t.Fatal(err)
+		}
 		defer func() {
 			select {
 			case <-release:
@@ -273,4 +275,35 @@ func TestPGListingFollowups(t *testing.T) {
 		}
 	})
 
+}
+
+// The helper is shared with the real holder setup above, so these failures exercise
+// the exact wait used by the PostgreSQL race, including pre-callback failures.
+func waitListingHolder(ctx context.Context, ready <-chan struct{}, done <-chan error) error {
+	<-ready
+	return nil
+}
+
+func TestListingHolderStartupFailure(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		ctx, cancel := context.WithCancel(context.Background())
+		ready, done, result := make(chan struct{}), make(chan error, 1), make(chan error, 1)
+		if canceled {
+			cancel()
+		} else {
+			done <- fmt.Errorf("holder never entered callback")
+		}
+		go func() { result <- waitListingHolder(ctx, ready, done) }()
+		select {
+		case err := <-result:
+			if err == nil {
+				t.Error("ListingHolder_STARTUP: failed holder accepted")
+			}
+		case <-time.After(time.Second):
+			t.Error("ListingHolder_STARTUP: ready wait ignored startup failure/cancellation")
+			close(ready)
+			<-result
+		}
+		cancel()
+	}
 }

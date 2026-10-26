@@ -304,6 +304,14 @@ class GovernanceTests(unittest.TestCase):
                 self.assert_red("MODULE_TRUSTED_TX")
                 (self.root / name).unlink()
 
+    def test_trusted_tx_call_in_export_review_red(self):
+        for name in ("export_surface_test.go", "reviewed_exports_test.go"):
+            with self.subTest(name=name):
+                self.source("internal/tenanttx/pgxadapter/" + name,
+                            'package pgxadapter\n\nfunc unauthorized() { runner.RunTrustedTx() }\n')
+                self.assert_red("MODULE_TRUSTED_TX")
+                (self.root / "internal/tenanttx/pgxadapter" / name).unlink()
+
     def test_trusted_tx_in_export_review_list_green(self):
         # The #153 export-surface review list must name every adapter export, including this seam.
         self.source("internal/tenanttx/pgxadapter/export_surface_test.go",

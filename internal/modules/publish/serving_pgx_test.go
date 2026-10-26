@@ -245,7 +245,9 @@ func TestStorefrontServingPG(t *testing.T) {
 				return rollback
 			})
 		}()
-		<-c1Held
+		if err := waitServingHolder(ctx, c1Held, c1); err != nil {
+			t.Fatal(err)
+		}
 		c2ctx, c2cancel := context.WithTimeout(ctx, 5*time.Second)
 		err = a.admin.InTenant(c2ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve_non_order($1::uuid,2,'checkout',gen_random_uuid(),'g12-c2-'||$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.archived, a.tenant); err != nil {
@@ -458,5 +460,89 @@ func TestStorefrontLegacyHostMovePG(t *testing.T) {
 	}
 	if third, err := public.Current(ctx, host); err != nil || third.TenantID != t2 || third.SiteID != second.SiteID {
 		t.Fatalf("served backfill: %+v %v", third, err)
+	}
+}
+
+// The helper is shared with the real holder setup above, so these failures exercise
+// the exact wait used by the PostgreSQL race, including pre-callback failures.
+func waitServingHolder(ctx context.Context, ready <-chan struct{}, done <-chan error) error {
+	<-ready
+	return nil
+}
+
+func TestServingHolderStartupFailure(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		ctx, cancel := context.WithCancel(context.Background())
+		ready, done, result := make(chan struct{}), make(chan error, 1), make(chan error, 1)
+		if canceled {
+			cancel()
+		} else {
+			done <- fmt.Errorf("holder never entered callback")
+		}
+		go func() { result <- waitServingHolder(ctx, ready, done) }()
+		select {
+		case err := <-result:
+			if err == nil {
+				t.Error("ServingHolder_STARTUP: failed holder accepted")
+			}
+		case <-time.After(time.Second):
+			t.Error("ServingHolder_STARTUP: ready wait ignored startup failure/cancellation")
+			close(ready)
+			<-result
+		}
+		cancel()
+	}
+}
+
+// G14: a first/new-member publish reads live inputs before its SKU rows become
+// visible. A mutation committed at that boundary must survive the folded set.
+func TestServingPublishCandidateInvalidationPG(t *testing.T) {
+	for _, first := range []bool{true, false} {
+		t.Run(fmt.Sprint("first=", first), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			defer cancel()
+			ids := servingIDs{product: newUUID(t), ready: newUUID(t), archived: newUUID(t), unpriced: newUUID(t)}
+			f := newCMSPG(t, ctx, servingSeed(ids, "CANDIDATE", 100, 2)...)
+			mutate := func(sql string, args ...any) {
+				t.Helper()
+				if err := f.admin.InTenant(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+					_, err := tx.Exec(ctx, sql, args...)
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			withCMSContextFor(t, true, f.tenant, func(authctx context.Context) {
+				var revision int64
+				var previous string
+				sku := ids.ready
+				if !first {
+					r, err := publishHome(t, authctx, f, 0, "")
+					if err != nil {
+						t.Fatal(err)
+					}
+					revision, previous, sku = 1, r.ReleaseID, ids.archived
+					mutate(`UPDATE app.product_variants SET lifecycle_status='ready' WHERE tenant_id=$1 AND id=$2`, f.tenant, sku)
+				}
+				mutate(`DELETE FROM app.serving_invalidations WHERE tenant_id=$1`, f.tenant)
+				called := false
+				f.beforeServingSeal = func() {
+					called = true
+					mutate(`UPDATE app.price_entries SET unit_amount=200 WHERE tenant_id=$1 AND sku_id=$2`, f.tenant, sku)
+				}
+				if _, err := publishHome(t, authctx, f, revision, previous); err != nil {
+					t.Fatal(err)
+				}
+				if !called || f.count(t, ctx, `SELECT count(*)::int FROM app.serving_invalidations WHERE tenant_id=$1 AND site_id=$2 AND reason='price_entry'`) != 1 {
+					t.Fatal("PUBLISH_CANDIDATE_LOST: mutation during publish not collected")
+				}
+				if n, err := servingRefresher(t, f).Sweep(ctx); err != nil || n != 1 {
+					t.Fatal("candidate refresh", n, err)
+				}
+				if f.count(t, ctx, `SELECT count(*)::int FROM app.storefront_serving WHERE tenant_id=$1 AND site_id=$2 AND convert_from(body,'UTF8')::jsonb @> '{"products":[{"skus":[{"price_minor":"200"}]}]}'`) != 1 {
+					t.Fatal("PUBLISH_CANDIDATE_STALE: refresh did not use committed price")
+				}
+			})
+		})
 	}
 }
