@@ -170,10 +170,11 @@ FULFILLMENT_DB=""
 CONVERSION_DB=""
 CLOCK_DB=""
 RECOVERY_DB=""
+PRIVACY_HARDENING_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1755,6 +1756,41 @@ db "$RECOVERY_DB" -f tests/db_role_matrix.sql >/dev/null
 db "$RECOVERY_DB" -f tests/db_refund_recovery.sql >/dev/null
 admin -c "DROP DATABASE $RECOVERY_DB" >/dev/null; RECOVERY_DB=""
 pass 'reconciliation upgrade preserves original Inbox evidence without invented bindings or money'
+
+# Privacy forward upgrade must refuse legacy guest tombstones whose typed proof
+# has already been deleted; reclassifying arbitrary JSON would invent ownership.
+privacy_bounds=(migrations/[0-9][0-9][0-9]_privacy_bounds.sql)
+[[ ${#privacy_bounds[@]} == 1 && -f ${privacy_bounds[0]} ]] || { bad 'exactly one privacy bounds migration required'; exit 1; }
+PRIVACY_HARDENING_DB=privacy_hardening_upgrade_$$
+admin -c "CREATE DATABASE $PRIVACY_HARDENING_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${privacy_bounds[0]} ]] || break
+ apply_forward "$PRIVACY_HARDENING_DB" "$f"
+done
+db "$PRIVACY_HARDENING_DB" <<'SQL' >/dev/null
+BEGIN;
+INSERT INTO app.tenants(name) VALUES('privacy-legacy-guest') RETURNING id AS t \gset
+INSERT INTO app.customers(tenant_id,email) VALUES(:'t','legacy-guest@example.invalid') RETURNING id AS c \gset
+SELECT set_config('app.tenant_id',:'t',true);
+SET LOCAL ROLE app_orders_executor;
+INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+ VALUES(:'t',uuidv7(),1,'privacy-legacy',sha256('legacy'::bytea),'{"email":"legacy-guest@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id AS o \gset
+RESET ROLE;
+INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES(:'t',:'c',:'o');
+SET LOCAL ROLE app_runtime;
+SELECT app.data_rights_erase_customer(:'c','service',uuidv7());
+COMMIT;
+SQL
+if out=$(apply_forward "$PRIVACY_HARDENING_DB" "${privacy_bounds[0]}" 2>&1); then
+ bad 'PRIVACY_UPGRADE accepted ambiguous legacy guest ownership'
+elif [[ $out != *PRIVACY_LEGACY_GUEST_REVIEW_REQUIRED* ]]; then
+ bad "PRIVACY_UPGRADE failed for another reason: $out"
+elif [[ $(db "$PRIVACY_HARDENING_DB" -c "SELECT to_regclass('app.data_rights_erased_orders') IS NULL") != t ]]; then
+ bad 'PRIVACY_UPGRADE refusal left partial schema'
+else
+ pass 'privacy upgrade refuses ambiguous pre-existing erased guest and rolls back'
+fi
+admin -c "DROP DATABASE $PRIVACY_HARDENING_DB" >/dev/null; PRIVACY_HARDENING_DB=""
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1

@@ -17,6 +17,13 @@
         "created_at": {"classification": "operational"}
       }
     },
+    "data_rights_erased_orders": {
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "order_id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"}
+      }
+    },
     "data_rights_erasures": {
       "columns": {
         "tenant_id": {"classification": "operational"},

@@ -117,21 +117,21 @@ SELECT pg_temp.privacy_check('guest-malformed-marker',$test$
  END $$ $test$);
 -- quote.converted ownership follows the durable conversion receipt.
 SELECT pg_temp.privacy_check('conversion-ownership-and-future-fanout',$test$
- DO $$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;c uuid;a uuid;u uuid;org uuid;s uuid;i uuid;co uuid;q uuid;o uuid:=uuidv7();e uuid;nid uuid:=uuidv7();dispatch uuid:=uuidv7();d app.notification_deliveries; BEGIN
-  INSERT INTO app.customers(tenant_id,email) VALUES(t,'converter@example.invalid') RETURNING id INTO c;
+ DO $$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;c uuid;a uuid;u uuid;org uuid;s uuid;i uuid;co uuid;q uuid;o uuid:=uuidv7();contact text:='privacy-converter-'||uuidv7()::text||'@canary.invalid';e uuid;nid uuid:=uuidv7();dispatch uuid:=uuidv7();d app.notification_deliveries; BEGIN
+  INSERT INTO app.customers(tenant_id,email) VALUES(t,contact) RETURNING id INTO c;
   INSERT INTO app.customers(tenant_id,email) VALUES(t,'acceptor@example.invalid') RETURNING id INTO a;
   INSERT INTO app.users(email,password_hash) VALUES(uuidv7()::text||'@staff.invalid','fixture') RETURNING id INTO u;
   INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES(t,u,'admin');
   INSERT INTO app.organizations(tenant_id,display_name) VALUES(t,'privacy') RETURNING id INTO org;
   INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(t,org,'privacy') RETURNING id INTO s;
   INSERT INTO app.buyer_companies(tenant_id,name) VALUES(t,'privacy') RETURNING id INTO co;
-  INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code) VALUES(t,co,c,'purchaser'),(t,co,a,'approver');
+  INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code) VALUES(t,co,c,'approver'),(t,co,a,'purchaser');
   INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message) VALUES(t,s,'inquiry@example.invalid','privacy') RETURNING id INTO i;
   SET LOCAL ROLE app_runtime;
   q:=app.create_quote(t,s,i,co,u,'USD',100,0,0,100,'{}',clock_timestamp()+interval '1 hour','[{"line_no":1,"description":"privacy","quantity":1,"unit_price":100,"line_total":100,"snapshot":{}}]');
   PERFORM app.transition_quote(t,q,1,'send','staff',u);
-  PERFORM app.transition_quote(t,q,2,'accept','customer',c);
-  PERFORM app.transition_quote(t,q,3,'approve','customer',a);
+  PERFORM app.transition_quote(t,q,2,'accept','customer',a);
+  PERFORM app.transition_quote(t,q,3,'approve','customer',c);
   RESET ROLE;
   SET LOCAL ROLE app_orders_executor;
   INSERT INTO app.orders(tenant_id,id,customer_id,order_number,creation_key,request_hash,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
@@ -143,18 +143,40 @@ SELECT pg_temp.privacy_check('conversion-ownership-and-future-fanout',$test$
   INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
    VALUES(t,'quote.converted',jsonb_build_object('quote_id',q,'order_id',o,'quote_version',4),'quotes','converted:'||q) RETURNING id INTO e;
   SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=e;
-  IF d.recipient<>'converter@example.invalid' THEN RAISE EXCEPTION 'conversion fixture contact'; END IF;
+  IF d.recipient<>contact THEN RAISE EXCEPTION 'conversion fixture contact'; END IF;
   SET LOCAL ROLE app_runtime;
   PERFORM app.data_rights_erase_customer(c,'service',uuidv7());
   RESET ROLE;
   SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=e;
   IF d.status<>'dead_letter' OR d.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR d.recipient<>'erased-'||d.id||'@invalid.test' THEN
    RAISE EXCEPTION 'conversion notification retained PII'; END IF;
+  IF EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND recipient=contact)
+   OR NOT EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND id=d.dispatch_event_id AND status='dead_letter' AND last_error='PRIVACY_ERASED') THEN
+   RAISE EXCEPTION 'conversion canary or dispatch retained'; END IF;
   INSERT INTO app.notification_deliveries(tenant_id,id,source_event_id,dispatch_event_id,recipient,locale,template_key,reference_id)
    VALUES(t,nid,e,dispatch,'late-converter@example.invalid','en','quote.converted',q) RETURNING * INTO d;
   INSERT INTO app.outbox_events(tenant_id,id,event_type,payload,delivery_target,dedup_key)
    VALUES(t,dispatch,'notification.dispatch',jsonb_build_object('notification_id',nid),'notifications.email',nid::text||':1');
   IF d.status<>'dead_letter' OR d.last_error IS DISTINCT FROM 'PRIVACY_ERASED' THEN RAISE EXCEPTION 'conversion future fanout resurrected'; END IF;
+ END $$ $test$);
+-- A real erased mailbox-linked order remains blocked after its proof is deleted.
+-- Removing the new typed receipt insert must make this runtime check fail.
+SELECT pg_temp.privacy_check('linked-guest-durable-authority',$test$
+ DO $$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;c uuid;o uuid:=uuidv7();e uuid;d app.notification_deliveries; BEGIN
+  INSERT INTO app.customers(tenant_id,email) VALUES(t,'linked-guest@example.invalid') RETURNING id INTO c;
+  SET LOCAL ROLE app_orders_executor;
+  INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
+   VALUES(t,o,904,'privacy-linked-guest',sha256('linked'::bytea),'{"email":"linked-guest@example.invalid"}','USD',100,0,0,'{}',100);
+  RESET ROLE;
+  INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES(t,c,o);
+  SET LOCAL ROLE app_runtime;
+  PERFORM app.data_rights_erase_customer(c,'service',uuidv7());
+  RESET ROLE;
+  IF EXISTS(SELECT FROM app.customer_guest_order_links WHERE tenant_id=t AND order_id=o) THEN RAISE EXCEPTION 'mailbox proof retained'; END IF;
+  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
+   VALUES(t,'order.paid',jsonb_build_object('order_id',o),'orders.events','privacy-linked-late') RETURNING id INTO e;
+  SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=e;
+  IF d.status<>'dead_letter' OR d.last_error IS DISTINCT FROM 'PRIVACY_ERASED' THEN RAISE EXCEPTION 'linked guest late fanout resurrected'; END IF;
  END $$ $test$);
 DO $$ DECLARE failures text; BEGIN
  SELECT string_agg(label,E'\n' ORDER BY label) INTO failures FROM privacy_failures;
