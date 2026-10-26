@@ -1,5 +1,6 @@
 name: External SMTP test (owner-gated)
 on:
+  push:
   workflow_dispatch:
 permissions:
   contents: read

@@ -47,7 +47,7 @@ func run() error {
 
 // Only explicit local SMTP configuration registers the dedicated adapter.
 func configuredSender(getenv func(string) string) (outbox.Sender, error) {
-	sender, err := notifications.SenderFromEnv(getenv)
+	sender, err := notifications.ExternalTestSenderFromEnv(getenv)
 	if err != nil || sender == nil {
 		return nil, err
 	}
