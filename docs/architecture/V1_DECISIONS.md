@@ -896,6 +896,77 @@ cannot be enabled through a sandbox flag or secret replacement. Real sandbox
 lifecycle CI is a dependent delivery unit under C-19b's line-budget split; until
 its final-SHA receipt exists the MVP Stripe acceptance row remains NOT_RUN.
 
+### Stripe live smoke (CI-only, owner-gated)
+
+This separate LIVE-DESIGN contract addresses every live-mode prerequisite in
+the preceding C-19b boundary (lines 893–895 at `cab64f2`); that rule stays in force.
+It authorizes an isolated CI smoke design, not production enablement.
+
+1. **Scope and run consent.** Only `workflow_dispatch` from `main`, in GitHub
+   Environment `stripe-live`, with owner approval for **every run**. The existing
+   Environment has the owner as required reviewer and a main-only branch policy.
+   Production live payments and Checkout remain disabled; their launch requires
+   separate explicit owner authorization. Agents must not dispatch or rerun live
+   jobs or make live calls; the owner starts the first run after merge.
+
+2. **Separate admission and data boundary.** Implement a distinct live-smoke
+   adapter constructor, separate from the sandbox constructor. Accept only a
+   restricted-live key (`rk_` + `live_` prefix); refuse all `sk_` and test keys.
+   It has its own live mapped account and isolated Inbox namespace, created only
+   in the job's ephemeral PostgreSQL, never a shared or production database.
+   Sandbox constructor, webhook and test-pinned DB constraints remain unchanged;
+   no sandbox flag, secret swap or relabeling live facts as test grants admission.
+   There is **no live webhook endpoint**: authenticated Stripe Events polling
+   supplies completion/refund facts through the same Payments ingestion functions.
+   Polling admits only this run's mapped account, live mode and smoke object
+   metadata; it does not synthesize webhook signatures or fork ledger logic.
+   Stripe owns provider facts; Payments owns financial state and Ledger owns
+   immutable journals. Preserve existing stream/transaction lock order and DB
+   clock semantics for deadlines/retries; provider IO stays outside DB locks.
+   Harness create/cancel, polled capture and module-issued refund/replay are the
+   only new write entrances; old, batch and async paths gain no live admission.
+
+3. **New-source consent.** The sole payer is the owner, paying **0.50 USD** on
+   Stripe-hosted Checkout, with no customer fields prefilled or card data handled
+   by agents. Stripe may collect email on its hosted page; the harness never
+   reads, logs or stores it or other customer PII. Project only required payment
+   facts before ingestion; never persist raw PII-bearing event envelopes.
+   Process events only in the ephemeral DB and discard it with the runner.
+
+4. **Security review and disclosure.** Both this design PR and the implementation
+   PR require cross-model security review: fresh-session Codex-high **and** Gemini.
+   The key exists only in the Environment secret `STRIPE_API`, passed as env only
+   to its consuming step, never printed or placed in argv, URLs or artifacts.
+   Public output is an allowlisted summary: phase, step, status, object type,
+   amount_minor, currency, livemode and counts; object IDs reveal at most four
+   trailing characters. The sole URL printed is the hosted Checkout URL, once,
+   expiring after 30 minutes and containing no PII. No raw responses/errors leak.
+
+5. **Production-safety gate.** Environment approval plus a normal-CI static
+   workflow gate must enforce dispatch-only, `environment: stripe-live`, main-only
+   execution and no other workflow referencing `secrets.STRIPE_API`.
+   Normal CI runs offline fake-Stripe tests RED→GREEN for A/B, restricted-key and
+   account/mode/source rejection, permission probe, replay, post-payment refund
+   cleanup and PII/output canaries. Prove the static gate with a forbidden-trigger
+   draft probe PR; record its failing run then close it and delete its branch.
+   Required PR checks must pass at the exact head; no live calls occur in them.
+
+6. **Owner authorization.** The owner's **“方案批” (2026-10-26)** approves CI live
+   smoke only (original consent: Humaux `d49c10ef-88a6-4370-ba8a-1bb0a29f759a`).
+   This neither approves any individual run nor authorizes production launch.
+
+7. **Acceptance and receipts.** Phase A creates then cancels a 50-minor-unit USD
+   PaymentIntent, asserts canceled/zero received and **zero journals**. Phase B
+   waits up to 30 minutes for owner Checkout payment (expire and fail on timeout),
+   records **one capture journal**, issues a full refund through Payments and polls
+   it to success, then records **one refund journal** and a fully refunded order.
+   Both journals balance; reconciliation is clean. Re-feeding the same events
+   creates zero new journals. Any failure after payment still attempts the refund
+   and explicitly reports its outcome. Live receipts are owner-approved **run IDs
+   bound to source SHA**; offline green is not live acceptance. Design, live A/B
+   and production evidence remain separate; live acceptance is **NOT_RUN** until
+   those receipts exist. This docs-only card adds no adapter, workflow or gate.
+
 ### 修订后的三行 PR 序列
 
 | PR 号 | 模块与依赖 | 验收 Gate |
