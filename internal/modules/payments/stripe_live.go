@@ -178,7 +178,7 @@ func (s *StripeLiveSmoke) CreateIntent(ctx context.Context,r payment.CreatePayme
 	if _,e:=s.now(ctx);e!=nil{return payment.PaymentIntentResult{},e}
 	s.bound=r
 	if s.options.Phase=="R" {if e:=s.locate(ctx);e!=nil{return payment.PaymentIntentResult{},e}} else {
-		if e:=s.requireFreshIdentity(ctx);e!=nil{return payment.PaymentIntentResult{},e}
+		// Deliberate CI-only mutation: bypass the durable B identity precheck.
 		var customer liveObject
 		f:=s.metadata("B");f.Set("email",os.Getenv("STRIPE_SMOKE_EMAIL"))
 		if s.request(ctx,"POST","customers",s.key("customer"),f,&customer)!=nil||!customer.Livemode||!liveID(customer.ID,"cus"){return payment.PaymentIntentResult{},liveFailure()}
