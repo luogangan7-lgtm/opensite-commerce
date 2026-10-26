@@ -509,7 +509,8 @@ GENERATED_SERVER_IMPORTERS = {Path("internal/platform/httpapi"), Path("internal/
 # The trusted tenant write seam (no HTTP actor) may be named only by its definition and the
 # single composition site of the storefront serving refresher plus that site's pgx test,
 # and the literal-only adapter export review inventory (validated separately).
-TRUSTED_TX_ALLOWED = {Path("internal/tenanttx/pgxadapter/runtime_pgx.go"),
+TRUSTED_TX_ALLOWED = {Path("internal/tenanttx/pgxadapter/export_surface_test.go"),
+                      Path("internal/tenanttx/pgxadapter/runtime_pgx.go"),
                       Path("internal/tenanttx/pgxadapter/runtime_default.go"),
                       Path("internal/bootstrap/runtime.go"),
                       Path("internal/bootstrap/serving_refresh_pgx_test.go")}
