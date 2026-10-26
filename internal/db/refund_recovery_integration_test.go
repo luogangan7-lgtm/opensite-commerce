@@ -273,7 +273,7 @@ func TestRefundCaseLegacyQueuedRejectionRetainsPrimaryAndAlias(t *testing.T) {
 			}
 			if n == 0 {
 				primary = inbox
-				if err := q.InsertPaymentEvent(ctx, db.InsertPaymentEventParams{TenantID: mustPGUUID(t, tenant), ID: inbox, ProviderAccountID: p.account, ProviderRef: p.start.Payment.ProviderRef, EventKey: "legacy-pending", ClaimedOrderID: mustPGUUID(t, p.start.OrderID), OrderVersion: p.start.OrderVersion, Status: string(payment.StatusPartiallyRefunded), AmountMinor: 1, Currency: p.start.Currency}); err != nil {
+				if err := q.InsertPaymentEvent(ctx, db.InsertPaymentEventParams{TenantID: mustPGUUID(t, tenant), ID: inbox, ProviderAccountID: p.account, ProviderRef: p.start.Payment.ProviderRef, EventKey: hex.EncodeToString(hash[:]), ClaimedOrderID: mustPGUUID(t, p.start.OrderID), OrderVersion: p.start.OrderVersion, Status: string(payment.StatusPartiallyRefunded), AmountMinor: 1, Currency: p.start.Currency}); err != nil {
 					return err
 				}
 			} else if err := q.BindPaymentDelivery(ctx, db.BindPaymentDeliveryParams{TenantID: mustPGUUID(t, tenant), ID: inbox, PaymentEventID: primary}); err != nil {
