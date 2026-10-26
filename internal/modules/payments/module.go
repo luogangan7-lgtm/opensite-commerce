@@ -261,11 +261,6 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 			if e = q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: r.ID, Success: done}); e != nil {
 				return e
 			}
-			// Legacy facts predate delivery bindings. Include their primary Inbox
-			// in the same evidence-preserving path as every contributing alias.
-			if e = q.BindPaymentDelivery(ctx, db.BindPaymentDeliveryParams{TenantID: r.TenantID, ID: r.ID, PaymentEventID: r.ID}); e != nil {
-				return e
-			}
 			aliases, e := q.ListPaymentDeliveries(ctx, db.ListPaymentDeliveriesParams{TenantID: r.TenantID, PaymentEventID: r.ID})
 			if e != nil {
 				return e
