@@ -5,6 +5,7 @@
 import { expect, test, type Page, type APIRequestContext } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 const site = 'http://127.0.0.1:4323';
+const realSite = 'http://127.0.0.1:4324';
 const fixture = 'http://127.0.0.1:4176';
 const tenant = 'c0900001-0000-4000-8000-000000000001';
 const sku = 'c09c0001-0000-4000-8000-000000000001';
@@ -23,6 +24,14 @@ async function quality(page: Page, name: string) {
   const report = await new AxeBuilder({ page }).analyze();
   expect(report.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
   if (process.env.GITHUB_ACTIONS === 'true') await expect(page).toHaveScreenshot(`storefront-commerce-${name}.png`, { fullPage: true });
+}
+// Hold a routed response until its production loading UI has been inspected; never use timing sleeps.
+async function heldResponse(page: Page, url: string, json: unknown, status = 200) {
+  let release!: () => void, entered!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  await page.route(url, async route => { entered(); await pending; await route.fulfill({ status, json }); }, { times: 1 });
+  return { started, release };
 }
 async function add(page: Page) {
   await page.goto(`${site}/products/canvas-tote`);
@@ -106,6 +115,7 @@ test('completion requires paid state as well as captured payment', async ({ page
   await page.goto(`${site}/order-complete`);
   await expect(page.locator('[data-completion-page]')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('[data-completion-ready]')).toHaveCount(0);
+  await quality(page, 'completion-pending-captured');
 });
 
 test('commerce fixture absolute quantities, zero removes, stale version recovers', async ({ page, request }) => {
@@ -136,7 +146,11 @@ test('stale Start is rejected before intent and refreshed money requires another
   await expect(page.getByRole('button',{name:'Confirm updated total',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Start test checkout',exact:true})).toBeDisabled();
   await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toHaveCount(0);
+  await quality(page, 'checkout-stale-total-consent-disabled');
   await page.getByRole('button',{name:'Confirm updated total',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Start test checkout',exact:true})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Confirm updated total',exact:true})).toHaveCount(0);
+  await quality(page, 'checkout-stale-total-consent-confirmed');
   await start(page);
   await page.getByRole('button',{name:'Fake payment: capture',exact:true}).click();
   await expect(page.getByRole('link',{name:'View order confirmation',exact:true})).toBeVisible();
@@ -161,11 +175,13 @@ test('checkout requires confirmation of an updated server total and reuses ambig
   await page.getByRole('button',{name:'Start test checkout',exact:true}).click();
   await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toBeDisabled();
   await expect(page.locator('.payment-result')).toContainText('$99.99');
+  await quality(page, 'checkout-updated-payment-consent-disabled');
   expect(keys).toHaveLength(2); expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
   let accepted: unknown;
   await page.route(`${api}/payment`, async route => { accepted=route.request().postDataJSON().accepted_total; await route.fulfill({status:409,json:{code:'checkout_total_changed'}}); });
   await page.getByRole('button',{name:'Confirm updated total',exact:true}).click();
   await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toBeEnabled();
+  await quality(page, 'checkout-updated-payment-consent-confirmed');
   await page.getByRole('button',{name:'Fake payment: capture',exact:true}).click();
   await expect.poll(()=>accepted).toEqual({amount_minor:'9999',currency:'USD'});
 });
@@ -231,6 +247,176 @@ test('mailbox proof is cleared from the URL and never rendered or submitted by G
   expect(writes).toEqual([]);
   const report=await new AxeBuilder({page}).analyze();
   expect(report.violations.filter(item=>['serious','critical'].includes(item.impact??''))).toEqual([]);
+});
+
+// These routes drive shipped components with safe DTOs. They prove UI states, not backend identity/payment acceptance.
+for (const outcome of ['empty', 'error', 'long-money'] as const) test(`routed completion ${outcome} visual states`, async ({ page }) => {
+  const response = outcome === 'empty' ? null : outcome === 'error' ? { code: 'purchase_request_failed' } : {
+    checkout_id: 'c09c0010-0000-4000-8000-000000000001', order_id: 'c09c0011-0000-4000-8000-000000000001',
+    state: 'paid', amount_minor: '9223372036854775807', currency: 'USD', order_version: '1',
+    payment: { provider_ref: 'visual-test', status: 'captured' }
+  };
+  const gate = await heldResponse(page, `${api}/completion`, response, outcome === 'error' ? 503 : 200);
+  await page.goto(`${site}/order-complete`); await gate.started;
+  try {
+    await expect(page.locator('[data-completion-page]')).toHaveAttribute('aria-busy', 'true');
+    if (outcome === 'empty') await quality(page, 'completion-loading');
+  } finally { gate.release(); }
+  await expect(page.locator('[data-completion-page]')).toHaveAttribute('aria-busy', 'false');
+  if (outcome === 'long-money') {
+    await expect(page.locator('[data-completion-ready]')).toContainText('$92,233,720,368,547,758.07');
+  } else {
+    await expect(page.locator('[data-completion-ready]')).toHaveCount(0);
+    await expect(outcome === 'error' ? page.getByRole('alert') : page.getByRole('heading', { name: 'No completed order', exact: true })).toBeVisible();
+  }
+  await quality(page, `completion-${outcome}`);
+});
+
+test('routed real-mode mailbox verification disabled state contains no proof', async ({ page }) => {
+  await page.goto(`${realSite}/customer/verify`);
+  await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
+  await quality(page, 'verification-disabled');
+});
+test('routed real-mode account registration session and sign-out loading', async ({ page }) => {
+  await page.goto(`${realSite}/account`);
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+  await expect(page.locator('[data-fixture-notice]')).toHaveCount(0);
+  await expect(page.getByRole('main')).toContainText('Registration requires 12–1024 UTF-8 bytes.');
+  await quality(page, 'account-real-long-help');
+  await page.route(`${realSite}/purchase/api/customer/register`, route => route.fulfill({ status: 202, json: { status: 'verification_pending' } }), { times: 1 });
+  await page.getByLabel('Email', { exact: true }).fill('visual-registration@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('visual-only-password');
+  await page.getByRole('button', { name: 'Register', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Verify your email before signing in.');
+  await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+  await page.getByLabel('Email', { exact: true }).fill('');
+  await quality(page, 'account-real-registration-pending');
+  let actor = 'customer';
+  await page.route(`${realSite}/purchase/api/context`, route => route.fulfill({ json: { enabled: true, fixture: false, actor, csrf: 'visual-test', products: [] } }));
+  await page.route(`${realSite}/purchase/api/customer/session`, route => route.fulfill({ json: {} }), { times: 1 });
+  await page.getByLabel('Email', { exact: true }).fill('visual-session@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('visual-only-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Order history', exact: true })).toBeVisible();
+  await quality(page, 'account-real-signed-in');
+  const gate = await heldResponse(page, `${realSite}/purchase/api/customer/session`, {});
+  actor = 'guest';
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click(); await gate.started;
+  try {
+    await expect(page.locator('[data-customer-ready]')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeDisabled();
+    await quality(page, 'account-real-loading');
+  } finally { gate.release(); }
+  await expect(page.getByRole('status')).toHaveText('You are signed out.');
+  await page.getByLabel('Email', { exact: true }).fill('');
+  await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+  await quality(page, 'account-real-signed-out');
+});
+test('routed real-mode account error keeps retry available without exposing inputs', async ({ page }) => {
+  await page.route(`${realSite}/purchase/api/customer/session`, route => route.fulfill({ status: 503, json: { code: 'purchase_request_failed' } }));
+  await page.goto(`${realSite}/account`);
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+  await expect(page.locator('[data-fixture-notice]')).toHaveCount(0);
+  await page.getByLabel('Email', { exact: true }).fill('visual-error@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('visual-only-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('We could not complete this request. Try again.');
+  await page.getByLabel('Email', { exact: true }).fill('');
+  await page.getByLabel('Password', { exact: true }).fill('');
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+  await quality(page, 'account-real-error');
+});
+test('real-mode account remains explicitly disabled without a configured customer backend', async ({ page }) => {
+  await page.goto('http://127.0.0.1:4321/account');
+  await expect(page.locator('[data-customer-ready]')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.getByRole('button', { name: 'Temporarily unavailable', exact: true })).toBeDisabled();
+  await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-fixture-notice]')).toHaveCount(0);
+  await quality(page, 'account-real-disabled');
+});
+for (const outcome of ['success', 'error'] as const) test(`routed real-mode mailbox verification ${outcome}`, async ({ page }) => {
+  const origin = realSite, proof = 'V'.repeat(43);
+  await page.route(`${origin}/purchase/api/context`, route => route.fulfill({ json: { enabled: true, fixture: false, actor: 'guest', csrf: 'visual-test', products: [] } }));
+  const gate = await heldResponse(page, `${origin}/purchase/api/customer/verify`, outcome === 'success' ? { status: 'verified' } : { code: 'purchase_request_failed' }, outcome === 'success' ? 200 : 503);
+  await page.goto(`${origin}/customer/verify#token=${proof}`);
+  await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeEnabled();
+  expect(new URL(page.url()).hash).toBe('');
+  expect(await page.content()).not.toContain(proof);
+  if (outcome === 'success') await quality(page, 'verification-ready');
+  await page.getByRole('button', { name: 'Verify email', exact: true }).click(); await gate.started;
+  try {
+    await expect(page.locator('[data-customer-verification]')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
+    if (outcome === 'success') await quality(page, 'verification-loading');
+  } finally { gate.release(); }
+  await expect(page.getByRole('status')).toContainText(outcome === 'success' ? 'Email verified.' : 'Verification could not be completed.');
+  await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
+  expect(await page.content()).not.toContain(proof);
+  await quality(page, `verification-${outcome}`);
+});
+
+test('routed real-mode order history list detail and pagination visual states', async ({ page }) => {
+  const origin = realSite, history = `${origin}/purchase/api/history`;
+  const order = { id: 'c09c0011-0000-4000-8000-000000000001', order_number: 'VISUAL-2026-LONG-ORDER-REFERENCE-0000000001', state: 'pending_payment', currency: 'USD', total_minor: '9223372036854775807', created_at: '2026-01-02T12:00:00Z' };
+  const first = await heldResponse(page, history, { items: [order], next_cursor: 'visual_page_2' });
+  await page.goto(`${origin}/account/orders`); await first.started;
+  try {
+    await expect(page.getByRole('status')).toHaveText('Loading orders…');
+    await quality(page, 'history-loading');
+  } finally { first.release(); }
+  const orderButton = page.getByRole('button', { name: `Order #${order.order_number}`, exact: true });
+  await expect(orderButton).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Next orders', exact: true })).toBeEnabled();
+  await quality(page, 'history-list-long');
+  const detail = await heldResponse(page, `${history}/${order.id}`, { order, shipping_minor: '1000', tax_minor: '2000', lines: [{ line_id: 'visual-line', sku_code: 'LONG-SKU-REFERENCE-FOR-THE-EXTENDED-CANVAS-TOTE-COLLECTION-2026', quantity: '999999', line_total_minor: order.total_minor }] });
+  await orderButton.click(); await detail.started;
+  try {
+    await expect(page.getByRole('status')).toHaveText('Loading orders…');
+    await quality(page, 'history-detail-loading');
+  } finally { detail.release(); }
+  await expect(page.getByRole('region', { name: 'Order details' })).toContainText('$92,233,720,368,547,758.07');
+  await quality(page, 'history-detail-long');
+  await page.route(history, route => route.fulfill({ json: { items: [order], next_cursor: 'visual_page_2' } }), { times: 1 });
+  await page.getByRole('button', { name: 'Back to orders', exact: true }).click();
+  await expect(orderButton).toBeVisible();
+  const next = await heldResponse(page, `${history}?cursor=visual_page_2`, { items: [] });
+  await page.getByRole('button', { name: 'Next orders', exact: true }).click(); await next.started;
+  try {
+    await expect(page.getByRole('status')).toHaveText('Loading orders…');
+    await quality(page, 'history-pagination-loading');
+  } finally { next.release(); }
+  await expect(page.getByRole('main')).toContainText('No orders yet.');
+  await expect(page.getByRole('button', { name: 'Next orders', exact: true })).toHaveCount(0);
+  await quality(page, 'history-empty');
+});
+for (const status of [401, 404, 503]) test(`routed real-mode order history ${status} recovery`, async ({ page }) => {
+  const origin = realSite, history = `${origin}/purchase/api/history`;
+  await page.route(history, route => route.fulfill({ status, json: { code: 'purchase_request_failed' } }), { times: 1 });
+  await page.goto(`${origin}/account/orders`);
+  await expect(page.getByRole('alert')).toHaveText(status === 401 ? 'Sign in to view your orders.' : status === 404 ? 'Order not found.' : 'Orders could not be loaded. Try again.');
+  await quality(page, `history-error-${status}`);
+  await page.route(history, route => route.fulfill({ json: { items: [] } }), { times: 1 });
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(page.getByRole('main')).toContainText('No orders yet.');
+});
+test('routed real-mode history detail and pagination failures remain recoverable', async ({ page }) => {
+  const history = `${realSite}/purchase/api/history`, order = { id: 'c09c0011-0000-4000-8000-000000000001', order_number: 'VISUAL-1', state: 'paid', currency: 'USD', total_minor: '3140', created_at: '2026-01-02T12:00:00Z' };
+  await page.route(history, route => route.fulfill({ json: { items: [order], next_cursor: 'visual_page_2' } }));
+  await page.route(`${history}/${order.id}`, route => route.fulfill({ status: 404, json: { code: 'not_found' } }));
+  await page.goto(`${realSite}/account/orders`);
+  await page.getByRole('button', { name: 'Order #VISUAL-1', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Order not found.');
+  await quality(page, 'history-detail-error');
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Order #VISUAL-1', exact: true })).toBeVisible();
+  await page.route(`${history}?cursor=visual_page_2`, route => route.fulfill({ status: 503, json: { code: 'purchase_request_failed' } }));
+  await page.getByRole('button', { name: 'Next orders', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Orders could not be loaded. Try again.');
+  await quality(page, 'history-pagination-error');
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Order #VISUAL-1', exact: true })).toBeVisible();
 });
 
 test('production storefront keeps purchasing disabled and makes no fixture requests', async ({ page }) => {
