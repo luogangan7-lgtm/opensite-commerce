@@ -31,15 +31,18 @@ regenerate = next(s['run'] for s in job['steps'] if 'sqlc generate' in s.get('ru
 clean = 'rm -f internal/db/db.go internal/db/models.go internal/db/*.sql.go'
 assert clean in regenerate and regenerate.index(clean) < regenerate.index('sqlc generate'), regenerate
 upload = next(s for s in job['steps'] if s.get('uses', '').startswith('actions/upload-artifact@'))
-assert upload['with']['name'] == 'generated-patch' and upload['with']['path'] == 'generated.patch'
+# Immutable artifact names: a full re-run must not collide with attempt 1.
+assert upload['with']['name'] == 'generated-patch-${{ github.run_id }}-${{ github.run_attempt }}', upload['with']
+assert upload['with']['path'] == 'generated.patch'
 assert 'sha256sum -c' in text and 'oapi-codegen' in text and 'sqlc generate' in text and 'openapi-typescript' in text
 assert all(path in text for path in GENERATED)
 assert 'apply_generated_patch.sh' in text and 'generated-patch' in text
 
 FAKE_GH = '''#!/usr/bin/env bash
-# fake: gh run download <id> -R <base repo> -n generated-patch -D <dir> (base repo also from a fork clone)
-[[ "$1 $2 $3 $4 $5 $6 $7 $8" == "run download 4242 -R luogangan7-lgtm/opensite-commerce -n generated-patch -D" ]] || exit 9
-cp "$FAKE_PATCH" "$9/generated.patch"
+# fake: gh run download <id> -R <base repo> -p generated-patch-<id>-* -D <dir> (base repo also from a fork clone)
+[[ "$1 $2 $3 $4 $5 $6 $7 $8 $9" == "run download 4242 -R luogangan7-lgtm/opensite-commerce -p generated-patch-4242-* -D" ]] || exit 9
+mkdir -p "$9/generated-patch-4242-1"
+cp "$FAKE_PATCH" "$9/generated-patch-4242-1/generated.patch"
 '''
 
 

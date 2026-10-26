@@ -6,6 +6,7 @@ clock or a fixture file.  No PostgreSQL, network, browser, build, code
 generation or Docker is used.  CI runs this file before the expensive lanes so
 every control reports its own red/green in one pass.
 """
+from fnmatch import fnmatch
 from pathlib import Path
 import json
 import os
@@ -462,6 +463,46 @@ class FinalLandingGate(unittest.TestCase):
             self.assertEqual({row['run_attempt'] for row in payload['lane_identities']},
                              {'2'})
 
+    def test_full_rerun_of_every_job_accepts_attempt_two_and_fails_closed(self):
+        # Attempt 1 succeeded, then every job was re-run as attempt 2.  Each
+        # attempt uploads its own receipt, so the landing download sees both and
+        # the newest one whose job GitHub reports successful is the evidence.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            sha = 'f' * 40
+            lanes = self.nested_lane_identities(
+                temp, sha, {lane: [1, 2] for lane in self.LANES})
+            receipt = Path(temp) / 'receipt.json'
+            env = {**self.RUN_ENV, 'GITHUB_RUN_ATTEMPT': '2'}
+            jobs = self.lane_jobs(temp, {lane: [(1, 'success'), (2, 'success')]
+                                         for lane in self.LANES}, sha=sha)
+            result = self.landing(root, '--mode', 'final', '--sha', sha,
+                                  '--expected-sha', sha,
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs),
+                                  '--receipt', str(receipt), env=env)
+            self.assertEqual(result.returncode, 0, combined(result))
+            payload = json.loads(receipt.read_text())
+            self.assertEqual({row['run_attempt'] for row in payload['lane_identities']},
+                             {'2'})
+            self.assertEqual(payload['run_attempt'], '2')
+            # Fail closed: attempt 1's pgx job failed, and attempt 2 (the
+            # re-run) reports pgx successful but its receipt never arrived.  The
+            # failed attempt's receipt must not be borrowed.
+            failed_jobs = self.lane_jobs(temp, {
+                **{lane: [(1, 'success'), (2, 'success')] for lane in self.LANES},
+                'pgx': [(1, 'failure'), (2, 'success')]}, sha=sha)
+            missing = lanes / f'lane-identity-{self.RUN_ID}-2-pgx' / 'lane-pgx.json'
+            self.assertTrue(missing.is_file(), 'fixture must contain the attempt-2 receipt')
+            missing.unlink()
+            failed = self.landing(root, '--mode', 'final', '--sha', sha,
+                                  '--expected-sha', sha,
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(failed_jobs),
+                                  '--receipt', Path(temp) / 'failed.json', env=env)
+            self.assertNotEqual(failed.returncode, 0, combined(failed))
+            self.assertIn('FINAL_LANDING_LANE_IDENTITIES', combined(failed))
+
     def test_auto_mode_requires_a_trusted_landing_decision(self):
         # No diff and no trusted policy: auto must not silently become proposal.
         with tempfile.TemporaryDirectory() as temp:
@@ -580,6 +621,94 @@ class FinalLandingGate(unittest.TestCase):
         self.assertIn('.jobs[]', jobs_step['run'])
         # Receipts are checked against GitHub's own per-attempt job results.
         self.assertIn('--lane-jobs', runs)
+
+
+class ArtifactRerunSafety(unittest.TestCase):
+    """#398: immutable CI artifacts must be safe to re-run at every attempt.
+
+    A full re-run keeps ``github.run_id`` but increments ``github.run_attempt``.
+    ``actions/upload-artifact`` refuses to overwrite an existing name, so an
+    upload that omits the attempt fails the job on attempt 2 even though the
+    validation it reports succeeded.  A failed-job re-run only re-executes the
+    failed lanes, leaving earlier attempts' artifacts in place, so the landing
+    download must deliberately select every attempt and the gate must still bind
+    each receipt to an attempt GitHub reports successful.
+    """
+
+    WORKFLOW = ROOT / '.github/workflows/checks.yml'
+    RUN_ID = '40318662058'
+    UPLOAD = 'actions/upload-artifact@'
+    DOWNLOAD = 'actions/download-artifact@'
+    RUN_ID_TOKEN = '${{ github.run_id }}'
+    ATTEMPT_TOKEN = '${{ github.run_attempt }}'
+    LANE_TOKEN = '${{ matrix.lane }}'
+
+    def jobs(self):
+        return yaml.safe_load(self.WORKFLOW.read_text())['jobs']
+
+    @classmethod
+    def render(cls, template, attempt, lane=None):
+        rendered = (template.replace(cls.RUN_ID_TOKEN, cls.RUN_ID)
+                    .replace(cls.ATTEMPT_TOKEN, str(attempt)))
+        if lane is not None:
+            rendered = rendered.replace(cls.LANE_TOKEN, lane)
+        return rendered
+
+    def uploads(self):
+        found = []
+        for job_name, job in self.jobs().items():
+            lanes = (job.get('strategy') or {}).get('matrix', {}).get('lane') or [None]
+            for step in job.get('steps', []):
+                if step.get('uses', '').startswith(self.UPLOAD):
+                    found.append((job_name, step['with']['name'], lanes))
+        return found
+
+    def test_every_upload_name_is_unique_per_attempt(self):
+        uploads = self.uploads()
+        self.assertTrue(uploads, 'checks.yml must upload at least the landing receipt')
+        by_attempt = {1: set(), 2: set()}
+        for job_name, template, lanes in uploads:
+            self.assertIn(self.RUN_ID_TOKEN, template, f'{job_name}: {template}')
+            self.assertIn(self.ATTEMPT_TOKEN, template,
+                          f'{job_name}: artifact {template!r} is re-uploaded unchanged '
+                          'on attempt 2 and the immutable-name upload fails')
+            for lane in lanes:
+                for attempt in (1, 2):
+                    name = self.render(template, attempt, lane)
+                    self.assertNotIn(
+                        name, by_attempt[attempt],
+                        f'{job_name}: duplicate upload name {name!r} in attempt {attempt}')
+                    by_attempt[attempt].add(name)
+        self.assertFalse(by_attempt[1] & by_attempt[2],
+                         'attempt 2 must never reuse an attempt 1 artifact name')
+
+    def test_downloads_select_attempts_deliberately(self):
+        downloads = [(job_name, step)
+                     for job_name, job in self.jobs().items()
+                     for step in job.get('steps', [])
+                     if step.get('uses', '').startswith(self.DOWNLOAD)]
+        self.assertEqual(len(downloads), 1, downloads)
+        job_name, step = downloads[0]
+        pattern = self.render(step['with']['pattern'], 2)
+        self.assertIn(self.RUN_ID_TOKEN, step['with']['pattern'])
+        # Every attempt of this run: a failed-job re-run keeps earlier attempts'
+        # receipts, and a full re-run adds the current one.
+        self.assertEqual(step['with']['pattern'], f'lane-identity-{self.RUN_ID_TOKEN}-*')
+        self.assertNotEqual(step['with'].get('merge-multiple'), True,
+                            'per-attempt receipt directories must stay distinct')
+        for lane in ('go', 'offline', 'pg', 'pgx', 'sqlc'):
+            for attempt in (1, 2):
+                name = self.render(f'lane-identity-{self.RUN_ID_TOKEN}-'
+                                   f'{self.ATTEMPT_TOKEN}-{self.LANE_TOKEN}', attempt, lane)
+                self.assertTrue(fnmatch(name, pattern),
+                                f'{name!r} must be downloaded by {pattern!r}')
+        for attempt in (1, 2):
+            self.assertFalse(
+                fnmatch(self.render(f'final-landing-{self.RUN_ID_TOKEN}-'
+                                    f'{self.ATTEMPT_TOKEN}', attempt), pattern),
+                'the landing receipt must not be read back as a lane identity')
+        self.assertIn('--lane-identities', '\n'.join(
+            step.get('run', '') for step in self.jobs()['foundation']['steps']))
 
 
 class PendingMigrationDependency(unittest.TestCase):
