@@ -40,7 +40,7 @@ jobs:
           /tmp/sqlc-bin/sqlc generate
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: codegen-handoff-${{ github.run_id }}
+          name: codegen-handoff-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             api/openapi.yaml
             sqlc.yaml
@@ -186,7 +186,7 @@ jobs:
         if: matrix.lane == 'offline' && failure() && steps.requested_openapi.conclusion == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: openapi-codegen-${{ github.run_id }}
+          name: openapi-codegen-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             api/openapi.yaml
             internal/platform/httpapi/generated/api.gen.go
@@ -361,10 +361,14 @@ jobs:
             --lane-identities "${RUNNER_TEMP}/lane-identities" \
             --lane-jobs "${RUNNER_TEMP}/lane-jobs.jsonl" \
             --receipt final-landing-receipt.json
+      # Artifact names are immutable for a run: a full re-run must upload its
+      # own attempt's receipt (run_attempt is in every name) instead of
+      # colliding with the previous attempt and failing the job even though
+      # validation passed.
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
-          name: final-landing-${{ github.run_id }}
+          name: final-landing-${{ github.run_id }}-${{ github.run_attempt }}
           path: final-landing-receipt.json
           if-no-files-found: warn
           retention-days: 14
@@ -418,7 +422,7 @@ jobs:
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: steps.drift.outputs.drift == '1'
         with:
-          name: generated-patch
+          name: generated-patch-${{ github.run_id }}-${{ github.run_attempt }}
           path: generated.patch
           if-no-files-found: error
           retention-days: 14
@@ -426,7 +430,7 @@ jobs:
         if: steps.drift.outputs.drift == '1'
         run: |
           git diff --stat -- internal/platform/httpapi/generated internal/db packages/api-client/src/schema.d.ts
-          echo "::error::Generated code drift. Do not hand-edit: scripts/apply_generated_patch.sh ${{ github.run_id }} (artifact: generated-patch)"
+          echo "::error::Generated code drift. Do not hand-edit: scripts/apply_generated_patch.sh ${{ github.run_id }} (artifact: generated-patch-${{ github.run_id }}-${{ github.run_attempt }})"
           exit 1
 
   frontend:
@@ -496,14 +500,14 @@ jobs:
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
-          name: frontend-comparison-${{ github.run_id }}
+          name: frontend-comparison-${{ github.run_id }}-${{ github.run_attempt }}
           path: comparison-receipt.json
           if-no-files-found: warn
           retention-days: 30
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: failure()
         with:
-          name: frontend-failure-${{ github.run_id }}
+          name: frontend-failure-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             playwright-report
             test-results
@@ -557,7 +561,7 @@ jobs:
         run: bun run visual:update
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: frontend-baselines-${{ github.run_id }}
+          name: frontend-baselines-${{ github.run_id }}-${{ github.run_attempt }}
           path: tests/frontend/baselines
           if-no-files-found: error
           retention-days: 90

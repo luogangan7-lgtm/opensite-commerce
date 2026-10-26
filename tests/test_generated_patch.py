@@ -40,7 +40,7 @@ assert 'apply_generated_patch.sh' in text and 'generated-patch' in text
 
 FAKE_GH = '''#!/usr/bin/env bash
 # fake: gh run download <id> -R <base repo> -p generated-patch-<id>-* -D <dir> (base repo also from a fork clone)
-[[ "$1 $2 $3 $4 $5 $6 $7 $8 $9" == "run download 4242 -R luogangan7-lgtm/opensite-commerce -p generated-patch-4242-* -D" ]] || exit 9
+[[ "$1 $2 $3 $4 $5 $6 $7 $8" == "run download 4242 -R luogangan7-lgtm/opensite-commerce -p generated-patch-4242-* -D" ]] || exit 9
 mkdir -p "$9/generated-patch-4242-1"
 cp "$FAKE_PATCH" "$9/generated-patch-4242-1/generated.patch"
 '''

@@ -52,10 +52,18 @@ try {
     for (const file of WRITER_INPUTS) atSource[file] = (await api(`contents/${file}?ref=${run.head_sha}`, false, true))?.sha ?? null;
     assertWriterInputs(atSource, candidateWriter);
     assertNoBunEnvFiles((await api(`contents?ref=${run.head_sha}`) as { name: string }[]).map(entry => entry.name));
-    const jobs = await api(`actions/runs/${id}/jobs?per_page=100`);
-    if (!jobs.jobs.some((job: { name: string; conclusion: string }) => job.name === 'frontend-baselines' && job.conclusion === 'success')) throw new Error('Golden CI producer did not succeed');
+    type ProducerJob = { name: string; conclusion: string; run_attempt?: number };
+    const jobs = await api(`actions/runs/${id}/jobs?per_page=100`) as { jobs: ProducerJob[] };
+    const attempt = Math.max(...jobs.jobs
+      .filter(job => job.name === 'frontend-baselines' && job.conclusion === 'success')
+      .map(job => Number(job.run_attempt))
+      .filter(value => Number.isInteger(value) && value > 0));
+    if (!Number.isInteger(attempt) || attempt < 1) throw new Error('Golden CI producer did not succeed');
     const artifacts = await api(`actions/runs/${id}/artifacts?per_page=100`);
-    const candidates = artifacts.artifacts.filter((item: { name: string; expired: boolean }) => item.name === `frontend-baselines-${id}` && !item.expired);
+    // A full re-run uploads one immutable artifact per attempt; the latest
+    // successful attempt is this run's authoritative evidence, never an
+    // arbitrary earlier one.
+    const candidates = artifacts.artifacts.filter((item: { name: string; expired: boolean }) => item.name === `frontend-baselines-${id}-${attempt}` && !item.expired);
     const artifact = candidates[0];
     if (candidates.length !== 1 || artifact.size_in_bytes > 50_000_000 || !/^sha256:[0-9a-f]{64}$/.test(artifact.digest)) throw new Error('Golden artifact is missing, expired, ambiguous or has no SHA256 digest');
     const bytes = await api(`actions/artifacts/${artifact.id}/zip`, true) as Uint8Array;
