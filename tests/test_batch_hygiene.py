@@ -663,7 +663,7 @@ class FinalLandingGate(unittest.TestCase):
                       marker[0]['env'].get('FINAL_LANDING_BODY', ''))
         # Push events have no PR body, and a commit message that merely
         # mentions the marker must never select final landing mode.
-        self.assertNotIn('head_commit.message', yaml.safe_dump(foundation))
+        self.assertNotIn('head_commit.message', json.dumps(foundation))
         final = next(step for step in steps
                      if 'check_landing.py --mode auto' in step.get('run', ''))
         self.assertIn('steps.marker.outputs',

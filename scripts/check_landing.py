@@ -25,8 +25,11 @@ from trusted repository changes (a ``git diff --name-status`` listing produced
 by CI: a removed proposal or any change to numbered history) or from a trusted
 policy value (``FINAL_LANDING_POLICY`` repository variable).  The optional
 ``[final-landing]`` marker may only add final validation; it can never select
-proposal mode, so omitting it cannot bypass the zero-pending requirement.  An
-``auto`` run with neither input fails closed instead of defaulting to proposed.
+proposal mode, so omitting it cannot bypass the zero-pending requirement.  It is
+honored only as an exact standalone line of a pull request body
+(``scripts/final_landing_marker.py``): a commit message or prose that merely
+mentions the marker never selects final.  An ``auto`` run with neither input
+fails closed instead of defaulting to proposed.
 
 Called by .github/workflows/checks.yml (``final-landing`` step of the required
 ``foundation`` job) and tests/test_batch_hygiene.py.  Depends on
