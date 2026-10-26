@@ -17,12 +17,11 @@ const vectors = JSON.parse(readFileSync(new URL('../../tests/fixtures/rerun-atte
 test('shared vectors: the latest successful attempt needs its own evidence', () => {
   for (const item of vectors.cases) {
     const jobs = item.jobs ?? (item.job_pages ?? []).flat();
-    const successful = successfulAttempts(jobs, vectors.job_name);
     const expected = item.expected;
     if (expected.error) {
-      expect(() => selectLatestAttempt(successful, item.evidence_attempts)).toThrow(expected.error);
+      expect(() => selectLatestAttempt(successfulAttempts(jobs, vectors.job_name), item.evidence_attempts)).toThrow(expected.error);
     } else {
-      expect(selectLatestAttempt(successful, item.evidence_attempts)).toBe(expected.attempt!);
+      expect(selectLatestAttempt(successfulAttempts(jobs, vectors.job_name), item.evidence_attempts)).toBe(expected.attempt!);
     }
   }
 });

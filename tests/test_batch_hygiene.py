@@ -688,15 +688,18 @@ class RerunAttemptRule(unittest.TestCase):
                 jobs = case.get('jobs')
                 if jobs is None:
                     jobs = [job for page in case['job_pages'] for job in page]
-                successful = rule.successful_attempts(jobs, vectors['job_name'])
                 expected = case['expected']
                 if 'error' in expected:
                     with self.assertRaises(rule.AttemptError) as caught:
-                        rule.select_latest_attempt(successful, case['evidence_attempts'])
+                        rule.select_latest_attempt(
+                            rule.successful_attempts(jobs, vectors['job_name']),
+                            case['evidence_attempts'])
                     self.assertIn(expected['error'], str(caught.exception))
                 else:
                     self.assertEqual(
-                        rule.select_latest_attempt(successful, case['evidence_attempts']),
+                        rule.select_latest_attempt(
+                            rule.successful_attempts(jobs, vectors['job_name']),
+                            case['evidence_attempts']),
                         expected['attempt'])
 
     def test_both_consumers_use_the_shared_rule(self):
