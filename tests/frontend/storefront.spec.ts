@@ -4,8 +4,8 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
+import { spawnRenderer } from './renderer-lifecycle';
 const origin = 'http://127.0.0.1:4321';
 const seed = [
   { path: '/', title: 'Made for everyday use', description: 'A published example of pages and products.', text: 'Browse our published collection and learn how this sample site is made.', screenshot: 'home' },
@@ -33,15 +33,17 @@ test('published release without a root page has no site-name home link in final 
   await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
   const address = upstream.address();
   if (!address || typeof address === 'string') throw new Error('Expected loopback test API');
-  const renderer = spawn('bash', ['scripts/start_storefront_ssr.sh'], {
+  const renderer = spawnRenderer({
+    command: 'bash',
+    args: ['scripts/start_storefront_ssr.sh'],
     env: { ...process.env, HOST: '127.0.0.1', PORT: '4325', OSC_READ_API_ORIGIN: `http://127.0.0.1:${address.port}` },
-    stdio: 'ignore',
   });
   try {
-    await expect.poll(async () => {
-      try { return (await request.get('http://127.0.0.1:4325/products')).status(); }
-      catch { return 0; }
-    }).toBe(200);
+    // Readiness races the child's terminal event, so an early exit reports the real start error.
+    await renderer.waitForReady(async () => {
+      try { return (await request.get('http://127.0.0.1:4325/products')).status() === 200; }
+      catch { return false; }
+    });
     for (const withRoot of [true, false]) {
       release.pages = withRoot ? originalPages : originalPages.filter(page => page.path !== '/');
       const response = await request.get('http://127.0.0.1:4325/products');
@@ -55,10 +57,11 @@ test('published release without a root page has no site-name home link in final 
       }
     }
   } finally {
-    const stopped = new Promise<void>(resolve => renderer.once('exit', () => resolve()));
-    renderer.kill('SIGTERM');
-    await stopped;
-    await new Promise<void>((resolve, reject) => upstream.close(error => error ? reject(error) : resolve()));
+    try {
+      await renderer.stop();
+    } finally {
+      await new Promise<void>((resolve, reject) => upstream.close(error => error ? reject(error) : resolve()));
+    }
   }
 });
 for (const item of seed) test(`storefront SSR ${item.path}`, async ({ page, request }) => {

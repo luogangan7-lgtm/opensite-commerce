@@ -100,7 +100,7 @@ test('foreign tenant identity and malformed bearer fail closed',async()=>{
 test('customer writes reject foreign Origin and forged browser CSRF before upstream IO',async()=>{
   const context=await readPurchaseContext(request('context'),jar), before=calls.length;
   for(const [origin,token] of [['https://evil.example',context.csrf],[site,'forged']]) {
-    const r=request('customer/register',token,{email:'buyer@example.test',password:'twelve-byte-password'});r.headers.set('Origin',origin!);
+    const r=request('customer/register',token,{email:'buyer@example.test',password});r.headers.set('Origin',origin!);
     expect((await handlePurchaseRequest(r,jar,'customer/register')).status).toBe(403);
   }
   expect(calls.length).toBe(before);
@@ -124,7 +124,7 @@ test('logout discards customer cart custody even if the browser replays its old 
 test('login and registration failures do not relay account-existence codes or private detail',async()=>{
   const context=await readPurchaseContext(request('context'),jar);
   for(const operation of ['customer/register','customer/session'])for(const status of [400,401,409,422]) {
-    denied=status;const response=await send(operation,context.csrf,{email:'buyer@example.test',password:'twelve-byte-password'});
+    denied=status;const response=await send(operation,context.csrf,{email:'buyer@example.test',password});
     expect(response.status).toBe(400);expect(await response.json()).toMatchObject({code:'customer_auth_failed'});
   }
 });
