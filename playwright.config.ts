@@ -32,12 +32,15 @@ export default defineConfig({
     { name: 'mobile', use: { viewport: { width: 390, height: 844 } } }
   ],
   webServer: [
-    { command: 'bash scripts/start_storefront_api_e2e.sh', url: 'http://127.0.0.1:4175/healthz', reuseExistingServer: false, timeout: 180_000 },
+    { command: 'OPENSITE_ENVIRONMENT=test OSC_COMMERCE_TEST_HTTP=1 bun run build:storefront && bash scripts/start_storefront_api_e2e.sh', url: 'http://127.0.0.1:4175/healthz', reuseExistingServer: false, timeout: 180_000 },
     { command: 'bun run build:gallery && bun x --no-install vite preview --config web/admin/vite.config.ts web/admin --outDir dist-gallery --port 4173 --strictPort', url: 'http://127.0.0.1:4173', reuseExistingServer: false, timeout: 120_000 },
     { command: 'bun run build:admin && bun x --no-install vite preview --config web/admin/vite.config.ts web/admin --port 4174 --strictPort', url: 'http://127.0.0.1:4174', reuseExistingServer: false, timeout: 120_000 },
     { command: 'HOST=127.0.0.1 PORT=4321 OSC_READ_API_ORIGIN=http://127.0.0.1:4175 bun run start:storefront', url: 'http://127.0.0.1:4321', reuseExistingServer: false, timeout: 120_000 },
     { command: 'bun tests/frontend/commerce-fixture.ts', url: 'http://127.0.0.1:4176/healthz', reuseExistingServer: false, timeout: 30_000 },
     { command: 'HOST=127.0.0.1 PORT=4323 OSC_READ_API_ORIGIN=http://127.0.0.1:4175 OSC_COMMERCE_FIXTURE_ORIGIN=http://127.0.0.1:4176 OSC_COMMERCE_FIXTURE_SITE=http://127.0.0.1:4323 OSC_COMMERCE_FIXTURE_MODE=contract-test bun run start:storefront', url: 'http://127.0.0.1:4323', reuseExistingServer: false, timeout: 120_000 },
+    // Existing test-only HTTP capability enables the actual backend-mode account document.
+    // Browser routes supply safe state DTOs; no backend identity or payment acceptance is implied.
+    { command: `HOST=127.0.0.1 PORT=4324 OPENSITE_ENVIRONMENT=test OSC_COMMERCE_TEST_HTTP=1 OSC_READ_API_ORIGIN=http://127.0.0.1:4175 OSC_COMMERCE_MODE=backend OSC_COMMERCE_SITE=http://127.0.0.1:4324 OSC_COMMERCE_API_ORIGIN=http://127.0.0.1:4175 OSC_COMMERCE_COOKIE_KEY="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')" bun run start:storefront`, url: 'http://127.0.0.1:4324/account', reuseExistingServer: false, timeout: 120_000 },
     { command: 'HOST=127.0.0.1 PORT=4322 OSC_READ_API_ORIGIN=http://127.0.0.1:1 bun run start:storefront', port: 4322, reuseExistingServer: false, timeout: 120_000 }
   ]
 });
