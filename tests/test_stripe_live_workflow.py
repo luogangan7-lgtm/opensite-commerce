@@ -47,6 +47,16 @@ def validate(document, workflows):
 
 
 class LiveWorkflowGate(unittest.TestCase):
+    def test_secret_context_and_env_aliases_fail_closed(self):
+        original = yaml.safe_load(LIVE.read_text())
+        for expression in ("secrets[env.SECRET_NAME]", "toJSON(secrets)", 'env.STRIPE_API', "env['STRIPE_SMOKE_EMAIL']"):
+            with self.subTest(expression=expression):
+                other = yaml.safe_dump({'env': {'ALIAS': '${{ ' + expression + ' }}'}})
+                with self.assertRaises(AssertionError): validate(original, {'other.yml': other})
+                bad = copy.deepcopy(original)
+                bad['jobs']['live']['steps'].append({'run': '${{ ' + expression + ' }}'})
+                with self.assertRaises(AssertionError): validate(bad, {})
+
     def test_second_secret_consumer_expression_forms(self):
         original = yaml.safe_load(LIVE.read_text())
         for secret in ('STRIPE_API', 'STRIPE_SMOKE_EMAIL', 'STRIPE_SMOKE_ACCOUNT'):
@@ -67,7 +77,7 @@ class LiveWorkflowGate(unittest.TestCase):
                         target = bad if block == 'workflow' else bad['jobs']['live'] if block == 'job' else bad['jobs']['live']['steps'][0]
                         target['env'] = {'ALIAS': '${{ ' + expression + ' }}'}
                         with self.assertRaises(AssertionError): validate(bad, {})
-                        other = yaml.safe_dump({'jobs': {'another': {'env': {'ALIAS': '${{ ' + expression + ' }}'}}})
+                        other = yaml.safe_dump({'jobs': {'another': {'env': {'ALIAS': '${{ ' + expression + ' }}'}}}})
                         with self.assertRaisesRegex(AssertionError, 'LIVE_SECRET_OWNERSHIP'):
                             validate(original, {'other.yml': other})
 
