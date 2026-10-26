@@ -615,10 +615,66 @@ SQL
    [[ -n $first_id ]] || { echo 'FAIL: ledger winner returned no journal id'; fail=1; }
    result ledger_second "journal=$first_id"
   else expect ledger_second LEDGER_IDEMPOTENCY_CONTENT; expect ledger_second 23505; fi
-  got=$(sql <<<"SELECT count(*)||'|'||(SELECT count(*) FROM app.ledger_entries WHERE tenant_id='$T')||'|'||bool_and(status='posted' AND posted_at IS NOT NULL) FROM app.ledger_transactions WHERE tenant_id='$T';")
-  echo "ledger race $isolation/$scenario: $got (expected 1|2|true)"
-  [[ $got == '1|2|true' ]] || fail=1
+  got=$(sql <<<"SELECT count(*)||'|'||(SELECT count(*) FROM app.ledger_entries WHERE tenant_id='$T')||'|'||bool_and(status='posted' AND posted_at IS NOT NULL)||'|'||(SELECT sum(amount) FILTER(WHERE side='debit')||'|'||sum(amount) FILTER(WHERE side='credit') FROM app.ledger_entries WHERE tenant_id='$T') FROM app.ledger_transactions WHERE tenant_id='$T';")
+  echo "ledger race $isolation/$scenario: $got (expected 1|2|true|100|100)"
+  [[ $got == '1|2|true|100|100' ]] || fail=1
  done
+done
+
+# LEDGER-ISOLATION-GATE #7, gate140: INSERT holds the parent while posting
+# establishes its snapshot. Only fixture construction disables the deferred
+# header check, to model an existing draft unavailable through the runtime API.
+# Production guards, roles, deferred checks and the revision fence remain active
+# for every participant. Polling observes locks; no sleep determines ordering.
+for isolation in 'READ COMMITTED' 'REPEATABLE READ' 'SERIALIZABLE'; do
+ read -r T J A B <<<"$(sql <<'SQL' | tail -1
+BEGIN;
+INSERT INTO app.tenants(name,settlement_currency) VALUES('ledger-snapshot','USD') RETURNING id AS t \gset
+SELECT set_config('app.tenant_id',:'t',true);
+INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
+ VALUES(:'t','cash','asset','USD') RETURNING id AS a \gset
+INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
+ VALUES(:'t','revenue','revenue','USD') RETURNING id AS b \gset
+ALTER TABLE app.ledger_transactions DISABLE TRIGGER ledger_final_balance;
+INSERT INTO app.ledger_transactions(tenant_id,currency,source_type,source_id,event)
+ VALUES(:'t','USD','race','entry-v-posting','capture') RETURNING id AS j \gset
+INSERT INTO app.ledger_entries(tenant_id,transaction_id,line_no,account_id,currency,side,amount)
+ VALUES(:'t',:'j',1,:'a','USD','debit',100),(:'t',:'j',2,:'b','USD','credit',100);
+ALTER TABLE app.ledger_transactions ENABLE TRIGGER ledger_final_balance;
+COMMIT;
+SELECT :'t'||' '||:'j'||' '||:'a'||' '||:'b';
+SQL
+)"
+ insert="INSERT INTO app.ledger_entries(tenant_id,transaction_id,line_no,account_id,currency,side,amount) VALUES('$T','$J',3,'$A','USD','debit',1);"
+ posting="SELECT 'LEDGER_SNAPSHOT='||count(*) FROM app.ledger_entries WHERE tenant_id='$T' AND transaction_id='$J'; UPDATE app.ledger_transactions SET status='posted',posted_at=clock_timestamp() WHERE tenant_id='$T' AND id='$J';"
+ gate_close 140
+ tx ledger_entry_insert app_ledger_executor "$T" "$insert $(park 140)" & entry_pid=$!
+ await ledger_entry_insert advisory
+ tx ledger_snapshot_post app_ledger_executor "$T" "$posting" "SET default_transaction_isolation='$isolation';" & post_pid=$!
+ await ledger_snapshot_post "${ROWLOCK[@]}"
+ gate_open 140
+ await_job ledger_entry_insert "$entry_pid"; await_job ledger_snapshot_post "$post_pid"
+ expect ledger_entry_insert ok
+ result ledger_snapshot_post 'LEDGER_SNAPSHOT=2'
+ if [[ $isolation == 'READ COMMITTED' ]]; then
+  expect ledger_snapshot_post LEDGER_FINAL_BALANCE
+ else
+  expect ledger_snapshot_post 40001
+ fi
+ # A fresh BEGIN repeats the complete command under the original isolation.
+ # Its snapshot must now contain the INSERT and reject the unbalanced posting.
+ tx ledger_snapshot_retry app_ledger_executor "$T" "$posting" "SET default_transaction_isolation='$isolation';"
+ result ledger_snapshot_retry 'LEDGER_SNAPSHOT=3'
+ expect ledger_snapshot_retry LEDGER_FINAL_BALANCE
+ got=$(sql <<<"SELECT status||'|'||revision||'|'||(SELECT sum(amount) FILTER(WHERE side='debit')||'|'||sum(amount) FILTER(WHERE side='credit') FROM app.ledger_entries WHERE tenant_id='$T' AND transaction_id='$J') FROM app.ledger_transactions WHERE tenant_id='$T' AND id='$J';")
+ [[ $got == 'posting|3|101|100' ]] || { echo "FAIL LEDGER_SNAPSHOT_FENCE $isolation: $got"; fail=1; }
+ # Complete the draft using a new balanced command, then witness committed sums
+ # independently of the posting transaction's snapshot, including account nets.
+ tx ledger_snapshot_balance app_ledger_executor "$T" "INSERT INTO app.ledger_entries(tenant_id,transaction_id,line_no,account_id,currency,side,amount) VALUES('$T','$J',4,'$B','USD','credit',1); $posting" "SET default_transaction_isolation='$isolation';"
+ expect ledger_snapshot_balance ok
+ got=$(sql <<<"SELECT j.status||'|'||j.revision||'|'||count(*)||'|'||sum(e.amount) FILTER(WHERE e.side='debit')||'|'||sum(e.amount) FILTER(WHERE e.side='credit')||'|'||sum(CASE WHEN e.account_id='$A' THEN CASE e.side WHEN 'debit' THEN e.amount ELSE -e.amount END ELSE 0 END)||'|'||sum(CASE WHEN e.account_id='$B' THEN CASE e.side WHEN 'credit' THEN e.amount ELSE -e.amount END ELSE 0 END) FROM app.ledger_transactions j JOIN app.ledger_entries e ON(e.tenant_id,e.transaction_id)=(j.tenant_id,j.id) WHERE j.tenant_id='$T' AND j.id='$J' GROUP BY j.status,j.revision;")
+ [[ $got == 'posted|4|4|101|101|101|101' ]] || { echo "FAIL LEDGER_FINAL_BALANCES $isolation: $got"; fail=1; }
+ echo "LEDGER gate140 $isolation final witness: $got"
 done
 
 # Catalog optimistic locking: a stale transaction waits on the winner's row
@@ -1666,6 +1722,46 @@ SQL
  else
   echo "FAIL C19D3_RECOVERY_RACE $isolation $got";fail=1
  fi
+done
+
+# B369 gate141: staff decision and terminal verification are independent facts,
+# even when both have the same no-posting outcome. Exercise both stream-lock
+# winner orders and retry complete commands after serialization failures.
+for isolation in 'read committed' 'repeatable read' 'serializable'; do
+ for first_fact in manual terminal; do
+  read -r T OID LID SKU <<<"$(fulfillment_fixture true)"
+  read -r ACTOR CREDENTIAL <<<"$(sql <<SQL | tail -1
+INSERT INTO app.users(email,password_hash) VALUES('b369-'||uuidv7()::text||'@example.invalid','fixture') RETURNING id AS actor \gset
+INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES('$T',:'actor','owner');
+INSERT INTO app.auth_sessions(user_id,token_hash,expires_at) VALUES(:'actor',sha256(:'actor'::bytea),clock_timestamp()+interval '1 hour') RETURNING id AS credential \gset
+SELECT :'actor'||' '||:'credential';
+SQL
+)"
+  fact="jsonb_build_object('tenant_id','$T','provider','fake','account_id','c19d2-$T','refund_id','b369-refund','event_id','b369-terminal','provider_ref','captured-race','order_id','$OID','order_version',1,'amount_minor',14,'currency','USD','status','failed','payload_hash',encode(sha256('b369-terminal'::bytea),'hex'))"
+  tx b369_retain app_payments_ingress "$T" "SELECT app.payments_retain_refund_case(($fact)||jsonb_build_object('reason','unmatched_refund'));"
+  expect b369_retain ok
+  CASE_ID=$(sql <<<"SELECT id FROM app.payment_refund_cases WHERE tenant_id='$T';")
+  manual="SELECT app.payments_resolve_refund_case('$CASE_ID',jsonb_build_object('user_id','$ACTOR','kind','session','credential_id','$CREDENTIAL','reason','no_posting_required','evidence_hash',encode(sha256('staff'::bytea),'hex')));"
+  terminal="SELECT app.payments_replay_refund_case('$CASE_ID',$fact);"
+  if [[ $first_fact == manual ]]; then first_sql=$manual; second_sql=$terminal; expected_order='no_posting_required,verified_terminal'
+  else first_sql=$terminal; second_sql=$manual; expected_order='verified_terminal,no_posting_required'; fi
+  gate_close 141
+  tx b369_first app_payments_ingress "$T" "$first_sql $(park 141)" & first_pid=$!
+  await b369_first advisory
+  tx b369_second app_payments_ingress "$T" "$second_sql" "SET default_transaction_isolation='$isolation';" & second_pid=$!
+  await b369_second advisory
+  gate_open 141
+  await_job b369_first "$first_pid"; await_job b369_second "$second_pid"
+  expect b369_first ok
+  if [[ -s $ERRDIR/b369_second ]]; then expect b369_second 40001; fi
+  tx b369_retry app_payments_ingress "$T" "$second_sql" "SET default_transaction_isolation='$isolation';"
+  expect b369_retry ok
+  got=$(sql <<<"SELECT count(*) FILTER(WHERE reason='no_posting_required')||'|'||count(*) FILTER(WHERE reason='verified_terminal')||'|'||bool_and(outcome='resolved_no_posting')||'|'||string_agg(reason,',' ORDER BY created_at) FROM app.payment_refund_case_resolutions WHERE tenant_id='$T' AND case_id='$CASE_ID';")
+  [[ $got == "1|1|true|$expected_order" ]] || { echo "FAIL B369_CONCURRENT_AUDIT_RED $isolation/$first_fact: $got"; fail=1; }
+  tx b369_replay app_payments_ingress "$T" "$manual $terminal"; expect b369_replay ok
+  [[ $(sql <<<"SELECT count(*) FROM app.payment_refund_case_resolutions WHERE tenant_id='$T' AND case_id='$CASE_ID';") == 2 ]] || { echo 'FAIL B369_CONCURRENT_REPLAY_RED'; fail=1; }
+  echo "B369 gate141 $isolation/$first_fact witness: $got"
+ done
 done
 
 # C-19a gates93/94: actual inbox unique-key contention and public stream lock.
