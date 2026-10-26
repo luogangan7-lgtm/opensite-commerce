@@ -48,10 +48,31 @@ func TestCustomerHistoryAdmission(t *testing.T) {
 				if w.Code != tc.want || calls-before != tc.calls {
 					t.Fatalf("HISTORY_ADMISSION_RED: status=%d want=%d storage=%d want=%d: %s", w.Code, tc.want, calls-before, tc.calls, w.Body.String())
 				}
-				if w.Header().Get("Cache-Control") != "no-store" {
+				if !historyNoStore(w) {
 					t.Fatal("history must be private no-store")
 				}
 			}
 		})
+	}
+}
+
+// historyNoStore is shared by the admission gate and its transmission controls.
+func historyNoStore(w *httptest.ResponseRecorder) bool {
+	return w.Header().Get("Cache-Control") == "no-store"
+}
+
+func TestHistoryNoStoreRejectsLateHeader(t *testing.T) {
+	for _, late := range []bool{false, true} {
+		w := httptest.NewRecorder()
+		if !late {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		if late {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		if got := historyNoStore(w); got == late {
+			t.Fatalf("HISTORY_SENT_HEADER_RED: late=%v accepted=%v", late, got)
+		}
 	}
 }
