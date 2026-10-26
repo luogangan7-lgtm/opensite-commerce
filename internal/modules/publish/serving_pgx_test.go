@@ -551,7 +551,7 @@ func TestServingPublishCandidateInvalidationPG(t *testing.T) {
 				called := false
 				f.beforeServingSeal = func() {
 					called = true
-					mutate(`UPDATE app.price_entries SET unit_amount=200 WHERE tenant_id=$1 AND sku_id=$2`, f.tenant, sku)
+					mutate(`UPDATE app.price_entries SET unit_amount=200 WHERE tenant_id=$1 AND sku_id=$2 AND unit_amount=100`, f.tenant, sku)
 				}
 				if _, err := publishHome(t, authctx, f, revision, previous); err != nil {
 					t.Fatal(err)
