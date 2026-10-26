@@ -488,5 +488,163 @@ class PrivacyRegistryTests(unittest.TestCase):
             self.assertNotIn("sensitive constraint detail", stderr.getvalue())
 
 
+class MerchantDeletionRegistryTests(unittest.TestCase):
+    """MDEL-00: mandatory merchant policy is independent of customer retention."""
+    setUpClass = PrivacyRegistryTests.__dict__["setUpClass"]
+
+    def fixture(self, root):
+        body = document()
+        body["merchant_deletion"] = {
+            "version": 1,
+            "handlers": {"orders.scrub": {
+                "depends_on": [], "tables": ["orders"],
+                "lock_order": "tenant_fence -> artifact_uuid -> module",
+                "clock": "database", "transaction": "one_item_and_checkpoint",
+            }},
+            "artifacts": {},
+        }
+        for name, field in body["tables"]["orders"]["columns"].items():
+            field["merchant_deletion"] = {
+                "action": "erase", "strategy": "delete_row",
+                "reason": "Remove merchant-owned order copy: " + name,
+                "handler": "orders.scrub",
+                "ownership": {"kind": "tenant_column", "path": "orders.tenant_id"},
+            }
+        self.write(root, body)
+        return body
+
+    def write(self, root, body):
+        folder = root / "modules/privacy"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "orders.json").write_text(json.dumps(body))
+
+    def load(self, root):
+        return self.gate.load_merchant_contract(root, self.gate.load_registry(root))
+
+    def test_contract_is_versioned_deterministic_and_binds_policy_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = self.fixture(root)
+            first = self.load(root)
+            self.assertEqual(first["version"], 1)
+            self.assertEqual(first["handler_order"], ["orders.scrub"])
+            self.assertEqual(first["digest"], self.load(root)["digest"])
+            body["tables"]["orders"]["columns"]["id"]["merchant_deletion"]["reason"] += " changed"
+            self.write(root, body)
+            self.assertNotEqual(first["digest"], self.load(root)["digest"])
+
+    def test_every_column_needs_independent_explicit_policy(self):
+        for key in ("action", "strategy", "reason", "handler", "ownership"):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                body = self.fixture(root)
+                body["tables"]["orders"]["columns"]["address_snapshot"]["merchant_deletion"].pop(key)
+                self.write(root, body)
+                with self.assertRaisesRegex(ValueError, "MERCHANT_.*orders.address_snapshot"):
+                    self.load(root)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = self.fixture(root)
+            body["tables"]["orders"]["columns"]["id"].pop("merchant_deletion")
+            self.write(root, body)
+            with self.assertRaisesRegex(ValueError, "MERCHANT_POLICY_MISSING.*orders.id"):
+                self.load(root)
+
+    def test_unknown_values_blank_reasons_and_forged_tenant_authority_fail(self):
+        mutations = [
+            {"action": "eventually"}, {"strategy": "guess_from_name"}, {"reason": " "},
+            {"ownership": {"kind": "tenant_column", "path": "orders.missing"}},
+            {"ownership": {"kind": "tenant_column", "path": "other.tenant_id"}},
+            {"ownership": {"kind": "payload_tenant", "path": "args.tenant_id"}},
+            {"handler": "other.scrub"},
+            {"action": "retain", "strategy": "unchanged", "retained_kind": "financial"},
+        ]
+        for changes in mutations:
+            with self.subTest(changes=changes), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                body = self.fixture(root)
+                body["tables"]["orders"]["columns"]["address_snapshot"]["merchant_deletion"].update(changes)
+                self.write(root, body)
+                with self.assertRaises(ValueError):
+                    self.load(root)
+
+    def test_unknown_dependency_cycle_wrong_owner_and_incomplete_table_order_fail(self):
+        for change in ("unknown", "cycle", "owner", "tables", "clock", "transaction", "lock"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                body = self.fixture(root)
+                handler = body["merchant_deletion"]["handlers"]["orders.scrub"]
+                if change == "unknown":
+                    handler["depends_on"] = ["missing.handler"]
+                elif change == "cycle":
+                    handler["depends_on"] = ["orders.scrub"]
+                elif change == "owner":
+                    body["merchant_deletion"]["handlers"] = {"other.scrub": handler}
+                elif change == "tables":
+                    handler["tables"] = []
+                elif change == "clock":
+                    handler["clock"] = "application"
+                elif change == "transaction":
+                    handler["transaction"] = "network_inside_transaction"
+                else:
+                    handler["lock_order"] = "module -> tenant_fence"
+                self.write(root, body)
+                with self.assertRaises(ValueError):
+                    self.load(root)
+
+    def test_artifact_inventory_is_bidirectional_and_requires_a_scrub(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = self.fixture(root)
+            source = root / "internal/export.go"
+            source.parent.mkdir()
+            source.write_text('// privacy-artifact: orders.archive\npackage export\nvar f = os.CreateTemp(root, "private")\n')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_UNDECLARED"):
+                self.load(root)
+            body["merchant_deletion"]["artifacts"]["orders.archive"] = {
+                "action": "erase", "strategy": "unlink_tenant_namespace",
+                "reason": "Private order export bytes include derived contacts.",
+                "handler": "orders.scrub", "source": "internal/export.go",
+                "ownership": {"kind": "tenant_column", "path": "orders.tenant_id"},
+                "paths": ["exports/<tenant_uuid>/<request_uuid>.json"],
+                "guards": ["canonical_ids", "anchored_root", "no_symlinks", "fsync_parents", "verify_empty"],
+            }
+            self.write(root, body)
+            self.load(root)
+            body["merchant_deletion"]["artifacts"]["orders.archive"]["action"] = "retain"
+            self.write(root, body)
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT"):
+                self.load(root)
+            body["merchant_deletion"]["artifacts"]["orders.archive"]["action"] = "erase"
+            self.write(root, body)
+            source.write_text("package export\n")
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_PHANTOM"):
+                self.load(root)
+
+    def test_unclassified_filesystem_writer_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            source = root / "internal/unregistered.go"
+            source.parent.mkdir()
+            source.write_text('package export\nvar f = os.CreateTemp(root, "private")\n')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
+                self.load(root)
+
+    def test_actual_registry_covers_derived_copies_and_global_exclusions(self):
+        contract = self.load(ROOT)
+        registry = self.gate.load_registry(ROOT)
+        self.assertEqual(set(contract["fields"]), set(registry))
+        for name in ("tenants.name", "ledger_accounts.code", "inventory_movements.reason",
+                     "storefront_serving.body", "storefront_serving.fallback_body", "queue.river_job.args"):
+            self.assertEqual(contract["fields"][name]["action"], "erase", name)
+        for name in ("users.email", "auth_sessions.token_hash"):
+            self.assertEqual(contract["fields"][name]["ownership"]["kind"], "global_exclusion")
+        self.assertEqual(set(contract["artifacts"]), {
+            "media.originals", "media.staging", "datarights.customer_export", "datarights.export_temp",
+        })
+        self.assertEqual(contract["artifacts"]["media.originals"]["prerequisite"], "MDEL-21a")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
