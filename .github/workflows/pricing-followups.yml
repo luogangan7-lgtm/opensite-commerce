@@ -54,6 +54,9 @@ jobs:
           python3 scripts/pending_migrations.py ci-normalize
           ./scripts/migrate_river.sh
           ./scripts/migrate.sh
+      - name: Exact executor authority matrix
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_role_matrix.sql
       - name: Missing tier preserves version
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_staff_pricing.sql

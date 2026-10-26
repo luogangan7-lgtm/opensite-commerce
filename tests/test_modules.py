@@ -314,8 +314,8 @@ class GovernanceTests(unittest.TestCase):
 
     def test_trusted_tx_in_export_review_list_green(self):
         # The #153 export-surface review list must name every adapter export, including this seam.
-        self.source("internal/tenanttx/pgxadapter/export_surface_test.go",
-                    "package pgxadapter\n\nvar reviewed = []string{\"method:QueryRunner.RunTrustedTx\"}\n")
+        self.source("internal/tenanttx/pgxadapter/reviewed_exports_test.go",
+                    "package pgxadapter_test\n\nvar reviewedAdapterExports = []string{\"method:QueryRunner.RunTrustedTx\",}\n")
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

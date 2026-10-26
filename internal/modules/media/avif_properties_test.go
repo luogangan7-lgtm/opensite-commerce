@@ -244,3 +244,17 @@ func TestAVIFUint32DimensionsDoNotOverflow(t *testing.T) {
 		t.Fatal("AVIF_UINT32_OVERFLOW: maximum dimensions accepted")
 	}
 }
+
+func TestPixelLimitBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		w, h int
+		want bool
+	}{
+		{4096, 4096, true}, {4097, 4096, false},
+		{0, 1, false}, {1, 0, false}, {-1, 1, false}, {1, -1, false},
+	} {
+		if got := dimensions(tc.w, tc.h); got != tc.want {
+			t.Errorf("dimensions(%d,%d)=%v want %v", tc.w, tc.h, got, tc.want)
+		}
+	}
+}

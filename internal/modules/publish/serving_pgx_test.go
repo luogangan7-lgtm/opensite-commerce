@@ -17,6 +17,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -233,16 +234,32 @@ func TestStorefrontServingPG(t *testing.T) {
 		// complete while c1 is open (a shared serving-row lock would block or deadlock it).
 		rollback := errors.New("rollback")
 		c1Held, c1Done := make(chan struct{}), make(chan struct{})
+		var releaseHolder sync.Once
 		c1 := make(chan error, 1)
+		holderCtx, holderCancel := context.WithCancel(ctx)
+		stopped := make(chan struct{})
+		defer func() {
+			releaseHolder.Do(func() { close(c1Done) })
+			holderCancel()
+			select {
+			case <-stopped:
+			case <-time.After(5 * time.Second):
+				t.Error("G12 holder did not stop after cancellation")
+			}
+		}()
 		go func() {
-			c1 <- a.admin.InTenant(ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
+			defer close(stopped)
+			c1 <- a.admin.InTenant(holderCtx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
 				if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve_non_order($1::uuid,7331,'checkout',gen_random_uuid(),'g12-c1-'||$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.ready, a.tenant); err != nil {
-					close(c1Held) // unblock the test so the error surfaces instead of a 10m hang
 					return err
 				}
 				close(c1Held)
-				<-c1Done
-				return rollback
+				select {
+				case <-c1Done:
+					return rollback
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			})
 		}()
 		if err := waitServingHolder(ctx, c1Held, c1); err != nil {
@@ -256,7 +273,7 @@ func TestStorefrontServingPG(t *testing.T) {
 			return rollback
 		})
 		c2cancel()
-		close(c1Done)
+		releaseHolder.Do(func() { close(c1Done) })
 		if !errors.Is(err, rollback) {
 			t.Fatalf("overlapping checkout waited on serving data or failed: %v", err)
 		}
@@ -466,8 +483,14 @@ func TestStorefrontLegacyHostMovePG(t *testing.T) {
 // The helper is shared with the real holder setup above, so these failures exercise
 // the exact wait used by the PostgreSQL race, including pre-callback failures.
 func waitServingHolder(ctx context.Context, ready <-chan struct{}, done <-chan error) error {
-	<-ready
-	return nil
+	select {
+	case <-ready:
+		return nil
+	case err := <-done:
+		return fmt.Errorf("holder exited before ready: %v", err)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func TestServingHolderStartupFailure(t *testing.T) {
