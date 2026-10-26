@@ -142,3 +142,37 @@ test('history forwards only the validated customer cookie and preserves exact mo
   expect((await send('history')).status).toBe(401);
   expect(calls.slice(before).some(r=>r.url.includes('/customer/orders'))).toBe(false);
 });
+
+for(const [label,fields,authenticated,status] of [
+  ['empty',{},false,200],
+  ['guest',{c:cart,t:bearer},false,200],
+  ['customer',{c:cart,u:customer},true,200],
+  ['cart without authority',{c:cart},false,401],
+  ['token without cart',{t:bearer},false,401],
+] as const)test(`signed purchasing cookie matrix: ${label}`,async()=>{
+  if(authenticated)values.set(sessionName,bearer);
+  const encoded=Buffer.from(JSON.stringify({s:bearer,x:Date.now()+60_000,tenant,...fields})).toString('base64url');
+  const signature=createHmac('sha256',Buffer.from(process.env.OSC_COMMERCE_COOKIE_KEY!,'base64url')).update(encoded).digest('base64url');
+  values.set('__Host-osc_storefront_cart',`${encoded}.${signature}`);
+  expect((await send('cart')).status).toBe(status);
+  if(status===401)expect(calls).toHaveLength(0);
+});
+for(const [operation,method,input] of [
+  ['customer/session','DELETE',undefined],
+  ['customer/register','POST',{email:'buyer@example.test',password:'twelve-byte-password'}],
+  ['customer/verify','POST',{token:bearer}],
+] as const)test(`one session validation per authenticated account write: ${operation} ${method}`,async()=>{
+  values.set(sessionName,bearer);
+  const context=await readPurchaseContext(request('context'),jar);calls.length=0;
+  expect((await send(operation,context.csrf,input,method)).ok).toBe(true);
+  expect(calls.filter(r=>r.method==='GET'&&r.url.endsWith('/customer/session'))).toHaveLength(1);
+});
+test('account login revalidates changed identity and later requests never reuse old validation',async()=>{
+  const context=await readPurchaseContext(request('context'),jar);calls.length=0;
+  expect((await send('customer/session',context.csrf,{email:'buyer@example.test',password:'twelve-byte-password'})).status).toBe(200);
+  expect(calls.filter(r=>r.method==='GET'&&r.url.endsWith('/customer/session'))).toHaveLength(2);
+  denied=401;
+  const response=await send('customer/verify',context.csrf,{token:bearer});
+  expect(response.status).toBe(403); // login rotates browser CSRF
+  expect((await send('history')).status).toBe(401);
+});

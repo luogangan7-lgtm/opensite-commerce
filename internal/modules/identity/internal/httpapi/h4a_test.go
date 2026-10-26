@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
 
 func TestH4ASessionConcurrencyAndDeadline(t *testing.T) {
@@ -93,5 +95,29 @@ func TestH4AUnifiedSessionAdmission(t *testing.T) {
 				t.Fatal("cheap reject reached storage")
 			}
 		})
+	}
+}
+
+func TestH4ASessionAdmissionMetrics(t *testing.T) {
+	_, _, _, service, token := transportFixture(t)
+	var metrics observability.Metrics
+	handler := metrics.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, _, err := service.Authenticate(r.Context(), token); err != nil {
+			w.WriteHeader(429)
+		}
+	}))
+	for i := 0; i < 61; i++ {
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/private", nil))
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	for _, want := range []string{
+		`opensite_auth_operations_total{stage="session_admission",outcome="admitted"} 60`,
+		`opensite_auth_operations_total{stage="session_admission",outcome="denied"} 1`,
+		`opensite_auth_duration_seconds_count{stage="session_admission"} 61`,
+	} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Fatalf("missing authentication metric %q in %s", want, w.Body.String())
+		}
 	}
 }
