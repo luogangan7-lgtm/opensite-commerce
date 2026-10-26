@@ -13,6 +13,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -503,6 +504,49 @@ class FinalLandingGate(unittest.TestCase):
             self.assertNotEqual(failed.returncode, 0, combined(failed))
             self.assertIn('FINAL_LANDING_LANE_IDENTITIES', combined(failed))
 
+    def test_a_newer_successful_attempt_without_its_receipt_is_rejected(self):
+        # #426: attempts 1 and 2 both succeeded, but attempt 2's receipt never
+        # arrived.  The gate must require the receipt of the latest successful
+        # attempt; falling back to attempt 1 contradicts the binding it promises.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            sha = 'b' * 40
+            jobs = self.lane_jobs(temp, {lane: [(1, 'success'), (2, 'success')]
+                                         for lane in self.LANES}, sha=sha)
+            lanes = self.nested_lane_identities(
+                temp, sha, {lane: [1] for lane in self.LANES})
+            result = self.landing(root, '--mode', 'final', '--sha', sha,
+                                  '--expected-sha', sha,
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs),
+                                  '--receipt', Path(temp) / 'receipt.json',
+                                  env=self.RUN_ENV)
+            self.assertNotEqual(result.returncode, 0, combined(result))
+            self.assertIn('latest successful attempt 2', combined(result))
+
+    def test_a_failed_rerun_keeps_the_earlier_successful_receipt(self):
+        # #426: a failed-only re-run is reported as a failed job, so the latest
+        # successful attempt is still attempt 1 and its receipt stays valid.
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_repo(temp)
+            sha = 'd' * 40
+            jobs = self.lane_jobs(temp, {
+                **{lane: [(1, 'success')] for lane in self.LANES if lane != 'pg'},
+                'pg': [(1, 'success'), (2, 'failure')]}, sha=sha)
+            lanes = self.nested_lane_identities(
+                temp, sha, {**{lane: [1] for lane in self.LANES if lane != 'pg'},
+                            'pg': [1, 2]})
+            receipt = Path(temp) / 'receipt.json'
+            result = self.landing(root, '--mode', 'final', '--sha', sha,
+                                  '--expected-sha', sha,
+                                  '--lane-identities', str(lanes),
+                                  '--lane-jobs', str(jobs),
+                                  '--receipt', str(receipt), env=self.RUN_ENV)
+            self.assertEqual(result.returncode, 0, combined(result))
+            attempts = {row['lane']: row['run_attempt']
+                        for row in json.loads(receipt.read_text())['lane_identities']}
+            self.assertEqual(attempts['pg'], '1')
+
     def test_auto_mode_requires_a_trusted_landing_decision(self):
         # No diff and no trusted policy: auto must not silently become proposal.
         with tempfile.TemporaryDirectory() as temp:
@@ -621,6 +665,45 @@ class FinalLandingGate(unittest.TestCase):
         self.assertIn('.jobs[]', jobs_step['run'])
         # Receipts are checked against GitHub's own per-attempt job results.
         self.assertIn('--lane-jobs', runs)
+
+
+class RerunAttemptRule(unittest.TestCase):
+    """#426/#419: one rule selects the latest successful attempt in both consumers."""
+
+    VECTORS = ROOT / 'tests' / 'fixtures' / 'rerun-attempts.json'
+
+    @staticmethod
+    def rule():
+        # Imported inside the test so a missing helper reports this control as
+        # red instead of breaking collection of every unrelated batch test.
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import rerun_attempts
+        return rerun_attempts
+
+    def test_shared_vectors_pin_the_latest_successful_attempt_rule(self):
+        rule = self.rule()
+        vectors = json.loads(self.VECTORS.read_text())
+        for case in vectors['cases']:
+            with self.subTest(case=case['name']):
+                jobs = case.get('jobs')
+                if jobs is None:
+                    jobs = [job for page in case['job_pages'] for job in page]
+                successful = rule.successful_attempts(jobs, vectors['job_name'])
+                expected = case['expected']
+                if 'error' in expected:
+                    with self.assertRaises(rule.AttemptError) as caught:
+                        rule.select_latest_attempt(successful, case['evidence_attempts'])
+                    self.assertIn(expected['error'], str(caught.exception))
+                else:
+                    self.assertEqual(
+                        rule.select_latest_attempt(successful, case['evidence_attempts']),
+                        expected['attempt'])
+
+    def test_both_consumers_use_the_shared_rule(self):
+        landing = (ROOT / 'scripts/check_landing.py').read_text()
+        producer = (ROOT / 'scripts/frontend/verify-baseline-artifact.ts').read_text()
+        self.assertIn('from rerun_attempts import', landing)
+        self.assertIn("from './rerun-attempts'", producer)
 
 
 class ArtifactRerunSafety(unittest.TestCase):
