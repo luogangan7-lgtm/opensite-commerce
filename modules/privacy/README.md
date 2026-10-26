@@ -42,8 +42,11 @@ payloads, the tenant root, global Identity/anti-abuse tables and River envelopes
 A customer retain reason never supplies a merchant policy. These declarations
 are handler obligations, **not implemented handlers or permission to activate
 merchant deletion**. No new route, scope, request transition or DB grant exists.
-Activation still waits for MDEL-26 and sender approval. Legal-hold/retention
-periods and provider payout authority remain unresolved launch blockers.
+Activation still waits for MDEL-26 and sender approval. Applicable legal holds
+and provider payout authority remain launch gates. The owner approved a
+configurable financial-retention duration (default 10 years from merchant
+deletion), followed by automatic purge, on 2026-10-26. This registry declares
+retained cells; it does not implement that future retention/purge engine.
 
 Each column supplies `action` (`retain`/`erase`), its own nonblank `reason`, an
 exact `strategy`, its owning `handler` and an explicit `ownership`:
@@ -68,7 +71,7 @@ opaque provider/recovery identities under DATA_RIGHTS, never customer-entered
 notes. Conservation amounts, currencies, states, timestamps, IDs and necessary
 FK witnesses survive. Nonfinancial parent payloads are scrubbed; only referenced
 IDs/relationships remain original. Settlement currency remains solely because
-retained financial composite FKs require it. No retention duration is chosen.
+retained financial composite FKs require it. The owner-approved financial-retention duration applies to those witnesses.
 
 Nullable financial receipt cells explicitly set `preserve_null: true`: leave
 an original null unchanged and replace only an existing value. In particular,

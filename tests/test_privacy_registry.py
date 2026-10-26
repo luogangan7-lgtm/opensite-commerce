@@ -693,6 +693,19 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
             self.assertEqual(contract["fields"][name]["action"], "erase", name)
         for name in ("users.email", "auth_sessions.token_hash"):
             self.assertEqual(contract["fields"][name]["ownership"]["kind"], "global_exclusion")
+        # #403's typed receipt must survive with the retained financial order;
+        # mailbox proof/profile data is never a substitute for this UUID witness.
+        for column in ("tenant_id", "order_id", "customer_id"):
+            name = "data_rights_erased_orders." + column
+            policy = contract["fields"][name]
+            self.assertEqual((policy["action"], policy["strategy"], policy["retained_kind"], policy["value_type"]),
+                             ("retain", "unchanged", "witness", "uuid"), name)
+            self.assertEqual(policy["handler"], "datarights.erase", name)
+            self.assertEqual(policy["ownership"], {
+                "kind": "tenant_column", "path": "data_rights_erased_orders.tenant_id",
+            }, name)
+        tables = contract["handlers"]["datarights.erase"]["tables"]
+        self.assertLess(tables.index("data_rights_erased_orders"), tables.index("data_rights_erasures"))
         self.assertEqual(set(contract["artifacts"]), {
             "media.originals", "media.staging", "datarights.customer_export", "datarights.export_temp",
         })
