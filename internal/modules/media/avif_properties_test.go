@@ -223,3 +223,38 @@ func TestAVIFSecondPrimaryItemBoxAfterZeroID(t *testing.T) {
 		t.Fatal("second pitm accepted after a zero-ID first pitm")
 	}
 }
+
+func maxDimensionAVIF(t *testing.T) []byte {
+	t.Helper()
+	b, err := os.ReadFile("testdata/tiny.avif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pos := bytes.Index(b, []byte("ispe")) + 8
+	if pos < 8 || pos+8 > len(b) {
+		t.Fatal("fixture missing primary dimensions")
+	}
+	binary.BigEndian.PutUint32(b[pos:pos+4], ^uint32(0))
+	binary.BigEndian.PutUint32(b[pos+4:pos+8], ^uint32(0))
+	return b
+}
+
+func TestAVIFUint32DimensionsDoNotOverflow(t *testing.T) {
+	if _, _, _, err := inspect(maxDimensionAVIF(t), "image/avif"); err == nil {
+		t.Fatal("AVIF_UINT32_OVERFLOW: maximum dimensions accepted")
+	}
+}
+
+func TestPixelLimitBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		w, h int
+		want bool
+	}{
+		{4096, 4096, true}, {4097, 4096, false},
+		{0, 1, false}, {1, 0, false}, {-1, 1, false}, {1, -1, false},
+	} {
+		if got := dimensions(tc.w, tc.h); got != tc.want {
+			t.Errorf("dimensions(%d,%d)=%v want %v", tc.w, tc.h, got, tc.want)
+		}
+	}
+}

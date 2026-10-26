@@ -1424,7 +1424,14 @@ BEGIN
   END LOOP;
  END LOOP;
  IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names))<>cardinality(names) THEN RAISE EXCEPTION 'PRICING_MATRIX_ROUTINES'; END IF;
+ -- FOR SHARE needs UPDATE on a column even though the lock does not write it.
+ -- Only pricing_currency may mention tenants: pin its reviewed SELECT-only body;
+ -- all other executor routines must neither reference tenants nor execute dynamic SQL.
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  IF f.proowner=r.oid AND (
+   f.proname='pricing_currency' AND encode(sha256(convert_to(f.prosrc,'UTF8')),'hex')<>'9568ab82de3c18bc96126123b48a69de90a62a46609c60c8e984aa6ecec73a33'
+   OR f.proname<>'pricing_currency' AND f.prosrc ~* '\m(tenants|execute)\M') THEN
+   RAISE EXCEPTION 'PRICING_EXECUTOR_TENANT_WRITE %',f.proname; END IF;
   IF f.proname=ANY(names) THEN
    IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM (f.proname<>'pricing_currency') OR cardinality(f.proconfig) IS DISTINCT FROM 1
     OR replace(f.proconfig[1],' ','') IS DISTINCT FROM 'search_path=pg_catalog,app,pg_temp'

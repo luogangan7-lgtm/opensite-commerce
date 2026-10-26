@@ -65,6 +65,8 @@ sql:
       - "migrations/pending/c19d3-recovery_refund_reconciliation.sql"
       - "migrations/pending/c19dp2-completeness_refund_case_completeness.sql"
       - "migrations/pending/b-ledger-audit_refund_resolution_identity.sql"
+      - "migrations/pending/b-pricing-cas_missing_tier.sql"
+      - "migrations/pending/b-pricing-invalidation_publication_candidates.sql"
     queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant", "queries/pricing", "queries/catalog"]
     gen:
       go:
