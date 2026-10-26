@@ -29,7 +29,7 @@ type liveFake struct {
 	voidRace, transportFail, failCapture, delayed bool
 	corrupt string
 	tick time.Duration
-	aOnly bool
+	aOnly, objectCreated bool
 	seen map[string]bool
 	requests []string
 	s *StripeLiveSmoke
@@ -40,6 +40,7 @@ func newLiveFake(t *testing.T, phase string, attempt int) *liveFake {
 	t.Setenv("GITHUB_ACTIONS", "true")
 	t.Setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
 	t.Setenv("GITHUB_REF", "refs/heads/main")
+	t.Setenv("GITHUB_RUN_ATTEMPT", "1")
 	t.Setenv("STRIPE_API", "rk_live_offline_fixture")
 	t.Setenv("STRIPE_SMOKE_EMAIL", liveCanaryEmail)
 	f := &liveFake{invoice:"paid", intent:"succeeded", refund:"succeeded", seen:map[string]bool{},tick:31*time.Minute}
@@ -74,9 +75,12 @@ func (f *liveFake) roundTrip(r *http.Request)(*http.Response,error){
 	var out any = obj
 	path:=r.URL.Path
 	switch {
-	case path=="/v1/customers":
+	case path=="/v1/customers" && r.Method=="GET":
+		out=map[string]any{"data":[]any{},"has_more":false}
+	case path=="/v1/customers" && r.Method=="POST":
 		if r.Form.Get("email")!=liveCanaryEmail { return nil,errors.New("email boundary") }; out=map[string]any{"id":"cus_full_canary_identifier","livemode":true,"email":liveCanaryEmail}
 	case path=="/v1/invoices" && r.Method=="POST":
+		f.objectCreated=true
 		if r.Form.Get("collection_method")!="send_invoice" || r.Form.Get("days_until_due")!="1" || r.Form.Get("payment_settings[payment_method_types][0]")!="card" { return nil,errors.New("invoice configuration") }
 		out=liveObject{ID:"in_full_canary_identifier",Livemode:true,Status:"draft",Currency:"usd",Metadata:meta}
 	case strings.HasPrefix(path,"/v1/invoices/"):
@@ -85,7 +89,7 @@ func (f *liveFake) roundTrip(r *http.Request)(*http.Response,error){
 		methods:=[]string{"card"}; if f.delayed {methods=[]string{"card","us_bank_account"}}
 		out=map[string]any{"id":"in_full_canary_identifier","livemode":true,"status":f.invoice,"amount_due":5000,"amount_paid":5000,"currency":"usd","customer":"cus_full_canary_identifier","collection_method":"send_invoice","metadata":meta,"payment_settings":map[string]any{"payment_method_types":methods},"payments":map[string]any{"data":[]any{map[string]any{"payment":map[string]any{"type":"payment_intent","payment_intent":"pi_full_canary_identifier"}}},"has_more":false},"hosted_invoice_url":liveCanaryURL,"invoice_pdf":liveCanaryURL,"customer_email":liveCanaryEmail}
 	case path=="/v1/invoices":
-		data:=[]any{map[string]any{"id":"in_full_canary_identifier","metadata":meta}};if f.aOnly{data=[]any{}};out=map[string]any{"data":data,"has_more":false}
+		data:=[]any{map[string]any{"id":"in_full_canary_identifier","metadata":meta}};if f.aOnly||f.s.options.Phase=="A"||(f.s.options.Phase=="B"&&!f.objectCreated){data=[]any{}};out=map[string]any{"data":data,"has_more":false}
 	case path=="/v1/events":
 		ref:=obj
 		typ:="payment_intent.succeeded"
@@ -101,11 +105,13 @@ func (f *liveFake) roundTrip(r *http.Request)(*http.Response,error){
 		f.refunds=append(f.refunds,v);out=v
 		if f.transportFail {return nil,errors.New("unknown "+liveCanaryURL+liveCanaryEmail)}
 	case path=="/v1/payment_intents" && r.Method=="POST":
+		f.objectCreated=true
 		obj.ID="pi_phase_a_canary";obj.Amount=50;obj.AmountReceived=0;obj.Status="requires_payment_method";obj.Metadata=map[string]string{"osc_smoke":"123456","osc_phase":"A"};out=obj
 	case strings.HasSuffix(path,"/cancel"):
 		obj.ID="pi_phase_a_canary";obj.Amount=50;obj.AmountReceived=0;obj.Status="canceled";obj.Metadata=map[string]string{"osc_smoke":"123456","osc_phase":"A"};out=obj
 	case path=="/v1/payment_intents" && r.Method=="GET":
 		out=map[string]any{"data":[]liveObject{{ID:"pi_phase_a_canary",Livemode:true,Amount:50,Currency:"usd",Status:"canceled",Metadata:map[string]string{"osc_smoke":"123456","osc_phase":"A"}}},"has_more":false}
+		if f.s.options.Phase!="R"&&!f.objectCreated{out=map[string]any{"data":[]any{},"has_more":false}}
 	case path=="/v1/payment_intents/pi_phase_a_canary" && r.Method=="GET":
 		out=liveObject{ID:"pi_phase_a_canary",Livemode:true,Amount:50,Currency:"usd",Status:"canceled",Metadata:map[string]string{"osc_smoke":"123456","osc_phase":"A"}}
 	case strings.HasPrefix(path,"/v1/payment_intents/"):

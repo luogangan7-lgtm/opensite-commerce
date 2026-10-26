@@ -2,7 +2,8 @@
 // Dependencies: authenticated Stripe HTTP, mapped DB clock, Payments fact ingestion.
 // Caller: the CI-only live fixture; production bootstrap never constructs this type.
 // Invariants: restricted key, fixed endpoints, card-only, no public provider data,
-// no automatic replacement attempts, and no provider IO while a DB lock is held.
+// durable A/B identity, no automatic replacement attempts, and no provider IO
+// while a DB lock is held.
 package payments
 
 import (
@@ -91,6 +92,7 @@ func liveRun(s string) bool { if len(s)==0||len(s)>32{return false};for _,c:=ran
 func NewStripeLiveSmoke(c Config, o LiveSmokeOptions)(*StripeLiveSmoke,error){
 	key:=os.Getenv("STRIPE_API")
 	if os.Getenv("GITHUB_ACTIONS")!="true" || os.Getenv("GITHUB_EVENT_NAME")!="workflow_dispatch" || os.Getenv("GITHUB_REF")!="refs/heads/main" ||
+		(o.Phase!="R"&&os.Getenv("GITHUB_RUN_ATTEMPT")!="1") ||
 		!strings.HasPrefix(key,"rk_live_") || len(key)<=8 || strings.ContainsFunc(key,func(r rune)bool{return r<'!'||r>'~'}) ||
 		!liveID(o.Account,"acct") || !liveRun(o.RunID) || c.Run==nil || c.Apply==nil || o.Receive==nil ||
 		(o.Phase!="A"&&o.Phase!="B"&&o.Phase!="R") || o.RefundAttempt<0 || o.RefundAttempt==1 || (o.RefundAttempt!=0&&o.Phase!="R") {
@@ -118,7 +120,7 @@ func (s *StripeLiveSmoke) metadata(phase string) url.Values {return url.Values{"
 func liveEndpoint(method,path string) bool {
 	p:=strings.Split(path,"?")[0];parts:=strings.Split(p,"/")
 	if len(parts)==1 {
-		return (p=="events"&&method=="GET") || (p=="customers"&&method=="POST") || ((p=="invoices"||p=="refunds"||p=="payment_intents")&&(method=="GET"||method=="POST"))
+		return (p=="events"&&method=="GET") || ((p=="customers"||p=="invoices"||p=="refunds"||p=="payment_intents")&&(method=="GET"||method=="POST"))
 	}
 	if len(parts)<2||len(parts)>3{return false}
 	kinds:=map[string]string{"invoices":"in","payment_intents":"pi","refunds":"re"}
@@ -143,6 +145,29 @@ func (s *StripeLiveSmoke) validObject(o liveObject,phase string,amount int64)boo
 	return o.Livemode&&o.Metadata["osc_smoke"]==s.options.RunID&&o.Metadata["osc_phase"]==phase&&o.Currency=="usd"&&o.Amount==amount
 }
 
+// Idempotency keys expire. Before any A/B create, inspect durable run metadata
+// across every created object kind. An existing or uncertain identity requires
+// R; even a partial draft/customer must never start a second payable journey.
+// Workflow concurrency serializes the original run identity with recovery.
+func (s *StripeLiveSmoke) requireFreshIdentity(ctx context.Context)error{
+	for _,kind:=range []string{"invoices","payment_intents","customers"}{
+		prefix:=map[string]string{"invoices":"in","payment_intents":"pi","customers":"cus"}[kind]
+		after:="";seen:=map[string]bool{}
+		for page:=0;;page++{
+			if page>=100{return liveFailure()}
+			var list struct{Data []liveObject `json:"data"`;More *bool `json:"has_more"`}
+			q:=url.Values{"limit":{"100"}};if after!=""{q.Set("starting_after",after)}
+			if s.request(ctx,"GET",kind+"?"+q.Encode(),"",nil,&list)!=nil||list.Data==nil||list.More==nil{return liveFailure()}
+			for _,o:=range list.Data{
+				if !liveID(o.ID,prefix)||seen[o.ID]||o.Metadata["osc_smoke"]==s.options.RunID{return liveFailure()}
+				seen[o.ID]=true
+			}
+			if !*list.More{break};if len(list.Data)==0{return liveFailure()};after=list.Data[len(list.Data)-1].ID
+		}
+	}
+	return nil
+}
+
 // No live capture command exists: payment confirmation is exclusively the
 // owner's card action in Stripe's private invoice page.
 func (s *StripeLiveSmoke) Capture(context.Context,payment.PaymentOperation)(payment.PaymentIntentResult,error){return payment.PaymentIntentResult{},liveFailure()}
@@ -153,6 +178,7 @@ func (s *StripeLiveSmoke) CreateIntent(ctx context.Context,r payment.CreatePayme
 	if _,e:=s.now(ctx);e!=nil{return payment.PaymentIntentResult{},e}
 	s.bound=r
 	if s.options.Phase=="R" {if e:=s.locate(ctx);e!=nil{return payment.PaymentIntentResult{},e}} else {
+		if e:=s.requireFreshIdentity(ctx);e!=nil{return payment.PaymentIntentResult{},e}
 		var customer liveObject
 		f:=s.metadata("B");f.Set("email",os.Getenv("STRIPE_SMOKE_EMAIL"))
 		if s.request(ctx,"POST","customers",s.key("customer"),f,&customer)!=nil||!customer.Livemode||!liveID(customer.ID,"cus"){return payment.PaymentIntentResult{},liveFailure()}
@@ -228,6 +254,7 @@ func (s *StripeLiveSmoke) summary(status string)LiveSmokeSummary{
 func (s *StripeLiveSmoke) Execute(ctx context.Context)(LiveSmokeSummary,error){
 	if _,e:=s.now(ctx);e!=nil{return s.summary("PENDING"),liveFailure()}
 	if s.options.Phase=="A"||s.originalA{
+		if !s.originalA{if e:=s.requireFreshIdentity(ctx);e!=nil{return s.summary("PENDING"),e}}
 		f:=s.metadata("A");f.Set("amount","50");f.Set("currency","usd");f.Set("payment_method_types[0]","card")
 		var pi liveObject
 		if s.originalA {if s.request(ctx,"GET","payment_intents/"+s.intentID,"",nil,&pi)!=nil{return s.summary("PENDING"),liveFailure()}} else if s.request(ctx,"POST","payment_intents",s.key("a-create"),f,&pi)!=nil{return s.summary("PENDING"),liveFailure()}

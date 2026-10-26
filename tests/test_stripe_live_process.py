@@ -26,7 +26,7 @@ class LiveRealProcessCanaries(unittest.TestCase):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
                 summary = Path(tmp) / 'summary'
                 env = dict(os.environ, GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch',
-                           GITHUB_REF='refs/heads/main', GITHUB_RUN_ID='12345',
+                           GITHUB_REF='refs/heads/main', GITHUB_RUN_ID='12345', GITHUB_RUN_ATTEMPT='1',
                            GITHUB_SHA='a' * 40, STRIPE_SMOKE_PHASE='B', STRIPE_SMOKE_RUN_ID='246810',
                            STRIPE_REFUND_ATTEMPT='', STRIPE_SMOKE_ACCOUNT='acct_offlinepg',
                            STRIPE_API='rk_live_OFFLINE_NOT_A_REAL_CREDENTIAL',

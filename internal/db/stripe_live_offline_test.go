@@ -27,9 +27,11 @@ func (f *livePGTransport) RoundTrip(r *http.Request)(*http.Response,error){
 	inv:=map[string]any{"id":"in_offlinepg","customer":"cus_offlinepg","status":"open","livemode":true,"amount_due":5000,"amount_paid":0,"currency":"usd","collection_method":"send_invoice","metadata":meta,"payment_settings":map[string]any{"payment_method_types":[]string{"card"}},"payments":map[string]any{"data":[]any{map[string]any{"payment":map[string]any{"type":"payment_intent","payment_intent":"pi_offlinepg"}}},"has_more":false},"hosted_invoice_url":"https://invoice.example.test/private-canary","customer_email":"private-canary@example.test"}
 	var out any=pi
 	switch{
+	case r.URL.Path=="/v1/customers"&&r.Method=="GET":out=map[string]any{"data":[]any{},"has_more":false}
+	case r.URL.Path=="/v1/payment_intents"&&r.Method=="GET":out=map[string]any{"data":[]any{},"has_more":false}
 	case r.URL.Path=="/v1/customers":out=map[string]any{"id":"cus_offlinepg","livemode":true}
 	case r.URL.Path=="/v1/invoices"&&r.Method=="POST":f.creates++;out=inv
-	case r.URL.Path=="/v1/invoices":out=map[string]any{"data":[]any{inv},"has_more":false}
+	case r.URL.Path=="/v1/invoices":data:=[]any{};if f.creates>0{data=append(data,inv)};out=map[string]any{"data":data,"has_more":false}
 	case strings.HasPrefix(r.URL.Path,"/v1/invoices/"):
 		if strings.HasSuffix(r.URL.Path,"/send"){f.sent=true};if f.sent{inv["status"]="paid";inv["amount_paid"]=5000};out=inv
 	case r.URL.Path=="/v1/events":
@@ -43,6 +45,7 @@ func (f *livePGTransport) RoundTrip(r *http.Request)(*http.Response,error){
 
 func TestStripeLiveOfflinePGReconstruction(t *testing.T){
 	t.Setenv("GITHUB_ACTIONS","true");t.Setenv("GITHUB_EVENT_NAME","workflow_dispatch");t.Setenv("GITHUB_REF","refs/heads/main")
+	t.Setenv("GITHUB_RUN_ATTEMPT","1")
 	t.Setenv("STRIPE_API","rk_live_OFFLINE_NOT_A_REAL_CREDENTIAL");t.Setenv("STRIPE_SMOKE_EMAIL","offline@example.test")
 	fake:=&livePGTransport{}
 	old:=http.DefaultTransport;http.DefaultTransport=fake;t.Cleanup(func(){http.DefaultTransport=old})

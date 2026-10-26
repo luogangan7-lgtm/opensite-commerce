@@ -46,6 +46,7 @@ def main():
         or not re.fullmatch(r'[0-9]{1,32}', current)
         or not re.fullmatch(r'[0-9a-f]{40}', sha)
         or phase not in ('A', 'B', 'R')
+        or (phase in ('A', 'B') and os.environ.get('GITHUB_RUN_ATTEMPT') != '1')
         or (phase == 'R' and os.environ.get('STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID') != 'true')
         or (attempt and (phase != 'R' or not re.fullmatch(r'[0-9]{1,9}', attempt) or int(attempt) < 2))):
         raise SystemExit('PENDING: invalid owner-gated execution; no provider details')

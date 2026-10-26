@@ -12,6 +12,40 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE = ROOT / '.github/workflows/stripe-live-smoke.yml'
+OWNED_SECRETS = {'STRIPE_API', 'STRIPE_SMOKE_EMAIL', 'STRIPE_SMOKE_ACCOUNT'}
+# Closing braces inside expression string literals are not expression ends.
+EXPRESSIONS = re.compile(r'''\$\{\{((?:'(?:''|[^'])*'|"(?:\\.|[^"\\])*"|[^'"}]|}(?!}))*?)\}\}''')
+REFERENCES = re.compile(r'\b(secrets|env)\s*(?:\.\s*([A-Za-z_][A-Za-z_0-9]*)|\[\s*([\'"])([^\'"]+)\3\s*\])')
+GO_NON_CODE = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|`[^`]*`|\'(?:\\.|[^\'\\])*\'', re.S)
+
+
+def strings(value):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield from strings(key)
+            yield from strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from strings(item)
+    elif isinstance(value, str):
+        yield value
+
+
+def references(value, context):
+    names = set()
+    for text in strings(value):
+        for expression in EXPRESSIONS.findall(text):
+            for match in REFERENCES.finditer(expression):
+                if match[1] == context:
+                    names.add(match[2] or match[4])
+            # Computed keys and whole-context serialization cannot prove secret
+            # ownership. Fail closed rather than treating them as no reference.
+            assert not re.search(r'\b' + context + r'\b', REFERENCES.sub('', expression)), 'LIVE_SECRET_REFERENCE'
+    return names
+
+
+def secret_expression(value, name):
+    return isinstance(value, str) and re.fullmatch(r'\$\{\{\s*secrets\s*(?:\.\s*' + name + r'|\[\s*([\'"])' + name + r'\1\s*\])\s*\}\}', value)
 
 
 def validate(document, workflows):
@@ -22,28 +56,40 @@ def validate(document, workflows):
     job = jobs['live']
     assert job.get('environment') == 'stripe-live', 'LIVE_ENVIRONMENT'
     assert job.get('if') == "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'", 'LIVE_MAIN_ONLY'
-    assert 'secrets.' not in str(document.get('env', {})) + str(job.get('env', {})), 'LIVE_STEP_SECRETS_ONLY'
-    consumers = [s for s in job.get('steps', []) if 'secrets.STRIPE_' in str(s)]
+    for block in ({k:v for k,v in document.items() if k != 'jobs'}, {k:v for k,v in job.items() if k != 'steps'}):
+        assert not references(block, 'secrets'), 'LIVE_STEP_SECRETS_ONLY'
+        assert not references(block, 'env') & OWNED_SECRETS, 'LIVE_STEP_SECRETS_ONLY'
+    consumers = [s for s in job.get('steps', []) if references(s, 'secrets') or references(s, 'env') & OWNED_SECRETS]
     assert len(consumers) == 1, 'LIVE_SINGLE_SECRET_CONSUMER'
     env = consumers[0].get('env', {})
-    assert env.get('STRIPE_API') == '${{ secrets.STRIPE_API }}', 'LIVE_KEY_ENV_ONLY'
-    assert env.get('STRIPE_SMOKE_EMAIL') == '${{ secrets.STRIPE_SMOKE_EMAIL }}', 'LIVE_EMAIL_ENV_ONLY'
-    assert env.get('STRIPE_SMOKE_ACCOUNT') == '${{ secrets.STRIPE_SMOKE_ACCOUNT }}', 'LIVE_ACCOUNT_NOT_PUBLIC'
+    assert secret_expression(env.get('STRIPE_API'), 'STRIPE_API'), 'LIVE_KEY_ENV_ONLY'
+    assert secret_expression(env.get('STRIPE_SMOKE_EMAIL'), 'STRIPE_SMOKE_EMAIL'), 'LIVE_EMAIL_ENV_ONLY'
+    assert secret_expression(env.get('STRIPE_SMOKE_ACCOUNT'), 'STRIPE_SMOKE_ACCOUNT'), 'LIVE_ACCOUNT_NOT_PUBLIC'
+    assert not references({k:v for k,v in env.items() if k not in OWNED_SECRETS}, 'secrets'), 'LIVE_SECRET_ENV_ALIAS'
+    assert not references(env, 'env') & OWNED_SECRETS, 'LIVE_SECRET_ENV_ALIAS'
     identity = '${{ inputs.phase == \'R\' && inputs.smoke_run_id || github.run_id }}'
     assert env.get('STRIPE_SMOKE_RUN_ID') == identity, 'LIVE_PROVIDER_RUN_IDENTITY'
     assert document.get('concurrency', {}).get('group') == 'stripe-live-' + identity, 'LIVE_ORIGINAL_RUN_CONCURRENCY'
     assert env.get('STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID') == "${{ inputs.smoke_run_id != '' }}", 'LIVE_R_ORIGINAL_REQUIRED'
-    assert 'secrets.' not in consumers[0].get('run', ''), 'LIVE_SECRET_ARGV'
+    assert not references({k:v for k,v in consumers[0].items() if k != 'env'}, 'secrets'), 'LIVE_SECRET_ARGV'
+    assert 'uses' not in consumers[0], 'LIVE_ALLOWLISTED_OUTPUT_WRAPPER'
     assert consumers[0].get('run') == 'python3 scripts/stripe_live_ci.py', 'LIVE_ALLOWLISTED_OUTPUT_WRAPPER'
     assert not any('upload-artifact' in s.get('uses', '') for s in job.get('steps', [])), 'LIVE_NO_RAW_ARTIFACTS'
     assert 'stripe_live_offline' not in str(document), 'LIVE_NO_FAKE_TRANSPORT'
     for name, body in workflows.items():
         if name != LIVE.name:
-            assert not re.search(r'secrets\s*(?:\.\s*(?:STRIPE_API|STRIPE_SMOKE_EMAIL)\b|\[\s*[\'"](?:STRIPE_API|STRIPE_SMOKE_EMAIL)[\'"]\s*\])', body), 'LIVE_SECRET_OWNERSHIP'
-    for path in (ROOT / 'internal').rglob('*.go'):
-        if path.name.endswith('_test.go') or path.name == 'stripe_live.go':
+            other = yaml.safe_load(body)
+            assert not references(other, 'secrets') & OWNED_SECRETS, 'LIVE_SECRET_OWNERSHIP'
+            assert not references(other, 'env') & OWNED_SECRETS, 'LIVE_SECRET_OWNERSHIP'
+    for path in ROOT.rglob('*.go'):
+        if path.name.endswith('_test.go'):
             continue
-        assert 'NewStripeLiveSmoke(' not in path.read_text(), 'LIVE_NO_PRODUCTION_COMPOSITION'
+        code = GO_NON_CODE.sub(' ', path.read_text())
+        if path == ROOT / 'internal/modules/payments/stripe_live.go':
+            # Exempt only this function's declaration token, never its body,
+            # another same-named file, a call, or a constructor function value.
+            code = re.sub(r'(\bfunc\s+)NewStripeLiveSmoke(?=\s*\()', r'\1DECLARATION', code, count=1)
+        assert not re.search(r'\bNewStripeLiveSmoke\b', code), 'LIVE_NO_PRODUCTION_COMPOSITION'
 
 
 class LiveWorkflowGate(unittest.TestCase):
@@ -60,12 +106,21 @@ class LiveWorkflowGate(unittest.TestCase):
     def test_second_secret_consumer_expression_forms(self):
         original = yaml.safe_load(LIVE.read_text())
         for secret in ('STRIPE_API', 'STRIPE_SMOKE_EMAIL', 'STRIPE_SMOKE_ACCOUNT'):
-            for expression in (f'secrets.{secret}', f"secrets['{secret}']", f'secrets["{secret}"]', f"secrets [ '{secret}' ]", f'env.{secret}', f"env['{secret}']"):
+            for expression in (f'secrets.{secret}', f"secrets['{secret}']", f'secrets["{secret}"]', f"secrets [ '{secret}' ]", f'env.{secret}', f"env['{secret}']", "format('}} {0}', secrets['" + secret + "'])"):
                 with self.subTest(expression=expression):
                     bad = copy.deepcopy(original)
                     bad['jobs']['live']['steps'].append({'env': {'ALIAS': '${{ ' + expression + ' }}'}, 'run': 'echo unsafe'})
                     with self.assertRaisesRegex(AssertionError, 'LIVE_SINGLE_SECRET_CONSUMER'):
                         validate(bad, {})
+
+    def test_single_consumer_supports_literal_secret_expression_forms(self):
+        original = yaml.safe_load(LIVE.read_text())
+        for template in ("secrets['%s']", 'secrets["%s"]', "secrets [ '%s' ]"):
+            bad = copy.deepcopy(original)
+            env = next(step['env'] for step in bad['jobs']['live']['steps'] if 'STRIPE_API' in step.get('env', {}))
+            for name in ('STRIPE_API', 'STRIPE_SMOKE_EMAIL', 'STRIPE_SMOKE_ACCOUNT'):
+                env[name] = '${{ ' + template % name + ' }}'
+            validate(bad, {})
 
     def test_secret_ownership_all_workflow_blocks(self):
         original = yaml.safe_load(LIVE.read_text())
