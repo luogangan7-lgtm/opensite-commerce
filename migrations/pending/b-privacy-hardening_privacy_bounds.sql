@@ -42,11 +42,18 @@ CREATE TRIGGER data_rights_erased_orders_immutable BEFORE UPDATE OR DELETE ON ap
 -- erasures already deleted their proof link; never guess its customer from JSON.
 INSERT INTO app.data_rights_erased_orders(tenant_id,order_id,customer_id)
  SELECT o.tenant_id,o.id,e.customer_id FROM app.orders o JOIN app.data_rights_erasures e
- ON(e.tenant_id,e.customer_id)=(o.tenant_id,o.customer_id);
+ ON(e.tenant_id,e.customer_id)=(o.tenant_id,o.customer_id)
+ UNION SELECT l.tenant_id,l.order_id,l.customer_id FROM app.customer_guest_order_links l
+ JOIN app.data_rights_erasures e ON(e.tenant_id,e.customer_id)=(l.tenant_id,l.customer_id);
+-- Reviewed legacy repair may restore independently proven mailbox links before
+-- retrying this migration. Capture the typed receipt, then retire that proof.
+DELETE FROM app.customer_guest_order_links l USING app.data_rights_erased_orders e
+ WHERE(e.tenant_id,e.order_id,e.customer_id)=(l.tenant_id,l.order_id,l.customer_id);
 DO $legacy_guest$ BEGIN
  IF EXISTS(SELECT FROM app.orders o WHERE o.customer_id IS NULL
   AND o.shipping_snapshot=jsonb_build_object('erased',true,'amount_minor',o.shipping_minor,'currency',o.currency)
-  AND o.guest_contact=jsonb_build_object('email','erased-'||o.id::text||'@invalid.test','erased',true)) THEN
+  AND o.guest_contact=jsonb_build_object('email','erased-'||o.id::text||'@invalid.test','erased',true)
+  AND NOT EXISTS(SELECT FROM app.data_rights_erased_orders e WHERE(e.tenant_id,e.order_id)=(o.tenant_id,o.id))) THEN
   RAISE EXCEPTION 'PRIVACY_LEGACY_GUEST_REVIEW_REQUIRED' USING ERRCODE='55000';
  END IF;
 END $legacy_guest$;

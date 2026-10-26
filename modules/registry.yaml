@@ -1729,7 +1729,7 @@
     {
       "file": "migrations/pending/b-privacy-hardening_privacy_bounds.sql",
       "owner": "datarights",
-      "touches_tables": ["data_rights_exports", "data_rights_erased_orders", "quote_conversions"],
+      "touches_tables": ["data_rights_exports", "data_rights_erased_orders", "quote_conversions", "customer_guest_order_links"],
       "note": "Forward bounded snapshot and trusted erasure ownership; existing capability signatures retained."
     },
     {

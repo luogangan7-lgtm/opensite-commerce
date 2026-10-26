@@ -1790,6 +1790,20 @@ elif [[ $(db "$PRIVACY_HARDENING_DB" -c "SELECT to_regclass('app.data_rights_era
 else
  pass 'privacy upgrade refuses ambiguous pre-existing erased guest and rolls back'
 fi
+# The fixture's original ownership is independently known; restore only that
+# verified typed mapping, never derive it from the erased email/snapshot.
+db "$PRIVACY_HARDENING_DB" <<'SQL' >/dev/null
+INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id)
+ SELECT e.tenant_id,e.customer_id,o.id FROM app.data_rights_erasures e JOIN app.orders o ON o.tenant_id=e.tenant_id
+ WHERE o.creation_key='privacy-legacy';
+SQL
+if ! out=$(apply_forward "$PRIVACY_HARDENING_DB" "${privacy_bounds[0]}" 2>&1); then
+ bad "PRIVACY_UPGRADE verified mapping retry failed: $out"
+elif [[ $(db "$PRIVACY_HARDENING_DB" -c "SELECT (SELECT count(*) FROM app.data_rights_erased_orders)||'|'||(SELECT count(*) FROM app.customer_guest_order_links)") != '1|0' ]]; then
+ bad 'PRIVACY_UPGRADE failed to preserve typed ownership and retire restored proof'
+else
+ pass 'privacy upgrade accepts independently verified legacy mapping and retires proof'
+fi
 admin -c "DROP DATABASE $PRIVACY_HARDENING_DB" >/dev/null; PRIVACY_HARDENING_DB=""
 
 # Aggregate only after all module upgrade steps.
