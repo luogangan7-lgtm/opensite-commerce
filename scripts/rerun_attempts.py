@@ -20,6 +20,9 @@ default listing that only shows the latest execution.
 """
 
 
+import re
+
+
 class AttemptError(ValueError):
     """The authoritative attempt cannot be selected without guessing."""
 
@@ -27,7 +30,7 @@ class AttemptError(ValueError):
 def attempt_number(value):
     """Normalize a GitHub ``run_attempt`` to a positive int, or fail closed."""
     text = "" if value is None else str(value).strip()
-    if not text.isdigit() or int(text) < 1:
+    if not re.fullmatch(r"[1-9][0-9]*", text):
         raise AttemptError(f"run_attempt {value!r} is not a positive integer")
     return int(text)
 

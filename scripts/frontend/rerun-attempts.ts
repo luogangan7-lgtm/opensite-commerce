@@ -33,7 +33,7 @@ const MAX_PAGES = 100;
 /** Normalize a GitHub `run_attempt` to a positive int, or fail closed. */
 export function attemptNumber(value: unknown): number {
   const text = value === null || value === undefined ? '' : String(value).trim();
-  if (!/^[0-9]+$/.test(text) || Number(text) < 1) throw new Error(`run_attempt ${JSON.stringify(value)} is not a positive integer`);
+  if (!/^[1-9][0-9]*$/.test(text)) throw new Error(`run_attempt ${JSON.stringify(value)} is not a positive integer`);
   return Number(text);
 }
 
