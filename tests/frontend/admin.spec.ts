@@ -1,11 +1,18 @@
 /** Exercises production UI and pending-contract fixtures; Playwright/axe prove UI behavior only. CI alone writes snapshots. */
 import {test,expect,type Page} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import {fixture,tenant,productId} from './admin-fixture';
+import {fixture,tenant,productId,orderId,order} from './admin-fixture';
 const origin=process.env.OPENSITE_ADMIN_E2E_ORIGIN??'http://127.0.0.1:4174';
 const fixtureOrigin=process.env.OPENSITE_ADMIN_FIXTURE_ORIGIN??'http://127.0.0.1:4173';
 const snapshots=process.env.OPENSITE_ADMIN_NO_SNAPSHOTS!=='1';
 async function audit(page:Page,name?:string){await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));});expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);if(name&&snapshots)await expect(page).toHaveScreenshot(name,{fullPage:true});}
+// Hold one routed API response until its loading UI has been captured; no backend/time changes.
+async function holdResponse(page:Page,url:string){
+ let release!:()=>void,started!:()=>void;
+ const ready=new Promise<void>(resolve=>{started=resolve;}),pending=new Promise<void>(resolve=>{release=resolve;});
+ await page.route(url,async route=>{started();await pending;await route.fallback();},{times:1});
+ return {ready,release};
+}
 async function signIn(page:Page){await page.getByLabel('Email').fill('staff@example.invalid');await page.getByLabel('Password',{exact:true}).fill(crypto.randomUUID());await page.getByRole('button',{name:'Sign in',exact:true}).click();}
 test('merchant data privacy explains support deletion without offering a write action',async({page})=>{
  await fixture(page);await page.goto(`${origin}/t/${tenant}/products`);
@@ -66,9 +73,13 @@ test('price keyboard submission associates and announces invalid amounts', async
  await fixture(page);
  const list = { id: tenant, version: 1, currency: 'USD', status: 'active', audience: 'all', priority: 0,
    starts_at: '2020-01-01T00:00:00Z', ends_at: null };
- let writes = 0;
+ let writes = 0, priceStatus = 200;
  await page.route('**/api/v1/t/*/price-lists**', async route => {
-   if (route.request().method() === 'PUT') writes++;
+   if (route.request().method() === 'PUT') {
+     writes++;
+     expect(route.request().headers()['if-match']).toBe('"1"');
+     if(priceStatus!==200)return route.fulfill({status:priceStatus,json:{status:priceStatus,code:'version_conflict'}});
+   }
    await route.fulfill({ json: new URL(route.request().url()).pathname.endsWith('/price-lists') ? { items: [list] } : list });
  });
  await page.goto(`${origin}/t/${tenant}/products/${productId}`);
@@ -100,6 +111,11 @@ test('price keyboard submission associates and announces invalid amounts', async
  await amount.press('Enter');
  await expect(page.getByRole('status').filter({ hasText: 'Price saved' })).toBeVisible();
  expect(writes).toBe(1);
+ priceStatus=412;await amount.fill('9223372036854775807');await amount.press('Enter');
+ await expect(page.getByRole('button',{name:'Save price',exact:true})).toBeDisabled();
+ await expect(amount).toHaveValue('9223372036854775807');
+ await expect(page.getByRole('alert')).toContainText('This resource changed');
+ await audit(page,'admin-price-conflict.png');
 });
 
 test('content and listing preserve opaque ETags and retain conflicting drafts',async({page})=>{
@@ -107,9 +123,14 @@ test('content and listing preserve opaque ETags and retain conflicting drafts',a
  await page.getByRole('button',{name:'Load content',exact:true}).click();
  await expect(page.getByLabel('Title',{exact:true})).toHaveValue('Sample title');
  await page.getByLabel('Title',{exact:true}).fill('Unsaved title');
+ const saving=await holdResponse(page,'**/api/v1/t/*/products/*/content/en');
  await page.getByRole('button',{name:'Save content',exact:true}).click();
+ await saving.ready;
+ try{await expect(page.getByLabel('Title',{exact:true})).toBeDisabled();await audit(page,'admin-publication-saving.png');}finally{saving.release();}
  await expect(page.getByRole('button',{name:'Save content',exact:true})).toBeDisabled();
+ await expect(page.getByRole('alert')).toContainText('This resource changed');
  await expect(page.getByLabel('Title',{exact:true})).toHaveValue('Unsaved title');
+ await audit(page,'admin-content-conflict.png');
  await page.getByRole('button',{name:'Load content',exact:true}).click();
  await expect(page.getByLabel('Title',{exact:true})).toHaveValue('Sample title');
  await page.getByLabel('Site ID',{exact:true}).fill(tenant);
@@ -122,6 +143,15 @@ test('content and listing preserve opaque ETags and retain conflicting drafts',a
  await page.getByRole('button',{name:'Load listing',exact:true}).click();
  await expect(page.getByLabel('Slug',{exact:true})).toHaveValue('sample');
  await expect(page.getByRole('button',{name:'Save listing',exact:true})).toBeEnabled();
+ await page.getByLabel('Title',{exact:true}).fill('A detailed multilingual product title 商品说明 '.repeat(8));
+ await page.getByLabel('Body blocks JSON',{exact:true}).fill(JSON.stringify([{type:'paragraph',text:'Product content details 商品内容 '.repeat(20)}]));
+ await page.getByLabel('Slug',{exact:true}).fill('long-product-publication-slug-'.repeat(6));
+ await audit(page,'admin-publication-long.png');
+ await page.route('**/api/v1/t/*/products/*/content/en',route=>route.fulfill({status:503,json:{detail:'PRIVATE SERVER DETAIL'}}));
+ await page.getByRole('button',{name:'Load content',exact:true}).click();
+ await expect(page.getByRole('alert')).toContainText('temporarily unavailable');
+ await expect(page.getByText('PRIVATE SERVER DETAIL')).toHaveCount(0);
+ await audit(page,'admin-publication-error.png');
 });
 
 test('notification snapshot pages and confirmation retain safe recovery states',async({page})=>{
@@ -135,25 +165,38 @@ test('notification snapshot pages and confirmation retain safe recovery states',
   keys.push(route.request().headers()['idempotency-key']);
   return route.fulfill({status,contentType:'application/problem+json',json:{code:'PRIVATE_CONTACT_DETAIL',detail:'PRIVATE_CONTACT_DETAIL'}});
  });
- await page.goto(path);
+ const loading=await holdResponse(page,'**/api/v1/t/*/notifications/failures?*');
+ await page.goto(path);await loading.ready;
+ try{await expect(page.getByRole('button',{name:'Reload failures',exact:true})).toBeDisabled();await audit(page,'admin-notifications-loading.png');}finally{loading.release();}
  await expect(page.getByRole('table',{name:'Notification failures'}).getByRole('row')).toHaveCount(11);
  await expect(page.getByText('Investigate manually',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Next page',exact:true}).click();
  await expect(page.getByRole('table',{name:'Notification failures'}).getByRole('row')).toHaveCount(3);
  await page.getByRole('button',{name:'Previous page',exact:true}).click();
- expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
- if(process.env.OPENSITE_ADMIN_NO_SNAPSHOTS!=='1')await expect(page).toHaveScreenshot('admin-notifications.png',{fullPage:true});
+ await audit(page,'admin-notifications.png');
+ const region=page.getByRole('region',{name:'Notification failures'});
+ await region.focus();await expect(region).toBeFocused();
+ const overflow=await region.evaluate(el=>el.scrollWidth>el.clientWidth);
+ if(page.viewportSize()!.width===390)expect(overflow).toBe(true);
+ if(overflow){await page.keyboard.press('ArrowRight');await expect.poll(()=>region.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);await region.evaluate(el=>{el.scrollLeft=el.scrollWidth;});}
+ await expect(region.getByRole('button',{name:'Redrive',exact:true}).first()).toBeInViewport();
+ await audit(page,'admin-notifications-recovery.png');
  const trigger=page.getByRole('row').filter({hasText:id}).getByRole('button',{name:'Redrive',exact:true});
  await trigger.focus();await page.keyboard.press('Enter');
  const dialog=page.getByRole('dialog',{name:'Redrive notification?'});
  await expect(dialog.getByRole('button',{name:'Cancel redrive',exact:true})).toBeFocused();
+ await audit(page,'admin-notifications-confirmation.png');
  await page.keyboard.press('Escape');await expect(trigger).toBeFocused();expect(keys).toEqual([]);
- await trigger.click();await dialog.getByRole('button',{name:'Confirm redrive',exact:true}).click();
+ await trigger.click();const confirming=await holdResponse(page,'**/api/v1/t/*/notifications/*/redrive');
+ await dialog.getByRole('button',{name:'Confirm redrive',exact:true}).click();await confirming.ready;
+ try{await expect(dialog.getByRole('button',{name:'Cancel redrive',exact:true})).toBeDisabled();await audit(page,'admin-notifications-confirming.png');}finally{confirming.release();}
  await expect(dialog.getByRole('alert')).toContainText('Retry uses the same request key');
+ await audit(page,'admin-notifications-error.png');
  status=409;await dialog.getByRole('button',{name:'Confirm redrive',exact:true}).click();
  await expect(page.getByRole('status').filter({hasText:'state changed'})).toBeVisible();
  expect(keys).toHaveLength(2);expect(keys[0]).toBe(keys[1]);
  await expect(trigger).toBeDisabled();await expect(page.getByText('PRIVATE_CONTACT_DETAIL')).toHaveCount(0);
+ await audit(page,'admin-notifications-stale.png');
  await page.getByRole('button',{name:'Reload failures',exact:true}).click();await expect(trigger).toBeEnabled();
 });
 test('notification 403 hides all private metadata and mutation controls',async({page})=>{
@@ -165,4 +208,88 @@ test('notification 403 hides all private metadata and mutation controls',async({
  await expect(page.getByRole('button',{name:'Redrive',exact:true})).toHaveCount(0);
  await expect(page.getByRole('table')).toHaveCount(0);
  await expect(page.getByText('PRIVATE_CONTACT_DETAIL')).toHaveCount(0);
+ await audit(page,'admin-notifications-forbidden.png');
+});
+
+// Production build + routed contract responses: visual UI evidence only, not backend refund/auth E2E.
+test('production orders list and detail expose loading, empty and safe retry states',async({page})=>{
+ await fixture(page);let status=200,empty=false;
+ await page.route('**/api/v1/t/*/orders**',async route=>{
+  if(status!==200)return route.fulfill({status,json:{status,detail:'PRIVATE SERVER DETAIL'}});
+  if(empty){
+   const detail=new URL(route.request().url()).pathname.endsWith(orderId);
+   return route.fulfill({json:detail?{...order,lines:[],adjustments:[]}:{items:[]},headers:detail?{ETag:'"1"'}:{}});
+  }
+  return route.fallback();
+ });
+ for(const detail of [false,true]){
+  const path=`${origin}/t/${tenant}/orders${detail?`/${orderId}`:''}`,name=detail?'order':'orders';
+  const pending=await holdResponse(page,`**/api/v1/t/*/orders${detail?`/${orderId}`:'?*'}`);
+  await page.goto(path);await pending.ready;
+  try{
+   if(detail)await expect(page.getByRole('status')).toHaveText('Loading order…');
+   else await expect(page.getByRole('table',{name:'Order list'})).toHaveAttribute('aria-busy','true');
+   await audit(page,`admin-production-${name}-loading.png`);
+  }finally{pending.release();}
+  await expect(page.getByRole(detail?'heading':'link',{name:detail?'Order 1001':'1001',exact:true})).toBeVisible();
+  await expect(page.getByText(/CONTRACT FIXTURE/)).toHaveCount(0);
+  await audit(page,`admin-production-${name}.png`);
+  empty=true;await page.reload();
+  if(detail){await expect(page.getByRole('table',{name:'Order lines'})).toHaveAttribute('aria-busy','false');await expect(page.getByRole('table',{name:'Order lines'}).getByRole('row')).toHaveCount(2);}
+  else await expect(page.getByText('No orders match this filter.',{exact:true})).toBeVisible();
+  await audit(page,`admin-production-${name}-empty.png`);
+  status=503;await page.reload();
+  await expect(page.getByRole('alert')).toContainText('temporarily unavailable');
+  await expect(page.getByText('PRIVATE SERVER DETAIL')).toHaveCount(0);
+  await audit(page,`admin-production-${name}-error.png`);
+  status=200;empty=false;await page.getByRole('button',{name:'Retry',exact:true}).click();
+  await expect(page.getByRole(detail?'heading':'link',{name:detail?'Order 1001':'1001',exact:true})).toBeVisible();
+ }
+});
+
+test('production partial and full refunds preserve read-only totals and long order content',async({page})=>{
+ await fixture(page);let state='partially_refunded';
+ const sku='LONG-SKU-WITH-MULTILINGUAL-CONTENT-商品-'.repeat(5);
+ await page.route('**/api/v1/t/*/orders**',route=>{
+  const detail=new URL(route.request().url()).pathname.endsWith(orderId);
+  const value={...order,state,lines:[{...order.lines[0],sku_code:sku}],adjustments:[{...order.adjustments[0],reason:'Customer requested adjustment with detailed order context '.repeat(6)}]};
+  return route.fulfill({json:detail?value:{items:[{...value,customer_kind:'guest'}]},headers:detail?{ETag:'"1"'}:{}});
+ });
+ for(state of ['partially_refunded','refunded']){
+  await page.goto(`${origin}/t/${tenant}/orders`);
+  await expect(page.getByRole('cell',{name:state.replaceAll('_',' '),exact:true})).toBeVisible();
+  await audit(page,`admin-production-orders-${state.replaceAll('_','-')}.png`);
+  await page.getByRole('link',{name:'1001',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Order 1001',exact:true})).toBeVisible();
+  await expect(page.getByText(state.replaceAll('_',' '),{exact:true})).toBeVisible();
+  await expect(page.getByRole('cell',{name:sku,exact:true})).toBeVisible();
+  await expect(page.getByText('USD 26.00',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:/refund|ship/i})).toHaveCount(0);
+  await expect(page.getByText(/CONTRACT FIXTURE/)).toHaveCount(0);
+  await audit(page,`admin-production-order-${state.replaceAll('_','-')}-long.png`);
+ }
+});
+
+test('production publication access has deterministic loading, retry and low-permission states',async({page})=>{
+ await fixture(page);let status=503;
+ await page.route('**/api/v1/t/*/price-lists',route=>route.fulfill({status,json:{status,detail:'PRIVATE SERVER DETAIL'}}));
+ const pending=await holdResponse(page,'**/api/v1/t/*/price-lists');
+ await page.goto(`${origin}/t/${tenant}/products/${productId}`);await pending.ready;
+ try{
+  await expect(page.getByRole('status').filter({hasText:'Checking catalog editing access'})).toBeVisible();
+  await audit(page,'admin-publication-loading.png');
+ }finally{pending.release();}
+ await expect(page.getByRole('alert')).toContainText('Unable to check catalog editing access.');
+ await expect(page.getByRole('button',{name:'Load content',exact:true})).toHaveCount(0);
+ await audit(page,'admin-publication-access-error.png');
+ status=403;await page.getByRole('button',{name:'Retry editing access',exact:true}).click();
+ await expect(page.getByRole('status').filter({hasText:'Catalog editing is unavailable for this session.'})).toBeVisible();
+ await page.getByLabel('SKU code',{exact:true}).fill('LOW-PERMISSION-SKU');
+ await page.getByRole('button',{name:'Create SKU',exact:true}).click();
+ await page.getByRole('button',{name:'Edit LOW-PERMISSION-SKU',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Variant price',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Load content',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Save price',exact:true})).toHaveCount(0);
+ await expect(page.getByText('PRIVATE SERVER DETAIL')).toHaveCount(0);
+ await audit(page,'admin-publication-forbidden.png');
 });
