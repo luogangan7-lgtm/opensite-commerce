@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"sort"
@@ -50,7 +49,7 @@ func pgRouter(t *testing.T) (*httpapi.Router, *httpapi.Router) {
 	service := New(Config{Run: runner.Queries})
 	return testRouter(t, service, testAuth{tenant: tenantA}), testRouter(t, service, testAuth{tenant: tenantB})
 }
-func expect(t *testing.T, r http.Handler, method, path, body, version string, status int) *httptest.ResponseRecorder {
+func expect(t *testing.T, r http.Handler, method, path, body, version string, status int) *testResponse {
 	t.Helper()
 	rr := httpRequest(r, method, path, body, version)
 	if rr.Code != status {
@@ -58,7 +57,7 @@ func expect(t *testing.T, r http.Handler, method, path, body, version string, st
 	}
 	return rr
 }
-func decode[T any](t *testing.T, rr *httptest.ResponseRecorder) T {
+func decode[T any](t *testing.T, rr *testResponse) T {
 	t.Helper()
 	var value T
 	if err := json.Unmarshal(rr.Body.Bytes(), &value); err != nil {

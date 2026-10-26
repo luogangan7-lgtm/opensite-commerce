@@ -4,6 +4,7 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -49,7 +50,16 @@ func testRouter(t *testing.T, s *Service, auth httpapi.Authenticator) *httpapi.R
 	}
 	return r
 }
-func httpRequest(r http.Handler, method, path, body, version string) *httptest.ResponseRecorder {
+// testResponse holds the response the client received, including frozen headers.
+type testResponse struct {
+	Code int
+	Body *bytes.Buffer
+	header http.Header
+}
+
+func (r *testResponse) Header() http.Header { return r.header }
+
+func httpRequest(r http.Handler, method, path, body, version string) *testResponse {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", uuid.NewString())
@@ -58,7 +68,9 @@ func httpRequest(r http.Handler, method, path, body, version string) *httptest.R
 	}
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
-	return rr
+	response := rr.Result()
+	defer response.Body.Close()
+	return &testResponse{Code: response.StatusCode, Body: rr.Body, header: response.Header}
 }
 func TestHTTPAdmission(t *testing.T) {
 	product := "/api/v1/t/" + tenantA + "/products/" + missingID
