@@ -1,6 +1,6 @@
 /** Offline privacy gate for E2E assertion messages, called by check_all.sh.
  * Uses the pinned TS parser; reports only locations, never source or body values.
- * Only literal prose or locally proven primitive labels are allowed as messages.
+ * Only inline literal expressions are allowed as messages; identifiers fail closed.
  */
 import ts from 'typescript-parser';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -20,17 +20,12 @@ export function violations(source: string): number[] {
   for (let i = 0; i < definitions.size; i++)
     for (const [name, value] of definitions)
       if (value && expects.has(value.getText(file))) expects.add(name);
-  function safe(node: ts.Node, seen = new Set<string>()): boolean {
+  function safe(node: ts.Node): boolean {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isNumericLiteral(node)) return true;
-    if (ts.isIdentifier(node)) {
-      if (/body|response|payload/i.test(node.text) || seen.has(node.text)) return false;
-      const value = definitions.get(node.text);
-      return !!value && safe(value, new Set([...seen, node.text]));
-    }
-    if (ts.isTemplateExpression(node)) return node.templateSpans.every(span => safe(span.expression, seen));
+    if (ts.isTemplateExpression(node)) return node.templateSpans.every(span => safe(span.expression));
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken)
-      return safe(node.left, seen) && safe(node.right, seen);
-    return false; // Calls, mutable aliases and unknown expressions fail closed.
+      return safe(node.left) && safe(node.right);
+    return false; // Identifiers (including shadowed constants), calls and unknown expressions fail closed.
   }
   const lines: number[] = [];
   walk(file, node => {

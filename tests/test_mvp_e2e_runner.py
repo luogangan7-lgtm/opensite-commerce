@@ -107,9 +107,27 @@ class BrowserReceiptTests(unittest.TestCase):
             result = subprocess.run(['bun', str(gate)], cwd=temporary, capture_output=True, text=True, timeout=30)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('nested/sample.spec.ts', result.stderr)
-            source.write_text("expect(status, 'safe operation status').toBe(200); expect(await response.json()).toEqual({});")
+            source.write_text("expect(status, 'safe operation status').toBe(200); expect(await response.json()).toEqual({});"
+                              "expect(status, `operation ${200}`).toBe(200); expect(status, 'operation ' + 200).toBe(200);")
             result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_assertion_message_gate_rejects_parameter_shadowing(self):
+        gate = Path(__file__).resolve().parents[1] / 'scripts/e2e/check-assertion-messages.ts'
+        # Both probes used to borrow the outer literal instead of the runtime binding.
+        expressions = (
+            "const label='safe'; function check(label: string) { expect(status, label).toBe(200); }",
+            "const label='safe'; const check = (label: string) => expect.poll(() => status, {message: label});",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'sample.ts'
+            for expression in expressions:
+                with self.subTest(expression=expression):
+                    source.write_text(expression)
+                    result = subprocess.run(['bun', str(gate), str(source)], capture_output=True, text=True, timeout=30)
+                    self.assertNotEqual(result.returncode, 0, 'runtime parameter accepted as a literal message')
+                    self.assertIn('unsafe assertion message', result.stderr)
+                    self.assertNotIn(expression, result.stdout + result.stderr, 'gate must not echo source')
 
     def test_artifact_gate_is_on_failure_path_and_blocks_upload(self):
         root = Path(__file__).resolve().parents[1]
