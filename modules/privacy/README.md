@@ -80,7 +80,7 @@ Erasure strategies are declarative, never executable SQL from JSON:
 
 | Strategy | Exact owner-handler obligation |
 | --- | --- |
-| `delete_row` | Delete the owned row in the declared local leaf-before-parent order. All its columns must agree on row deletion. |
+| `delete_row` | Delete the owned row in the declared local leaf-before-parent order. All columns assigned to that same work item must agree on row deletion. |
 | `constant` | Replace with the exact JSON `value`, including explicit null; scrub guards must admit only that change. |
 | `row_id_placeholder` | Substitute only the row's canonical UUID into the declared `{id}` template. Preserve uniqueness, never interpolate original text. |
 | `database_time` | Replace the original nonfinancial timestamp with the DB erasure time sampled after the tenant fence. |
@@ -100,9 +100,15 @@ release and receipt rows; declaring these strategies never disables a trigger.
 
 Each module's top-level `merchant_deletion` has version 1, `handlers`, and
 `artifacts` (explicitly empty where none exist). Handler IDs are module-qualified;
-`tables` is its complete ordered module-local worklist, not permission to access
-another module's store. `depends_on` is a DAG: unknown handlers, duplicate/wrong
-owners, missing tables and cycles fail. The initial dependency order cleans
+`tables` is its complete ordered module-local worklist for the explicitly
+assigned columns, not permission to access another module's store. A table may
+appear in separate owner work items: `site.detach` first clears the Site-owned
+`sites.published_release_id` FK, `publish.erase` can then remove release copies,
+and `site.erase` removes site rows after their leaves. This avoids the existing
+Site↔Publish FK cycle without cross-module writes or dropping constraints.
+The pointer stays reversible during cooling-off; these items execute only after
+execution admission. `depends_on` is a DAG: unknown handlers, duplicate/wrong
+owners, missing table/item assignments and cycles fail. The initial dependency order cleans
 serving, notifications, queue/replay and artifact copies before financial scrubs
 and FK parent witnesses, then Identity and terminal DataRights/Tenant metadata.
 Every handler declares DB clock, one-item mutation+checkpoint transaction, and
