@@ -40,5 +40,5 @@
       }
     }
   },
-  "merchant_deletion": {"version": 1, "handlers": {"tenant.erase": {"depends_on": ["datarights.erase"], "tables": ["api_keys", "tenant_memberships", "tenants"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
+  "merchant_deletion": {"version": 1, "handlers": {"tenant.erase": {"depends_on": ["datarights.erase"], "tables": ["api_keys", "tenant_memberships", "tenants"], "lock_order": "artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }
