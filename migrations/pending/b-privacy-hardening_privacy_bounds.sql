@@ -269,3 +269,26 @@ BEGIN
  END IF;
  RETURN NEW;
 END $fn$;
+
+-- Replacing ownership only protects future erasures/inserts. Legacy converted
+-- notifications can still contain the email of a customer erased before this
+-- upgrade. Replay the controlled erasure path only for those durable owners;
+-- it scrubs envelopes and retires every dispatch generation under its own role,
+-- RLS, lock order and financial-retention guards. Never infer owners by email.
+DO $legacy_conversion$
+DECLARE erased record;prior_tenant text:=current_setting('app.tenant_id',true);
+BEGIN
+ FOR erased IN
+  SELECT e.* FROM app.data_rights_erasures e
+  WHERE EXISTS(SELECT FROM app.quote_conversions q JOIN app.notification_deliveries d
+   ON(d.tenant_id,d.reference_id)=(q.tenant_id,q.quote_id)
+   WHERE(q.tenant_id,q.customer_id)=(e.tenant_id,e.customer_id)
+    AND d.template_key='quote.converted' AND d.recipient<>''
+    AND d.last_error IS DISTINCT FROM 'PRIVACY_ERASED')
+  ORDER BY e.tenant_id,e.customer_id
+ LOOP
+  PERFORM set_config('app.tenant_id',erased.tenant_id::text,true);
+  PERFORM app.data_rights_erase_customer(erased.customer_id,erased.actor_kind,erased.actor_id);
+ END LOOP;
+ PERFORM set_config('app.tenant_id',coalesce(prior_tenant,''),true);
+END $legacy_conversion$;
