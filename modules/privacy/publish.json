@@ -146,5 +146,5 @@
       }
     }
   },
-  "merchant_deletion": {"version": 1, "handlers": {"publish.erase": {"depends_on": [], "tables": ["draft_page_media", "draft_pages", "draft_operations", "site_drafts", "site_release_media", "site_release_templates", "site_release_routes", "site_release_skus", "storefront_serving", "serving_invalidations", "site_releases"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
+  "merchant_deletion": {"version": 1, "handlers": {"publish.erase": {"depends_on": ["site.detach"], "tables": ["draft_page_media", "draft_pages", "draft_operations", "site_drafts", "site_release_media", "site_release_templates", "site_release_routes", "site_release_skus", "storefront_serving", "serving_invalidations", "site_releases"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

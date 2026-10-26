@@ -550,6 +550,22 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "MERCHANT_RETAIN_CATALOG_TYPE.*orders.id"):
                 self.gate.validate_catalog(registry, rows)
 
+    def test_owner_can_detach_fk_then_delete_same_table_in_separate_items(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = self.fixture(root)
+            handlers = body["merchant_deletion"]["handlers"]
+            handlers["orders.detach"] = copy.deepcopy(handlers["orders.scrub"])
+            handlers["orders.scrub"]["depends_on"] = ["orders.detach"]
+            body["tables"]["orders"]["columns"]["address_snapshot"]["merchant_deletion"].update(
+                handler="orders.detach", strategy="constant", value={"erased": True})
+            self.write(root, body)
+            self.assertEqual(self.load(root)["handler_order"], ["orders.detach", "orders.scrub"])
+            handlers["orders.detach"]["depends_on"] = ["orders.scrub"]
+            self.write(root, body)
+            with self.assertRaisesRegex(ValueError, "MERCHANT_DEPENDENCY_CYCLE"):
+                self.load(root)
+
     def test_contract_schema_and_version_are_mandatory(self):
         for mutation in ("missing", "version", "unknown", "mixed_row"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
@@ -681,6 +697,12 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
             "media.originals", "media.staging", "datarights.customer_export", "datarights.export_temp",
         })
         self.assertEqual(contract["artifacts"]["media.originals"]["prerequisite"], "MDEL-21a")
+        pointer = contract["fields"]["sites.published_release_id"]
+        self.assertEqual((pointer["handler"], pointer["strategy"], pointer["value"]),
+                         ("site.detach", "constant", None))
+        order = contract["handler_order"]
+        self.assertLess(order.index("site.detach"), order.index("publish.erase"))
+        self.assertLess(order.index("publish.erase"), order.index("site.erase"))
         self.assertEqual(set(contract["fields"]["payment_refund_terminals.order_target"]["values"]),
                          set(contract["fields"]["orders.state"]["values"]),
                          "Refund terminals preserve an existing Orders state or its quantity-derived compensation target")

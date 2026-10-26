@@ -315,22 +315,23 @@ def load_merchant_contract(root, registry):
         policy = field.get("merchant_deletion")
         merchant_policy(key, policy, field["module"], registry, handlers)
         fields[key] = policy
-    tables = {}
-    deleting = {}
+    # A module may first detach an owned FK, then delete its row in a later
+    # work item. Each item owns explicit columns, never another module's store.
+    tables, deleting = set(), {}
     for key, policy in fields.items():
-        table = key.rsplit(".", 1)[0]
-        require(table not in tables or tables[table] == policy["handler"], "MERCHANT_TABLE_HANDLER", table)
-        tables[table] = policy["handler"]
-        deleting.setdefault(table, set()).add(policy["strategy"] == "delete_row")
+        item = (key.rsplit(".", 1)[0], policy["handler"])
+        tables.add(item)
+        deleting.setdefault(item, set()).add(policy["strategy"] == "delete_row")
     require(all(len(modes) == 1 for modes in deleting.values()), "MERCHANT_ROW_POLICY",
-            "a deleted row cannot also retain or scrub individual cells")
-    declared_tables = {}
+            "one item cannot both delete a row and retain/scrub its cells")
+    declared_tables = set()
     for name, handler in handlers.items():
         for table in handler["tables"]:
-            require(table not in declared_tables and tables.get(table) == name, "MERCHANT_TABLE_ORDER", table)
-            declared_tables[table] = name
+            item = (table, name)
+            require(item in tables, "MERCHANT_TABLE_ORDER", table)
+            declared_tables.add(item)
         require(set(handler["depends_on"]) <= handlers.keys(), "MERCHANT_DEPENDENCY_UNKNOWN", name)
-    require(declared_tables == tables, "MERCHANT_TABLE_ORDER", "every owned table needs one local order entry")
+    require(declared_tables == tables, "MERCHANT_TABLE_ORDER", "every owned table/item needs a local order entry")
     ordered, pending = [], set(handlers)
     while pending:
         ready = sorted(name for name in pending if set(handlers[name]["depends_on"]) <= set(ordered))
