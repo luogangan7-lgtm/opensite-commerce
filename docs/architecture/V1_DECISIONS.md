@@ -923,32 +923,58 @@ It authorizes an isolated CI smoke design, not production enablement.
    Stripe owns provider facts; Payments owns financial state and Ledger owns
    immutable journals. Preserve existing stream/transaction lock order and DB
    clock semantics for deadlines/retries; provider IO stays outside DB locks.
-   Harness create/cancel, polled capture and module-issued refund/replay are the
-   only new write entrances; old, batch and async paths gain no live admission.
+   Harness PaymentIntent create/cancel, smoke Customer and Invoice create/finalize/
+   send/void and run-metadata binding, polled capture and module-issued refund/
+   replay (including recovery R) are the only new write entrances; old, batch and
+   async paths gain no live admission.
 
-3. **New-source consent.** The sole payer is the owner, paying **0.50 USD** on
-   Stripe-hosted Checkout, with no customer fields prefilled or card data handled
-   by agents. Stripe may collect email on its hosted page; the harness never
-   reads, logs or stores it or other customer PII. Project only required payment
-   facts before ingestion; never persist raw PII-bearing event envelopes.
-   Process events only in the ephemeral DB and discard it with the runner.
+3. **New-source consent and private payment channel (#396).** The sole authorized
+   payer is the owner. Phase B creates a Stripe Invoice for **50 USD (5000 minor
+   units)**, with `collection_method=send_invoice`, `days_until_due=1` and
+   `payment_settings.payment_method_types=[card]` only. Use a smoke Customer whose
+   email comes solely from the second Environment `stripe-live` secret
+   `STRIPE_SMOKE_EMAIL`, entered by the owner. Finalize and send the invoice:
+   **Stripe emails the hosted invoice link privately to the owner's mailbox**;
+   only that mailbox receives the payable link. No public Checkout URL or other
+   payable URL is emitted. Environment approval protects execution and secrets;
+   it is not payer authentication. The private mailbox is the delivery boundary,
+   and the owner must not share its link. Agents never handle card data.
+   The email secret is used only for the Customer request, never logged, echoed
+   in errors or persisted in the harness DB/artifacts; do not read back email or
+   other customer PII from responses/events. Project only required payment facts
+   before ingestion; never persist raw PII-bearing event envelopes. Process events
+   only in the ephemeral DB and discard it with the runner; provider metadata
+   remains the recovery locator after that DB is gone.
 
 4. **Security review and disclosure.** Both this design PR and the implementation
    PR require cross-model security review: fresh-session Codex-high **and** Gemini.
    The key exists only in the Environment secret `STRIPE_API`, passed as env only
    to its consuming step, never printed or placed in argv, URLs or artifacts.
+   The restricted key requires **PaymentIntents write, Invoices write, Customers
+   write, Refunds write and Events read**; Checkout Sessions permission is no
+   longer required. Prove this exact permission set offline and at the separately
+   owner-approved implementation permission probe; do not broaden it silently.
+   Apply the same env-only handling to `STRIPE_SMOKE_EMAIL` in its consuming step.
    Public output is an allowlisted summary: phase, step, status, object type,
    amount_minor, currency, livemode and counts; object IDs reveal at most four
-   trailing characters. The sole URL printed is the hosted Checkout URL, once,
-   expiring after 30 minutes and containing no PII. No raw responses/errors leak.
+   trailing characters. **No payable URL or email may appear in any public output**:
+   logs, step summaries, artifacts and errors, on success, failure or timeout.
+   No raw responses/errors leak, including hosted invoice URLs and invoice PDFs.
+   Redacting the secret alone does not protect provider-returned URLs or emails.
 
 5. **Production-safety gate.** Environment approval plus a normal-CI static
    workflow gate must enforce dispatch-only, `environment: stripe-live`, main-only
-   execution and no other workflow referencing `secrets.STRIPE_API`.
-   Normal CI runs offline fake-Stripe tests RED→GREEN for A/B, restricted-key and
-   account/mode/source rejection, permission probe, replay, post-payment refund
-   cleanup and PII/output canaries. Prove the static gate with a forbidden-trigger
-   draft probe PR; record its failing run then close it and delete its branch.
+   execution and no other workflow referencing `secrets.STRIPE_API` or
+   `secrets.STRIPE_SMOKE_EMAIL`. Apply the same gate to A, B and recovery R.
+   Normal CI runs offline fake-Stripe tests RED→GREEN for A/B/R, restricted-key and
+   account/mode/source rejection, the exact permission set, replay, post-payment
+   refund cleanup and PII/output canaries. Plant canary payable URLs and emails
+   in fake success/failure/timeout responses; any occurrence in any public output
+   above must fail CI. A negative fixture offering a delayed payment method must
+   be rejected: card-only immediate confirmation is enforced by the Invoice
+   payment-method configuration, not a Dashboard default. Prove the static gate
+   with a forbidden-trigger draft probe PR; record its failing run then close it
+   and delete its branch.
    Required PR checks must pass at the exact head; no live calls occur in them.
 
 6. **Owner authorization.** The owner's **“方案批” (2026-10-26)** approves CI live
@@ -956,16 +982,72 @@ It authorizes an isolated CI smoke design, not production enablement.
    This neither approves any individual run nor authorizes production launch.
 
 7. **Acceptance and receipts.** Phase A creates then cancels a 50-minor-unit USD
-   PaymentIntent, asserts canceled/zero received and **zero journals**. Phase B
-   waits up to 30 minutes for owner Checkout payment (expire and fail on timeout),
-   records **one capture journal**, issues a full refund through Payments and polls
-   it to success, then records **one refund journal** and a fully refunded order.
+   PaymentIntent, asserts canceled/zero received and **zero journals**. Phase B's
+   separate 5000-minor-unit USD Invoice waits up to 30 minutes for owner card
+   payment, records **one capture journal**, issues a full refund through Payments
+   and polls it to success, then records **one refund journal** and a fully refunded
+   order. Assert the exact payable/received/refunded amount and USD currency.
    Both journals balance; reconciliation is clean. Re-feeding the same events
    creates zero new journals. Any failure after payment still attempts the refund
-   and explicitly reports its outcome. Live receipts are owner-approved **run IDs
+   and explicitly reports its outcome; pending or unknown outcomes require R
+   below, never a no-effect claim. Live receipts are owner-approved **run IDs
    bound to source SHA**; offline green is not live acceptance. Design, live A/B
    and production evidence remain separate; live acceptance is **NOT_RUN** until
    those receipts exist. This docs-only card adds no adapter, workflow or gate.
+
+8. **Timeout, provider authority and recovery (#397).** Card-only configuration
+   does not remove processing states or races. The 30-minute DB-clock deadline is
+   a harness wait limit, not the Invoice's one-day due date or a provider expiry.
+   At timeout, re-read the Invoice and associated PaymentIntent. Void only an
+   Invoice still `open` with no observed paid/processing payment; after a void
+   response, error or network timeout, re-read both objects to resolve the race.
+   Paid or processing at any point is never no-effect. A successful void alone
+   cannot prove that an in-flight payment had no effect. Provider facts decide:
+
+   | Provider state | Required action / result |
+   |---|---|
+   | Still open, no payment in flight | Void, then verify Invoice/PaymentIntent terminal unpaid/canceled state; timeout remains a failed smoke, not Phase B acceptance. |
+   | Payment succeeds, including between last poll and void | Ingest capture once and issue/recover the idempotent full refund through Payments; only confirmed refund success is refunded. |
+   | Payment processing or result unknown | Report `PENDING`, exit non-zero and retain the original smoke run ID for R; never record no-effect or success. |
+   | Payment failed/canceled with verified terminal Invoice/payment state | Record the explicit terminal state; do not create a capture/refund or claim the successful Phase B journey. |
+   | Refund pending or network outcome unknown | Reconcile the existing refund by provider state and the same idempotency key; report `PENDING` and exit non-zero until terminal. A failed refund is reported as failure, never refunded. |
+
+   Add `workflow_dispatch` input `phase=R` (reconcile) with required input
+   `smoke_run_id`, under the **same main-only Environment and per-run owner
+   approval**. This input names the original A/B run, not R's new workflow run ID.
+   Using only the restricted key, find the Invoice and associated PaymentIntent
+   by metadata `osc_smoke=<run_id>`; bind and verify that metadata during B setup,
+   before sending the payable invoice. Recheck account, live mode, phase, object
+   association, amount and currency; missing, ambiguous or mismatched objects fail
+   closed. Recover authoritative objects directly and via authenticated Events;
+   metadata is a locator, not payment proof. R creates no Invoice or new payment.
+   If succeeded and not yet refunded, R issues the idempotent full refund through
+   Payments using a key derived from the **original run ID**, shared with B; if
+   already refunded, report that terminal state without another refund. Look up
+   existing refunds before retrying an unknown request; do not assume indefinite
+   provider idempotency retention. If failed/canceled, record terminal state; if
+   still processing, report `PENDING` and exit non-zero so the owner reruns R later.
+   R also applies the open-Invoice void and pending-refund rules above. Rebuild
+   the isolated ephemeral DB through the existing Payments ingestion functions
+   when needed; never depend on the killed runner's files/DB or touch production.
+   Record the original smoke run ID, R run IDs, source SHAs and allowlisted state
+   receipts so unresolved work remains visible without exposing payment links.
+
+   Offline fake-Stripe regressions must cover **open→void; paid→refund;
+   processing→later succeeded→R refunds once; payment between last poll and void;
+   refund pending/network timeout; runner killed then R re-entry**. Across B/R
+   retries assert exactly one provider capture and one full refund on the paid
+   journey, one journal per financial fact per reconstructed DB and zero extra
+   journals on replay. Canary URL/email checks cover all these public outputs.
+   Implementation CI must retain failing-test and repaired run IDs plus mutation
+   probe receipts at their exact source SHAs; these gates and live R remain
+   **NOT_RUN** in this design-only delivery.
+
+   Provider API references (official rolling documentation read 2026-10-26;
+   implementation must pin/verify its API version): [create Invoice](https://docs.stripe.com/api/invoices/create),
+   [send Invoice](https://docs.stripe.com/api/invoices/send),
+   [void Invoice](https://docs.stripe.com/api/invoices/void) and
+   [create refund](https://docs.stripe.com/api/refunds/create).
 
 ### 修订后的三行 PR 序列
 
