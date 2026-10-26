@@ -5,16 +5,16 @@ package pgxadapter
 
 import (
 	"context"
-	"os"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 )
 
 func TestH4ARealPoolQueueBudgets(t *testing.T) {

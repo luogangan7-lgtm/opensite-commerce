@@ -28,7 +28,7 @@ import (
 
 type occupiedAuthRunner struct {
 	authRunner
-	hold atomic.Bool
+	hold             atomic.Bool
 	entered, release chan struct{}
 }
 
@@ -52,28 +52,42 @@ func TestH4ARealSessionQueueIsolationPostgres(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	var entropy [16]byte
-	if _, err := rand.Read(entropy[:]); err != nil { t.Fatal(err) }
+	if _, err := rand.Read(entropy[:]); err != nil {
+		t.Fatal(err)
+	}
 	suffix := hex.EncodeToString(entropy[:])
 	role := "osc_h4a_" + suffix
 	pgxtest.NewRole(t, ctx, dsn, role, suffix, true, "app_auth")
 	admin, err := pgxadapter.OpenIdentity(ctx, dsn)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer admin.Close(context.Background())
 	hash := sha256.Sum256(entropy[:])
 	var userID, sessionID string
 	if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, "INSERT INTO app.users(email,password_hash) VALUES($1,'fixture') RETURNING id::text", suffix+"@h4a.test").Scan(&userID); err != nil { return err }
+		if err := tx.QueryRow(ctx, "INSERT INTO app.users(email,password_hash) VALUES($1,'fixture') RETURNING id::text", suffix+"@h4a.test").Scan(&userID); err != nil {
+			return err
+		}
 		return tx.QueryRow(ctx, "INSERT INTO app.auth_sessions(user_id,token_hash,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour') RETURNING id::text", userID, hash[:]).Scan(&sessionID)
-	}); err != nil { t.Fatal(err) }
+	}); err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
 		if err := admin.InMaintenance(context.Background(), func(ctx context.Context, tx pgx.Tx) error {
-			if _, err := tx.Exec(ctx, "DELETE FROM app.auth_sessions WHERE user_id=$1", userID); err != nil { return err }
+			if _, err := tx.Exec(ctx, "DELETE FROM app.auth_sessions WHERE user_id=$1", userID); err != nil {
+				return err
+			}
 			_, err := tx.Exec(ctx, "DELETE FROM app.users WHERE id=$1", userID)
 			return err
-		}); err != nil { t.Error("fixture cleanup", err) }
+		}); err != nil {
+			t.Error("fixture cleanup", err)
+		}
 	}()
 	authURL, err := url.Parse(dsn)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	authURL.User = url.UserPassword(role, suffix)
 	var credential *occupiedAuthRunner
 	opens := 0
@@ -86,9 +100,13 @@ func TestH4ARealSessionQueueIsolationPostgres(t *testing.T) {
 		}
 		return runner, err
 	})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer repo.Close(context.Background())
-	if opens != 2 { t.Fatal("session and credential lanes must be opened independently") }
+	if opens != 2 {
+		t.Fatal("session and credential lanes must be opened independently")
+	}
 	var once sync.Once
 	release := func() { once.Do(func() { close(credential.release) }) }
 	defer release()
@@ -97,31 +115,42 @@ func TestH4ARealSessionQueueIsolationPostgres(t *testing.T) {
 	go func() { _, err := repo.Credential(ctx, suffix+"@h4a.test"); done <- err }()
 	select {
 	case <-credential.entered:
-	case err := <-done: t.Fatal("credential occupancy failed", err)
-	case <-ctx.Done(): t.Fatal("credential readiness deadline", ctx.Err())
+	case err := <-done:
+		t.Fatal("credential occupancy failed", err)
+	case <-ctx.Done():
+		t.Fatal("credential readiness deadline", ctx.Err())
 	}
 	queuedCtx, stop := context.WithTimeout(ctx, 10*time.Millisecond)
 	_, err = repo.Credential(queuedCtx, suffix+"@h4a.test")
 	stop()
-	if !errors.Is(err, login.ErrDatabase) { t.Fatal("credential queue ignored caller deadline", err) }
+	if !errors.Is(err, login.ErrDatabase) {
+		t.Fatal("credential queue ignored caller deadline", err)
+	}
 	results := make(chan error, 8)
 	floodCtx, stopFlood := context.WithTimeout(ctx, 3*time.Second)
 	defer stopFlood()
 	for i := 0; i < cap(results); i++ {
 		go func() {
 			session, err := repo.LookupSession(floodCtx, hash, time.Now(), 30*time.Minute)
-			if err == nil && (session.ID != sessionID || session.UserID != userID || session.DatabaseNow.IsZero()) { err = login.ErrSession }
+			if err == nil && (session.ID != sessionID || session.UserID != userID || session.DatabaseNow.IsZero()) {
+				err = login.ErrSession
+			}
 			results <- err
 		}()
 	}
 	for i := 0; i < cap(results); i++ {
 		select {
-		case err := <-results: if err != nil { t.Error("session flood queued behind credential lane", err) }
-		case <-floodCtx.Done(): t.Fatal("session flood deadline", floodCtx.Err())
+		case err := <-results:
+			if err != nil {
+				t.Error("session flood queued behind credential lane", err)
+			}
+		case <-floodCtx.Done():
+			t.Fatal("session flood deadline", floodCtx.Err())
 		}
 	}
 	select {
-	case err := <-done: t.Fatal("credential occupancy ended before explicit release", err)
+	case err := <-done:
+		t.Fatal("credential occupancy ended before explicit release", err)
 	default:
 	}
 	release()
@@ -129,7 +158,10 @@ func TestH4ARealSessionQueueIsolationPostgres(t *testing.T) {
 	case err := <-done:
 		// A slow CI runner may cross the unchanged 2s budget while the
 		// test-owned callback holds the connection. It must still release.
-		if err != nil && !errors.Is(err, login.ErrDatabase) { t.Fatal(err) }
-	case <-ctx.Done(): t.Fatal("credential release deadline", ctx.Err())
+		if err != nil && !errors.Is(err, login.ErrDatabase) {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("credential release deadline", ctx.Err())
 	}
 }

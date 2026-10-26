@@ -7,9 +7,9 @@
 package login
 
 import (
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 	"context"
 	"errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 	"net/mail"
 	"net/netip"
 	"net/url"

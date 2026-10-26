@@ -27,10 +27,10 @@ var bounds = [...]float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5}
 // Metrics is scoped to one server lifetime. Its zero value is ready to use.
 // ponytail: a short global lock covers counters; shard only if contention is measured.
 type Metrics struct {
-	mu        sync.Mutex
-	requests  map[requestKey]uint64
-	durations map[string]latency
-	auth map[authKey]uint64
+	mu            sync.Mutex
+	requests      map[requestKey]uint64
+	durations     map[string]latency
+	auth          map[authKey]uint64
 	authDurations map[string]latency
 }
 

@@ -14,8 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
-	identityadapter "github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
+	identityadapter "github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type authRunner interface {

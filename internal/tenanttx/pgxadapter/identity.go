@@ -22,7 +22,7 @@ import (
 type IdentityRunner struct {
 	pool             *pgxpool.Pool
 	operationTimeout time.Duration
-	lane string
+	lane             string
 }
 
 func OpenIdentity(ctx context.Context, dsn string) (*IdentityRunner, error) {
