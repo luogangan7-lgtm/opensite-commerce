@@ -15,10 +15,12 @@ matrix jobs that failed, so a lane that passed earlier keeps that attempt's
 receipt while the re-run lane uploads a new one.  Lane receipts are therefore
 collected across attempts, and per lane the latest attempt that GitHub reports
 as a successful ``foundation-<lane>`` job of this run at the exact head SHA is
-accepted.  The job results (``actions/runs/<id>/jobs?filter=all``) are required
-so that the ``if: always()`` receipt uploaded by a failed attempt can never be
-mistaken for success; missing job results, a lane without a successful job, or
-a lane without a matching successful receipt all fail closed.
+required to have uploaded that attempt's receipt; an older receipt is never
+substituted, so a newer successful attempt with a missing receipt fails closed.
+The job results (``actions/runs/<id>/jobs?filter=all``) are required so that
+the ``if: always()`` receipt uploaded by a failed attempt can never be mistaken
+for success; missing job results, a lane without a successful job, or a lane
+without the latest successful attempt's receipt all fail closed.
 
 Mode selection is mandatory and fail-closed.  ``auto`` derives final landing
 from trusted repository changes (a ``git diff --name-status`` listing produced
@@ -46,6 +48,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import pending_migrations  # noqa: E402
+from rerun_attempts import AttemptError, attempt_number, select_latest_attempt  # noqa: E402
 
 LANES = ("go", "offline", "pg", "pgx", "sqlc")
 LANE_JOB_PREFIX = "foundation-"
@@ -198,10 +201,10 @@ def successful_job_attempts(jobs, lanes, run_id, expected_sha):
                 "FINAL_LANDING_LANE_JOBS: "
                 f"{lane} job ran at {job.get('head_sha')!r}, not the exact head {expected_sha}")
         attempt = job.get("run_attempt")
-        if not str(attempt or "").isdigit():
-            raise LandingError(
-                f"FINAL_LANDING_LANE_JOBS: {lane} job has no numeric run_attempt")
-        attempt = str(attempt)
+        try:
+            attempt = str(attempt_number(attempt))
+        except AttemptError as error:
+            raise LandingError(f"FINAL_LANDING_LANE_JOBS: {lane} {error}")
         recorded[lane].append(attempt)
         if job.get("status") == "completed" and job.get("conclusion") == "success":
             succeeded[lane].append(attempt)
@@ -260,6 +263,7 @@ def validate_lane_identities(directory, expected_sha, lanes, run_id, lane_jobs):
                 f"not {run_id}")
         candidates.setdefault(lane, []).append((attempt, payload))
     problems = []
+    selected = {}
     for lane in lanes:
         receipts = candidates.get(lane, [])
         if not succeeded[lane]:
@@ -268,21 +272,21 @@ def validate_lane_identities(directory, expected_sha, lanes, run_id, lane_jobs):
                 f"{lane}: no successful job result for run {run_id or '<unset>'} at "
                 f"{expected_sha} (recorded attempt(s): {attempts})")
             continue
-        successful_attempts = set(succeeded[lane])
-        if not any(attempt in successful_attempts for attempt, _ in receipts):
-            seen_attempts = ", ".join(sorted(attempt for attempt, _ in receipts)) or "none"
+        try:
+            selected[lane] = select_latest_attempt(
+                succeeded[lane], [attempt for attempt, _ in receipts])
+        except AttemptError as error:
+            seen_attempts = ", ".join(sorted({attempt for attempt, _ in receipts})) or "none"
             problems.append(
-                f"{lane}: no successful receipt (receipt attempt(s): {seen_attempts}; "
-                f"successful attempt(s): {', '.join(sorted(successful_attempts))})")
+                f"{lane}: no successful receipt for the latest successful attempt "
+                f"({error}; receipt attempt(s): {seen_attempts})")
     if problems:
         raise LandingError("FINAL_LANDING_LANE_IDENTITIES: " + "; ".join(problems))
     identities = {}
     for lane in lanes:
-        successful_attempts = set(succeeded[lane])
-        attempt, payload = max(
-            ((attempt, payload) for attempt, payload in candidates[lane]
-             if attempt in successful_attempts),
-            key=lambda row: int(row[0]))
+        attempt = selected[lane]
+        payload = next(payload for receipt_attempt, payload in candidates[lane]
+                       if int(receipt_attempt) == attempt)
         identities[lane] = {key: payload.get(key) for key in LANE_IDENTITY_KEYS}
     return [identities[lane] for lane in lanes]
 
