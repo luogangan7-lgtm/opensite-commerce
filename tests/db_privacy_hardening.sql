@@ -115,9 +115,9 @@ SELECT pg_temp.privacy_check('guest-malformed-marker',$test$
   SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=e;
   IF d.recipient<>'guest@example.invalid' OR d.status<>'pending' THEN RAISE EXCEPTION 'malformed guest marker affected fanout'; END IF;
  END $$ $test$);
--- quote.converted belongs to the converter, which can differ from accepted_by.
+-- quote.converted ownership follows the durable conversion receipt.
 SELECT pg_temp.privacy_check('conversion-ownership-and-future-fanout',$test$
- DO $$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;c uuid;a uuid;u uuid;org uuid;s uuid;i uuid;co uuid;q uuid;o uuid:=uuidv7();e uuid;d app.notification_deliveries; BEGIN
+ DO $$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;c uuid;a uuid;u uuid;org uuid;s uuid;i uuid;co uuid;q uuid;o uuid:=uuidv7();e uuid;nid uuid:=uuidv7();dispatch uuid:=uuidv7();d app.notification_deliveries; BEGIN
   INSERT INTO app.customers(tenant_id,email) VALUES(t,'converter@example.invalid') RETURNING id INTO c;
   INSERT INTO app.customers(tenant_id,email) VALUES(t,'acceptor@example.invalid') RETURNING id INTO a;
   INSERT INTO app.users(email,password_hash) VALUES(uuidv7()::text||'@staff.invalid','fixture') RETURNING id INTO u;
@@ -150,8 +150,10 @@ SELECT pg_temp.privacy_check('conversion-ownership-and-future-fanout',$test$
   SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=e;
   IF d.status<>'dead_letter' OR d.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR d.recipient<>'erased-'||d.id||'@invalid.test' THEN
    RAISE EXCEPTION 'conversion notification retained PII'; END IF;
-  INSERT INTO app.notification_deliveries(tenant_id,id,source_event_id,recipient,locale,template_key,reference_id)
-   VALUES(t,uuidv7(),e,'late-converter@example.invalid','en','quote.converted',q) RETURNING * INTO d;
+  INSERT INTO app.notification_deliveries(tenant_id,id,source_event_id,dispatch_event_id,recipient,locale,template_key,reference_id)
+   VALUES(t,nid,e,dispatch,'late-converter@example.invalid','en','quote.converted',q) RETURNING * INTO d;
+  INSERT INTO app.outbox_events(tenant_id,id,event_type,payload,delivery_target,dedup_key)
+   VALUES(t,dispatch,'notification.dispatch',jsonb_build_object('notification_id',nid),'notifications.email',nid::text||':1');
   IF d.status<>'dead_letter' OR d.last_error IS DISTINCT FROM 'PRIVACY_ERASED' THEN RAISE EXCEPTION 'conversion future fanout resurrected'; END IF;
  END $$ $test$);
 DO $$ DECLARE failures text; BEGIN
