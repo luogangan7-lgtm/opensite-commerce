@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 tests/test_foundation_lanes.py
 python3 tests/test_stripe_live_workflow.py
+python3 tests/test_stripe_live_output.py
 GOPROXY=off GOSUMDB=off go test -count=1 ./...
 GOPROXY=off GOSUMDB=off go vet ./...
 GOPROXY=off GOSUMDB=off go run ./cmd/preflight fixtures/home-valid.json

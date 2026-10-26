@@ -1,5 +1,52 @@
 # Payment refund facts
 
+## CI-only live smoke
+
+Authority: `V1_DECISIONS.md`, “Stripe live smoke (CI-only, owner-gated)” (#395).
+`NewStripeLiveSmoke` has a separate restricted-live constructor and no production
+composition site. It verifies main/dispatch admission and uses API version
+`2026-09-30.endive` (official API versioning reference verified 2026-10-26).
+The CI-only fixture owns `stripe_smoke.accounts` and `stripe_smoke.inbox`; these
+are created only inside the disposable job DB, so no production migration or
+test-pinned constraint change is required. Every real financial projection goes
+through the existing Payments `applyFact`, Checkout/Orders and Ledger functions.
+Fixture SQL is test orchestration, not a new production persistence layer.
+
+The account ID is an additional Environment secret `STRIPE_SMOKE_ACCOUNT`:
+Actions prints non-secret step environment values, so a plain variable would
+expose a full provider identifier. It scopes every provider request with the
+`Stripe-Account` header and maps only this account/run in the ephemeral DB.
+The key and email remain exclusively `STRIPE_API` and `STRIPE_SMOKE_EMAIL`.
+Invoices and PaymentIntents bind the original run, phase and association before
+the private invoice is sent. R locates provider facts and rebuilds a new local
+order; no killed-runner file, DB, tenant or local order ID is authoritative.
+
+Only harness create/cancel, Customer/Invoice setup/finalize/send/void, metadata
+binding, authenticated Events projection, and Payments refund/recovery are new
+write entrances. Production, old batch/async paths and sandbox admission are
+unchanged. Timeout uses DB time and is not provider expiry. HTTP never runs
+under a DB lock; the live transaction locks stream, Inbox, Checkout/Orders and
+Ledger in that order. Refund history is paginated before writes; attempt keys
+derive from original run/attempt and durable provider metadata prevents replay
+after key retention expires. Pending/unknown and failed/canceled refunds remain
+open; automatic attempt increments are forbidden.
+
+Normal CI runs fake-provider lifecycle/output canaries, real PG capture/refund/
+reconstruction/replay, and a dispatch/main/Environment/secret-ownership gate.
+The owner-only entry is compiled, never executed, by normal PR CI. The secret
+step captures and discards all child output and emits only validated receipts;
+there is no raw log or artifact upload. Live A/B/R and the separate permission
+probe remain NOT_RUN until the owner explicitly starts them after merge.
+
+The endpoint allowlist proves only the application's required capabilities.
+Exact manually configured restricted-key grants require independent Dashboard
+configuration evidence and the owner-approved probe; the Stripe Apps combined
+Charges/Refunds permission is not silently substituted for refund-only access.
+
+References, read 2026-10-26: [API versioning](https://docs.stripe.com/api/versioning),
+[invoice line items](https://docs.stripe.com/api/invoice-line-item/bulk),
+[restricted keys](https://docs.stripe.com/keys/restricted-api-keys).
+
 Authority: `docs/architecture/V1_DECISIONS.md` §6. Payments owns money refunds;
 Returns owns RMA/receipt/restock; Orders owns order state. Payments owns the
 single refund journal path and the C-19d terminal-fact finalizer described below.

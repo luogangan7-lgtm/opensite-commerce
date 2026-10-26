@@ -27,6 +27,7 @@ type liveFake struct {
 	creates, voids, sends, captureFacts, refundFacts int
 	pages, page int
 	voidRace, transportFail, failCapture, delayed bool
+	corrupt string
 	seen map[string]bool
 	requests []string
 	s *StripeLiveSmoke
@@ -46,7 +47,7 @@ func newLiveFake(t *testing.T, phase string, attempt int) *liveFake {
 		at = at.Add(31*time.Minute)
 		return fn(ctx,nil,"10000000-0000-4000-8000-000000000001",at)
 	}, Apply:func(context.Context,pgx.Tx,payment.VerifiedEvent)(bool,error){ return false,errors.New("test must use projected ingestion") }}
-	s, err := NewStripeLiveSmoke(c, LiveSmokeOptions{Phase:phase,RunID:"123456",Account:"acct_offline_canary",RefundAttempt:attempt})
+	s, err := NewStripeLiveSmoke(c, LiveSmokeOptions{Phase:phase,RunID:"123456",Account:"acct_offline_canary",RefundAttempt:attempt,Receive:func(context.Context,string,payment.VerifiedEvent,string,func(context.Context,pgx.Tx)(bool,error))error{return errors.New("offline ingestion is injected separately")}})
 	if err != nil { t.Fatal("offline constructor rejected") }
 	f.s = s
 	s.client.Transport = stripeTransport(f.roundTrip)
@@ -105,6 +106,7 @@ func (f *liveFake) roundTrip(r *http.Request)(*http.Response,error){
 		if f.intent!="succeeded" {obj.AmountReceived=0};out=obj
 	default:return nil,errors.New("unexpected endpoint")
 	}
+	if v,ok:=out.(liveObject);ok{switch f.corrupt{case "mode":v.Livemode=false;case "source":v.Metadata=map[string]string{"osc_smoke":"999","osc_phase":"B"};case "amount":v.Amount=5001};out=v}
 	b,_:=json.Marshal(out)
 	return &http.Response{StatusCode:200,Body:io.NopCloser(strings.NewReader(string(b))),Header:make(http.Header)},nil
 }
@@ -112,7 +114,7 @@ func (f *liveFake) roundTrip(r *http.Request)(*http.Response,error){
 func liveResult(t *testing.T,f *liveFake)(LiveSmokeSummary,error){
 	t.Helper();v,e:=f.s.Execute(context.Background()); b,_:=json.Marshal(v)
 	all:=string(b);if e!=nil {all+=e.Error()}
-	for _,canary:=range []string{liveCanaryURL,liveCanaryEmail,"pi_full_canary_identifier","in_full_canary_identifier","re_full_canary_identifier","rk_live_offline_fixture"}{if strings.Contains(all,canary){t.Fatal("public output leaked canary")}}
+	for _,canary:=range []string{liveCanaryURL,liveCanaryEmail,"pi_full_canary_identifier","in_full_canary_identifier","re_full_canary_identifier","acct_offline_canary","rk_live_offline_fixture"}{if strings.Contains(all,canary){t.Fatal("public output leaked canary")}}
 	return v,e
 }
 
@@ -130,6 +132,9 @@ func TestStripeLiveLifecycleOffline(t *testing.T){
 	t.Run("partial_success_never_over_refunded",func(t *testing.T){f:=newLiveFake(t,"R",2);f.refunds=[]liveObject{{ID:"re_partial",Status:"succeeded",Amount:4999,Currency:"usd",PaymentIntent:f.s.intentID}};v,e:=liveResult(t,f);if e==nil||v.Status!="REFUND_UNRESOLVED"||f.creates!=0{t.Fatal("partial refund closed or over-refunded")}})
 	t.Run("runner_kill_and_unknown_network",func(t *testing.T){f:=newLiveFake(t,"B",0);f.transportFail=true;v,e:=liveResult(t,f);if e==nil||v.Status!="PENDING"{t.Fatal("unknown request accepted")};saved:=f.refunds;g:=newLiveFake(t,"R",0);g.refunds=saved;v,e=liveResult(t,g);if e!=nil||v.Status!="REFUNDED"||g.creates!=0||g.captureFacts!=1||g.refundFacts!=1{t.Fatal("new runner failed reconstruction")}})
 	t.Run("delayed_method_rejected",func(t *testing.T){f:=newLiveFake(t,"B",0);f.delayed=true;_,e:=liveResult(t,f);if e==nil||f.creates+f.sends!=0{t.Fatal("delayed method admitted")}})
+	for _,corrupt:=range []string{"mode","source","amount"}{t.Run("rejected_"+corrupt,func(t *testing.T){f:=newLiveFake(t,"R",0);f.corrupt=corrupt;_,e:=liveResult(t,f);if e==nil||f.creates!=0{t.Fatal("mismatched provider fact admitted")}})}
+	t.Run("manual_reimbursement_never_passes",func(t *testing.T){f:=newLiveFake(t,"R",0);f.refunds=[]liveObject{{ID:"re_closed",Status:"failed",FailureReason:"lost_or_stolen_card",Amount:5000,Currency:"usd",PaymentIntent:f.s.intentID}};v,e:=liveResult(t,f);if e==nil||v.Status!="REFUND_UNRESOLVED_MANUAL"||!v.OwnerActionNeeded||f.creates!=0{t.Fatal("manual fallback closed or created money")}})
+	t.Run("permission_endpoint_capabilities",func(t *testing.T){for _,path:=range []string{"charges","account","checkout/sessions","payment_methods","invoices/in_x/pay","payment_intents/pi_x/confirm"}{if liveEndpoint("POST",path){t.Fatal("broader provider capability admitted")}}})
 }
 
 func TestStripeLiveAdmissionOffline(t *testing.T){

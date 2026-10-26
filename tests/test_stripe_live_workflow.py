@@ -26,10 +26,15 @@ def validate(document, workflows):
     env = consumers[0].get('env', {})
     assert env.get('STRIPE_API') == '${{ secrets.STRIPE_API }}', 'LIVE_KEY_ENV_ONLY'
     assert env.get('STRIPE_SMOKE_EMAIL') == '${{ secrets.STRIPE_SMOKE_EMAIL }}', 'LIVE_EMAIL_ENV_ONLY'
+    assert env.get('STRIPE_SMOKE_ACCOUNT') == '${{ secrets.STRIPE_SMOKE_ACCOUNT }}', 'LIVE_ACCOUNT_NOT_PUBLIC'
     assert 'secrets.' not in consumers[0].get('run', ''), 'LIVE_SECRET_ARGV'
     for name, body in workflows.items():
         if name != LIVE.name:
             assert not re.search(r'secrets\s*(?:\.\s*(?:STRIPE_API|STRIPE_SMOKE_EMAIL)\b|\[\s*[\'"](?:STRIPE_API|STRIPE_SMOKE_EMAIL)[\'"]\s*\])', body), 'LIVE_SECRET_OWNERSHIP'
+    for path in (ROOT / 'internal').rglob('*.go'):
+        if path.name.endswith('_test.go') or path.name == 'stripe_live.go':
+            continue
+        assert 'NewStripeLiveSmoke(' not in path.read_text(), 'LIVE_NO_PRODUCTION_COMPOSITION'
 
 
 class LiveWorkflowGate(unittest.TestCase):
