@@ -28,7 +28,7 @@ import (
 const externalCanary = "SECRET-CANARY-not-a-real-credential"
 
 func externalEnv() map[string]string {
-	return map[string]string{"SMTP_TEST_HOST": "smtp.qq.com", "SMTP_TEST_USER": "owner@qq.com", "SMTP_TEST_AUTH_CODE": externalCanary, "SMTP_TEST_FROM": "owner@qq.com", "SMTP_TEST_TO": "allowed@example.com,second@example.com", "APP_ENV": "test"}
+	return map[string]string{"SMTP_TEST_HOST": "smtp.qq.com", "SMTP_TEST_PORT": "465", "SMTP_TEST_USER": "owner@qq.com", "SMTP_TEST_AUTH_CODE": externalCanary, "SMTP_TEST_FROM": "owner@qq.com", "SMTP_TEST_TO": "allowed@example.com,second@example.com", "APP_ENV": "test"}
 }
 
 func externalSender(t *testing.T, env map[string]string) *ExternalTestSMTP {
@@ -44,6 +44,8 @@ func externalMessage() contract.Message {
 
 func TestExternalSMTPAdmissionBeforeDial(t *testing.T) {
 	for _, change := range []map[string]string{
+		{"SMTP_TEST_PORT": ""}, {"SMTP_TEST_PORT": "25"}, {"SMTP_TEST_PORT": "587"}, {"SMTP_TEST_PORT": "0465"}, {"SMTP_TEST_PORT": "465 "},
+		{"SMTP_TEST_HOST": "mail.spacemail.com.evil.example"}, {"SMTP_TEST_HOST": "MAIL.SPACEMAIL.COM"}, {"SMTP_TEST_HOST": "mail.spacemail.com:465"},
 		{"SMTP_TEST_HOST": "evil.example"}, {"SMTP_TEST_HOST": "SMTP.QQ.COM"}, {"SMTP_TEST_HOST": "smtp.qq.com:465"},
 		{"APP_ENV": "production"}, {"APP_ENV": " PRODUCTION "}, {"ENVIRONMENT": "production"}, {"SMTP_TEST_FROM": "other@qq.com"},
 		{"SMTP_TEST_TO": ""}, {"SMTP_TEST_TO": "Name <allowed@example.com>"}, {"SMTP_TEST_TO": "allowed@example.com,"},
@@ -77,7 +79,7 @@ func externalCertificate(t *testing.T) (tls.Certificate, *x509.CertPool) {
 	if err != nil { t.Fatal(err) }
 	parsed, err := x509.ParseCertificate(caDER)
 	if err != nil { t.Fatal(err) }
-	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: []string{"smtp.qq.com"}, NotBefore: ca.NotBefore, NotAfter: ca.NotAfter, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: []string{"smtp.qq.com", "mail.spacemail.com"}, NotBefore: ca.NotBefore, NotAfter: ca.NotAfter, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
 	der, err := x509.CreateCertificate(rand.Reader, leaf, parsed, &key.PublicKey, key)
 	if err != nil { t.Fatal(err) }
 	pool := x509.NewCertPool(); pool.AddCert(parsed)
@@ -86,8 +88,9 @@ func externalCertificate(t *testing.T) (tls.Certificate, *x509.CertPool) {
 
 func TestExternalSMTPProtocol(t *testing.T) {
 	cert, roots := externalCertificate(t)
+	for _, host := range []string{"smtp.qq.com", "mail.spacemail.com"} {
 	for _, scenario := range []string{"sent", "ambiguous", "auth-error", "untrusted", "plaintext", "starttls", "cancel"} {
-		t.Run(scenario, func(t *testing.T) {
+		t.Run(host+"/"+scenario, func(t *testing.T) {
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil { t.Fatal(err) }
 			defer listener.Close()
@@ -105,7 +108,7 @@ func TestExternalSMTPProtocol(t *testing.T) {
 				if scenario == "cancel" { _, _ = io.Copy(io.Discard, conn); return }
 				tc := tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
 				if tc.Handshake() != nil { return }
-				if tc.ConnectionState().ServerName != "smtp.qq.com" { peerErr = errors.New("EXTERNAL_SNI_REQUIRED"); return }
+				if tc.ConnectionState().ServerName != host { peerErr = errors.New("EXTERNAL_SNI_REQUIRED"); return }
 				r := bufio.NewReader(tc)
 				send := func(s string) { _, _ = io.WriteString(tc, s+"\r\n") }
 				send("220 fake SMTP")
@@ -130,11 +133,12 @@ func TestExternalSMTPProtocol(t *testing.T) {
 					}
 				}
 			}()
-			s := externalSender(t, externalEnv())
+			env := externalEnv(); env["SMTP_TEST_HOST"] = host
+			s := externalSender(t, env)
 			if scenario != "untrusted" { s.testRoots = roots }
 			var calls atomic.Int32
 			s.dialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
-				if address != "smtp.qq.com:465" { return nil, errors.New("EXTERNAL_PORT_NOT_465") }
+				if address != net.JoinHostPort(host, "465") { return nil, errors.New("EXTERNAL_PORT_NOT_465") }
 				calls.Add(1); return (&net.Dialer{}).DialContext(ctx, network, listener.Addr().String())
 			}
 			limit := 2*time.Second; if scenario == "cancel" { limit = 100*time.Millisecond }
@@ -150,5 +154,6 @@ func TestExternalSMTPProtocol(t *testing.T) {
 				if !errors.As(err, &ambiguous) { t.Fatal("EXTERNAL_DATA_MUST_BE_UNCERTAIN", err) }
 			} else if err == nil || errors.As(err, &ambiguous) { t.Fatal("EXTERNAL_TLS_OR_AUTH_MUST_FAIL", err) }
 		})
+	}
 	}
 }
