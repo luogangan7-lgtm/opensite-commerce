@@ -54,7 +54,7 @@ func MapError(e error) error {
 		switch p.Code {
 		case "55P03", "40P01", "40001":
 			return contract.ErrBusy
-		case "P0002", "42501":
+		case "P0002":
 			return contract.ErrNotFound
 		case "22023", "22P02", "23514", "23503":
 			return contract.ErrInvalid

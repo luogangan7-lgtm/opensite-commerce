@@ -333,6 +333,15 @@ func TestPermanentExportFailuresCommitTerminalState(t *testing.T) {
 				if err := s.BuildExport(ctx, tenant, id); !errors.Is(err, tc.want) {
 					t.Fatalf("permanent build error = %v, want %v", err, tc.want)
 				}
+				if err := run(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+					out, err := s.Status(ctx, tx, tenant, id, customer)
+					if err == nil && (out.Status != tc.state || out.DownloadToken != "") {
+						return errors.New("terminal status was not visible without a capability")
+					}
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
 				if err := r.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 					var state string
 					if err := tx.QueryRow(ctx, "SELECT status FROM app.data_rights_exports WHERE tenant_id=$1 AND id=$2", tenant, id).Scan(&state); err != nil {

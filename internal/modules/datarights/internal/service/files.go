@@ -72,6 +72,13 @@ func (s *Service) write(tenant, id string, b []byte) error {
 			return contract.ErrUnavailable
 		}
 	}
+	// Persist both directory entries before publishing a file in the tenant
+	// directory. Repeat on retries: a previous creation may have outlived fsync.
+	for _, dir := range []string{".", "data-rights"} {
+		if e = s.syncDirectory(r, dir); e != nil {
+			return e
+		}
+	}
 	tmp := p + "." + uuid.NewString() + ".tmp"
 	f, e := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if e != nil {
