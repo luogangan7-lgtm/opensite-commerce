@@ -155,6 +155,194 @@ def validate_catalog(registry, rows):
     for key, row in actual.items():
         if row["udt_name"] in {"json", "jsonb", "bytea", "_json", "_jsonb", "_bytea"}:
             require(registry[key].get("structure"), "PRIVACY_STRUCTURE_MISSING", key)
+        policy = registry[key].get("merchant_deletion")
+        if isinstance(policy, dict) and policy.get("action") == "retain" and policy.get("value_type") != "global":
+            types = {"uuid": {"uuid"}, "integer": {"int2", "int4", "int8"}, "currency": {"bpchar"},
+                     "timestamp": {"timestamptz"}, "boolean": {"bool"}, "digest": {"bytea"},
+                     "enum": {"text"}, "opaque_ref": {"text"}}
+            require(row["udt_name"] in types.get(policy.get("value_type"), set()), "MERCHANT_RETAIN_CATALOG_TYPE", key)
+
+
+# This is a declarative contract, never a SQL/path interpreter or erasure engine.
+# Bootstrap/owner handlers consume the version+digest in later MDEL cards.
+MERCHANT_STRATEGIES = {"delete_row", "unchanged", "constant", "row_id_placeholder",
+                       "database_time", "fixed_enum", "generated_from", "actor_placeholder",
+                       "financial_source_id", "financial_event", "financial_account_code", "unlink_tenant_namespace"}
+ARTIFACT_MARKER = re.compile(r"^// privacy-artifact: ([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)$", re.M)
+FILE_WRITER = re.compile(r"(?:\bos\.(?:Create|CreateTemp|WriteFile|OpenFile)|\.OpenFile)\s*\(")
+
+
+def artifact_catalog(root):
+    """Reconcile source-owned persistent writers, including orphan/temp bytes.
+
+    Explicit annotations declare artifact kinds; names never imply ownership.
+    A new unannotated internal filesystem writer fails closed. This is a source
+    inventory, not evidence of runtime erasure or an on-disk namespace scan.
+    """
+    result = {}
+    for path in sorted((root / "internal").rglob("*.go")):
+        if path.name.endswith("_test.go"):
+            continue
+        source = path.read_text()
+        markers = ARTIFACT_MARKER.findall(source)
+        require(not FILE_WRITER.search(source) or markers, "MERCHANT_ARTIFACT_WRITER", str(path.relative_to(root)))
+        for name in markers:
+            require(name not in result, "MERCHANT_ARTIFACT_DUPLICATE", name)
+            result[name] = path.relative_to(root).as_posix()
+    return result
+
+
+def merchant_policy(key, policy, module, registry, handlers, artifact=False):
+    require(isinstance(policy, dict), "MERCHANT_POLICY_MISSING", key)
+    allowed = {"action", "strategy", "reason", "handler", "ownership", "retained_kind",
+               "value_type", "values", "value", "source", "paths", "guards", "prerequisite"}
+    require(not policy.keys() - allowed, "MERCHANT_POLICY_UNKNOWN", key)
+    require(policy.get("action") in {"retain", "erase"}, "MERCHANT_ACTION_INVALID", key)
+    require(isinstance(policy.get("reason"), str) and policy["reason"].strip(), "MERCHANT_REASON_MISSING", key)
+    strategy = policy.get("strategy")
+    require(isinstance(strategy, str) and strategy in MERCHANT_STRATEGIES, "MERCHANT_STRATEGY_INVALID", key)
+    handler = policy.get("handler")
+    require(isinstance(handler, str) and handler in handlers and handler.split(".")[0] == module,
+            "MERCHANT_HANDLER_UNKNOWN", key)
+    ownership = policy.get("ownership")
+    require(isinstance(ownership, dict) and not ownership.keys() - {"kind", "path", "reason"},
+            "MERCHANT_OWNERSHIP_MISSING", key)
+    kind, path = ownership.get("kind"), ownership.get("path")
+    require(isinstance(path, str) and path.strip(), "MERCHANT_OWNERSHIP_MISSING", key)
+    if kind == "tenant_column":
+        require(path in registry and (path.endswith(".tenant_id") or path == "tenants.id"),
+                "MERCHANT_TENANT_PATH", key)
+        require(registry[path]["module"] == module, "MERCHANT_TENANT_PATH", key)
+        if not artifact:
+            require(field_parts(path)[:2] == field_parts(key)[:2], "MERCHANT_TENANT_PATH", key)
+    elif kind == "global_exclusion":
+        require(not artifact and field_parts(key)[0] == "app" and key != "tenants.id" and
+                field_key(*field_parts(key)[:2], "tenant_id") not in registry,
+                "MERCHANT_GLOBAL_EXCLUSION", key)
+        require(isinstance(ownership.get("reason"), str) and ownership["reason"].strip() and
+                policy["action"] == "retain" and policy.get("retained_kind") == "global",
+                "MERCHANT_GLOBAL_EXCLUSION", key)
+    elif kind == "signed_job":
+        require(not artifact and key.startswith("queue.river_job.") and
+                path == "verified_signed_job_tenant" and module == "reliability",
+                "MERCHANT_QUEUE_AUTHORITY", key)
+    else:
+        require(False, "MERCHANT_OWNERSHIP_UNKNOWN", key)
+    if artifact:
+        require(policy["action"] == "erase" and strategy == "unlink_tenant_namespace", "MERCHANT_ARTIFACT_POLICY", key)
+    if policy["action"] == "retain":
+        require(strategy == "unchanged" and policy.get("retained_kind") in {"financial", "witness", "control", "global"},
+                "MERCHANT_RETENTION_INVALID", key)
+        require(policy.get("value_type") in {"uuid", "integer", "currency", "timestamp", "boolean", "digest", "opaque_ref", "enum", "global"},
+                "MERCHANT_RETAIN_TYPE", key)
+        if not artifact and registry[key]["classification"] in PII | {"secret_hash"}:
+            require(kind == "global_exclusion" or policy["value_type"] == "digest" and
+                    policy["retained_kind"] == "financial", "MERCHANT_PERSONAL_RETAIN", key)
+        require((kind == "global_exclusion") == (policy["retained_kind"] == "global") and
+                (kind == "global_exclusion" or policy["value_type"] != "global"), "MERCHANT_RETAIN_TYPE", key)
+        if policy["value_type"] == "enum":
+            require(isinstance(policy.get("values"), list) and policy["values"] and
+                    all(isinstance(x, str) and x.strip() for x in policy["values"]), "MERCHANT_ENUM_MISSING", key)
+    else:
+        require(strategy != "unchanged" and "retained_kind" not in policy, "MERCHANT_ERASE_INVALID", key)
+        if strategy in {"constant", "fixed_enum", "row_id_placeholder"}:
+            require("value" in policy, "MERCHANT_SCRUB_VALUE", key)
+        special_fields = {
+            "financial_source_id": "ledger_transactions.source_id",
+            "financial_event": "ledger_transactions.event",
+            "financial_account_code": "ledger_accounts.code",
+            "actor_placeholder": "checkout_sessions.actor_id",
+        }
+        if strategy in special_fields:
+            require(key == special_fields[strategy], "MERCHANT_STRATEGY_FIELD", key)
+        if strategy == "row_id_placeholder":
+            require(isinstance(policy["value"], str) and "{id}" in policy["value"] and
+                    field_key(*field_parts(key)[:2], "id") in registry,
+                    "MERCHANT_SCRUB_VALUE", key)
+        if strategy == "generated_from":
+            source = policy.get("value")
+            require(isinstance(source, str) and source in registry and
+                    field_parts(source)[:2] == field_parts(key)[:2], "MERCHANT_SCRUB_SOURCE", key)
+        if strategy == "fixed_enum":
+            require(isinstance(policy.get("values"), list) and policy["values"] and
+                    all(isinstance(x, str) and x.strip() for x in policy["values"]) and
+                    policy["value"] in policy["values"], "MERCHANT_ENUM_MISSING", key)
+    if artifact:
+        require(policy.get("prerequisite") in {None, "MDEL-21a"} and
+                (module != "media" or policy.get("prerequisite") == "MDEL-21a"), "MERCHANT_ARTIFACT_PREREQUISITE", key)
+        require(isinstance(policy.get("paths"), list) and policy["paths"] and
+                all(isinstance(x, str) and x and not x.startswith("/") and ".." not in x.split("/")
+                    for x in policy["paths"]), "MERCHANT_ARTIFACT_PATH", key)
+        require(isinstance(policy.get("guards"), list) and
+                {"canonical_ids", "anchored_root", "no_symlinks", "fsync_parents", "verify_empty"} <= set(policy["guards"]),
+                "MERCHANT_ARTIFACT_GUARDS", key)
+    else:
+        require(strategy != "unlink_tenant_namespace", "MERCHANT_STRATEGY_INVALID", key)
+        require(not {"source", "paths", "guards", "prerequisite"} & policy.keys(), "MERCHANT_COLUMN_UNKNOWN", key)
+
+
+def load_merchant_contract(root, registry):
+    """Mandatory independent per-column policy + module-owned dependency DAG."""
+    handlers, artifacts, fields = {}, {}, {}
+    for file in sorted((root / "modules/privacy").glob("*.json")):
+        document = read_json(file)
+        module = document["module"]
+        contract = document.get("merchant_deletion")
+        require(isinstance(contract, dict) and contract.get("version") == 1 and
+                not contract.keys() - {"version", "handlers", "artifacts"}, "MERCHANT_CONTRACT_MISSING", module)
+        declared = contract.get("handlers")
+        require(isinstance(declared, dict) and declared, "MERCHANT_HANDLER_MISSING", module)
+        for name, handler in declared.items():
+            require(isinstance(name, str) and re.fullmatch(re.escape(module) + r"\.[a-z][a-z0-9_]*", name) and
+                    name not in handlers and isinstance(handler, dict), "MERCHANT_HANDLER_INVALID", str(name))
+            require(set(handler) == {"depends_on", "tables", "lock_order", "clock", "transaction"} and
+                    handler["clock"] == "database" and handler["transaction"] == "one_item_and_checkpoint" and
+                    handler["lock_order"] == "tenant_fence -> artifact_uuid -> module", "MERCHANT_HANDLER_CONTRACT", name)
+            for prop in ("depends_on", "tables"):
+                require(isinstance(handler[prop], list) and all(isinstance(x, str) for x in handler[prop]) and
+                        len(handler[prop]) == len(set(handler[prop])), "MERCHANT_HANDLER_INVALID", name)
+            handlers[name] = handler
+        declared_artifacts = contract.get("artifacts")
+        require(isinstance(declared_artifacts, dict), "MERCHANT_ARTIFACT_MISSING", module)
+        for name, policy in declared_artifacts.items():
+            require(name not in artifacts and isinstance(name, str) and
+                    re.fullmatch(re.escape(module) + r"\.[a-z][a-z0-9_]*", name), "MERCHANT_ARTIFACT_DUPLICATE", str(name))
+            artifacts[name] = policy
+    for key, field in registry.items():
+        policy = field.get("merchant_deletion")
+        merchant_policy(key, policy, field["module"], registry, handlers)
+        fields[key] = policy
+    tables = {}
+    deleting = {}
+    for key, policy in fields.items():
+        table = key.rsplit(".", 1)[0]
+        require(table not in tables or tables[table] == policy["handler"], "MERCHANT_TABLE_HANDLER", table)
+        tables[table] = policy["handler"]
+        deleting.setdefault(table, set()).add(policy["strategy"] == "delete_row")
+    require(all(len(modes) == 1 for modes in deleting.values()), "MERCHANT_ROW_POLICY",
+            "a deleted row cannot also retain or scrub individual cells")
+    declared_tables = {}
+    for name, handler in handlers.items():
+        for table in handler["tables"]:
+            require(table not in declared_tables and tables.get(table) == name, "MERCHANT_TABLE_ORDER", table)
+            declared_tables[table] = name
+        require(set(handler["depends_on"]) <= handlers.keys(), "MERCHANT_DEPENDENCY_UNKNOWN", name)
+    require(declared_tables == tables, "MERCHANT_TABLE_ORDER", "every owned table needs one local order entry")
+    ordered, pending = [], set(handlers)
+    while pending:
+        ready = sorted(name for name in pending if set(handlers[name]["depends_on"]) <= set(ordered))
+        require(ready, "MERCHANT_DEPENDENCY_CYCLE", ", ".join(sorted(pending)))
+        ordered.extend(ready)
+        pending.difference_update(ready)
+    actual = artifact_catalog(root)
+    require(not actual.keys() - artifacts.keys(), "MERCHANT_ARTIFACT_UNDECLARED", ", ".join(sorted(actual.keys() - artifacts.keys())))
+    require(not artifacts.keys() - actual.keys(), "MERCHANT_ARTIFACT_PHANTOM", ", ".join(sorted(artifacts.keys() - actual.keys())))
+    for name, policy in artifacts.items():
+        merchant_policy(name, policy, name.split(".")[0], registry, handlers, artifact=True)
+        require(policy.get("source") == actual[name], "MERCHANT_ARTIFACT_SOURCE", name)
+    content = {"version": 1, "fields": fields, "handlers": handlers, "handler_order": ordered, "artifacts": artifacts}
+    content["digest"] = hashlib.sha256(json.dumps(content, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return content
 
 
 def personal_fields(registry):
@@ -291,6 +479,10 @@ def main():
                 require(len(rows) == 1, "PRIVACY_DATABASE_ERROR", "missing persisted cell witness")
                 validate_fixture(registry, json.loads(rows[0]), canaries)
                 print(f"PASS: privacy fixture {len(canaries)}/{len(canaries)} persisted personal/contact columns; ROLLBACK")
+        merchant = load_merchant_contract(root, registry)
+        print(f"PASS: merchant contract v{merchant['version']} digest={merchant['digest']} "
+              f"{len(merchant['fields'])} columns, {len(merchant['artifacts'])} artifacts, "
+              f"{len(merchant['handler_order'])} ordered owner handlers; activation disabled")
         print(f"PASS: explicit privacy policies {len(registry)} columns; {len(personal_fields(registry))} personal/contact")
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(str(error), file=sys.stderr)

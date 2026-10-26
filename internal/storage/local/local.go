@@ -3,6 +3,8 @@
 // Called by cmd/dev-api and storage tests; uses only the standard filesystem APIs.
 // New/Put/Remove acknowledge success only after affected directories are synced.
 // Never expose raw keys in a public URL; use an authorized media service.
+// privacy-artifact: media.originals
+// privacy-artifact: media.staging
 package local
 
 import (

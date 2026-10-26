@@ -2,6 +2,8 @@
 // access, rejects symlinks, bounds bytes, writes 0600 atomically with fsync.
 // Called by data-rights service under customer/request locks; the periodic
 // sweeper shares its export-ID advisory lock with construction.
+// privacy-artifact: datarights.customer_export
+// privacy-artifact: datarights.export_temp
 package service
 
 import (

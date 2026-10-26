@@ -7,29 +7,30 @@
     "shipments": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "shipments.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest shipment inherits unverified order contact; do not establish registered customer ownership by matching carrier/tracking/email text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "order_id": {"classification": "operational"},
-        "creation_key": {"classification": "operational"},
-        "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
-        "carrier": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
-        "tracking_number": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
-        "status": {"classification": "operational"},
-        "order_version": {"classification": "operational"},
-        "sealed": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipments.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipments.id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "order_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipments.order_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "creation_key": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "row_id_placeholder", "reason": "Erase original shipments.creation_key using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value": "erased:{id}"}},
+        "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipments.request_hash only as an opaque financial digest witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value_type": "digest", "retained_kind": "financial"}},
+        "carrier": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Erase original shipments.carrier using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value": "[erased]"}},
+        "tracking_number": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Erase original shipments.tracking_number using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value": "[erased]"}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipments.status only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["shipped"]}},
+        "order_version": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipments.order_version only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "sealed": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipments.sealed only as an opaque financial boolean witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value_type": "boolean", "retained_kind": "financial"}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipments.created_at only as an opaque financial timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipments.tenant_id"}, "value_type": "timestamp", "retained_kind": "financial"}}
       }
     },
     "shipment_lines": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "shipment_lines.order_id -> orders.id -> orders.customer_id -> customers.id", "null_subject_policy": "Guest shipment line inherits unverified order contact policy."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "shipment_id": {"classification": "operational"},
-        "order_id": {"classification": "operational"},
-        "order_line_id": {"classification": "operational"},
-        "quantity": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipment_lines.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipment_lines.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipment_lines.id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipment_lines.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "shipment_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipment_lines.shipment_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipment_lines.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "order_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipment_lines.order_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipment_lines.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "order_line_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipment_lines.order_line_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipment_lines.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "quantity": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep shipment_lines.quantity only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "fulfillment.erase", "ownership": {"kind": "tenant_column", "path": "shipment_lines.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"fulfillment.erase": {"depends_on": ["returns.erase"], "tables": ["shipment_lines", "shipments"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

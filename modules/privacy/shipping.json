@@ -7,43 +7,44 @@
     "shipping_zones": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "name": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_zones.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_zones.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_zones.id with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_zones.tenant_id"}}},
+        "name": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_zones.name with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_zones.tenant_id"}}}
       }
     },
     "shipping_zone_destinations": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "zone_id": {"classification": "operational"},
-        "country_code": {"classification": "operational"},
-        "subdivision_code": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_zone_destinations.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_zone_destinations.tenant_id"}}},
+        "zone_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_zone_destinations.zone_id with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_zone_destinations.tenant_id"}}},
+        "country_code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_zone_destinations.country_code with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_zone_destinations.tenant_id"}}},
+        "subdivision_code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_zone_destinations.subdivision_code with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_zone_destinations.tenant_id"}}}
       }
     },
     "shipping_profiles": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "name": {"classification": "operational"},
-        "currency": {"classification": "financial_non_contact"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_profiles.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_profiles.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_profiles.id with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_profiles.tenant_id"}}},
+        "name": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_profiles.name with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_profiles.tenant_id"}}},
+        "currency": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_profiles.currency with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_profiles.tenant_id"}}}
       }
     },
     "shipping_rates": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "profile_id": {"classification": "operational"},
-        "zone_id": {"classification": "operational"},
-        "method": {"classification": "operational"},
-        "currency": {"classification": "financial_non_contact"},
-        "amount": {"classification": "financial_non_contact"},
-        "min_weight_g": {"classification": "operational"},
-        "max_weight_g": {"classification": "operational"},
-        "free_over_amount": {"classification": "financial_non_contact"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_rates.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_rates.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_rates.id with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_rates.tenant_id"}}},
+        "profile_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_rates.profile_id with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_rates.tenant_id"}}},
+        "zone_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_rates.zone_id with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_rates.tenant_id"}}},
+        "method": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_rates.method with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_rates.tenant_id"}}},
+        "currency": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_rates.currency with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_rates.tenant_id"}}},
+        "amount": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_rates.amount with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_rates.tenant_id"}}},
+        "min_weight_g": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_rates.min_weight_g with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_rates.tenant_id"}}},
+        "max_weight_g": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_rates.max_weight_g with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_rates.tenant_id"}}},
+        "free_over_amount": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned shipping_rates.free_over_amount with its row, including all merchant/guest/derived copies.", "handler": "shipping.erase", "ownership": {"kind": "tenant_column", "path": "shipping_rates.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"shipping.erase": {"depends_on": ["cms.erase"], "tables": ["shipping_rates", "shipping_zone_destinations", "shipping_profiles", "shipping_zones"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

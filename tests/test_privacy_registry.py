@@ -533,6 +533,40 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
             self.write(root, body)
             self.assertNotEqual(first["digest"], self.load(root)["digest"])
 
+    def test_retained_type_must_match_actual_catalog(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = self.fixture(root)
+            # Keep all cells in the same witness row; no mixed row-delete plan.
+            for field in body["tables"]["orders"]["columns"].values():
+                field["merchant_deletion"].update(strategy="constant", value=None)
+            body["tables"]["orders"]["columns"]["id"]["merchant_deletion"].update(
+                action="retain", strategy="unchanged", retained_kind="financial", value_type="uuid")
+            self.write(root, body)
+            registry = self.gate.load_registry(root)
+            self.gate.validate_catalog(registry, catalog())
+            rows = copy.deepcopy(catalog())
+            rows[0]["udt_name"] = "text"
+            with self.assertRaisesRegex(ValueError, "MERCHANT_RETAIN_CATALOG_TYPE.*orders.id"):
+                self.gate.validate_catalog(registry, rows)
+
+    def test_contract_schema_and_version_are_mandatory(self):
+        for mutation in ("missing", "version", "unknown", "mixed_row"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                body = self.fixture(root)
+                if mutation == "missing":
+                    body.pop("merchant_deletion")
+                elif mutation == "version":
+                    body["merchant_deletion"]["version"] = 2
+                elif mutation == "unknown":
+                    body["merchant_deletion"]["guess"] = True
+                else:
+                    body["tables"]["orders"]["columns"]["id"]["merchant_deletion"].update(strategy="constant", value=None)
+                self.write(root, body)
+                with self.assertRaises(ValueError):
+                    self.load(root)
+
     def test_every_column_needs_independent_explicit_policy(self):
         for key in ("action", "strategy", "reason", "handler", "ownership"):
             with self.subTest(key=key), tempfile.TemporaryDirectory() as tmp:
@@ -632,7 +666,10 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
                 self.load(root)
 
     def test_actual_registry_covers_derived_copies_and_global_exclusions(self):
-        contract = self.load(ROOT)
+        try:
+            contract = self.load(ROOT)
+        except ValueError as error:
+            self.fail(str(error))
         registry = self.gate.load_registry(ROOT)
         self.assertEqual(set(contract["fields"]), set(registry))
         for name in ("tenants.name", "ledger_accounts.code", "inventory_movements.reason",

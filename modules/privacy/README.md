@@ -33,6 +33,108 @@ Staff anti-abuse evidence and public merchant contact/publication history have
 explicit retain reasons; those records belong to different subjects from a
 registered storefront customer and must not be erased by guessing an email.
 
+## Merchant deletion registry v1 (MDEL-00)
+
+Authority: [MERCHANT_DELETION §§1–5 and §6 MDEL-00](../../docs/architecture/MERCHANT_DELETION.md).
+The same JSON files now carry a **separate mandatory `merchant_deletion` policy
+on every column**, including operational fields, generated columns, structured
+payloads, the tenant root, global Identity/anti-abuse tables and River envelopes.
+A customer retain reason never supplies a merchant policy. These declarations
+are handler obligations, **not implemented handlers or permission to activate
+merchant deletion**. No new route, scope, request transition or DB grant exists.
+Activation still waits for MDEL-26 and sender approval. Legal-hold/retention
+periods and provider payout authority remain unresolved launch blockers.
+
+Each column supplies `action` (`retain`/`erase`), its own nonblank `reason`, an
+exact `strategy`, its owning `handler` and an explicit `ownership`:
+
+- `tenant_column`: the real same-table tenant key (`tenants.id` for the root).
+  The gate validates that key against the same catalog-backed registry. Both
+  RLS and an explicit trusted-tenant predicate are required of future handlers.
+- `global_exclusion`: an explicit ownership reason for a table without a tenant
+  key. Global staff accounts, passwords/sessions and global anti-abuse evidence
+  survive; Identity revokes only target-tenant authorization. This is an exclusion
+  from merchant ownership, not financial retention of tenant contact data.
+- `signed_job`: only the pinned River envelope, attributed through
+  `verified_signed_job_tenant`. Reliability must verify its signed trusted job
+  binding; arbitrary JSON tenant fields never authorize classification/deletion.
+  Unbound/system jobs and other tenants' jobs are outside that ownership path.
+
+`retain` requires `unchanged`, an explicit retained kind
+(`financial`/`witness`/`control`/`global`) and a value type. Fixed enums enumerate
+their values. Tenant personal/contact fields cannot be retained; frozen financial
+request/evidence digests are distinct from credentials. Financial references are
+opaque provider/recovery identities under DATA_RIGHTS, never customer-entered
+notes. Conservation amounts, currencies, states, timestamps, IDs and necessary
+FK witnesses survive. Nonfinancial parent payloads are scrubbed; only referenced
+IDs/relationships remain original. Settlement currency remains solely because
+retained financial composite FKs require it. No retention duration is chosen.
+
+Erasure strategies are declarative, never executable SQL from JSON:
+
+| Strategy | Exact owner-handler obligation |
+| --- | --- |
+| `delete_row` | Delete the owned row in the declared local leaf-before-parent order. All its columns must agree on row deletion. |
+| `constant` | Replace with the exact JSON `value`, including explicit null; scrub guards must admit only that change. |
+| `row_id_placeholder` | Substitute only the row's canonical UUID into the declared `{id}` template. Preserve uniqueness, never interpolate original text. |
+| `database_time` | Replace the original nonfinancial timestamp with the DB erasure time sampled after the tenant fence. |
+| `generated_from` | Scrub the named same-table source; let the stored generated expression recompute. Never write a generated column. |
+| `fixed_enum` | Keep an enumerated fixed code; replace any other text with the declared enum fallback. |
+| `actor_placeholder` | For Checkout only: replace guest authority with the declared fixed digest, customer authority with the checkout row UUID; revoke original authority. |
+| `financial_account_code` | Ledger only: keep `revenue`, `tax_payable`, `shipping_revenue`, `cash`; replace every other label with `erased:<account UUID>`. |
+| `financial_source_id` | Ledger only: keep a canonical source ID proved by the matching Orders/Returns/Payments financial witness; otherwise use `erased:<journal UUID>`. |
+| `financial_event` | Ledger only: keep `refund`, `posted_to_compensated/v1`, or `checkout:<64 lowercase hex>` only with its matching financial witness; otherwise use `erased:<journal UUID>`. |
+| `unlink_tenant_namespace` | Revoke access, inventory canonical owned IDs (including orphans), unlink under an anchored root without symlinks, fsync changed parents/ancestors even on ENOENT retry, verify empty. |
+
+The three financial-label strategies erase arbitrary free text while preserving
+registered fixed financial roles/recovery identities. Their witnesses are the
+existing Orders/Returns/Payments-to-Ledger bindings, not string shape alone.
+Owner cards must implement narrowly authorized guards for immutable financial,
+release and receipt rows; declaring these strategies never disables a trigger.
+
+Each module's top-level `merchant_deletion` has version 1, `handlers`, and
+`artifacts` (explicitly empty where none exist). Handler IDs are module-qualified;
+`tables` is its complete ordered module-local worklist, not permission to access
+another module's store. `depends_on` is a DAG: unknown handlers, duplicate/wrong
+owners, missing tables and cycles fail. The initial dependency order cleans
+serving, notifications, queue/replay and artifact copies before financial scrubs
+and FK parent witnesses, then Identity and terminal DataRights/Tenant metadata.
+Every handler declares DB clock, one-item mutation+checkpoint transaction, and
+`tenant_fence -> artifact_uuid -> module` lock order (artifact UUIDs ascending;
+existing module row-lock order remains authoritative). Each execution item must
+bind registry version **and digest**, tenant/request IDs, handler, cursor and
+lease epoch; acknowledgments/checkpoints must CAS that same epoch. Bootstrap
+composes public owner ports; this contract adds no cross-module DML or IO engine.
+No network IO may occur inside the transaction; IO intents/verification precede
+checkpoint CAS, with bounded retries for 55P03/40P01/40001 in the coordinator card.
+
+File bytes have their own policies, independently of DB storage-key columns.
+The current source inventory has four kinds: media originals, upload staging,
+customer export JSON and export temporary files. Explicit `privacy-artifact`
+annotations sit at the two filesystem writer implementations. The gate scans
+production `internal/**/*.go` filesystem-create/OpenFile calls, rejects
+unannotated writer files, and reconciles artifact IDs/source paths in both
+directions. A future producer/kind must extend that inventory and declaration;
+these checks are source reconciliation, not runtime file erasure evidence.
+No variants or merchant archives exist yet: their owner cards must add actual
+producers and policies together. Media's **current** originals/staging paths
+are shared, so both artifact declarations require MDEL-21a; the erasure strategy
+must never unlink a global hash key before the tenant-private upgrade. Existing
+customer exports include final/temp/rollback-orphan copies, not just ready rows.
+Serving/cache bodies and historical payloads are catalog columns, not excluded
+because they are derived. External logs, backups, provider systems, schema
+migration history and River bookkeeping other than the pinned envelope are
+outside tenant-artifact ownership; backup restoration must still replay the
+separate erasure journal/fences before traffic under §3.
+
+`load_merchant_contract` returns the version, canonical SHA-256 content digest,
+policies, artifact inventory and deterministic topological handler order. The
+existing offline gate and real-PG bidirectional catalog gate call it; metadata
+changes invalidate the digest. Tests reject missing/unknown policy, blank reason,
+forged tenant authority, invalid retention, missing/cyclic handlers and missing or
+unscrubbed artifacts. MDEL-00 has no schema/runtime mutation: concurrency and
+populated-forward-upgrade behavior remain gates of the implementing owner cards.
+
 ## CI gates and fixture consumer
 
 `check_all.sh` runs policy validation and the Python contract tests. The foundation
@@ -74,10 +176,9 @@ separate from customer-owned canaries. A caller may reuse `fixture_values_sql` a
 `validate_fixture` before erasure to assert actual coverage; classification alone
 is not a claim that the data-rights executor already fulfills the policy.
 
-No `privacy_exports` table or export-temp store is present in this base. When #44
-adds its request metadata, export artifacts or filesystem staging, it must declare
-the new database columns here and document/classify the artifact bytes and
-retention path. A response-body/file reference declaration is not coverage of the
+Customer exports now use `data_rights_exports` and the private final/temporary
+files declared in `datarights.json`. Future request metadata, archives and staging
+must extend both the column registry and the independent artifact inventory. A response-body/file reference declaration is not coverage of the
 referenced artifact bytes. Media blob content also requires its owning storage
 module's artifact policy; this database gate covers filenames and stored fields,
 not OCR, image pixels, provider systems, logs or backups.

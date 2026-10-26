@@ -7,48 +7,49 @@
     "organizations": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "legal_name": {"classification": "operational"},
-        "display_name": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned organizations.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "organizations.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned organizations.id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "organizations.tenant_id"}}},
+        "legal_name": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned organizations.legal_name with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "organizations.tenant_id"}}},
+        "display_name": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned organizations.display_name with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "organizations.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned organizations.created_at with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "organizations.tenant_id"}}}
       }
     },
     "sites": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "organization_id": {"classification": "operational"},
-        "name": {"classification": "operational"},
-        "default_locale": {"classification": "operational"},
-        "published_release_id": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "publication_revision": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned sites.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "sites.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned sites.id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "sites.tenant_id"}}},
+        "organization_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned sites.organization_id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "sites.tenant_id"}}},
+        "name": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned sites.name with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "sites.tenant_id"}}},
+        "default_locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned sites.default_locale with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "sites.tenant_id"}}},
+        "published_release_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned sites.published_release_id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "sites.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned sites.created_at with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "sites.tenant_id"}}},
+        "publication_revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned sites.publication_revision with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "sites.tenant_id"}}}
       }
     },
     "site_domains": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "hostname": {"classification": "operational"},
-        "normalized_hostname": {"classification": "operational"},
-        "verification_token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
-        "verified_at": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_domains.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_domains.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_domains.site_id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_domains.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_domains.id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_domains.tenant_id"}}},
+        "hostname": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_domains.hostname with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_domains.tenant_id"}}},
+        "normalized_hostname": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_domains.normalized_hostname with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_domains.tenant_id"}}},
+        "verification_token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_domains.verification_token_hash with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_domains.tenant_id"}}},
+        "verified_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_domains.verified_at with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_domains.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_domains.status with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_domains.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_domains.created_at with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_domains.tenant_id"}}}
       }
     },
     "site_locales": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "enabled": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_locales.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_locales.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_locales.site_id with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_locales.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_locales.locale with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_locales.tenant_id"}}},
+        "enabled": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_locales.enabled with its row, including all merchant/guest/derived copies.", "handler": "site.erase", "ownership": {"kind": "tenant_column", "path": "site_locales.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"site.erase": {"depends_on": ["customer.erase"], "tables": ["site_domains", "site_locales", "sites", "organizations"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

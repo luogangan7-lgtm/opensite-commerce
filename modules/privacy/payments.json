@@ -5,528 +5,151 @@
   "tables": {
     "payment_return_refunds": {
       "columns": {
-        "provider": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Original authenticated provider is frozen when the RMA refund posts; null historical bindings require reconciliation."
-        },
-        "provider_account_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Original opaque provider account prevents cross-account compensation."
-        },
-        "environment": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Original test environment is part of the frozen refund authority."
-        },
-        "tenant_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Permanent refund journal identity needed for recovery and reconciliation."
-        },
-        "return_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Permanent refund journal identity needed for recovery and reconciliation."
-        },
-        "attempt_key": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Frozen RMA refund key prevents a retry from creating another financial obligation."
-        },
-        "provider_ref": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Opaque provider intent reference binds the confirmed refund to its captured payment."
-        },
-        "provider_refund_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Opaque provider refund identity prevents duplicate money posting across deliveries."
-        },
-        "journal_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Permanent journal foreign key proves the single posted refund."
-        },
-        "created_at": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "DB timestamp for permanent refund recovery and reconciliation evidence."
-        }
+        "provider": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Original authenticated provider is frozen when the RMA refund posts; null historical bindings require reconciliation.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_return_refunds.provider only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_return_refunds.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["fake", "stripe"]}},
+        "provider_account_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Original opaque provider account prevents cross-account compensation.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_return_refunds.provider_account_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_return_refunds.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "environment": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Original test environment is part of the frozen refund authority.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_return_refunds.environment only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_return_refunds.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["test"]}},
+        "tenant_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Permanent refund journal identity needed for recovery and reconciliation.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_return_refunds.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_return_refunds.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "return_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Permanent refund journal identity needed for recovery and reconciliation.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_return_refunds.return_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_return_refunds.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "attempt_key": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Frozen RMA refund key prevents a retry from creating another financial obligation.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_return_refunds.attempt_key only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_return_refunds.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "provider_ref": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Opaque provider intent reference binds the confirmed refund to its captured payment.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_return_refunds.provider_ref only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_return_refunds.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "provider_refund_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Opaque provider refund identity prevents duplicate money posting across deliveries.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_return_refunds.provider_refund_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_return_refunds.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "journal_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Permanent journal foreign key proves the single posted refund.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_return_refunds.journal_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_return_refunds.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "created_at": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "DB timestamp for permanent refund recovery and reconciliation evidence.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_return_refunds.created_at only as an opaque financial timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_return_refunds.tenant_id"}, "value_type": "timestamp", "retained_kind": "financial"}}
       }
     },
     "payment_provider_accounts": {
       "columns": {
-        "tenant_id": {
-          "classification": "operational"
-        },
-        "provider": {
-          "classification": "operational"
-        },
-        "provider_account_id": {
-          "classification": "operational"
-        },
-        "environment": {
-          "classification": "operational"
-        },
-        "enabled": {
-          "classification": "operational"
-        },
-        "created_at": {
-          "classification": "operational"
-        }
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_provider_accounts.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_provider_accounts.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "provider": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_provider_accounts.provider only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_provider_accounts.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["fake", "stripe"]}},
+        "provider_account_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_provider_accounts.provider_account_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_provider_accounts.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "environment": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_provider_accounts.environment only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_provider_accounts.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["test"]}},
+        "enabled": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Erase original payment_provider_accounts.enabled using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_provider_accounts.tenant_id"}, "value": false}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_provider_accounts.created_at only as an opaque financial timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_provider_accounts.tenant_id"}, "value_type": "timestamp", "retained_kind": "financial"}}
       }
     },
     "payment_events": {
       "columns": {
-        "tenant_id": {
-          "classification": "operational"
-        },
-        "id": {
-          "classification": "operational"
-        },
-        "provider": {
-          "classification": "operational"
-        },
-        "provider_account_id": {
-          "classification": "operational"
-        },
-        "environment": {
-          "classification": "operational"
-        },
-        "provider_ref": {
-          "classification": "operational"
-        },
-        "provider_refund_id": {
-          "classification": "operational"
-        },
-        "event_key": {
-          "classification": "operational"
-        },
-        "claimed_order_id": {
-          "classification": "operational"
-        },
-        "order_version": {
-          "classification": "operational"
-        },
-        "status": {
-          "classification": "operational"
-        },
-        "amount_minor": {
-          "classification": "financial_non_contact"
-        },
-        "currency": {
-          "classification": "financial_non_contact"
-        },
-        "applied": {
-          "classification": "operational"
-        },
-        "error_code": {
-          "classification": "operational"
-        },
-        "created_at": {
-          "classification": "operational"
-        }
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "provider": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.provider only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["fake", "stripe"]}},
+        "provider_account_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.provider_account_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "environment": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.environment only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["test"]}},
+        "provider_ref": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.provider_ref only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "provider_refund_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.provider_refund_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "event_key": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.event_key only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "claimed_order_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.claimed_order_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "order_version": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.order_version only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.status only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["captured", "failed", "canceled", "partially_refunded", "refunded"]}},
+        "amount_minor": {"classification": "financial_non_contact", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.amount_minor only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "currency": {"classification": "financial_non_contact", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.currency only as an opaque financial currency witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "currency", "retained_kind": "financial"}},
+        "applied": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.applied only as an opaque financial boolean witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "boolean", "retained_kind": "financial"}},
+        "error_code": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.error_code only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["state_conflict"]}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_events.created_at only as an opaque financial timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_events.tenant_id"}, "value_type": "timestamp", "retained_kind": "financial"}}
       }
     },
     "payment_event_deliveries": {
       "columns": {
-        "tenant_id": {
-          "classification": "operational"
-        },
-        "id": {
-          "classification": "operational"
-        },
-        "payment_event_id": {
-          "classification": "operational"
-        }
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_event_deliveries.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_event_deliveries.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_event_deliveries.id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_event_deliveries.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "payment_event_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_event_deliveries.payment_event_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_event_deliveries.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}}
       }
     },
     "payment_refund_attempts": {
       "columns": {
-        "tenant_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "provider": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "provider_account_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "environment": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "provider_refund_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "order_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "provider_ref": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "amount_minor": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "currency": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "return_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "attempt_key": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "original_journal_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "created_at": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        }
+        "tenant_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "provider": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.provider only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["fake", "stripe"]}},
+        "provider_account_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.provider_account_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "environment": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.environment only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["test"]}},
+        "provider_refund_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.provider_refund_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "order_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.order_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "provider_ref": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.provider_ref only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "amount_minor": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.amount_minor only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "currency": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.currency only as an opaque financial currency witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "currency", "retained_kind": "financial"}},
+        "return_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.return_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "attempt_key": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.attempt_key only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "original_journal_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.original_journal_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "created_at": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_attempts.created_at only as an opaque financial timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_attempts.tenant_id"}, "value_type": "timestamp", "retained_kind": "financial"}}
       }
     },
     "payment_refund_reversals": {
       "columns": {
-        "tenant_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "provider": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "provider_account_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "environment": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "provider_refund_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "original_journal_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "reversal_journal_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "transition": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        },
-        "created_at": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data."
-        }
+        "tenant_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_reversals.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_reversals.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "provider": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_reversals.provider only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_reversals.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["fake", "stripe"]}},
+        "provider_account_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_reversals.provider_account_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_reversals.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "environment": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_reversals.environment only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_reversals.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["test"]}},
+        "provider_refund_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_reversals.provider_refund_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_reversals.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "original_journal_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_reversals.original_journal_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_reversals.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "reversal_journal_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_reversals.reversal_journal_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_reversals.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "transition": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_reversals.transition only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_reversals.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["posted_to_compensated/v1"]}},
+        "created_at": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque refund identity and posted journal recovery witness; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_reversals.created_at only as an opaque financial timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_reversals.tenant_id"}, "value_type": "timestamp", "retained_kind": "financial"}}
       }
     },
     "payment_refund_terminals": {
       "columns": {
-        "tenant_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "provider": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "provider_account_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "environment": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "provider_refund_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "order_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "provider_ref": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "payment_version": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "amount_minor": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "currency": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "inbox_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "terminal_status": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "original_journal_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "reversal_journal_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "return_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "order_version": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "order_target": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "checkout_net": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "checkout_tax": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "checkout_shipping": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "income_minor": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "tax_minor": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "shipping_minor": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        },
-        "created_at": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data."
-        }
+        "tenant_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "provider": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.provider only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["fake", "stripe"]}},
+        "provider_account_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.provider_account_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "environment": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.environment only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["test"]}},
+        "provider_refund_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.provider_refund_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "order_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.order_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "provider_ref": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.provider_ref only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "payment_version": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.payment_version only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "amount_minor": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.amount_minor only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "currency": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.currency only as an opaque financial currency witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "currency", "retained_kind": "financial"}},
+        "inbox_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.inbox_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "terminal_status": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.terminal_status only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["failed", "canceled"]}},
+        "original_journal_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.original_journal_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "reversal_journal_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.reversal_journal_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "return_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.return_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "order_version": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.order_version only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "order_target": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.order_target only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["paid", "partially_refunded", "refunded"]}},
+        "checkout_net": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.checkout_net only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "checkout_tax": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.checkout_tax only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "checkout_shipping": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.checkout_shipping only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "income_minor": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.income_minor only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "tax_minor": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.tax_minor only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "shipping_minor": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.shipping_minor only as an opaque financial integer witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "integer", "retained_kind": "financial"}},
+        "created_at": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Immutable opaque terminal refund fact and atomic reversal receipt; contains no contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_terminals.created_at only as an opaque financial timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_terminals.tenant_id"}, "value_type": "timestamp", "retained_kind": "financial"}}
       }
     },
     "payment_refund_cases": {
       "columns": {
-        "tenant_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "provider": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "provider_account_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "environment": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "case_key": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "provider_refund_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "provider_ref": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "reason": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "evidence_hash": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.",
-          "structure": "refund_evidence_digest"
-        },
-        "created_at": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        }
+        "tenant_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "provider": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.provider only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["fake", "stripe"]}},
+        "provider_account_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.provider_account_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "environment": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.environment only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["test"]}},
+        "case_key": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.case_key only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "provider_refund_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.provider_refund_id only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "provider_ref": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.provider_ref only as an opaque financial opaque_ref witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "opaque_ref", "retained_kind": "financial"}},
+        "reason": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.reason only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["unmatched_refund", "refund_terminal_after_match", "refund_terminal_retrieval_failed", "refund_terminal_unconfirmed", "terminal_unbound"]}},
+        "evidence_hash": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "structure": "refund_evidence_digest", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.evidence_hash only as an opaque financial digest witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "digest", "retained_kind": "financial"}},
+        "created_at": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_cases.created_at only as an opaque financial timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_cases.tenant_id"}, "value_type": "timestamp", "retained_kind": "financial"}}
       }
     },
     "payment_refund_case_deliveries": {
       "columns": {
-        "tenant_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "case_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "inbox_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "created_at": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        }
+        "tenant_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_deliveries.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_deliveries.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "case_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_deliveries.case_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_deliveries.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "inbox_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_deliveries.inbox_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_deliveries.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "created_at": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_deliveries.created_at only as an opaque financial timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_deliveries.tenant_id"}, "value_type": "timestamp", "retained_kind": "financial"}}
       }
     },
     "payment_refund_case_resolutions": {
       "columns": {
-        "terminal_refund_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Bounded provider refund identity links immutable reconciliation evidence to an existing verified terminal; no customer contact data."
-        },
-        "tenant_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "case_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "outcome": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "reason": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "verifier": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Opaque staff identity retained to audit an explicit refund reconciliation resolution; no customer identity or contact data."
-        },
-        "evidence_hash": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.",
-          "structure": "refund_evidence_digest"
-        },
-        "original_journal_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "reversal_journal_id": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        },
-        "created_at": {
-          "classification": "financial_obligation",
-          "retention": "financial-obligation",
-          "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data."
-        }
+        "terminal_refund_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Bounded provider refund identity links immutable reconciliation evidence to an existing verified terminal; no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Retain payment_refund_case_resolutions.terminal_refund_id as the opaque provider refund identity binding the verified terminal resolution; never contact data.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_resolutions.tenant_id"}, "retained_kind": "financial", "value_type": "opaque_ref"}},
+        "tenant_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_resolutions.tenant_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_resolutions.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "case_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_resolutions.case_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_resolutions.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "outcome": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_resolutions.outcome only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_resolutions.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["resolved_compensated", "resolved_no_posting"]}},
+        "reason": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_resolutions.reason only as an opaque financial enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_resolutions.tenant_id"}, "value_type": "enum", "retained_kind": "financial", "values": ["verified_terminal", "external_verified", "duplicate_confirmed", "no_posting_required"]}},
+        "verifier": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Opaque staff identity retained to audit an explicit refund reconciliation resolution; no customer identity or contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_resolutions.verifier only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_resolutions.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "evidence_hash": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "structure": "refund_evidence_digest", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_resolutions.evidence_hash only as an opaque financial digest witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_resolutions.tenant_id"}, "value_type": "digest", "retained_kind": "financial"}},
+        "original_journal_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_resolutions.original_journal_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_resolutions.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "reversal_journal_id": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_resolutions.reversal_journal_id only as an opaque financial uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_resolutions.tenant_id"}, "value_type": "uuid", "retained_kind": "financial"}},
+        "created_at": {"classification": "financial_obligation", "retention": "financial-obligation", "reason": "Append-only refund reconciliation evidence and resolution witness; opaque identifiers, bounded enums and DB timestamps contain no customer contact data.", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep payment_refund_case_resolutions.created_at only as an opaque financial timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "payments.erase", "ownership": {"kind": "tenant_column", "path": "payment_refund_case_resolutions.tenant_id"}, "value_type": "timestamp", "retained_kind": "financial"}}
       }
     }
   },
-  "structures": {
-    "refund_evidence_digest": "Exactly 32 SHA-256 digest bytes of retained provider or operator evidence; no raw payload, contact data or credential."
-  }
+  "structures": {"refund_evidence_digest": "Exactly 32 SHA-256 digest bytes of retained provider or operator evidence; no raw payload, contact data or credential."},
+  "merchant_deletion": {"version": 1, "handlers": {"payments.erase": {"depends_on": ["fulfillment.erase"], "tables": ["payment_event_deliveries", "payment_refund_case_resolutions", "payment_refund_case_deliveries", "payment_refund_cases", "payment_refund_terminals", "payment_refund_reversals", "payment_refund_attempts", "payment_return_refunds", "payment_events", "payment_provider_accounts"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

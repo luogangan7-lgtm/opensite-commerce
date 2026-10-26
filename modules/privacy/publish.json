@@ -7,143 +7,144 @@
     "site_release_skus": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Merchant catalog SKU membership of a release; no personal or customer data."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "release_id": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "sku_id": {"classification": "operational"},
-        "ordinal": {"classification": "operational"},
-        "sku_code": {"classification": "operational"},
-        "option_values": {"classification": "operational", "structure": "SkuOptionValues"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_skus.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_skus.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_skus.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_skus.tenant_id"}}},
+        "release_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_skus.release_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_skus.tenant_id"}}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_skus.product_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_skus.tenant_id"}}},
+        "sku_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_skus.sku_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_skus.tenant_id"}}},
+        "ordinal": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_skus.ordinal with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_skus.tenant_id"}}},
+        "sku_code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_skus.sku_code with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_skus.tenant_id"}}},
+        "option_values": {"classification": "operational", "structure": "SkuOptionValues", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_skus.option_values with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_skus.tenant_id"}}}
       }
     },
     "serving_invalidations": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Append-only operational invalidation markers (site and reason code only); no personal or customer data."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "seq": {"classification": "operational"},
-        "reason": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned serving_invalidations.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "serving_invalidations.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned serving_invalidations.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "serving_invalidations.tenant_id"}}},
+        "seq": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned serving_invalidations.seq with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "serving_invalidations.tenant_id"}}},
+        "reason": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned serving_invalidations.reason with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "serving_invalidations.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned serving_invalidations.created_at with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "serving_invalidations.tenant_id"}}}
       }
     },
     "storefront_serving": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public storefront content derived from the sealed release has no verified customer identity FK; do not associate a customer by matching text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "release_id": {"classification": "operational"},
-        "publication_revision": {"classification": "operational"},
-        "serving_generation": {"classification": "operational"},
-        "body": {"classification": "personal", "structure": "ServingBody", "erase": {"strategy": "retain", "reason": "Derived copy of the sealed public release (same content as site_releases.manifest); rebuilt from that source and follows its owner-resolved privacy handling, never matched to a customer by text."}, "export": "include"},
-        "fallback_body": {"classification": "personal", "structure": "ServingBody", "erase": {"strategy": "retain", "reason": "Derived copy of the sealed public release (same content as site_releases.manifest); rebuilt from that source and follows its owner-resolved privacy handling, never matched to a customer by text."}, "export": "include"},
-        "body_sha256": {"classification": "operational", "structure": "Sha256Digest"},
-        "fallback_sha256": {"classification": "operational", "structure": "Sha256Digest"},
-        "valid_until": {"classification": "operational"},
-        "built_through_seq": {"classification": "operational"},
-        "built_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "release_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.release_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "publication_revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.publication_revision with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "serving_generation": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.serving_generation with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "body": {"classification": "personal", "structure": "ServingBody", "erase": {"strategy": "retain", "reason": "Derived copy of the sealed public release (same content as site_releases.manifest); rebuilt from that source and follows its owner-resolved privacy handling, never matched to a customer by text."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.body with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "fallback_body": {"classification": "personal", "structure": "ServingBody", "erase": {"strategy": "retain", "reason": "Derived copy of the sealed public release (same content as site_releases.manifest); rebuilt from that source and follows its owner-resolved privacy handling, never matched to a customer by text."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.fallback_body with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "body_sha256": {"classification": "operational", "structure": "Sha256Digest", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.body_sha256 with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "fallback_sha256": {"classification": "operational", "structure": "Sha256Digest", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.fallback_sha256 with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "valid_until": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.valid_until with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "built_through_seq": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.built_through_seq with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}},
+        "built_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned storefront_serving.built_at with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "storefront_serving.tenant_id"}}}
       }
     },
     "site_releases": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "release_no": {"classification": "operational"},
-        "renderer_build_id": {"classification": "operational"},
-        "manifest": {"classification": "personal", "structure": "ReleaseManifest", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
-        "manifest_hash": {"classification": "operational", "structure": "Sha256Digest"},
-        "restored_from": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "sealed": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_releases.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_releases.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_releases.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_releases.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_releases.id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_releases.tenant_id"}}},
+        "release_no": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_releases.release_no with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_releases.tenant_id"}}},
+        "renderer_build_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_releases.renderer_build_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_releases.tenant_id"}}},
+        "manifest": {"classification": "personal", "structure": "ReleaseManifest", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_releases.manifest with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_releases.tenant_id"}}},
+        "manifest_hash": {"classification": "operational", "structure": "Sha256Digest", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_releases.manifest_hash with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_releases.tenant_id"}}},
+        "restored_from": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_releases.restored_from with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_releases.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_releases.created_at with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_releases.tenant_id"}}},
+        "sealed": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_releases.sealed with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_releases.tenant_id"}}}
       }
     },
     "site_release_routes": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "release_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "path": {"classification": "operational"},
-        "page_id": {"classification": "operational"},
-        "page_revision": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_routes.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_routes.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_routes.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_routes.tenant_id"}}},
+        "release_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_routes.release_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_routes.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_routes.locale with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_routes.tenant_id"}}},
+        "path": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_routes.path with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_routes.tenant_id"}}},
+        "page_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_routes.page_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_routes.tenant_id"}}},
+        "page_revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_routes.page_revision with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_routes.tenant_id"}}}
       }
     },
     "site_release_templates": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "release_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "template_kind": {"classification": "operational"},
-        "document": {"classification": "personal", "structure": "ReleaseTemplateDocument", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_templates.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_templates.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_templates.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_templates.tenant_id"}}},
+        "release_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_templates.release_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_templates.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_templates.locale with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_templates.tenant_id"}}},
+        "template_kind": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_templates.template_kind with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_templates.tenant_id"}}},
+        "document": {"classification": "personal", "structure": "ReleaseTemplateDocument", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_templates.document with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_templates.tenant_id"}}}
       }
     },
     "site_release_media": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "release_id": {"classification": "operational"},
-        "media_id": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_media.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_media.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_media.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_media.tenant_id"}}},
+        "release_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_media.release_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_media.tenant_id"}}},
+        "media_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_release_media.media_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_release_media.tenant_id"}}}
       }
     },
     "site_drafts": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "base_release_id": {"classification": "operational"},
-        "revision": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "is_cms": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "title": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
-        "description": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
-        "navigation": {"classification": "personal", "structure": "DraftNavigation", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "base_release_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.base_release_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.revision with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.status with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.created_at with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "is_cms": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.is_cms with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.locale with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "title": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.title with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "description": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.description with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}},
+        "navigation": {"classification": "personal", "structure": "DraftNavigation", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned site_drafts.navigation with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "site_drafts.tenant_id"}}}
       }
     },
     "draft_pages": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "draft_id": {"classification": "operational"},
-        "page_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "path": {"classification": "operational"},
-        "document": {"classification": "personal", "structure": "DraftPageDocument", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_pages.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_pages.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_pages.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_pages.tenant_id"}}},
+        "draft_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_pages.draft_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_pages.tenant_id"}}},
+        "page_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_pages.page_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_pages.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_pages.locale with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_pages.tenant_id"}}},
+        "path": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_pages.path with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_pages.tenant_id"}}},
+        "document": {"classification": "personal", "structure": "DraftPageDocument", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_pages.document with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_pages.tenant_id"}}}
       }
     },
     "draft_operations": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "draft_id": {"classification": "operational"},
-        "operation_id": {"classification": "operational"},
-        "actor_id": {"classification": "operational"},
-        "before_revision": {"classification": "operational"},
-        "after_revision": {"classification": "operational"},
-        "operation": {"classification": "personal", "structure": "DraftOperation", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_operations.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_operations.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_operations.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_operations.tenant_id"}}},
+        "draft_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_operations.draft_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_operations.tenant_id"}}},
+        "operation_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_operations.operation_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_operations.tenant_id"}}},
+        "actor_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_operations.actor_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_operations.tenant_id"}}},
+        "before_revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_operations.before_revision with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_operations.tenant_id"}}},
+        "after_revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_operations.after_revision with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_operations.tenant_id"}}},
+        "operation": {"classification": "personal", "structure": "DraftOperation", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_operations.operation with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_operations.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_operations.created_at with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_operations.tenant_id"}}}
       }
     },
     "draft_page_media": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "draft_id": {"classification": "operational"},
-        "page_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "media_id": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_page_media.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_page_media.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_page_media.site_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_page_media.tenant_id"}}},
+        "draft_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_page_media.draft_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_page_media.tenant_id"}}},
+        "page_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_page_media.page_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_page_media.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_page_media.locale with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_page_media.tenant_id"}}},
+        "media_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned draft_page_media.media_id with its row, including all merchant/guest/derived copies.", "handler": "publish.erase", "ownership": {"kind": "tenant_column", "path": "draft_page_media.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"publish.erase": {"depends_on": [], "tables": ["draft_page_media", "draft_pages", "draft_operations", "site_drafts", "site_release_media", "site_release_templates", "site_release_routes", "site_release_skus", "storefront_serving", "serving_invalidations", "site_releases"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

@@ -6,26 +6,27 @@
   "tables": {
     "data_rights_exports": {
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "customer_id": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
-        "content_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
-        "expires_at": {"classification": "operational"},
-        "download_expires_at": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned data_rights_exports.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned data_rights_exports.id with its row, including all merchant/guest/derived copies.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}}},
+        "customer_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned data_rights_exports.customer_id with its row, including all merchant/guest/derived copies.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned data_rights_exports.status with its row, including all merchant/guest/derived copies.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}}},
+        "token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned data_rights_exports.token_hash with its row, including all merchant/guest/derived copies.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}}},
+        "content_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned data_rights_exports.content_hash with its row, including all merchant/guest/derived copies.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}}},
+        "expires_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned data_rights_exports.expires_at with its row, including all merchant/guest/derived copies.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}}},
+        "download_expires_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned data_rights_exports.download_expires_at with its row, including all merchant/guest/derived copies.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned data_rights_exports.created_at with its row, including all merchant/guest/derived copies.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}}}
       }
     },
     "data_rights_erasures": {
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "customer_id": {"classification": "operational"},
-        "actor_kind": {"classification": "operational"},
-        "actor_id": {"classification": "operational"},
-        "erased_at": {"classification": "operational"},
-        "scope": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep data_rights_erasures.tenant_id only as an opaque control uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_erasures.tenant_id"}, "value_type": "uuid", "retained_kind": "control"}},
+        "customer_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep data_rights_erasures.customer_id only as an opaque control uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_erasures.tenant_id"}, "value_type": "uuid", "retained_kind": "control"}},
+        "actor_kind": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep data_rights_erasures.actor_kind only as an opaque control enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_erasures.tenant_id"}, "value_type": "enum", "retained_kind": "control", "values": ["user", "api_key", "service"]}},
+        "actor_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep data_rights_erasures.actor_id only as an opaque control uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_erasures.tenant_id"}, "value_type": "uuid", "retained_kind": "control"}},
+        "erased_at": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep data_rights_erasures.erased_at only as an opaque control timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_erasures.tenant_id"}, "value_type": "timestamp", "retained_kind": "control"}},
+        "scope": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Replace arbitrary historical scope text with the fixed customer-erasure category enum; keep no free text.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_erasures.tenant_id"}, "value": "customer.profile,addresses,credentials,b2b,order_snapshots,exports"}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"datarights.erase": {"depends_on": ["identity.erase"], "tables": ["data_rights_exports", "data_rights_erasures"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {"datarights.customer_export": {"action": "erase", "strategy": "unlink_tenant_namespace", "reason": "Remove original and derived private tenant bytes, including interrupted/rollback orphans; DB metadata erasure alone is insufficient.", "handler": "datarights.erase", "source": "internal/modules/datarights/internal/service/files.go", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}, "paths": ["data-rights/<tenant_uuid>/<request_uuid>.json"], "guards": ["canonical_ids", "anchored_root", "no_symlinks", "fsync_parents", "verify_empty"]}, "datarights.export_temp": {"action": "erase", "strategy": "unlink_tenant_namespace", "reason": "Remove original and derived private tenant bytes, including interrupted/rollback orphans; DB metadata erasure alone is insufficient.", "handler": "datarights.erase", "source": "internal/modules/datarights/internal/service/files.go", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}, "paths": ["data-rights/<tenant_uuid>/<request_uuid>.json.<temp_uuid>.tmp"], "guards": ["canonical_ids", "anchored_root", "no_symlinks", "fsync_parents", "verify_empty"]}}}
 }

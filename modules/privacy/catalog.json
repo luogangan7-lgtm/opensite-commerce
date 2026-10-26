@@ -7,107 +7,108 @@
     "products": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "product_code": {"classification": "operational"},
-        "product_code_normalized": {"classification": "operational"},
-        "lifecycle_status": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "version": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep products.tenant_id only as an opaque witness uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "products.tenant_id"}, "value_type": "uuid", "retained_kind": "witness"}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep products.id only as an opaque witness uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "products.tenant_id"}, "value_type": "uuid", "retained_kind": "witness"}},
+        "product_code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "row_id_placeholder", "reason": "Erase original products.product_code using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "products.tenant_id"}, "value": "erased:{id}"}},
+        "product_code_normalized": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "generated_from", "reason": "Erase original products.product_code_normalized using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "products.tenant_id"}, "value": "products.product_code"}},
+        "lifecycle_status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Erase original products.lifecycle_status using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "products.tenant_id"}, "value": "archived"}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "database_time", "reason": "Erase original products.created_at using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "products.tenant_id"}}},
+        "version": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Erase original products.version using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "products.tenant_id"}, "value": 1}}
       }
     },
     "product_options": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "code": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_options.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_options.tenant_id"}}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_options.product_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_options.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_options.id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_options.tenant_id"}}},
+        "code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_options.code with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_options.tenant_id"}}}
       }
     },
     "product_option_values": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "option_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "value_code": {"classification": "operational"},
-        "label": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_option_values.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_option_values.tenant_id"}}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_option_values.product_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_option_values.tenant_id"}}},
+        "option_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_option_values.option_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_option_values.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_option_values.id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_option_values.tenant_id"}}},
+        "value_code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_option_values.value_code with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_option_values.tenant_id"}}},
+        "label": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_option_values.label with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_option_values.tenant_id"}}}
       }
     },
     "product_variants": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "sku": {"classification": "operational"},
-        "sku_normalized": {"classification": "operational"},
-        "option_key": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "version": {"classification": "operational"},
-        "lifecycle_status": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep product_variants.tenant_id only as an opaque witness uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_variants.tenant_id"}, "value_type": "uuid", "retained_kind": "witness"}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep product_variants.id only as an opaque witness uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_variants.tenant_id"}, "value_type": "uuid", "retained_kind": "witness"}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep product_variants.product_id only as an opaque witness uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_variants.tenant_id"}, "value_type": "uuid", "retained_kind": "witness"}},
+        "sku": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "row_id_placeholder", "reason": "Erase original product_variants.sku using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_variants.tenant_id"}, "value": "erased:{id}"}},
+        "sku_normalized": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "generated_from", "reason": "Erase original product_variants.sku_normalized using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_variants.tenant_id"}, "value": "product_variants.sku"}},
+        "option_key": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Erase original product_variants.option_key using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_variants.tenant_id"}, "value": "default"}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "database_time", "reason": "Erase original product_variants.created_at using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_variants.tenant_id"}}},
+        "version": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Erase original product_variants.version using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_variants.tenant_id"}, "value": 1}},
+        "lifecycle_status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Erase original product_variants.lifecycle_status using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_variants.tenant_id"}, "value": "archived"}}
       }
     },
     "variant_option_values": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "variant_id": {"classification": "operational"},
-        "option_id": {"classification": "operational"},
-        "value_id": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned variant_option_values.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "variant_option_values.tenant_id"}}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned variant_option_values.product_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "variant_option_values.tenant_id"}}},
+        "variant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned variant_option_values.variant_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "variant_option_values.tenant_id"}}},
+        "option_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned variant_option_values.option_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "variant_option_values.tenant_id"}}},
+        "value_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned variant_option_values.value_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "variant_option_values.tenant_id"}}}
       }
     },
     "attribute_definitions": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "code": {"classification": "operational"},
-        "value_type": {"classification": "operational"},
-        "schema": {"classification": "operational", "structure": "AttributeSchema"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned attribute_definitions.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "attribute_definitions.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned attribute_definitions.id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "attribute_definitions.tenant_id"}}},
+        "code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned attribute_definitions.code with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "attribute_definitions.tenant_id"}}},
+        "value_type": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned attribute_definitions.value_type with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "attribute_definitions.tenant_id"}}},
+        "schema": {"classification": "operational", "structure": "AttributeSchema", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned attribute_definitions.schema with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "attribute_definitions.tenant_id"}}}
       }
     },
     "product_attribute_values": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "attribute_id": {"classification": "operational"},
-        "text_value": {"classification": "operational"},
-        "number_value": {"classification": "operational"},
-        "bool_value": {"classification": "operational"},
-        "enum_value": {"classification": "operational"},
-        "unit_code": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_attribute_values.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_attribute_values.tenant_id"}}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_attribute_values.product_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_attribute_values.tenant_id"}}},
+        "attribute_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_attribute_values.attribute_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_attribute_values.tenant_id"}}},
+        "text_value": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_attribute_values.text_value with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_attribute_values.tenant_id"}}},
+        "number_value": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_attribute_values.number_value with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_attribute_values.tenant_id"}}},
+        "bool_value": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_attribute_values.bool_value with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_attribute_values.tenant_id"}}},
+        "enum_value": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_attribute_values.enum_value with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_attribute_values.tenant_id"}}},
+        "unit_code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_attribute_values.unit_code with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_attribute_values.tenant_id"}}}
       }
     },
     "product_content_revisions": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "revision": {"classification": "operational"},
-        "title": {"classification": "operational"},
-        "body_blocks": {"classification": "operational", "structure": "ProductBodyBlocks"},
-        "seo": {"classification": "operational", "structure": "ProductSEO"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_content_revisions.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_content_revisions.tenant_id"}}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_content_revisions.product_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_content_revisions.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_content_revisions.locale with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_content_revisions.tenant_id"}}},
+        "revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_content_revisions.revision with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_content_revisions.tenant_id"}}},
+        "title": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_content_revisions.title with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_content_revisions.tenant_id"}}},
+        "body_blocks": {"classification": "operational", "structure": "ProductBodyBlocks", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_content_revisions.body_blocks with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_content_revisions.tenant_id"}}},
+        "seo": {"classification": "operational", "structure": "ProductSEO", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_content_revisions.seo with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_content_revisions.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_content_revisions.created_at with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_content_revisions.tenant_id"}}}
       }
     },
     "product_listings": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "slug": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "published_content_revision": {"classification": "operational"},
-        "version": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_listings.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_listings.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_listings.site_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_listings.tenant_id"}}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_listings.product_id with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_listings.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_listings.locale with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_listings.tenant_id"}}},
+        "slug": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_listings.slug with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_listings.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_listings.status with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_listings.tenant_id"}}},
+        "published_content_revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_listings.published_content_revision with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_listings.tenant_id"}}},
+        "version": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_listings.version with its row, including all merchant/guest/derived copies.", "handler": "catalog.erase", "ownership": {"kind": "tenant_column", "path": "product_listings.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"catalog.erase": {"depends_on": ["inventory.erase"], "tables": ["variant_option_values", "product_option_values", "product_options", "product_attribute_values", "attribute_definitions", "product_listings", "product_content_revisions", "product_variants", "products"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

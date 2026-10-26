@@ -7,23 +7,24 @@
     "carts": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "carts.customer_id -> customers.id", "null_subject_policy": "Guest token hash is a capability, not a verified registered-customer identity."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "customer_id": {"classification": "operational"},
-        "guest_token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
-        "currency": {"classification": "financial_non_contact"},
-        "version": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned carts.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "carts.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned carts.id with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "carts.tenant_id"}}},
+        "customer_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned carts.customer_id with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "carts.tenant_id"}}},
+        "guest_token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned carts.guest_token_hash with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "carts.tenant_id"}}},
+        "currency": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned carts.currency with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "carts.tenant_id"}}},
+        "version": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned carts.version with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "carts.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned carts.created_at with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "carts.tenant_id"}}}
       }
     },
     "cart_lines": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "cart_lines.cart_id -> carts.id -> carts.customer_id -> customers.id", "null_subject_policy": "Guest cart has no verified customer link."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "cart_id": {"classification": "operational"},
-        "sku_id": {"classification": "operational"},
-        "quantity": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned cart_lines.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "cart_lines.tenant_id"}}},
+        "cart_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned cart_lines.cart_id with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "cart_lines.tenant_id"}}},
+        "sku_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned cart_lines.sku_id with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "cart_lines.tenant_id"}}},
+        "quantity": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned cart_lines.quantity with its row, including all merchant/guest/derived copies.", "handler": "cart.erase", "ownership": {"kind": "tenant_column", "path": "cart_lines.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"cart.erase": {"depends_on": ["quotes.erase"], "tables": ["cart_lines", "carts"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }
