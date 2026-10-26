@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
 
 func TestH4ASessionConcurrencyAndDeadline(t *testing.T) {
@@ -28,14 +30,25 @@ func TestH4ASessionConcurrencyAndDeadline(t *testing.T) {
 			_, _, err := service.Authenticate(ctx, token)
 			results <- err
 		}()
-		<-repo.lookupBlock
+		select {
+		case <-repo.lookupBlock:
+		case err := <-results:
+			t.Fatalf("admitted lookup returned before readiness: %v", err)
+		case <-ctx.Done():
+			t.Fatal("session readiness deadline", ctx.Err())
+		}
 	}
 	if _, _, err := service.Authenticate(ctx, token); !errors.Is(err, login.ErrRateLimited) {
 		t.Fatal("third concurrent lookup must be rejected before storage")
 	}
 	for i := 0; i < cap(results); i++ {
-		if err := <-results; !errors.Is(err, login.ErrDatabase) || time.Since(started) > 2500*time.Millisecond {
-			t.Fatal("admitted lookup ignored internal deadline", err)
+		select {
+		case err := <-results:
+			if !errors.Is(err, login.ErrDatabase) || time.Since(started) > 2500*time.Millisecond {
+				t.Fatal("admitted lookup ignored internal deadline", err)
+			}
+		case <-ctx.Done():
+			t.Fatal("session result deadline", ctx.Err())
 		}
 	}
 }
@@ -93,5 +106,29 @@ func TestH4AUnifiedSessionAdmission(t *testing.T) {
 				t.Fatal("cheap reject reached storage")
 			}
 		})
+	}
+}
+
+func TestH4ASessionAdmissionMetrics(t *testing.T) {
+	_, _, _, service, token := transportFixture(t)
+	var metrics observability.Metrics
+	handler := metrics.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, _, err := service.Authenticate(r.Context(), token); err != nil {
+			w.WriteHeader(429)
+		}
+	}))
+	for i := 0; i < 61; i++ {
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/private", nil))
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	for _, want := range []string{
+		`opensite_auth_operations_total{stage="session_admission",outcome="admitted"} 60`,
+		`opensite_auth_operations_total{stage="session_admission",outcome="denied"} 1`,
+		`opensite_auth_duration_seconds_count{stage="session_admission"} 61`,
+	} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Fatalf("missing authentication metric %q in %s", want, w.Body.String())
+		}
 	}
 }
