@@ -56,6 +56,7 @@ def main():
             target.write(receipt + '\n')
         result = subprocess.run([str(Path(os.environ['RUNNER_TEMP']) / 'stripe-live.test'),
                                  '-test.run=^TestStripeLiveOwnerGate$', '-test.timeout=35m'],
+                                cwd=Path(__file__).resolve().parents[1] / 'internal/db',
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, timeout=2110, check=False)
         values = [json.loads(line.removeprefix('OSC_LIVE_SUMMARY '))

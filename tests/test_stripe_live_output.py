@@ -52,14 +52,15 @@ class OutputCanaries(unittest.TestCase):
                 raw = '\n'.join(CANARIES) + '\nOSC_LIVE_SUMMARY ' + json.dumps(value)
                 result = subprocess.CompletedProcess([], int(state != 'REFUNDED'), stdout=raw)
                 log = io.StringIO()
-                with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run', return_value=result), contextlib.redirect_stdout(log):
+                with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run', return_value=result) as child, contextlib.redirect_stdout(log):
                     try:
                         runner.main()
                     except SystemExit as error:
                         log.write(str(error))
+                    self.assertEqual(child.call_args.kwargs.get('cwd'), ROOT / 'internal/db')
                 public = log.getvalue() + summary.read_text()
                 for canary in CANARIES:
-                    self.assertNotIn(canary, public)
+                    self.assertFalse(canary in public, 'public output leaked a private canary')
                 self.assertIn('original_run=1234', public)
                 if state.startswith('REFUND_UNRESOLVED'):
                     self.assertIn('owner action needed', public)
@@ -76,7 +77,7 @@ class OutputCanaries(unittest.TestCase):
                     runner.main()
             public = log.getvalue() + str(failure.exception) + (Path(tmp) / 'summary').read_text()
             for canary in CANARIES:
-                self.assertNotIn(canary, public)
+                self.assertFalse(canary in public, 'public timeout output leaked a private canary')
 
     def test_tainted_summary_values_are_rejected(self):
         good = dict(phase='B', status='REFUNDED', amount_minor=5000, currency='USD', livemode=True, owner_action_needed=False)
