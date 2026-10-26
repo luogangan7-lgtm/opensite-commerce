@@ -16,6 +16,7 @@ BEGIN
  -- Resolve list before missing currency so foreign identifiers remain 404.
  SELECT * INTO r FROM app.price_lists WHERE tenant_id=t AND id=p_list;
  IF NOT FOUND THEN RAISE EXCEPTION 'PRICING_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ UPDATE app.tenants SET settlement_currency='EUR' WHERE id=t;
  c:=app.pricing_currency();
  SELECT * INTO r FROM app.price_lists WHERE tenant_id=t AND id=p_list FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'PRICING_NOT_FOUND' USING ERRCODE='P0002'; END IF;
