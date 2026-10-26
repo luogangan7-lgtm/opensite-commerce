@@ -249,22 +249,13 @@ jobs:
           print(json.dumps(results, sort_keys=True))
           sys.exit(0 if results and all(x.get('result') == 'success' for x in results.values()) else 1)
           PYTHON
-
-  # Proposal validation and final landing are different decisions. Ordinary PRs
-  # (including migration proposals) get a validated proposal receipt. A landing
-  # commit/PR marks itself [final-landing]; only then must migrations/pending be
-  # empty and numbered history contiguous, bound to the exact tested head SHA
-  # rather than the synthetic pull_request merge commit. This runs after the
-  # required foundation context, so a landing PR cannot merge on partial gates.
-  final-landing:
-    name: final-landing
-    if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
-    needs: [foundation]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
+      # Proposal validation and final landing are different decisions. Ordinary
+      # PRs (including migration proposals) get a validated proposal receipt. A
+      # landing commit/PR marks itself [final-landing]; only then must
+      # migrations/pending be empty and numbered history contiguous, bound to the
+      # exact tested head SHA rather than the synthetic pull_request merge
+      # commit. This is a step of the required foundation context, so it cannot
+      # be bypassed by a green lane aggregate alone.
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}

@@ -165,7 +165,7 @@ class FoundationLanes(unittest.TestCase):
         self.assertIn('always()', foundation['if'])
         self.assertIn("github.event_name == 'pull_request'", foundation['if'])
         self.assertIn("github.ref == 'refs/heads/main'", foundation['if'])
-        step, = foundation['steps']
+        step = next(s for s in foundation['steps'] if 'LANE_RESULTS' in s.get('env', {}))
         self.assertNotIn('if', step)
         self.assertEqual(step['env']['LANE_RESULTS'], '${{ toJSON(needs) }}')
         # Execute the actual aggregate command with every terminal state, not a copy.

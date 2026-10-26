@@ -222,13 +222,13 @@ class FinalLandingGate(unittest.TestCase):
 
     def test_ci_binds_the_landing_check_to_the_exact_head_sha(self):
         jobs = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']
-        self.assertIn('final-landing', jobs)
-        job = jobs['final-landing']
-        self.assertEqual(job['needs'], ['foundation'])
-        body = '\n'.join(step.get('run', '') for step in job['steps'])
+        foundation = jobs['foundation']
+        self.assertEqual(foundation['needs'], ['foundation-lane'])
+        body = '\n'.join(step.get('run', '') for step in foundation['steps'])
         self.assertIn('scripts/check_landing.py', body)
         self.assertIn('github.event.pull_request.head.sha', body)
-        marker = '\n'.join(step.get('env', {}).get('FINAL_LANDING', '') for step in job['steps'])
+        marker = '\n'.join(
+            step.get('env', {}).get('FINAL_LANDING', '') for step in foundation['steps'])
         self.assertIn('final-landing', marker)
 
 
