@@ -284,6 +284,12 @@ type AppCustomerSession struct {
 	RevokedAt         pgtype.Timestamptz `json:"revoked_at"`
 }
 
+type AppDataRightsErasedOrder struct {
+	TenantID   pgtype.UUID `json:"tenant_id"`
+	OrderID    pgtype.UUID `json:"order_id"`
+	CustomerID pgtype.UUID `json:"customer_id"`
+}
+
 type AppDataRightsErasure struct {
 	TenantID   pgtype.UUID        `json:"tenant_id"`
 	CustomerID pgtype.UUID        `json:"customer_id"`
