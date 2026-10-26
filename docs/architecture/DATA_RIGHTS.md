@@ -21,16 +21,25 @@ The signed `customer_data_export` job binds the trusted tenant and request UUID.
 The worker uses its separate controlled runtime runner to build one customer's
 profile, addresses, order snapshot summaries and carts. Credential hashes are
 excluded. An export has a 24-hour processing window and bounded content size
-(10 MiB, at most 10,000 child records). Downloads have a separate capability
+(10 MiB, at most 10,000 child records). Count and assembly share one SQL
+statement snapshot; an over-limit result commits `failed` before its job is
+cancelled. Expired requests commit `expired`; terminal retries remain terminal.
+Other failures retain the worker retry path. Downloads have a separate capability
 deadline of at most 15 minutes, capped by the request deadline.
 
 Files live below `OPENSITE_MEDIA_ROOT/data-rights/<tenant UUID>/<request UUID>.json`.
 Only canonical server IDs determine paths. The directory is private and files
-use mode 0600; writes use atomic replacement. The filesystem shares the media
+use mode 0600; writes use atomic replacement and sync the configured root,
+`data-rights` directory and tenant directory before publishing a ready capability.
+An ancestor sync failure prevents completion, and retries sync the ancestors
+again. The filesystem shares the media
 storage root but exports are never public media assets.
 
-Authorized status reads derive the capability with a server HMAC key. The
-database stores its hash and deadline, never the raw capability. Download
+Authorized status reads derive the capability with a server HMAC key and compare
+its hash to stored metadata before advertising a download. Eligibility uses the
+database clock. A rotated key therefore omits the unusable download link. The
+database stores the hash and deadline, never the raw capability; internal hash
+metadata never enters the public DTO. Download
 requires both scope admission and the capability, checks file integrity and
 consumes the request while customer/request locks are held. An interrupted
 network response still consumes the link; request another export. Concurrent
@@ -126,13 +135,21 @@ second order scan uses NOWAIT to catch newly committed orders without waiting on
 a financial transition that needs the customer lock. This serializes erasure
 with export generation/download and notification fanout. Guards prevent new credentials, addresses or customer orders from
 resurrecting PII for an erased customer. Retry of erasure is safe; an old export
-job cannot make a revoked request ready again. Files are cleaned by ID after
-database erasure. If unlink fails, access remains revoked; retry cleanup before
+job cannot make a revoked request ready again. The erasure response returns at most 100 export IDs; durable revoked export rows
+and the periodic tenant artifact sweep retain the remaining cleanup work. The
+response is not an exhaustive cleanup manifest. Files in the response are cleaned
+by ID after database erasure. If unlink fails, access remains revoked; retry cleanup before
 retiring the storage volume. Pending and expired artifacts also require storage
 retention cleanup by the configured periodic tenant worker; SQL deadlines alone do not delete physical files.
 
 Order notifications are owned through `(tenant_id, orders.customer_id)` and
-`reference_id`, never through email equality. Erasure replaces their frozen
+`reference_id`, never through email equality. `quote.converted` uses the
+conversion customer through the tenant/quote conversion; the approver is a
+separate subject. Typed erasure order tombstones preserve guest ownership after
+mailbox links are deleted; guest-supplied JSON values cannot establish erasure.
+A forward upgrade must stop for review if old erased guest-order markers have
+no authoritative ownership mapping; it must not guess a customer from contact
+text. Erasure replaces their frozen
 recipients with `erased-<delivery UUID>@invalid.test`, clears send tokens, and
 retires every pending/current/redrive dispatch generation. Already delivered
 outbox receipts retain their historical delivered state. The contact and

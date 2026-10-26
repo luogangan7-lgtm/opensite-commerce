@@ -40,7 +40,7 @@
       }
     },
     "outbox_events": {
-      "subject": {"tenant_key": "tenant_id", "identity_path": "order.* payload.order_id -> orders.customer_id (or mailbox-verified customer_guest_order_links.customer_id); quote.approved payload.quote_id -> quotes.accepted_by; notification.dispatch payload.notification_id -> notification_deliveries.reference_id", "null_subject_policy": "Other producers, quote.sent and guest events use producer-specific ownership; unverified payload email is not identity proof."},
+      "subject": {"tenant_key": "tenant_id", "identity_path": "order.* payload.order_id -> orders.customer_id (or mailbox-verified customer_guest_order_links.customer_id); quote.approved payload.quote_id -> quotes.accepted_by; quote.converted payload.quote_id -> quote_conversions.customer_id; notification.dispatch payload.notification_id -> notification_deliveries.reference_id", "null_subject_policy": "Other producers, quote.sent and guest events use producer-specific ownership; unverified payload email is not identity proof."},
       "columns": {
         "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned outbox_events.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "reliability.erase", "ownership": {"kind": "tenant_column", "path": "outbox_events.tenant_id"}}},
         "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned outbox_events.id with its row, including all merchant/guest/derived copies.", "handler": "reliability.erase", "ownership": {"kind": "tenant_column", "path": "outbox_events.tenant_id"}}},

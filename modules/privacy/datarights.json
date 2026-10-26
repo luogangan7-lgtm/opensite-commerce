@@ -17,6 +17,13 @@
         "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned data_rights_exports.created_at with its row, including all merchant/guest/derived copies.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_exports.tenant_id"}}}
       }
     },
+    "data_rights_erased_orders": {
+      "columns": {
+        "tenant_id": {"classification": "operational"},
+        "order_id": {"classification": "operational"},
+        "customer_id": {"classification": "operational"}
+      }
+    },
     "data_rights_erasures": {
       "columns": {
         "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep data_rights_erasures.tenant_id only as an opaque control uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "datarights.erase", "ownership": {"kind": "tenant_column", "path": "data_rights_erasures.tenant_id"}, "value_type": "uuid", "retained_kind": "control"}},

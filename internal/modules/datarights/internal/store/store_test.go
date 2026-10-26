@@ -24,3 +24,10 @@ func TestPrivacyContentionRequiresRetry(t *testing.T) {
 		t.Fatalf("unrecognized failure became retryable: %v", got)
 	}
 }
+
+func TestPermissionFailureIsUnavailable(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", &pgxadapter.PgError{Code: "42501", Message: "private relation and role"})
+	if got := MapError(err); !errors.Is(got, contract.ErrUnavailable) {
+		t.Fatalf("runtime permission failure mapped to %v, want unavailable", got)
+	}
+}
