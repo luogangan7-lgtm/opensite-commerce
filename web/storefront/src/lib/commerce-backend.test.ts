@@ -4,7 +4,13 @@
  */
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { createHmac, randomBytes } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { createServer as httpServer, get as httpGet, type RequestListener, type Server } from 'node:http';
+import { createServer as httpsServer, get as httpsGet } from 'node:https';
+import type { AddressInfo } from 'node:net';
 import type { AstroCookies } from 'astro';
 import { handlePurchaseRequest, readPurchaseContext } from './commerce-server';
 const site = 'https://shop.example.test', tenant = 'c0900001-0000-4000-8000-000000000001';
@@ -120,19 +126,48 @@ test('missing build define forbids HTTP before upstream IO',async()=>{
   expect((await readPurchaseContext(new Request('http://127.0.0.1:4321',{headers:{Host:'127.0.0.1:4321'}}),cookies().jar)).enabled).toBe(false);
   expect(calls.length).toBe(count);
 });
-test('production build output pins the HTTP capability to literal false',()=>{
-  const dir=new URL('../../dist/server/',import.meta.url);
-  const output=readdirSync(dir,{recursive:true}).filter(p=>String(p).endsWith('.mjs')).map(p=>readFileSync(new URL(String(p),dir),'utf8')).join('\n');
-  expect(/commerceBuildCapabilities\s*=\s*Object\.freeze\(\{\s*testHTTP:\s*false\b/.test(output)).toBe(true);
-  expect(output.includes('__OSC_COMMERCE_TEST_HTTP__')).toBe(false);
-});
-test('production build pin forbids HTTP even if runtime flags claim test',async()=>{
-  const build=globalThis as typeof globalThis & {__OSC_COMMERCE_TEST_HTTP__?:boolean};
-  build.__OSC_COMMERCE_TEST_HTTP__=false;
+// Execute the adapter's public production entry; source imports above cannot
+// witness define replacement, route loading or the built Node request adapter.
+test('production entry rejects HTTP with zero upstream IO and accepts HTTPS',async()=>{
+  const autostart=process.env.ASTRO_NODE_AUTOSTART;
+  process.env.ASTRO_NODE_AUTOSTART='disabled';
+  const directory=mkdtempSync(join(tmpdir(),'b-payret-tls-'));
+  const servers: Server[]=[];
+  const listen=async(server:Server)=>{
+    servers.push(server);
+    await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+    return (server.address() as AddressInfo).port;
+  };
+  const get=async(url:string)=>new Promise<{status:number;body:string}>((resolve,reject)=>{
+    const receive=(response:import('node:http').IncomingMessage)=>{
+      let body='';response.setEncoding('utf8');response.on('data',chunk=>{body+=chunk;});
+      response.on('end',()=>resolve({status:response.statusCode!,body}));response.on('error',reject);
+    };
+    const req=url.startsWith('https:')?httpsGet(url,{rejectUnauthorized:false},receive):httpGet(url,receive);
+    req.setTimeout(5000,()=>req.destroy(new Error('production entry response timeout')));req.on('error',reject);
+  });
   try {
-    Object.assign(process.env,{OSC_COMMERCE_SITE:'http://127.0.0.1:4321',OSC_STOREFRONT_ALLOWED_HOSTS:'127.0.0.1',OSC_COMMERCE_TEST_HTTP:'1',OPENSITE_ENVIRONMENT:'test'});
-    const count=calls.length;
-    expect((await readPurchaseContext(new Request('http://127.0.0.1:4321',{headers:{Host:'127.0.0.1:4321'}}),cookies().jar)).enabled).toBe(false);
-    expect(calls.length).toBe(count);
-  } finally { delete build.__OSC_COMMERCE_TEST_HTTP__; }
-});
+    const certificate=spawnSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(directory,'key.pem'),'-out',join(directory,'cert.pem'),'-days','1','-subj','/CN=127.0.0.1'],{timeout:10000,stdio:'pipe'});
+    expect(certificate.status).toBe(0);
+    const entry=await import(new URL('../../dist/server/entry.mjs',import.meta.url).href);
+    expect(typeof entry.handler).toBe('function');
+    const handler=entry.handler as RequestListener;
+    const plain=await listen(httpServer(handler));
+    const secure=await listen(httpsServer({key:readFileSync(join(directory,'key.pem')),cert:readFileSync(join(directory,'cert.pem'))},handler));
+    Object.assign(process.env,{OSC_COMMERCE_TEST_HTTP:'1',OPENSITE_ENVIRONMENT:'test',OSC_STOREFRONT_ALLOWED_HOSTS:'127.0.0.1'});
+    // A hostile runtime test flag/global must not re-enable a production build.
+    for(const protocol of ['http','https']) {
+      const origin=`${protocol}://127.0.0.1:${protocol==='http'?plain:secure}`;
+      process.env.OSC_COMMERCE_SITE=origin;
+      const count=calls.length;
+      const response=await get(`${origin}/purchase/api/context`);
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.body).enabled).toBe(protocol==='https');
+      expect(calls.length-count).toBe(protocol==='https'?1:0);
+    }
+  } finally {
+    await Promise.all(servers.map(server=>new Promise<void>((resolve,reject)=>{server.close(error=>error?reject(error):resolve());server.closeAllConnections();})));
+    rmSync(directory,{recursive:true,force:true});
+    if(autostart===undefined)delete process.env.ASTRO_NODE_AUTOSTART;else process.env.ASTRO_NODE_AUTOSTART=autostart;
+  }
+},20000);
