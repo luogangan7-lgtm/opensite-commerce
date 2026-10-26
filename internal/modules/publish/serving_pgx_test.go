@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
@@ -102,6 +103,66 @@ func publicLogin(t *testing.T, ctx context.Context, admin pgxadapter.Runner) str
 	return u.String()
 }
 
+// Scan all stock canaries, excluding only canonical IDs at the public DTO's ID
+// paths. A random public UUID can contain 7331 without exposing an inventory count.
+// Keep unknown fields and nested values so newly leaked data still fails the gate.
+func servingHasStockCanary(t *testing.T, body []byte) bool {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatal(err)
+	}
+	clearID := func(object map[string]any, key string) {
+		value, ok := object[key].(string)
+		id, err := uuid.Parse(value)
+		if ok && err == nil && id.String() == value {
+			delete(object, key)
+		}
+	}
+	for _, key := range []string{"tenant_id", "site_id", "release_id"} {
+		clearID(doc, key)
+	}
+	products, _ := doc["products"].([]any)
+	for _, value := range products {
+		product, _ := value.(map[string]any)
+		clearID(product, "id")
+		skus, _ := product["skus"].([]any)
+		for _, value := range skus {
+			sku, _ := value.(map[string]any)
+			clearID(sku, "sku_id")
+		}
+	}
+	checked, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Contains(string(checked), "7331")
+}
+
+func TestServingStockCanary(t *testing.T) {
+	const id = "73310000-0000-4000-8000-000000000001"
+	for _, tc := range []struct {
+		name, body string
+		leak       bool
+	}{
+		{"public IDs", fmt.Sprintf(`{"tenant_id":%q,"site_id":%q,"release_id":%q,"products":[{"id":%q,"skus":[{"sku_id":%q}]}]}`, id, id, id, id, id), false},
+		{"numeric count", `{"stock":7331}`, true},
+		{"string count", `{"stock":"7331"}`, true},
+		{"nested count", `{"products":[{"skus":[{"quantity":7331}]}]}`, true},
+		{"unknown UUID field", fmt.Sprintf(`{"private_id":%q}`, id), true},
+		{"UUID in content", fmt.Sprintf(`{"description":%q}`, id), true},
+		{"invalid public ID", `{"tenant_id":"7331"}`, true},
+		{"escaped count", `{"stock":"73\u00331"}`, true},
+		{"canary key", `{"7331":0}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := servingHasStockCanary(t, []byte(tc.body)); got != tc.leak {
+				t.Fatalf("stock canary detection=%t, want %t", got, tc.leak)
+			}
+		})
+	}
+}
+
 func TestStorefrontServingPG(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
@@ -143,7 +204,10 @@ func TestStorefrontServingPG(t *testing.T) {
 		if site.TenantID != a.tenant || site.ReleaseID != r1.ReleaseID || !reflect.DeepEqual(site.Products[0].SKUs, want("OWN", fmt.Sprint(int64(price)), true)) {
 			t.Fatalf("served SKUs: %+v", site)
 		}
-		for _, leak := range []string{"7331", "OTHER_TENANT", "ARCHIVED", "UNPRICED", "on_hand", "reserved", "hostname"} {
+		if servingHasStockCanary(t, body) {
+			t.Fatal("public body leaked inventory count 7331")
+		}
+		for _, leak := range []string{"OTHER_TENANT", "ARCHIVED", "UNPRICED", "on_hand", "reserved", "hostname"} {
 			if strings.Contains(string(body), leak) {
 				t.Fatalf("public body leaked %q", leak)
 			}

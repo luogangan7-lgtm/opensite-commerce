@@ -71,4 +71,4 @@ jobs:
         run: ./scripts/check_catalog_api.sh
       - name: Publish candidate race and holder startup gates
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: go test -race -tags pgx -count=1 -timeout=5m -v -run 'TestServingPublishCandidateInvalidationPG|TestServingHolderStartupFailure' ./internal/modules/publish
+        run: go test -race -tags pgx -count=1 -timeout=5m -v -run 'TestServingPublishCandidateInvalidationPG|TestServingHolderStartupFailure|TestServingStockCanary' ./internal/modules/publish
