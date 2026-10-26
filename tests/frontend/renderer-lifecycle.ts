@@ -3,10 +3,12 @@
  * tests/frontend/storefront.spec.ts.
  * Dependencies: node:child_process stdio only.
  * Invariants: the terminal exit/error promise is registered immediately after
- * spawn (Node does not guarantee 'exit' after 'error'); readiness races
- * termination and reports the original start error with the last 4 KiB of
- * stderr; cleanup never waits for an event that may already have fired
- * (SIGTERM, bounded wait, SIGKILL, bounded wait).
+ * spawn (Node does not guarantee 'exit' after 'error'); readiness races the
+ * probe against termination and against its deadline, so a stalled or overdue
+ * probe is a timeout instead of a hang or a false ready; failures report the
+ * original start error or the timeout with the last 4 KiB of stderr; every
+ * timer readiness creates is cleared; cleanup never waits for an event that may
+ * already have fired (SIGTERM, bounded wait, SIGKILL, bounded wait).
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -130,26 +132,61 @@ export function spawnRenderer(options: RendererOptions): RendererHandle {
     const intervalMs = ready.intervalMs ?? READY_INTERVAL_MS;
     const deadline = Date.now() + timeoutMs;
     let probeError: unknown;
+
+    const timeoutFailure = async (): Promise<Error> => {
+      await drain(stderr, STDERR_DRAIN_MS);
+      const reason = probeError instanceof Error ? ` (last probe error: ${probeError.message})` : '';
+      return new Error(`renderer '${options.command}' not ready after ${timeoutMs}ms${reason}${diagnostics()}`);
+    };
+
     for (;;) {
       if (terminalState) throw await startFailure();
-      // Race the probe against termination so a dead child fails ready-wait immediately.
-      const raced = await Promise.race([
-        Promise.resolve().then(probe).then(value => ({ kind: 'probe' as const, value }), error => ({ kind: 'probe-error' as const, error })),
-        terminal.then(() => ({ kind: 'terminated' as const })),
-      ]);
-      if (terminalState) throw await startFailure();
-      if (raced.kind === 'probe' && raced.value) return;
-      if (raced.kind === 'probe-error') probeError = raced.error;
       const remaining = deadline - Date.now();
-      if (remaining <= 0) {
-        await drain(stderr, STDERR_DRAIN_MS);
-        const reason = probeError instanceof Error ? ` (last probe error: ${probeError.message})` : '';
-        throw new Error(`renderer '${options.command}' not ready after ${timeoutMs}ms${reason}${diagnostics()}`);
+      if (remaining <= 0) throw await timeoutFailure();
+      // Race the probe against termination and the deadline, so a stalled probe
+      // cannot outlive the bound and an overdue answer is never a success.
+      const probeResult = Promise.resolve().then(probe).then(
+        value => ({ kind: 'probe' as const, value }),
+        error => ({ kind: 'probe-error' as const, error }),
+      );
+      let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+      let raced:
+        | { readonly kind: 'probe'; readonly value: boolean }
+        | { readonly kind: 'probe-error'; readonly error: unknown }
+        | { readonly kind: 'terminated' }
+        | { readonly kind: 'deadline' };
+      try {
+        raced = await Promise.race([
+          probeResult,
+          terminal.then(() => ({ kind: 'terminated' as const })),
+          new Promise<{ kind: 'deadline' }>(resolve => {
+            deadlineTimer = setTimeout(() => resolve({ kind: 'deadline' }), remaining);
+          }),
+        ]);
+      } finally {
+        if (deadlineTimer) clearTimeout(deadlineTimer);
       }
-      await Promise.race([
-        new Promise<void>(resolve => setTimeout(resolve, Math.min(intervalMs, remaining))),
-        terminal.then(() => undefined),
-      ]);
+      if (terminalState) throw await startFailure();
+      if (raced.kind === 'probe' && raced.value) {
+        if (Date.now() >= deadline) throw await timeoutFailure();
+        return;
+      }
+      if (raced.kind === 'probe-error') probeError = raced.error;
+      if (raced.kind === 'deadline' || Date.now() >= deadline) throw await timeoutFailure();
+      // Sleep until the next probe; the timer is cleared as soon as termination wins.
+      const untilNextProbe = deadline - Date.now();
+      if (untilNextProbe <= 0) throw await timeoutFailure();
+      let sleepTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          new Promise<void>(resolve => {
+            sleepTimer = setTimeout(resolve, Math.min(intervalMs, untilNextProbe));
+          }),
+          terminal.then(() => undefined),
+        ]);
+      } finally {
+        if (sleepTimer) clearTimeout(sleepTimer);
+      }
     }
   };
 
