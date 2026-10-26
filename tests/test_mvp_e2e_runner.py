@@ -56,6 +56,15 @@ class CIOnlyRunnerTests(unittest.TestCase):
 
 
 class BrowserReceiptTests(unittest.TestCase):
+    def test_upload_paths_are_exactly_the_summary(self):
+        runner = self.runner()
+        summary = 'test-results/e2e/summary.json'
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/mvp-e2e.yml').read_text()
+        self.assertEqual(runner.verify_upload_paths(workflow), [summary])
+        for extra in ('test-results/e2e', 'playwright-report/e2e', 'work/C24a/ci', '**/*.json'):
+            with self.subTest(extra=extra), self.assertRaisesRegex(RuntimeError, 'upload allowlist'):
+                runner.verify_upload_paths(workflow.replace('path: ' + summary, 'path: |\n            ' + summary + '\n            ' + extra))
+
     def test_artifact_gate_rejects_raw_and_packed_run_secrets_without_echoing(self):
         source = Path(__file__).resolve().parents[1] / 'scripts/e2e/run.py'
         spec = importlib.util.spec_from_file_location('artifact_runner', source)
