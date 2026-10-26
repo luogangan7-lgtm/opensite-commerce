@@ -22,7 +22,7 @@ type statusTx struct {
 
 type statusRow struct {
 	payload []byte
-	tenant bool
+	tenant  bool
 }
 
 func (tx statusTx) QueryRow(_ context.Context, sql string, _ ...any) pgx.Row {
