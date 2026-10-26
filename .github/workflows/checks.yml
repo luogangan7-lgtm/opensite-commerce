@@ -290,18 +290,38 @@ jobs:
       # validation. Final acceptance runs on the exact head commit, compares the
       # observed checkout with the event head as independent inputs, and
       # requires every prerequisite lane to have recorded that same checkout.
+      # Receipts are collected across attempts (a failed-job re-run only
+      # re-executes failed lanes) and each accepted receipt is matched to the
+      # attempt GitHub reports as a successful job of this run at this SHA.
       # This is a step of the required foundation context, so it cannot be
       # bypassed by a green lane aggregate alone.
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - name: Fetch every lane job result of this run across attempts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          # A failed-job re-run only re-executes the matrix jobs that failed, so
+          # lanes that passed keep receipts from an earlier attempt.  Collect the
+          # job results of every attempt, not just the current one, so a receipt
+          # can be matched to the attempt GitHub actually reports as successful.
+          gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?filter=all&per_page=100" \
+            --jq '.jobs[] | {id, run_id, run_attempt, name, head_sha, status, conclusion}' \
+            > "${RUNNER_TEMP}/lane-jobs.jsonl"
+          test -s "${RUNNER_TEMP}/lane-jobs.jsonl"
       - name: Collect the exact tested checkout identity of every lane
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          pattern: lane-identity-${{ github.run_id }}-${{ github.run_attempt }}-*
+          # Every attempt of this run, never only the current one.  Artifacts are
+          # kept in per-attempt directories so the same lane can have receipts
+          # from both a failed attempt and the re-run that succeeded.
+          pattern: lane-identity-${{ github.run_id }}-*
           path: ${{ runner.temp }}/lane-identities
-          merge-multiple: true
       - name: Derive the landing decision from trusted repository changes
         env:
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -339,6 +359,7 @@ jobs:
             --expected-sha "$EVENT_HEAD_SHA" \
             --changed-paths "${RUNNER_TEMP}/changed-migrations.txt" \
             --lane-identities "${RUNNER_TEMP}/lane-identities" \
+            --lane-jobs "${RUNNER_TEMP}/lane-jobs.jsonl" \
             --receipt final-landing-receipt.json
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
