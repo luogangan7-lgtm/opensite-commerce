@@ -58,7 +58,9 @@ func TestCustomerHistoryAdmission(t *testing.T) {
 
 // historyNoStore is shared by the admission gate and its transmission controls.
 func historyNoStore(w *httptest.ResponseRecorder) bool {
-	return w.Header().Get("Cache-Control") == "no-store"
+	response := w.Result()
+	defer response.Body.Close()
+	return response.Header.Get("Cache-Control") == "no-store"
 }
 
 func TestHistoryNoStoreRejectsLateHeader(t *testing.T) {
