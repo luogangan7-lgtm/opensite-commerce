@@ -261,7 +261,7 @@ export function scopeInputs(scope: RendererScope, root = process.cwd()): string[
     'scripts/frontend/baseline-provenance.ts', 'scripts/frontend/scoped-inputs.ts', 'scripts/frontend/update-baselines.ts'];
   const storefrontConfig = ['web/storefront/package.json', 'web/storefront/tsconfig.json', 'web/storefront/astro.config.mjs'];
   const publicPages = ['index.astro', '[...slug].astro', 'products/index.astro', 'products/[slug].astro', '404.astro', '502.astro'];
-  const commercePages = ['cart.astro', 'checkout.astro', 'account.astro', 'account/orders.astro', 'customer/verify.astro', 'order-complete.astro', 'purchase/api/[...operation].ts', 'products/[slug].astro'];
+  const commercePages = ['cart.astro', 'checkout.astro', 'account.astro', 'account/orders.astro', 'order-complete.astro', 'purchase/api/[...operation].ts', 'products/[slug].astro'];
   // Both storefront fixtures build the real API and apply every migration. Keep this non-TS harness
   // conservative across runtime Go sources and SQL: later CMS function overrides need invalidation too.
   const reader = ['tests/fixtures/storefront_seed.sql', 'scripts/start_storefront_api_e2e.sh', 'scripts/seed_storefront.sh',
