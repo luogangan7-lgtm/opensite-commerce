@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "mobile/storefront-commerce-account-real-signed-in.png",
   "scope": "storefront-commerce",
-  "sourceFingerprint": "b312dc84c4d7b85bc78b0e74943e4813308fb79a4173431a031901e86c796c43",
+  "sourceFingerprint": "4c9cbfa68a5a583a9d0dc92613a8e5cfa456d7b01e92a4307c25035fd1dc3617",
   "pngSha256": "e1233a7a44c94b083b2ad3a44551c0b8e59421699b10abddb9e69f734c2fd798",
   "scopeSnapshots": [
     "desktop/storefront-commerce-account-real-disabled.png",
@@ -90,8 +90,8 @@
     "mobile/storefront-commerce-verification-ready.png",
     "mobile/storefront-commerce-verification-success.png"
   ],
-  "sourceSha": "3593809bf32e03a7d62314d32e63b9340f645d14",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40315796776",
+  "sourceSha": "e6e11591074ac5a458027ffb09afb3039d52b450",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40322099527",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
