@@ -989,8 +989,9 @@ It authorizes an isolated CI smoke design, not production enablement.
    order. Assert the exact payable/received/refunded amount and USD currency.
    Both journals balance; reconciliation is clean. Re-feeding the same events
    creates zero new journals. Any failure after payment still attempts the refund
-   and explicitly reports its outcome; pending or unknown outcomes require R
-   below, never a no-effect claim. Live receipts are owner-approved **run IDs
+   and explicitly reports its outcome; pending, unknown or failed/canceled refunds
+   require R below, never a no-effect claim or closure before reimbursement is
+   verified. Live receipts are owner-approved **run IDs
    bound to source SHA**; offline green is not live acceptance. Design, live A/B
    and production evidence remain separate; live acceptance is **NOT_RUN** until
    those receipts exist. This docs-only card adds no adapter, workflow or gate.
@@ -1010,33 +1011,68 @@ It authorizes an isolated CI smoke design, not production enablement.
    | Payment succeeds, including between last poll and void | Ingest capture once and issue/recover the idempotent full refund through Payments; only confirmed refund success is refunded. |
    | Payment processing or result unknown | Report `PENDING`, exit non-zero and retain the original smoke run ID for R; never record no-effect or success. |
    | Payment failed/canceled with verified terminal Invoice/payment state | Record the explicit terminal state; do not create a capture/refund or claim the successful Phase B journey. |
-   | Refund pending or network outcome unknown | Reconcile the existing refund by provider state and the same idempotency key; report `PENDING` and exit non-zero until terminal. A failed refund is reported as failure, never refunded. |
+   | Refund pending or network outcome unknown | Reconcile the existing refund by provider state and the same attempt's idempotency key; report `PENDING` and exit non-zero. Never create a replacement while pending or unknown. |
+   | Refund failed/canceled after a succeeded charge | Report `REFUND_UNRESOLVED` loudly, exit non-zero and state **owner action needed** in the summary; refund failure is not terminal for the succeeded charge and never permits closure. |
 
    Add `workflow_dispatch` input `phase=R` (reconcile) with required input
    `smoke_run_id`, under the **same main-only Environment and per-run owner
-   approval**. This input names the original A/B run, not R's new workflow run ID.
+   approval**. R also accepts optional owner-supplied integer `refund_attempt >= 2`;
+   reject invalid values. This is explicit authorization for that replacement
+   attempt, not an automatic retry counter. `smoke_run_id` names the original A/B
+   run, not R's new workflow run ID.
    Using only the restricted key, find the Invoice and associated PaymentIntent
    by metadata `osc_smoke=<run_id>`; bind and verify that metadata during B setup,
    before sending the payable invoice. Recheck account, live mode, phase, object
    association, amount and currency; missing, ambiguous or mismatched objects fail
    closed. Recover authoritative objects directly and via authenticated Events;
    metadata is a locator, not payment proof. R creates no Invoice or new payment.
-   If succeeded and not yet refunded, R issues the idempotent full refund through
-   Payments using a key derived from the **original run ID**, shared with B; if
-   already refunded, report that terminal state without another refund. Look up
-   existing refunds before retrying an unknown request; do not assume indefinite
-   provider idempotency retention. If failed/canceled, record terminal state; if
-   still processing, report `PENDING` and exit non-zero so the owner reruns R later.
+   Distinguish payment failure/cancellation from refund failure/cancellation. For
+   a succeeded PaymentIntent, R first **lists all its refunds using the restricted
+   key**, completing pagination; incomplete/unknown history fails closed. If any
+   refund succeeded, report `REFUNDED` and never refund again; full reimbursement
+   must still be verified before closure. If none succeeded and any is pending,
+   report `PENDING`, exit non-zero and create no refund. Other nonterminal/unknown
+   refund states also fail closed with `PENDING` and no new refund.
+   If no refund exists, issue/recover the original full-refund operation through
+   Payments with the **original run ID** key shared with B (attempt 1). If existing
+   refunds are **all failed/canceled**, report `REFUND_UNRESOLVED` with non-zero exit
+   and owner-action summary; create no new refund without `refund_attempt`.
+   Only in that all-failed/canceled case may an explicitly supplied attempt create
+   a replacement through Payments, with an idempotency key derived from
+   **(original run ID, refund_attempt)**. Each attempt is a distinct owner-authorized
+   operation; repeats of the same attempt recover its existing operation/refund
+   and remain idempotent, never creating a duplicate even after key retention
+   expires. Bind the attempt identity in provider metadata for runner-loss recovery;
+   a failed/canceled same attempt remains unresolved, not a new operation.
+   Reconcile existing refunds before any write and cap total refunded amount at
+   the captured amount, never over-refund; retain existing Payments amount/lock
+   invariants. Poll a newly authorized refund and apply the same success, pending
+   and unresolved rules. Never increment attempts automatically.
+   If the **payment** failed/canceled, record its verified terminal state; if still
+   processing, report `PENDING` and exit non-zero for owner re-entry later.
    R also applies the open-Invoice void and pending-refund rules above. Rebuild
    the isolated ephemeral DB through the existing Payments ingestion functions
    when needed; never depend on the killed runner's files/DB or touch production.
    Record the original smoke run ID, R run IDs, source SHAs and allowlisted state
    receipts so unresolved work remains visible without exposing payment links.
 
+   If Stripe cannot refund (for example, a closed card), the fallback is **owner
+   manual reimbursement handling in the Stripe Dashboard**, arranging alternative
+   reimbursement when needed. Agents never execute it. Record
+   `REFUND_UNRESOLVED_MANUAL`, exit non-zero and summarize **owner action needed**;
+   the smoke never claims success for this fallback or fabricates a Stripe refund
+   or journal. Keep the case open until the owner verifies reimbursement and
+   records its evidence; manual resolution does not pass the Phase B/R smoke.
+
    Offline fake-Stripe regressions must cover **open→void; paid→refund;
    processing→later succeeded→R refunds once; payment between last poll and void;
-   refund pending/network timeout; runner killed then R re-entry**. Across B/R
-   retries assert exactly one provider capture and one full refund on the paid
+   refund pending/network timeout; runner killed then R re-entry**. Also require
+   **failed refund → `REFUND_UNRESOLVED`; R without attempt → no new refund;
+   R with attempt=2 → exactly one new refund; R repeated with the same attempt →
+   no duplicate; succeeded refund present → no new refund; pending present → no
+   new refund**. Cover canceled refunds, owner-action/non-zero outputs and the
+   captured-amount cap as negative cases. Across B/R retries assert exactly one
+   provider capture and one successful full refund on the paid
    journey, one journal per financial fact per reconstructed DB and zero extra
    journals on replay. Canary URL/email checks cover all these public outputs.
    Implementation CI must retain failing-test and repaired run IDs plus mutation
@@ -1047,7 +1083,9 @@ It authorizes an isolated CI smoke design, not production enablement.
    implementation must pin/verify its API version): [create Invoice](https://docs.stripe.com/api/invoices/create),
    [send Invoice](https://docs.stripe.com/api/invoices/send),
    [void Invoice](https://docs.stripe.com/api/invoices/void) and
-   [create refund](https://docs.stripe.com/api/refunds/create).
+   [create refund](https://docs.stripe.com/api/refunds/create),
+   [idempotent requests](https://docs.stripe.com/api/idempotent_requests) and
+   [failed refunds / alternative reimbursement](https://docs.stripe.com/refunds#failed-refunds).
 
 ### 修订后的三行 PR 序列
 
