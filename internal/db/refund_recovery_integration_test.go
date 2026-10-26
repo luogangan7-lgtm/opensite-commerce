@@ -258,6 +258,64 @@ func TestRefundCaseQueuedRejectionRetainsEveryDelivery(t *testing.T) {
 	}
 }
 
+func TestRefundCaseLegacyQueuedRejectionRetainsPrimaryAndAlias(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	// Upgraded data retains the Inbox hash but has neither a refund ID nor a
+	// primary delivery binding. An alias may already reference the old fact.
+	err := p.run(p.f.ctx, p.account, func(ctx context.Context, tx pgx.Tx, tenant string, _ time.Time) error {
+		q := db.New(tx)
+		primary := mustPGUUID(t, uuid.Nil.String())
+		for n, event := range []string{"legacy-pending", "legacy-alias"} {
+			hash := sha256.Sum256([]byte(event))
+			inbox, err := q.AdmitPaymentInbox(ctx, db.AdmitPaymentInboxParams{Account: p.account, EventID: event, PayloadHash: hash[:]})
+			if err != nil {
+				return err
+			}
+			if n == 0 {
+				primary = inbox
+				if err := q.InsertPaymentEvent(ctx, db.InsertPaymentEventParams{TenantID: mustPGUUID(t, tenant), ID: inbox, ProviderAccountID: p.account, ProviderRef: p.start.Payment.ProviderRef, EventKey: "legacy-pending", ClaimedOrderID: mustPGUUID(t, p.start.OrderID), OrderVersion: p.start.OrderVersion, Status: string(payment.StatusPartiallyRefunded), AmountMinor: 1, Currency: p.start.Currency}); err != nil {
+					return err
+				}
+			} else if err := q.BindPaymentDelivery(ctx, db.BindPaymentDeliveryParams{TenantID: mustPGUUID(t, tenant), ID: inbox, PaymentEventID: primary}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.receive(t, "draining-capture", payment.StatusCaptured, p.start.AmountMinor)
+	before := p.witness(t)
+	if before.refunded != 0 || before.checkout.journals != 1 || before.checkout.cash != p.start.AmountMinor || before.checkout.reserved != 0 {
+		t.Fatalf("legacy rejected refund changed money/reservation: %+v", before)
+	}
+	assertRetained := func() {
+		t.Helper()
+		if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+			var failed, retained, cases int
+			err := tx.QueryRow(ctx, `SELECT count(*),count(c.id),count(DISTINCT c.id)
+ FROM app.webhook_inbox i LEFT JOIN app.payment_refund_case_deliveries d ON (d.tenant_id,d.inbox_id)=(i.tenant_id,i.id)
+ LEFT JOIN app.payment_refund_cases c ON (c.tenant_id,c.id)=(d.tenant_id,d.case_id)
+  AND c.provider_refund_id IS NULL AND c.case_key='event:'||i.provider_event_id
+  AND c.reason='unmatched_refund' AND c.evidence_hash=i.payload_hash AND c.provider_ref=$2
+ WHERE i.tenant_id=$1 AND i.provider_event_id IN('legacy-pending','legacy-alias') AND i.status='failed'`, p.f.tenant, p.start.Payment.ProviderRef).Scan(&failed, &retained, &cases)
+			if err == nil && (failed != 2 || retained != 2 || cases != 2) {
+				return fmt.Errorf("FIX379_LEGACY_CASE_RED failed=%d retained=%d cases=%d", failed, retained, cases)
+			}
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertRetained()
+	p.receive(t, "draining-capture", payment.StatusCaptured, p.start.AmountMinor)
+	assertRetained()
+	if after := p.witness(t); after != before {
+		t.Fatalf("legacy rejection replay changed money/reservation: before=%+v after=%+v", before, after)
+	}
+}
+
 func TestRefundCaseUnboundDeliveriesResolveOneTerminal(t *testing.T) {
 	p := newPaymentFactFixture(t)
 	p.receive(t, "capture", payment.StatusCaptured, p.start.AmountMinor)
