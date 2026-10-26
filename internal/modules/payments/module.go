@@ -261,6 +261,11 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 			if e = q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: r.ID, Success: done}); e != nil {
 				return e
 			}
+			// Legacy facts predate delivery bindings. Include their primary Inbox
+			// in the same evidence-preserving path as every contributing alias.
+			if e = q.BindPaymentDelivery(ctx, db.BindPaymentDeliveryParams{TenantID: r.TenantID, ID: r.ID, PaymentEventID: r.ID}); e != nil {
+				return e
+			}
 			aliases, e := q.ListPaymentDeliveries(ctx, db.ListPaymentDeliveriesParams{TenantID: r.TenantID, PaymentEventID: r.ID})
 			if e != nil {
 				return e
@@ -269,11 +274,11 @@ func (m *Module) receive(ctx context.Context, raw []byte, in envelope, stamp int
 				if e = q.FinishPaymentInbox(ctx, db.FinishPaymentInboxParams{ID: alias.ID, Success: done}); e != nil {
 					return e
 				}
-				if code.Valid && r.ProviderRefundID.Valid {
+				if code.Valid {
 					// A different incoming event may drain this queued refund. Its
 					// aliases retain their own immutable evidence, never that event's.
 					fact := envelope{AccountID: r.ProviderAccountID, ProviderRef: r.ProviderRef,
-						RefundID: r.ProviderRefundID.String, EventID: alias.ProviderEventID}
+						RefundID: r.ProviderRefundID.String, EventID: alias.ProviderEventID, Status: payment.PaymentStatus(r.Status)}
 					if e = retainRefundCase(ctx, q, fact, [32]byte(alias.PayloadHash), "unmatched_refund"); e != nil {
 						return e
 					}
