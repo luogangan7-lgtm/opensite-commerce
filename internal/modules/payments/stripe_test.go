@@ -21,7 +21,12 @@ import (
 
 type stripeTransport func(*http.Request) (*http.Response, error)
 
-func (f stripeTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+func (f stripeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.Body != nil {
+		defer r.Body.Close()
+	}
+	return f(r)
+}
 func stripeTestConfig(t *testing.T) Config {
 	t.Helper()
 	t.Setenv("OPENSITE_ENVIRONMENT", "test")

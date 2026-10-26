@@ -12,6 +12,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
+	ledgercontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns"
+
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	returnscontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
@@ -169,5 +173,52 @@ func TestRefundRejectedThenCorrected(t *testing.T) {
 	snapshot()
 	if status != "refunded" || confirmed != ret.RefundMinor || journals != 1 || len(f.payments.Events()) != 3 || f.stock(t) != 18 {
 		t.Fatalf("corrected refund did not conserve effects: status=%s confirmed=%d journals=%d events=%d stock=%d", status, confirmed, journals, len(f.payments.Events()), f.stock(t))
+	}
+}
+
+// A valid UUID with no matching exact journal must fail the real DB receipt check.
+type mismatchedReturnJournal struct { *failingRefundJournal }
+func (mismatchedReturnJournal) PostReturnRefund(context.Context, pgx.Tx, string, string, string, ledgercontract.Transaction) (string, error) {
+	return uuid.NewString(), nil
+}
+func TestReturnsPGTrustedLedgerFailureRecovery(t *testing.T) {
+	for _, failure := range []string{"account binding", "exact journal"} {
+		t.Run(failure, func(t *testing.T) {
+			f := newFulfillmentFixture(t)
+			var ret returnscontract.Return
+			if err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				var err error
+				ret, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "trusted-ledger-request", Kind: returnscontract.UnshippedCancel, Reason: "trusted error status", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 1}}})
+				return err
+			}); err != nil { t.Fatal(err) }
+			input := returnscontract.RefundInput{ReturnID: ret.ID, ExpectedVersion: ret.OrderVersion, IdempotencyKey: "trusted-ledger-refund"}
+			setAccountStatus := func(status string) {
+				t.Helper()
+				if err := f.maint.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+					_, err := tx.Exec(ctx, "UPDATE app.ledger_accounts SET status=$2 WHERE tenant_id=$1 AND code='sales'", f.tenant, status)
+					return err
+				}); err != nil { t.Fatal(err) }
+			}
+			if failure == "account binding" {
+				setAccountStatus("inactive")
+				if _, err := f.returns.Refund(f.ctx, f.tenant, input); !errors.Is(err, returnscontract.ErrUnavailable) { t.Fatalf("trusted account failure must be unavailable: %v", err) }
+				if len(f.payments.Events()) != 2 { t.Fatal("invalid trusted account reached provider") }
+				setAccountStatus("active")
+			} else {
+				f.journal.fail = true
+				if _, err := f.returns.Refund(f.ctx, f.tenant, input); !errors.Is(err, returnscontract.ErrUnavailable) { t.Fatalf("post-PSP failure must be unavailable: %v", err) }
+				f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Ledger: mismatchedReturnJournal{f.journal}})
+				if _, err := f.returns.Refund(f.ctx, f.tenant, input); !errors.Is(err, returnscontract.ErrUnavailable) { t.Fatalf("exact DB journal mismatch must be unavailable: %v", err) }
+				if len(f.payments.Events()) != 3 { t.Fatal("journal failure repeated provider refund") }
+				f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Ledger: f.journal})
+			}
+			out, err := f.returns.Refund(f.ctx, f.tenant, input)
+			if err != nil || out.Status != "refunded" || len(f.payments.Events()) != 3 { t.Fatalf("trusted posting same-key recovery: %+v %v", out, err) }
+			if _, err := f.returns.Refund(f.ctx, f.tenant, input); err != nil || len(f.payments.Events()) != 3 { t.Fatalf("completed retry repeated refund: %v", err) }
+			var journals int
+			if err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, "SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=$1 AND source_type='return' AND source_id=$2", f.tenant, ret.ID).Scan(&journals)
+			}); err != nil || journals != 1 { t.Fatalf("same-key recovery duplicated journal: count=%d err=%v", journals, err) }
+		})
 	}
 }

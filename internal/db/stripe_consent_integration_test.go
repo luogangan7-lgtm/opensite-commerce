@@ -8,10 +8,9 @@ package db_test
 import (
 	"context"
 	"errors"
-	"fmt"
+	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"testing"
 
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
@@ -92,5 +91,5 @@ func TestStripePGConsentSourceGuardAtAcceptedCapture(t *testing.T) {
 		return denied
 	}
 	_, err := a.f.service.Confirm(checkoutRequestContext(a.f.ctx), a.f.event(adopted, payment.StatusAuthorized))
-	if err == nil || adoptCalls != 1 || a.f.provider.captures.Load() != 0 { t.Fatal(fmt.Sprintf("AdoptOrder witness did not reach capture admission: calls=%d captures=%d err=%v", adoptCalls, a.f.provider.captures.Load(), err)) }
+	if err == nil || adoptCalls != 1 || a.f.provider.captures.Load() != 0 { t.Fatalf("AdoptOrder witness did not reach capture admission: calls=%d captures=%d err=%v", adoptCalls, a.f.provider.captures.Load(), err) }
 }
