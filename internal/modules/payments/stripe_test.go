@@ -21,7 +21,12 @@ import (
 
 type stripeTransport func(*http.Request) (*http.Response, error)
 
-func (f stripeTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+func (f stripeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.Body != nil {
+		defer r.Body.Close()
+	}
+	return f(r)
+}
 func stripeTestConfig(t *testing.T) Config {
 	t.Helper()
 	t.Setenv("OPENSITE_ENVIRONMENT", "test")
@@ -187,6 +192,34 @@ func TestStripeOutboundAccountAuthority(t *testing.T) {
 					t.Fatalf("%s: mapping=%s runs=%d HTTP=%d", op, mapping, runs, calls)
 				}
 			}
+		})
+	}
+}
+
+// RoundTrippers own request bodies on every outcome, including transport errors.
+type stripeCloseCounter struct { closes int }
+func (*stripeCloseCounter) Read([]byte) (int, error) { return 0, io.EOF }
+func (b *stripeCloseCounter) Close() error { b.closes++; return nil }
+func TestStripeTransportClosesRequestBody(t *testing.T) {
+	for _, outcome := range []string{"success", "http402", "transport error", "nil body"} {
+		t.Run(outcome, func(t *testing.T) {
+			body := &stripeCloseCounter{}
+			r, err := http.NewRequest(http.MethodPost, "https://stripe.invalid", body)
+			if err != nil { t.Fatal(err) }
+			if outcome == "nil body" { r.Body = nil }
+			transport := stripeTransport(func(req *http.Request) (*http.Response, error) {
+				if req != r { t.Fatal("request replaced") }
+				if outcome == "transport error" { return nil, errors.New("isolated transport failure") }
+				status := http.StatusOK
+				if outcome == "http402" { status = http.StatusPaymentRequired }
+				return &http.Response{StatusCode: status, Body: http.NoBody}, nil
+			})
+			response, err := transport.RoundTrip(r)
+			if (err != nil) != (outcome == "transport error") { t.Fatalf("outcome: %v", err) }
+			if response != nil { _ = response.Body.Close() }
+			want := 1
+			if outcome == "nil body" { want = 0 }
+			if body.closes != want { t.Fatalf("STRIPE_BODY_CLOSE_RED: closes=%d want=%d", body.closes, want) }
 		})
 	}
 }

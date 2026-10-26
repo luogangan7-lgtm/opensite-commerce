@@ -381,12 +381,22 @@ func TestPaymentsFactReadFailureIsBounded(t *testing.T) {
 
 func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	p := newPaymentFactFixture(t)
+	forbidCommands := p.f.provider.before
 	p.f.provider.before = nil
 	r := payment.CreatePaymentIntent{TenantID: p.f.tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}, IdempotencyKey: "capture-for-return"}
 	if _, err := p.f.provider.Capture(p.f.ctx, payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: p.start.Payment.ProviderRef}); err != nil {
 		t.Fatal(err)
 	}
+	p.f.provider.before = forbidCommands
+	captures, cancels := p.f.provider.captures.Load(), p.f.provider.cancels.Load()
+	assertNoCommands := func() {
+		t.Helper()
+		if p.providerCommands.Load() != 0 || p.f.provider.captures.Load() != captures || p.f.provider.cancels.Load() != cancels {
+			t.Fatalf("RETURNS_FACT_COMMAND_RED: commands=%d captures=%d/%d cancels=%d/%d", p.providerCommands.Load(), p.f.provider.captures.Load(), captures, p.f.provider.cancels.Load(), cancels)
+		}
+	}
 	p.receive(t, "capture-for-return", payment.StatusCaptured, p.start.AmountMinor)
+	assertNoCommands()
 	var line string
 	var version int64
 	var accounts returnscontract.RefundAccounts
@@ -415,9 +425,12 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	}
 	input := returnscontract.RefundInput{ReturnID: receipt.ID, ExpectedVersion: receipt.OrderVersion, IdempotencyKey: "single-money"}
 	crash := errors.New("abort after provider success before commit")
+	p.f.provider.before = nil // Only the explicit Returns command may issue the refund.
 	if _, err := s.(returnscontract.RefundCompleter).RefundWithCompletion(p.f.ctx, p.f.tenant, input, func(context.Context, pgx.Tx, returnscontract.Return) error { return crash }); !errors.Is(err, crash) {
 		t.Fatalf("provider-success crash was not rolled back: %v", err)
 	}
+	p.f.provider.before = forbidCommands
+	assertNoCommands()
 	events := p.f.provider.fake.Events()
 	fact := events[len(events)-1]
 	var early map[string]any
@@ -427,6 +440,8 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	if earlyReceipt, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err != nil || earlyReceipt.Status == "processed" {
 		t.Fatalf("early webhook must remain pending before durable binding: %+v %v", earlyReceipt, err)
 	}
+	assertNoCommands()
+	p.f.provider.before = nil // Retry the same durable PSP intent after the injected rollback.
 	completed, err := s.Refund(p.f.ctx, p.f.tenant, input)
 	if err != nil {
 		t.Fatal(err)
@@ -434,6 +449,8 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	if replay, err := s.Refund(p.f.ctx, p.f.tenant, input); err != nil || !reflect.DeepEqual(replay, completed) {
 		t.Fatalf("completed RMA replay changed receipt: %+v %v", replay, err)
 	}
+	p.f.provider.before = forbidCommands
+	assertNoCommands()
 	for _, delivery := range []string{"rma-created", "rma-updated", "rma-created"} {
 		var body map[string]any
 		_ = json.Unmarshal(p.raw(delivery, payment.StatusPartiallyRefunded, completed.RefundMinor), &body)
@@ -463,6 +480,7 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	  (SELECT refunded_minor FROM app.orders WHERE tenant_id=$1 AND id=$2),
 	  (SELECT count(*) FROM app.payment_return_refunds WHERE tenant_id=$1 AND return_id=$3)`, p.f.tenant, p.start.OrderID, receipt.ID).Scan(&journals, &refunded, &bindings)
 	})
+	assertNoCommands()
 	w := p.f.witness(t, p.start.OrderID)
 	var identityConflict *apperrors.Error
 	if !errors.As(identityErr, &identityConflict) || identityConflict.Status != 409 || identityConflict.Code != "payment_conflict" || identityReceipt.Status != "rejected" || quarantined != 1 || unidentified != 0 {

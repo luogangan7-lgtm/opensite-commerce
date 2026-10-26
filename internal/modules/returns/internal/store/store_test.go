@@ -34,3 +34,20 @@ func TestMapErrorIdempotencyConstraint(t *testing.T) {
 		})
 	}
 }
+
+func TestMapErrorTrustedLedgerFailures(t *testing.T) {
+	for _, tt := range []struct { code, message string; want error }{
+		{"23514", "FULFILLMENT_LEDGER_ACCOUNT_CONFIG", contract.ErrUnavailable},
+		{"23514", "FULFILLMENT_LEDGER_RECEIPT", contract.ErrUnavailable},
+		{"23514", "FULFILLMENT_REFUND_BUDGET", contract.ErrConflict},
+		{"23514", "prefix FULFILLMENT_LEDGER_RECEIPT suffix", contract.ErrConflict},
+		{"23505", "FULFILLMENT_LEDGER_ACCOUNT_CONFIG", contract.ErrConflict},
+		{"40001", "serialization", contract.ErrRetry},
+		{"40P01", "deadlock", contract.ErrRetry},
+	} {
+		t.Run(tt.code+"/"+tt.message, func(t *testing.T) {
+			err := fmt.Errorf("posting: %w", &pgxadapter.PgError{Code: tt.code, Message: tt.message})
+			if got := MapError(err); !errors.Is(got, tt.want) { t.Fatalf("RETURNS_LEDGER_STATUS_RED: got=%v want=%v", got, tt.want) }
+		})
+	}
+}
