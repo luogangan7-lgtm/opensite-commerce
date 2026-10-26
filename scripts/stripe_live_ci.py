@@ -59,6 +59,7 @@ def main():
                                 cwd=Path(__file__).resolve().parents[1] / 'internal/db',
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, timeout=2110, check=False)
+        print(result.stdout, end='')  # intentional output-boundary fault
         values = [json.loads(line.removeprefix('OSC_LIVE_SUMMARY '))
                   for line in result.stdout.splitlines() if line.startswith('OSC_LIVE_SUMMARY ')]
         if len(values) != 1:

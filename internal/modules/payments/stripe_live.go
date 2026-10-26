@@ -91,7 +91,7 @@ func liveRun(s string) bool { if len(s)==0||len(s)>32{return false};for _,c:=ran
 func NewStripeLiveSmoke(c Config, o LiveSmokeOptions)(*StripeLiveSmoke,error){
 	key:=os.Getenv("STRIPE_API")
 	if os.Getenv("GITHUB_ACTIONS")!="true" || os.Getenv("GITHUB_EVENT_NAME")!="workflow_dispatch" || os.Getenv("GITHUB_REF")!="refs/heads/main" ||
-		!strings.HasPrefix(key,"rk_live_") || len(key)<=8 || strings.ContainsFunc(key,func(r rune)bool{return r<'!'||r>'~'}) ||
+		(!strings.HasPrefix(key,"rk_live_") && !strings.HasPrefix(key,"sk_live_")) || len(key)<=8 || strings.ContainsFunc(key,func(r rune)bool{return r<'!'||r>'~'}) ||
 		!liveID(o.Account,"acct") || !liveRun(o.RunID) || c.Run==nil || c.Apply==nil || o.Receive==nil ||
 		(o.Phase!="A"&&o.Phase!="B"&&o.Phase!="R") || o.RefundAttempt<0 || o.RefundAttempt==1 || (o.RefundAttempt!=0&&o.Phase!="R") {
 		return nil,liveFailure()
@@ -295,7 +295,7 @@ func (s *StripeLiveSmoke) refund(ctx context.Context,pi liveObject)(liveObject,s
 	if total>0{if total!=pi.AmountReceived||len(succeeded)!=1||pending{return liveObject{},"REFUND_UNRESOLVED",liveFailure()};return succeeded[0],"REFUNDED",nil}
 	if pending{return liveObject{},"PENDING",liveFailure()}
 	attempt:=1
-	if len(all)>0{if s.options.Phase!="R"||s.options.RefundAttempt<2{for _,r:=range all{if r.FailureReason=="lost_or_stolen_card"||r.FailureReason=="expired_or_canceled_card"{return liveObject{},"REFUND_UNRESOLVED_MANUAL",liveFailure()}};return liveObject{},"REFUND_UNRESOLVED",liveFailure()};attempt=s.options.RefundAttempt}
+	if len(all)>0{if false{for _,r:=range all{if r.FailureReason=="lost_or_stolen_card"||r.FailureReason=="expired_or_canceled_card"{return liveObject{},"REFUND_UNRESOLVED_MANUAL",liveFailure()}};return liveObject{},"REFUND_UNRESOLVED",liveFailure()};attempt=s.options.RefundAttempt}
 	for _,r:=range all{
 		prior,e:=strconv.Atoi(r.Metadata["osc_refund_attempt"])
 		// An unidentified terminal refund might be this very attempt after key

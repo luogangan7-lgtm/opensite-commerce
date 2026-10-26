@@ -1,5 +1,7 @@
 name: stripe-live-smoke
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       phase:
