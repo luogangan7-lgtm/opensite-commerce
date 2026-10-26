@@ -70,6 +70,12 @@ FK witnesses survive. Nonfinancial parent payloads are scrubbed; only referenced
 IDs/relationships remain original. Settlement currency remains solely because
 retained financial composite FKs require it. No retention duration is chosen.
 
+Nullable financial receipt cells explicitly set `preserve_null: true`: leave
+an original null unchanged and replace only an existing value. In particular,
+registered orders must keep `guest_contact IS NULL`, and pending Checkout
+receipts must not invent a nonnull start/final result. This flag is allowed only
+for constant/row-ID scrubs, not retention or artifact deletion.
+
 Erasure strategies are declarative, never executable SQL from JSON:
 
 | Strategy | Exact owner-handler obligation |

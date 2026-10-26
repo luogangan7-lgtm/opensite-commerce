@@ -681,6 +681,12 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
             "media.originals", "media.staging", "datarights.customer_export", "datarights.export_temp",
         })
         self.assertEqual(contract["artifacts"]["media.originals"]["prerequisite"], "MDEL-21a")
+        self.assertEqual(set(contract["fields"]["payment_refund_terminals.order_target"]["values"]),
+                         set(contract["fields"]["orders.state"]["values"]),
+                         "Refund terminals preserve an existing Orders state or its quantity-derived compensation target")
+        for name in ("orders.guest_contact", "checkout_sessions.start_result", "checkout_sessions.final_result",
+                     "checkout_attempts.result", "returns.creation_response", "returns.receive_response", "returns.receive_key"):
+            self.assertTrue(contract["fields"][name]["preserve_null"], name)
 
 
 if __name__ == "__main__":

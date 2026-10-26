@@ -195,7 +195,7 @@ def artifact_catalog(root):
 def merchant_policy(key, policy, module, registry, handlers, artifact=False):
     require(isinstance(policy, dict), "MERCHANT_POLICY_MISSING", key)
     allowed = {"action", "strategy", "reason", "handler", "ownership", "retained_kind",
-               "value_type", "values", "value", "source", "paths", "guards", "prerequisite"}
+               "value_type", "values", "value", "source", "paths", "guards", "prerequisite", "preserve_null"}
     require(not policy.keys() - allowed, "MERCHANT_POLICY_UNKNOWN", key)
     require(policy.get("action") in {"retain", "erase"}, "MERCHANT_ACTION_INVALID", key)
     require(isinstance(policy.get("reason"), str) and policy["reason"].strip(), "MERCHANT_REASON_MISSING", key)
@@ -228,6 +228,9 @@ def merchant_policy(key, policy, module, registry, handlers, artifact=False):
                 "MERCHANT_QUEUE_AUTHORITY", key)
     else:
         require(False, "MERCHANT_OWNERSHIP_UNKNOWN", key)
+    if "preserve_null" in policy:
+        require(type(policy["preserve_null"]) is bool and policy["action"] == "erase" and
+                strategy in {"constant", "row_id_placeholder"}, "MERCHANT_NULL_POLICY", key)
     if artifact:
         require(policy["action"] == "erase" and strategy == "unlink_tenant_namespace", "MERCHANT_ARTIFACT_POLICY", key)
     if policy["action"] == "retain":
