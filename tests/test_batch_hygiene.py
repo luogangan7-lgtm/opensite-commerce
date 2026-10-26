@@ -672,7 +672,10 @@ class ArtifactRerunSafety(unittest.TestCase):
             self.assertIn(self.ATTEMPT_TOKEN, template,
                           f'{job_name}: artifact {template!r} is re-uploaded unchanged '
                           'on attempt 2 and the immutable-name upload fails')
-            for lane in lanes:
+            # A matrix job uploads once per lane only when the name is lane-scoped;
+            # a step gated to one lane (e.g. the offline handoff) uploads once.
+            expansions = lanes if self.LANE_TOKEN in template else [None]
+            for lane in expansions:
                 for attempt in (1, 2):
                     name = self.render(template, attempt, lane)
                     self.assertNotIn(
