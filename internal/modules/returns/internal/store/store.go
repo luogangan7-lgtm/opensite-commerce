@@ -161,7 +161,7 @@ func MapError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, contract.ErrRetry) || errors.Is(err, contract.ErrUnavailable) {
 		return err
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -172,6 +172,8 @@ func MapError(err error) error {
 		return contract.ErrUnavailable
 	}
 	switch {
+	case pg.Code == "23514" && (pg.Message == "FULFILLMENT_LEDGER_ACCOUNT_CONFIG" || pg.Message == "FULFILLMENT_LEDGER_RECEIPT"):
+		return contract.ErrUnavailable
 	case strings.Contains(pg.Message, "KEY_REUSED"):
 		return contract.ErrKeyReused
 	case pg.Code == "23505" && pg.SchemaName == "app" && pg.TableName == "returns" && (pg.ConstraintName == "returns_tenant_id_creation_key_key" || pg.ConstraintName == "returns_tenant_id_receive_key_key" || pg.ConstraintName == "returns_tenant_id_refund_key_key"):

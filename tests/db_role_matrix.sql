@@ -30,7 +30,7 @@ DECLARE
   'carts','cart_lines',
   'orders','order_lines','order_adjustments','shipments','shipment_lines','returns','return_lines','notification_deliveries','notification_redrive_requests','quotes','quote_lines','quote_approvals','quote_conversions',
   'auth_account_attempts','auth_login_attempts','known_devices','draft_page_media','checkout_sessions','checkout_attempts','payment_provider_accounts','payment_events','payment_event_deliveries','payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals','payment_refund_cases','payment_refund_case_deliveries','payment_refund_case_resolutions',
-  'site_release_skus','storefront_serving','serving_invalidations','data_rights_exports','data_rights_erasures'];
+  'site_release_skus','storefront_serving','serving_invalidations','data_rights_exports','data_rights_erasures','data_rights_erased_orders'];
  role_name text;
  r record;
  t record;
@@ -76,7 +76,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals','payment_refund_cases','payment_refund_case_deliveries','payment_refund_case_resolutions','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals','payment_refund_cases','payment_refund_case_deliveries','payment_refund_case_resolutions','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures','data_rights_erased_orders']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='SELECT' AND t.relname='customer_guest_order_links' THEN
@@ -931,7 +931,7 @@ SELECT 'PASS: notifications exact column/function privileges and FORCE RLS' AS r
 DO $privacy_matrix$
 DECLARE
  r record; t record; a record; privilege text; expected boolean; cols text[];
- selected text[]:=ARRAY['tenants','customers','customer_addresses','buyer_company_members','orders','order_lines','carts','cart_lines','data_rights_exports','data_rights_erasures','notification_deliveries','shipments','returns','inventory_movements'];
+ selected text[]:=ARRAY['tenants','customers','customer_addresses','buyer_company_members','orders','order_lines','carts','cart_lines','data_rights_exports','data_rights_erasures','data_rights_erased_orders','notification_deliveries','shipments','returns','inventory_movements'];
  commands text[]:=ARRAY['data_rights_artifact_live','data_rights_request_export','data_rights_status','data_rights_build_export','data_rights_complete_export','data_rights_download_info','data_rights_consume_export','data_rights_erase_customer','data_rights_download_deadline','data_rights_worker_info'];
  f record; role_name text;
  private_functions text[]:=ARRAY['data_rights_receipt_owned','data_rights_context','data_rights_tax_scrub','data_rights_lock_export','data_rights_line_guard','data_rights_erasure_guard','data_rights_credential_guard','data_rights_order_customer_guard','data_rights_customer_guard','data_rights_notification_insert_guard','data_rights_notification_guard','data_rights_notification_dispatch_insert_guard','data_rights_notification_dispatch_guard','data_rights_notification_owner','data_rights_quote_scrub','data_rights_scrub_values','data_rights_email_namespace_guard','data_rights_scrub_guard','data_rights_checkout_erased_guard','data_rights_customer_orders','data_rights_fulfillment_erased_guard'];
@@ -944,7 +944,7 @@ BEGIN
  FOR t IN SELECT c.oid,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
   FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
    expected:=privilege='SELECT' AND t.relname=ANY(selected)
-    OR privilege='INSERT' AND t.relname=ANY(ARRAY['data_rights_exports','data_rights_erasures','audit_events'])
+    OR privilege='INSERT' AND t.relname=ANY(ARRAY['data_rights_exports','data_rights_erasures','data_rights_erased_orders','audit_events'])
     OR privilege='UPDATE' AND t.relname='data_rights_exports'
     OR privilege='DELETE' AND t.relname=ANY(ARRAY['customer_addresses','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links']);
    IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN
@@ -955,6 +955,7 @@ BEGIN
      IF privilege='SELECT' AND t.relname=ANY(ARRAY['customer_credentials','customer_auth_tokens','customer_sessions']) THEN cols:=ARRAY['tenant_id','customer_id'];
      ELSIF privilege='SELECT' AND t.relname='customer_guest_order_links' THEN cols:=ARRAY['tenant_id','customer_id','order_id'];
      ELSIF privilege='SELECT' AND t.relname='quotes' THEN cols:=ARRAY['tenant_id','id','accepted_by','snapshot'];
+     ELSIF privilege='SELECT' AND t.relname='quote_conversions' THEN cols:=ARRAY['tenant_id','quote_id','customer_id'];
      ELSIF privilege='SELECT' AND t.relname='checkout_sessions' THEN cols:=ARRAY['tenant_id','id','order_id','start_result','final_result'];
      ELSIF privilege='SELECT' AND t.relname='checkout_attempts' THEN cols:=ARRAY['tenant_id','event_kind','event_key','checkout_id','result'];
      ELSIF privilege='SELECT' AND t.relname='quote_lines' THEN cols:=ARRAY['tenant_id','quote_id','line_no'];

@@ -17,6 +17,7 @@ import (
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/internal/store"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 )
 
@@ -145,7 +146,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	var out contract.Return
 	err = s.config.Runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
 		if err := poster.LockReturnCheckout(ctx, tx, prepared.ID); err != nil {
-			return err
+			return store.MapError(err)
 		}
 		latest, exists, err := s.repo.LockPrepared(ctx, tx, tenant, in)
 		if err != nil {
@@ -167,7 +168,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 		}
 		journal, err := poster.PostReturnRefund(ctx, tx, prepared.ID, prepared.RefundKey, result.RefundID, posting)
 		if err != nil {
-			return err
+			return store.MapError(err)
 		}
 		if !contract.ValidID(journal) {
 			return contract.ErrUnavailable
