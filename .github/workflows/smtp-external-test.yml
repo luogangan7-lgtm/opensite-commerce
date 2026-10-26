@@ -1,0 +1,35 @@
+name: External SMTP test (owner-gated)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: smtp-external-test
+  cancel-in-progress: false
+jobs:
+  smtp-test:
+    if: github.ref == 'refs/heads/main'
+    environment: smtp-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - name: Build smoke command without SMTP credentials
+        env:
+          GOTOOLCHAIN: local
+        run: go build -o "$RUNNER_TEMP/smtp-external-test" ./cmd/smtp-external-test
+      - name: Send fake templates once (safe summary only)
+        env:
+          APP_ENV: test
+          ENVIRONMENT: test
+          SMTP_TEST_HOST: smtp.qq.com
+          SMTP_TEST_FROM: ${{ secrets.SMTP_TEST_USER }}
+          SMTP_TEST_USER: ${{ secrets.SMTP_TEST_USER }}
+          SMTP_TEST_AUTH_CODE: ${{ secrets.SMTP_TEST_AUTH_CODE }}
+          SMTP_TEST_TO: ${{ secrets.SMTP_TEST_TO }}
+        run: '"$RUNNER_TEMP/smtp-external-test"'

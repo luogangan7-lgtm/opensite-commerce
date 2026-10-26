@@ -52,9 +52,11 @@ class FoundationLanes(unittest.TestCase):
         for other in (ROOT / '.github/workflows').glob('*'):
             if other != path and other.suffix in ('.yml', '.yaml'):
                 self.assertNotIn('SMTP_TEST_', other.read_text(), 'SMTP_EXTERNAL_SECRET_ISOLATION')
-        for folder in ('cmd/server', 'cmd/worker', 'internal/bootstrap'):
+
+    def test_production_never_composes_external_smtp(self):
+        for folder in ('cmd', 'internal/bootstrap'):
             for source in (ROOT / folder).rglob('*.go'):
-                if source.name.endswith('_test.go'):
+                if source.name.endswith('_test.go') or 'smtp-external-test' in source.parts:
                     continue
                 self.assertNotIn('ExternalTestSenderFromEnv', source.read_text(),
                                  'SMTP_EXTERNAL_PRODUCTION_WIRING')

@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"encoding/base64"
 	"io"
 	"math/big"
 	"net"
@@ -44,7 +45,7 @@ func externalMessage() contract.Message {
 func TestExternalSMTPAdmissionBeforeDial(t *testing.T) {
 	for _, change := range []map[string]string{
 		{"SMTP_TEST_HOST": "evil.example"}, {"SMTP_TEST_HOST": "SMTP.QQ.COM"}, {"SMTP_TEST_HOST": "smtp.qq.com:465"},
-		{"APP_ENV": "production"}, {"ENVIRONMENT": "production"}, {"SMTP_TEST_FROM": "other@qq.com"},
+		{"APP_ENV": "production"}, {"APP_ENV": " PRODUCTION "}, {"ENVIRONMENT": "production"}, {"SMTP_TEST_FROM": "other@qq.com"},
 		{"SMTP_TEST_TO": ""}, {"SMTP_TEST_TO": "Name <allowed@example.com>"}, {"SMTP_TEST_TO": "allowed@example.com,"},
 		{"SMTP_TEST_AUTH_CODE": ""}, {"SMTP_TEST_USER": "bad\r\nuser"},
 	} {
@@ -104,6 +105,7 @@ func TestExternalSMTPProtocol(t *testing.T) {
 				if scenario == "cancel" { _, _ = io.Copy(io.Discard, conn); return }
 				tc := tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
 				if tc.Handshake() != nil { return }
+				if tc.ConnectionState().ServerName != "smtp.qq.com" { peerErr = errors.New("EXTERNAL_SNI_REQUIRED"); return }
 				r := bufio.NewReader(tc)
 				send := func(s string) { _, _ = io.WriteString(tc, s+"\r\n") }
 				send("220 fake SMTP")
@@ -113,6 +115,9 @@ func TestExternalSMTPProtocol(t *testing.T) {
 					case strings.HasPrefix(line, "EHLO"):
 						send("250-fake"); send("250 AUTH PLAIN")
 					case strings.HasPrefix(line, "AUTH PLAIN"):
+						payload := strings.TrimSpace(strings.TrimPrefix(line, "AUTH PLAIN "))
+						decoded, decodeErr := base64.StdEncoding.DecodeString(payload)
+						if decodeErr != nil || string(decoded) != "\x00owner@qq.com\x00"+externalCanary { peerErr = errors.New("EXTERNAL_TLS_AUTH_REQUIRED"); return }
 						if scenario == "auth-error" { send("535 "+externalCanary); return }; send("235 ok")
 					case strings.HasPrefix(line, "MAIL FROM:<owner@qq.com>"), strings.HasPrefix(line, "RCPT TO:<allowed@example.com>"):
 						send("250 ok")
