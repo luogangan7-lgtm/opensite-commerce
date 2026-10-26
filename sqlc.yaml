@@ -63,6 +63,7 @@ sql:
       - "migrations/pending/c19d2-finalizer_atomic_refund_compensation.sql"
       - "migrations/pending/c19d3-recovery_refund_reconciliation.sql"
       - "migrations/pending/c19dp2-completeness_refund_case_completeness.sql"
+      - "migrations/pending/b-ledger-audit_refund_resolution_identity.sql"
     queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant", "queries/pricing", "queries/catalog"]
     gen:
       go:
