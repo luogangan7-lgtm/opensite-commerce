@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"reflect"
+	"errors"
 )
 
 const tenant = "11111111-1111-4111-8111-111111111111"
@@ -72,5 +74,35 @@ func TestCleanupRemovesPrivateArtifactAndRetries(t *testing.T) {
 	p, _ := s.path(tenant, request)
 	if _, err := os.Stat(p); !os.IsNotExist(err) {
 		t.Fatal("cleanup retained private artifact", err)
+	}
+}
+
+func TestWriteSyncsNewDirectoryAncestry(t *testing.T) {
+	for _, failAt := range []string{"", ".", "data-rights", filepath.Join("data-rights", tenant)} {
+		t.Run(failAt, func(t *testing.T) {
+			var synced []string
+			failure := errors.New("directory sync failed")
+			s := Service{root: t.TempDir(), syncDir: func(_ *os.Root, name string) error {
+				synced = append(synced, name)
+				if name == failAt {
+					return failure
+				}
+				return nil
+			}}
+			err := s.write(tenant, request, []byte("private copy"))
+			if failAt != "" {
+				if !errors.Is(err, failure) {
+					t.Fatalf("sync failure at %q was lost: %v", failAt, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{".", "data-rights", filepath.Join("data-rights", tenant)}
+			if !reflect.DeepEqual(synced, want) {
+				t.Fatalf("directory durability sequence = %v, want %v", synced, want)
+			}
+		})
 	}
 }

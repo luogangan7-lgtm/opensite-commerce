@@ -9,6 +9,6 @@ const context = await readPurchaseContext(Astro.request, Astro.cookies);
 const ui = commerceCopy();
 Astro.response.headers.set('Cache-Control', 'no-store');
 ---
-<Shell title={ui.checkout} description={ui.purchaseDescription} canonical={requestCanonical(Astro)} noindex navigation={[{ label: ui.browseProducts, href: '/products' }]}>
+<Shell homeHref="/" title={ui.checkout} description={ui.purchaseDescription} canonical={requestCanonical(Astro)} noindex navigation={[{ label: ui.browseProducts, href: '/products' }]}>
   <h1>{ui.checkout}</h1><CheckoutPage context={context} client:load />
 </Shell>
