@@ -25,8 +25,13 @@ async function statusFitsVisibleTable(page:Page,caption:string,text:string){
  for(const rect of fragments){expect(rect.left).toBeGreaterThanOrEqual(region.x);expect(rect.right).toBeLessThanOrEqual(region.x+region.width);}
 }
 async function signIn(page:Page){await page.getByLabel('Email').fill('staff@example.invalid');await page.getByLabel('Password',{exact:true}).fill(crypto.randomUUID());await page.getByRole('button',{name:'Sign in',exact:true}).click();}
+/** First-visit-only POST control: proves a listener registered before navigation observes writes. */
+async function firstVisitWriteProbe(page:Page){await page.route('**/__first_visit_write',route=>route.abort());await page.addInitScript(()=>{if(sessionStorage.getItem('osc-first-visit-write')!==null)return;sessionStorage.setItem('osc-first-visit-write','1');void fetch('/__first_visit_write',{method:'POST',body:'probe'}).catch(()=>{});});}
+function recordWrites(page:Page,writes:string[],probes:string[]){page.on('request',request=>{if(['GET','HEAD','OPTIONS'].includes(request.method()))return;const entry=`${request.method()} ${request.url()}`;if(new URL(request.url()).pathname==='/__first_visit_write')probes.push(entry);else writes.push(entry);});}
 test('merchant data privacy explains support deletion without offering a write action',async({page})=>{
- await fixture(page);await page.goto(`${origin}/t/${tenant}/products`);
+ const state=await fixture(page);const writes:string[]=[],probes:string[]=[];
+ await firstVisitWriteProbe(page);recordWrites(page,writes,probes);
+ await page.goto(`${origin}/t/${tenant}/products`);
  await page.getByRole('navigation',{name:'Store navigation'}).getByRole('link',{name:'Data privacy',exact:true}).click();
  await expect(page).toHaveURL(new RegExp(`/t/${tenant}/data-privacy$`));
  await expect(page.getByRole('heading',{name:'Data privacy',exact:true})).toBeFocused();
@@ -35,9 +40,16 @@ test('merchant data privacy explains support deletion without offering a write a
  const chinese=main.getByText('如需删除店铺或客户数据，请联系支持，我们会在 30 天内处理并提供导出副本。',{exact:true});
  await expect(chinese).toBeVisible();await expect(chinese).toHaveAttribute('lang','zh-CN');
  await expect(main.getByRole('button')).toHaveCount(0);await expect(main.getByRole('form')).toHaveCount(0);
- const writes:string[]=[];page.on('request',r=>{if(!['GET','HEAD','OPTIONS'].includes(r.method()))writes.push(r.method()+' '+r.url());});
  await page.reload();await expect(main.getByRole('heading',{name:'Data privacy',exact:true})).toBeVisible();
- expect(writes).toEqual([]);await audit(page,'admin-data-privacy.png');
+ expect(probes).toHaveLength(1);expect(writes).toEqual([]);expect(state.writes).toEqual([]);await audit(page,'admin-data-privacy.png');
+});
+test('merchant data privacy direct entry observes its first navigation',async({page})=>{
+ const state=await fixture(page);const writes:string[]=[],probes:string[]=[];
+ await firstVisitWriteProbe(page);recordWrites(page,writes,probes);
+ await page.goto(`${origin}/t/${tenant}/data-privacy`);
+ await expect(page.getByRole('heading',{name:'Data privacy',exact:true})).toBeFocused();
+ await page.reload();await expect(page.getByRole('heading',{name:'Data privacy',exact:true})).toBeFocused();
+ expect(probes).toHaveLength(1);expect(writes).toEqual([]);expect(state.writes).toEqual([]);await audit(page);
 });
 test('merchant data privacy remains behind the session guard',async({page})=>{
  await fixture(page,{authenticated:false});await page.goto(`${origin}/t/${tenant}/data-privacy`);

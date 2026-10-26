@@ -50,10 +50,11 @@ func testRouter(t *testing.T, s *Service, auth httpapi.Authenticator) *httpapi.R
 	}
 	return r
 }
+
 // testResponse holds the response the client received, including frozen headers.
 type testResponse struct {
-	Code int
-	Body *bytes.Buffer
+	Code   int
+	Body   *bytes.Buffer
 	header http.Header
 }
 

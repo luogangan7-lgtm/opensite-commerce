@@ -11,14 +11,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/internal/store"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"github.com/jackc/pgx/v5"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/internal/store"
 	"time"
 )
 

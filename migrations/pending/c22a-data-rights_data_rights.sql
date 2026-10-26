@@ -1,5 +1,5 @@
 -- stable-id: c22a-data-rights
--- depends-on: c20a-fulfillment
+-- depends-on: c20a-fulfillment-scopes
 -- Data rights owns export requests and append-only erasure receipts.
 -- Depends on customers/orders/cart/notifications/quotes. Trusted services call capability functions.
 -- Invariants: tenant/customer locks before request locks; no credentials exported;

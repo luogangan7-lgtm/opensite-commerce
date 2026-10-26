@@ -67,7 +67,7 @@ export function assertProducerWorkflow(path: string, source: string) {
   }
   const upload = steps[writer + 1];
   if (steps.length !== writer + 2 || !upload || !only(upload, ['name', 'uses', 'with']) || upload.uses !== UPLOAD ||
-      JSON.stringify(upload.with) !== JSON.stringify({ name: 'frontend-baselines-${{ github.run_id }}', path: 'tests/frontend/baselines', 'if-no-files-found': 'error', 'retention-days': 90 })) {
+      JSON.stringify(upload.with) !== JSON.stringify({ name: 'frontend-baselines-${{ github.run_id }}-${{ github.run_attempt }}', path: 'tests/frontend/baselines', 'if-no-files-found': 'error', 'retention-days': 90 })) {
     fail('only the pinned artifact upload may follow the final writer; no post-writer mutation');
   }
 }

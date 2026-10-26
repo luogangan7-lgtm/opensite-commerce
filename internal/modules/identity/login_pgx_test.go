@@ -406,7 +406,8 @@ func TestLoginRoleAdmissionPostgres(t *testing.T) {
 		t.Fatal("fixture URL unavailable")
 	}
 	role := pgx.Identifier{authURL.User.Username()}.Sanitize()
-	apply := func(sql string) error {
+	apply := func(t *testing.T, sql string) error {
+		t.Helper()
 		switch sql {
 		case "membership":
 			db.role.Grant(t, ctx, "app_runtime", "")
@@ -426,11 +427,11 @@ func TestLoginRoleAdmissionPostgres(t *testing.T) {
 		{"extra catalog column", "GRANT SELECT(product_code) ON app.products TO " + role, "REVOKE SELECT(product_code) ON app.products FROM " + role},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
-			if e := apply(probe.add); e != nil {
+			if e := apply(t, probe.add); e != nil {
 				t.Fatal("privilege probe failed", safeCode(e))
 			}
 			defer func() {
-				if e := apply(probe.remove); e != nil {
+				if e := apply(t, probe.remove); e != nil {
 					t.Fatal("privilege probe restoration failed", safeCode(e))
 				}
 			}()
