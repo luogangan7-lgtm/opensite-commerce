@@ -501,7 +501,7 @@ func TestServingPublishCandidateInvalidationPG(t *testing.T) {
 		t.Run(fmt.Sprint("first=", first), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
-			ids := servingIDs{product: newUUID(t), ready: newUUID(t), archived: newUUID(t), unpriced: newUUID(t)}
+			ids := servingIDs{product: newUUID(t), ready: "00000000-0000-4000-8000-" + strings.ReplaceAll(newUUID(t), "-", "")[:12], archived: newUUID(t), unpriced: newUUID(t)}
 			f := newCMSPG(t, ctx, servingSeed(ids, "CANDIDATE", 100, 2)...)
 			mutate := func(sql string, args ...any) {
 				t.Helper()
@@ -532,6 +532,11 @@ func TestServingPublishCandidateInvalidationPG(t *testing.T) {
 				}
 				if _, err := publishHome(t, authctx, f, revision, previous); err != nil {
 					t.Fatal(err)
+				}
+				// Prove the publisher actually sealed the pre-mutation price; an empty
+				// product projection must never qualify as a causal race witness.
+				if f.count(t, ctx, `SELECT count(*)::int FROM app.storefront_serving WHERE tenant_id=$1 AND site_id=$2 AND convert_from(body,'UTF8')::jsonb @> '{"products":[{"skus":[{"price_minor":"100"}]}]}'`) != 1 {
+					t.Fatal("PUBLISH_CANDIDATE_FIXTURE: old price was not served")
 				}
 				if !called || f.count(t, ctx, `SELECT count(*)::int FROM app.serving_invalidations WHERE tenant_id=$1 AND site_id=$2 AND reason='price_entry'`) != 1 {
 					t.Fatal("PUBLISH_CANDIDATE_LOST: mutation during publish not collected")
