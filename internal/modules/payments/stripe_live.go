@@ -60,6 +60,7 @@ type liveObject struct {
 	AmountPaid int64 `json:"amount_paid"`
 	Currency string `json:"currency"`
 	PaymentIntent string `json:"payment_intent"`
+	Customer string `json:"customer"`
 	FailureReason string `json:"failure_reason"`
 	CollectionMethod string `json:"collection_method"`
 	Metadata map[string]string `json:"metadata"`
@@ -155,13 +156,14 @@ func (s *StripeLiveSmoke) CreateIntent(ctx context.Context,r payment.CreatePayme
 		var customer liveObject
 		f:=s.metadata("B");f.Set("email",os.Getenv("STRIPE_SMOKE_EMAIL"))
 		if s.request(ctx,"POST","customers",s.key("customer"),f,&customer)!=nil||!customer.Livemode||!liveID(customer.ID,"cus"){return payment.PaymentIntentResult{},liveFailure()}
-		f=s.metadata("B");f.Set("customer",customer.ID);f.Set("collection_method","send_invoice");f.Set("days_until_due","1");f.Set("currency","usd");f.Set("auto_advance","false");f.Set("payment_settings[payment_method_types][0]","card")
+		f=s.metadata("B");f.Set("customer",customer.ID);f.Set("metadata[osc_customer]",customer.ID);f.Set("collection_method","send_invoice");f.Set("days_until_due","1");f.Set("currency","usd");f.Set("auto_advance","false");f.Set("payment_settings[payment_method_types][0]","card")
 		var inv liveObject
 		if s.request(ctx,"POST","invoices",s.key("invoice"),f,&inv)!=nil||!liveID(inv.ID,"in")||!inv.Livemode{return payment.PaymentIntentResult{},liveFailure()}
 		s.invoiceID=inv.ID
 		if s.request(ctx,"POST","invoices/"+inv.ID+"/add_lines",s.key("line"),url.Values{"lines[0][amount]":{"5000"},"lines[0][description]":{"Owner-approved CI smoke"}},&inv)!=nil{return payment.PaymentIntentResult{},liveFailure()}
 		if s.request(ctx,"POST","invoices/"+s.invoiceID+"/finalize",s.key("finalize"),url.Values{"auto_advance":{"false"}},&inv)!=nil{return payment.PaymentIntentResult{},liveFailure()}
 		if e:=s.readAssociation(ctx);e!=nil{return payment.PaymentIntentResult{},e}
+		verified,e:=s.invoice(ctx);if e!=nil||verified.Customer!=customer.ID{return payment.PaymentIntentResult{},liveFailure()}
 		f=s.metadata("B");f.Set("metadata[osc_invoice]",s.invoiceID)
 		var pi liveObject
 		if s.request(ctx,"POST","payment_intents/"+s.intentID,s.key("bind"),f,&pi)!=nil||!s.validObject(pi,"B",5000)||pi.Metadata["osc_invoice"]!=s.invoiceID{return payment.PaymentIntentResult{},liveFailure()}
@@ -207,14 +209,14 @@ func (s *StripeLiveSmoke) locateA(ctx context.Context)error{
 func (s *StripeLiveSmoke) invoice(ctx context.Context)(liveObject,error){
 	var inv liveObject
 	e:=s.request(ctx,"GET","invoices/"+s.invoiceID+"?expand[]=payments", "",nil,&inv)
-	if e!=nil||inv.ID!=s.invoiceID||!inv.Livemode||inv.Metadata["osc_smoke"]!=s.options.RunID||inv.Metadata["osc_phase"]!="B"||inv.Currency!="usd"||inv.AmountDue!=5000||inv.CollectionMethod!="send_invoice"||len(inv.PaymentSettings.PaymentMethodTypes)!=1||inv.PaymentSettings.PaymentMethodTypes[0]!="card"||inv.Payments.More||len(inv.Payments.Data)!=1||inv.Payments.Data[0].Payment.Type!="payment_intent"||!liveID(inv.Payments.Data[0].Payment.PaymentIntent,"pi"){return inv,liveFailure()}
+	if e!=nil||inv.ID!=s.invoiceID||!inv.Livemode||inv.Metadata["osc_smoke"]!=s.options.RunID||inv.Metadata["osc_phase"]!="B"||!liveID(inv.Customer,"cus")||inv.Customer!=inv.Metadata["osc_customer"]||inv.Currency!="usd"||inv.AmountDue!=5000||inv.CollectionMethod!="send_invoice"||len(inv.PaymentSettings.PaymentMethodTypes)!=1||inv.PaymentSettings.PaymentMethodTypes[0]!="card"||inv.Payments.More||len(inv.Payments.Data)!=1||inv.Payments.Data[0].Payment.Type!="payment_intent"||!liveID(inv.Payments.Data[0].Payment.PaymentIntent,"pi"){return inv,liveFailure()}
 	return inv,nil
 }
 func (s *StripeLiveSmoke) readAssociation(ctx context.Context)error{inv,e:=s.invoice(ctx);if e!=nil{return e};s.intentID=inv.Payments.Data[0].Payment.PaymentIntent;return nil}
 func (s *StripeLiveSmoke) state(ctx context.Context)(liveObject,liveObject,error){
 	inv,e:=s.invoice(ctx);if e!=nil{return inv,liveObject{},e}
 	var pi liveObject
-	if inv.Payments.Data[0].Payment.PaymentIntent!=s.intentID||s.request(ctx,"GET","payment_intents/"+s.intentID,"",nil,&pi)!=nil||pi.ID!=s.intentID||!s.validObject(pi,"B",5000)||pi.Metadata["osc_invoice"]!=s.invoiceID||len(pi.PaymentMethodTypes)!=1||pi.PaymentMethodTypes[0]!="card"||pi.AmountReceived<0||pi.AmountReceived>5000{return inv,pi,liveFailure()}
+	if inv.Payments.Data[0].Payment.PaymentIntent!=s.intentID||s.request(ctx,"GET","payment_intents/"+s.intentID,"",nil,&pi)!=nil||pi.ID!=s.intentID||!s.validObject(pi,"B",5000)||pi.Customer!=inv.Customer||pi.Metadata["osc_invoice"]!=s.invoiceID||len(pi.PaymentMethodTypes)!=1||pi.PaymentMethodTypes[0]!="card"||pi.AmountReceived<0||pi.AmountReceived>5000{return inv,pi,liveFailure()}
 	return inv,pi,nil
 }
 
@@ -231,6 +233,7 @@ func (s *StripeLiveSmoke) Execute(ctx context.Context)(LiveSmokeSummary,error){
 		if s.originalA {if s.request(ctx,"GET","payment_intents/"+s.intentID,"",nil,&pi)!=nil{return s.summary("PENDING"),liveFailure()}} else if s.request(ctx,"POST","payment_intents",s.key("a-create"),f,&pi)!=nil{return s.summary("PENDING"),liveFailure()}
 		if !liveID(pi.ID,"pi")||!s.validObject(pi,"A",50){return s.summary("PENDING"),liveFailure()}
 		if pi.Status=="succeeded"||pi.AmountReceived>0{return s.summary("REFUND_UNRESOLVED_MANUAL"),liveFailure()}
+		if pi.Status=="canceled"&&pi.AmountReceived==0{return s.summary("CANCELED"),nil}
 		ref:=pi.ID
 		if s.request(ctx,"POST","payment_intents/"+ref+"/cancel",s.key("a-cancel"),nil,&pi)!=nil||pi.ID!=ref||!s.validObject(pi,"A",50)||pi.Status!="canceled"||pi.AmountReceived!=0{return s.summary("PENDING"),liveFailure()}
 		return s.summary("CANCELED"),nil
@@ -256,7 +259,7 @@ func (s *StripeLiveSmoke) Execute(ctx context.Context)(LiveSmokeSummary,error){
 				inv,pi,e=s.state(ctx);if e!=nil{return s.summary("PENDING"),liveFailure()}
 				if pi.Status=="succeeded"{v,_:=s.settle(ctx,pi);return v,liveFailure()}
 			}
-			if inv.Status=="void"&&pi.Status=="canceled"&&pi.AmountReceived==0{return s.summary("TIMED_OUT"),liveFailure()}
+			if inv.Status=="void"&&pi.Status=="canceled"&&pi.AmountReceived==0{if s.options.Phase=="R"{return s.summary("CANCELED"),liveFailure()};return s.summary("TIMED_OUT"),liveFailure()}
 			return s.summary("PENDING"),liveFailure()
 		}
 		if s.pause(ctx)!=nil{return s.summary("PENDING"),liveFailure()}
@@ -293,7 +296,13 @@ func (s *StripeLiveSmoke) refund(ctx context.Context,pi liveObject)(liveObject,s
 	if pending{return liveObject{},"PENDING",liveFailure()}
 	attempt:=1
 	if len(all)>0{if s.options.Phase!="R"||s.options.RefundAttempt<2{for _,r:=range all{if r.FailureReason=="lost_or_stolen_card"||r.FailureReason=="expired_or_canceled_card"{return liveObject{},"REFUND_UNRESOLVED_MANUAL",liveFailure()}};return liveObject{},"REFUND_UNRESOLVED",liveFailure()};attempt=s.options.RefundAttempt}
-	for _,r:=range all{if r.Metadata["osc_smoke"]==s.options.RunID&&r.Metadata["osc_refund_attempt"]==strconv.Itoa(attempt){return liveObject{},"REFUND_UNRESOLVED",liveFailure()}}
+	for _,r:=range all{
+		prior,e:=strconv.Atoi(r.Metadata["osc_refund_attempt"])
+		// An unidentified terminal refund might be this very attempt after key
+		// retention. Missing/changed durable identity never authorizes a write.
+		if e!=nil||prior<1||r.Metadata["osc_smoke"]!=s.options.RunID||r.Amount!=5000{return liveObject{},"REFUND_UNRESOLVED",liveFailure()}
+		if prior==attempt{return liveObject{},"REFUND_UNRESOLVED",liveFailure()}
+	}
 	f:=s.metadata("B");f.Set("metadata[osc_invoice]",s.invoiceID);f.Set("metadata[osc_refund_attempt]",strconv.Itoa(attempt));f.Set("payment_intent",s.intentID);f.Set("amount",strconv.FormatInt(pi.AmountReceived,10))
 	var r liveObject
 	if s.request(ctx,"POST","refunds",s.key("refund:"+strconv.Itoa(attempt)),f,&r)!=nil{return r,"PENDING",liveFailure()}
@@ -304,7 +313,10 @@ func (s *StripeLiveSmoke) refund(ctx context.Context,pi liveObject)(liveObject,s
 		at,e=s.now(ctx);if e!=nil||!at.Before(deadline){return r,"PENDING",liveFailure()}
 		if s.pause(ctx)!=nil{return r,"PENDING",liveFailure()}
 		all,e=s.refunds(ctx);if e!=nil{return r,"PENDING",e};found:=false
-		for _,v:=range all{if v.ID==r.ID{r=v;found=true}}
+		for _,v:=range all{if v.ID==r.ID{
+			if v.Amount!=5000||v.Metadata["osc_smoke"]!=s.options.RunID||v.Metadata["osc_phase"]!="B"||v.Metadata["osc_invoice"]!=s.invoiceID||v.Metadata["osc_refund_attempt"]!=strconv.Itoa(attempt){return v,"PENDING",liveFailure()}
+			r=v;found=true
+		}}
 		if !found{return r,"PENDING",liveFailure()}
 	}
 }

@@ -27,7 +27,14 @@ def validate(document, workflows):
     assert env.get('STRIPE_API') == '${{ secrets.STRIPE_API }}', 'LIVE_KEY_ENV_ONLY'
     assert env.get('STRIPE_SMOKE_EMAIL') == '${{ secrets.STRIPE_SMOKE_EMAIL }}', 'LIVE_EMAIL_ENV_ONLY'
     assert env.get('STRIPE_SMOKE_ACCOUNT') == '${{ secrets.STRIPE_SMOKE_ACCOUNT }}', 'LIVE_ACCOUNT_NOT_PUBLIC'
+    identity = '${{ inputs.phase == \'R\' && inputs.smoke_run_id || github.run_id }}'
+    assert env.get('STRIPE_SMOKE_RUN_ID') == identity, 'LIVE_PROVIDER_RUN_IDENTITY'
+    assert document.get('concurrency', {}).get('group') == 'stripe-live-' + identity, 'LIVE_ORIGINAL_RUN_CONCURRENCY'
+    assert env.get('STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID') == "${{ inputs.smoke_run_id != '' }}", 'LIVE_R_ORIGINAL_REQUIRED'
     assert 'secrets.' not in consumers[0].get('run', ''), 'LIVE_SECRET_ARGV'
+    assert consumers[0].get('run') == 'python3 scripts/stripe_live_ci.py', 'LIVE_ALLOWLISTED_OUTPUT_WRAPPER'
+    assert not any('upload-artifact' in s.get('uses', '') for s in job.get('steps', [])), 'LIVE_NO_RAW_ARTIFACTS'
+    assert 'stripe_live_offline' not in str(document), 'LIVE_NO_FAKE_TRANSPORT'
     for name, body in workflows.items():
         if name != LIVE.name:
             assert not re.search(r'secrets\s*(?:\.\s*(?:STRIPE_API|STRIPE_SMOKE_EMAIL)\b|\[\s*[\'"](?:STRIPE_API|STRIPE_SMOKE_EMAIL)[\'"]\s*\])', body), 'LIVE_SECRET_OWNERSHIP'
@@ -53,6 +60,17 @@ class LiveWorkflowGate(unittest.TestCase):
         for field, value, message in [('environment','production','LIVE_ENVIRONMENT'),('if','true','LIVE_MAIN_ONLY')]:
             bad = copy.deepcopy(original); bad['jobs']['live'][field] = value
             with self.assertRaisesRegex(AssertionError, message): validate(bad, {})
+        bad = copy.deepcopy(original)
+        bad['concurrency']['group'] = 'stripe-live-${{ inputs.smoke_run_id || github.run_id }}'
+        with self.assertRaisesRegex(AssertionError, 'LIVE_ORIGINAL_RUN_CONCURRENCY'): validate(bad, {})
+        for command in ('"$RUNNER_TEMP/stripe-live.test"', 'python3 scripts/stripe_live_ci.py; echo unsafe'):
+            bad = copy.deepcopy(original)
+            next(s for s in bad['jobs']['live']['steps'] if 'STRIPE_API' in s.get('env', {}))['run'] = command
+            with self.assertRaisesRegex(AssertionError, 'LIVE_ALLOWLISTED_OUTPUT_WRAPPER'): validate(bad, {})
+        bad = copy.deepcopy(original); bad['jobs']['live']['steps'].append({'uses':'actions/upload-artifact@forbidden'})
+        with self.assertRaisesRegex(AssertionError, 'LIVE_NO_RAW_ARTIFACTS'): validate(bad, {})
+        bad = copy.deepcopy(original); bad['jobs']['live']['steps'][2]['run'] += '\n# stripe_live_offline'
+        with self.assertRaisesRegex(AssertionError, 'LIVE_NO_FAKE_TRANSPORT'): validate(bad, {})
         for secret in ('STRIPE_API','STRIPE_SMOKE_EMAIL'):
             with self.assertRaisesRegex(AssertionError,'LIVE_SECRET_OWNERSHIP'):
                 validate(original, {'other.yml':'key: ${{ secrets.'+secret+' }}'})

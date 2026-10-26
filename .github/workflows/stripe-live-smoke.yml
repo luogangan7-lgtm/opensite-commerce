@@ -18,7 +18,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: stripe-live-${{ inputs.smoke_run_id || github.run_id }}
+  group: stripe-live-${{ inputs.phase == 'R' && inputs.smoke_run_id || github.run_id }}
   cancel-in-progress: false
 jobs:
   live:
@@ -66,5 +66,6 @@ jobs:
           STRIPE_SMOKE_ACCOUNT: ${{ secrets.STRIPE_SMOKE_ACCOUNT }}
           STRIPE_SMOKE_PHASE: ${{ inputs.phase }}
           STRIPE_SMOKE_RUN_ID: ${{ inputs.phase == 'R' && inputs.smoke_run_id || github.run_id }}
+          STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID: ${{ inputs.smoke_run_id != '' }}
           STRIPE_REFUND_ATTEMPT: ${{ inputs.refund_attempt }}
         run: python3 scripts/stripe_live_ci.py

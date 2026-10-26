@@ -28,6 +28,8 @@ type liveFake struct {
 	pages, page int
 	voidRace, transportFail, failCapture, delayed bool
 	corrupt string
+	tick time.Duration
+	aOnly bool
 	seen map[string]bool
 	requests []string
 	s *StripeLiveSmoke
@@ -40,11 +42,11 @@ func newLiveFake(t *testing.T, phase string, attempt int) *liveFake {
 	t.Setenv("GITHUB_REF", "refs/heads/main")
 	t.Setenv("STRIPE_API", "rk_live_offline_fixture")
 	t.Setenv("STRIPE_SMOKE_EMAIL", liveCanaryEmail)
-	f := &liveFake{invoice:"paid", intent:"succeeded", refund:"succeeded", seen:map[string]bool{}}
+	f := &liveFake{invoice:"paid", intent:"succeeded", refund:"succeeded", seen:map[string]bool{},tick:31*time.Minute}
 	at := time.Date(2026,10,26,0,0,0,0,time.UTC)
 	c := Config{Run:func(ctx context.Context, account string, fn func(context.Context,pgx.Tx,string,time.Time) error) error {
 		if account != "acct_offline_canary" { return errors.New("wrong mapped account") }
-		at = at.Add(31*time.Minute)
+		at = at.Add(f.tick)
 		return fn(ctx,nil,"10000000-0000-4000-8000-000000000001",at)
 	}, Apply:func(context.Context,pgx.Tx,payment.VerifiedEvent)(bool,error){ return false,errors.New("test must use projected ingestion") }}
 	s, err := NewStripeLiveSmoke(c, LiveSmokeOptions{Phase:phase,RunID:"123456",Account:"acct_offline_canary",RefundAttempt:attempt,Receive:func(context.Context,string,payment.VerifiedEvent,string,func(context.Context,pgx.Tx)(bool,error))error{return errors.New("offline ingestion is injected separately")}})
@@ -67,8 +69,8 @@ func (f *liveFake) roundTrip(r *http.Request)(*http.Response,error){
 	f.requests=append(f.requests,r.Method+" "+r.URL.Path)
 	if r.URL.Host!="api.stripe.com" || r.Header.Get("Stripe-Version")!="2026-09-30.endive" || r.Header.Get("Stripe-Account")!="acct_offline_canary" { return nil,errors.New("transport authority") }
 	_ = r.ParseForm()
-	meta := map[string]string{"osc_smoke":"123456","osc_phase":"B","osc_invoice":"in_full_canary_identifier"}
-	obj := liveObject{ID:"pi_full_canary_identifier",Status:f.intent,Livemode:true,Amount:5000,AmountReceived:5000,Currency:"usd",Metadata:meta,PaymentMethodTypes:[]string{"card"}}
+	meta := map[string]string{"osc_smoke":"123456","osc_phase":"B","osc_invoice":"in_full_canary_identifier","osc_customer":"cus_full_canary_identifier"}
+	obj := liveObject{ID:"pi_full_canary_identifier",Customer:"cus_full_canary_identifier",Status:f.intent,Livemode:true,Amount:5000,AmountReceived:5000,Currency:"usd",Metadata:meta,PaymentMethodTypes:[]string{"card"}}
 	var out any = obj
 	path:=r.URL.Path
 	switch {
@@ -83,7 +85,7 @@ func (f *liveFake) roundTrip(r *http.Request)(*http.Response,error){
 		methods:=[]string{"card"}; if f.delayed {methods=[]string{"card","us_bank_account"}}
 		out=map[string]any{"id":"in_full_canary_identifier","livemode":true,"status":f.invoice,"amount_due":5000,"amount_paid":5000,"currency":"usd","customer":"cus_full_canary_identifier","collection_method":"send_invoice","metadata":meta,"payment_settings":map[string]any{"payment_method_types":methods},"payments":map[string]any{"data":[]any{map[string]any{"payment":map[string]any{"type":"payment_intent","payment_intent":"pi_full_canary_identifier"}}},"has_more":false},"hosted_invoice_url":liveCanaryURL,"invoice_pdf":liveCanaryURL,"customer_email":liveCanaryEmail}
 	case path=="/v1/invoices":
-		out=map[string]any{"data":[]any{map[string]any{"id":"in_full_canary_identifier","metadata":meta}},"has_more":false}
+		data:=[]any{map[string]any{"id":"in_full_canary_identifier","metadata":meta}};if f.aOnly{data=[]any{}};out=map[string]any{"data":data,"has_more":false}
 	case path=="/v1/events":
 		ref:=obj
 		typ:="payment_intent.succeeded"
@@ -102,11 +104,15 @@ func (f *liveFake) roundTrip(r *http.Request)(*http.Response,error){
 		obj.ID="pi_phase_a_canary";obj.Amount=50;obj.AmountReceived=0;obj.Status="requires_payment_method";obj.Metadata=map[string]string{"osc_smoke":"123456","osc_phase":"A"};out=obj
 	case strings.HasSuffix(path,"/cancel"):
 		obj.ID="pi_phase_a_canary";obj.Amount=50;obj.AmountReceived=0;obj.Status="canceled";obj.Metadata=map[string]string{"osc_smoke":"123456","osc_phase":"A"};out=obj
+	case path=="/v1/payment_intents" && r.Method=="GET":
+		out=map[string]any{"data":[]liveObject{{ID:"pi_phase_a_canary",Livemode:true,Amount:50,Currency:"usd",Status:"canceled",Metadata:map[string]string{"osc_smoke":"123456","osc_phase":"A"}}},"has_more":false}
+	case path=="/v1/payment_intents/pi_phase_a_canary" && r.Method=="GET":
+		out=liveObject{ID:"pi_phase_a_canary",Livemode:true,Amount:50,Currency:"usd",Status:"canceled",Metadata:map[string]string{"osc_smoke":"123456","osc_phase":"A"}}
 	case strings.HasPrefix(path,"/v1/payment_intents/"):
 		if f.intent!="succeeded" {obj.AmountReceived=0};out=obj
 	default:return nil,errors.New("unexpected endpoint")
 	}
-	if v,ok:=out.(liveObject);ok{switch f.corrupt{case "mode":v.Livemode=false;case "source":v.Metadata=map[string]string{"osc_smoke":"999","osc_phase":"B"};case "amount":v.Amount=5001};out=v}
+	if v,ok:=out.(liveObject);ok{switch f.corrupt{case "mode":v.Livemode=false;case "source":v.Metadata=map[string]string{"osc_smoke":"999","osc_phase":"B"};case "amount":v.Amount=5001;case "customer":v.Customer="cus_wrong"};out=v}
 	b,_:=json.Marshal(out)
 	return &http.Response{StatusCode:200,Body:io.NopCloser(strings.NewReader(string(b))),Header:make(http.Header)},nil
 }
@@ -124,17 +130,26 @@ func TestStripeLiveLifecycleOffline(t *testing.T){
 	t.Run("timeout_open_void",func(t *testing.T){f:=newLiveFake(t,"B",0);f.invoice="open";f.intent="requires_payment_method";v,e:=liveResult(t,f);if e==nil||v.Status!="TIMED_OUT"||f.voids!=1||f.creates!=0{t.Fatal("timeout did not verify unpaid terminal state")}})
 	t.Run("payment_between_poll_and_void",func(t *testing.T){f:=newLiveFake(t,"B",0);f.invoice="open";f.intent="requires_payment_method";f.voidRace=true;_,e:=liveResult(t,f);if e==nil||f.creates!=1||f.captureFacts!=1||f.refundFacts!=1{t.Fatal("void race lost payment/refund or accepted timeout")}})
 	t.Run("processing_later_R",func(t *testing.T){f:=newLiveFake(t,"B",0);f.invoice="open";f.intent="processing";v,e:=liveResult(t,f);if e==nil||v.Status!="PENDING"||f.voids+f.creates!=0{t.Fatal("processing was closed")};f.s.options.Phase="R";f.invoice="paid";f.intent="succeeded";v,e=liveResult(t,f);if e!=nil||v.Status!="REFUNDED"||f.creates!=1{t.Fatal("R failed recovery")}})
+	t.Run("R_verified_payment_canceled",func(t *testing.T){f:=newLiveFake(t,"R",0);f.invoice="void";f.intent="canceled";v,e:=liveResult(t,f);if e==nil||v.Status!="CANCELED"||f.captureFacts+f.refundFacts+f.creates!=0{t.Fatal("terminal payment state was not explicit or manufactured money")}})
+	t.Run("R_A_already_canceled_no_repeat_command",func(t *testing.T){f:=newLiveFake(t,"R",0);f.aOnly=true;phase,e:=f.s.PrepareRecovery(context.Background());if e!=nil||phase!="A"{t.Fatal("A recovery lookup")};v,e:=liveResult(t,f);if e!=nil||v.Status!="CANCELED"||v.AmountMinor!=50||f.captureFacts+f.refundFacts!=0{t.Fatal("A recovery acceptance")};for _,r:=range f.requests{if strings.HasPrefix(r,"POST "){t.Fatal("A recovery repeated provider write")}}})
 	t.Run("failure_after_payment_still_refunds",func(t *testing.T){f:=newLiveFake(t,"B",0);f.failCapture=true;_,e:=liveResult(t,f);if e==nil||f.creates!=1{t.Fatal("post-payment failure skipped cleanup")}})
+	t.Run("new_failed_refund_remains_unresolved",func(t *testing.T){f:=newLiveFake(t,"B",0);f.refund="failed";v,e:=liveResult(t,f);if e==nil||v.Status!="REFUND_UNRESOLVED"||!v.OwnerActionNeeded||f.refundFacts!=0{t.Fatal("new failed refund closed or posted")}})
+	for _,field:=range []string{"amount","run","invoice","attempt","phase"}{t.Run("polled_binding_"+field,func(t *testing.T){f:=newLiveFake(t,"B",0);f.refund="pending";f.tick=time.Second;f.s.pause=func(context.Context)error{r:=f.refunds[0];r.Status="succeeded";switch field{case "amount":r.Amount=4999;case "run":r.Metadata["osc_smoke"]="999";case "invoice":r.Metadata["osc_invoice"]="in_other";case "attempt":r.Metadata["osc_refund_attempt"]="2";case "phase":r.Metadata["osc_phase"]="A"};f.refunds[0]=r;return nil};v,e:=liveResult(t,f);if e==nil||v.Status!="PENDING"||f.refundFacts!=0{t.Fatal("polled refund lost original binding")}})}
 	for _,terminal:=range []string{"failed","canceled"}{t.Run("refund_"+terminal,func(t *testing.T){f:=newLiveFake(t,"R",0);f.refunds=[]liveObject{{ID:"re_failed",Status:terminal,Amount:5000,Currency:"usd",PaymentIntent:f.s.intentID,Metadata:map[string]string{"osc_smoke":"123456","osc_refund_attempt":"1"}}};v,e:=liveResult(t,f);if e==nil||v.Status!="REFUND_UNRESOLVED"||!v.OwnerActionNeeded||f.creates!=0{t.Fatal("failed refund closed or replaced without consent")};f.s.options.RefundAttempt=2;v,e=liveResult(t,f);if e!=nil||v.Status!="REFUNDED"||f.creates!=1{t.Fatal("authorized replacement")};_,e=liveResult(t,f);if e!=nil||f.creates!=1{t.Fatal("same attempt created duplicate")}})}
 	for _,status:=range []string{"succeeded","pending","unknown","requires_action"}{t.Run("existing_"+status,func(t *testing.T){f:=newLiveFake(t,"R",2);f.refunds=[]liveObject{{ID:"re_existing",Status:status,Amount:5000,Currency:"usd",PaymentIntent:f.s.intentID}};v,e:=liveResult(t,f);if f.creates!=0||(status=="succeeded"&&(e!=nil||v.Status!="REFUNDED"))||(status!="succeeded"&&(e==nil||v.Status!="PENDING")){t.Fatal("existing refund replaced or state misclassified")}})}
 	t.Run("same_failed_attempt_never_recreated",func(t *testing.T){f:=newLiveFake(t,"R",2);f.refunds=[]liveObject{{ID:"re_failed2",Status:"failed",Amount:5000,Currency:"usd",PaymentIntent:f.s.intentID,Metadata:map[string]string{"osc_smoke":"123456","osc_refund_attempt":"2"}}};v,e:=liveResult(t,f);if e==nil||v.Status!="REFUND_UNRESOLVED"||f.creates!=0{t.Fatal("same failed attempt replaced")}})
+	t.Run("unidentified_failed_attempt_never_recreated",func(t *testing.T){f:=newLiveFake(t,"R",2);f.refunds=[]liveObject{{ID:"re_unidentified",Status:"failed",Amount:5000,Currency:"usd",PaymentIntent:f.s.intentID}};v,e:=liveResult(t,f);if e==nil||v.Status!="REFUND_UNRESOLVED"||f.creates!=0{t.Fatal("missing durable identity authorized a replacement")}})
 	t.Run("full_history_pagination",func(t *testing.T){f:=newLiveFake(t,"R",2);f.pages=1;f.refunds=[]liveObject{{ID:"re_existing",Status:"succeeded",Amount:5000,Currency:"usd",PaymentIntent:f.s.intentID}};_,e:=liveResult(t,f);if e!=nil||f.page==0||f.creates!=0{t.Fatal("refund pagination incomplete")}})
 	t.Run("partial_success_never_over_refunded",func(t *testing.T){f:=newLiveFake(t,"R",2);f.refunds=[]liveObject{{ID:"re_partial",Status:"succeeded",Amount:4999,Currency:"usd",PaymentIntent:f.s.intentID}};v,e:=liveResult(t,f);if e==nil||v.Status!="REFUND_UNRESOLVED"||f.creates!=0{t.Fatal("partial refund closed or over-refunded")}})
 	t.Run("runner_kill_and_unknown_network",func(t *testing.T){f:=newLiveFake(t,"B",0);f.transportFail=true;v,e:=liveResult(t,f);if e==nil||v.Status!="PENDING"{t.Fatal("unknown request accepted")};saved:=f.refunds;g:=newLiveFake(t,"R",0);g.refunds=saved;v,e=liveResult(t,g);if e!=nil||v.Status!="REFUNDED"||g.creates!=0||g.captureFacts!=1||g.refundFacts!=1{t.Fatal("new runner failed reconstruction")}})
 	t.Run("delayed_method_rejected",func(t *testing.T){f:=newLiveFake(t,"B",0);f.delayed=true;_,e:=liveResult(t,f);if e==nil||f.creates+f.sends!=0{t.Fatal("delayed method admitted")}})
-	for _,corrupt:=range []string{"mode","source","amount"}{t.Run("rejected_"+corrupt,func(t *testing.T){f:=newLiveFake(t,"R",0);f.corrupt=corrupt;_,e:=liveResult(t,f);if e==nil||f.creates!=0{t.Fatal("mismatched provider fact admitted")}})}
+	t.Run("customer_swap_rejected_before_send",func(t *testing.T){f:=newLiveFake(t,"B",0);f.corrupt="customer";if _,e:=f.s.CreateIntent(context.Background(),f.s.bound);e==nil||f.sends!=0{t.Fatal("customer swap reached private-channel delivery")}})
+	for _,corrupt:=range []string{"mode","source","amount","customer"}{t.Run("rejected_"+corrupt,func(t *testing.T){f:=newLiveFake(t,"R",0);f.corrupt=corrupt;_,e:=liveResult(t,f);if e==nil||f.creates!=0{t.Fatal("mismatched provider fact admitted")}})}
 	t.Run("manual_reimbursement_never_passes",func(t *testing.T){f:=newLiveFake(t,"R",0);f.refunds=[]liveObject{{ID:"re_closed",Status:"failed",FailureReason:"lost_or_stolen_card",Amount:5000,Currency:"usd",PaymentIntent:f.s.intentID}};v,e:=liveResult(t,f);if e==nil||v.Status!="REFUND_UNRESOLVED_MANUAL"||!v.OwnerActionNeeded||f.creates!=0{t.Fatal("manual fallback closed or created money")}})
 	t.Run("permission_endpoint_capabilities",func(t *testing.T){for _,path:=range []string{"charges","account","checkout/sessions","payment_methods","invoices/in_x/pay","payment_intents/pi_x/confirm"}{if liveEndpoint("POST",path){t.Fatal("broader provider capability admitted")}}})
+	t.Run("mapped_account_rejected_before_network",func(t *testing.T){f:=newLiveFake(t,"R",0);f.s.options.Account="acct_other";_,e:=liveResult(t,f);if e==nil||len(f.requests)!=0{t.Fatal("wrong account reached provider")}})
+	t.Run("polled_event_account_rejected",func(t *testing.T){f:=newLiveFake(t,"R",0);_,pi,e:=f.s.state(context.Background());if e!=nil{t.Fatal("fake setup")};f.s.client.Transport=stripeTransport(func(r *http.Request)(*http.Response,error){res,e:=f.roundTrip(r);if e!=nil{return nil,e};b,_:=io.ReadAll(res.Body);res.Body.Close();b=[]byte(strings.ReplaceAll(string(b),"acct_offline_canary","acct_other"));res.Body=io.NopCloser(strings.NewReader(string(b)));return res,nil});if f.s.confirmEvent(context.Background(),pi,false)==nil{t.Fatal("cross-account event admitted")}})
+	t.Run("refund_event_metadata_admission",func(t *testing.T){f:=newLiveFake(t,"R",0);r:=liveObject{ID:"re_metadata_canary",Status:"succeeded",Amount:5000,Currency:"usd",PaymentIntent:f.s.intentID,Metadata:map[string]string{"osc_smoke":"123456","osc_phase":"B","osc_invoice":f.s.invoiceID,"osc_refund_attempt":"1"}};f.refunds=[]liveObject{r};if f.s.confirmEvent(context.Background(),r,true)!=nil{t.Fatal("valid refund without nonexistent livemode field rejected")};for _,field:=range []string{"osc_smoke","osc_phase","osc_invoice","osc_refund_attempt"}{bad:=r;bad.Metadata=map[string]string{};for k,v:=range r.Metadata{bad.Metadata[k]=v};bad.Metadata[field]="wrong";f.refunds=[]liveObject{bad};if f.s.confirmEvent(context.Background(),r,true)==nil{t.Fatal("unbound refund event admitted")}}})
 }
 
 func TestStripeLiveAdmissionOffline(t *testing.T){

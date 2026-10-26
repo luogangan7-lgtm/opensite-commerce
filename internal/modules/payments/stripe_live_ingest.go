@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/url"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
@@ -16,6 +17,7 @@ import (
 )
 
 func (s *StripeLiveSmoke) confirmEvent(ctx context.Context,o liveObject,refund bool)error{
+	if refund{attempt,e:=strconv.Atoi(o.Metadata["osc_refund_attempt"]);if e!=nil||attempt<1||o.Metadata["osc_smoke"]!=s.options.RunID||o.Metadata["osc_phase"]!="B"||o.Metadata["osc_invoice"]!=s.invoiceID{return liveFailure()}}
 	kind:="payment_intent.succeeded";if refund{kind="refund.updated"}
 	after:="";seen:=map[string]bool{}
 	for page:=0;page<100;page++{
@@ -31,7 +33,9 @@ func (s *StripeLiveSmoke) confirmEvent(ctx context.Context,o liveObject,refund b
 			if v.ID!=o.ID{continue}
 			if !e.Livemode||(e.Account!=""&&e.Account!=s.options.Account)||v.Amount!=o.Amount||v.Currency!=o.Currency||v.Status!="succeeded"||
 				(!refund&&(e.Type!="payment_intent.succeeded"||!s.validObject(v,"B",5000)||v.Metadata["osc_invoice"]!=s.invoiceID))||
-				(refund&&((e.Type!="refund.updated"&&e.Type!="refund.created")||v.PaymentIntent!=s.intentID)){return liveFailure()}
+				(refund&&((e.Type!="refund.updated"&&e.Type!="refund.created")||v.PaymentIntent!=s.intentID||v.Metadata["osc_smoke"]!=s.options.RunID||v.Metadata["osc_phase"]!="B"||v.Metadata["osc_invoice"]!=s.invoiceID||v.Metadata["osc_refund_attempt"]!=o.Metadata["osc_refund_attempt"])){return liveFailure()}
+			// Refund has no livemode field in Stripe's schema. The authenticated
+			// account-scoped request, verified live PI and Event mode establish it.
 			return nil
 		}
 		if !list.More||len(list.Data)==0{return liveFailure()};after=list.Data[len(list.Data)-1].ID

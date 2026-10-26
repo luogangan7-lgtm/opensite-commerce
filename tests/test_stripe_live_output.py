@@ -22,13 +22,30 @@ CANARIES = ['https://invoice.example.test/private-canary', 'owner-canary@example
 
 
 class OutputCanaries(unittest.TestCase):
+    def test_R_requires_original_run_before_child(self):
+        env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REF='refs/heads/main',
+                   GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40, STRIPE_SMOKE_RUN_ID='12345', STRIPE_SMOKE_PHASE='R',
+                   STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID='false')
+        with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run') as child:
+            with self.assertRaises(SystemExit): runner.main()
+            child.assert_not_called()
+
+    def test_R_rejects_malformed_original_run(self):
+        for run_id in ('', 'not-a-run', '-1', '12\n34', '1' * 33):
+            env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REF='refs/heads/main',
+                       GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40, STRIPE_SMOKE_RUN_ID=run_id,
+                       STRIPE_SMOKE_PHASE='R', STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID='true')
+            with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run') as child:
+                with self.assertRaises(SystemExit): runner.main()
+                child.assert_not_called()
+
     def test_all_public_sinks(self):
         for state in ('REFUNDED', 'PENDING', 'REFUND_UNRESOLVED', 'REFUND_UNRESOLVED_MANUAL', 'TIMED_OUT'):
             with self.subTest(state=state), tempfile.TemporaryDirectory() as tmp:
                 summary = Path(tmp) / 'summary'
                 env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch',
                            GITHUB_REF='refs/heads/main', GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40,
-                           STRIPE_SMOKE_RUN_ID='1234', STRIPE_SMOKE_PHASE='R', RUNNER_TEMP=tmp,
+                           STRIPE_SMOKE_RUN_ID='1234', STRIPE_SMOKE_PHASE='R', STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID='true', RUNNER_TEMP=tmp,
                            GITHUB_STEP_SUMMARY=str(summary))
                 value = dict(phase='R', status=state, amount_minor=5000, currency='USD',
                              livemode=True, owner_action_needed=state.startswith('REFUND_UNRESOLVED'))
@@ -51,7 +68,7 @@ class OutputCanaries(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REF='refs/heads/main',
                        GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40, STRIPE_SMOKE_RUN_ID='1234',
-                       STRIPE_SMOKE_PHASE='R', RUNNER_TEMP=tmp, GITHUB_STEP_SUMMARY=str(Path(tmp) / 'summary'))
+                       STRIPE_SMOKE_PHASE='R', STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID='true', RUNNER_TEMP=tmp, GITHUB_STEP_SUMMARY=str(Path(tmp) / 'summary'))
             log = io.StringIO()
             error = subprocess.TimeoutExpired(CANARIES, 1, output=' '.join(CANARIES))
             with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run', side_effect=error), contextlib.redirect_stdout(log):
