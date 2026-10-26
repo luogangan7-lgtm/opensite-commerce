@@ -287,7 +287,11 @@ jobs:
       # changes (a pending proposal removed / numbered history changed) or a
       # trusted policy variable, never from an optional marker that a landing PR
       # can omit. The optional [final-landing] marker may only add final
-      # validation. Final acceptance runs on the exact head commit, compares the
+      # validation, and it is read only as an exact standalone line of a pull
+      # request body: a commit message or prose that mentions it must not select
+      # final, or a push to main fails on proposals that were never removed
+      # (main run 40403380987). Push events have no marker input at all.
+      # Final acceptance runs on the exact head commit, compares the
       # observed checkout with the event head as independent inputs, and
       # requires every prerequisite lane to have recorded that same checkout.
       # Receipts are collected across attempts (a failed-job re-run only
@@ -347,10 +351,21 @@ jobs:
           fi
           echo "migration changes between ${BASE_SHA:-<none>} and ${HEAD_SHA}:"
           cat "$CHANGED"
+      - name: Detect a standalone landing marker in the pull request body
+        id: marker
+        env:
+          # Push events have no pull request body, so this is empty there and
+          # the mode comes only from trusted reasons or FINAL_LANDING_POLICY.
+          FINAL_LANDING_BODY: ${{ github.event.pull_request.body || '' }}
+        run: |
+          # Exact standalone line only: a mention inside prose must not select
+          # final landing mode (issue 434). Never read commit messages here.
+          value="$(python3 scripts/final_landing_marker.py)"
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
       - name: Final landing or proposal receipt (exact head SHA, trusted mode)
         env:
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          FINAL_LANDING: "${{ (contains(github.event.pull_request.body || '', '[final-landing]') || contains(github.event.head_commit.message || '', '[final-landing]')) && '1' || '0' }}"
+          FINAL_LANDING: ${{ steps.marker.outputs.value }}
           FINAL_LANDING_POLICY: ${{ vars.FINAL_LANDING_POLICY || '' }}
         run: |
           HEAD_SHA="$(git rev-parse HEAD)"
