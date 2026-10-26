@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
@@ -69,7 +68,7 @@ func (m *Module) receiveTerminal(ctx context.Context, raw []byte, in envelope, s
 }
 
 func retainRefundCase(ctx context.Context, q *db.Queries, in envelope, hash [32]byte, reason string) error {
-	if in.RefundID == "" && in.Status != payment.StatusPartiallyRefunded && in.Status != payment.StatusRefunded {
+	if in.RefundID == "" {
 		return nil
 	}
 	raw, err := json.Marshal(map[string]string{"account_id": in.AccountID, "refund_id": in.RefundID,
