@@ -13,6 +13,7 @@ bun run build:admin
 bun run build:gallery
 bun run build:storefront
 bun run test:frontend
+bun test tests/frontend/renderer-lifecycle.test.ts
 bun test web/storefront/src/lib
 bun test web/admin/src
 echo 'PASS: frontend source gates'
