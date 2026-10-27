@@ -215,10 +215,11 @@ def validate_lane_identities(directory, expected_sha, lanes, run_id, lane_jobs):
     """Every prerequisite lane must have recorded the exact checkout it tested.
 
     Receipts may span attempts because a failed-job re-run leaves earlier
-    attempts' artifacts in place.  Per lane the latest receipt whose attempt
-    GitHub recorded as a successful job of this run at the exact head SHA is
-    accepted; a foreign run, a different SHA, an unsuccessful attempt, a
-    duplicate receipt for one attempt, or a missing receipt fails closed.
+    attempts' artifacts in place.  Per lane the accepted receipt is the
+    receipt of the latest attempt GitHub reports as a successful job; an
+    older attempt's receipt is never accepted.  A foreign run, a different
+    SHA, an unsuccessful attempt, a duplicate receipt for one attempt, or a
+    missing receipt fails closed.
     """
     if directory is None:
         raise LandingError(
