@@ -65,6 +65,38 @@
       "expected": {"error": "run_attempt"}
     },
     {
+      "name": "arabic_indic_two_is_not_an_attempt",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": "٢", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [],
+      "expected": {"error": "run_attempt"}
+    },
+    {
+      "name": "fullwidth_zero_is_not_an_attempt",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": "０", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [],
+      "expected": {"error": "run_attempt"}
+    },
+    {
+      "name": "leading_zero_is_not_an_attempt",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": "01", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [],
+      "expected": {"error": "run_attempt"}
+    },
+    {
+      "name": "zero_is_not_an_attempt",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": "0", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [],
+      "expected": {"error": "run_attempt"}
+    },
+    {
       "name": "latest_success_after_pagination_page_boundary",
       "job_pages": [
         [
