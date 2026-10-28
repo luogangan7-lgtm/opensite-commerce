@@ -786,11 +786,11 @@ test.describe('VISUAL-REAL #235', () => {
 // #230 uses a fresh tenant per data fixture: other visual suites cannot change
 // its list, pagination cursor or empty state. Historical dates are never masked.
 const staffSite = 'https://127.0.0.1:4350';
-function staffOrders(count = 1, long = false) {
+function staffOrders(count = 1, long = false, multiline = false) {
   const target = randomUUID(), product = randomUUID(), variant = randomUUID();
   const ids = Array.from({ length: count }, () => randomUUID());
   const number = long ? 9007199254740991 : 723001;
-  const code = long ? 'LONG-SKU-'.repeat(28) + 'END' : 'STAFF-CANVAS-TOTE';
+  const code = multiline ? 'Canvas tote with reinforced shoulder straps and a roomy everyday compartment for books groceries and weekend travel essentials in natural cotton canvas' : long ? 'LONG-SKU-'.repeat(28) + 'END' : 'STAFF-CANVAS-TOTE';
   sql(`BEGIN; INSERT INTO app.tenants(id,name,settlement_currency) VALUES('${target}','Visual staff fixture','USD');
     INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
       SELECT '${target}',id,'owner' FROM app.users WHERE email='visual-owner@example.test';
@@ -835,13 +835,14 @@ async function staffLogin(page: Page, path: string) {
   expect((await signedIn).status()).toBe(201);
   await expect(page).toHaveURL(staffSite + path);
 }
-async function staffSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][number]) {
+async function staffSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][number], masks: Locator[] = []) {
   await page.evaluate(async () => { await document.fonts.ready; });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'staff fits viewport').toBe(true);
   const report = await new AxeBuilder({ page }).analyze();
   expect(report.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
   await expect(page.getByText('CONTRACT FIXTURE', { exact: false })).toHaveCount(0);
-  await expect(page).toHaveScreenshot(`real-230-${state}.png`, { fullPage: true });
+  const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
+  await expect(page).toHaveScreenshot(`real-230-${state}.png`, { fullPage: true, mask: masks, maskColor });
 }
 async function staffListReady(page: Page) {
   await expect(page.getByRole('table', { name: 'Order list', exact: true })).toHaveAttribute('aria-busy', 'false');
@@ -988,4 +989,201 @@ test.describe('VISUAL-REAL #230', () => {
     await expect(page.getByRole('table')).toHaveCount(0); await staffSnapshot(page, 'expired-session');
     expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
   });
+});
+
+
+test.describe('VISUAL-REAL #230 round5', () => {
+  test('real multiline order text wraps completely inside the visible line cell', async ({ page }) => {
+    const fixture = staffOrders(1, false, true);
+    await staffLogin(page, `${fixture.path}/${fixture.ids[0]}`);
+    const cell = page.getByRole('cell', { name: fixture.code, exact: true });
+    await expect(cell).toBeVisible();
+    expect(await cell.innerText()).toBe(fixture.code);
+    const geometry = await cell.evaluate(node => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      const rects = [...range.getClientRects()].filter(r => r.width > 0 && r.height > 0);
+      const region = node.closest('[role="region"]')!.getBoundingClientRect();
+      return { lines: new Set(rects.map(r => r.top)).size,
+        visible: rects.every(r => r.left >= region.left && r.right <= region.right),
+        clipped: node.scrollHeight > node.clientHeight };
+    });
+    expect(geometry.lines, 'multi-word line item must genuinely wrap').toBeGreaterThan(1);
+    expect(geometry.visible, 'all wrapped text stays visible without horizontal clipping').toBe(true);
+    expect(geometry.clipped).toBe(false);
+    await staffSnapshot(page, 'multiline');
+  });
+});
+
+// Volatile masks are exactly the backend-issued UUID/date element, never a status or total.
+async function runtimeMask(page: Page, target: Locator) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error('Missing runtime mask geometry');
+  const protectedBoxes: Box[] = [];
+  for (const locator of [page.getByRole('heading'), page.locator('.os-badge'), page.locator('.admin-stack dd'),
+    page.locator('[data-completion-ready] dd').filter({ hasNotText: /^[0-9a-f-]{36}$/ })]) {
+    for (const element of await locator.all()) {
+      const bounds = await element.boundingBox(); if (bounds) protectedBoxes.push(bounds);
+    }
+  }
+  assertDateMaskBounds(box, box, protectedBoxes);
+  return target;
+}
+async function domainSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][number], order: {
+  state: string; order_number: number; version: number; created_at: string; updated_at: string;
+}) {
+  await page.reload();
+  await expect(page.getByRole('heading', { name: `Order ${order.order_number}`, exact: true })).toBeVisible();
+  await expect(page.locator('.os-badge')).toHaveText(order.state.replaceAll('_', ' '));
+  await expect(page.getByRole('main')).toContainText(`Version ${order.version}`);
+  await expect(page.getByRole('main')).toContainText('USD 57.80');
+  const times = page.getByRole('main').locator('time');
+  await expect(times).toHaveCount(2);
+  const masks: Locator[] = [];
+  for (const [index, stamp] of [order.created_at, order.updated_at].entries()) {
+    await expect(times.nth(index)).toHaveAttribute('datetime', stamp);
+    await expect(times.nth(index)).toHaveText(stamp);
+    masks.push(await runtimeMask(page, times.nth(index)));
+  }
+  await staffSnapshot(page, state, masks);
+}
+
+test('VISUAL-REAL #230 real two-unit purchase and five staff domain states', async ({ page }, info) => {
+  test.setTimeout(300_000);
+  // Same quantity-two journey as tests/e2e/rma.spec.ts, on the trusted REAL visual stack.
+  await page.goto(`${site}/products/canvas-tote`);
+  await page.getByRole('button', { name: 'Add to cart', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Item added to cart.');
+  await page.goto(`${site}/cart`);
+  await expect(page.locator('[data-cart-line]')).toHaveCount(1);
+  await page.getByLabel('Quantity', { exact: true }).fill('2');
+  await page.getByRole('button', { name: 'Update quantity', exact: true }).click();
+  await expect(page.getByRole('main')).toContainText('$48.00');
+  await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('2');
+  await staffSnapshot(page, 'rma-cart');
+  await page.goto(`${site}/checkout`);
+  for (const [label, value] of [['Email', 'visual-rma@example.test'], ['Country code', 'US'],
+    ['Address line 1', '1 Test Way'], ['City', 'Test City'], ['Postal code', '10001']]) {
+    await page.getByLabel(label!, { exact: true }).fill(value!);
+  }
+  await page.getByRole('button', { name: 'Review totals', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Start test checkout', exact: true })).toBeEnabled();
+  await expect(page.getByRole('main')).toContainText('$57.80');
+  await staffSnapshot(page, 'rma-checkout');
+  const started = page.waitForResponse(r => new URL(r.url()).pathname === '/purchase/api/checkout' && r.request().method() === 'POST');
+  await start(page);
+  const response = await started;
+  expect(response.status()).toBe(201);
+  const checkout = await response.json();
+  expect(checkout).toMatchObject({ state: 'ready', amount_minor: '5780', currency: 'USD' });
+  await page.getByRole('button', { name: 'Fake payment: capture', exact: true }).click();
+  await page.getByRole('link', { name: 'View order confirmation', exact: true }).click();
+  await expect(page.locator('[data-completion-ready]')).toBeVisible();
+  expect(await (await page.request.get(`${site}/purchase/api/completion`)).json())
+    .toMatchObject({ order_id: checkout.order_id, state: 'paid', payment: { status: 'captured' } });
+
+  const base = `${staffSite}/api/v1/t/${tenant}`;
+  const orderPath = `/orders/${checkout.order_id}`;
+  const completionID = page.locator('[data-completion-ready] dd').filter({ hasText: checkout.order_id });
+  await expect(completionID).toHaveText(checkout.order_id);
+  await staffSnapshot(page, 'rma-completion', [await runtimeMask(page, completionID)]);
+  await staffLogin(page, `/t/${tenant}${orderPath}`);
+  await expect(page.getByRole('cell', { name: 'C24-CANVAS-TOTE', exact: true })).toBeVisible();
+  const session = await (await page.request.get(`${staffSite}/api/v1/auth/session`)).json();
+  const read = async () => {
+    const response = await page.request.get(base + orderPath);
+    expect(response.status()).toBe(200);
+    return response.json();
+  };
+  const write = (path: string, data: unknown, version: number, key = crypto.randomUUID(), tenant: string = tenant) =>
+    page.request.post(`${staffSite}/api/v1/t/${tenant}${path}`, { data, headers: {
+      Origin: staffSite, 'X-CSRF-Token': session.csrf_token,
+      'Idempotency-Key': key, 'If-Match': `"${version}"`,
+    } });
+  const accepted = async (op: string, response: APIResponse, status: number) => {
+    let body;
+    try { body = await response.json(); }
+    catch { throw new Error(`${op}: status=${response.status()} code=invalid_json`); }
+    const code = body.code === 'route_not_found' ? 'route_not_found' : response.ok() ? 'none' : 'unknown';
+    const label = `${op}: status=${response.status()} code=${code}`;
+    if (response.status() === 503 || body.code === 'route_not_found' ||
+        (op === 'refundReturn' && response.status() !== status))
+      throw new Error(label);
+    expect(response.status(), 'Return operation status').toBe(status);
+    return body;
+  };
+  let order = await read();
+  expect(order).toMatchObject({ state: 'paid', total_minor: '5780', lines: [{ quantity: 2 }] });
+  await domainSnapshot(page, 'paid', order);
+  const line = order.lines[0].line_id;
+  const shipment = (n: number) => ({ carrier: 'E2E-RMA', tracking_number: `visual-rma-${info.project.name}-${n}`,
+    lines: [{ order_line_id: line, quantity: 1 }] });
+  const first = await accepted('createShipment', await write(orderPath + '/shipments', shipment(1), order.version), 201);
+  order = await read();
+  expect(order.state).toBe('partially_fulfilled');
+  expect(order.version).toBe(first.order_version);
+  await domainSnapshot(page, 'partially-fulfilled', order);
+  const second = await accepted('createShipment', await write(orderPath + '/shipments', shipment(2), order.version), 201);
+  order = await read();
+  expect(order.state).toBe('fulfilled');
+  expect(order.version).toBe(second.order_version);
+  await domainSnapshot(page, 'fulfilled', order);
+  expect(second.id).not.toBe(first.id);
+
+  const requestReturn = { kind: 'shipment_return', reason: 'E2E-RMA', lines: [
+    { order_line_id: line, shipment_line_id: first.lines[0].id, quantity: 1 },
+  ] };
+  const rma = await accepted('createReturn', await write(orderPath + '/returns', requestReturn, order.version), 201);
+  expect(rma).toMatchObject({ status: 'requested', restocked: false, refund_minor: '2890' });
+  const returnPath = `/returns/${rma.id}`;
+  const receiptKey = crypto.randomUUID();
+  const received = await accepted('receiveReturn', await write(returnPath + '/receive', { restock: true }, rma.order_version, receiptKey), 200);
+  expect(received).toMatchObject({ id: rma.id, status: 'received', restocked: true });
+  const replay = await accepted('receiveReturn', await write(returnPath + '/receive', { restock: true }, rma.order_version, receiptKey), 200);
+  expect(replay).toEqual(received);
+  // A fresh command identity cannot receive/restock the same RMA again.
+  const duplicate = await write(returnPath + '/receive', { restock: true }, received.order_version);
+  expect([409, 422]).toContain(duplicate.status());
+  const foreignTenant = sql(`SELECT tenant_id FROM app.tenant_memberships WHERE user_id=(SELECT id FROM app.users WHERE email='visual-owner@example.test') AND tenant_id<>'${tenant}' ORDER BY tenant_id LIMIT 1;`);
+  const foreign = await write(returnPath + '/receive', { restock: true }, received.order_version,
+    crypto.randomUUID(), foreignTenant);
+  expect(foreign.status()).toBe(404);
+  expect((await page.request.get(`${staffSite}/api/v1/t/${foreignTenant}${orderPath}`)).status()).toBe(404);
+  // Money is server owned: injected refund amount is rejected before any PSP action.
+  expect((await write(returnPath + '/refund', { amount_minor: '5781' }, received.order_version)).status()).toBe(400);
+  const refundKey = crypto.randomUUID();
+  const refunded = await accepted('refundReturn', await write(returnPath + '/refund', {}, received.order_version, refundKey), 200);
+  expect(refunded).toMatchObject({ id: rma.id, status: 'refunded', restocked: true, refund_minor: '2890' });
+  expect(await accepted('refundReturn', await write(returnPath + '/refund', {}, received.order_version, refundKey), 200)).toEqual(refunded);
+  order = await read();
+  expect(order.state).toBe('partially_refunded');
+  await domainSnapshot(page, 'partially-refunded', order);
+  // Returning an already returned shipment unit would exceed its original entitlement.
+  const excess = await write(orderPath + '/returns', requestReturn, order.version);
+  expect([409, 422]).toContain(excess.status());
+  expect(await read()).toEqual(order);
+  // A distinct shipped unit needs its own RMA and Payments command identity.
+  const remaining = await accepted('createReturn', await write(orderPath + '/returns', {
+    ...requestReturn, lines: [{ order_line_id: line, shipment_line_id: second.lines[0].id, quantity: 1 }],
+  }, order.version), 201);
+  expect(remaining).toMatchObject({ status: 'requested', restocked: false, refund_minor: '2890' });
+  expect(remaining.id).not.toBe(rma.id);
+  const remainingPath = `/returns/${remaining.id}`;
+  const remainingReceived = await accepted('receiveReturn', await write(remainingPath + '/receive',
+    { restock: true }, remaining.order_version), 200);
+  expect(remainingReceived).toMatchObject({ id: remaining.id, status: 'received', restocked: true });
+  const fullRefundKey = crypto.randomUUID();
+  expect(fullRefundKey).not.toBe(refundKey);
+  const fullRefund = await accepted('refundReturn', await write(remainingPath + '/refund', {},
+    remainingReceived.order_version, fullRefundKey), 200);
+  expect(fullRefund).toMatchObject({ id: remaining.id, status: 'refunded', restocked: true, refund_minor: '2890' });
+  expect(await accepted('refundReturn', await write(remainingPath + '/refund', {},
+    remainingReceived.order_version, fullRefundKey), 200)).toEqual(fullRefund);
+  order = await read();
+  expect(order).toMatchObject({ state: 'refunded', total_minor: '5780' });
+  expect(BigInt(refunded.refund_minor) + BigInt(fullRefund.refund_minor)).toBe(BigInt(order.total_minor));
+  expect(await read()).toEqual(order);
+  await page.reload();
+  await expect(page.getByRole('main')).toContainText('refunded');
+  await domainSnapshot(page, 'refunded', order);
+  await info.attach('rma-journey', { body: JSON.stringify({ first, second, received, refunded, remainingReceived, fullRefund, order }), contentType: 'application/json' });
 });

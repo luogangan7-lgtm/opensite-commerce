@@ -75,7 +75,9 @@ test('VISUAL-REAL provenance identifies injected faults and unreachable boundary
 test('VISUAL-230 requires real staff order evidence for both viewports', () => {
   const states = ['list', 'detail', 'long-list', 'long-detail', 'empty', 'pagination',
     'list-loading', 'detail-loading', 'list-503', 'order-detail-unavailable-503',
-    'unauthenticated', 'cross-tenant', 'expired-session', 'permission-denied'];
+    'unauthenticated', 'cross-tenant', 'expired-session', 'permission-denied',
+    'multiline', 'paid', 'partially-fulfilled', 'fulfilled', 'partially-refunded', 'refunded',
+    'rma-cart', 'rma-checkout', 'rma-completion'];
   const inventory = (REAL_VISUAL_STATES as unknown as Record<number, readonly string[]>)[230] ?? [];
   expect(inventory).toEqual(states);
   for (const viewport of ['desktop', 'mobile']) for (const state of states) {
