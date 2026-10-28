@@ -1,11 +1,20 @@
 /** Exercises production UI and pending-contract fixtures; Playwright/axe prove UI behavior only. CI alone writes snapshots. */
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Locator,type Page} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {fixture,tenant,productId,orderId,order} from './admin-fixture';
+import {existsSync} from 'node:fs';
+import {missingNotificationSnapshots,notificationVisualStates,requiredNotificationSnapshots} from './notification-visual-states';
 const origin=process.env.OPENSITE_ADMIN_E2E_ORIGIN??'http://127.0.0.1:4174';
 const fixtureOrigin=process.env.OPENSITE_ADMIN_FIXTURE_ORIGIN??'http://127.0.0.1:4173';
 const snapshots=process.env.OPENSITE_ADMIN_NO_SNAPSHOTS!=='1';
-async function audit(page:Page,name?:string){await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));});expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);if(name&&snapshots)await expect(page).toHaveScreenshot(name,{fullPage:true});}
+// Run after the producer has rendered this project; its writer adds provenance after Playwright exits.
+test.afterAll(async({},testInfo)=>{
+ if(!snapshots)return;
+ const prefix=`${testInfo.project.name}/`;
+ const present=requiredNotificationSnapshots.filter(path=>!path.startsWith(prefix)||existsSync(`tests/frontend/baselines/${path}`));
+ expect(missingNotificationSnapshots(present),'Required #366 desktop/mobile PNGs must exist').toEqual([]);
+});
+async function audit(page:Page,name?:string,beforeScreenshot?:()=>Promise<void>){await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));});expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);if(beforeScreenshot)await beforeScreenshot();if(name&&snapshots)await expect(page).toHaveScreenshot(name,{fullPage:true});}
 // Hold one routed API response until its loading UI has been captured; no backend/time changes.
 async function holdResponse(page:Page,url:string){
  let release!:()=>void,started!:()=>void;
@@ -23,6 +32,24 @@ async function statusFitsVisibleTable(page:Page,caption:string,text:string){
  });
  expect(fragments.length).toBeGreaterThan(0);
  for(const rect of fragments){expect(rect.left).toBeGreaterThanOrEqual(region.x);expect(rect.right).toBeLessThanOrEqual(region.x+region.width);}
+}
+// Visibility of the element alone misses text overflowing its cell or scroll region.
+async function fullTextFitsVisibleCell(element:Locator,scrollIntoView=true){
+ if(scrollIntoView)await element.scrollIntoViewIfNeeded();
+ const geometry=await element.evaluate(el=>{
+  const cell=el.closest('td'),region=el.closest('.os-table-scroll');
+  if(!cell||!region)throw new Error('Expected a table cell in its scroll region');
+  const boxes=[cell.getBoundingClientRect(),region.getBoundingClientRect()];
+  const range=document.createRange();range.selectNodeContents(el);
+  return {bounds:{left:Math.max(0,...boxes.map(r=>r.left)),right:Math.min(innerWidth,...boxes.map(r=>r.right)),top:Math.max(0,...boxes.map(r=>r.top)),bottom:Math.min(innerHeight,...boxes.map(r=>r.bottom))},fragments:Array.from(range.getClientRects(),r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom}))};
+ });
+ expect(geometry.fragments.length).toBeGreaterThan(0);
+ for(const rect of geometry.fragments){
+  expect(rect.left,'Full text must fit the visible cell left edge').toBeGreaterThanOrEqual(geometry.bounds.left);
+  expect(rect.right,'Full text must fit the visible cell right edge').toBeLessThanOrEqual(geometry.bounds.right);
+  expect(rect.top,'Full text must fit the visible cell top edge').toBeGreaterThanOrEqual(geometry.bounds.top);
+  expect(rect.bottom,'Full text must fit the visible cell bottom edge').toBeLessThanOrEqual(geometry.bounds.bottom);
+ }
 }
 async function signIn(page:Page){await page.getByLabel('Email').fill('staff@example.invalid');await page.getByLabel('Password',{exact:true}).fill(crypto.randomUUID());await page.getByRole('button',{name:'Sign in',exact:true}).click();}
 /** First-visit-only POST control: proves a listener registered before navigation observes writes. */
@@ -195,6 +222,10 @@ test('notification snapshot pages and confirmation retain safe recovery states',
  await expect(page.getByText('Investigate manually',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Next page',exact:true}).click();
  await expect(page.getByRole('table',{name:'Notification failures'}).getByRole('row')).toHaveCount(3);
+ await expect(page.getByText(/Page 2 of 2/)).toBeVisible();
+ await expect(page.getByRole('button',{name:'Next page',exact:true})).toBeDisabled();
+ await expect(page.getByRole('button',{name:'Previous page',exact:true})).toBeEnabled();
+ await audit(page,notificationVisualStates.lastPage);
  await page.getByRole('button',{name:'Previous page',exact:true}).click();
  await audit(page,'admin-notifications.png');
  const region=page.getByRole('region',{name:'Notification failures'});
@@ -210,6 +241,8 @@ test('notification snapshot pages and confirmation retain safe recovery states',
  await expect(dialog.getByRole('button',{name:'Cancel redrive',exact:true})).toBeFocused();
  await audit(page,'admin-notifications-confirmation.png');
  await page.keyboard.press('Escape');await expect(trigger).toBeFocused();expect(keys).toEqual([]);
+ await expect(dialog).toHaveCount(0);await expect(trigger).toBeInViewport();
+ await audit(page,notificationVisualStates.escapeFocus);
  await trigger.click();const confirming=await holdResponse(page,'**/api/v1/t/*/notifications/*/redrive');
  await dialog.getByRole('button',{name:'Confirm redrive',exact:true}).click();await confirming.ready;
  try{await expect(dialog.getByRole('button',{name:'Cancel redrive',exact:true})).toBeDisabled();await audit(page,'admin-notifications-confirming.png');}finally{confirming.release();}
@@ -221,6 +254,64 @@ test('notification snapshot pages and confirmation retain safe recovery states',
  await expect(trigger).toBeDisabled();await expect(page.getByText('PRIVATE_CONTACT_DETAIL')).toHaveCount(0);
  await audit(page,'admin-notifications-stale.png');
  await page.getByRole('button',{name:'Reload failures',exact:true}).click();await expect(trigger).toBeEnabled();
+});
+test('notification empty snapshot and list-load failure are distinct safe states',async({page})=>{
+ await fixture(page);let failed=false;const writes:string[]=[];
+ await page.route('**/notifications/**',route=>{
+  if(route.request().method()!=='GET')writes.push(route.request().method());
+  return route.fulfill(failed?{status:503,json:{detail:'PRIVATE_CONTACT_DETAIL'}}:{json:{items:[]}});
+ });
+ await page.goto(`${origin}/t/${tenant}/notifications`);
+ await expect(page.getByRole('table',{name:'Notification failures'})).toHaveAttribute('aria-busy','false');
+ await statusFitsVisibleTable(page,'Notification failures','No notification failures in this snapshot.');
+ await expect(page.getByRole('button',{name:'Previous page',exact:true})).toBeDisabled();
+ await expect(page.getByRole('button',{name:'Next page',exact:true})).toBeDisabled();
+ await audit(page,notificationVisualStates.empty);
+ failed=true;await page.getByRole('button',{name:'Reload failures',exact:true}).click();
+ await expect(page.getByRole('alert')).toHaveText('Unable to load notification failures. Reload to try again.');
+ await expect(page.getByRole('table')).toHaveCount(0);
+ await expect(page.getByText('PRIVATE_CONTACT_DETAIL')).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Reload failures',exact:true})).toBeEnabled();
+ await audit(page,notificationVisualStates.listError);
+ failed=false;await page.getByRole('button',{name:'Reload failures',exact:true}).click();
+ await expect(page.getByRole('alert')).toHaveCount(0);
+ await expect(page.getByText('No notification failures in this snapshot.',{exact:true})).toBeVisible();
+ expect(writes).toEqual([]);
+});
+test('notification legal long metadata and failed status retain read-only recovery guidance',async({page})=>{
+ await fixture(page);const writes:string[]=[];
+ const id='ffffffff-ffff-4fff-bfff-ffffffffffff',updated='2026-10-28T23:59:59.123456789+14:00';
+ // Longest admitted timestamp shape and safe display message; arbitrary message bodies/overlong UUIDs are rejected.
+ const row={id,event_id:id,template_key:'quote.converted',status:'failed',attempts:2147483647,generation:2147483647,created_at:updated,updated_at:updated,safe_error:'SEND_RESULT_UNKNOWN'};
+ await page.route('**/notifications/**',route=>{
+  if(route.request().method()!=='GET')writes.push(route.request().method());
+  return route.fulfill({json:{items:[row]}});
+ });
+ await page.goto(`${origin}/t/${tenant}/notifications`);
+ const table=page.getByRole('table',{name:'Notification failures'}),region=page.getByRole('region',{name:'Notification failures'});
+ await expect(table.getByRole('row')).toHaveCount(2);
+ await expect(table.getByRole('cell').filter({hasText:id})).toContainText('quote.converted');
+ await expect(table.locator('time')).toHaveText(updated);
+ await expect(table.getByRole('cell',{name:'Delivery outcome unknown',exact:true})).toBeVisible();
+ await fullTextFitsVisibleCell(table.getByRole('cell').filter({hasText:id}));
+ await audit(page,notificationVisualStates.longMetadata);
+ await table.getByRole('cell',{name:'Delivery outcome unknown',exact:true}).scrollIntoViewIfNeeded();
+ await fullTextFitsVisibleCell(table.getByRole('cell',{name:'Delivery outcome unknown',exact:true}));
+ await expect(table.getByRole('cell',{name:'Delivery outcome unknown',exact:true})).toBeInViewport({ratio:1});
+ await audit(page,notificationVisualStates.longMessage);
+ await table.locator('time').scrollIntoViewIfNeeded();
+ await fullTextFitsVisibleCell(table.locator('time'));
+ await expect(table.locator('time')).toBeInViewport({ratio:1});
+ await audit(page,notificationVisualStates.longTime);
+ await region.evaluate(el=>{el.scrollLeft=el.scrollWidth;});
+ await expect(table.getByRole('cell',{name:'Automatic retry pending',exact:true})).toBeInViewport();
+ await expect(table.getByRole('cell',{name:'failed',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Redrive',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ // Audit the page, then capture the visible scrollport itself so full-page capture cannot change its framing.
+ await audit(page,undefined,()=>fullTextFitsVisibleCell(table.getByRole('cell',{name:'Automatic retry pending',exact:true})));
+ if(snapshots)await expect(region).toHaveScreenshot(notificationVisualStates.failed);
+ expect(writes).toEqual([]);
 });
 test('notification 403 hides all private metadata and mutation controls',async({page})=>{
  const path=`${origin}/t/${tenant}/notifications`;
