@@ -65,12 +65,21 @@ test('backend problem code is visible without returning upstream private detail'
   const text=await response.text();expect(JSON.parse(text).code).toBe('stock_unavailable');expect(text).not.toContain('private');
   expect(calls.at(-1)!.headers.get('Idempotency-Key')).toBe('c09d0001-0000-4000-8000-000000000001');
 });
+test('checkout accepts uppercase UUIDs and forwards lowercase',async()=>{
+  const jar=cookies(),context=await readPurchaseContext(request('context'),jar.jar);
+  await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
+  failure=true;
+  const key='abcdef01-2345-6789-abcd-ef0123456789';
+  const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers:{Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json','Idempotency-Key':key.toUpperCase()},body:'{}'}),jar.jar,'checkout');
+  expect(response.status).toBe(409);
+  expect(calls.at(-1)!.headers.get('Idempotency-Key')).toBe(key);
+});
 test('checkout rejects missing, noncanonical and repeated idempotency keys before forwarding a write',async()=>{
   const jar=cookies(),context=await readPurchaseContext(request('context'),jar.jar);
   await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
   const canonical='abcdef01-2345-6789-abcd-ef0123456789';
   const before=calls.filter(call=>call.method!=='GET').length;
-  for(const key of [undefined,'','alice@example.test','legacy-key',canonical.toUpperCase(),canonical.replaceAll('-',''),`{${canonical}}`,`${canonical}.reserve`,`${canonical.slice(0,-1)}g`,`${canonical}, ${canonical}`]){
+  for(const key of [undefined,'','alice@example.test','legacy-key',canonical.replaceAll('-',''),`{${canonical}}`,`${canonical}.reserve`,`${canonical.slice(0,-1)}g`,`${canonical}, ${canonical}`]){
     const headers=new Headers({Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json'});
     if(key!==undefined)headers.set('Idempotency-Key',key);
     const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers,body:'{}'}),jar.jar,'checkout');

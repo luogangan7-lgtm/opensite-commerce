@@ -128,11 +128,17 @@ describe('cookie admin API', () => {
     await expect(catalog.updateProduct(product, { product_code: 'A' }, Number.MAX_SAFE_INTEGER + 1)).rejects.toThrow();
     expect(h.calls).toHaveLength(3);
   });
-  test('mutation keys must be canonical lowercase UUIDs before fetch; automatic keys satisfy the contract', async () => {
+  test('uppercase mutation UUIDs normalize before forwarding', async () => {
+    const h = harness([json(session), json({ id: product })]);
+    const api = new AdminAPI({ fetch: h.fetcher }); await api.session();
+    await new CatalogAPI(api, tenant).createProduct({ product_code: 'CODE' }, { idempotencyKey: requestKey.toUpperCase() });
+    expect(new Headers(h.calls[1].init.headers).get('Idempotency-Key')).toBe(requestKey);
+  });
+  test('mutation keys must be UUIDs before fetch; automatic keys satisfy the contract', async () => {
     const h = harness([json(session), json({ id: product })]);
     const api = new AdminAPI({ fetch: h.fetcher }); await api.session();
     const catalog = new CatalogAPI(api, tenant);
-    for (const key of ['', 'alice@example.test', 'legacy-key', requestKey.toUpperCase(), requestKey.replaceAll('-', ''), `{${requestKey}}`, `${requestKey}.reserve`, `${requestKey},${requestKey}`, `${requestKey.slice(0, -1)}g`, ` ${requestKey}`, `${requestKey}\n`, `${requestKey}\r`]) {
+    for (const key of ['', 'alice@example.test', 'legacy-key', requestKey.replaceAll('-', ''), `{${requestKey}}`, `${requestKey}.reserve`, `${requestKey},${requestKey}`, `${requestKey.slice(0, -1)}g`, ` ${requestKey}`, `${requestKey}\n`, `${requestKey}\r`]) {
       await expect(catalog.createProduct({ product_code: 'CODE' }, { idempotencyKey: key })).rejects.toMatchObject({ status: 400, code: 'invalid_idempotency_key' });
     }
     expect(h.calls).toHaveLength(1);
@@ -214,7 +220,7 @@ describe('review follow-ups', () => {
     const h = harness([json(session)]), api = new AdminAPI({ fetch: h.fetcher });
     await api.session();
     const catalog = new CatalogAPI(api, tenant), file = new File(['abc'], 'photo.png', { type: 'image/png' });
-    for (const key of ['alice@example.test', 'legacy-key', requestKey.toUpperCase(), `${requestKey}\n`]) {
+    for (const key of ['alice@example.test', 'legacy-key', `${requestKey}\n`]) {
       await expect(catalog.uploadMedia(file, { idempotencyKey: key })).rejects.toMatchObject({ status: 400, code: 'invalid_idempotency_key' });
     }
     expect(h.calls).toHaveLength(1);

@@ -118,3 +118,22 @@ func TestUUIDBoundaryNormalizesBeforeAnyHandler(t *testing.T) {
 		t.Fatalf("handler calls=%d", called)
 	}
 }
+
+func TestRegisterRejectsMissingContractPathOrMethod(t *testing.T) {
+	for _, spec := range []httpapi.RouteSpec{
+		{OperationID: "missingPath", Method: "POST", Pattern: "/api/v1/uncontracted", Access: httpapi.Public},
+		{OperationID: "missingMethod", Method: "TRACE", Pattern: "/api/v1/t/{tenant_id}/checkout", Access: httpapi.Storefront},
+	} {
+		t.Run(spec.OperationID, func(t *testing.T) {
+			router := httpapi.New(nil, nil)
+			if err := router.Register(spec, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				t.Fatal("uncontracted handler admitted")
+			})); err == nil {
+				t.Fatal("uncontracted production route registered")
+			}
+			if len(router.RouteSpecs()) != 0 {
+				t.Fatal("rejected route leaked into registry")
+			}
+		})
+	}
+}

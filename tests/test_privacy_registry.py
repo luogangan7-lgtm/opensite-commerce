@@ -492,6 +492,25 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
     """MDEL-00: mandatory merchant policy is independent of customer retention."""
     setUpClass = PrivacyRegistryTests.__dict__["setUpClass"]
 
+    def test_caller_key_constraint_is_required_even_for_sqlc_writers(self):
+        validate = getattr(self.gate, "validate_caller_key_constraints", None)
+        self.assertTrue(callable(validate), "MERCHANT_CALLER_KEY_CHECK: migration gate missing")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "migrations/pending").mkdir(parents=True)
+            registry = {"returns.refund_key": {"merchant_deletion": {
+                "action": "retain", "value_type": "opaque_ref"}}}
+            with self.assertRaisesRegex(ValueError, "MERCHANT_CALLER_KEY_CHECK.*returns.refund_key"):
+                validate(root, registry)
+            migration = root / "migrations/pending/probe_keys.sql"
+            exact = "ALTER TABLE app.returns ADD CONSTRAINT refund_key_uuid CHECK (refund_key ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');"
+            migration.write_text(exact)
+            validate(root, registry)
+            for mutant in ("-- " + exact, exact.replace("CHECK (", "CHECK (true OR "), exact.replace("[0-9a-f]", "[0-9a-fA-F]"), exact.replace("refund_key ~", "provider_ref ~"), exact + "\nALTER TABLE app.returns DROP CONSTRAINT refund_key_uuid;"):
+                migration.write_text(mutant)
+                with self.assertRaisesRegex(ValueError, "MERCHANT_CALLER_KEY_CHECK"):
+                    validate(root, registry)
+
     def opaque_gate(self, root, registry):
         validate = getattr(self.gate, "validate_opaque_provenance", None)
         self.assertTrue(callable(validate), "MERCHANT_OPAQUE_PROVENANCE: executable provenance gate is missing")
