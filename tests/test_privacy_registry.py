@@ -714,6 +714,11 @@ func write(r *fs.Root, b business) {
 }
 ''')
             self.assertEqual(self.gate.artifact_catalog(root), {"orders.archive": "internal/probe.go"})
+            original = source.read_text()
+            source.write_text(original + '\nfunc (business) OpenFile(string) {}\nfunc extra(b business) { b.OpenFile("unreviewed-wrapper") }\n')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
+                self.gate.artifact_catalog(root)
+            source.write_text(original)
             (root / "internal/tagged.go").write_text('''//go:build privacy_future
 package probe
 import "os"

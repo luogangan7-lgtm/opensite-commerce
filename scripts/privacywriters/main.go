@@ -68,7 +68,9 @@ func inventory(root string) ([]writer, error) {
 			// A real module must type-resolve every call. Standalone synthetic
 			// gate fixtures have no go.mod, so conservatively scan all four
 			// selector names there (including unresolved os.Root receivers).
-			if info != nil {
+			// Preserve the old gate's conservative inventory of OpenFile
+			// wrappers; resolving a non-os receiver must not exempt them.
+			if info != nil && selector.Sel.Name != "OpenFile" {
 				fn, ok := info.Uses[selector.Sel].(*types.Func)
 				if !ok || fn.Pkg() == nil || fn.Pkg().Path() != "os" {
 					return true

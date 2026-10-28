@@ -212,5 +212,6 @@ Artifact inventory uses `scripts/privacywriters` and Go AST/type information to
 identify `os` and `(*os.Root)` Create/CreateTemp/WriteFile/OpenFile calls. Each
 writer needs its artifact comment group immediately before that call's line;
 a file-level marker cannot authorize another call. Multiple calls on that line
-cannot share a marker. Standalone synthetic fixtures are scanned conservatively
+cannot share a marker. OpenFile wrappers retain the prior conservative inventory
+regardless of receiver type; a type lookup never exempts an existing writer pattern. Standalone synthetic fixtures are scanned conservatively
 by selector name. This is source inventory, not proof of runtime bytes removal.
