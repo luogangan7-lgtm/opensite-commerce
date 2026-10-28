@@ -24,6 +24,16 @@ export function realVisualPaths() {
       `${viewport}/real-${issue}-${state}.png`)));
 }
 
+/** Distinct required history states must never share a committed image. */
+export function assertDistinctHistoryPngs(pngs: Record<string, string>) {
+  const states = ['history-list', 'history-long-order', 'history-detail', 'history-long-sku', 'history-multiline'];
+  for (const viewport of ['desktop', 'mobile']) {
+    const hashes = states.map(state => pngs[`${viewport}/real-250-${state}.png`]);
+    if (hashes.some(hash => !hash) || new Set(hashes).size !== states.length)
+      throw new Error(`${viewport} history state images must exist and be distinct`);
+  }
+}
+
 export function realBackendEvidence(snapshot: string) {
   const history = /^real-250-(.+)\.png$/.exec(snapshot.split('/').at(-1) ?? '')?.[1];
   if (history) return { application: 'Go', database: 'PostgreSQL 18.6', mode: 'test',

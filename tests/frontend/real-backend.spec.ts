@@ -346,24 +346,33 @@ async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250]
 // Historical display fixtures use fixed dates/numbers, not a browser-clock expiry.
 // Use the existing Orders executor with every trigger/FK/RLS/check active. The
 // large number is a legal historical snapshot; no trigger suspension or DTO mock.
-function historyOrders(customer: { id: string; email: string }, project: string, batch: number, count = 1, long = false, guest = false) {
-  const key = `visual-250-${project}-${batch}`, number = 9007199254741000n + BigInt(project === 'mobile' ? 1000 : 0) + BigInt(batch * 100);
+function historyOrders(customer: { id: string; email: string }, project: string, batch: number, count = 1, long = false, guest = false, variant?: 'normal' | 'multiline') {
+  const key = `visual-250-${project}-${batch}`, number = variant ? (variant === 'normal' ? 701234n : 705678n) + BigInt(project === 'mobile' ? 100 : 0) : 9007199254741000n + BigInt(project === 'mobile' ? 1000 : 0) + BigInt(batch * 100);
   const code = long ? 'S'.repeat(255) : 'C24-CANVAS-TOTE';
+  const stamp = variant === 'normal' ? '2026-01-02T11:00:00Z' : variant === 'multiline' ? '2026-01-02T10:00:00Z' : '2026-01-02T12:00:00Z';
   sql(`BEGIN; SELECT set_config('app.tenant_id','${tenant}',true);
-    DO $seed$ DECLARE r app.inventory_reservations; oid uuid; n integer; amount bigint; BEGIN
+    DO $seed$ DECLARE r app.inventory_reservations; r2 app.inventory_reservations; oid uuid; n integer; amount bigint; BEGIN
       FOR n IN 0..${count - 1} LOOP
         oid:=gen_random_uuid(); amount:=CASE WHEN ${long} AND n=0 THEN 9223372036854775807 ELSE 3140 END;
         r:=app.inventory_reserve('${sku}',1,'order',oid,'${key}-'||n,3600);
+        IF ${variant === 'multiline'} THEN
+          r2:=app.inventory_reserve('${sku}',1,'order',oid,'${key}-extra-'||n,3600);
+        END IF;
         SET LOCAL ROLE app_orders_executor;
         INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,customer_id,guest_contact,
           currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor,created_at)
         VALUES('${tenant}',oid,${number}::bigint+n,'${key}-'||n,sha256(('${key}-'||n)::bytea),
           ${guest ? 'NULL' : `'${customer.id}'::uuid`},${guest ? `jsonb_build_object('email','${customer.email}')` : 'NULL'},
-          'USD',amount,0,0,'{}',amount,'2026-01-02T12:00:00Z'::timestamptz-n*interval '1 second');
-        INSERT INTO app.order_lines(tenant_id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
+          'USD',amount,0,0,'{}',amount,'${stamp}'::timestamptz-n*interval '1 second');
+        INSERT INTO app.order_lines(tenant_id,id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
           line_tax_minor,line_total_minor,reservation_id,tax_snapshot)
-        VALUES('${tenant}',oid,'${sku}',CASE WHEN n=0 THEN '${code}' ELSE 'C24-CANVAS-TOTE' END,
+        VALUES('${tenant}',CASE WHEN ${variant === 'multiline'} THEN 'c2500001-0000-4000-8000-00000000000${project === 'mobile' ? 2 : 1}'::uuid ELSE uuidv7() END,oid,'${sku}',CASE WHEN n=0 THEN '${code}' ELSE 'C24-CANVAS-TOTE' END,
           1,amount,amount,0,amount,r.id,'{}');
+        IF ${variant === 'multiline'} THEN
+          INSERT INTO app.order_lines(tenant_id,id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
+            line_tax_minor,line_total_minor,reservation_id,tax_snapshot)
+          VALUES('${tenant}','c2500002-0000-4000-8000-00000000000${project === 'mobile' ? 2 : 1}',oid,'${sku}','SECOND-LINE',1,0,0,0,0,r2.id,'{}');
+        END IF;
         UPDATE app.orders SET sealed=true WHERE tenant_id='${tenant}' AND id=oid;
         RESET ROLE;
       END LOOP;
@@ -396,14 +405,21 @@ test.describe('VISUAL-REAL #250', () => {
 
   test('real history entry, long snapshots, multiline detail and restored keyboard focus', async ({ page }, info) => {
     const customer = await historyCustomer(page, info.project.name, 'long');
-    const fixture = historyOrders(customer, info.project.name, 1, 1, true), row = fixture.rows[0]!;
+    const normal = historyOrders(customer, info.project.name, 8, 1, false, false, 'normal').rows[0]!;
     await historySnapshot(page, 'account-entry');
     await page.getByRole('link', { name: 'Order history', exact: true }).click();
     await historyReady(page);
+    const normalOrder = page.getByRole('button', { name: `Order #${normal.number}`, exact: true });
+    await expect(normalOrder).toBeVisible();
+    await historySnapshot(page, 'history-list');
+    await normalOrder.click(); await historyReady(page);
+    await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('C24-CANVAS-TOTE');
+    await historySnapshot(page, 'history-detail');
+    const fixture = historyOrders(customer, info.project.name, 1, 1, true), row = fixture.rows[0]!;
+    await page.goto(`${site}/account/orders`); await historyReady(page);
     const order = page.getByRole('button', { name: `Order #${row.number}`, exact: true });
     await expect(order).toBeVisible();
     await expect(historyPanel(page)).toContainText('$92,233,720,368,547,758.07');
-    await historySnapshot(page, 'history-list');
     await historySnapshot(page, 'history-long-order');
     await fault(page, `${historyBackend}/${row.id}`, 'GET', 'hold');
     await order.click();
@@ -420,8 +436,13 @@ test.describe('VISUAL-REAL #250', () => {
       const range = document.createRange(); range.selectNodeContents(element.firstChild!);
       return range.getClientRects().length;
     }), 'long SKU wraps into multiple visible lines').toBeGreaterThan(1);
-    await historySnapshot(page, 'history-detail');
     await historySnapshot(page, 'history-long-sku');
+    const multi = historyOrders(customer, info.project.name, 9, 1, false, false, 'multiline').rows[0]!;
+    await page.goto(`${site}/account/orders`); await historyReady(page);
+    await page.getByRole('button', { name: `Order #${multi.number}`, exact: true }).click(); await historyReady(page);
+    await expect(detail.locator('.cart-line')).toHaveCount(2);
+    await expect(detail).toContainText('C24-CANVAS-TOTE');
+    await expect(detail).toContainText('SECOND-LINE');
     await historySnapshot(page, 'history-multiline');
     await page.getByRole('button', { name: 'Back to orders', exact: true }).click();
     await historyReady(page);
@@ -590,6 +611,8 @@ test.describe('VISUAL-REAL #250', () => {
       const order = page.getByRole('button', { name: `Order #${receipt.order_number}`, exact: true });
       const row = historyPanel(page).locator('li.cart-line').filter({ has: order });
       const date = row.locator('time');
+      await expect(row.locator('.cart-line-heading p')).toHaveText('$27.00');
+      await expect(date.locator('..')).toContainText('paid');
       await expect(date).toHaveCount(1);
       await expect(date).toHaveAttribute('datetime', createdAt);
       await expect(date).toHaveText(/^(?:[1-9]|1[0-2])\/(?:[1-9]|[12][0-9]|3[01])\/\d{4}$/);
@@ -608,11 +631,14 @@ test.describe('VISUAL-REAL #250', () => {
       });
       const rowBox = await row.boundingBox();
       if (!beforeBox || !amountBox || !rowBox) throw new Error('Missing date mask geometry');
-      // RED fixture: the faulty candidate mask spans the entire order row.
-      assertDateMaskBounds(rowBox, beforeBox, [statusBox, amountBox]);
+      // The adversarial candidate spans the whole row; it must be rejected.
+      expect(() => assertDateMaskBounds(rowBox, beforeBox, [statusBox, amountBox])).toThrow('Date mask extends outside time element');
+      assertDateMaskBounds(beforeBox, beforeBox, [statusBox, amountBox]);
       const before = await page.screenshot({ fullPage: true, mask: [date], maskColor });
       await date.evaluate(node => { node.textContent = '12/31/2099'; });
       const afterBox = await date.boundingBox();
+      if (!afterBox) throw new Error('Missing shifted date mask geometry');
+      assertDateMaskBounds(afterBox, afterBox, [statusBox, amountBox]);
       const after = await page.screenshot({ fullPage: true, mask: [date], maskColor });
       await date.evaluate((node, value) => { node.textContent = value; }, original);
       console.info('VISUAL runtime date mask geometry', { beforeBox, afterBox, maskColor });
