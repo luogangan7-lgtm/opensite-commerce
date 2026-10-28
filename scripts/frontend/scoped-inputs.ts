@@ -9,7 +9,7 @@ import { isBuiltin } from 'node:module';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-export type RendererScope = 'gallery' | 'admin' | 'storefront-published' | 'storefront-commerce';
+export type RendererScope = 'gallery' | 'admin' | 'storefront-published' | 'storefront-commerce' | 'real-backend';
 type PackageMetadata = { name?: string; workspaces?: string[] | { packages?: string[] }; exports?: unknown; main?: string; module?: string; types?: string;
   dependencies?: Record<string, string>; devDependencies?: Record<string, string>; peerDependencies?: Record<string, string>; optionalDependencies?: Record<string, string> };
 const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.astro', '.css', '.json', '.d.ts'];
@@ -276,9 +276,13 @@ export function scopeInputs(scope: RendererScope, root = process.cwd()): string[
       'tests/frontend/storefront.spec.ts', 'scripts/start_storefront_ssr.sh', ...reader],
     'storefront-commerce': [...storefrontConfig, ...commercePages.map(page => `web/storefront/src/pages/${page}`),
       'tests/frontend/storefront-commerce.spec.ts', 'tests/frontend/commerce-fixture.ts', 'scripts/start_storefront_ssr.sh', ...reader],
+    'real-backend': [...storefrontConfig, ...commercePages.map(page => `web/storefront/src/pages/${page}`),
+      'tests/frontend/real-backend.spec.ts', 'scripts/frontend/real-proxy.ts', 'scripts/frontend/start-real-backend.py',
+      'scripts/e2e/seed.sql', 'scripts/e2e/purchase.py', 'scripts/ops_deploy.py',
+      'scripts/start_storefront_ssr.sh', 'cmd/bootstrap-admin/main.go', ...reader],
   };
   if (!(scope in registry)) throw new Error(`Unknown renderer scope: ${scope}`);
-  const assetDirectory = scope.startsWith('storefront-') ? 'web/storefront/public' : 'web/admin/public';
+  const assetDirectory = scope.startsWith('storefront-') || scope === 'real-backend' ? 'web/storefront/public' : 'web/admin/public';
   const assets = filesIn(join(root, assetDirectory)).map(path => relative(root, path));
   // Hash global authority/config files directly: following the Playwright writer import would collapse all scopes.
   for (const path of common) if (!existsSync(join(root, path))) throw new Error(`Missing common input: ${path}`);
