@@ -99,7 +99,7 @@ test('real API denies anonymous catalog reads and creation before data access', 
   for (const response of [
     await request.get(path, { maxRedirects: 0 }),
     await request.get(`${path}/${fixture.productId}`, { maxRedirects: 0 }),
-    await request.post(path, { data: { product_code: 'C24-UNAUTHORIZED' }, maxRedirects: 0 }),
+    await request.post(path, { data: { product_code: 'C24-UNAUTHORIZED' }, headers: { 'Idempotency-Key': crypto.randomUUID() }, maxRedirects: 0 }),
   ]) {
     expect(response.status()).toBe(401);
     expect(response.headers()['content-type']).toContain('application/problem+json');

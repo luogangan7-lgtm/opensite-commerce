@@ -102,7 +102,9 @@ func TestStrictRoutesAdmission(t *testing.T) {
 func TestStrictRoutesAuthenticationPrecedesAdmission(t *testing.T) {
 	router, s := admissionRouter(t, nil)
 	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, httptest.NewRequest("POST", "/api/v1/t/not-a-uuid/products", strings.NewReader(`{"unknown":true}`)))
+	req := httptest.NewRequest("POST", "/api/v1/t/not-a-uuid/products", strings.NewReader(`{"unknown":true}`))
+	req.Header.Set("Idempotency-Key", "11111111-1111-4111-8111-111111111111")
+	router.ServeHTTP(rr, req)
 	if rr.Code != 401 || s.calls != 0 {
 		t.Fatalf("%d calls %d", rr.Code, s.calls)
 	}

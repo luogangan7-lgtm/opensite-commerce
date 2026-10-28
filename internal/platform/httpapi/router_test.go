@@ -309,7 +309,9 @@ func TestBuyerCompanyRequiresScopedTenantAndDefaultsDeny(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/t/11111111-1111-1111-1111-111111111111/quotes/22222222-2222-2222-2222-222222222222/orders", nil))
+	req := httptest.NewRequest("POST", "/api/v1/t/11111111-1111-1111-1111-111111111111/quotes/22222222-2222-2222-2222-222222222222/orders", nil)
+	req.Header.Set("Idempotency-Key", "11111111-1111-4111-8111-111111111111")
+	r.ServeHTTP(w, req)
 	assertProblem(t, w, 401)
 	for _, change := range []func(*httpapi.RouteSpec){func(s *httpapi.RouteSpec) { s.Scope = "" }, func(s *httpapi.RouteSpec) { s.Scope = "quotes:write" }, func(s *httpapi.RouteSpec) { s.Pattern = "/auth/whoami" }, func(s *httpapi.RouteSpec) { s.Pattern = "/t/{tenant_id}/quotes" }} {
 		bad := spec

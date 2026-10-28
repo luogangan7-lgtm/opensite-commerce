@@ -90,7 +90,9 @@ func TestQuotesUnconfiguredAuthenticationIsDenied(t *testing.T) {
 	id := "11111111-1111-1111-1111-111111111111"
 	for _, tc := range []struct{ method, path string }{{"POST", "/api/v1/t/" + id + "/quotes/" + id + "/orders"}, {"GET", "/api/v1/t/" + id + "/quotes/" + id + "/order-conversion"}, {"POST", "/api/public/v1/inquiries"}, {"POST", "/api/v1/t/" + id + "/quotes"}, {"GET", "/api/v1/t/" + id + "/quotes/" + id}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/send"}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/withdraw"}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/expire"}, {"GET", "/api/public/v1/quotes/" + id}, {"POST", "/api/public/v1/quotes/" + id + "/accept"}, {"POST", "/api/public/v1/quotes/" + id + "/approve"}, {"POST", "/api/public/v1/quotes/" + id + "/reject"}} {
 		w := httptest.NewRecorder()
-		server.Handler.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, nil))
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		req.Header.Set("Idempotency-Key", "11111111-1111-4111-8111-111111111111")
+		server.Handler.ServeHTTP(w, req)
 		if w.Code != 401 || w.Header().Get("Content-Type") != "application/problem+json" {
 			t.Fatalf("%s %s=%d %s", tc.method, tc.path, w.Code, w.Body.String())
 		}

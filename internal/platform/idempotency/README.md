@@ -88,8 +88,8 @@ For a behavioral mutation gate on a disposable copy, change only
 replays, and the expected422 assertion must turn red. Restore the file, bind its
 hash, rerun green and retain both logs. This mutation compiles and changes the
 semantic branch rather than producing a compile-only red. A second simple
-HTTP-boundary mutation is validKey's max128 to129; TestValidateKey must turn red
-on the129-byte case, then restore and rerun.
+HTTP-boundary mutation is to admit printable caller text in validKey;
+TestValidateKey must turn red on an email-shaped key, then restore and rerun in CI.
 
 Claims accept durations from one microsecond through 24 hours. Both ClaimTx and
 the SQL function reject values outside that window; SQL validates elapsed seconds
