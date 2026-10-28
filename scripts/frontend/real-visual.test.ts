@@ -3,6 +3,7 @@
  */
 import { expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { BASELINES, sha256 } from './baseline-provenance';
 import { REAL_VISUAL_STATES, realVisualPaths, realBackendEvidence } from './real-visual-manifest';
 import { assertDistinctHistoryPngs, SHARED_RENDER } from './real-visual-shared-render-manifest';
@@ -79,4 +80,10 @@ test('VISUAL-REAL proxy and launcher match the reviewed no-DTO sources', () => {
     'scripts/frontend/start-real-backend.py': 'f28929e06059ce0f540dee2c2c5e827f07b95ed43592994d9f3fbfe688c0e28e',
   };
   for (const [path, digest] of Object.entries(approved)) expect(sha256(path), path).toBe(digest);
+});
+
+test('VISUAL-REAL cleanup continues after a failed database drop', () => {
+  const result = spawnSync('python3', ['scripts/frontend/test_real_launcher.py',
+    'LauncherCleanup.test_drop_database_failure_still_attempts_each_role'], { encoding: 'utf8' });
+  expect(result.status, result.stderr).toBe(0);
 });

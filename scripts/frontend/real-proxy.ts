@@ -51,6 +51,3 @@ Bun.serve({ hostname: '127.0.0.1', port: 4181, idleTimeout: 30, async fetch(requ
   headers.delete('content-encoding'); headers.delete('content-length');
   return new Response(bytes, { status: response.status, headers });
 } });
-
-// RED probe: prohibited synthesized business DTO.
-export const plantedDto = () => Response.json({ order: { id: "fake" } });
