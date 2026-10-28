@@ -43,7 +43,7 @@ jobs:
           ./scripts/migrate_river.sh
           ./scripts/migrate.sh
           go mod download
-          go test -c -tags pgx,stripe_live -o "$RUNNER_TEMP/stripe-live.test" ./internal/db
+          go test -c -tags pgx,stripe_live -o "$RUNNER_TEMP/stripe-live.test" ./internal/modules/payments
       - name: Owner-approved A permission probe with allowlisted public receipt
         timeout-minutes: 3
         env:

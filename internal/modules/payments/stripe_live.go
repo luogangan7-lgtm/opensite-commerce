@@ -233,7 +233,7 @@ func (s *StripeLiveSmoke) Execute(ctx context.Context) (LiveSmokeSummary, error)
 	ref := pi.ID
 	// Cancellation is independent provider evidence; omitted fields must never
 	// inherit the successful create response's identity or zero-received state.
-	var canceled liveObject
+	canceled := pi
 	if s.request(ctx, "POST", "payment_intents/"+ref+"/cancel", s.key("a-cancel"), nil, &canceled) != nil || canceled.ID != ref || !s.validObject(canceled) || canceled.Status != "canceled" {
 		return v, liveFailure()
 	}
