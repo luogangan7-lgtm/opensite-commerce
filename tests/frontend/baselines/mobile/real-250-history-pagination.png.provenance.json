@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "mobile/real-250-history-pagination.png",
   "scope": "real-backend",
-  "sourceFingerprint": "b35d56674c9634f6786334ed1200db3f0520eb77fcf404cf2962e524e5b2b59f",
+  "sourceFingerprint": "2d67966a3919dc5794e2fc0dc0300972436a1dc6e40204facc87a97a9ce061e2",
   "pngSha256": "ee1e748bee583de4f817711a54313623a68fe1648e786c574cb1b454dc6a6f5c",
   "scopeSnapshots": [
     "desktop/real-213-checkout-ambiguous-failure.png",
@@ -116,8 +116,8 @@
     "mobile/real-250-history-pagination-loading.png",
     "mobile/real-250-history-pagination.png"
   ],
-  "sourceSha": "0c64cccbfdc4a9c95cb895d46c12537300dcbfe4",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40691579614",
+  "sourceSha": "2bbf6024909b416d3b4e1e7310bb2ab43aa5cddd",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40711611713",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
