@@ -26,6 +26,60 @@ Live real-card testing is prohibited by the Stripe SSA; see the contract's dated
 [official source](https://docs.stripe.com/testing). Live/production acceptance
 remain NOT_RUN.
 
+## Refund fact authority
+
+Authority: `docs/architecture/V1_DECISIONS.md` §6. Payments owns money refunds;
+Returns owns RMA/receipt/restock; Orders owns order state. Payments owns the
+single refund journal path and the C-19d terminal-fact finalizer described below.
+
+Stripe `refund.created` and `refund.updated` succeeded deliveries share the
+provider refund ID as their financial identity. Each delivery retains its own
+exact-body Inbox receipt. Changed amount/order/currency under the same refund
+identity is rejected. Pending API refund recovery is retryable with the same
+request key; it never proves permanent absence of a provider effect.
+
+Delivery-to-fact bindings persist until the canonical fact reaches a terminal
+outcome, including when several refund deliveries arrive before capture.
+Legacy facts have no recoverable provider refund ID. Exact-body replays retain
+their original journal key; new refund identities on those streams are retained
+as failed Inbox deliveries and rejected for trusted reconciliation. No automatic
+amount-based matching or rewriting of historical financial identities occurs.
+
+Valid pending and other nonterminal refund facts are ignored without entering
+unmatched reconciliation. Confirmed failed/canceled transitions enter the dedicated C-19d finalizer when
+that capability is configured. Unconfirmed retrieval and ambiguous legacy
+bindings remain retained reconciliation cases. Without the capability, matched
+terminal facts retain `refund_terminal_after_match` and metadata-free facts
+retain `unmatched_refund`; neither posts a reversal. The generic Ledger primitive
+alone cannot authorize financial projection changes.
+Terminal failed/canceled API refunds return permanent `NoSideEffect` proof on
+both creation and durable recovery; pending/unknown states remain retryable.
+
+Dashboard refunds without `osc_order` are acknowledged as `unmatched`, retained
+as failed Stripe Inbox entries with bounded event ID and SHA-256 payload hash,
+and emit `payment_webhook_reconciliation_required` / `unmatched_refund`.
+No raw provider payload, credential, or customer data is retained. They produce
+no normalized order event and no journal. Reconciliation can list failed Stripe
+Inbox rows having no associated `payment_events` row, retrieve the immutable
+provider event by its event ID, then establish a trusted order/attempt binding.
+Part 3 exposes an explicit trusted terminal replay port; no public financial
+mutation route is added.
+
+**Live-mode prerequisite (NOT_RUN):** an owned reconciliation workflow must
+monitor unresolved Inbox facts and provider balances, support authenticated
+matching with audit evidence, and prove one journal across request/webhook
+replays before live keys or production refunds can be enabled. A successful
+sandbox check does not satisfy this live acceptance requirement.
+
+Refund components are allocated by Payments' closed
+`app.payments_allocate_refund(uuid,jsonb,bigint)` command for both ordinary
+facts and quantity-bounded RMA creation. It takes the Orders physical fence,
+locks RMAs by UUID, and subtracts frozen receipts plus Checkout's actual ordinary
+component counters. Orders-only legacy credit keeps its prior waterfall.
+The existing Checkout component CHECKs remain the final cap guard. Identity-less
+refund deliveries retain a failed Inbox/hash without a normalized money fact;
+Fake events and results carry the same durable refund identity.
+
 ## C-19d preparation (part 1)
 
 The approved `C19D_REFUND_COMPENSATION.md` sequencing starts with identity,

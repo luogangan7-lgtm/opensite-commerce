@@ -18,7 +18,7 @@ import (
 
 type livePGTransport struct {
 	creates, cancels int
-	scenario        string
+	scenario         string
 }
 
 func (f *livePGTransport) RoundTrip(r *http.Request) (*http.Response, error) {

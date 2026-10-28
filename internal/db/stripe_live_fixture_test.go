@@ -46,7 +46,7 @@ func liveSmokeFixture(t *testing.T, o payments.LiveSmokeOptions) (*checkoutPGFix
 func liveSmokeWitness(t *testing.T, f *checkoutPGFixture) {
 	t.Helper()
 	var journals, facts, accounts, orders int
-	err := f.run(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+	err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `SELECT
  (SELECT count(*) FROM app.ledger_transactions WHERE tenant_id=$1),
  (SELECT count(*) FROM app.payment_events WHERE tenant_id=$1),
