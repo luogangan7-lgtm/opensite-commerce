@@ -97,6 +97,8 @@ def load_registry(root):
                 key = field_key(schema, table, column)
                 require(key not in result, "PRIVACY_REGISTRY_INVALID", f"duplicate column ownership {key}")
                 field = {**spec, "module": module}
+                require("caller_key" not in field or type(field["caller_key"]) is bool,
+                        "PRIVACY_CALLER_KEY_INVALID", key)
                 if "subject" not in field and "subject" in body:
                     field["subject"] = body["subject"]
                 require(field.get("classification") in CLASSES, "PRIVACY_CLASSIFICATION_MISSING", key)

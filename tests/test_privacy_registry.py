@@ -123,6 +123,20 @@ class PrivacyRegistryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "orders\\.new_unclassified_column"):
             self.gate.validate_catalog(registry, rows)
 
+    def test_caller_key_annotation_requires_a_json_boolean_at_load(self):
+        for value in ("true", "false", "", None, 0, 1, [], {}):
+            with self.subTest(value=value):
+                body = document()
+                body["tables"]["orders"]["columns"]["id"]["caller_key"] = value
+                with self.assertRaisesRegex(ValueError, "PRIVACY_CALLER_KEY_INVALID.*orders.id"):
+                    self.load({"orders": body})
+        for value in (True, False):
+            with self.subTest(value=value):
+                body = document()
+                body["tables"]["orders"]["columns"]["id"]["caller_key"] = value
+                self.assertIs(self.load({"orders": body})["orders.id"]["caller_key"], value)
+        self.assertNotIn("caller_key", self.load()["orders.id"])
+
     def test_financial_obligation_requires_explicit_retention_and_reason(self):
         valid = {"classification": "financial_obligation", "retention": "financial-obligation",
                  "reason": "Refund recovery/reconciliation and accounting"}
@@ -750,6 +764,38 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
             source.write_text('package export\nvar f = os.CreateTemp(root, "private")\n')
             with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
                 self.load(root)
+
+    def test_writer_inventory_covers_package_roots_outside_internal(self):
+        cases = (
+            (True, "probe.go", "", False),
+            (True, "cmd/probe/main.go", "", False),
+            (True, "modules/probe/probe.go", "", False),
+            (True, "tools/probe/probe.go", "", False),
+            (True, "cmd/probe/tagged.go", "//go:build privacy_future\n\n", False),
+            (True, "modules/nested/probe.go", "", True),
+            (False, "cmd/probe/main.go", "", False),
+            (False, "tools/probe/tagged.go", "//go:build privacy_future\n\n", False),
+        )
+        for typed, path, tags, nested in cases:
+            with self.subTest(typed=typed, path=path, nested=nested), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                # Keep the old ./internal/... loader valid: RED must prove the
+                # missed writer, rather than an unrelated package-load error.
+                (root / "internal").mkdir()
+                (root / "internal/base.go").write_text("package base\n")
+                if typed:
+                    (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+                source = root / path
+                source.parent.mkdir(parents=True, exist_ok=True)
+                if nested:
+                    (source.parent / "go.mod").write_text("module nestedprobe\ngo 1.27.2\n")
+                prefix = tags + 'package main\nimport fs "os"\nfunc write() {\n'
+                call = 'fs.WriteFile("private", nil, 0600)\n}\n'
+                source.write_text(prefix + call)
+                with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER.*" + path):
+                    self.gate.artifact_catalog(root)
+                source.write_text(prefix + '// privacy-artifact: orders.archive\n' + call)
+                self.assertEqual(self.gate.artifact_catalog(root), {"orders.archive": path})
 
     def test_root_writers_and_each_new_call_require_own_annotation(self):
         cases = [
