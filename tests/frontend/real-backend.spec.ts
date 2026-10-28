@@ -530,6 +530,8 @@ test.describe('VISUAL-REAL #250', () => {
       });
       expect(login.status()).toBe(201);
       const staffHeaders = { Host: '127.0.0.1', Origin: origin, Cookie: responseCookies(login), 'X-CSRF-Token': (await login.json()).csrf_token as string };
+      // A login is global; the fixture must also confer real tenant admission.
+      expect((await staff.get(`${base}/orders?limit=1`, { headers: staffHeaders })).status()).toBe(200);
       const inquiry = await page.request.post(`${api}/api/public/v1/inquiries`, { headers: { Host: '127.0.0.1' },
         data: { buyer_email: buyer.email, buyer_name: 'Visual B2B', message: 'Negotiated mugs', quantity: 2,
           product_id: 'c0900007-0000-4000-8000-000000000002' } });

@@ -115,6 +115,9 @@ def main():
         spawn([str(owned / 'api')], env)
         wait('http://127.0.0.1:4180/healthz', 204)
         purchase.publish(query, {}, 'http://127.0.0.1:4180')
+        # publish() revokes its temporary issuer membership in finally. B2B's
+        # separately authorized test staff identity needs its own tenant binding.
+        query(f"INSERT INTO app.tenant_memberships(tenant_id,user_id,role) SELECT '{purchase.TENANT}',id,'owner' FROM app.users WHERE email='visual-owner@example.test';")
         # Reuse the existing MVP B2B opt-in composition on the same owned DB.
         # Its existing-order checkout must not replace the cart checkout above.
         b2b = {**env, 'OSC_API_ADDR': '127.0.0.1:4184', 'OPENSITE_STOREFRONT_KEY': '',
