@@ -5,7 +5,7 @@
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { test, expect, type Page, type APIResponse } from '@playwright/test';
+import { test, expect, type Page, type APIResponse, type Locator } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { REAL_VISUAL_STATES } from '../../scripts/frontend/real-visual-manifest';
 
@@ -320,10 +320,9 @@ async function historyLogin(page: Page, email: string, password: string) {
   await expect(page.getByRole('link', { name: 'Order history', exact: true })).toBeVisible();
 }
 const historyPanel = (page: Page) => page.locator('.purchase-page[aria-label="Order history"]');
-// Only the live-created B2B list date varies with the DB day. Keep its real
-// text and datetime assertions; suppress its ink solely during pixel capture.
-const b2bDateCaptureStyle = '.purchase-page[aria-label="Order history"] time { visibility: hidden; }';
-async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250][number], pending = false, fullPage = true) {
+// Only the runtime B2B order may supply an exact date mask. Historical dates
+// remain visible; real API timestamp/display assertions precede every mask.
+async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250][number], pending = false, fullPage = true, mask: Locator[] = []) {
   await page.evaluate(async () => { await document.fonts.ready; });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'history fits viewport').toBe(true);
   if (!pending) {
@@ -332,7 +331,7 @@ async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250]
   }
   const panel = historyPanel(page);
   if (state !== 'account-entry') await expect(panel).toHaveAttribute('aria-busy', String(pending));
-  await expect(page).toHaveScreenshot(`real-250-${state}.png`, { fullPage, ...(state === 'b2b-paid-list' ? { style: b2bDateCaptureStyle } : {}) });
+  await expect(page).toHaveScreenshot(`real-250-${state}.png`, { fullPage, mask });
   if (state !== 'account-entry') await expect(panel).toHaveAttribute('aria-busy', String(pending));
 }
 
@@ -580,21 +579,26 @@ test.describe('VISUAL-REAL #250', () => {
       const persisted = await page.request.get(`${base}/customer/orders/${receipt.order_id}`, { headers: buyerHeaders });
       expect(persisted.status()).toBe(200);
       const createdAt = (await persisted.json()).order.created_at as string;
-      const date = historyPanel(page).locator('time');
+      const order = page.getByRole('button', { name: `Order #${receipt.order_number}`, exact: true });
+      const date = historyPanel(page).locator('li.cart-line').filter({ has: order }).locator('time');
       await expect(date).toHaveCount(1);
       await expect(date).toHaveAttribute('datetime', createdAt);
+      await expect(date).toHaveText(/^(?:[1-9]|1[0-2])\/(?:[1-9]|[12][0-9]|3[01])\/\d{4}$/);
       await expect(date).toHaveText(new Date(createdAt).toLocaleDateString('en-US', { timeZone: 'UTC' }));
       // Exercise a different calendar date without changing the real backend fact.
+      await page.evaluate(async () => { await document.fonts.ready; });
       const original = await date.innerText();
-      const before = await page.screenshot({ fullPage: true, style: b2bDateCaptureStyle });
+      const before = await page.screenshot({ fullPage: true, mask: [date] });
       await date.evaluate(node => { node.textContent = '12/31/2099'; });
-      const after = await page.screenshot({ fullPage: true, style: b2bDateCaptureStyle });
+      const after = await page.screenshot({ fullPage: true, mask: [date] });
       await date.evaluate((node, value) => { node.textContent = value; }, original);
       expect(after.equals(before), 'date change must not alter screenshot pixels').toBe(true);
-      await historySnapshot(page, 'b2b-paid-list');
-      await page.getByRole('button', { name: `Order #${receipt.order_number}`, exact: true }).click(); await historyReady(page);
+      await historySnapshot(page, 'b2b-paid-list', false, true, [date]);
+      await order.click(); await historyReady(page);
       await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('$27.00');
       await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('paid');
+      // The shipped detail has no date element; its entire image stays compared.
+      await expect(historyPanel(page).locator('time')).toHaveCount(0);
       await historySnapshot(page, 'b2b-paid-detail');
     } finally { await approver.close(); await staff.dispose(); }
   });
