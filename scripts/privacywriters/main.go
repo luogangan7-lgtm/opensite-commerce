@@ -147,7 +147,7 @@ func inventory(root string) ([]writer, error) {
 			Dir:  root,
 			Fset: fset,
 			Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedImports | packages.NeedDeps | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo,
-		}, "./internal/...")
+		}, "./...")
 		if err != nil {
 			return nil, fmt.Errorf("MERCHANT_ARTIFACT_SCAN: package loading failed")
 		}
@@ -162,14 +162,21 @@ func inventory(root string) ([]writer, error) {
 			}
 		}
 	}
-	// Preserve inventory of every source file, including inactive build tags.
+	// Preserve inventory across all first-party package roots, including
+	// inactive build tags and nested modules omitted by packages.Load.
 	// Unloaded files use the conservative AST selector scan, never disappear.
-	err := filepath.WalkDir(filepath.Join(root, "internal"), func(path string, entry os.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if os.IsNotExist(walkErr) {
 				return nil
 			}
 			return walkErr
+		}
+		if entry.IsDir() && path != root {
+			switch entry.Name() {
+			case ".git", "node_modules", "vendor":
+				return filepath.SkipDir // VCS metadata and installed third-party dependencies.
+			}
 		}
 		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") || visited[path] {
 			return nil
