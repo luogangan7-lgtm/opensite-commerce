@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import secrets
 import signal
+import ssl
 import subprocess
 import sys
 import time
@@ -50,13 +51,13 @@ def main():
         children.append(proc)
         return proc
 
-    def wait(url, status=200):
+    def wait(url, status=200, context=None):
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             if any(proc.poll() is not None for proc in children):
                 raise RuntimeError('Real visual child exited before readiness')
             try:
-                with urllib.request.urlopen(url, timeout=2) as response:
+                with urllib.request.urlopen(url, timeout=2, context=context) as response:
                     if response.status == status:
                         return
             except OSError:
@@ -121,11 +122,19 @@ def main():
         # No database identity, runtime passwords, or bootstrap capability enters Astro.
         frontend = {key: env[key] for key in ['PATH', 'HOME', 'OPENSITE_ENVIRONMENT', 'OPENSITE_STOREFRONT_KEY',
                     'OPENSITE_STOREFRONT_ORIGIN', 'OPENSITE_CUSTOMER_CSRF_SECRET', 'OPENSITE_FAKE_PSP', 'OPENSITE_FAKE_WEBHOOK_KEY']}
-        frontend.update(HOST='127.0.0.1', PORT='4349', OSC_COMMERCE_MODE='backend', OSC_COMMERCE_TEST_HTTP='1',
+        # Astro's standalone adapter supports native TLS. Keep __Host- cookie admission
+        # identical to deployment; trust this disposable certificate only in this lane.
+        certificate, private_key = owned / 'localhost.pem', owned / 'localhost-key.pem'
+        run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+             '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
+             '-keyout', str(private_key), '-out', str(certificate)], env)
+        private_key.chmod(0o600)
+        frontend.update(HOST='127.0.0.1', PORT='4349', OSC_COMMERCE_MODE='backend',
+                        SERVER_CERT_PATH=str(certificate), SERVER_KEY_PATH=str(private_key),
                         OSC_READ_API_ORIGIN='http://127.0.0.1:4181', OSC_COMMERCE_API_ORIGIN='http://127.0.0.1:4181',
-                        OSC_COMMERCE_SITE='http://127.0.0.1:4349', OSC_COMMERCE_COOKIE_KEY=runtime['cookieKey'], OPENSITE_FAKE_ACCOUNT_ID='c09d-e2e')
+                        OSC_COMMERCE_SITE='https://127.0.0.1:4349', OSC_COMMERCE_COOKIE_KEY=runtime['cookieKey'], OPENSITE_FAKE_ACCOUNT_ID='c09d-e2e')
         spawn(['bash', 'scripts/start_storefront_ssr.sh'], frontend)
-        wait('http://127.0.0.1:4349/products/canvas-tote')
+        wait('https://127.0.0.1:4349/products/canvas-tote', context=ssl.create_default_context(cafile=str(certificate)))
         print('VISUAL-REAL: restricted Go + PostgreSQL 18.6 + transparent proxy + Astro ready', flush=True)
         while all(proc.poll() is None for proc in children):
             time.sleep(.2)
@@ -140,6 +149,8 @@ def main():
                 proc.kill()
                 proc.wait()
         (owned / 'runtime.json').unlink(missing_ok=True)
+        (owned / 'localhost.pem').unlink(missing_ok=True)
+        (owned / 'localhost-key.pem').unlink(missing_ok=True)
         pg['PGDATABASE'] = source.path[1:]
         query(f'DROP DATABASE {database} WITH (FORCE);')
         # Group roles are cluster-global: remove ONLY logins created by this invocation,

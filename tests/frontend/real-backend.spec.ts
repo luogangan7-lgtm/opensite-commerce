@@ -9,11 +9,11 @@ import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { REAL_VISUAL_STATES } from '../../scripts/frontend/real-visual-manifest';
 
-const site = 'http://127.0.0.1:4349';
+const site = 'https://127.0.0.1:4349';
 const tenant = 'c0900001-0000-4000-8000-000000000001';
 const sku = 'c2400008-0000-4000-8000-000000000001';
 const backend = `/api/v1/t/${tenant}/checkout`;
-test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+test.use({ trace: 'off', video: 'off', screenshot: 'off', ignoreHTTPSErrors: true });
 
 function runtime() {
   return JSON.parse(readFileSync('.work/visual-real/runtime.json', 'utf8')) as {
@@ -93,6 +93,8 @@ async function seededCompletion(page: Page, project: string, long = false) {
   const signature = createHmac('sha256', Buffer.from(runtime().cookieKey, 'base64url')).update(session).digest('base64url');
   await page.context().addCookies([{ name: '__Host-osc_storefront_cart', value: `${session}.${signature}`,
     url: site, secure: true, httpOnly: true, sameSite: 'Lax' }]);
+  const cookie = (await page.context().cookies(site)).find(item => item.name === '__Host-osc_storefront_cart');
+  expect(cookie).toMatchObject({ secure: true, httpOnly: true, sameSite: 'Lax', path: '/', domain: '127.0.0.1' });
   await page.goto(`${site}/order-complete`);
   await expect(page.locator('[data-completion-page]')).toHaveAttribute('aria-busy', 'false');
   return { checkout: id(4), order: id(2), amount };
