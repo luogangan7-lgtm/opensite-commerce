@@ -17,12 +17,13 @@ test('VISUAL-REAL requires every issue state in desktop and mobile', () => {
   }
 });
 
-test('VISUAL-250 distinct history states have distinct PNG bytes', () => {
-  for (const viewport of ['desktop', 'mobile']) {
-    const states = ['history-list', 'history-long-order', 'history-detail', 'history-long-sku', 'history-multiline'];
-    const hashes = states.map(state => sha256(`${BASELINES}/${viewport}/real-250-${state}.png`));
-    expect(new Set(hashes).size, `${viewport} history state images must be distinct`).toBe(states.length);
-  }
+test('VISUAL-250 required states have distinct PNG bytes outside shared render groups', () => {
+  const pngs = Object.fromEntries(['desktop', 'mobile'].flatMap(viewport =>
+    REAL_VISUAL_STATES[250].map(state => {
+      const snapshot = `${viewport}/real-250-${state}.png`;
+      return [snapshot, sha256(`${BASELINES}/${snapshot}`)];
+    })));
+  assertDistinctHistoryPngs(pngs);
 });
 
 test('VISUAL-250 allows only declared shared renders and rejects undeclared duplicate or missing images', () => {
