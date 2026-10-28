@@ -406,7 +406,7 @@ test.describe('VISUAL-REAL #235', () => {
     await page.getByRole('button', { name: 'Verify email', exact: true }).click();
     await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(400);
     await expect(page.locator('[data-customer-verification]')).toHaveAttribute('aria-busy', 'true');
-    await expect(page.locator('[data-customer-verification] button[aria-busy="true"]')).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
     await accountSnapshot(page, 'verification-processing', true);
     await control(page, 'release');
     await expect(page.locator('[data-customer-verification] > p[role="status"]')).toContainText('Verification could not be completed.');
