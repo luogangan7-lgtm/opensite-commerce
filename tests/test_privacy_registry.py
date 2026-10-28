@@ -648,7 +648,7 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
             body = self.fixture(root)
             source = root / "internal/export.go"
             source.parent.mkdir()
-            source.write_text('// privacy-artifact: orders.archive\npackage export\nvar f = os.CreateTemp(root, "private")\n')
+            source.write_text('package export\nimport "os"\n// privacy-artifact: orders.archive\nvar f, _ = os.CreateTemp(".", "private")\n')
             with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_UNDECLARED"):
                 self.load(root)
             body["merchant_deletion"]["artifacts"]["orders.archive"] = {
@@ -680,6 +680,59 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
             source.write_text('package export\nvar f = os.CreateTemp(root, "private")\n')
             with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
                 self.load(root)
+
+    def test_root_writers_and_each_new_call_require_own_annotation(self):
+        cases = [
+            'package probe\nimport "os"\nfunc write(r *os.Root) { r.Create("new") }\n',
+            'package probe\nimport "os"\nfunc write(r *os.Root) { r.WriteFile("new", nil, 0600) }\n',
+            'package probe\nimport "os"\n// privacy-artifact: orders.archive\nvar f, _ = os.CreateTemp(".", "old")\nvar g, _ = os.Create("new")\n',
+            'package probe\nimport "os"\n// privacy-artifact: orders.archive\nvar f, _ = os.CreateTemp(".", "old")\nfunc write(r *os.Root) { r.Create("new") }\n',
+        ]
+        for source in cases:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "internal").mkdir()
+                (root / "internal/probe.go").write_text(source)
+                with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
+                    self.gate.artifact_catalog(root)
+
+    def test_credential_or_personal_hash_cannot_claim_financial_retention(self):
+        registry = self.gate.load_registry(ROOT)
+        handlers = self.load(ROOT)["handlers"]
+        for key in ("api_keys.key_hash", "customer_credentials.password_hash", "orders.guest_contact"):
+            with self.subTest(key=key):
+                field = registry[key]
+                policy = copy.deepcopy(field["merchant_deletion"])
+                policy.update(action="retain", strategy="unchanged", retained_kind="financial", value_type="digest")
+                with self.assertRaisesRegex(ValueError, "MERCHANT_PERSONAL_RETAIN"):
+                    self.gate.merchant_policy(key, policy, field["module"], registry, handlers)
+
+    def test_reviewed_scrubs_match_constraints_and_immutable_receipt(self):
+        fields = self.load(ROOT)["fields"]
+        self.assertEqual((fields["product_variants.option_key"]["strategy"],
+                          fields["product_variants.option_key"]["value"]),
+                         ("row_id_placeholder", "erased:{id}"))
+        self.assertEqual((fields["orders.guest_contact"]["strategy"], fields["orders.guest_contact"]["value"]),
+                         ("row_json_template", {"email": "erased-{id}@invalid.test", "erased": True}))
+        self.assertEqual(fields["orders.shipping_snapshot"]["strategy"], "row_json_template")
+        self.assertEqual(fields["orders.shipping_snapshot"]["value"],
+                         {"erased": True, "amount_minor": {"column": "shipping_minor"}, "currency": {"column": "currency"}})
+        scope = fields["data_rights_erasures.scope"]
+        self.assertEqual((scope["action"], scope["strategy"], scope["retained_kind"], scope["value_type"]),
+                         ("retain", "unchanged", "control", "enum"))
+        self.assertEqual(scope["values"], ["customer.profile,addresses,credentials,b2b,order_snapshots,exports"])
+
+    def test_json_templates_reject_untrusted_or_cross_row_sources(self):
+        registry = self.gate.load_registry(ROOT)
+        handlers = self.load(ROOT)["handlers"]
+        base = registry["orders.guest_contact"]["merchant_deletion"]
+        for value in ({"email": "{guest_contact}"}, {"x": {"column": "guest_contact"}},
+                      {"x": {"column": "customers.email"}}, {"x": {"sql": "current_user"}},
+                      {"x": {"column": "missing"}}, ["{id}"]):
+            with self.subTest(value=value):
+                policy = {**base, "strategy": "row_json_template", "value": value}
+                with self.assertRaisesRegex(ValueError, "MERCHANT_JSON_TEMPLATE"):
+                    self.gate.merchant_policy("orders.guest_contact", policy, "orders", registry, handlers)
 
     def test_actual_registry_covers_derived_copies_and_global_exclusions(self):
         try:
