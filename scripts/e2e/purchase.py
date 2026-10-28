@@ -16,7 +16,7 @@ SITE = 'c0900003-0000-4000-8000-000000000001'
 SKU = 'c2400008-0000-4000-8000-000000000001'
 
 
-def publish(psql, credentials):
+def publish(psql, credentials, origin='http://127.0.0.1:8080'):
     """Use authenticated CMS HTTP: builder seals membership in its creating TX."""
     key_id, secret = str(uuid.uuid4()), secrets.token_bytes(32)
     bearer = key_id + '.' + base64.urlsafe_b64encode(secret).decode().rstrip('=')
@@ -35,7 +35,7 @@ def publish(psql, credentials):
                    'Idempotency-Key': 'c09d-' + str(uuid.uuid4())}
         if etag:
             headers['If-Match'] = etag
-        request = urllib.request.Request('http://127.0.0.1:8080' + path,
+        request = urllib.request.Request(origin + path,
                                         data=json.dumps(body).encode(), headers=headers, method='POST')
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
