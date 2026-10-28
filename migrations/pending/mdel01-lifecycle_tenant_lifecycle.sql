@@ -1,5 +1,7 @@
 -- stable-id: mdel01-lifecycle
--- depends-on: mdel00-caller-keys,c22a-data-rights,h4-identity
+-- depends-on: mdel00-caller-keys
+-- depends-on: c22a-data-rights
+-- depends-on: h4-identity
 -- Owner: Tenant. Lifecycle metadata is not the DataRights request/worklist.
 -- Admission is disabled: no login/runtime/auth role can execute transitions or
 -- drains. MDEL-02/24/26 must compose proof, obligations, serving and worklist gates
