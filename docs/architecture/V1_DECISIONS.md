@@ -928,6 +928,11 @@ preceding C-19b production/sandbox boundary stays in force.
    account remains the private `STRIPE_SMOKE_ACCOUNT` Environment secret and
    scopes every request through `Stripe-Account`. Actual Dashboard permissions
    remain UNKNOWN until owner verification; never broaden them automatically.
+   Keep this independent expected-account input to prevent wrong-account use;
+   missing or malformed input fails before the child starts, with a constant
+   owner-action message and no provider request. **OWNER ACTION: add Environment
+   secret `STRIPE_SMOKE_ACCOUNT=acct_...` to `stripe-live`.** All A-only runs share
+   concurrency group `stripe-live`, with `cancel-in-progress: false`.
    No additional customer/email credential is required.
 
 4. **Data authority and write entrances.** Stripe responses own provider state;
@@ -955,6 +960,10 @@ preceding C-19b production/sandbox boundary stays in force.
    owner reviewer remain required. An exact SHA-256 pin locks the live workflow
    bytes, including checkout ref/repository/credentials, preparation and sole
    secret consumer; any edit requires a pin update in the same reviewed PR.
+   Every job Environment name must be literal: names containing `${{` fail
+   repo-wide, in either string or `{name:}` form, before the byte-lock check.
+   The owner harness admits only the captured, unchanged default HTTP transport
+   pointer and refuses replacement `*http.Transport` values and offline builds.
    There is no expression-reference scanner. CI also rejects any production
    constructor reference in any Go path including `cmd/`. A static negative
    fixture rejects money-moving

@@ -4,7 +4,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: stripe-live-${{ github.run_id }}
+  group: stripe-live
   cancel-in-progress: false
 jobs:
   live:

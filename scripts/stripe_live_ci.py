@@ -47,6 +47,9 @@ def main():
         or run_id != current
         or os.environ.get('GITHUB_RUN_ATTEMPT') != '1'):
         raise SystemExit('PENDING: invalid owner-gated execution; no provider details')
+    account = os.environ.get('STRIPE_SMOKE_ACCOUNT', '')
+    if len(account) > 128 or not re.fullmatch(r'acct_[A-Za-z0-9_-]+', account):
+        raise SystemExit('PENDING: OWNER ACTION: add Environment secret STRIPE_SMOKE_ACCOUNT=acct_... in stripe-live (expected account); no provider request made')
     try:
         receipt = f'original_run={run_id} current_run={current} source_sha={sha}'
         print(receipt, flush=True)

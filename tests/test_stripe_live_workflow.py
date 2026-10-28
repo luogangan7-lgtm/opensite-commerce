@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIVE = ROOT / '.github/workflows/stripe-live-smoke.yml'
 # Updating the reviewed workflow requires updating this pin in the same PR.
 # It covers checkout ref/repository/credentials, preparation and secret consumer.
-LIVE_SHA256 = '9e34be886185ccb8bc4822ffebeba7a7560eccccecffaaf97ff5e9b1b18b35b0'
+LIVE_SHA256 = 'e73a92e03f4a960410884e1c6c9b2ce8c62f8a0c970e4ff253fc87b1782090f9'
 GO_NON_CODE = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|`[^`]*`|\'(?:\\.|[^\'\\])*\'', re.S)
 
 
@@ -31,6 +31,7 @@ def validate(sources):
             environment = job.get('environment')
             if isinstance(environment, dict):
                 environment = environment.get('name')
+            assert not isinstance(environment, str) or '${{' not in environment, 'LIVE_ENVIRONMENT_LITERAL_REQUIRED'
             if isinstance(environment, str) and environment.casefold() == 'stripe-live':
                 admitted.append((filename, job_id))
     assert admitted == [(LIVE.name, 'live')], 'LIVE_ENVIRONMENT_OWNERSHIP'

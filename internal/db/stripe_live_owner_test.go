@@ -18,9 +18,12 @@ import (
 // transport with a real one must not make an offline binary owner-admissible.
 var stripeLiveOfflineCompiled bool
 
+// Capture before any test init can replace the default with an offline transport.
+var stripeLiveDefaultTransport = http.DefaultTransport
+
 func stripeLiveRealHTTPTransport() bool {
 	transport, real := http.DefaultTransport.(*http.Transport)
-	return !stripeLiveOfflineCompiled && real && transport != nil
+	return !stripeLiveOfflineCompiled && real && transport != nil && transport == stripeLiveDefaultTransport
 }
 
 func TestStripeLiveOwnerGate(t *testing.T) {
