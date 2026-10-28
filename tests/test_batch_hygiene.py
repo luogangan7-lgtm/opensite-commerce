@@ -488,7 +488,9 @@ class FinalLandingGate(unittest.TestCase):
                 expected = case['expected']
                 if 'error' in expected:
                     self.assertNotEqual(result.returncode, 0, combined(result))
-                    self.assertIn(expected['error'], combined(result))
+                    error = ('no successful job result' if expected['error'] == 'no successful attempt'
+                             else expected['error'])
+                    self.assertIn(error, combined(result))
                 else:
                     self.assertEqual(result.returncode, 0, combined(result))
                     pg = next(row for row in json.loads(receipt.read_text())['lane_identities']
@@ -832,6 +834,13 @@ class RerunAttemptRule(unittest.TestCase):
         producer = (ROOT / 'scripts/frontend/verify-baseline-artifact.ts').read_text()
         self.assertIn('from rerun_attempts import', landing)
         self.assertIn("from './rerun-attempts'", producer)
+
+    def test_landing_workflow_retains_execution_identity(self):
+        jobs = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']
+        listing = next(step['run'] for step in jobs['foundation']['steps']
+                       if 'jobs?filter=all' in step.get('run', ''))
+        for field in ('id', 'run_attempt', 'started_at', 'completed_at'):
+            self.assertRegex(listing, rf'\b{field}\b')
 
 
 class ArtifactRerunSafety(unittest.TestCase):

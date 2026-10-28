@@ -114,6 +114,11 @@ jobs:
               handle.write('\n')
           print(json.dumps(payload, sort_keys=True))
           PYTHON
+      - name: FIX-465 temporary partial-rerun probe
+        if: matrix.lane == 'go' && github.run_attempt == 1
+        run: |
+          echo 'FIX-465 intentional attempt-1 failure; rerun only failed jobs'
+          exit 1
       - name: Land in-development migrations in this ephemeral checkout only
         run: python3 scripts/pending_migrations.py ci-normalize
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -315,7 +320,7 @@ jobs:
           gh api --paginate \
             -H "Accept: application/vnd.github+json" \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?filter=all&per_page=100" \
-            --jq '.jobs[] | {id, run_id, run_attempt, name, head_sha, status, conclusion}' \
+            --jq '.jobs[] | {id, run_id, run_attempt, name, head_sha, status, conclusion, started_at, completed_at}' \
             > "${RUNNER_TEMP}/lane-jobs.jsonl"
           test -s "${RUNNER_TEMP}/lane-jobs.jsonl"
       - name: Collect the exact tested checkout identity of every lane

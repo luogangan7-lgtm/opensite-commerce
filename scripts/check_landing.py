@@ -48,7 +48,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import pending_migrations  # noqa: E402
-from rerun_attempts import AttemptError, attempt_number, select_latest_attempt  # noqa: E402
+from rerun_attempts import AttemptError, attempt_number, select_latest_attempt, successful_attempts  # noqa: E402
 
 LANES = ("go", "offline", "pg", "pgx", "sqlc")
 LANE_JOB_PREFIX = "foundation-"
@@ -206,8 +206,11 @@ def successful_job_attempts(jobs, lanes, run_id, expected_sha):
         except AttemptError as error:
             raise LandingError(f"FINAL_LANDING_LANE_JOBS: {lane} {error}")
         recorded[lane].append(attempt)
-        if job.get("status") == "completed" and job.get("conclusion") == "success":
-            succeeded[lane].append(attempt)
+    for lane in lanes:
+        try:
+            succeeded[lane] = successful_attempts(jobs, LANE_JOB_PREFIX + lane)
+        except AttemptError as error:
+            raise LandingError(f"FINAL_LANDING_LANE_JOBS: {lane} {error}")
     return succeeded, recorded
 
 
@@ -216,8 +219,9 @@ def validate_lane_identities(directory, expected_sha, lanes, run_id, lane_jobs):
 
     Receipts may span attempts because a failed-job re-run leaves earlier
     attempts' artifacts in place.  Per lane the accepted receipt is the
-    receipt of the latest attempt GitHub reports as a successful job; an
-    older attempt's receipt is never accepted.  A foreign run, a different
+    original receipt of the latest successful execution, including when GitHub
+    copies its job record into a later attempt. A real re-execution never uses
+    a stale receipt. A foreign run, a different
     SHA, an unsuccessful attempt, a duplicate receipt for one attempt, or a
     missing receipt fails closed.
     """

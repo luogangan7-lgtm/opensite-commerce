@@ -4,9 +4,10 @@ Responsibility: given GitHub job results for one run and the receipt/artifact
 attempts that exist, decide which attempt is authoritative.  A run may have
 several attempts: a failed-job re-run only re-executes failed jobs, while a full
 re-run succeeds again for every job.  For one lane the authoritative attempt is
-the latest attempt GitHub reports as a ``completed`` job with conclusion
-``success``.  That exact attempt must have its own receipt/artifact; a missing
-newer receipt fails closed and an older attempt is never substituted.
+the latest successful execution's original attempt. GitHub can copy a job into
+a later partial re-run with a new id and run_attempt but unchanged execution
+timestamps. Copies require the original execution's receipt/artifact; a genuinely
+re-executed success requires its own evidence and never borrows an older receipt.
 
 Depends on: the Python standard library only.
 Called by: scripts/check_landing.py (lane identity receipts) and
@@ -36,8 +37,14 @@ def attempt_number(value):
 
 
 def successful_attempts(jobs, job_name):
-    """Ascending attempts where ``job_name`` completed successfully."""
-    attempts = set()
+    """Ascending original attempts of successful executions of ``job_name``.
+
+    Complete UTC execution timestamps survive GitHub's copied job ids. Without
+    them only an unchanged job id (with identical partial timestamps) proves
+    identity; otherwise keep the strict per-attempt requirement. Never infer
+    identity from the available receipts, listing order or the enclosing run.
+    """
+    executions = {}
     for job in jobs:
         if job.get("name") != job_name:
             continue
@@ -45,8 +52,20 @@ def successful_attempts(jobs, job_name):
         # reason to skip the lane, so it fails closed here.
         attempt = attempt_number(job.get("run_attempt"))
         if job.get("status") == "completed" and job.get("conclusion") == "success":
-            attempts.add(attempt)
-    return sorted(attempts)
+            started, completed = job.get("started_at"), job.get("completed_at")
+            timestamp = r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"
+            if (isinstance(started, str) and isinstance(completed, str)
+                    and re.fullmatch(timestamp, started) and re.fullmatch(timestamp, completed)
+                    and started < completed):
+                identity = ("execution", started, completed)
+            elif re.fullmatch(r"[1-9][0-9]*", str(job.get("id", ""))):
+                identity = ("job", str(job["id"]),
+                            started if isinstance(started, str) else None,
+                            completed if isinstance(completed, str) else None)
+            else:
+                identity = ("attempt", attempt)
+            executions[identity] = min(executions.get(identity, attempt), attempt)
+    return sorted(set(executions.values()))
 
 
 def select_latest_attempt(successful, evidence):
