@@ -4,7 +4,7 @@
 import { expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { BASELINES, sha256 } from './baseline-provenance';
-import { realVisualPaths, realBackendEvidence } from './real-visual-manifest';
+import { REAL_VISUAL_STATES, assertDistinctHistoryPngs, realVisualPaths, realBackendEvidence } from './real-visual-manifest';
 
 test('VISUAL-REAL requires every issue state in desktop and mobile', () => {
   for (const snapshot of realVisualPaths()) {
@@ -23,6 +23,20 @@ test('VISUAL-250 distinct history states have distinct PNG bytes', () => {
     const hashes = states.map(state => sha256(`${BASELINES}/${viewport}/real-250-${state}.png`));
     expect(new Set(hashes).size, `${viewport} history state images must be distinct`).toBe(states.length);
   }
+});
+
+test('VISUAL-250 allows only declared shared renders and rejects undeclared duplicate or missing images', () => {
+  const pngs = Object.fromEntries(['desktop', 'mobile'].flatMap(viewport =>
+    REAL_VISUAL_STATES[250].map(state => [`${viewport}/real-250-${state}.png`, `${viewport}-${state}`])));
+  for (const viewport of ['desktop', 'mobile']) {
+    for (const state of ['history-detail-loading', 'history-pagination-loading'])
+      pngs[`${viewport}/real-250-${state}.png`] = pngs[`${viewport}/real-250-history-loading.png`];
+  }
+  expect(() => assertDistinctHistoryPngs(pngs)).not.toThrow();
+  const duplicate = { ...pngs, 'desktop/real-250-history-empty.png': pngs['desktop/real-250-history-list.png'] };
+  expect(() => assertDistinctHistoryPngs(duplicate)).toThrow();
+  const missing = { ...pngs, 'mobile/real-250-history-empty.png': '' };
+  expect(() => assertDistinctHistoryPngs(missing)).toThrow();
 });
 
 test('VISUAL-REAL browser lane cannot intercept business routes', () => {
