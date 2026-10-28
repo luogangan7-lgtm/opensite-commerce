@@ -17,11 +17,11 @@ import (
 
 type cleanupRunner struct {
 	probeErr, closeErr error
-	closes            int
-	cleanup           context.Context
-	cleanupErr        error
-	deadline          time.Time
-	bounded           bool
+	closes             int
+	cleanup            context.Context
+	cleanupErr         error
+	deadline           time.Time
+	bounded            bool
 }
 
 func (r *cleanupRunner) RunAuthentication(context.Context, func(context.Context, *db.Queries) error) error {
