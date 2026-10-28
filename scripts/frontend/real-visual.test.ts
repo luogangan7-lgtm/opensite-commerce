@@ -5,7 +5,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { BASELINES, sha256 } from './baseline-provenance';
 import { REAL_VISUAL_STATES, realVisualPaths, realBackendEvidence } from './real-visual-manifest';
-import { assertDistinctHistoryPngs, SHARED_RENDER } from './real-visual-shared-render-manifest';
+import { assertDistinctHistoryPngs, assertDistinctStaffPngs, SHARED_RENDER } from './real-visual-shared-render-manifest';
 
 test('VISUAL-REAL requires every issue state in desktop and mobile', () => {
   for (const snapshot of realVisualPaths()) {
@@ -74,7 +74,8 @@ test('VISUAL-REAL provenance identifies injected faults and unreachable boundary
 // #230 inventory is independent of implementation so an omitted state fails CI.
 test('VISUAL-230 requires real staff order evidence for both viewports', () => {
   const states = ['list', 'detail', 'long-list', 'long-detail', 'empty', 'pagination',
-    'list-loading', 'detail-loading', 'list-503', 'detail-503', 'unauthenticated', 'cross-tenant', 'version-error'];
+    'list-loading', 'detail-loading', 'list-503', 'order-detail-unavailable-503',
+    'unauthenticated', 'cross-tenant', 'expired-session', 'permission-denied'];
   const inventory = (REAL_VISUAL_STATES as unknown as Record<number, readonly string[]>)[230] ?? [];
   expect(inventory).toEqual(states);
   for (const viewport of ['desktop', 'mobile']) for (const state of states) {
@@ -82,4 +83,24 @@ test('VISUAL-230 requires real staff order evidence for both viewports', () => {
     expect(existsSync(`${BASELINES}/${snapshot}`), `Missing ${snapshot}`).toBe(true);
     expect(existsSync(`${BASELINES}/${snapshot}.provenance.json`), `Missing provenance for ${snapshot}`).toBe(true);
   }
+});
+
+
+test('VISUAL-230 distinct state gate rejects a missing PNG and a copied data state', () => {
+  const hashes = Object.fromEntries(['desktop', 'mobile'].flatMap(viewport =>
+    REAL_VISUAL_STATES[230].map(state => [`${viewport}/real-230-${state}.png`, `${viewport}-${state}`])));
+  expect(() => assertDistinctStaffPngs(hashes)).not.toThrow();
+  const missing = { ...hashes, 'mobile/real-230-cross-tenant.png': '' };
+  expect(() => assertDistinctStaffPngs(missing)).toThrow('staff state images must exist and be distinct');
+  const copied = { ...hashes, 'desktop/real-230-long-detail.png': hashes['desktop/real-230-detail.png'] };
+  expect(() => assertDistinctStaffPngs(copied)).toThrow('staff state images must exist and be distinct');
+});
+
+test('VISUAL-230 committed PNGs cannot alias a different staff state', () => {
+  const hashes = Object.fromEntries(['desktop', 'mobile'].flatMap(viewport =>
+    REAL_VISUAL_STATES[230].map(state => {
+      const path = `${viewport}/real-230-${state}.png`;
+      return [path, sha256(`${BASELINES}/${path}`)];
+    })));
+  assertDistinctStaffPngs(hashes);
 });

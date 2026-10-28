@@ -147,6 +147,8 @@ def main():
              '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
              '-keyout', str(private_key), '-out', str(certificate)], env)
         private_key.chmod(0o600)
+        spawn(['bun', 'scripts/frontend/real-admin.ts'], env)
+        wait('https://127.0.0.1:4350/login', context=ssl.create_default_context(cafile=str(certificate)))
         frontend.update(HOST='127.0.0.1', PORT='4349', OSC_COMMERCE_MODE='backend',
                         SERVER_CERT_PATH=str(certificate), SERVER_KEY_PATH=str(private_key),
                         OSC_READ_API_ORIGIN='http://127.0.0.1:4181', OSC_COMMERCE_API_ORIGIN='http://127.0.0.1:4181',

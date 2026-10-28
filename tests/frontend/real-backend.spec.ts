@@ -782,3 +782,210 @@ test.describe('VISUAL-REAL #235', () => {
     expect(await page.evaluate(value => document.documentElement.outerHTML.includes(value), proof)).toBe(false);
   });
 });
+
+// #230 uses a fresh tenant per data fixture: other visual suites cannot change
+// its list, pagination cursor or empty state. Historical dates are never masked.
+const staffSite = 'https://127.0.0.1:4350';
+function staffOrders(count = 1, long = false) {
+  const target = randomUUID(), product = randomUUID(), variant = randomUUID();
+  const ids = Array.from({ length: count }, () => randomUUID());
+  const number = long ? 9007199254740991 : 723001;
+  const code = long ? 'LONG-SKU-'.repeat(28) + 'END' : 'STAFF-CANVAS-TOTE';
+  sql(`BEGIN; INSERT INTO app.tenants(id,name,settlement_currency) VALUES('${target}','Visual staff fixture','USD');
+    INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
+      SELECT '${target}',id,'owner' FROM app.users WHERE email='visual-owner@example.test';
+    SELECT set_config('app.tenant_id','${target}',true);
+    INSERT INTO app.products(tenant_id,id,product_code,lifecycle_status) VALUES('${target}','${product}','staff-visual','ready');
+    INSERT INTO app.product_variants(tenant_id,id,product_id,sku,option_key,lifecycle_status)
+      VALUES('${target}','${variant}','${product}','STAFF-CANVAS-TOTE','default','ready');
+    SELECT app.inventory_adjust('${variant}',1000,'Visual staff stock',gen_random_uuid(),'inbound');
+    ${ids.map((id, index) => `DO $staff$ DECLARE r app.inventory_reservations; r2 app.inventory_reservations; BEGIN
+      r:=app.inventory_reserve('${variant}',1,'order','${id}',gen_random_uuid()::text,3600);
+      IF ${long} THEN r2:=app.inventory_reserve('${variant}',1,'order','${id}',gen_random_uuid()::text,3600); END IF;
+      SET LOCAL ROLE app_orders_executor;
+      INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,
+        items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor,created_at)
+      VALUES('${target}','${id}',${number - index},gen_random_uuid()::text,sha256('${id}'::bytea),
+        '{"email":"staff-visual@example.test"}','USD',${long ? '9223372036854775807' : '3140'},0,0,'{}',
+        ${long ? '9223372036854775807' : '3140'},'2026-01-02T12:00:00Z'::timestamptz-${index}*interval '1 second');
+      INSERT INTO app.order_lines(tenant_id,id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
+        line_tax_minor,line_total_minor,reservation_id,tax_snapshot)
+      VALUES('${target}',${long ? "'00000001-0000-4000-8000-000000000001'" : "'" + id + "'"}::uuid,'${id}','${variant}','${code}',1,
+        ${long ? '9223372036854775807' : '3140'},${long ? '9223372036854775807' : '3140'},0,
+        ${long ? '9223372036854775807' : '3140'},r.id,'{}');
+      IF ${long} THEN
+        INSERT INTO app.order_lines(tenant_id,id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
+          line_tax_minor,line_total_minor,reservation_id,tax_snapshot)
+        VALUES('${target}','ffffffff-ffff-4fff-bfff-ffffffffffff','${id}','${variant}','SECOND-LINE',1,0,0,0,0,r2.id,'{}');
+      END IF;
+      UPDATE app.orders SET sealed=true,updated_at=created_at WHERE tenant_id='${target}' AND id='${id}';
+      RESET ROLE;
+    END $staff$;`).join('\n')}
+    COMMIT;`);
+  return { tenant: target, ids, number: String(number), code,
+    path: `/t/${target}/orders`, api: `/api/v1/t/${target}/orders` };
+}
+async function staffLogin(page: Page, path: string) {
+  await page.goto(staffSite + path);
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  await page.getByLabel('Email', { exact: true }).fill('visual-owner@example.test');
+  await page.getByLabel('Password', { exact: true }).fill(runtime().staffPassword);
+  const signedIn = page.waitForResponse(r => new URL(r.url()).pathname === '/api/v1/auth/login' && r.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  expect((await signedIn).status()).toBe(201);
+  await expect(page).toHaveURL(staffSite + path);
+}
+async function staffSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][number]) {
+  await page.evaluate(async () => { await document.fonts.ready; });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'staff fits viewport').toBe(true);
+  const report = await new AxeBuilder({ page }).analyze();
+  expect(report.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
+  await expect(page.getByText('CONTRACT FIXTURE', { exact: false })).toHaveCount(0);
+  await expect(page).toHaveScreenshot(`real-230-${state}.png`, { fullPage: true });
+}
+async function staffListReady(page: Page) {
+  await expect(page.getByRole('table', { name: 'Order list', exact: true })).toHaveAttribute('aria-busy', 'false');
+}
+
+test.describe('VISUAL-REAL #230', () => {
+  test.afterEach(async ({ page }) => { await control(page, 'release'); });
+
+  test('real staff normal list/detail are read-only with exact amounts and persisted ETag', async ({ page }) => {
+    const fixture = staffOrders();
+    await staffLogin(page, fixture.path); await staffListReady(page);
+    const writes: string[] = [];
+    page.on('request', request => {
+      if (new URL(request.url()).pathname.startsWith(fixture.api) && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(request.method());
+    });
+    const listResponse = await page.request.get(staffSite + fixture.api);
+    expect(listResponse.status()).toBe(200);
+    expect((await listResponse.json()).items).toEqual([expect.objectContaining({ id: fixture.ids[0], order_number: 723001, total_minor: '3140', state: 'pending_payment' })]);
+    await expect(page.getByRole('link', { name: fixture.number, exact: true })).toBeVisible();
+    await staffSnapshot(page, 'list');
+    const read = page.waitForResponse(r => new URL(r.url()).pathname === `${fixture.api}/${fixture.ids[0]}`);
+    await page.getByRole('link', { name: fixture.number, exact: true }).click();
+    const response = await read, detail = await response.json();
+    expect(response.status()).toBe(200); expect(response.headers().etag).toBe(`"${detail.version}"`);
+    expect(detail.lines).toEqual([expect.objectContaining({ sku_code: fixture.code, quantity: 1, line_total_minor: '3140' })]);
+    expect(detail.total_minor).toBe('3140'); expect(detail).not.toHaveProperty('guest_contact');
+    await expect(page.getByRole('heading', { name: `Order ${fixture.number}`, exact: true })).toBeVisible();
+    await expect(page.getByRole('cell', { name: fixture.code, exact: true })).toBeVisible();
+    const main = page.getByRole('main');
+    await expect(main.getByRole('button')).toHaveCount(0); await expect(main.getByRole('form')).toHaveCount(0);
+    await expect(main.locator('input,textarea,select,[contenteditable="true"]')).toHaveCount(0);
+    await staffSnapshot(page, 'detail'); expect(writes).toEqual([]);
+    console.log('VISUAL-230 write conflict/disabled mutation N/A: no admin order write UI (read-only contract #52)');
+  });
+
+  test('real staff long safe order number, bigint money and two snapshot lines stay in the scroll region', async ({ page }) => {
+    const fixture = staffOrders(1, true);
+    expect(fixture.code.length).toBe(255);
+    await staffLogin(page, fixture.path); await staffListReady(page);
+    await expect(page.getByRole('link', { name: fixture.number, exact: true })).toBeVisible();
+    await staffSnapshot(page, 'long-list');
+    await page.getByRole('link', { name: fixture.number, exact: true }).click();
+    await expect(page.getByRole('heading', { name: `Order ${fixture.number}`, exact: true })).toBeVisible();
+    const table = page.getByRole('table', { name: 'Order lines', exact: true });
+    await expect(table.getByRole('row')).toHaveCount(3);
+    await expect(table.getByRole('cell', { name: fixture.code, exact: true })).toBeVisible();
+    await expect(table.getByRole('cell', { name: 'SECOND-LINE', exact: true })).toBeVisible();
+    await expect(page.getByRole('main')).toContainText('USD 92,233,720,368,547,758.07');
+    const region = page.getByRole('region', { name: 'Order lines', exact: true });
+    await region.focus(); await expect(region).toBeFocused();
+    await staffSnapshot(page, 'long-detail');
+    if (await region.evaluate(el => el.scrollWidth > el.clientWidth)) {
+      await page.keyboard.press('ArrowRight');
+      await expect.poll(() => region.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+    }
+  });
+
+  test('real empty tenant and keyset pagination retain disabled and enabled navigation', async ({ page }) => {
+    const empty = staffOrders(0);
+    await staffLogin(page, empty.path); await staffListReady(page);
+    await expect(page.getByText('No orders match this filter.', { exact: true })).toBeVisible();
+    for (const name of ['Previous page', 'Next page']) await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
+    await staffSnapshot(page, 'empty');
+    const fixture = staffOrders(27);
+    await page.goto(staffSite + fixture.path); await staffListReady(page);
+    await expect(page.getByRole('table', { name: 'Order list' }).getByRole('row')).toHaveCount(26);
+    const nextRead = page.waitForResponse(r => new URL(r.url()).pathname === fixture.api && new URL(r.url()).searchParams.has('cursor'));
+    await page.getByRole('button', { name: 'Next page', exact: true }).click();
+    const response = await nextRead; expect(response.status()).toBe(200);
+    const next = await response.json(); expect(next.items).toHaveLength(2);
+    expect(next.items.map((row: { id: string }) => row.id)).toEqual(fixture.ids.slice(25));
+    await staffListReady(page);
+    await expect(page.getByRole('button', { name: 'Previous page', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeDisabled();
+    await staffSnapshot(page, 'pagination');
+    await page.getByRole('button', { name: 'Previous page', exact: true }).click(); await staffListReady(page);
+    await expect(page.getByRole('link', { name: fixture.number, exact: true })).toBeVisible();
+  });
+
+  test('real staff loading and 503 reads expose safe retry without fixture fallback', async ({ page }) => {
+    const fixture = staffOrders();
+    await staffLogin(page, fixture.path); await staffListReady(page);
+    for (const detail of [false, true]) {
+      const api = fixture.api + (detail ? `/${fixture.ids[0]}` : '');
+      const path = fixture.path + (detail ? `/${fixture.ids[0]}` : '');
+      await fault(page, api, 'GET', 'hold'); await page.goto(staffSite + path);
+      await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(200);
+      if (detail) await expect(page.getByRole('status')).toHaveText('Loading order…');
+      else await expect(page.getByRole('table', { name: 'Order list' })).toHaveAttribute('aria-busy', 'true');
+      await staffSnapshot(page, detail ? 'detail-loading' : 'list-loading');
+      await control(page, 'release');
+      if (detail) await expect(page.getByRole('heading', { name: `Order ${fixture.number}`, exact: true })).toBeVisible();
+      else await staffListReady(page);
+      await fault(page, api, 'GET', '503');
+      const read = page.waitForResponse(r => new URL(r.url()).pathname === api);
+      await page.reload(); expect((await read).status()).toBe(503);
+      expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
+      await expect(page.getByRole('alert')).toHaveText('The service is temporarily unavailable. Try again later.Retry');
+      await expect(page.getByRole('table')).toHaveCount(0);
+      await staffSnapshot(page, detail ? 'order-detail-unavailable-503' : 'list-503');
+      await control(page, 'release');
+      await page.getByRole('button', { name: 'Retry', exact: true }).click();
+      if (detail) await expect(page.getByRole('heading', { name: `Order ${fixture.number}`, exact: true })).toBeVisible();
+      else await staffListReady(page);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+    }
+  });
+
+  test('real staff guard, foreign order, viewer denial and DB-clock session expiry hide private data', async ({ page }) => {
+    const fixture = staffOrders(), other = staffOrders();
+    let reads = 0;
+    page.on('request', r => { if (new URL(r.url()).pathname.startsWith(fixture.api)) reads++; });
+    await page.goto(staffSite + fixture.path);
+    await expect(page).toHaveURL(/\/login$/); await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+    expect(reads).toBe(0); await staffSnapshot(page, 'unauthenticated');
+    await staffLogin(page, fixture.path); await staffListReady(page);
+    const own = await page.request.get(`${staffSite}${other.api}/${other.ids[0]}`);
+    expect(own.status()).toBe(200); // foreign id really exists; this staff owns both fixture tenants.
+    const foreignRead = page.waitForResponse(r => new URL(r.url()).pathname === `${fixture.api}/${other.ids[0]}`);
+    await page.goto(`${staffSite}${fixture.path}/${other.ids[0]}`);
+    expect((await foreignRead).status()).toBe(404);
+    await expect(page.getByRole('alert')).toContainText('Order not found or unavailable in this tenant.');
+    await expect(page.getByRole('table')).toHaveCount(0); await staffSnapshot(page, 'cross-tenant');
+    sql(`UPDATE app.tenant_memberships SET role='viewer' WHERE tenant_id='${fixture.tenant}'
+      AND user_id=(SELECT id FROM app.users WHERE email='visual-owner@example.test');`);
+    const denied = page.waitForResponse(r => new URL(r.url()).pathname === fixture.api);
+    await page.goto(staffSite + fixture.path); expect((await denied).status()).toBe(403);
+    await expect(page.getByRole('alert')).toContainText('This action is not allowed for your current session.');
+    await expect(page.getByRole('table')).toHaveCount(0); await staffSnapshot(page, 'permission-denied');
+    sql(`UPDATE app.tenant_memberships SET role='owner' WHERE tenant_id='${fixture.tenant}'
+      AND user_id=(SELECT id FROM app.users WHERE email='visual-owner@example.test');`);
+    await page.goto(`${staffSite}${fixture.path}/${fixture.ids[0]}`);
+    await expect(page.getByRole('heading', { name: `Order ${fixture.number}`, exact: true })).toBeVisible();
+    const session = await (await page.request.get(`${staffSite}/api/v1/auth/session`)).json();
+    expect(session.session_id).toMatch(/^[0-9a-f-]{36}$/);
+    sql(`WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS n)
+      UPDATE app.auth_sessions SET created_at=stamp.n-interval '2 hours',last_seen_at=stamp.n-interval '1 hour',
+        expires_at=stamp.n-interval '1 second' FROM stamp WHERE id='${session.session_id}';`);
+    const expired = page.waitForResponse(r => new URL(r.url()).pathname === fixture.api);
+    await page.getByRole('navigation', { name: 'Store navigation' }).getByRole('link', { name: 'Orders', exact: true }).click();
+    expect((await expired).status()).toBe(401);
+    await expect(page.getByRole('status')).toHaveText('Your session expired. Sign in to continue.');
+    await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+    await expect(page.getByRole('table')).toHaveCount(0); await staffSnapshot(page, 'expired-session');
+    expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
+  });
+});

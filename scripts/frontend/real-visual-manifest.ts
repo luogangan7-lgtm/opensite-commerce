@@ -2,6 +2,9 @@
  * The issue inventory is explicit: deleting a screenshot call cannot silently pass.
  */
 export const REAL_VISUAL_STATES = {
+  230: ['list', 'detail', 'long-list', 'long-detail', 'empty', 'pagination',
+    'list-loading', 'detail-loading', 'list-503', 'order-detail-unavailable-503',
+    'unauthenticated', 'cross-tenant', 'expired-session', 'permission-denied'],
   250: ['account-entry', 'history-list', 'history-detail', 'history-long-order', 'history-long-sku',
     'history-multiline', 'history-loading', 'history-detail-loading', 'history-empty',
     'history-expired-session', 'history-not-found', 'history-list-503', 'history-detail-503',
@@ -35,6 +38,16 @@ export function assertDistinctHistoryPngs(pngs: Record<string, string>) {
 }
 
 export function realBackendEvidence(snapshot: string) {
+  const staff = /^real-230-(.+)\.png$/.exec(snapshot.split('/').at(-1) ?? '')?.[1];
+  if (staff) return { application: 'Go', database: 'PostgreSQL 18.6', mode: 'test',
+    seed: 'isolated staff tenant and historical sealed Orders executor fixtures; real password login; all DB guards enabled',
+    fault: staff.endsWith('-loading') ? 'proxy holds a completed real Go staff orders GET response'
+      : staff.endsWith('-503') ? 'proxy substitutes HTTP 503 after forwarding real Go staff orders GET' : 'none',
+    boundary: staff === 'expired-session' ? 'owned real staff session expires against DB clock; backend rejects it'
+      : staff === 'cross-tenant' ? 'existing second tenant order; real backend tenant predicate returns 404'
+      : staff === 'permission-denied' ? 'real viewer membership has no orders:read scope; backend denies admission'
+      : 'not-applicable: no admin order write UI (read-only contract #52); malformed read ETag remains contract-tested; safe integer order number, SKU <=255 characters' };
+
   const history = /^real-250-(.+)\.png$/.exec(snapshot.split('/').at(-1) ?? '')?.[1];
   if (history) return { application: 'Go', database: 'PostgreSQL 18.6', mode: 'test',
     seed: history.startsWith('b2b-')

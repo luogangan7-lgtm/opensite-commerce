@@ -27,3 +27,12 @@ export function assertDistinctHistoryPngs(pngs: Record<string, string>) {
     }
   }
 }
+
+/** Staff states use distinct fixtures and distinct error/guard renderings. No data-state aliases. */
+export function assertDistinctStaffPngs(pngs: Record<string, string>) {
+  for (const viewport of ['desktop', 'mobile']) {
+    const hashes = REAL_VISUAL_STATES[230].map(state => pngs[`${viewport}/real-230-${state}.png`]);
+    if (hashes.some(hash => !hash) || new Set(hashes).size !== hashes.length)
+      throw new Error(`${viewport} staff state images must exist and be distinct`);
+  }
+}
