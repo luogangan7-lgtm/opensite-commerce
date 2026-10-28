@@ -141,7 +141,7 @@ func (s *Service) applyTerminalFact(ctx context.Context, tx pgx.Tx, q *db.Querie
 		return contract.ErrConflict
 	}
 	if paid {
-		posting, err := factJournal(ctx, q, row, row.ClaimKey.String)
+		posting, err := factJournal(ctx, q, row, event.EventID)
 		if err != nil {
 			return err
 		}
@@ -158,7 +158,9 @@ func (s *Service) applyTerminalFact(ctx context.Context, tx pgx.Tx, q *db.Querie
 	return err
 }
 
-func factJournal(ctx context.Context, q *db.Queries, row db.AppCheckoutSession, eventKey string) (ledger.Transaction, error) {
+// Capture paths share the trusted payment fact's EventID, never its derived
+// storage ClaimKey. Refunds supply their separate refund-scoped event identity.
+func factJournal(ctx context.Context, q *db.Queries, row db.AppCheckoutSession, eventID string) (ledger.Transaction, error) {
 	rows, err := q.GetCheckoutLedgerAccounts(ctx, row.TenantID)
 	if err != nil {
 		return ledger.Transaction{}, store.MapError(err)
@@ -167,7 +169,7 @@ func factJournal(ctx context.Context, q *db.Queries, row db.AppCheckoutSession, 
 	for _, account := range rows {
 		accounts[account.Code] = account
 	}
-	return journal(row, eventKey, accounts)
+	return journal(row, eventID, accounts)
 }
 
 func (s *Service) applyRefundFact(ctx context.Context, tx pgx.Tx, q *db.Queries, row db.AppCheckoutSession, event payment.VerifiedEvent) error {

@@ -113,7 +113,10 @@ func TestRegisterAllowedAndConflicts(t *testing.T) {
 	}
 	t.Run("duplicate operation", func(t *testing.T) {
 		other := s
-		other.Pattern = "/api/v1/t/{tenant_id}/sites"
+		other.Pattern = "/api/v1/t/{tenant_id}/products/{product_id}"
+		if err := httpapi.New(nil, nil).Register(other, h); err != nil {
+			t.Fatalf("duplicate-operation positive control: %v", err)
+		}
 		if err := r.Register(other, h); err == nil || !strings.Contains(err.Error(), "duplicate operation") {
 			t.Errorf("expected duplicate operation rejection, got %v", err)
 		}

@@ -634,15 +634,7 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 			return contract.ErrConflict
 		}
 		if terminal == "paid" {
-			rows, e := q.GetCheckoutLedgerAccounts(ctx, current.TenantID)
-			if e != nil {
-				return store.MapError(e)
-			}
-			accounts := map[string]db.GetCheckoutLedgerAccountsRow{}
-			for _, a := range rows {
-				accounts[a.Code] = a
-			}
-			posting, e := journal(current, event.EventID, accounts)
+			posting, e := factJournal(ctx, q, current, event.EventID)
 			if e != nil {
 				return e
 			}
