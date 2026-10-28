@@ -154,6 +154,10 @@ queries/<module>/*.sql
   | content_editor | `catalog:read`, `cms:write`, `cms:publish`, `media:write` |
   | viewer | `catalog:read` |
 
+  MDEL-01 adds `tenant:delete` to owner only. API-key enum membership conveys
+  no lifecycle transition authority: merchant deletion is AdminSession-only,
+  requires an explicit owner check and remains disabled until MDEL-26.
+
   FIX-44 (orchestrator role-grant decision, 2026-10-22): customer PII export/erasure is
   owner/admin only; catalog CSV import/export follows catalog write holders. API-key
   management remains owner/admin only; unknown scope denial remains exact.

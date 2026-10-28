@@ -32,7 +32,7 @@ KEY_OPERATIONS = {
     (KEY_PATH + '/{key_id}', 'delete'): 'revokeAPIKey',
 }
 SCOPES = {
-    'customers:privacy', 'catalog:import', 'catalog:export',
+    'customers:privacy', 'catalog:import', 'catalog:export', 'tenant:delete',
     'apikeys:write', 'catalog:read', 'catalog:write', 'cms:publish',
     'cms:write', 'media:write', 'notifications:write', 'orders:read',
     'quotes:read', 'quotes:write', 'organization.create', 'site.create',
@@ -77,11 +77,17 @@ def assert_contract(registry, source):
     assert components['schemas']['AdminSessionView']['required'] == ['user_id', 'session_id', 'expires_at', 'csrf_token']
     tenant = next(m for m in registry['modules'] if m['name'] == 'tenant')
     assert tenant['go_status'] == 'implemented', 'tenant key management implementation missing'
-    assert set(tenant['owns_tables']) == {'tenants', 'tenant_memberships', 'api_keys'}
+    assert set(tenant['owns_tables']) == {'tenants', 'tenant_memberships', 'api_keys', 'tenant_lifecycles', 'tenant_lifecycle_receipts', 'tenant_lifecycle_events'}
     assert tenant['dependencies'] == ['identity'], 'tenant depends on the public identity contract'
-    assert tenant['scopes'] == ['apikeys:write']
+    assert tenant['scopes'] == ['apikeys:write', 'tenant:delete']
     assert {o['operation_id']: o['status'] for o in tenant['operations']} == {
-        operation: 'implemented' for operation in KEY_OPERATIONS.values()}
+        **{operation: 'implemented' for operation in KEY_OPERATIONS.values()},
+        'requestMerchantDeletion': 'planned'}
+    deletion = blocks[('/api/v1/t/{tenant_id}/merchant-deletion', 'post')]
+    assert deletion['x-opensite-status'] == 'planned'
+    assert deletion['x-opensite-access'] == 'AdminSession'
+    assert deletion['security'] == [{'adminSession': []}]
+    assert deletion['x-required-scope'] == 'tenant:delete'
     for key, operation in KEY_OPERATIONS.items():
         body = blocks[key]
         assert body['operationId'] == operation and body['x-opensite-status'] == 'implemented', key

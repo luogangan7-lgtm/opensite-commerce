@@ -46,6 +46,9 @@ BEGIN
  IF row_value.state<>'cooling_off' OR row_value.requested_at<before_db
   OR row_value.execute_after-row_value.requested_at<>interval '720 hours' THEN RAISE EXCEPTION 'MDEL01_REQUEST_DB_TIME'; END IF;
  epoch:=row_value.epoch;
+ IF EXISTS(SELECT FROM jsonb_object_keys(r) k WHERE k NOT IN
+  ('request_id','state','phase','epoch','requested_at','execute_after','attempt','next_retry_at','categories'))
+  OR r->'categories'<>'{}'::jsonb THEN RAISE EXCEPTION 'MDEL01_REPLAY_METADATA_ONLY'; END IF;
  replay:=app.tenant_lifecycle_transition(t,req,actor,sess,'request',key,sha256('request'::bytea),0,zeroes);
  IF replay IS DISTINCT FROM r THEN RAISE EXCEPTION 'MDEL01_REPLAY_CHANGED'; END IF;
  BEGIN
@@ -61,6 +64,11 @@ BEGIN
   RAISE EXCEPTION 'MDEL01_WRITE_FENCE_OMITTED';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
  PERFORM app.tenant_lifecycle_drain_fence(t,epoch);
+ -- The fence rejects an explicit other tenant even with a valid nonempty GUC.
+ BEGIN
+  PERFORM app.tenant_lifecycle_read_fence(other);
+  RAISE EXCEPTION 'MDEL01_FOREIGN_FENCE_ACCEPTED';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
   PERFORM app.tenant_lifecycle_drain_fence(t,epoch-1);
   RAISE EXCEPTION 'MDEL01_STALE_DRAIN_ACCEPTED';
@@ -81,7 +89,7 @@ BEGIN
  req:=uuidv7();
  r:=app.tenant_lifecycle_transition(t,req,actor,sess,'request',uuidv7(),sha256('again'::bytea),0,zeroes);
  UPDATE app.tenant_lifecycles SET requested_at=clock_timestamp()-interval '720 hours',execute_after=clock_timestamp() WHERE tenant_id=t;
- SELECT epoch INTO epoch FROM app.tenant_lifecycles l WHERE l.tenant_id=t;
+ SELECT l.epoch INTO epoch FROM app.tenant_lifecycles l WHERE l.tenant_id=t;
  BEGIN
   PERFORM app.tenant_lifecycle_transition(t,req,actor,sess,'cancel',uuidv7(),sha256('late'::bytea),epoch,zeroes);
   RAISE EXCEPTION 'MDEL01_DEADLINE_CANCEL_ACCEPTED';
@@ -96,6 +104,28 @@ BEGIN
   PERFORM app.tenant_lifecycle_drain_fence(t,(r->>'epoch')::bigint);
   RAISE EXCEPTION 'MDEL01_EXECUTING_DRAIN_ACCEPTED';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ epoch:=app.tenant_lifecycle_checkpoint(t,req,(r->>'epoch')::bigint,false);
+ SELECT * INTO STRICT row_value FROM app.tenant_lifecycles WHERE tenant_id=t;
+ IF row_value.state<>'failed' OR row_value.phase<>'executing' THEN RAISE EXCEPTION 'MDEL01_FAILED_LOST_PHASE'; END IF;
+ BEGIN
+  PERFORM app.tenant_lifecycle_transition(t,req,actor,sess,'cancel',uuidv7(),sha256('cancel'::bytea),epoch,zeroes);
+  RAISE EXCEPTION 'MDEL01_DESTRUCTIVE_FAILURE_CANCEL';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ r:=app.tenant_lifecycle_transition(t,req,actor,sess,'execute',NULL,NULL,epoch,zeroes);
+ IF r->>'state'<>'executing' OR (r->>'execute_after')::timestamptz<>row_value.execute_after THEN
+  RAISE EXCEPTION 'MDEL01_RETRY_RESTARTED_DEADLINE'; END IF;
+ epoch:=app.tenant_lifecycle_checkpoint(t,req,(r->>'epoch')::bigint,true);
+ IF (SELECT state FROM app.tenant_lifecycles WHERE tenant_id=t)<>'deleted' THEN RAISE EXCEPTION 'MDEL01_COMPLETION_NOT_DELETED'; END IF;
+ BEGIN
+  PERFORM app.tenant_lifecycle_checkpoint(t,req,epoch-1,true);
+  RAISE EXCEPTION 'MDEL01_STALE_CHECKPOINT';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ -- Replays cannot keep authority after session revocation.
+ UPDATE app.auth_sessions SET revoked_at=clock_timestamp() WHERE id=sess;
+ BEGIN
+  PERFORM app.tenant_lifecycle_transition(t,req,actor,sess,'request',key,sha256('request'::bytea),0,zeroes);
+  RAISE EXCEPTION 'MDEL01_REVOKED_REPLAY_ACCEPTED';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $test$;
 -- Runtime has read-only status, no transitions or drain capability. Empty and
 -- missing GUC returns zero rows; explicitly naming another tenant never helps.

@@ -19,6 +19,7 @@ DECLARE
   'blog_post_revisions','site_release_routes','site_release_templates',
   'site_release_media','draft_operations','audit_events'];
  special_tables text[] := ARRAY[
+  'tenant_lifecycles','tenant_lifecycle_receipts','tenant_lifecycle_events',
   'tenants','users','auth_sessions','api_keys','tenant_memberships','sites',
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
   'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
@@ -76,7 +77,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals','payment_refund_cases','payment_refund_case_deliveries','payment_refund_case_resolutions','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures','data_rights_erased_orders']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenant_lifecycle_receipts','tenant_lifecycle_events','payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals','payment_refund_cases','payment_refund_case_deliveries','payment_refund_case_resolutions','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures','data_rights_erased_orders']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='SELECT' AND t.relname='customer_guest_order_links' THEN
@@ -308,7 +309,8 @@ BEGIN
   RAISE EXCEPTION 'identity function contract incomplete'; END IF;
  -- New capability roles cannot execute older business service functions either.
  FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND NOT p.proname=ANY(names)
-  AND p.proname NOT IN ('auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant') LOOP
+  AND p.proname NOT IN ('auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant',
+   'tenant_lifecycle_read_fence','tenant_lifecycle_write_fence') LOOP
   IF has_function_privilege('app_admin_bootstrap',f.oid,'EXECUTE') OR has_function_privilege('app_credential_writer',f.oid,'EXECUTE') THEN
    RAISE EXCEPTION 'identity role has unrelated function authority: %',f.proname; END IF;
  END LOOP;
@@ -382,6 +384,7 @@ BEGIN
  FOR f IN SELECT p.oid,p.proname,p.prosecdef,p.proowner,p.proconfig,p.proacl
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
+  AND NOT starts_with(p.proname,'tenant_lifecycle_')
   AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('catalog_listing_version','pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
@@ -420,6 +423,7 @@ BEGIN
  END LOOP;
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
+  AND NOT starts_with(p.proname,'tenant_lifecycle_')
   AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('catalog_listing_version','pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
@@ -1380,7 +1384,8 @@ BEGIN
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    expected:=role_name='app_credential_writer'
     OR role_name='app_auth' AND f.proname IN ('auth_create_api_key','auth_revoke_api_key','auth_touch_api_key')
-    OR role_name IN ('app_runtime','app_auth','app_media_service','app_returns_service','app_payments_service') AND f.proname='auth_revalidate_tenant';
+    OR role_name IN ('app_runtime','app_auth','app_media_service','app_returns_service','app_payments_service') AND f.proname='auth_revalidate_tenant'
+    OR role_name='app_tenant_lifecycle_executor' AND f.proname IN ('auth_role_scopes','auth_revalidate_tenant');
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR role_name<>'app_credential_writer' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'TENANT_AUTH_ROUTINE_ACL % %',role_name,f.proname; END IF;
@@ -1632,3 +1637,53 @@ BEGIN
   RAISE EXCEPTION 'COMPENSATION_MATRIX_FUNCTION_SET'; END IF;
 END $compensation_matrix$;
 SELECT 'PASS: exact compensation capability and private posting core' AS result;
+
+-- Tenant lifecycle is a separate, unassumable capability family. Exhaustive
+-- table/column/function matrices prevent a new app role inheriting admission.
+DO $lifecycle_acl$
+DECLARE r record; f record; t record; a record; privilege text;
+ expected boolean; allowed text[]; role_name text;
+ names text[]:=ARRAY['tenant_lifecycle_initialize','tenant_lifecycle_read_fence','tenant_lifecycle_write_fence','tenant_lifecycle_drain_fence','tenant_lifecycle_transition_fence','tenant_lifecycle_transition','tenant_lifecycle_checkpoint'];
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_tenant_lifecycle_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+  OR EXISTS(SELECT FROM pg_auth_members WHERE roleid=r.oid OR member=r.oid)
+  OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'MDEL01_UNSAFE_EXECUTOR'; END IF;
+ IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND starts_with(proname,'tenant_lifecycle_'))<>cardinality(names) THEN
+  RAISE EXCEPTION 'MDEL01_ROUTINE_INVENTORY'; END IF;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names) LOOP
+  IF f.proowner<>r.oid OR NOT f.prosecdef OR cardinality(f.proconfig)<>1
+   OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+   RAISE EXCEPTION 'MDEL01_UNSAFE_ROUTINE %',f.proname; END IF;
+  FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+   expected:=role_name='app_tenant_lifecycle_executor'
+    OR role_name IN ('app_runtime','app_auth','app_credential_writer') AND f.proname='tenant_lifecycle_read_fence'
+    OR role_name IN ('app_runtime','app_credential_writer') AND f.proname='tenant_lifecycle_write_fence';
+   IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
+    OR role_name<>'app_tenant_lifecycle_executor' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'MDEL01_ROUTINE_ACL % %',role_name,f.proname; END IF;
+  END LOOP;
+ END LOOP;
+ FOR t IN SELECT c.oid,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='app' AND c.relkind IN ('r','p') LOOP
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=t.relname='tenant_lifecycles' AND privilege IN ('SELECT','INSERT','UPDATE')
+    OR t.relname IN ('tenant_lifecycle_receipts','tenant_lifecycle_events') AND privilege IN ('SELECT','INSERT');
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected THEN
+    RAISE EXCEPTION 'MDEL01_EXECUTOR_TABLE_ACL % %',t.relname,privilege; END IF;
+   FOR a IN SELECT attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+    allowed:=CASE WHEN privilege='SELECT' AND t.relname='tenants' THEN ARRAY['id','status']
+     WHEN privilege='SELECT' AND t.relname='tenant_memberships' THEN ARRAY['tenant_id','user_id','role','status'] ELSE ARRAY[]::text[] END;
+    IF privilege IN ('SELECT','INSERT','UPDATE','REFERENCES') AND
+     has_column_privilege(r.oid,t.oid,a.attname,privilege) IS DISTINCT FROM (expected OR a.attname=ANY(allowed)) THEN
+     RAISE EXCEPTION 'MDEL01_EXECUTOR_COLUMN_ACL % % %',t.relname,a.attname,privilege; END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT oid,proname FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM
+   (f.proname=ANY(names) OR f.proname IN ('auth_role_scopes','auth_revalidate_tenant')) THEN
+   RAISE EXCEPTION 'MDEL01_EXECUTOR_FOREIGN_ROUTINE %',f.proname; END IF;
+ END LOOP;
+END $lifecycle_acl$;

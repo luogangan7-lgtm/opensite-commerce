@@ -183,8 +183,9 @@ approved. Sender approval is an additional production-launch prerequisite.
 ## 5. Authz and future OpenAPI shape
 
 Add `tenant:delete` for **owner only**, with an explicit role check as well as scope.
-Atomically synchronize Go RoleScopes, DB `auth_role_scopes` (additive INSERT ON
-CONFLICT only), API-key finite scope enum, OpenAPI enum/x-required-scope and exact
+Atomically synchronize Go RoleScopes, DB `auth_role_scopes` (forward SQL wrapper capturing the previous
+function expression and returning its full result plus only the new owner grant;
+assert new scopes ⊇ old scopes for every role, preserving owner and ACL), API-key finite scope enum, OpenAPI enum/x-required-scope and exact
 gate tables. Declaring it in the key enum grants no key access: all routes below
 are AdminSession-only. Unknown scopes remain denied. No OpenAPI edit in this docs PR.
 

@@ -1989,6 +1989,82 @@ gate_open 142; wait
 expect bpricing_publish ok
 echo 'PASS: PUBLISH_CANDIDATE_RACE142 price mutation did not wait for publication'
 
+# MDEL-01 gates 150-154: the shared prefix orders ordinary writers,
+# transition contenders, admitted drains and cancellation at the DB deadline.
+mdel_fixture() {
+ sql <<'SQL' | tail -1
+INSERT INTO app.tenants(name) VALUES('mdel01-race') RETURNING id AS t \gset
+INSERT INTO app.users(email,password_hash) VALUES('mdelrace-'||uuidv7()||'@invalid.test','fixture') RETURNING id AS u \gset
+INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES(:'t',:'u','owner');
+INSERT INTO app.auth_sessions(user_id,token_hash,expires_at) VALUES(:'u',sha256(uuidv7()::text::bytea),clock_timestamp()+interval '1 day') RETURNING id AS sess \gset
+SELECT :'t'||' '||:'u'||' '||:'sess'||' '||uuidv7()||' '||uuidv7();
+SQL
+}
+MDEL_ZERO='{"paid_unfulfilled":0,"fulfillment_return":0,"payment_refund":0,"checkout_capture":0,"refund_reconciliation":0,"pending_payout":0,"unsettled_provider_balance":0,"legal_hold":0}'
+mdel_call() {
+ echo "SELECT app.tenant_lifecycle_transition('$MT','$MR','$MU','$MS','$1','$MK',sha256('$1'::bytea),$2,'$MDEL_ZERO');"
+}
+read -r MT MU MS MR MK <<<"$(mdel_fixture)"
+gate_close 150
+tx mdel_writer app_runtime "$MT" "SELECT app.tenant_lifecycle_write_fence('$MT'); INSERT INTO app.organizations(tenant_id,display_name) VALUES('$MT','admitted'); $(park 150)" &
+await mdel_writer advisory
+tx mdel_request postgres "$MT" "$(mdel_call request 0)" &
+await mdel_request "${ROWLOCK[@]}"
+gate_open 150; wait
+expect mdel_writer ok; expect mdel_request ok
+[[ $(sql <<<"SELECT state||'|'||(SELECT count(*) FROM app.organizations WHERE tenant_id='$MT') FROM app.tenant_lifecycles WHERE tenant_id='$MT';") == 'cooling_off|1' ]] || { echo 'FAIL: MDEL01_REQUEST_WRITER_RACE'; fail=1; }
+
+read -r MT MU MS MR MK <<<"$(mdel_fixture)"
+gate_close 151
+tx mdel_transition postgres "$MT" "$(mdel_call request 0) $(park 151)" &
+await mdel_transition advisory
+tx mdel_late_writer app_runtime "$MT" "SELECT app.tenant_lifecycle_write_fence('$MT'); INSERT INTO app.organizations(tenant_id,display_name) VALUES('$MT','forbidden');" &
+await mdel_late_writer "${ROWLOCK[@]}"
+gate_open 151; wait
+expect mdel_transition ok; expect mdel_late_writer 'tenant deletion write fence'
+[[ $(sql <<<"SELECT count(*) FROM app.organizations WHERE tenant_id='$MT';") == 0 ]] || { echo 'FAIL: MDEL01_LATE_WRITE'; fail=1; }
+
+# Move the persisted deadline using the DB clock; ordering never uses a sleep.
+sql <<<"UPDATE app.tenant_lifecycles SET requested_at=clock_timestamp()-interval '721 hours',execute_after=clock_timestamp()-interval '1 hour' WHERE tenant_id='$MT';" >/dev/null
+gate_close 152
+tx mdel_drain postgres "$MT" "SELECT app.tenant_lifecycle_drain_fence('$MT',1); $(park 152)" &
+await mdel_drain advisory
+tx mdel_execute postgres "$MT" "$(mdel_call execute 1)" &
+await mdel_execute "${ROWLOCK[@]}"
+gate_open 152; wait
+expect mdel_drain ok; expect mdel_execute ok
+tx mdel_stale_drain postgres "$MT" "SELECT app.tenant_lifecycle_drain_fence('$MT',1);"
+expect mdel_stale_drain 'tenant deletion drain fence'
+[[ $(sql <<<"SELECT state||'|'||epoch FROM app.tenant_lifecycles WHERE tenant_id='$MT';") == 'executing|2' ]] || { echo 'FAIL: MDEL01_EXECUTE_DRAIN_RACE'; fail=1; }
+
+# A request committed before cancellation holds the exclusive lifecycle row;
+# after it releases, cancel must serialize against the persisted epoch/deadline.
+read -r MT MU MS MR MK <<<"$(mdel_fixture)"
+gate_close 153
+tx mdel_before_cancel postgres "$MT" "$(mdel_call request 0) $(park 153)" &
+await mdel_before_cancel advisory
+MK=$(sql <<<"SELECT uuidv7();")
+tx mdel_cancel postgres "$MT" "$(mdel_call cancel 1)" &
+await mdel_cancel "${ROWLOCK[@]}"
+gate_open 153; wait
+expect mdel_before_cancel ok; expect mdel_cancel ok
+[[ $(sql <<<"SELECT state||'|'||epoch FROM app.tenant_lifecycles WHERE tenant_id='$MT';") == 'active|2' ]] || { echo 'FAIL: MDEL01_CANCEL_SERIALIZATION'; fail=1; }
+
+read -r MT MU MS MR MK <<<"$(mdel_fixture)"
+tx mdel_expiry_request postgres "$MT" "$(mdel_call request 0)"
+expect mdel_expiry_request ok
+sql <<<"UPDATE app.tenant_lifecycles SET requested_at=clock_timestamp()-interval '721 hours',execute_after=clock_timestamp()-interval '1 hour' WHERE tenant_id='$MT';" >/dev/null
+gate_close 154
+tx mdel_expiry_execution postgres "$MT" "$(mdel_call execute 1) $(park 154)" &
+await mdel_expiry_execution advisory
+MK=$(sql <<<"SELECT uuidv7();")
+tx mdel_expiry_cancel postgres "$MT" "$(mdel_call cancel 1)" &
+await mdel_expiry_cancel "${ROWLOCK[@]}"
+gate_open 154; wait
+expect mdel_expiry_execution ok; expect mdel_expiry_cancel 'stale lifecycle operation'
+[[ $(sql <<<"SELECT state||'|'||epoch FROM app.tenant_lifecycles WHERE tenant_id='$MT';") == 'executing|2' ]] || { echo 'FAIL: MDEL01_EXPIRY_CANCEL_RACE'; fail=1; }
+echo 'PASS: MDEL01 gates 150-154 writer/request, late writer, drain/execution and cancel/deadline serialization'
+
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth/fulfillment/returns contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'

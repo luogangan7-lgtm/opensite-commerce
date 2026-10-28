@@ -273,6 +273,43 @@ paths:
         - {$ref: '#/components/parameters/CSRFTokenIfCookie'}
         - {$ref: '#/components/parameters/IfMatch'}
       responses: *StaffPriceListResponses
+  /api/v1/t/{tenant_id}/merchant-deletion:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+    post:
+      tags: [Tenant]
+      operationId: requestMerchantDeletion
+      x-opensite-status: planned
+      x-opensite-access: AdminSession
+      x-required-scope: tenant:delete
+      description: Owner-only contract reservation. Activation requires MDEL-26 and sender approval; API keys are denied.
+      security: [{adminSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CSRFToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [step_up_proof]
+              properties:
+                step_up_proof: {type: string, format: uuid}
+      responses:
+        '202': {description: Deletion metadata only; no capability or personal data.}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        default: {$ref: '#/components/responses/Problem'}
   /api/v1/t/{tenant_id}/api-keys:
     post:
       tags: [Identity]
@@ -5433,11 +5470,11 @@ components:
       properties:
         scopes:
           type: array
-          maxItems: 17
+          maxItems: 18
           uniqueItems: true
           items:
             type: string
-            enum: [apikeys:write, catalog:read, catalog:write, cms:publish, cms:write, media:write, notifications:write, orders:read, quotes:read, quotes:write, organization.create, site.create, fulfillment:write, returns:write, customers:privacy, catalog:import, catalog:export]
+            enum: [apikeys:write, catalog:read, catalog:write, cms:publish, cms:write, media:write, notifications:write, orders:read, quotes:read, quotes:write, organization.create, site.create, fulfillment:write, returns:write, customers:privacy, catalog:import, catalog:export, tenant:delete]
         expires_at:
           type: string
           format: date-time
