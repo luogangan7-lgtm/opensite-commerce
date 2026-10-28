@@ -1,5 +1,5 @@
 /** Exercises production UI and pending-contract fixtures; Playwright/axe prove UI behavior only. CI alone writes snapshots. */
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Locator,type Page} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {fixture,tenant,productId,orderId,order} from './admin-fixture';
 import {existsSync} from 'node:fs';
@@ -32,6 +32,24 @@ async function statusFitsVisibleTable(page:Page,caption:string,text:string){
  });
  expect(fragments.length).toBeGreaterThan(0);
  for(const rect of fragments){expect(rect.left).toBeGreaterThanOrEqual(region.x);expect(rect.right).toBeLessThanOrEqual(region.x+region.width);}
+}
+// Visibility of the element alone misses text overflowing its cell or scroll region.
+async function fullTextFitsVisibleCell(element:Locator){
+ await element.scrollIntoViewIfNeeded();
+ const geometry=await element.evaluate(el=>{
+  const cell=el.closest('td'),region=el.closest('.os-table-scroll');
+  if(!cell||!region)throw new Error('Expected a table cell in its scroll region');
+  const boxes=[cell.getBoundingClientRect(),region.getBoundingClientRect()];
+  const range=document.createRange();range.selectNodeContents(el);
+  return {bounds:{left:Math.max(0,...boxes.map(r=>r.left)),right:Math.min(innerWidth,...boxes.map(r=>r.right)),top:Math.max(0,...boxes.map(r=>r.top)),bottom:Math.min(innerHeight,...boxes.map(r=>r.bottom))},fragments:Array.from(range.getClientRects(),r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom}))};
+ });
+ expect(geometry.fragments.length).toBeGreaterThan(0);
+ for(const rect of geometry.fragments){
+  expect(rect.left,'Full text must fit the visible cell left edge').toBeGreaterThanOrEqual(geometry.bounds.left);
+  expect(rect.right,'Full text must fit the visible cell right edge').toBeLessThanOrEqual(geometry.bounds.right);
+  expect(rect.top,'Full text must fit the visible cell top edge').toBeGreaterThanOrEqual(geometry.bounds.top);
+  expect(rect.bottom,'Full text must fit the visible cell bottom edge').toBeLessThanOrEqual(geometry.bounds.bottom);
+ }
 }
 async function signIn(page:Page){await page.getByLabel('Email').fill('staff@example.invalid');await page.getByLabel('Password',{exact:true}).fill(crypto.randomUUID());await page.getByRole('button',{name:'Sign in',exact:true}).click();}
 /** First-visit-only POST control: proves a listener registered before navigation observes writes. */
@@ -275,11 +293,14 @@ test('notification legal long metadata and failed status retain read-only recove
  await expect(table.getByRole('cell').filter({hasText:id})).toContainText('quote.converted');
  await expect(table.locator('time')).toHaveText(updated);
  await expect(table.getByRole('cell',{name:'Delivery outcome unknown',exact:true})).toBeVisible();
+ await fullTextFitsVisibleCell(table.getByRole('cell').filter({hasText:id}));
  await audit(page,notificationVisualStates.longMetadata);
  await table.getByRole('cell',{name:'Delivery outcome unknown',exact:true}).scrollIntoViewIfNeeded();
+ await fullTextFitsVisibleCell(table.getByRole('cell',{name:'Delivery outcome unknown',exact:true}));
  await expect(table.getByRole('cell',{name:'Delivery outcome unknown',exact:true})).toBeInViewport({ratio:1});
  await audit(page,notificationVisualStates.longMessage);
  await table.locator('time').scrollIntoViewIfNeeded();
+ await fullTextFitsVisibleCell(table.locator('time'));
  await expect(table.locator('time')).toBeInViewport({ratio:1});
  await audit(page,notificationVisualStates.longTime);
  await region.evaluate(el=>{el.scrollLeft=el.scrollWidth;});
