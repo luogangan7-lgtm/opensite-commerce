@@ -30,7 +30,8 @@ class LauncherCleanup(unittest.TestCase):
         def command(argv, **kwargs):
             if argv[0] == 'psql':
                 statement = kwargs['input']
-                statements.append(statement)
+                if statement.startswith(('CREATE DATABASE', 'REVOKE CONNECT', 'DROP ')):
+                    statements.append(statement)
                 if statement.startswith('DROP DATABASE') or statement == 'DROP ROLE visual_cleanup_one;':
                     return subprocess.CompletedProcess(argv, 1, '', '')
                 return subprocess.CompletedProcess(argv, 0, '0\n', '')
