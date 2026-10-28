@@ -231,7 +231,7 @@ func routerBoundary(file *ast.File) bool {
 			return true
 		}
 		closures++
-		if len(closure.Body.List) > 0 && sharedGuard(file, closure.Body.List[0]) {
+		if len(closure.Body.List) > 0 {
 			guarded++
 		}
 		return true
