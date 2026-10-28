@@ -145,7 +145,7 @@ func TestRouteContractRejectsDrift(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			routes := []httpapi.RouteSpec{{OperationID: "probe", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}}
+			routes := []httpapi.RouteSpec{{OperationID: "probe", Method: "GET", Pattern: "/probe", Access: httpapi.Public}}
 			if err := reconcileRoutes(doc, routes); err != nil {
 				t.Fatalf("positive control: %v", err)
 			}
