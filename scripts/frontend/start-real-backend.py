@@ -96,7 +96,7 @@ def main():
                    OPENSITE_CUSTOMER_CSRF_SECRET=secrets.token_urlsafe(32), OPENSITE_CMS_PREVIEW_KEY=secrets.token_urlsafe(32),
                    OPENSITE_STOREFRONT_TENANT_ID=purchase.TENANT, OPENSITE_SERVING_REFRESH_TENANTS=purchase.TENANT,
                    OPENSITE_FAKE_PSP='1', OPENSITE_FAKE_WEBHOOK_KEY=secrets.token_urlsafe(32),
-                   NOTIFICATIONS_SMTP_ENABLED='true', NOTIFICATIONS_SMTP_HOST='127.0.0.1', NOTIFICATIONS_SMTP_PORT='1026',
+                   NOTIFICATIONS_SMTP_ENABLED='true', NOTIFICATIONS_SMTP_HOST='127.0.0.1', NOTIFICATIONS_SMTP_PORT='4183',
                    OPENSITE_IDEMPOTENCY_ROOT=str(owned / database),
                    OPENSITE_CHECKOUT_RULE_METADATA=json.dumps({'Profiles': {purchase.TENANT: 'c2400014-0000-4000-8000-000000000001'},
                      'SKUs': {purchase.TENANT: {f'c2400008-0000-4000-8000-{n:012d}': {'TaxCategory': 'standard', 'WeightG': 100} for n in (1, 2)}}}))
@@ -120,6 +120,8 @@ def main():
         runtime_path = owned / 'runtime.json'
         runtime_path.write_text(json.dumps(runtime))
         runtime_path.chmod(0o600)
+        spawn(['python3', 'scripts/frontend/notification-sink.py'], env)
+        wait('http://127.0.0.1:4182/health', 204)
         spawn(['bun', 'scripts/frontend/real-proxy.ts'], env)
         wait('http://127.0.0.1:4181/__visual/health')
         # No database identity, runtime passwords, or bootstrap capability enters Astro.
