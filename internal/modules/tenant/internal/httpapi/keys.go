@@ -1,16 +1,18 @@
 // Package httpapi adapts tenant API-key management to centrally admitted routes.
-// Dependencies: tenant contract, identity role scopes, platform actor/tenant stamps.
+// Dependencies: tenant contract, role-derived scope projection and platform stamps.
 // Invariants: only AdminSession routes; DB rechecks authority, secret emitted once
 // with no-store, no secret/list hash fields and no replay/idempotency secret cache.
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,9 +22,15 @@ import (
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
-type Handler struct{ repository contract.Repository }
+type Handler struct {
+	repository contract.Repository
+	scopes     func(context.Context) []string
+}
 
-func New(repository contract.Repository) *Handler { return &Handler{repository: repository} }
+// scopes projects the authenticated session's role-derived scopes without IO.
+func New(repository contract.Repository, scopes func(context.Context) []string) *Handler {
+	return &Handler{repository: repository, scopes: scopes}
+}
 func (h *Handler) Routes() []platform.Route {
 	base := "/api/v1/t/{tenant_id}/api-keys"
 	return []platform.Route{
@@ -113,6 +121,20 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		seen[scope] = true
+	}
+	var actorScopes []string
+	if h.scopes != nil {
+		actorScopes = h.scopes(r.Context())
+	}
+	if !slices.Contains(actorScopes, "apikeys:write") {
+		writeError(w, r, apperrors.New(403, "scope_forbidden", "Required scope is unavailable"))
+		return
+	}
+	for _, scope := range *dto.Scopes {
+		if !slices.Contains(actorScopes, scope) {
+			writeError(w, r, apperrors.New(403, "scope_forbidden", "Requested key scope is unavailable"))
+			return
+		}
 	}
 	var expires *time.Time
 	if dto.ExpiresAt != nil {

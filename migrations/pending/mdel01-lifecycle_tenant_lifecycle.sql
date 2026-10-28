@@ -106,7 +106,9 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
 DECLARE previous text:=current_setting('app.tenant_id',true);
 BEGIN
  PERFORM set_config('app.tenant_id',NEW.id::text,true);
- INSERT INTO app.tenant_lifecycles(tenant_id,id) VALUES(NEW.id,NEW.id);
+ INSERT INTO app.tenant_lifecycles(tenant_id,id,state,completed_at)
+ VALUES(NEW.id,NEW.id,CASE WHEN NEW.status='deleted' THEN 'deleted' ELSE 'active' END,
+  CASE WHEN NEW.status='deleted' THEN clock_timestamp() END);
  PERFORM set_config('app.tenant_id',coalesce(previous,''),true);
  RETURN NEW;
 END $fn$;
@@ -223,7 +225,8 @@ BEGIN
    RAISE EXCEPTION 'tenant deletion cancellation closed' USING ERRCODE='55000'; END IF;
   l.state:='active'; l.phase:='none'; l.epoch:=l.epoch+1;
  ELSE
-  IF l.state NOT IN('cooling_off','failed') OR l.phase NOT IN('none','preconditions','executing') OR now_db<l.execute_after THEN
+  IF l.state NOT IN('cooling_off','failed') OR l.phase NOT IN('none','preconditions','executing') OR now_db<l.execute_after
+   OR l.next_retry_at IS NOT NULL AND now_db<l.next_retry_at THEN
    RAISE EXCEPTION 'tenant deletion execution closed' USING ERRCODE='55000'; END IF;
   l.epoch:=l.epoch+1; l.attempt:=l.attempt+1;
   IF blocked THEN l.state:='failed';
@@ -274,9 +277,16 @@ END $fn$;
 DO $wrap$
 DECLARE name text; oid_value regprocedure; definition text; body text; prefix text;
 BEGIN
- FOREACH name IN ARRAY ARRAY['auth_revalidate_tenant','auth_create_api_key','auth_revoke_api_key'] LOOP
+ FOREACH name IN ARRAY ARRAY['auth_revalidate_tenant','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key'] LOOP
   SELECT p.oid::regprocedure,pg_get_functiondef(p.oid),p.prosrc INTO STRICT oid_value,definition,body
    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname=name;
+  IF name='auth_touch_api_key' THEN
+   -- Locate the trusted key tenant without locks, then admit before Identity
+   -- and key locks. Keep the existing validity reread and SKIP LOCKED throttle.
+   prefix:='IF NOT FOUND THEN RETURN false; END IF; PERFORM set_config(''app.tenant_id'',k_tenant::text,true); PERFORM app.tenant_lifecycle_write_fence(k_tenant);';
+   EXECUTE replace(definition,body,regexp_replace(body,'IF NOT FOUND THEN RETURN false; END IF;',prefix));
+   CONTINUE;
+  END IF;
   prefix:='BEGIN ';
   IF name<>'auth_revalidate_tenant' THEN
    prefix:=prefix||' PERFORM set_config(''app.tenant_id'',p_tenant::text,true); PERFORM app.tenant_lifecycle_write_fence(p_tenant);';

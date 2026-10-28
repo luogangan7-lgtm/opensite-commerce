@@ -14,10 +14,15 @@ import (
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
 
-type Config struct{ DatabaseURL string }
+type Config struct {
+	DatabaseURL string
+	// ActorScopes projects admitted session scopes; bootstrap supplies Identity's projection.
+	ActorScopes func(context.Context) []string
+}
 type Module struct {
 	repository contract.Repository
 	store      *store.Repository
+	scopes     func(context.Context) []string
 }
 
 func Open(ctx context.Context, cfg Config) (*Module, error) {
@@ -25,9 +30,11 @@ func Open(ctx context.Context, cfg Config) (*Module, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &Module{repository: r, store: r}, nil
+	return &Module{repository: r, store: r, scopes: cfg.ActorScopes}, nil
 }
-func (m Module) Routes() []platform.Route { return transport.New(m.repository).Routes() }
+func (m Module) Routes() []platform.Route {
+	return transport.New(m.repository, m.scopes).Routes()
+}
 func (m *Module) Authorization() auth.AuthorizationRepository {
 	if m == nil || m.store == nil {
 		return nil

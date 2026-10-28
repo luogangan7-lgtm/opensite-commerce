@@ -211,7 +211,13 @@ func TestC02cProductionHTTPPostgres(t *testing.T) {
 		t.Fatal("HTTP fixture staff module unavailable")
 	}
 	t.Cleanup(func() { _ = staff.Close(context.Background()) })
-	keys, err := tenant.Open(ctx, tenant.Config{DatabaseURL: authDSN})
+	keys, err := tenant.Open(ctx, tenant.Config{DatabaseURL: authDSN, ActorScopes: func(ctx context.Context) []string {
+		snapshot, ok := identity.AuthorizationFromContext(ctx)
+		if !ok || snapshot.Kind != "session" {
+			return nil
+		}
+		return snapshot.Scopes
+	}})
 	if err != nil {
 		t.Fatal("HTTP fixture tenant module unavailable")
 	}

@@ -299,7 +299,13 @@ paths:
               properties:
                 step_up_proof: {type: string, format: uuid}
       responses:
-        '202': {description: Deletion metadata only; no capability or personal data.}
+        '202':
+          description: Deletion metadata only; no capability or personal data.
+          headers:
+            Cache-Control: {schema: {type: string, const: no-store}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MerchantDeletionMetadata'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -4857,6 +4863,32 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    MerchantDeletionMetadata:
+      type: object
+      additionalProperties: false
+      required: [request_id, state, phase, epoch, requested_at, execute_after, attempt, next_retry_at, categories]
+      properties:
+        request_id: {type: string, format: uuid}
+        state: {type: string, enum: [active, cooling_off, executing, failed, deleted]}
+        phase: {type: string, enum: [none, preconditions, executing, completed]}
+        epoch: {type: integer, format: int64, minimum: 0, maximum: 9223372036854775807}
+        requested_at: {type: string, format: date-time, maxLength: 40}
+        execute_after: {type: string, format: date-time, maxLength: 40}
+        attempt: {type: integer, format: int32, minimum: 0, maximum: 2147483647}
+        next_retry_at: {type: [string, 'null'], format: date-time, maxLength: 40}
+        categories:
+          type: object
+          additionalProperties: false
+          maxProperties: 8
+          properties:
+            paid_unfulfilled: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            fulfillment_return: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            payment_refund: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            checkout_capture: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            refund_reconciliation: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            pending_payout: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            unsettled_provider_balance: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            legal_hold: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
     RefundCasePage:
       type: object
       additionalProperties: false

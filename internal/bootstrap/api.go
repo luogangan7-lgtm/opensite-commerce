@@ -228,6 +228,15 @@ func Run(ctx context.Context, config Config) error {
 	}
 }
 
+// admittedSessionScopes projects Identity's verified role scopes without database IO.
+func admittedSessionScopes(ctx context.Context) []string {
+	snapshot, ok := identity.AuthorizationFromContext(ctx)
+	if !ok || snapshot.Kind != "session" {
+		return nil
+	}
+	return snapshot.Scopes
+}
+
 // routeAuthenticator separates storefront capabilities from staff authentication.
 // A staff credential can never authorize a Storefront route by falling through.
 type routeAuthenticator struct {
