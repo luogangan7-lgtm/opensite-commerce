@@ -948,10 +948,16 @@ preceding C-19b production/sandbox boundary stays in force.
    Unknown create/cancel outcomes remain `PENDING`, with owner inspection of the
    original run; there is no automated repair or reimbursement path.
 
-6. **Security gates.** Normal CI enforces dispatch/main/Environment admission,
-   one secret consumer, both `secrets.X` and `secrets['X']` ownership forms,
-   fail-closed computed contexts, and no production constructor reference in any
-   Go path including `cmd/`. A static negative fixture rejects money-moving
+6. **Security gates.** Normal CI parses every workflow as YAML. Exactly one
+   job may declare the `stripe-live` Environment (case-insensitive, string or
+   `{name:}` form): `stripe-live-smoke.yml / live`. Environment secrets are only
+   available to jobs declaring that Environment; its main-only branch policy and
+   owner reviewer remain required. An exact SHA-256 pin locks the live workflow
+   bytes, including checkout ref/repository/credentials, preparation and sole
+   secret consumer; any edit requires a pin update in the same reviewed PR.
+   There is no expression-reference scanner. CI also rejects any production
+   constructor reference in any Go path including `cmd/`. A static negative
+   fixture rejects money-moving
    endpoints (confirm/capture/invoice/refund/payment_method); the transport
    independently permits only list/create/cancel PaymentIntents and an exact
    create form without a payment method. Keep allowlisted public-output canaries
