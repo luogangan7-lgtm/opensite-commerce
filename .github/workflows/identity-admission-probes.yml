@@ -7,8 +7,6 @@ on:
     paths:
       - 'internal/modules/identity/**'
       - '.github/workflows/identity-admission-probes.yml'
-  push:
-    branches: [codex/fix-203-probes]
 permissions:
   contents: read
 jobs:
