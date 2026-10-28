@@ -99,13 +99,12 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 	if err != nil {
 		return fmt.Errorf("load idempotency admission contract: %w", err)
 	}
-	return s.RegisterWithContract(spec, handler, contract)
+	return s.registerWithContract(spec, handler, contract)
 }
 
-// RegisterWithContract registers only a method/path explicitly declared by the
-// supplied admission contract. Test helpers use a separate fixture contract;
-// normal startup always uses Register and the embedded production contract.
-func (s *Router) RegisterWithContract(spec RouteSpec, handler http.Handler, contract *openapi3.T) (err error) {
+// registerWithContract is private: production callers can register only against
+// the embedded contract. Arbitrary fixture contracts enter through export_test.go.
+func (s *Router) registerWithContract(spec RouteSpec, handler http.Handler, contract *openapi3.T) (err error) {
 	if err = validateRoute(spec); err != nil {
 		return err
 	}

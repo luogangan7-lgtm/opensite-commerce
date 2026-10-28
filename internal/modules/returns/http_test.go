@@ -21,7 +21,6 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/internal/store"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/httpapitest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -387,11 +386,11 @@ func TestHTTPActiveClaimAndFailedCompletion(t *testing.T) {
 func TestHTTPBusinessTransactionMustRetainActor(t *testing.T) {
 	var tenantOnly context.Context
 	legacy := httpapi.New(legacyHTTPAuth{httpAuth{}}, nil)
-	spec := httpapi.RouteSpec{OperationID: "actorless", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/actorless", Access: httpapi.AdminOrAPIKey, Scope: "returns:write"}
-	if err := httpapitest.Register(t, legacy, false, spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { tenantOnly = r.Context(); w.WriteHeader(204) })); err != nil {
+	spec := httpapi.RouteSpec{OperationID: "actorless", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/customer/session", Access: httpapi.AdminOrAPIKey, Scope: "returns:write"}
+	if err := legacy.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { tenantOnly = r.Context(); w.WriteHeader(204) })); err != nil {
 		t.Fatal(err)
 	}
-	legacy.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/v1/t/"+httpTenant+"/actorless", nil))
+	legacy.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/v1/t/"+httpTenant+"/customer/session", nil))
 	service := &httpService{}
 	runs := 0
 	claims := &httpClaims{}

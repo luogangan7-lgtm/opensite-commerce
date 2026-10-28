@@ -127,8 +127,9 @@ checkpoint CAS, with bounded retries for 55P03/40P01/40001 in the coordinator ca
 File bytes have their own policies, independently of DB storage-key columns.
 The current source inventory has four kinds: media originals, upload staging,
 customer export JSON and export temporary files. Explicit `privacy-artifact`
-annotations sit at the two filesystem writer implementations. The gate scans
-production `internal/**/*.go` filesystem-create/OpenFile calls, rejects
+annotations distinguish temporary creation from final Rename publication at the
+two filesystem writer implementations. The gate scans production
+`internal/**/*.go` filesystem-create/OpenFile/Rename calls, rejects
 unannotated writer calls, and reconciles artifact IDs/source paths in both
 directions. OS writers must be called directly: aliases, method values and
 callback/return references fail closed even if annotated. Typed dot-imported
@@ -151,8 +152,32 @@ policies, artifact inventory and deterministic topological handler order. The
 existing offline gate and real-PG bidirectional catalog gate call it; metadata
 changes invalidate the digest. Tests reject missing/unknown policy, blank reason,
 forged tenant authority, invalid retention, missing/cyclic handlers and missing or
-unscrubbed artifacts. MDEL-00 has no schema/runtime mutation: concurrency and
-populated-forward-upgrade behavior remain gates of the implementing owner cards.
+unscrubbed artifacts. MDEL-00 now includes the pending `mdel00-caller-keys`
+forward migration, HTTP UUID admission and internal UUIDv5 derivation. Its DB
+CHECKs, concurrency fixtures and populated-forward-upgrade cases run in CI.
+Merchant-deletion execution, orchestration and lifecycle activation remain work
+of the implementing owner cards.
+
+### Caller-key migration notes (pre-launch only)
+
+The UUID CHECK columns in the pending migration accept only canonical lowercase
+UUIDs. Surviving rows retain these random/derived identifiers unchanged as
+`opaque_ref`: they contain no personal data and must never be rewritten to
+`erased:{id}`. Whole-row deletion does not scrub a surviving cell. The registry
+gate checks replacement compatibility against the actual UUID CHECK even if a
+field omits `caller_key`; only a canonical UUID, the bare row UUID or SQL NULL
+can be a replacement. Existing canonical keys remain unchanged on upgrade;
+legacy non-UUID rows intentionally refuse migration.
+
+Per the orchestrator's 2026-10-28 pre-launch decision, there are no in-flight
+Checkout sessions requiring provider-key compatibility. Provider command keys
+change from `checkout:v1:<row UUID>:<action>` to
+`DerivedKey("checkout.provider.v1", row.ID, action)`; no compatibility shim is
+introduced. This derivation change is safe only before launch. After launch,
+any derivation change requires a durably stored provider key and retries must
+replay that stored key. The versioned purpose, row/action tuple and pinned
+provider-key vector are part of the retry contract. The authoritative launch
+boundary is [V1_DECISIONS §9](../../docs/architecture/V1_DECISIONS.md#mdel-00-provider-key-derivation-pre-launch-only-2026-10-28).
 
 ## CI gates and fixture consumer
 

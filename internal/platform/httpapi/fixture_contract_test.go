@@ -1,15 +1,15 @@
 // Responsibility: verify fixture contracts never alter production admission.
 // Dependencies: Router and the fixture helper; caller: Foundation Go lanes.
 // Invariant: declared key admission remains enforced and no fallback leaks.
-package httpapitest_test
+package httpapi_test
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/httpapitest"
 )
 
 func TestFixtureContractKeepsProductionFailClosed(t *testing.T) {
@@ -20,10 +20,15 @@ func TestFixtureContractKeepsProductionFailClosed(t *testing.T) {
 	if router.Register(spec, handler) == nil {
 		t.Fatal("production registration admitted undeclared fixture")
 	}
-	if router.RegisterWithContract(spec, handler, nil) == nil {
+	if httpapi.RegisterFixtureContract(router, spec, handler, nil) == nil {
 		t.Fatal("missing fixture contract admitted")
 	}
-	if err := httpapitest.Register(t, router, true, spec, handler); err != nil {
+	op := &openapi3.Operation{OperationID: spec.OperationID, Parameters: openapi3.Parameters{{Value: &openapi3.Parameter{Name: "Idempotency-Key", In: "header", Required: true}}}}
+	item := &openapi3.PathItem{}
+	item.SetOperation(spec.Method, op)
+	contract := &openapi3.T{Paths: openapi3.NewPaths()}
+	contract.Paths.Set(spec.Pattern, item)
+	if err := httpapi.RegisterFixtureContract(router, spec, handler, contract); err != nil {
 		t.Fatal(err)
 	}
 	for _, key := range []string{"", "alice@example.test", "abcdef01-2345-5678-abcd-ef0123456789"} {

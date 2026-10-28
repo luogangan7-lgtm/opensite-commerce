@@ -274,7 +274,7 @@ func TestFulfillmentRefundReconcileAfterCustomerErasure(t *testing.T) {
 }
 
 func TestReturnReceiptReplayWaitsForErasureFence(t *testing.T) {
-	for _, mode := range []string{"creation", "7e99593d-15b8-5fd9-b621-8c13cec1c290"} {
+	for _, mode := range []string{"creation", "receive"} {
 		t.Run(mode, func(t *testing.T) {
 			if mode != "creation" && mode != "receive" {
 				t.Fatalf("unknown receipt replay mode: %q", mode)
@@ -311,7 +311,7 @@ func TestReturnReceiptReplayWaitsForErasureFence(t *testing.T) {
 				t.Fatal(err)
 			}
 			receive := returnscontract.ReceiveInput{ReturnID: requested.ID, ExpectedVersion: requested.OrderVersion, IdempotencyKey: "a2b17012-88e5-5d39-98e7-5dfe46008f70", Restock: true}
-			if mode == "7e99593d-15b8-5fd9-b621-8c13cec1c290" {
+			if mode == "receive" {
 				err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 					_, err := f.returns.Receive(ctx, tx, f.tenant, receive)
 					return err
@@ -343,7 +343,7 @@ func TestReturnReceiptReplayWaitsForErasureFence(t *testing.T) {
 			}
 			var reason string
 			replay := startBudgetSession(t, f, "runtime", false, func(ctx context.Context, tx pgx.Tx) error {
-				if mode == "7e99593d-15b8-5fd9-b621-8c13cec1c290" {
+				if mode == "receive" {
 					return tx.QueryRow(ctx, "SELECT app.returns_receive($1,$2,$3,$4)->>'reason'", receive.ReturnID, receive.ExpectedVersion, receive.IdempotencyKey, receive.Restock).Scan(&reason)
 				}
 				return tx.QueryRow(ctx, "SELECT app.returns_create($1,$2,$3,$4,$5,$6::jsonb)->>'reason'", request.OrderID, request.ExpectedVersion, request.IdempotencyKey, string(request.Kind), request.Reason, lines).Scan(&reason)

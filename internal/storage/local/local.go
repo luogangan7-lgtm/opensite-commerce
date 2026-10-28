@@ -76,7 +76,6 @@ func (s *Store) Put(ctx context.Context, src io.Reader) (Blob, error) {
 	if err := ctx.Err(); err != nil {
 		return zero, err
 	}
-	// privacy-artifact: media.originals
 	// privacy-artifact: media.staging
 	f, err := os.CreateTemp(filepath.Join(s.root, "staging"), "upload-*")
 	if err != nil {
@@ -116,6 +115,7 @@ func (s *Store) Put(ctx context.Context, src io.Reader) (Blob, error) {
 	}
 	// Content-addressed keys prevent distinct content collisions. Concurrent
 	// same-content uploads may both rename; bytes are identical by SHA-256.
+	// privacy-artifact: media.originals
 	if err := os.Rename(tmp, dst); err != nil {
 		return zero, err
 	}

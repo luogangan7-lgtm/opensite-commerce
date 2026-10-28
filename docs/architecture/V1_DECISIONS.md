@@ -747,6 +747,23 @@ PR-01B 仍是首个需要合入的基础变更，因此正常情况下其安全�
 
 ---
 
+### MDEL-00 provider-key derivation (pre-launch only, 2026-10-28)
+
+Authority: the orchestrator's MDEL-00 round8 continuation, 2026-10-28.
+Before launch there are no in-flight Checkout sessions to reconcile, so provider
+idempotency keys may change from `checkout:v1:<row UUID>:<action>` to
+`idempotency.DerivedKey("checkout.provider.v1", row.ID, action)` without a
+compatibility shim. The same persisted row and action must always replay the
+same provider key, including after process restart; the versioned namespace and
+input framing are part of that contract. **This change is safe only before
+launch. After launch, any derivation change requires a durably stored provider
+key; retries must reuse that stored key rather than recompute under a new
+algorithm.** This records the key transition and does not authorize a launch.
+
+Gate: `TestProviderOperationKeyIsStableForRowAndAction` pins a UUIDv5 vector and
+rejects row/action identity collisions. UUID CHECK and populated-upgrade gates
+remain mandatory. See the caller-key migration notes in `modules/privacy/README.md`.
+
 ### 二、P1-b：Cart / Checkout / Payments 的 Port 与 Gate 边界
 
 ### 决策一：PR-12 只管理购物意图；Checkout 提交统一由 PR-16 承担

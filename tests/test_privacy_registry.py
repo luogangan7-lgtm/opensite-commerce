@@ -931,7 +931,7 @@ func write() {
                          set(contract["fields"]["orders.state"]["values"]),
                          "Refund terminals preserve an existing Orders state or its quantity-derived compensation target")
         for name in ("orders.guest_contact", "checkout_sessions.start_result", "checkout_sessions.final_result",
-                     "checkout_attempts.result", "returns.creation_response", "returns.receive_response", "returns.receive_key"):
+                     "checkout_attempts.result", "returns.creation_response", "returns.receive_response"):
             self.assertTrue(contract["fields"][name]["preserve_null"], name)
 
 

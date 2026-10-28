@@ -11,7 +11,6 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/internal/service"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/httpapitest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -41,11 +40,11 @@ func withCMSContext(t *testing.T, actor bool, fn func(context.Context)) {
 func withCMSContextFor(t *testing.T, actor bool, tenant string, fn func(context.Context)) {
 	t.Helper()
 	r := httpapi.New(cmsAuth{actor}, nil)
-	if err := httpapitest.Register(t, r, false, httpapi.RouteSpec{OperationID: "cmsTest", Method: "GET", Pattern: "/t/{tenant_id}", Access: httpapi.AdminOrAPIKey, Scope: "cms:write"}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fn(r.Context()); w.WriteHeader(204) })); err != nil {
+	if err := r.Register(httpapi.RouteSpec{OperationID: "cmsTest", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/products", Access: httpapi.AdminOrAPIKey, Scope: "cms:write"}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fn(r.Context()); w.WriteHeader(204) })); err != nil {
 		t.Fatal(err)
 	}
 	rr := httptest.NewRecorder()
-	r.ServeHTTP(rr, httptest.NewRequest("GET", "/t/"+tenant, nil))
+	r.ServeHTTP(rr, httptest.NewRequest("GET", "/api/v1/t/"+tenant+"/products", nil))
 	if rr.Code != 204 {
 		t.Fatalf("admission status%d", rr.Code)
 	}

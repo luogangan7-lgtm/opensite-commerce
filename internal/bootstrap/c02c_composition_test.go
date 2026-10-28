@@ -45,7 +45,7 @@ func TestC02cCheckoutPreservesStaffExtensions(t *testing.T) {
 	for _, method := range []string{"GET", "POST"} {
 		t.Run(method, func(t *testing.T) {
 			called := false
-			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "c02cComposition", Method: method, Pattern: "/api/v1/t/{tenant_id}/authority-probe", Access: httpapi.AdminOrAPIKey, Scope: "catalog:write"}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "c02cComposition", Method: method, Pattern: "/api/v1/t/{tenant_id}/customer/session", Access: httpapi.AdminOrAPIKey, Scope: "catalog:write"}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				called = true
 				if _, err := httpapi.AuthorizedActor(r.Context()); err != nil {
 					httpapi.WriteProblem(w, r, err)
@@ -58,7 +58,7 @@ func TestC02cCheckoutPreservesStaffExtensions(t *testing.T) {
 				t.Fatal(err)
 			}
 			w := httptest.NewRecorder()
-			s.Handler.ServeHTTP(w, httptest.NewRequest(method, "/api/v1/t/11111111-1111-4111-8111-111111111111/authority-probe", nil))
+			s.Handler.ServeHTTP(w, httptest.NewRequest(method, "/api/v1/t/11111111-1111-4111-8111-111111111111/customer/session", nil))
 			if method == "GET" && w.Code != 204 {
 				t.Fatalf("staff actor lost in checkout composition: %d", w.Code)
 			}

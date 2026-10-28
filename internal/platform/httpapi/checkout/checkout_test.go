@@ -22,7 +22,6 @@ import (
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/httpapitest"
 )
 
 const tenant = "10000000-0000-4000-8000-000000000001"
@@ -179,8 +178,8 @@ func TestCheckoutAuthenticatorPreservesAuthenticatedStaffActor(t *testing.T) {
 		}
 		r := httpapi.New(auth, nil)
 		reached := false
-		spec := httpapi.RouteSpec{OperationID: "staffActorProbe", Method: http.MethodPost, Pattern: "/api/v1/t/{tenant_id}/staff-actor-probe", Access: httpapi.AdminSession, Scope: "fulfillment:write"}
-		if err := httpapitest.Register(t, r, false, spec, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		spec := httpapi.RouteSpec{OperationID: "staffActorProbe", Method: http.MethodPost, Pattern: "/api/v1/t/{tenant_id}/customer/session", Access: httpapi.AdminSession, Scope: "fulfillment:write"}
+		if err := r.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			reached = true
 			gotTenant, err := httpapi.AuthorizedTenant(req.Context())
 			if err != nil || gotTenant != tenant {
@@ -200,7 +199,7 @@ func TestCheckoutAuthenticatorPreservesAuthenticatedStaffActor(t *testing.T) {
 		})); err != nil {
 			t.Fatal(err)
 		}
-		q := httptest.NewRequest(http.MethodPost, "/api/v1/t/"+tenant+"/staff-actor-probe", nil)
+		q := httptest.NewRequest(http.MethodPost, "/api/v1/t/"+tenant+"/customer/session", nil)
 		q.AddCookie(&http.Cookie{Name: "admin_session", Value: "fixture-staff-session"})
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, q)
@@ -228,7 +227,7 @@ func TestCheckoutAuthenticatorActorProjectionBoundary(t *testing.T) {
 		{"exact checkout", httpapi.RouteSpec{OperationID: checkout.StartOperation, Method: http.MethodPost, Pattern: checkout.StartPattern, Access: httpapi.Storefront}, nil, 0},
 		{"other storefront", httpapi.RouteSpec{OperationID: "storefrontActorProbe", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/actor-probe", Access: httpapi.Storefront}, nil, 0},
 		{"fake public", httpapi.RouteSpec{OperationID: checkout.FakeOperation, Method: http.MethodPost, Pattern: checkout.FakePattern, Access: httpapi.Public}, nil, 0},
-		{"staff error", httpapi.RouteSpec{OperationID: "staffActorProbe", Method: http.MethodPost, Pattern: "/api/v1/t/{tenant_id}/staff-actor-probe", Access: httpapi.AdminSession, Scope: "fulfillment:write"}, projectionErr, 1},
+		{"staff error", httpapi.RouteSpec{OperationID: "staffActorProbe", Method: http.MethodPost, Pattern: "/api/v1/t/{tenant_id}/customer/session", Access: httpapi.AdminSession, Scope: "fulfillment:write"}, projectionErr, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			staff := &authenticatedStaff{projectionErr: projectionErr}

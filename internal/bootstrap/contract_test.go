@@ -18,7 +18,6 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/httpapitest"
 )
 
 func reconcileRoutes(doc *openapi3.T, specs []httpapi.RouteSpec) error {
@@ -146,7 +145,7 @@ func TestRouteContractRejectsDrift(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			routes := []httpapi.RouteSpec{{OperationID: "probe", Method: "GET", Pattern: "/probe", Access: httpapi.Public}}
+			routes := []httpapi.RouteSpec{{OperationID: "probe", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}}
 			if err := reconcileRoutes(doc, routes); err != nil {
 				t.Fatalf("positive control: %v", err)
 			}
@@ -177,8 +176,8 @@ func TestRouteContractRejectsDrift(t *testing.T) {
 
 func TestRouteSpecsAreSuccessfulRegistrationSnapshots(t *testing.T) {
 	router := httpapi.New(nil, nil)
-	spec := httpapi.RouteSpec{OperationID: "probe", Method: "GET", Pattern: "/probe", Access: httpapi.Public}
-	if err := httpapitest.Register(t, router, false, spec, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})); err != nil {
+	spec := httpapi.RouteSpec{OperationID: "probe", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}
+	if err := router.Register(spec, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})); err != nil {
 		t.Fatal(err)
 	}
 	invalid := spec

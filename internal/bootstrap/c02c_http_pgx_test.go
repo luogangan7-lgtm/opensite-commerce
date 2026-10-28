@@ -34,7 +34,6 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/httpapitest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -229,7 +228,6 @@ func TestC02cProductionHTTPPostgres(t *testing.T) {
 			t.Fatal("HTTP fixture route registration failed")
 		}
 	}
-	witness := "/api/v1/t/{tenant_id}/c02c-witness"
 	writes := 0
 	var beforeWrite func()
 	for _, method := range []string{"GET", "PUT"} {
@@ -237,8 +235,8 @@ func TestC02cProductionHTTPPostgres(t *testing.T) {
 		if method == "PUT" {
 			scope = "catalog:write"
 		}
-		spec := platform.RouteSpec{OperationID: "c02cHTTPWitness" + method, Method: method, Pattern: witness, Access: platform.AdminOrAPIKey, Scope: scope}
-		err := httpapitest.Register(t, router, false, spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		spec := platform.RouteSpec{OperationID: "c02cHTTPWitness" + method, Method: method, Pattern: "/api/v1/t/{tenant_id}/price-lists/{price_list_id}", Access: platform.AdminOrAPIKey, Scope: scope}
+		err := router.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			actor, err := platform.AuthorizedActor(r.Context())
 			if err != nil || actor.ID == "" {
 				t.Error("admitted HTTP actor missing")
@@ -269,6 +267,7 @@ func TestC02cProductionHTTPPostgres(t *testing.T) {
 		q.RemoteAddr = "192.0.2.91:12345"
 		q.Header.Set("Origin", c02cHTTPOrigin)
 		q.Header.Set("Content-Type", "application/json")
+		q.Header.Set("Idempotency-Key", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 		if useCookie {
 			q.AddCookie(&http.Cookie{Name: "__Host-osc_admin_session", Value: rawToken})
 		}
@@ -288,7 +287,7 @@ func TestC02cProductionHTTPPostgres(t *testing.T) {
 			t.Fatalf("HTTP authorization status=%d want=%d", w.Code, status)
 		}
 	}
-	path := "/api/v1/t/" + target + "/c02c-witness"
+	path := "/api/v1/t/" + target + "/price-lists/33333333-3333-4333-8333-333333333333"
 	keyPath := "/api/v1/t/" + target + "/api-keys"
 	expect(request("GET", path, "", "", "", false), 401)
 	expect(request("GET", path, "", "", "", true), 204)
@@ -339,7 +338,7 @@ func TestC02cProductionHTTPPostgres(t *testing.T) {
 	}
 	wrongValue := key.View.ID + "." + base64.RawURLEncoding.EncodeToString(c02cHTTPRandom(t, 32))
 	expect(request("GET", path, "", wrongValue, "", false), 401)
-	expect(request("GET", "/api/v1/t/"+other+"/c02c-witness", "", key.Value, "", false), 404)
+	expect(request("GET", "/api/v1/t/"+other+"/price-lists/33333333-3333-4333-8333-333333333333", "", key.Value, "", false), 404)
 	expect(request("PUT", path, "{}", key.Value, "", false), 403)
 	expect(request("GET", keyPath, "", key.Value, "", false), 401)
 	expect(request("PUT", path, "{}", "", "", true), 403)

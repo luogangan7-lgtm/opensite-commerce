@@ -354,7 +354,7 @@ func TestCheckoutCompositionPreservesCMSAndStaffActorResolver(t *testing.T) {
 	for _, scope := range []string{"cms:write", "orders:read"} {
 		t.Run(scope, func(t *testing.T) {
 			staff := &checkoutWiringStaff{}
-			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "checkoutStaffProjectionProbe", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/checkout-staff-probe", Access: httpapi.AdminOrAPIKey, Scope: scope}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "checkoutStaffProjectionProbe", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/products", Access: httpapi.AdminOrAPIKey, Scope: scope}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				actor, err := httpapi.AuthorizedActor(r.Context())
 				if err != nil || actor.Kind != "user" || actor.ID != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
 					w.WriteHeader(http.StatusUnauthorized)
@@ -367,7 +367,7 @@ func TestCheckoutCompositionPreservesCMSAndStaffActorResolver(t *testing.T) {
 				t.Fatal(err)
 			}
 			w := httptest.NewRecorder()
-			server.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/t/"+checkoutWiringTenant+"/checkout-staff-probe", nil))
+			server.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/t/"+checkoutWiringTenant+"/products", nil))
 			if w.Code != http.StatusNoContent || staff.authentications != 1 || staff.projections != 1 {
 				t.Fatalf("CHECKOUT_STAFF_ACTOR_FORWARD_RED: status=%d authenticate=%d project=%d", w.Code, staff.authentications, staff.projections)
 			}

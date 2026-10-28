@@ -215,7 +215,7 @@ func TestC02cCustomerSessionCannotAuthorizeStaffRoutes(t *testing.T) {
 	for _, access := range []httpapi.Access{httpapi.AdminSession, httpapi.APIKey, httpapi.AdminOrAPIKey} {
 		t.Run(string(access), func(t *testing.T) {
 			called := false
-			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "customerStaffBoundaryProbe", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/customer-staff-probe", Access: access, Scope: "catalog:read"}, Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "customerStaffBoundaryProbe", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/products", Access: access, Scope: "catalog:read"}, Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				called = true
 				w.WriteHeader(http.StatusNoContent)
 			})}
@@ -231,7 +231,7 @@ func TestC02cCustomerSessionCannotAuthorizeStaffRoutes(t *testing.T) {
 			if positive.Code != http.StatusOK {
 				t.Fatalf("customer fixture not admitted: %d", positive.Code)
 			}
-			request = httptest.NewRequest(http.MethodGet, origin+"/api/v1/t/"+tenant+"/customer-staff-probe", nil)
+			request = httptest.NewRequest(http.MethodGet, origin+"/api/v1/t/"+tenant+"/products", nil)
 			request.AddCookie(&http.Cookie{Name: customerhttp.SessionCookie, Value: token})
 			response := httptest.NewRecorder()
 			server.Handler.ServeHTTP(response, request)

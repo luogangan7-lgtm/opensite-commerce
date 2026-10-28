@@ -214,8 +214,18 @@ def validate_caller_key_constraints(root, registry):
             origin = field.get("opaque_source")
             require(origin is None or origin == "verified_provider", "MERCHANT_CALLER_KEY_CHECK", key)
             caller = caller or origin is None
+        checked = bool(checks.get(key, set()) - dropped)
         if caller:
-            require(bool(checks.get(key, set()) - dropped), "MERCHANT_CALLER_KEY_CHECK", key)
+            require(checked, "MERCHANT_CALLER_KEY_CHECK", key)
+        # The DDL is authoritative even when the declaration omits caller_key.
+        # Deleting a row never updates its cells; every other replacement must
+        # itself satisfy the exact UUID CHECK (which also permits SQL NULL).
+        if checked and policy.get("action") != "retain" and policy.get("strategy") != "delete_row":
+            strategy, value = policy.get("strategy"), policy.get("value")
+            compatible = (strategy == "constant" and "value" in policy and
+                          (value is None or isinstance(value, str) and re.fullmatch(CALLER_KEY_PATTERN, value)))
+            compatible = compatible or strategy == "row_id_placeholder" and value == "{id}"
+            require(compatible, "MERCHANT_UUID_SCRUB", key)
 
 
 def artifact_catalog(root):

@@ -1,4 +1,4 @@
-// Command privacywriters inventories OS file-creation call sites for the privacy
+// Command privacywriters inventories OS file-creation/publication call sites for the privacy
 // registry. Depends on Go AST/types and the existing x/tools package loader;
 // called only by privacy_registry.py in CI. An annotation belongs to one call,
 // never every writer in a file; comments and strings cannot invent call sites.
@@ -108,12 +108,12 @@ func inventory(root string) ([]writer, error) {
 				return true
 			}
 			switch name {
-			case "Create", "CreateTemp", "WriteFile", "OpenFile":
+			case "Create", "CreateTemp", "WriteFile", "OpenFile", "Rename":
 			default:
 				return true
 			}
 			// A real module must type-resolve every call. Standalone synthetic
-			// gate fixtures have no go.mod, so conservatively scan all four
+			// gate fixtures have no go.mod, so conservatively scan all five
 			// selector names there (including unresolved os.Root receivers).
 			// Preserve the old gate's conservative inventory of OpenFile
 			// wrappers; resolving a non-os receiver must not exempt them.
