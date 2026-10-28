@@ -282,7 +282,7 @@ async function mailboxProof(page: Page, email: string) {
   return payload.token as string;
 }
 async function openProof(page: Page, proof: string) {
-  await page.goto(`${site}/customer/verify`);
+  await page.goto(`${site}/account`);
   // Browser-only navigation: fragment never reaches an HTTP server or step URL.
   await page.evaluate(value => location.assign(`/customer/verify#token=${value}`), proof);
   await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeEnabled();
@@ -298,9 +298,15 @@ async function registerAccount(page: Page, email: string, password: string) {
 }
 
 test.describe('VISUAL-REAL #235', () => {
+  test('notification sink rejects missing authority and malformed reads', async ({ page }) => {
+    expect((await page.request.post('http://127.0.0.1:4182/proof', { data: { email: 'visual@example.test' } })).status()).toBe(403);
+    expect((await page.request.post('http://127.0.0.1:4182/proof', {
+      headers: { Authorization: `Bearer ${runtime().control}` }, data: { email: 'external@example.com' },
+    })).status()).toBe(400);
+  });
   test.afterEach(async ({ page }) => { await control(page, 'release'); });
 
-  test('real guest, validation, long email/help, keyboard focus and backend unavailable', async ({ page }) => {
+  test('real guest, validation, long email/help and keyboard focus', async ({ page }) => {
     await page.goto(`${site}/account`);
     await expect(page.getByText('You are browsing as a guest.', { exact: true })).toBeVisible();
     await accountSnapshot(page, 'account-guest');
@@ -318,12 +324,6 @@ test.describe('VISUAL-REAL #235', () => {
     await accountSnapshot(page, 'account-long-email');
     await expect(page.getByText('Registration requires 12–1024 UTF-8 bytes. Sign in with your existing password.', { exact: true })).toBeVisible();
     await accountSnapshot(page, 'account-long-help');
-    await fault(page, `${customerBackend}/session`, 'GET', '503');
-    await page.reload();
-    await expect(page.getByRole('button', { name: 'Temporarily unavailable', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Register', exact: true })).toHaveCount(0);
-    await accountSnapshot(page, 'account-disabled');
-    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
   });
 
   test('real registration, disabled in-flight fields, notice, verification and login', async ({ page }, info) => {
@@ -359,6 +359,15 @@ test.describe('VISUAL-REAL #235', () => {
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.getByRole('link', { name: 'Order history', exact: true })).toBeVisible();
     await accountSnapshot(page, 'account-signed-in');
+    await fault(page, `${customerBackend}/session`, 'GET', '503');
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Temporarily unavailable', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Register', exact: true })).toHaveCount(0);
+    await accountSnapshot(page, 'account-disabled');
+    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
+    await control(page, 'release');
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
     await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
     await credentials(page, email, password);
@@ -373,6 +382,7 @@ test.describe('VISUAL-REAL #235', () => {
     await page.goto(`${site}/customer/verify`);
     await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
     await accountSnapshot(page, 'verification-no-proof');
+    await page.goto(`${site}/account`);
     await page.evaluate(() => location.assign('/customer/verify#token=invalid'));
     await expect(page).toHaveURL(`${site}/customer/verify`);
     await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
@@ -391,7 +401,7 @@ test.describe('VISUAL-REAL #235', () => {
       WHERE tenant_id='${tenant}' AND email_normalized='${email}' AND consumed_at IS NULL;`);
     await fault(page, `${customerBackend}/verifications`, 'POST', 'hold');
     await page.getByRole('button', { name: 'Verify email', exact: true }).click();
-    await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(401);
+    await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(400);
     await expect(page.locator('[data-customer-verification]')).toHaveAttribute('aria-busy', 'true');
     await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
     await accountSnapshot(page, 'verification-processing', true);
