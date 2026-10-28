@@ -273,6 +273,45 @@ paths:
         - {$ref: '#/components/parameters/CSRFTokenIfCookie'}
         - {$ref: '#/components/parameters/IfMatch'}
       responses: *StaffPriceListResponses
+  /api/v1/t/{tenant_id}/merchant-deletion/step-up:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+    post:
+      tags: [Identity]
+      operationId: merchantDeletionStepUp
+      x-opensite-status: planned
+      x-opensite-access: AdminSession
+      x-required-scope: tenant:delete
+      description: Dormant owner password reauthentication contract. Explicit MDEL-26 composition and sender approval are required; this card registers no route. Existing login rate limits apply; no session rotation or idempotent secret replay.
+      security: [{adminSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MerchantDeletionStepUpInput'}
+      responses:
+        '200':
+          description: A single-use five-minute proof bound to the session, owner, tenant and action. Only its digest is persisted.
+          headers:
+            Cache-Control: {schema: {type: string, const: no-store}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MerchantDeletionStepUpResult'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        default: {$ref: '#/components/responses/Problem'}
   /api/v1/t/{tenant_id}/merchant-deletion:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -297,7 +336,7 @@ paths:
               additionalProperties: false
               required: [step_up_proof]
               properties:
-                step_up_proof: {type: string, format: uuid}
+                step_up_proof: {type: string, minLength: 43, maxLength: 43, pattern: '^[A-Za-z0-9_-]{43}$'}
       responses:
         '202':
           description: Deletion metadata only; no capability or personal data.
@@ -4863,6 +4902,20 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    MerchantDeletionStepUpInput:
+      type: object
+      additionalProperties: false
+      required: [password, action]
+      properties:
+        password: {type: string, minLength: 1, maxLength: 1024, writeOnly: true}
+        action: {type: string, enum: [request, cancel]}
+    MerchantDeletionStepUpResult:
+      type: object
+      additionalProperties: false
+      required: [proof, expires_at]
+      properties:
+        proof: {type: string, minLength: 43, maxLength: 43, pattern: '^[A-Za-z0-9_-]{43}$'}
+        expires_at: {type: string, format: date-time, maxLength: 40}
     MerchantDeletionMetadata:
       type: object
       additionalProperties: false

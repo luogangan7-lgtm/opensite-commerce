@@ -99,7 +99,7 @@ func NormalizeIdentifier(identifier string) string {
 // the existing account/IP/global/KDF budgets and failure bookkeeping.
 type passwordAdmission struct {
 	credential Credential
-	oldHash *[32]byte
+	oldHash    *[32]byte
 }
 
 func (s *Service) authenticatePassword(ctx context.Context, in LoginInput) (passwordAdmission, error) {

@@ -46,11 +46,11 @@ NON_STAFF_SCOPES = {
 def assert_contract(registry, source):
     identity = next(m for m in registry['modules'] if m['name'] == 'identity')
     assert identity['go_status'] == 'implemented', 'identity Go implementation missing'
-    assert set(identity['owns_tables']) == {'users', 'auth_sessions', 'auth_account_attempts', 'auth_login_attempts', 'known_devices'}
-    assert identity['scopes'] == [], 'global session routes must carry no tenant scopes'
+    assert set(identity['owns_tables']) == {'users', 'auth_sessions', 'auth_account_attempts', 'auth_login_attempts', 'known_devices', 'identity_merchant_proofs'}
+    assert identity['scopes'] == ['tenant:delete'], 'only dormant tenant-bound step-up has a scope'
     assert {o['operation_id']: o['status'] for o in identity['operations']} == {
         **{operation: 'implemented' for operation in EXPECTED.values()},
-        **{operation: 'planned' for operation in ['createAdminSession', 'deleteAdminSession', 'getCurrentActor', 'listAdminSessions', 'revokeAdminSession']}}
+        **{operation: 'planned' for operation in ['createAdminSession', 'deleteAdminSession', 'getCurrentActor', 'listAdminSessions', 'revokeAdminSession', 'merchantDeletionStepUp']}}
     api = yaml.safe_load(source)
     blocks = {(path, method): op for path, item in api['paths'].items()
               for method, op in item.items()
@@ -89,6 +89,12 @@ def assert_contract(registry, source):
     assert deletion['security'] == [{'adminSession': []}]
     assert deletion['x-required-scope'] == 'tenant:delete'
     assert deletion['responses']['202'].get('content', {}).get('application/json', {}).get('schema') == {'$ref': '#/components/schemas/MerchantDeletionMetadata'}
+    step_up = blocks[('/api/v1/t/{tenant_id}/merchant-deletion/step-up', 'post')]
+    assert step_up['operationId'] == 'merchantDeletionStepUp' and step_up['x-opensite-status'] == 'planned'
+    assert step_up['x-opensite-access'] == 'AdminSession' and step_up['security'] == [{'adminSession': []}]
+    assert step_up['x-required-scope'] == 'tenant:delete'
+    assert set(components['schemas']['MerchantDeletionStepUpResult']['properties']) == {'proof', 'expires_at'}
+    assert deletion['requestBody']['content']['application/json']['schema']['properties']['step_up_proof'] == components['schemas']['MerchantDeletionStepUpResult']['properties']['proof']
     metadata = components['schemas']['MerchantDeletionMetadata']
     fields = {'request_id', 'state', 'phase', 'epoch', 'requested_at', 'execute_after', 'attempt', 'next_retry_at', 'categories'}
     assert metadata['type'] == 'object' and metadata['additionalProperties'] is False

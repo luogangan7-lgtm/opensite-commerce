@@ -2099,7 +2099,7 @@ INSERT INTO app.tenant_memberships(tenant_id,user_id,role) SELECT id,:'u','owner
 INSERT INTO app.auth_sessions(user_id,token_hash,expires_at) VALUES(:'u',sha256('upgrade-session'::bytea),clock_timestamp()+interval '1 day');
 INSERT INTO app.api_keys(tenant_id,issued_by,key_prefix,key_hash) SELECT id,:'u','upgrade',sha256(id::text::bytea) FROM app.tenants;
 CREATE TABLE public.mdel02_before AS
- SELECT 'users' tab,to_jsonb(x) row FROM app.users x UNION ALL
+ SELECT 'users' AS tab,to_jsonb(x) AS snapshot FROM app.users x UNION ALL
  SELECT 'sessions',to_jsonb(x) FROM app.auth_sessions x UNION ALL
  SELECT 'memberships',to_jsonb(x) FROM app.tenant_memberships x UNION ALL
  SELECT 'keys',to_jsonb(x) FROM app.api_keys x UNION ALL
@@ -2113,7 +2113,7 @@ db "$IDENTITY_MERCHANT_DB" <<'SQL' >/dev/null
 DO $check$
 BEGIN
  IF EXISTS(WITH actual AS(
-  SELECT 'users' tab,to_jsonb(x) row FROM app.users x UNION ALL
+  SELECT 'users' AS tab,to_jsonb(x) AS snapshot FROM app.users x UNION ALL
   SELECT 'sessions',to_jsonb(x) FROM app.auth_sessions x UNION ALL
   SELECT 'memberships',to_jsonb(x) FROM app.tenant_memberships x UNION ALL
   SELECT 'keys',to_jsonb(x) FROM app.api_keys x UNION ALL

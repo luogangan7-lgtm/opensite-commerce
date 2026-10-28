@@ -15,9 +15,15 @@ func (r *LoginRepository) MerchantIdentifier(ctx context.Context, user string) (
 	var result string
 	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
 		u, err := uuid(user)
-		if err != nil { return login.ErrCredentials }
-		result, err = q.MerchantStepUpIdentifier(ctx, u)
-		return err
+		if err != nil {
+			return login.ErrCredentials
+		}
+		value, err := q.MerchantStepUpIdentifier(ctx, u)
+		if err != nil || !value.Valid {
+			return login.ErrCredentials
+		}
+		result = value.String
+		return nil
 	})
 	return result, err
 }
@@ -26,11 +32,18 @@ func (r *LoginRepository) IssueMerchantProof(ctx context.Context, tenant string,
 	var result time.Time
 	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
 		t, err := uuid(tenant)
-		if err != nil { return login.ErrCredentials }
-		u, _ := uuid(actor.UserID()); s, _ := uuid(actor.SessionID())
-		if err := q.TenantSetContext(ctx, t); err != nil { return err }
-		value, err := q.MerchantIssueProof(ctx, db.MerchantIssueProofParams{TenantID:t, UserID:u, SessionID:s, Action:action, ProofDigest:digest[:], VerifiedHash:verified})
-		if err != nil { return login.ErrCredentials }
+		if err != nil {
+			return login.ErrCredentials
+		}
+		u, _ := uuid(actor.UserID())
+		s, _ := uuid(actor.SessionID())
+		if err := q.TenantSetContext(ctx, t); err != nil {
+			return err
+		}
+		value, err := q.MerchantIssueProof(ctx, db.MerchantIssueProofParams{TenantID: t, UserID: u, SessionID: s, Action: action, ProofDigest: digest[:], VerifiedHash: verified})
+		if err != nil {
+			return login.ErrCredentials
+		}
 		result = value.Time
 		return nil
 	})
@@ -40,10 +53,15 @@ func (r *LoginRepository) IssueMerchantProof(ctx context.Context, tenant string,
 func (r *LoginRepository) MerchantReceipt(ctx context.Context, tenant, request string, actor login.Actor) (bool, error) {
 	var result bool
 	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
-		t, _ := uuid(tenant); req, _ := uuid(request); u, _ := uuid(actor.UserID()); s, _ := uuid(actor.SessionID())
-		if err := q.TenantSetContext(ctx, t); err != nil { return err }
+		t, _ := uuid(tenant)
+		req, _ := uuid(request)
+		u, _ := uuid(actor.UserID())
+		s, _ := uuid(actor.SessionID())
+		if err := q.TenantSetContext(ctx, t); err != nil {
+			return err
+		}
 		var err error
-		result, err = q.MerchantReceiptAllowed(ctx, db.MerchantReceiptAllowedParams{TenantID:t, RequestID:req, UserID:u, SessionID:s})
+		result, err = q.MerchantReceiptAllowed(ctx, db.MerchantReceiptAllowedParams{TenantID: t, RequestID: req, UserID: u, SessionID: s})
 		return err
 	})
 	return result, err

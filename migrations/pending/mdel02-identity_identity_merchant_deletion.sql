@@ -26,6 +26,7 @@ CREATE TABLE app.identity_merchant_proofs (
  created_at timestamptz NOT NULL,
  expires_at timestamptz NOT NULL CHECK(isfinite(expires_at) AND isfinite(created_at) AND expires_at=created_at+interval '5 minutes'),
  PRIMARY KEY(tenant_id,id),
+ UNIQUE(tenant_id,session_id,action),
  UNIQUE(tenant_id,proof_digest)
 );
 ALTER TABLE app.identity_merchant_proofs ENABLE ROW LEVEL SECURITY;

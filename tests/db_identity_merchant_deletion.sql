@@ -25,9 +25,16 @@ DO $test$
 DECLARE t uuid:=current_setting('test.mdel02.a')::uuid; b uuid:=current_setting('test.mdel02.b')::uuid;
  u uuid:=current_setting('test.mdel02.owner')::uuid; s uuid:=current_setting('test.mdel02.sess')::uuid;
  d bytea:=sha256('proof-secret'::bytea); until_db timestamptz; before_db timestamptz;
- req uuid:=uuidv7(); e bigint; n bigint;
+ req uuid:=uuidv7(); e bigint; n bigint; key_id uuid:=uuidv7();
 BEGIN
  PERFORM set_config('app.tenant_id',t::text,true);
+ INSERT INTO app.api_keys(tenant_id,id,issued_by,key_prefix,key_hash,scopes) VALUES(t,key_id,u,'mdel02',sha256('mdel02-key'::bytea),ARRAY['catalog:read','tenant:delete']);
+ IF app.auth_revalidate_tenant(t,u,'api_key',key_id,'tenant:delete') IS DISTINCT FROM true THEN RAISE EXCEPTION 'MDEL02_KEY_FIXTURE'; END IF;
+ -- A key scope is not a session; passing a key ID as a session is denied.
+ BEGIN
+  PERFORM app.auth_issue_merchant_proof(t,u,key_id,'request',d,'verified-phc');
+  RAISE EXCEPTION 'MDEL02_KEY_PROOF';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  before_db:=clock_timestamp();
  until_db:=app.auth_issue_merchant_proof(t,u,s,'request',d,'verified-phc');
  IF until_db<before_db+interval '5 minutes' OR until_db>clock_timestamp()+interval '5 minutes' THEN
@@ -87,7 +94,8 @@ BEGIN
  IF NOT app.auth_revalidate_tenant(t,u,'session',s,'catalog:read') THEN RAISE EXCEPTION 'MDEL02_COOLING_READ'; END IF;
  IF NOT app.auth_revalidate_tenant(t,u,'session',s,'tenant:delete') THEN RAISE EXCEPTION 'MDEL02_CANCEL_AUTHORITY'; END IF;
  UPDATE app.tenant_lifecycles SET state='executing',phase='executing',epoch=epoch+1 WHERE tenant_id=t RETURNING epoch INTO e;
- IF app.auth_revalidate_tenant(t,u,'session',s,'catalog:read') OR app.auth_revalidate_tenant(t,u,'session',s,'tenant:delete') THEN
+ IF app.auth_revalidate_tenant(t,u,'session',s,'catalog:read') OR app.auth_revalidate_tenant(t,u,'session',s,'tenant:delete')
+  OR app.auth_revalidate_tenant(t,u,'api_key',key_id,'catalog:read') THEN
   RAISE EXCEPTION 'MDEL02_EXECUTION_SESSION_FENCE'; END IF;
  BEGIN
   PERFORM app.auth_erase_merchant_proofs(b,req,e);

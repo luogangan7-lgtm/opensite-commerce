@@ -38,7 +38,7 @@ type principal struct {
 type AuthorizationSnapshot struct {
 	UserID, TenantID, Kind, CredentialID string
 	Scopes                               []string
-	ReceiptOnly bool
+	ReceiptOnly                          bool
 }
 
 func AuthorizationFromContext(ctx context.Context) (AuthorizationSnapshot, bool) {
@@ -176,11 +176,13 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 			if !keyCredential && merchantReceiptRoute(spec) && errors.Is(err, contract.ErrNotFound) {
 				actor, _ := login.ActorFromContext(ctx)
 				allowed, receiptErr := h.service.MerchantReceipt(ctx, tenant, r.PathValue("request_id"), actor)
-				if receiptErr != nil { return nil, authUnavailable() }
+				if receiptErr != nil {
+					return nil, authUnavailable()
+				}
 				if allowed {
 					snapshot.ReceiptOnly = true
 					snapshot.Scopes = []string{"tenant:delete"}
-					return context.WithValue(ctx, principalKey{}, principal{owner:h, spec:spec, snapshot:snapshot, token:token, session:session}), nil
+					return context.WithValue(ctx, principalKey{}, principal{owner: h, spec: spec, snapshot: snapshot, token: token, session: session}), nil
 				}
 			}
 			return nil, authorityError(err, missing)
@@ -289,14 +291,23 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 		return nil, err
 	}
 	if p.ReceiptOnly {
-		if !merchantReceiptRoute(spec) { return nil, unauthenticated() }
+		if !merchantReceiptRoute(spec) {
+			return nil, unauthenticated()
+		}
 		request := r.PathValue("request_id")
-		return func(ctx context.Context,q *db.Queries) error {
-			if q==nil { return unauthenticated() }
+		return func(ctx context.Context, q *db.Queries) error {
+			if q == nil {
+				return unauthenticated()
+			}
 			var tenant, req, user, session pgtype.UUID
-			_ = tenant.Scan(p.TenantID); _ = req.Scan(request); _ = user.Scan(p.UserID); _ = session.Scan(p.CredentialID)
-			ok, err := q.MerchantReceiptAllowed(ctx,db.MerchantReceiptAllowedParams{TenantID:tenant, RequestID:req, UserID:user, SessionID:session})
-			if err!=nil || !ok { return unauthenticated() }
+			_ = tenant.Scan(p.TenantID)
+			_ = req.Scan(request)
+			_ = user.Scan(p.UserID)
+			_ = session.Scan(p.CredentialID)
+			ok, err := q.MerchantReceiptAllowed(ctx, db.MerchantReceiptAllowedParams{TenantID: tenant, RequestID: req, UserID: user, SessionID: session})
+			if err != nil || !ok {
+				return unauthenticated()
+			}
 			return nil
 		}, nil
 	}
