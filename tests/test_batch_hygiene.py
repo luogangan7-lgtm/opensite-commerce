@@ -464,6 +464,37 @@ class FinalLandingGate(unittest.TestCase):
             self.assertEqual({row['run_attempt'] for row in payload['lane_identities']},
                              {'2'})
 
+    def test_final_mode_replays_shared_execution_identity_vectors(self):
+        vectors = json.loads((ROOT / 'tests/fixtures/rerun-attempts.json').read_text())
+        for case in vectors['cases']:
+            with self.subTest(case=case['name']), tempfile.TemporaryDirectory() as temp:
+                root = self.make_repo(temp)
+                sha = 'c' * 40
+                jobs = self.lane_jobs(temp, sha=sha)
+                rows = [json.loads(line) for line in jobs.read_text().splitlines()]
+                rows = [job for job in rows if job['name'] != vectors['job_name']]
+                source = case.get('jobs', [job for page in case.get('job_pages', []) for job in page])
+                rows.extend({**job, 'run_id': int(self.RUN_ID), 'head_sha': sha}
+                            for job in source if job['name'] == vectors['job_name'])
+                jobs.write_text(json.dumps(rows))
+                lanes = self.nested_lane_identities(temp, sha, {
+                    **{lane: [1] for lane in self.LANES if lane != 'pg'},
+                    'pg': case['evidence_attempts']})
+                receipt = Path(temp) / 'receipt.json'
+                result = self.landing(root, '--mode', 'final', '--sha', sha,
+                                      '--expected-sha', sha, '--lane-identities', str(lanes),
+                                      '--lane-jobs', str(jobs), '--receipt', str(receipt),
+                                      env=self.RUN_ENV)
+                expected = case['expected']
+                if 'error' in expected:
+                    self.assertNotEqual(result.returncode, 0, combined(result))
+                    self.assertIn(expected['error'], combined(result))
+                else:
+                    self.assertEqual(result.returncode, 0, combined(result))
+                    pg = next(row for row in json.loads(receipt.read_text())['lane_identities']
+                              if row['lane'] == 'pg')
+                    self.assertEqual(int(pg['run_attempt']), expected['attempt'])
+
     def test_full_rerun_of_every_job_accepts_attempt_two_and_fails_closed(self):
         # Attempt 1 succeeded, then every job was re-run as attempt 2.  Each
         # attempt uploads its own receipt, so the landing download sees both and
@@ -793,6 +824,8 @@ class RerunAttemptRule(unittest.TestCase):
                             rule.successful_attempts(jobs, vectors['job_name']),
                             case['evidence_attempts']),
                         expected['attempt'])
+                    self.assertEqual(rule.latest_successful_attempt(jobs, vectors['job_name']),
+                                     expected['attempt'])
 
     def test_both_consumers_use_the_shared_rule(self):
         landing = (ROOT / 'scripts/check_landing.py').read_text()
