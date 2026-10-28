@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,23 +24,35 @@ func TestH4ASessionConcurrencyAndDeadline(t *testing.T) {
 	repo.lookupBlock = make(chan struct{}, 2)
 	results := make(chan error, 2)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
+	var workers sync.WaitGroup
+	t.Cleanup(func() {
+		cancel()
+		done := make(chan struct{})
+		go func() { workers.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error("session lookup workers did not exit after cancellation")
+		}
+	})
 	started := time.Now()
 	for i := 0; i < cap(results); i++ {
+		workers.Add(1)
 		go func() {
+			defer workers.Done()
 			_, _, err := service.Authenticate(ctx, token)
 			results <- err
 		}()
 		select {
 		case <-repo.lookupBlock:
 		case err := <-results:
-			t.Fatalf("admitted lookup returned before readiness: %v", err)
+			t.Fatalf("H4A_ADMISSION_READINESS: admitted lookup returned before readiness: %v", err)
 		case <-ctx.Done():
 			t.Fatal("session readiness deadline", ctx.Err())
 		}
 	}
 	if _, _, err := service.Authenticate(ctx, token); !errors.Is(err, login.ErrRateLimited) {
-		t.Fatal("third concurrent lookup must be rejected before storage")
+		t.Fatal("H4A_ADMISSION_BOUND: third concurrent lookup must be rejected before storage")
 	}
 	for i := 0; i < cap(results); i++ {
 		select {

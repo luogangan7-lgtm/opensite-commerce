@@ -1,0 +1,72 @@
+{
+  "schema": 2,
+  "snapshot": "mobile/real-213-completion-paid.png",
+  "scope": "real-backend",
+  "sourceFingerprint": "6d4b0be89ea5e6ac930677a6821460f63fd9da26e8a6dde867c60bc974cf2e82",
+  "pngSha256": "a42703b9a93d84f6188eb1ad9e6d17e503d7a128e0add7a8a0637bb3b71fcfc9",
+  "scopeSnapshots": [
+    "desktop/real-213-checkout-ambiguous-failure.png",
+    "desktop/real-213-checkout-canceled.png",
+    "desktop/real-213-checkout-changed-total.png",
+    "desktop/real-213-checkout-confirmed.png",
+    "desktop/real-213-checkout-failed.png",
+    "desktop/real-213-checkout-in-flight.png",
+    "desktop/real-213-checkout-normal.png",
+    "desktop/real-213-checkout-retry.png",
+    "desktop/real-213-completion-empty.png",
+    "desktop/real-213-completion-error.png",
+    "desktop/real-213-completion-loading.png",
+    "desktop/real-213-completion-long-amount.png",
+    "desktop/real-213-completion-long-order.png",
+    "desktop/real-213-completion-paid.png",
+    "desktop/real-213-completion-pending.png",
+    "mobile/real-213-checkout-ambiguous-failure.png",
+    "mobile/real-213-checkout-canceled.png",
+    "mobile/real-213-checkout-changed-total.png",
+    "mobile/real-213-checkout-confirmed.png",
+    "mobile/real-213-checkout-failed.png",
+    "mobile/real-213-checkout-in-flight.png",
+    "mobile/real-213-checkout-normal.png",
+    "mobile/real-213-checkout-retry.png",
+    "mobile/real-213-completion-empty.png",
+    "mobile/real-213-completion-error.png",
+    "mobile/real-213-completion-loading.png",
+    "mobile/real-213-completion-long-amount.png",
+    "mobile/real-213-completion-long-order.png",
+    "mobile/real-213-completion-paid.png",
+    "mobile/real-213-completion-pending.png"
+  ],
+  "sourceSha": "b2e250b473a5b7b29236f4b227019e5c0565eeee",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40643562635",
+  "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
+  "playwright": "1.64.0",
+  "font": "@fontsource/inter@5.3.0",
+  "rendering": {
+    "locale": "en-US",
+    "timezone": "UTC",
+    "deviceScaleFactor": 1,
+    "colorScheme": "light",
+    "reducedMotion": "reduce",
+    "desktop": [
+      1280,
+      800
+    ],
+    "mobile": [
+      390,
+      844
+    ],
+    "chromiumArgs": [
+      "--disable-partial-raster",
+      "--disable-gpu",
+      "--force-color-profile=srgb"
+    ]
+  },
+  "backend": {
+    "application": "Go",
+    "database": "PostgreSQL 18.6",
+    "mode": "test",
+    "seed": "existing E2E SQL and constrained owned order/checkout fixtures",
+    "fault": "none",
+    "boundary": "real backend DTO, no route interception"
+  }
+}
