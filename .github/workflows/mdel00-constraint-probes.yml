@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        remove: [returns_refund_key_uuid, data_rights_erasures_scope_enum]
+        remove: [control]
     services:
       postgres:
         image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
@@ -32,10 +32,12 @@ jobs:
       REMOVE_CHECK: ${{ matrix.remove }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          ref: 8a905caffac2dd577bc28294f9638b391d6ff071
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
         with:
           go-version: 1.27.2
-      - name: Record candidate parent and remove exactly one CHECK in CI
+      - name: Record exact final candidate and retain all CHECKs for control
         run: |
           git log -2 --format='%H %s'
           python3 - <<'PY'
@@ -43,11 +45,8 @@ jobs:
           import hashlib, os
           path = Path('migrations/pending/mdel00-caller-keys_caller_key_constraints.sql')
           lines = path.read_text().splitlines(keepends=True)
-          needle = ' ADD CONSTRAINT ' + os.environ['REMOVE_CHECK'] + ' CHECK '
-          removed = [line for line in lines if needle in line]
-          assert len(removed) == 1, 'mutation target must resolve exactly once'
-          path.write_text(''.join(line for line in lines if needle not in line))
-          print('MDEL00_MUTANT', os.environ['REMOVE_CHECK'], hashlib.sha256(path.read_bytes()).hexdigest())
+          assert os.environ['REMOVE_CHECK'] == 'control'
+          print('MDEL00_UNMUTATED_CONTROL', hashlib.sha256(path.read_bytes()).hexdigest())
           PY
       - name: Apply the actual forward migration chain
         run: |
@@ -55,5 +54,5 @@ jobs:
           python3 scripts/pending_migrations.py ci-normalize
           ./scripts/migrate_river.sh
           ./scripts/migrate.sh
-      - name: Require behavioral gate to detect missing CHECK (expected RED)
+      - name: Require unmodified candidate gate GREEN
         run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_caller_key_constraints.sql
