@@ -315,35 +315,38 @@ func collectConsts(file *ast.File, key string, defs map[string][]constDef) {
 }
 
 // constDefsFrom expands one CONST declaration into name/expression pairs, skipping
-// blank names and handling the implicit repetition form `const ( a = "x"; b )`.
+// blank names and handling the implicit repetition form `const ( a, b = "x", "y"; c, d )`.
+// An omitted expression list repeats the whole previous list by identifier index
+// (Go spec, "Constant declarations"), not just its final expression.
 func constDefsFrom(gen *ast.GenDecl) []constDef {
 	var out []constDef
-	var lastExpr ast.Expr
+	var lastValues []ast.Expr
 	for _, spec := range gen.Specs {
 		valueSpec, ok := spec.(*ast.ValueSpec)
 		if !ok {
 			continue
 		}
 		if len(valueSpec.Values) == 0 {
-			// `const ( a = "x"; b )` repeats the previous expression.
-			if lastExpr == nil {
+			if len(lastValues) == 0 {
 				continue
 			}
-			for _, name := range valueSpec.Names {
+			for i, name := range valueSpec.Names {
+				if i >= len(lastValues) {
+					break
+				}
 				if name.Name != "_" {
-					out = append(out, constDef{name: name.Name, expr: lastExpr})
+					out = append(out, constDef{name: name.Name, expr: lastValues[i]})
 				}
 			}
 			continue
 		}
-		lastExpr = valueSpec.Values[len(valueSpec.Values)-1]
+		lastValues = valueSpec.Values
 		for i, name := range valueSpec.Names {
-			expr := lastExpr
-			if i < len(valueSpec.Values) {
-				expr = valueSpec.Values[i]
+			if i >= len(valueSpec.Values) {
+				break
 			}
 			if name.Name != "_" {
-				out = append(out, constDef{name: name.Name, expr: expr})
+				out = append(out, constDef{name: name.Name, expr: valueSpec.Values[i]})
 			}
 		}
 	}

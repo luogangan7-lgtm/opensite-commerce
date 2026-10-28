@@ -1,0 +1,114 @@
+{
+  "rule": "For one run and one lane (job name), the latest attempt GitHub reports as a successful job is the only acceptable evidence. Its receipt/artifact must exist; an older attempt is never substituted, and no successful attempt fails closed. scripts/rerun_attempts.py and scripts/frontend/rerun-attempts.ts implement this same rule; both test suites replay these vectors.",
+  "job_name": "foundation-pg",
+  "cases": [
+    {
+      "name": "latest_successful_attempt_wins",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": 1, "status": "completed", "conclusion": "success"},
+        {"name": "foundation-pg", "run_attempt": 2, "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [1, 2],
+      "expected": {"attempt": 2}
+    },
+    {
+      "name": "latest_successful_attempt_requires_its_own_evidence",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": 1, "status": "completed", "conclusion": "success"},
+        {"name": "foundation-pg", "run_attempt": 2, "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [1],
+      "expected": {"error": "latest successful attempt 2"}
+    },
+    {
+      "name": "failed_rerun_keeps_the_earlier_success",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": 1, "status": "completed", "conclusion": "success"},
+        {"name": "foundation-pg", "run_attempt": 2, "status": "completed", "conclusion": "failure"}
+      ],
+      "evidence_attempts": [1, 2],
+      "expected": {"attempt": 1}
+    },
+    {
+      "name": "three_attempts_never_fall_back",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": 1, "status": "completed", "conclusion": "success"},
+        {"name": "foundation-pg", "run_attempt": 2, "status": "completed", "conclusion": "failure"},
+        {"name": "foundation-pg", "run_attempt": 3, "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [1],
+      "expected": {"error": "latest successful attempt 3"}
+    },
+    {
+      "name": "no_successful_attempt_fails_closed",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": 1, "status": "completed", "conclusion": "failure"}
+      ],
+      "evidence_attempts": [1],
+      "expected": {"error": "no successful attempt"}
+    },
+    {
+      "name": "unrelated_job_success_is_ignored",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": 1, "status": "completed", "conclusion": "success"},
+        {"name": "foundation-go", "run_attempt": 9, "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [1],
+      "expected": {"attempt": 1}
+    },
+    {
+      "name": "malformed_attempt_fails_closed",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": "two", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [],
+      "expected": {"error": "run_attempt"}
+    },
+    {
+      "name": "arabic_indic_two_is_not_an_attempt",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": "٢", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [],
+      "expected": {"error": "run_attempt"}
+    },
+    {
+      "name": "fullwidth_zero_is_not_an_attempt",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": "０", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [],
+      "expected": {"error": "run_attempt"}
+    },
+    {
+      "name": "leading_zero_is_not_an_attempt",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": "01", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [],
+      "expected": {"error": "run_attempt"}
+    },
+    {
+      "name": "zero_is_not_an_attempt",
+      "jobs": [
+        {"name": "foundation-pg", "run_attempt": "0", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [],
+      "expected": {"error": "run_attempt"}
+    },
+    {
+      "name": "latest_success_after_pagination_page_boundary",
+      "job_pages": [
+        [
+          {"name": "foundation-pg", "run_attempt": 1, "status": "completed", "conclusion": "success"},
+          {"name": "foundation-go", "run_attempt": 1, "status": "completed", "conclusion": "success"}
+        ],
+        [
+          {"name": "foundation-pg", "run_attempt": 2, "status": "completed", "conclusion": "success"}
+        ]
+      ],
+      "evidence_attempts": [1, 2],
+      "expected": {"attempt": 2}
+    }
+  ]
+}

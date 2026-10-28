@@ -2,8 +2,8 @@
   "schema": 2,
   "snapshot": "desktop/storefront-products.png",
   "scope": "storefront-published",
-  "sourceFingerprint": "51521569f75419f602628c0690163dfa9953b8074cbede18dedfd2810b0b22f4",
-  "pngSha256": "4795f35e9563be3c9fbaa85f6ef55faf370c0c70fe788b5c4590395e6ae39a4a",
+  "sourceFingerprint": "2f2eaa9f3405e381b9b1c4d801ab2c6aaccf480acace1bd9050eca1e8f5b1d1d",
+  "pngSha256": "b9ea7811e6ee54efbbb49481cf0dcd685d84318433253e28cc1fc03d57956c45",
   "scopeSnapshots": [
     "desktop/storefront-404.png",
     "desktop/storefront-502.png",
@@ -20,8 +20,8 @@
     "mobile/storefront-product.png",
     "mobile/storefront-products.png"
   ],
-  "sourceSha": "4f2899f3a449981148568e0228623abb9dfd5ea6",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/39800552691",
+  "sourceSha": "e6e11591074ac5a458027ffb09afb3039d52b450",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40322099527",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",

@@ -1131,7 +1131,8 @@
       "go_status": "implemented",
       "owns_tables": [
         "data_rights_exports",
-        "data_rights_erasures"
+        "data_rights_erasures",
+        "data_rights_erased_orders"
       ],
       "operations": [
         {
@@ -1162,6 +1163,7 @@
       ],
       "tests": [
         "tests/db_data_rights.sql",
+        "tests/db_privacy_hardening.sql",
         "internal/modules/datarights/internal/service/files_test.go",
         "internal/platform/jobs/privacy_test.go"
       ],
@@ -1725,6 +1727,12 @@
       ]
     },
     {
+      "file": "migrations/pending/b-privacy-hardening_privacy_bounds.sql",
+      "owner": "datarights",
+      "touches_tables": ["data_rights_exports", "data_rights_erased_orders", "quote_conversions", "customer_guest_order_links"],
+      "note": "Forward bounded snapshot and trusted erasure ownership; existing capability signatures retained."
+    },
+    {
       "file": "migrations/pending/c22a-data-rights_data_rights.sql",
       "owner": "datarights",
       "touches_tables": [
@@ -1824,6 +1832,8 @@
         "auth_sessions"
       ]
     },
+    {"file":"migrations/pending/b-pricing-cas_missing_tier.sql","owner":"pricing","touches_tables":["price_lists","price_entries","tenants","product_variants"]},
+    {"file":"migrations/pending/b-pricing-invalidation_publication_candidates.sql","owner":"publish","touches_tables":["sites","serving_invalidations","storefront_serving","product_listings","product_content_revisions"]},
     {
       "file": "migrations/pending/admin-pricing-1_staff_pricing.sql",
       "owner": "pricing",

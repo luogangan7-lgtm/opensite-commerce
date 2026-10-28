@@ -62,6 +62,11 @@ DO $check$ BEGIN
  IF NOT EXISTS(SELECT FROM app.media_blobs WHERE id='66666666-6666-4666-8666-666666666668' AND status='deleting' AND storage_key='fixture-deleting')
   OR EXISTS(SELECT FROM app.media_assets WHERE blob_id='66666666-6666-4666-8666-666666666668')
  THEN RAISE EXCEPTION 'C07_DELETING_BLOB_REVIVED'; END IF;
+ IF NOT EXISTS(SELECT FROM app.media_uploads WHERE tenant_id='11111111-1111-4111-8111-111111111111'
+  AND original_filename='overflow.avif' AND status='reserved' AND received_bytes=0)
+ OR EXISTS(SELECT FROM app.media_blobs b JOIN app.media_uploads u ON (u.tenant_id,u.expected_sha256)=(b.tenant_id,b.sha256)
+  WHERE u.tenant_id='11111111-1111-4111-8111-111111111111' AND u.original_filename='overflow.avif') THEN
+  RAISE EXCEPTION 'AVIF_UINT32_PUT_DURABLE_WRITE'; END IF;
  IF EXISTS(SELECT FROM app.product_media WHERE product_id='33333333-3333-4333-8333-333333333336')
  THEN RAISE EXCEPTION 'C07_ARCHIVED_PRODUCT_LINKED'; END IF;
 END $check$;

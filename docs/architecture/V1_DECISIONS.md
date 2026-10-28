@@ -661,7 +661,7 @@ Payments 表实现后，再执行两类真实数据库断言：
 | PR-13 | Orders/GetPayable + **Payment Port 契约 v1**（见第九节）、`019_orders`（逻辑标识） | 09–12、F | 成交快照、不合法状态转换、订单幂等、Port 契约测试 |
 | **PR-14** | 单币复式账本、`020_ledger` | 08、F | 延迟借贷平衡、不可变及重复记账拒绝 |
 | PR-15 | Inquiry、Quote、单层审批、`021_quotes` | 05、06、08 | 报价到期、审批权限、预付条件 |
-| PR-16 | Checkout 编排、`022_checkout` | 09–15 | B2C/B2B 下单、重报价、失败恢复 |
+| PR-16 | Checkout 编排、逻辑迁移标识 `checkout`（正式编号合入时分配） | PR-F、09–15，其中 PR-13 已提供 Payment Port | B2C/B2B 下单、重报价、失败恢复 |
 | PR-17 | Payments/Stripe、`023_payments` | 13、14、16、F | 沙箱收款、Webhook 重放、退款、对账 |
 | PR-18 | Fulfillment/Returns、`024_fulfillment_returns` | 09、13、17 | 部分发货、取消、退货、一次性回库 |
 | PR-19 | Billing/Notifications、`025_billing_notifications` | 10、13、14、17、18 | 单据冲销、通知重试、无重复副作用 |
@@ -677,9 +677,9 @@ PR-01B 是基础阻断项。
 
 Media/Catalog、UI Design System 和 Customer 模块可以分线程推进。
 
-Pricing、Inventory 可并行；Tax、Shipping 和 Cart 在各自前置契约稳定后推进。
+Pricing、Inventory 可并行；Cart（PR-12）依赖 PR-04、06、08，不强制依赖 PR-F；Tax、Shipping 在各自前置契约稳定后推进。
 
-Ledger 可以与 Cart/Orders 的后续工作并行开发，但**必须在账期、正式退款对账和交易首发验收前完成**。
+Ledger 可以与 Cart/Orders 的后续工作并行开发，但**必须在 Checkout（PR-16）集成、账期、正式退款对账和交易首发验收前完成**。
 
 Checkout 统一负责交易集成，不允许各模块自行建立第二套结账入口。
 

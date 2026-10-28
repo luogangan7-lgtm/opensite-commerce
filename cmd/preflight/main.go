@@ -2,8 +2,8 @@
 package main
 
 import (
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/pagegraph"
 	"fmt"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/pagegraph"
 	"os"
 )
 

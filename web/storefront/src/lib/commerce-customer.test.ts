@@ -9,6 +9,7 @@ const site='https://shop.example.test', origin='http://api:8080', tenant='c09000
 const customer='c09f0001-0000-4000-8000-000000000001', cart='c09f0002-0000-4000-8000-000000000001';
 const sku='c0900008-0000-4000-8000-000000000001', sessionName='__Host-osc_customer_session';
 const bearer=randomBytes(32).toString('base64url'), challenge='1234567890.'+randomBytes(32).toString('base64url')+'.'+randomBytes(32).toString('base64url');
+const password=randomBytes(24).toString('base64url');
 const names=['OSC_COMMERCE_MODE','OSC_COMMERCE_API_ORIGIN','OSC_COMMERCE_SITE','OSC_COMMERCE_COOKIE_KEY','OSC_STOREFRONT_ALLOWED_HOSTS','OPENSITE_STOREFRONT_ORIGIN','OPENSITE_CUSTOMER_CSRF_SECRET'];
 const saved=new Map(names.map(name=>[name,process.env[name]]));
 const calls:Request[]=[];
@@ -56,9 +57,9 @@ afterEach(()=>{mock?.mockRestore();for(const name of names){const value=saved.ge
 test('registration verification login session and logout use real generated routes with server-only custody',async()=>{
   let context=await readPurchaseContext(request('context'),jar);
   expect(context.enabled).toBe(true);
-  expect((await send('customer/register',context.csrf,{email:'buyer@example.test',password:'twelve-byte-password'})).status).toBe(202);
+  expect((await send('customer/register',context.csrf,{email:'buyer@example.test',password})).status).toBe(202);
   expect((await send('customer/verify',context.csrf,{token:bearer})).status).toBe(200);
-  const login=await send('customer/session',context.csrf,{email:'buyer@example.test',password:'twelve-byte-password'});
+  const login=await send('customer/session',context.csrf,{email:'buyer@example.test',password});
   expect(login.status).toBe(200);expect(await login.text()).not.toContain(bearer);
   expect(values.get(sessionName)).toBe(bearer);
   expect(values.has('__Host-osc_customer_challenge')).toBe(false);
@@ -99,7 +100,7 @@ test('foreign tenant identity and malformed bearer fail closed',async()=>{
 test('customer writes reject foreign Origin and forged browser CSRF before upstream IO',async()=>{
   const context=await readPurchaseContext(request('context'),jar), before=calls.length;
   for(const [origin,token] of [['https://evil.example',context.csrf],[site,'forged']]) {
-    const r=request('customer/register',token,{email:'buyer@example.test',password:'twelve-byte-password'});r.headers.set('Origin',origin!);
+    const r=request('customer/register',token,{email:'buyer@example.test',password});r.headers.set('Origin',origin!);
     expect((await handlePurchaseRequest(r,jar,'customer/register')).status).toBe(403);
   }
   expect(calls.length).toBe(before);
@@ -123,7 +124,7 @@ test('logout discards customer cart custody even if the browser replays its old 
 test('login and registration failures do not relay account-existence codes or private detail',async()=>{
   const context=await readPurchaseContext(request('context'),jar);
   for(const operation of ['customer/register','customer/session'])for(const status of [400,401,409,422]) {
-    denied=status;const response=await send(operation,context.csrf,{email:'buyer@example.test',password:'twelve-byte-password'});
+    denied=status;const response=await send(operation,context.csrf,{email:'buyer@example.test',password});
     expect(response.status).toBe(400);expect(await response.json()).toMatchObject({code:'customer_auth_failed'});
   }
 });
@@ -141,4 +142,38 @@ test('history forwards only the validated customer cookie and preserves exact mo
   values.delete(sessionName);const before=calls.length;
   expect((await send('history')).status).toBe(401);
   expect(calls.slice(before).some(r=>r.url.includes('/customer/orders'))).toBe(false);
+});
+
+for(const [label,fields,authenticated,status] of [
+  ['empty',{},false,200],
+  ['guest',{c:cart,t:bearer},false,200],
+  ['customer',{c:cart,u:customer},true,200],
+  ['cart without authority',{c:cart},false,401],
+  ['token without cart',{t:bearer},false,401],
+] as const)test(`signed purchasing cookie matrix: ${label}`,async()=>{
+  if(authenticated)values.set(sessionName,bearer);
+  const encoded=Buffer.from(JSON.stringify({s:bearer,x:Date.now()+60_000,tenant,...fields})).toString('base64url');
+  const signature=createHmac('sha256',Buffer.from(process.env.OSC_COMMERCE_COOKIE_KEY!,'base64url')).update(encoded).digest('base64url');
+  values.set('__Host-osc_storefront_cart',`${encoded}.${signature}`);
+  expect((await send('cart')).status).toBe(status);
+  if(status===401)expect(calls).toHaveLength(0);
+});
+for(const [operation,method,input] of [
+  ['customer/session','DELETE',undefined],
+  ['customer/register','POST',{email:'buyer@example.test',password}],
+  ['customer/verify','POST',{token:bearer}],
+] as const)test(`one session validation per authenticated account write: ${operation} ${method}`,async()=>{
+  values.set(sessionName,bearer);
+  const context=await readPurchaseContext(request('context'),jar);calls.length=0;
+  expect((await send(operation,context.csrf,input,method)).ok).toBe(true);
+  expect(calls.filter(r=>r.method==='GET'&&r.url.endsWith('/customer/session'))).toHaveLength(1);
+});
+test('account login revalidates changed identity and later requests never reuse old validation',async()=>{
+  const context=await readPurchaseContext(request('context'),jar);calls.length=0;
+  expect((await send('customer/session',context.csrf,{email:'buyer@example.test',password})).status).toBe(200);
+  expect(calls.filter(r=>r.method==='GET'&&r.url.endsWith('/customer/session'))).toHaveLength(2);
+  denied=401;
+  const response=await send('customer/verify',context.csrf,{token:bearer});
+  expect(response.status).toBe(403); // login rotates browser CSRF
+  expect((await send('history')).status).toBe(401);
 });

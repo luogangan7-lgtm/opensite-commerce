@@ -11,6 +11,6 @@ const ui=commerceCopy();
 await readPurchaseContext(Astro.request, Astro.cookies);
 Astro.response.headers.set('Cache-Control','no-store');
 ---
-<Shell title={ui.orderHistory} description={ui.historyDescription} canonical={requestCanonical(Astro)} noindex navigation={[{label:ui.yourAccount,href:'/account'}]}>
+<Shell homeHref="/" title={ui.orderHistory} description={ui.historyDescription} canonical={requestCanonical(Astro)} noindex navigation={[{label:ui.yourAccount,href:'/account'}]}>
   <h1>{ui.orderHistory}</h1><OrderHistory client:load />
 </Shell>

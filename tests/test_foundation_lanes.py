@@ -243,7 +243,10 @@ class FoundationLanes(unittest.TestCase):
         helper = (ROOT / 'scripts/ci_apt_install.sh').read_text()
         # Every apt-get inside the helper too: constants alone are not a bound.
         self.assert_apt_calls_bounded(helper, 'scripts/ci_apt_install.sh')
-        for token in ('UPDATE_TIMEOUT=180', 'INSTALL_TIMEOUT=300', 'ATTEMPTS=3',
+        for token in ('TOTAL_BUDGET=${CI_APT_TOTAL_BUDGET:-300}',
+                      'UPDATE_TIMEOUT=${CI_APT_UPDATE_TIMEOUT:-180}',
+                      'INSTALL_TIMEOUT=${CI_APT_INSTALL_TIMEOUT:-300}',
+                      'ATTEMPTS=${CI_APT_ATTEMPTS:-3}',
                       'Acquire::http::Timeout=20', 'SKIP apt: already present'):
             self.assertIn(token, helper)
 
@@ -279,7 +282,7 @@ class FoundationLanes(unittest.TestCase):
         self.assertIn('always()', foundation['if'])
         self.assertIn("github.event_name == 'pull_request'", foundation['if'])
         self.assertIn("github.ref == 'refs/heads/main'", foundation['if'])
-        step, = foundation['steps']
+        step = next(s for s in foundation['steps'] if 'LANE_RESULTS' in s.get('env', {}))
         self.assertNotIn('if', step)
         self.assertEqual(step['env']['LANE_RESULTS'], '${{ toJSON(needs) }}')
         # Execute the actual aggregate command with every terminal state, not a copy.

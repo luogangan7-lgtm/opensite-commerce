@@ -4,6 +4,8 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { createServer } from 'node:http';
+import { spawnRenderer } from './renderer-lifecycle';
 const origin = 'http://127.0.0.1:4321';
 const seed = [
   { path: '/', title: 'Made for everyday use', description: 'A published example of pages and products.', text: 'Browse our published collection and learn how this sample site is made.', screenshot: 'home' },
@@ -18,6 +20,50 @@ async function quality(page: Page) {
   const report = await new AxeBuilder({ page }).analyze();
   expect(report.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
 }
+test('published release without a root page has no site-name home link in final SSR HTML', async ({ request }) => {
+  // A controlled public read API exercises the built Astro renderer, including Shell defaults.
+  const seeded = await request.get('http://127.0.0.1:4175/api/v1/public/sites/current?host=127.0.0.1');
+  expect(seeded.status()).toBe(200);
+  const release = await seeded.json() as { pages: { path: string }[] };
+  const originalPages = release.pages;
+  const upstream = createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(release));
+  });
+  await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
+  const address = upstream.address();
+  if (!address || typeof address === 'string') throw new Error('Expected loopback test API');
+  const renderer = spawnRenderer({
+    command: 'bash',
+    args: ['scripts/start_storefront_ssr.sh'],
+    env: { ...process.env, HOST: '127.0.0.1', PORT: '4325', OSC_READ_API_ORIGIN: `http://127.0.0.1:${address.port}` },
+  });
+  try {
+    // Readiness races the child's terminal event, so an early exit reports the real start error.
+    await renderer.waitForReady(async () => {
+      try { return (await request.get('http://127.0.0.1:4325/products')).status() === 200; }
+      catch { return false; }
+    });
+    for (const withRoot of [true, false]) {
+      release.pages = withRoot ? originalPages : originalPages.filter(page => page.path !== '/');
+      const response = await request.get('http://127.0.0.1:4325/products');
+      expect(response.status()).toBe(200);
+      const html = await response.text();
+      expect(html).toContain('Canvas tote');
+      if (withRoot) expect(html).toMatch(/<a\b[^>]*class="site-name"[^>]*href="\/"[^>]*>/);
+      else {
+        expect(html).toMatch(/<span\b[^>]*class="site-name"[^>]*>/);
+        expect(html).not.toMatch(/<a\b[^>]*class="site-name"/);
+      }
+    }
+  } finally {
+    try {
+      await renderer.stop();
+    } finally {
+      await new Promise<void>((resolve, reject) => upstream.close(error => error ? reject(error) : resolve()));
+    }
+  }
+});
 for (const item of seed) test(`storefront SSR ${item.path}`, async ({ page, request }) => {
   // Request HTML independently proves published content exists before browser hydration.
   const html = await request.get(`${origin}${item.path}`);

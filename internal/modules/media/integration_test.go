@@ -238,10 +238,24 @@ func TestMediaPostgresHTTP(t *testing.T) {
 		mime string
 		data []byte
 	}{
-		{"image/png", []byte("\x89PNG\r\n\x1a\nfake")}, {"image/webp", []byte("RIFF\x10\x00\x00\x00WEBPVP8 fake")}, {"image/avif", []byte("\x00\x00\x00\x18ftypavif\x00\x00\x00\x00avifmif1")}, {"image/png", []byte("<svg></svg>")},
+		{"image/png", []byte("\x89PNG\r\n\x1a\nfake")}, {"image/webp", []byte("RIFF\x10\x00\x00\x00WEBPVP8 fake")}, {"image/avif", []byte("\x00\x00\x00\x18ftypavif\x00\x00\x00\x00avifmif1")}, {"image/png", []byte("<svg></svg>")}, {"image/avif", maxDimensionAVIF(t)},
 	} {
 		d := reserve(mediaTenant, "bad.png", bad.mime, bad.data)
 		call("PUT", mediaTenant, "/media/uploads/"+d.ID+"/content", "application/octet-stream", bytes.NewReader(bad.data), 415)
+	}
+	// Invalid dimensions must leave the reservation unstored and no physical blob.
+	badAVIF := maxDimensionAVIF(t)
+	rejected := reserve(mediaTenant, "overflow.avif", "image/avif", badAVIF)
+	call("PUT", mediaTenant, "/media/uploads/"+rejected.ID+"/content", "application/octet-stream", bytes.NewReader(badAVIF), 415)
+	call("POST", mediaTenant, "/media/uploads/"+rejected.ID+"/complete", "application/json", nil, 409)
+	filesAfterReject := 0
+	if err := filepath.WalkDir(filepath.Join(root, "originals"), func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			filesAfterReject++
+		}
+		return err
+	}); err != nil || filesAfterReject != n {
+		t.Fatalf("AVIF_UINT32_PUT wrote blob: before=%d after=%d err=%v", n, filesAfterReject, err)
 	}
 	link := func(id string, want int) {
 		call("POST", mediaTenant, "/products/"+mediaProduct+"/media", "application/json", strings.NewReader(fmt.Sprintf(`{"media_id":%q,"role":"gallery","sort_order":2}`, id)), want)

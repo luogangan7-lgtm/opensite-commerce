@@ -46,6 +46,7 @@ sql:
       - "migrations/pending/c19c1-money_return_refund_identity.sql"
       - "migrations/pending/c20a-fulfillment-scopes_fulfillment_role_scopes.sql"
       - "migrations/pending/c18b-quote-conversion_quote_conversion.sql"
+      - "migrations/pending/b-privacy-hardening_privacy_bounds.sql"
       - "migrations/pending/c18b-checkout-source_checkout_source.sql"
       - "migrations/pending/h4-clock_identity_db_clock.sql"
       - "migrations/pending/h4-identity_hardening.sql"
@@ -64,6 +65,8 @@ sql:
       - "migrations/pending/c19d3-recovery_refund_reconciliation.sql"
       - "migrations/pending/c19dp2-completeness_refund_case_completeness.sql"
       - "migrations/pending/b-ledger-audit_refund_resolution_identity.sql"
+      - "migrations/pending/b-pricing-cas_missing_tier.sql"
+      - "migrations/pending/b-pricing-invalidation_publication_candidates.sql"
     queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant", "queries/pricing", "queries/catalog"]
     gen:
       go:

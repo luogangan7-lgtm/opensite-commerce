@@ -287,7 +287,7 @@ func TestCustomerPGAccountCooldownIsTenantScoped(t *testing.T) {
 	f := customerPG(t)
 	customerPGClearGlobalLimits(t, f)
 	account := sha256.Sum256([]byte(f.email))
-	ipA, ipB := sha256.Sum256([]byte(f.tenant + "_account_ip")), sha256.Sum256([]byte(f.other + "_account_ip"))
+	ipA, ipB := sha256.Sum256([]byte(f.tenant+"_account_ip")), sha256.Sum256([]byte(f.other+"_account_ip"))
 	result := customerPGAdmitLimit(f.ctx, f.runtime, f.tenant, account, ipA)
 	if result.err != nil || result.delay != 0 {
 		t.Fatal("CUSTOMER_PG_ACCOUNT_FIRST_ADMISSION_FAILED")

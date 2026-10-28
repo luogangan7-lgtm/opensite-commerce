@@ -162,10 +162,9 @@ RLS:
 
 - **Append-only invalidation.** Triggers fire on every mutation that can change a served
   value:
-  - `price_lists` (every site of the tenant with a serving row);
-  - `price_entries`, `product_variants` lifecycle and `products` lifecycle (sites whose
-    membership contains the SKU or product);
-  - `stock_levels`, **only when the public availability boolean of a member SKU flips**
+  - `price_lists`, `price_entries`, `product_variants` lifecycle and `products`
+    lifecycle (every committed site of the tenant, including publication/restore candidates);
+  - `stock_levels`, **only when the public availability boolean of a SKU flips**
     (`on_hand > reserved` changes). The MVP has a single warehouse, so the per-row flip
     equals the aggregate.
 
@@ -173,7 +172,7 @@ RLS:
   UPDATE or lock `storefront_serving`, `sites` or any other shared row. Catalog, pricing,
   inventory and checkout transactions therefore gain no lock and no change to their lock
   order. The triggers are `SECURITY DEFINER` routines owned by `app_publish_executor`,
-  with INSERT-only access to the log and read access to membership and serving.
+  with INSERT-only access to the log and read access to tenant sites and serving.
 - **Refresher.** A sweeper inside the API process runs every 10 s
   (`publish.Refresher`). For each tenant on the deployment-authorized list
   `OPENSITE_SERVING_REFRESH_TENANTS`, it finds:
@@ -198,6 +197,18 @@ RLS:
   would then lose it. Deleting exactly the rows that were seen has no such ordering gap.
   The refresher is the only pruner, and its deletes touch only log rows, never rows the
   money path locks.
+
+  **Publication candidates.** Every committed tenant site is a possible next publish
+  or restore target. Collecting only current membership or current published listings
+  misses new members, restored historical members, and listings that disappear during
+  a build. Input mutations therefore append once per tenant site, covering OLD and NEW
+  associations without relying on either association being visible. A change between
+  a publisher's live input read and membership seal stays outside its exact folded set
+  and survives the publish, just as during refresh. Site creation commits before the
+  CMS publish command; unpublished sites retain events until their first build folds them.
+  This deliberately trades extra per-site log rows for a complete candidate set; use a
+  durable per-tenant journal only if measured fanout justifies that added state. Collection
+  uses snapshot reads only and adds no lock to any writer.
 
   A lost CAS is skipped. Several API replicas are safe: the publication lock serializes
   them.
@@ -257,7 +268,7 @@ fault probes.
 - Displayed prices and availability lag live data by at most `grace` after a change (or
   fall back), and never by more than `max_lifetime`. Checkout is the authority.
 - Catalog, pricing and inventory writes pay a small trigger cost. It touches only the
-  tenant's serving rows that reference the changed SKU.
+  tenant's committed sites as publication/restore candidates (one append per site).
 - `publish` owns `site_release_skus` and `storefront_serving`. It reads catalog, pricing
   and inventory only inside tenant transactions through declared dependencies, and uses
   the Pricing Port as its only pricing logic.
