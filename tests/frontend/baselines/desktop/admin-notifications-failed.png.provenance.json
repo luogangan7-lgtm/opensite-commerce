@@ -2,8 +2,8 @@
   "schema": 2,
   "snapshot": "desktop/admin-notifications-failed.png",
   "scope": "admin",
-  "sourceFingerprint": "87c42797fa2195ce6797a1c5badd686d615c73f4c2de47fabef52b6f49d7f07a",
-  "pngSha256": "635a3444a627a0b760b6aefbdeb4982e5db5eb1482580718e1f61dff0904d5ba",
+  "sourceFingerprint": "2a4ec2edf8facee6472e5118bc941054d7ac77f8f9cfbdf0fe9f8814d4357c64",
+  "pngSha256": "d7f589b4c74f945b1bae4697426cdc54a7827bf1c8e438dfa1ff1f863c8a5466",
   "scopeSnapshots": [
     "desktop/admin-content-conflict.png",
     "desktop/admin-create.png",
@@ -96,8 +96,8 @@
     "mobile/admin-publication-long.png",
     "mobile/admin-publication-saving.png"
   ],
-  "sourceSha": "e493f1dfd0d4da7d41fbbdff077e81fa692d7318",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40652988783",
+  "sourceSha": "4118dfac18f69057a7b0d9635096744212e7e538",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40661628991",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
