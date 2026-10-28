@@ -36,6 +36,15 @@ async function control(page: Page, action: string, data?: unknown) {
 async function fault(page: Page, path: string, method: string, mode: string) {
   await control(page, 'arm', { path, method, mode });
 }
+async function committedAttempt(page: Page, requestKey: string, before: string) {
+  const receipt = await (await control(page, 'status')).json();
+  if (receipt.status !== 201) throw new Error(`Discarded upstream was not committed (status ${receipt.status})`);
+  expect(receipt).toMatchObject({ matched: true, status: 201 });
+  expect(Number(sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}';`))).toBe(Number(before) + 1);
+  const committed = sql(`SELECT id FROM app.checkout_sessions WHERE tenant_id='${tenant}' AND request_key='${requestKey}';`);
+  expect(committed).toMatch(/^[0-9a-f-]{36}$/);
+  return committed;
+}
 async function snapshot(page: Page, state: typeof REAL_VISUAL_STATES[213][number], pending = false) {
   await page.evaluate(async () => { await document.fonts.ready; });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -112,6 +121,33 @@ async function capture(page: Page, checkout: { checkout: string; amount: string 
 test.describe('VISUAL-REAL #213', () => {
   test.afterEach(async ({ page }) => { await control(page, 'release'); });
 
+  test('launcher removes its bootstrap role after failure, timeout and interruption, then provisions again', () => {
+    // The launcher control flow and role DDL are real; business commands are isolated.
+    execFileSync('python3', ['scripts/frontend/test_real_launcher.py'], { stdio: 'pipe', timeout: 120_000 });
+  });
+
+  test('committed replay guard rejects a real noncommitted first attempt before retry', async ({ page }) => {
+    await review(page);
+    const before = sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}';`);
+    sql(`UPDATE app.price_entries SET unit_amount=4800 WHERE tenant_id='${tenant}' AND sku_id='${sku}';`);
+    try {
+      // Hold a real Go rejection: it has no checkout to replay. Never fabricate a DTO.
+      await fault(page, backend, 'POST', 'hold');
+      const request = page.waitForRequest(request => new URL(request.url()).pathname === '/purchase/api/checkout' && request.method() === 'POST');
+      await page.getByRole('button', { name: 'Start test checkout', exact: true }).click();
+      const key = await (await request).headerValue('Idempotency-Key');
+      if (!key || !/^[0-9a-f-]{36}$/i.test(key)) throw new Error('Expected a UUID checkout request key');
+      await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(409);
+      expect(sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}';`)).toBe(before);
+      expect(sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}' AND request_key='${key}';`)).toBe('0');
+      await expect(committedAttempt(page, key, before)).rejects.toThrow('Discarded upstream was not committed (status 409)');
+      await control(page, 'release');
+      await expect(page.getByRole('button', { name: 'Confirm updated total', exact: true })).toBeVisible();
+    } finally {
+      sql(`UPDATE app.price_entries SET unit_amount=2400 WHERE tenant_id='${tenant}' AND sku_id='${sku}';`);
+    }
+  });
+
   test('real checkout normal, request in flight, ambiguous failure and same-key retry', async ({ page }) => {
     await review(page);
     await snapshot(page, 'checkout-normal');
@@ -127,10 +163,19 @@ test.describe('VISUAL-REAL #213', () => {
     await review(page);
     const before = sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}';`);
     await fault(page, backend, 'POST', 'drop');
+    const firstRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/purchase/api/checkout' && request.method() === 'POST');
     await page.getByRole('button', { name: 'Start test checkout', exact: true }).click();
+    const requestKey = await (await firstRequest).headerValue('Idempotency-Key');
+    if (!requestKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey)) throw new Error('Expected a UUID checkout request key');
     await expect(page.getByRole('alert')).toBeVisible();
+    const committed = await committedAttempt(page, requestKey, before);
     await snapshot(page, 'checkout-ambiguous-failure');
+    const replayResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/purchase/api/checkout' && response.request().method() === 'POST');
     await start(page);
+    const replay = await replayResponse;
+    expect(replay.status()).toBe(201);
+    expect(await replay.request().headerValue('Idempotency-Key')).toBe(requestKey);
+    expect(await replay.json()).toMatchObject({ checkout_id: committed });
     expect(Number(sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}';`))).toBe(Number(before) + 1);
     await snapshot(page, 'checkout-retry');
   });
