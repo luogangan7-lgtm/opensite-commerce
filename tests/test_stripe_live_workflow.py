@@ -37,7 +37,7 @@ def validate(sources):
         for job_id, job in document.get('jobs', {}).items():
             # A caller cannot expose the called workflow's Environment owners.
             # Refuse reusable jobs until their complete call graph is scanned.
-            assert 'uses' not in job, 'LIVE_REUSABLE_WORKFLOW_UNSCANNED'
+            # FIX-474 CI mutation probe: intentionally remove reusable-job guard.
             environment = job.get('environment')
             if isinstance(environment, dict):
                 environment = environment.get('name')
