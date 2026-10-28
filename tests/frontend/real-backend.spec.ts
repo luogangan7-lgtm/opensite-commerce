@@ -574,7 +574,9 @@ test.describe('VISUAL-REAL #250', () => {
       expect(foreign.status()).toBe(404);
       await page.goto(`${site}/account/orders`); await historyReady(page);
       await expect(historyPanel(page)).toContainText('$27.00'); await expect(historyPanel(page)).toContainText('paid');
-      const createdAt = (await payable.json()).order.created_at as string;
+      const persisted = await page.request.get(`${base}/customer/orders/${receipt.order_id}`, { headers: buyerHeaders });
+      expect(persisted.status()).toBe(200);
+      const createdAt = (await persisted.json()).order.created_at as string;
       const date = historyPanel(page).locator('time');
       await expect(date).toHaveCount(1);
       await expect(date).toHaveAttribute('datetime', createdAt);
