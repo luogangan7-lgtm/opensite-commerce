@@ -24,6 +24,8 @@ jobs:
     env:
       GOTOOLCHAIN: local
       DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      C22A_DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      C22A_MAINTENANCE_DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
