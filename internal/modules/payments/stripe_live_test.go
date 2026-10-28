@@ -224,3 +224,12 @@ func TestStripeLiveCreationLookupFailsClosedOffline(t *testing.T) {
 		if e==nil||posts!=0||pages==0{t.Fatal("creation bypassed complete durable provider lookup")}
 	})}}}
 }
+
+// A-only regression: a restricted probe must never admit a financial endpoint.
+func TestStripeLiveAOnlyEndpoints(t *testing.T) {
+	for _, path := range []string{"refunds", "invoices", "customers", "events", "payment_methods", "payment_intents/pi_probe/confirm", "payment_intents/pi_probe/capture", "payment_intents/pi_probe", "invoices/in_probe/send"} {
+		if liveEndpoint("POST", path) {
+			t.Errorf("A-only admitted POST %s", path)
+		}
+	}
+}

@@ -164,6 +164,29 @@ class LiveWorkflowGate(unittest.TestCase):
                 with self.assertRaisesRegex(AssertionError, 'LIVE_NO_PRODUCTION_COMPOSITION'):
                     validate(original, {})
 
+    def test_phase_A_only_contract(self):
+        doc = yaml.safe_load(LIVE.read_text())
+        dispatch = doc.get('on', doc.get(True))['workflow_dispatch']
+        self.assertFalse(dispatch and dispatch.get('inputs'), 'LIVE_A_ONLY_INPUTS')
+        env = next(s['env'] for s in doc['jobs']['live']['steps'] if 'STRIPE_API' in s.get('env', {}))
+        self.assertEqual(env['STRIPE_SMOKE_PHASE'], 'A')
+        self.assertNotIn('STRIPE_SMOKE_EMAIL', env)
+        self.assertNotIn('STRIPE_REFUND_ATTEMPT', env)
+
+    def test_adapter_money_moving_static_negative_fixture(self):
+        original = yaml.safe_load(LIVE.read_text())
+        path = ROOT / 'internal/modules/payments/stripe_live.go'
+        source = path.read_text()
+        for endpoint in ('confirm', 'capture', 'invoices', 'refunds', 'payment_methods'):
+            with self.subTest(endpoint=endpoint), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                target = root / 'internal/modules/payments/stripe_live.go'
+                target.parent.mkdir(parents=True)
+                target.write_text(source + '\nfunc forbidden() { _ = "' + endpoint + '" }\n')
+                with patch.dict(validate.__globals__, ROOT=root):
+                    with self.assertRaisesRegex(AssertionError, 'LIVE_NO_MONEY_MOVING_ENDPOINT'):
+                        validate(original, {})
+
     def test_committed_workflow(self):
         self.assertTrue(LIVE.is_file(), 'LIVE_WORKFLOW_MISSING')
         validate(yaml.safe_load(LIVE.read_text()), {p.name:p.read_text() for p in LIVE.parent.glob('*.y*ml')})
