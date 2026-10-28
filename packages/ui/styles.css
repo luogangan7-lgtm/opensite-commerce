@@ -138,13 +138,16 @@
   border-radius: var(--radius-lg);
 }
 .os-card__title { margin-block: var(--space-0) var(--space-4); font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); line-height: var(--line-height-heading); }
-.os-table-scroll { max-inline-size: 100%; overflow-x: auto; scrollbar-color: var(--color-muted) var(--color-canvas); }
+.os-table-scroll { container-type: inline-size; max-inline-size: 100%; overflow-x: auto; scrollbar-color: var(--color-muted) var(--color-canvas); }
 .os-table { inline-size: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; text-align: start; }
 .os-table caption { padding-block: var(--space-0) var(--space-3); text-align: start; font-weight: var(--font-weight-semibold); }
 .os-table th,
 .os-table td { padding-block: var(--space-3); padding-inline: var(--space-4); border-block-end: var(--border-width) solid var(--color-border); overflow-wrap: anywhere; }
 .os-table th { background: var(--color-canvas); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); }
 .os-table__state { padding-block: var(--space-8); color: var(--color-muted); text-align: center; }
+/* A spanning cell can be wider than the scrollport. Keep its live status in the
+ * visible inline container while preserving the table's empty/loading row. */
+.os-table__state > span { display: block; position: sticky; inset-inline-start: var(--space-4); inline-size: calc(100cqi - var(--space-8)); white-space: normal; overflow-wrap: anywhere; }
 .os-empty-state { padding-block: var(--space-8); padding-inline: var(--space-4); text-align: center; }
 .os-empty-state h3 { margin-block: var(--space-0) var(--space-2); font-size: var(--font-size-lg); line-height: var(--line-height-heading); }
 .os-empty-state p { margin-block: var(--space-0); margin-inline: var(--space-0); color: var(--color-muted); overflow-wrap: anywhere; }

@@ -8,10 +8,12 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=scripts/lib/pg_url.sh
+source "$ROOT/scripts/lib/pg_url.sh"
 if [[ -n "${DATABASE_URL:-}" ]]; then
-  base="${DATABASE_URL%%\?*}"; query=""; [[ $DATABASE_URL == *\?* ]] && query="?${DATABASE_URL#*\?}"
   admin() { psql "$DATABASE_URL" -X -q -At -v ON_ERROR_STOP=1 "$@"; }
-  db() { local name=$1; shift; psql "${base%/*}/$name$query" -X -q -At -v ON_ERROR_STOP=1 "$@"; }
+  # Never keep the caller's query dbname: it overrides the path database.
+  db() { local name=$1; shift; psql "$(pg_url_for_database "$DATABASE_URL" "$name")" -X -q -At -v ON_ERROR_STOP=1 "$@"; }
 else
   admin() { docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -At -U postgres -d opensite -v ON_ERROR_STOP=1 "$@"; }
   db() { local name=$1; shift; docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -At -U postgres -d "$name" -v ON_ERROR_STOP=1 "$@"; }
@@ -19,6 +21,9 @@ fi
 
 fresh_009() {  # $1 = database name; applies 001-009 exactly as shipped
   admin -c "DROP DATABASE IF EXISTS $1" -c "CREATE DATABASE $1" 2>/dev/null
+  local actual
+  actual="$(db "$1" -c 'SELECT current_database()')"
+  [[ $actual == "$1" ]] || { echo "FAIL: upgrade target is $actual, not $1 (dbname override)" >&2; exit 1; }
   for f in migrations/00[1-9]_*.sql; do db "$1" < "$f" >/dev/null; done
 }
 apply_010() { { echo 'BEGIN;'; cat migrations/010_security_hardening.sql; echo 'COMMIT;'; } | db "$1" 2>&1 >/dev/null; }
@@ -27,7 +32,9 @@ apply_010() { { echo 'BEGIN;'; cat migrations/010_security_hardening.sql; echo '
 river_db() {
  local name=$1; shift
  if [[ -n "${DATABASE_URL:-}" ]]; then
-  DATABASE_URL="${base%/*}/$name$query" ./scripts/migrate_river.sh "$@"
+  local river_url
+  river_url="$(pg_url_for_database "$DATABASE_URL" "$name")"
+  DATABASE_URL="$river_url" ./scripts/migrate_river.sh "$@"
  else
   RIVER_DATABASE_NAME="$name" ./scripts/migrate_river.sh "$@"
  fi

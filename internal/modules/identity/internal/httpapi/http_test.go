@@ -66,7 +66,11 @@ func (f *fakeRepo) SaveLogin(_ context.Context, in login.SessionInput) (login.Se
 }
 func (f *fakeRepo) LookupSession(ctx context.Context, h [32]byte, _ time.Time, _ time.Duration) (login.Session, error) {
 	if f.lookupBlock != nil {
-		f.lookupBlock <- struct{}{}
+		select {
+		case f.lookupBlock <- struct{}{}:
+		case <-ctx.Done():
+			return login.Session{}, ctx.Err()
+		}
 		<-ctx.Done()
 		return login.Session{}, ctx.Err()
 	}

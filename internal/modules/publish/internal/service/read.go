@@ -24,6 +24,7 @@ type manifest struct {
 
 var decimal = regexp.MustCompile(`^(0|[1-9][0-9]{0,37})$`)
 var currency = regexp.MustCompile(`^[A-Z]{3}$`)
+
 // Well-formed BCP 47 subset (language[-script][-region](-variant)*) that Intl accepts,
 // matched case-insensitively (BCP 47 tags are case-insensitive) on the lowercased tag;
 // duplicate variants are rejected separately because Intl rejects them too.

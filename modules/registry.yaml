@@ -1832,6 +1832,8 @@
         "auth_sessions"
       ]
     },
+    {"file":"migrations/pending/b-pricing-cas_missing_tier.sql","owner":"pricing","touches_tables":["price_lists","price_entries","tenants","product_variants"]},
+    {"file":"migrations/pending/b-pricing-invalidation_publication_candidates.sql","owner":"publish","touches_tables":["sites","serving_invalidations","storefront_serving","product_listings","product_content_revisions"]},
     {
       "file": "migrations/pending/admin-pricing-1_staff_pricing.sql",
       "owner": "pricing",

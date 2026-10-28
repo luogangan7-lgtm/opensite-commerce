@@ -84,7 +84,7 @@ func TestRefundResolutionIndependentFacts(t *testing.T) {
 							return abort
 						}
 						return nil
-						})
+					})
 				}
 				manualWitness := func() string {
 					t.Helper()

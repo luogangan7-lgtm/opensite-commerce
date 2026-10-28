@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/observability"
 )
 
 // IdentityRunner keeps the dedicated LOGIN private. Authentication work uses
@@ -21,6 +22,7 @@ import (
 type IdentityRunner struct {
 	pool             *pgxpool.Pool
 	operationTimeout time.Duration
+	lane             string
 }
 
 func OpenIdentity(ctx context.Context, dsn string) (*IdentityRunner, error) {
@@ -69,7 +71,11 @@ func openIdentity(ctx context.Context, dsn string, maxConns int32, operationTime
 		pool.Close()
 		return nil, errors.New("identity database connection failed")
 	}
-	return &IdentityRunner{pool: pool, operationTimeout: operationTimeout}, nil
+	lane := "staff"
+	if maxConns == 4 {
+		lane = "authorization"
+	}
+	return &IdentityRunner{pool: pool, operationTimeout: operationTimeout, lane: lane}, nil
 }
 
 // InMaintenance runs global identity work under the connecting LOGIN, without
@@ -96,7 +102,7 @@ func (r *IdentityRunner) RunAuthentication(ctx context.Context, fn func(context.
 	})
 }
 
-func (r *IdentityRunner) inMaintenance(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
+func (r *IdentityRunner) inMaintenance(ctx context.Context, fn func(context.Context, pgx.Tx) error) (err error) {
 	if r == nil || r.pool == nil {
 		return errors.New("identity database is unavailable")
 	}
@@ -108,7 +114,26 @@ func (r *IdentityRunner) inMaintenance(ctx context.Context, fn func(context.Cont
 		ctx, cancel = context.WithTimeout(ctx, r.operationTimeout)
 		defer cancel()
 	}
-	return pgx.BeginTxFunc(ctx, r.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+	started := time.Now()
+	lane := observability.AuthenticationLane(ctx, r.lane)
+	outcome := func(e error) string {
+		if e == nil {
+			return "ok"
+		}
+		var state interface{ SQLState() string }
+		if ctx.Err() != nil || (errors.As(e, &state) && (state.SQLState() == "55P03" || state.SQLState() == "57014")) {
+			return "timeout"
+		}
+		return "error"
+	}
+	defer func() { observability.ObserveAuthentication(ctx, lane+"_pool", outcome(err), started) }()
+	conn, err := r.pool.Acquire(ctx)
+	observability.ObserveAuthentication(ctx, lane+"_queue", outcome(err), started)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	return pgx.BeginTxFunc(ctx, conn, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id','',true)`); err != nil {
 			return err
 		}

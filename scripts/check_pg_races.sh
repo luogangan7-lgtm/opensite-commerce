@@ -12,6 +12,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=scripts/lib/pg_url.sh
+source "$ROOT/scripts/lib/pg_url.sh"
 if [[ -n "${DATABASE_URL:-}" ]]; then
   PSQL=(psql "$DATABASE_URL" -X -q -At -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
 else
@@ -898,17 +900,18 @@ echo "race auth cleanup skips locks and preserves renewed rows: $got (expected 1
 BOOTSTRAP_DB=bootstrap_race_$$_$RANDOM
 sql -c "CREATE DATABASE $BOOTSTRAP_DB" >/dev/null
 if [[ -n "${DATABASE_URL:-}" ]]; then
- bootstrap_base="${DATABASE_URL%%\?*}"; bootstrap_query=""
- [[ $DATABASE_URL != *\?* ]] || bootstrap_query="?${DATABASE_URL#*\?}"
- PSQL=(psql "${bootstrap_base%/*}/$BOOTSTRAP_DB$bootstrap_query" -X -q -At -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
+ bootstrap_url="$(pg_url_for_database "$DATABASE_URL" "$BOOTSTRAP_DB")"
+ PSQL=(psql "$bootstrap_url" -X -q -At -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
 else
  PSQL=(docker compose -f deploy/compose.yaml exec -T postgres psql -X -q -At -U postgres -d "$BOOTSTRAP_DB" -v ON_ERROR_STOP=1 -v VERBOSITY=verbose)
 fi
+actual_db=$(sql -c 'SELECT current_database()')
+[[ $actual_db == "$BOOTSTRAP_DB" ]] || { echo "FAIL: bootstrap target is $actual_db, not $BOOTSTRAP_DB (dbname override)" >&2; exit 1; }
 for f in migrations/[0-9][0-9][0-9]_*.sql; do
  # Queue authorization depends on River's schema in this fresh database too.
  if [[ $f == *_queue_authorization.sql ]]; then
   if [[ -n "${DATABASE_URL:-}" ]]; then
-   DATABASE_URL="${bootstrap_base%/*}/$BOOTSTRAP_DB$bootstrap_query" ./scripts/migrate_river.sh
+   DATABASE_URL="$bootstrap_url" ./scripts/migrate_river.sh
   else
    RIVER_DATABASE_NAME="$BOOTSTRAP_DB" ./scripts/migrate_river.sh
   fi
@@ -1941,6 +1944,50 @@ await staff_price_stale "${ROWLOCK[@]}"
 gate_open 110; wait
 expect staff_price_first ok; expect staff_price_stale PRICING_VERSION_CONFLICT
 [[ $(sql <<<"SELECT p.version||'|'||e.unit_amount FROM app.price_lists p JOIN app.price_entries e ON e.tenant_id=p.tenant_id AND e.price_list_id=p.id WHERE p.tenant_id='$PT' AND p.id='$PL';") == '2|111' ]] || fail=1
+
+# b-pricing gate142: candidate invalidation while a first CMS publish is uncommitted.
+# The Go statement-boundary gate also checks rebuilt serving bytes; this gate proves
+# the SQL trigger commits with no publication/serving lock on the price writer.
+read -r BP_SITE BP_PRODUCT <<<"$(sql <<SQL
+INSERT INTO app.organizations(tenant_id,display_name) VALUES('$PT','candidate') RETURNING id AS o \gset
+INSERT INTO app.sites(tenant_id,organization_id,name,default_locale) VALUES('$PT',:'o','candidate','en') RETURNING id AS s \gset
+SELECT product_id AS p FROM app.product_variants WHERE tenant_id='$PT' AND id='$PS' \gset
+UPDATE app.products SET lifecycle_status='ready' WHERE tenant_id='$PT' AND id=:'p';
+UPDATE app.product_variants SET lifecycle_status='ready' WHERE tenant_id='$PT' AND id='$PS';
+UPDATE app.price_lists SET status='active' WHERE tenant_id='$PT' AND id='$PL';
+INSERT INTO app.product_content_revisions(tenant_id,product_id,locale,revision,title,seo) VALUES('$PT',:'p','en',1,'Candidate','{}');
+INSERT INTO app.product_listings(tenant_id,site_id,product_id,locale,slug,status,published_content_revision)
+ VALUES('$PT',:'s',:'p','en','candidate','published',1);
+DELETE FROM app.serving_invalidations WHERE tenant_id='$PT';
+SELECT :'s'||' '||:'p';
+SQL
+)"
+BP_DRAFT=$(sql <<SQL | tail -1
+BEGIN; SELECT set_config('app.tenant_id','$PT',true); SET LOCAL ROLE app_runtime; $CMS_ACTOR
+SELECT app.cms_create_draft('$PT','$BP_SITE','user','$CMS_A','en','Candidate','')->>'draft_id' AS d \gset
+SELECT app.cms_apply('$PT','$BP_SITE',:'d','user','$CMS_A',1,'save_page','{"page_key":"home","locale":"en","path":"/","document":{"title":"Candidate","description":"","blocks":[]},"media_ids":[]}');
+COMMIT;
+SELECT :'d';
+SQL
+)
+gate_close 142
+tx bpricing_publish app_runtime "$PT" "$CMS_ACTOR
+DO \$bp\$ DECLARE r jsonb; BEGIN
+ r:=app.cms_publish('$PT','$BP_SITE','$BP_DRAFT','user','$CMS_A',2,NULL,0,'candidate142');
+ PERFORM app.cms_seal_skus('$PT','$BP_SITE',(r->>'release_id')::uuid,
+  jsonb_build_array(jsonb_build_object('product_id','$BP_PRODUCT','sku_id','$PS','sku_code','STAFF-RACE','option_values','[]'::jsonb)));
+END \$bp\$; $(park 142)" &
+await bpricing_publish advisory
+tx bpricing_change postgres "$PT" "UPDATE app.price_entries SET unit_amount=333 WHERE tenant_id='$PT' AND price_list_id='$PL' AND sku_id='$PS';" &
+bpricing_change_pid=$!
+await_job bpricing_change "$bpricing_change_pid"
+expect bpricing_change ok
+[[ $(sql <<<"SELECT count(*) FROM app.serving_invalidations WHERE tenant_id='$PT' AND site_id='$BP_SITE' AND reason='price_entry';") == 1 ]] || {
+ echo 'FAIL: PUBLISH_CANDIDATE_RACE142 lost invalidation before membership commit'; fail=1;
+}
+gate_open 142; wait
+expect bpricing_publish ok
+echo 'PASS: PUBLISH_CANDIDATE_RACE142 price mutation did not wait for publication'
 
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth/fulfillment/returns contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'

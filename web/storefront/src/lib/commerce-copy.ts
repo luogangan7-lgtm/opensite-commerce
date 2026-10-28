@@ -2,6 +2,10 @@
  * Invariants: fixture claims are explicit; unavailable production actions never promise fulfillment or real authentication.
  */
 const english = {
+  verifyEmail:'Verify email', verifyTitle:'Verify your email', verifyDescription:'Confirm your email to finish registration.',
+  verificationOpen:'Open the verification link from your email.', verificationReady:'Verify your email to finish registration.',
+  verificationDone:'Email verified. You can now sign in.', verificationFailed:'Verification could not be completed. Request a new link from the account page.',
+  customerAccount:'Customer account',
   orderHistory:'Order history', historyDescription:'Your purchases and order details.',
   historySignIn:'Sign in to view your orders.', orderNotFound:'Order not found.',
   historyUnavailable:'Orders could not be loaded. Try again.', loadingOrders:'Loading orders…',

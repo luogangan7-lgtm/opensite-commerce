@@ -177,7 +177,8 @@ func TestB2BWiringHTTPPG(t *testing.T) {
 		}
 	}
 	base := "/api/public/v1/quotes/"
-	newQuote := func() qc.Quote {
+	newQuote := func(t *testing.T) qc.Quote {
+		t.Helper()
 		var out qc.Quote
 		staff := f.mustActor(t, f.staff, "", true)
 		err := f.run(func(ctx context.Context, tx pgx.Tx) error {
@@ -217,7 +218,7 @@ func TestB2BWiringHTTPPG(t *testing.T) {
 		check(t, request("POST", "/api/public/v1/inquiries", `{"buyer_email":"inquiry@example.test","message":"request"}`, f.buyer, "", csrf[f.buyer], "unverified.example.invalid"), 404)
 	})
 	t.Run("buyer lifecycle and negative authority", func(t *testing.T) {
-		q := newQuote()
+		q := newQuote(t)
 		path := base + q.ID
 		check(t, request("GET", path, "", f.buyer, "", "", host), 200)
 		check(t, request("POST", path+"/approve", "{}", f.approver, q.ETag(), csrf[f.approver], host), 409)

@@ -172,7 +172,7 @@ func (s *Service) BuildExport(ctx context.Context, tenant, id string) error {
 		}
 		// Build query holds customer+request locks. Metadata status is read-only.
 		var meta struct {
-			Status string `json:"status"`
+			Status   string `json:"status"`
 			Customer struct {
 				ID string `json:"id"`
 			} `json:"customer"`

@@ -3,10 +3,12 @@
  * Invariants: no proof in SSR/query/canonical, no-store/no-referrer/noindex; no GET mutation.
  */
 import Shell from '../../layouts/Shell.astro';
+import { commerceCopy } from '../../lib/commerce-copy';
 import CustomerVerification from '../../components/CustomerVerification';
+const locale='en', ui=commerceCopy(locale,false);
 Astro.response.headers.set('Cache-Control','no-store');
 Astro.response.headers.set('Referrer-Policy','no-referrer');
 ---
-<Shell title="Verify your email" description="Confirm your email to finish registration." canonical={undefined} noindex>
-  <h1>Verify your email</h1><CustomerVerification client:load />
+<Shell homeHref="/" locale={locale} title={ui.verifyTitle} description={ui.verifyDescription} canonical={undefined} noindex>
+  <h1>{ui.verifyTitle}</h1><CustomerVerification locale={locale} client:load />
 </Shell>

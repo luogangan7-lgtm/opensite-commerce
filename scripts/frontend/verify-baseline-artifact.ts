@@ -10,6 +10,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BASELINES, REPOSITORY, assertRunAuthority, checkedRecords, goldenChangeSet, recordPath, runId, sha256 } from './baseline-provenance';
+import { latestSuccessfulAttempt, listRunArtifacts, listRunJobs, requireAttemptArtifact } from './rerun-attempts';
 import { WRITER_INPUTS, assertNoBunEnvFiles, assertProducerWorkflow, assertWriterInputs, blobSha } from './workflow-provenance';
 
 const all = checkedRecords();
@@ -52,14 +53,23 @@ try {
     for (const file of WRITER_INPUTS) atSource[file] = (await api(`contents/${file}?ref=${run.head_sha}`, false, true))?.sha ?? null;
     assertWriterInputs(atSource, candidateWriter);
     assertNoBunEnvFiles((await api(`contents?ref=${run.head_sha}`) as { name: string }[]).map(entry => entry.name));
-    const jobs = await api(`actions/runs/${id}/jobs?per_page=100`);
-    if (!jobs.jobs.some((job: { name: string; conclusion: string }) => job.name === 'frontend-baselines' && job.conclusion === 'success')) throw new Error('Golden CI producer did not succeed');
-    const artifacts = await api(`actions/runs/${id}/artifacts?per_page=100`);
-    const candidates = artifacts.artifacts.filter((item: { name: string; expired: boolean }) => item.name === `frontend-baselines-${id}` && !item.expired);
-    const artifact = candidates[0];
-    if (candidates.length !== 1 || artifact.size_in_bytes > 50_000_000 || !/^sha256:[0-9a-f]{64}$/.test(artifact.digest)) throw new Error('Golden artifact is missing, expired, ambiguous or has no SHA256 digest');
-    const bytes = await api(`actions/artifacts/${artifact.id}/zip`, true) as Uint8Array;
-    if (`sha256:${createHash('sha256').update(bytes).digest('hex')}` !== artifact.digest) throw new Error('Downloaded golden artifact digest mismatch');
+    // `filter=all` is required: the default listing only shows the latest
+    // execution, so a partial re-run can hide the earlier successful producer.
+    // Per lane the latest successful attempt is authoritative and its exact
+    // per-attempt artifact must exist; an older attempt is never accepted.
+    const attempt = latestSuccessfulAttempt(await listRunJobs(api, id), 'frontend-baselines');
+    const artifactName = `frontend-baselines-${id}-${attempt}`;
+    // A full re-run uploads one immutable artifact per attempt; filter by the
+    // exact name server-side and follow pages so more than 100 older artifacts
+    // cannot hide this attempt's evidence.
+    const artifacts = await listRunArtifacts(api, id, artifactName);
+    const artifact = requireAttemptArtifact(artifacts, artifactName);
+    const artifactId = artifact.id;
+    const digest = artifact.digest;
+    const size = artifact.size_in_bytes;
+    if (typeof artifactId !== 'number' || typeof size !== 'number' || size <= 0 || size > 50_000_000 || typeof digest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(digest)) throw new Error('Golden artifact is missing, expired, ambiguous or has no SHA256 digest');
+    const bytes = await api(`actions/artifacts/${artifactId}/zip`, true) as Uint8Array;
+    if (`sha256:${createHash('sha256').update(bytes).digest('hex')}` !== digest) throw new Error('Downloaded golden artifact digest mismatch');
     const archive = join(directory, `${id}.zip`);
     writeFileSync(archive, bytes);
     const list = Bun.spawnSync(['unzip', '-Z1', archive]);
@@ -77,6 +87,6 @@ try {
         if (createHash('sha256').update(readEntry(path)).digest('hex') !== sha256(`${BASELINES}/${path}`)) throw new Error(`Committed PNG/provenance differs from CI artifact: ${path}`);
       }
     }
-    console.log(`PASS: ${entries.length} PNG/record pairs verified against CI run ${id}, artifact ${artifact.id}, SHA ${run.head_sha}`);
+    console.log(`PASS: ${entries.length} PNG/record pairs verified against CI run ${id}, artifact ${artifactId}, SHA ${run.head_sha}`);
   }
 } finally { rmSync(directory, { recursive: true, force: true }); }
