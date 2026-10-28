@@ -574,6 +574,18 @@ test.describe('VISUAL-REAL #250', () => {
       expect(foreign.status()).toBe(404);
       await page.goto(`${site}/account/orders`); await historyReady(page);
       await expect(historyPanel(page)).toContainText('$27.00'); await expect(historyPanel(page)).toContainText('paid');
+      const createdAt = (await payable.json()).order.created_at as string;
+      const date = historyPanel(page).locator('time');
+      await expect(date).toHaveCount(1);
+      await expect(date).toHaveAttribute('datetime', createdAt);
+      await expect(date).toHaveText(new Date(createdAt).toLocaleDateString('en-US', { timeZone: 'UTC' }));
+      // Exercise a different calendar date without changing the real backend fact.
+      const original = await date.innerText();
+      const before = await page.screenshot({ fullPage: true });
+      await date.evaluate(node => { node.textContent = '12/31/2099'; });
+      const after = await page.screenshot({ fullPage: true });
+      await date.evaluate((node, value) => { node.textContent = value; }, original);
+      expect(after.equals(before), 'date change must not alter screenshot pixels').toBe(true);
       await historySnapshot(page, 'b2b-paid-list');
       await page.getByRole('button', { name: `Order #${receipt.order_number}`, exact: true }).click(); await historyReady(page);
       await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('$27.00');
