@@ -19,6 +19,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/internal/store"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 type Repository interface {
@@ -135,7 +136,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	if !ok {
 		return contract.Return{}, contract.ErrUnavailable
 	}
-	request := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: tenant, OrderID: prepared.OrderID, OrderVersion: prepared.PaymentVersion, Amount: money.Money{Amount: prepared.RefundMinor, Currency: prepared.Currency}, IdempotencyKey: "return:" + prepared.ID + ":" + prepared.RefundKey}, ProviderRef: prepared.ProviderRef}
+	request := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: tenant, OrderID: prepared.OrderID, OrderVersion: prepared.PaymentVersion, Amount: money.Money{Amount: prepared.RefundMinor, Currency: prepared.Currency}, IdempotencyKey: idempotency.DerivedKey("return.provider.v1", prepared.ID, prepared.RefundKey)}, ProviderRef: prepared.ProviderRef}
 	result, err := s.config.Payments.Refund(ctx, request)
 	if err != nil {
 		return contract.Return{}, s.recordProviderFailure(ctx, tenant, prepared, err)

@@ -59,7 +59,7 @@ func TestRefundFailedIntentGuard(t *testing.T) {
 	}
 	fail := func(runner fulfillmentRunner, key string, rejected bool) error {
 		return runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, "SELECT app.returns_fail_refund($1,$2,$3)", ret.ID, key, rejected)
+			_, err := tx.Exec(ctx, "SELECT app.returns_fail_refund($1,$2,$3)", ret.ID, fixtureCallerKey(key), rejected)
 			return err
 		})
 	}

@@ -219,7 +219,7 @@ func TestC02cCustomerSessionCannotAuthorizeStaffRoutes(t *testing.T) {
 				called = true
 				w.WriteHeader(http.StatusNoContent)
 			})}
-			server, err := bootstrap.New(bootstrap.Config{Customer: port, CustomerOrigin: origin, CustomerSecret: secret, Authenticator: httpapi.DenyAuthenticator{}, Routes: []httpapi.Route{route}})
+			server, err := bootstrap.NewTestServer(t, bootstrap.Config{Customer: port, CustomerOrigin: origin, CustomerSecret: secret, Authenticator: httpapi.DenyAuthenticator{}, Routes: []httpapi.Route{route}})
 			if err != nil {
 				t.Fatal(err)
 			}

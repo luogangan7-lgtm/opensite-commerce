@@ -34,6 +34,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/httpapitest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -237,7 +238,7 @@ func TestC02cProductionHTTPPostgres(t *testing.T) {
 			scope = "catalog:write"
 		}
 		spec := platform.RouteSpec{OperationID: "c02cHTTPWitness" + method, Method: method, Pattern: witness, Access: platform.AdminOrAPIKey, Scope: scope}
-		err := router.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := httpapitest.Register(t, router, false, spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			actor, err := platform.AuthorizedActor(r.Context())
 			if err != nil || actor.ID == "" {
 				t.Error("admitted HTTP actor missing")

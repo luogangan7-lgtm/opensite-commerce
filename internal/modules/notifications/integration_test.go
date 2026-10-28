@@ -62,7 +62,7 @@ func notificationFixture(t *testing.T) fixture {
 			return e
 		}
 		var order string
-		if e := tx.QueryRow(ctx, `INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor) VALUES($1,uuidv7(),1,'notification-gate',decode(repeat('01',32),'hex'),'{"email":"Buyer@safe.test","name":"<script>buyer</script>"}','USD',100,0,0,'{}',100) RETURNING id::text`, f.tenant).Scan(&order); e != nil {
+		if e := tx.QueryRow(ctx, `INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor) VALUES($1,uuidv7(),1,'d1d50d45-c431-5e93-8cd5-9b70112233aa',decode(repeat('01',32),'hex'),'{"email":"Buyer@safe.test","name":"<script>buyer</script>"}','USD',100,0,0,'{}',100) RETURNING id::text`, f.tenant).Scan(&order); e != nil {
 			return e
 		}
 		if _, e := tx.Exec(ctx, `RESET ROLE`); e != nil {

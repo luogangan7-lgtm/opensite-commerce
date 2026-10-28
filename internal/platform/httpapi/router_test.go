@@ -34,7 +34,10 @@ func TestRegisterInvalid(t *testing.T) {
 		{"bad pattern", func(s *httpapi.RouteSpec) { s.Pattern = "not/a/path" }},
 		{"tenant without scope", func(s *httpapi.RouteSpec) { s.Scope = "" }},
 		{"tenant whitespace scope", func(s *httpapi.RouteSpec) { s.Scope = " " }},
-		{"self scope", func(s *httpapi.RouteSpec) { s.Access = httpapi.AuthenticatedSelf; s.Pattern = "/api/v1/auth/current-actor" }},
+		{"self scope", func(s *httpapi.RouteSpec) {
+			s.Access = httpapi.AuthenticatedSelf
+			s.Pattern = "/api/v1/auth/current-actor"
+		}},
 		{"self tenant", func(s *httpapi.RouteSpec) { s.Access = httpapi.AuthenticatedSelf; s.Scope = "" }},
 		{"self tenant alias", func(s *httpapi.RouteSpec) {
 			s.Access = httpapi.AuthenticatedSelf
@@ -236,7 +239,7 @@ func TestPanicRecoveryAndPrivateLogs(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/panic?token=query-secret", nil)
+	req := httptest.NewRequest("GET", "/api/v1/auth/current-actor?token=query-secret", nil)
 	req.Header.Set("Authorization", "Bearer auth-secret")
 	req.Header.Set("X-Request-ID", "untrusted-secret")
 	defer func() {

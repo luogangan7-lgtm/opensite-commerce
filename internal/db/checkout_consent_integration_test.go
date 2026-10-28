@@ -19,6 +19,7 @@ import (
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 func TestCheckoutPGChangedTotalConsent(t *testing.T) {
@@ -77,7 +78,7 @@ func TestCheckoutPGConsentReplayAndRepricing(t *testing.T) {
 	if _, err := f.service.Start(checkoutRequestContext(f.ctx), f.actor, in); !errors.Is(err, checkoutcontract.ErrKeyReused) {
 		t.Fatalf("changed consent reused key: %v", err)
 	}
-	in.IdempotencyKey += ":new"
+	in.IdempotencyKey = fixtureCallerKey(in.IdempotencyKey + ":new")
 	in.AcceptedTotal.AmountMinor = 160
 	if _, err := f.service.Start(checkoutRequestContext(f.ctx), f.actor, in); !errors.Is(err, checkoutcontract.ErrTotalChanged) {
 		t.Fatalf("new attempt accepted stale money: %v", err)
@@ -169,7 +170,7 @@ func TestCheckoutPGConsentLegacyRecoveryAndPaidReplay(t *testing.T) {
 		t.Run(string(status), func(t *testing.T) {
 			a := newCheckoutAdoptionPG(t)
 			f, id := a.f, uuid.NewString()
-			request := payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: a.order.ID, OrderVersion: 1, Amount: money.Money{Amount: 270, Currency: "USD"}, IdempotencyKey: "checkout:v1:" + id + ":create"}
+			request := payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: a.order.ID, OrderVersion: 1, Amount: money.Money{Amount: 270, Currency: "USD"}, IdempotencyKey: idempotency.DerivedKey("checkout.provider.v1", id, "create")}
 			intent, err := f.provider.CreateIntent(checkoutRequestContext(f.ctx), request)
 			if err != nil {
 				t.Fatal(err)
@@ -192,7 +193,7 @@ func TestCheckoutPGConsentLegacyRecoveryAndPaidReplay(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			request.IdempotencyKey = "checkout:v1:" + id + ":capture"
+			request.IdempotencyKey = idempotency.DerivedKey("checkout.provider.v1", id, "capture")
 			if _, err := f.provider.Capture(checkoutRequestContext(f.ctx), payment.PaymentOperation{CreatePaymentIntent: request, ProviderRef: intent.ProviderRef}); err != nil {
 				t.Fatal(err)
 			}

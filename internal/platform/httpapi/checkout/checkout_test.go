@@ -22,6 +22,7 @@ import (
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkout "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/httpapitest"
 )
 
 const tenant = "10000000-0000-4000-8000-000000000001"
@@ -179,7 +180,7 @@ func TestCheckoutAuthenticatorPreservesAuthenticatedStaffActor(t *testing.T) {
 		r := httpapi.New(auth, nil)
 		reached := false
 		spec := httpapi.RouteSpec{OperationID: "staffActorProbe", Method: http.MethodPost, Pattern: "/api/v1/t/{tenant_id}/staff-actor-probe", Access: httpapi.AdminSession, Scope: "fulfillment:write"}
-		if err := r.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if err := httpapitest.Register(t, r, false, spec, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			reached = true
 			gotTenant, err := httpapi.AuthorizedTenant(req.Context())
 			if err != nil || gotTenant != tenant {

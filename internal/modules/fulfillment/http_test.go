@@ -18,6 +18,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/fulfillment/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/httpapitest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
@@ -174,7 +175,7 @@ func TestHTTPAdmission(t *testing.T) {
 			if w.Code != tc.want || runs != 2*tc.calls || service.calls != tc.calls {
 				t.Fatalf("status=%d want=%d runs=%d calls=%d body=%s", w.Code, tc.want, runs, service.calls, w.Body.String())
 			}
-			if tc.calls == 1 && (service.input.ExpectedVersion != 2 || len(service.input.IdempotencyKey) != 64 || len(service.input.Lines) != 1 || service.input.Lines[0].Quantity != 2) {
+			if tc.calls == 1 && (service.input.ExpectedVersion != 2 || len(service.input.IdempotencyKey) != 36 || len(service.input.Lines) != 1 || service.input.Lines[0].Quantity != 2) {
 				t.Fatalf("input lost: %+v", service.input)
 			}
 		})
@@ -281,7 +282,7 @@ func TestHTTPBusinessTransactionMustRetainActor(t *testing.T) {
 	var tenantOnly context.Context
 	legacy := httpapi.New(legacyHTTPAuth{httpAuth{}}, nil)
 	spec := httpapi.RouteSpec{OperationID: "actorless", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/actorless", Access: httpapi.AdminOrAPIKey, Scope: "fulfillment:write"}
-	if err := legacy.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { tenantOnly = r.Context(); w.WriteHeader(204) })); err != nil {
+	if err := httpapitest.Register(t, legacy, false, spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { tenantOnly = r.Context(); w.WriteHeader(204) })); err != nil {
 		t.Fatal(err)
 	}
 	legacy.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/v1/t/"+httpTenant+"/actorless", nil))

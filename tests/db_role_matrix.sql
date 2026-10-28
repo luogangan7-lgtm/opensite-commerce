@@ -88,7 +88,7 @@ BEGIN
       ELSE
        IF t.relname=ANY(ARRAY['checkout_sessions','checkout_attempts']) THEN expected_table := true; END IF;
        allowed_columns := CASE t.relname
-        WHEN 'payment_events' THEN ARRAY['tenant_id','id','provider_account_id','provider_ref','event_key','48f99400-467e-5468-92b5-35856869f523','order_version','status','amount_minor','currency','provider_refund_id']
+        WHEN 'payment_events' THEN ARRAY['tenant_id','id','provider_account_id','provider_ref','event_key','claimed_order_id','order_version','status','amount_minor','currency','provider_refund_id']
         WHEN 'payment_event_deliveries' THEN ARRAY['tenant_id','id','payment_event_id']
         WHEN 'checkout_sessions' THEN all_columns
         WHEN 'checkout_attempts' THEN all_columns
@@ -101,7 +101,7 @@ BEGIN
         WHEN 'tax_categories' THEN ARRAY['tenant_id','code','name','is_exempt']
         WHEN 'tax_rates' THEN ARRAY['tenant_id','id','zone_id','category_code','rate_bp','valid_from','valid_until']
         WHEN 'tax_settings' THEN ARRAY['tenant_id','prices_include_tax']
-        WHEN 'idempotency_records' THEN ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','dd9d88cf-fb48-59ef-871e-aac2a213dd96','expires_at','claim_token','created_at']
+        WHEN 'idempotency_records' THEN ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','request_hash','expires_at','claim_token','created_at']
         WHEN 'outbox_events' THEN ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key','created_at']
         WHEN 'webhook_inbox' THEN ARRAY['tenant_id','id','provider','provider_account_id','environment','provider_event_id','payload_hash','payload_reference','created_at']
         WHEN 'site_domains' THEN ARRAY['tenant_id','site_id','id','hostname','created_at']
@@ -121,7 +121,7 @@ BEGIN
        expected_table := true;
       ELSE
        allowed_columns := CASE t.relname
-        WHEN 'checkout_sessions' THEN ARRAY['phase','provider_ref','start_result','final_result','claim_kind','claim_key','cbb81065-aa58-59c8-9739-6ea8e5618483','refunded_net_minor','refunded_tax_minor','refunded_shipping_minor']
+        WHEN 'checkout_sessions' THEN ARRAY['phase','provider_ref','start_result','final_result','claim_kind','claim_key','updated_at','refunded_net_minor','refunded_tax_minor','refunded_shipping_minor']
         WHEN 'payment_events' THEN ARRAY['applied','error_code']
         WHEN 'checkout_attempts' THEN ARRAY['result']
         WHEN 'site_drafts' THEN ARRAY['tenant_id','site_id','id','base_release_id','revision','status','created_at']
@@ -902,7 +902,7 @@ DECLARE r record;t record;a record;f record; privilege text;cols text[]; expecte
    ELSIF privilege='SELECT' AND t.relname='inquiries' THEN cols:=ARRAY['tenant_id','id','site_id','buyer_company_id','buyer_email'];
    ELSIF privilege='SELECT' AND t.relname='quote_conversions' THEN cols:=ARRAY['tenant_id','quote_id','order_id','quote_version','customer_id'];
    ELSIF privilege='INSERT' AND t.relname='notification_deliveries' THEN cols:=ARRAY['tenant_id','id','source_event_id','dispatch_event_id','recipient','locale','template_key','reference_id','status','last_error'];
-   ELSIF privilege='INSERT' AND t.relname='notification_redrive_requests' THEN cols:=ARRAY['tenant_id','notification_id','idempotency_key','35178ceb-b711-5e21-bd63-3740d5654a7e','dispatch_event_id'];
+   ELSIF privilege='INSERT' AND t.relname='notification_redrive_requests' THEN cols:=ARRAY['tenant_id','notification_id','idempotency_key','generation','dispatch_event_id'];
    ELSIF privilege='INSERT' AND t.relname='outbox_events' THEN cols:=ARRAY['tenant_id','id','event_type','payload','delivery_target','dedup_key'];
    ELSIF privilege='UPDATE' AND t.relname='notification_deliveries' THEN cols:=ARRAY['dispatch_event_id','status','attempt_count','generation','send_token','lease_attempt','lease_worker','last_error','updated_at','sent_at'];
    ELSIF privilege='UPDATE' AND t.relname='outbox_events' THEN cols:=ARRAY['status','lease_owner','lease_until','attempts','last_error']; END IF;
@@ -957,10 +957,10 @@ BEGIN
      ELSIF privilege='SELECT' AND t.relname='quotes' THEN cols:=ARRAY['tenant_id','id','accepted_by','snapshot'];
      ELSIF privilege='SELECT' AND t.relname='quote_conversions' THEN cols:=ARRAY['tenant_id','quote_id','customer_id'];
      ELSIF privilege='SELECT' AND t.relname='checkout_sessions' THEN cols:=ARRAY['tenant_id','id','order_id','start_result','final_result'];
-     ELSIF privilege='SELECT' AND t.relname='checkout_attempts' THEN cols:=ARRAY['tenant_id','event_kind','event_key','a91c047c-6b40-5946-8971-5775562da778','result'];
+     ELSIF privilege='SELECT' AND t.relname='checkout_attempts' THEN cols:=ARRAY['tenant_id','event_kind','event_key','checkout_id','result'];
      ELSIF privilege='SELECT' AND t.relname='quote_lines' THEN cols:=ARRAY['tenant_id','quote_id','line_no'];
      ELSIF privilege='SELECT' AND t.relname='order_adjustments' THEN cols:=ARRAY['tenant_id','id','order_id'];
-     ELSIF privilege='SELECT' AND t.relname='idempotency_records' THEN cols:=ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','8515c122-afb3-5e3c-8d83-f54bb4e6f52d','response_body_reference'];
+     ELSIF privilege='SELECT' AND t.relname='idempotency_records' THEN cols:=ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','response_body','response_body_reference'];
      ELSIF privilege='SELECT' AND t.relname='outbox_events' THEN cols:=ARRAY['tenant_id','id','event_type','delivery_target','payload','status','lease_owner','lease_until','last_error'];
      ELSIF privilege='UPDATE' THEN cols:=CASE t.relname WHEN 'customers' THEN ARRAY['email','display_name','status'] WHEN 'buyer_company_members' THEN ARRAY['status'] WHEN 'orders' THEN ARRAY['shipping_snapshot','guest_contact'] WHEN 'order_lines' THEN ARRAY['tax_snapshot'] WHEN 'notification_deliveries' THEN ARRAY['recipient','status','last_error','send_token','lease_attempt','lease_worker','sent_at','updated_at'] WHEN 'outbox_events' THEN ARRAY['status','lease_owner','lease_until','last_error'] WHEN 'checkout_sessions' THEN ARRAY['address_snapshot','start_result','final_result'] WHEN 'checkout_attempts' THEN ARRAY['result'] WHEN 'quotes' THEN ARRAY['snapshot'] WHEN 'quote_lines' THEN ARRAY['description','snapshot'] WHEN 'order_adjustments' THEN ARRAY['reason'] WHEN 'idempotency_records' THEN ARRAY['response_body','response_body_reference'] WHEN 'shipments' THEN ARRAY['carrier','tracking_number'] WHEN 'returns' THEN ARRAY['reason','creation_response','receive_response'] WHEN 'inventory_movements' THEN ARRAY['reason'] ELSE ARRAY[]::text[] END; END IF;
     END IF;
@@ -1018,7 +1018,7 @@ BEGIN
      WHEN 'order_lines' THEN ARRAY['tenant_id','order_id','sku_id','quantity','unit_price_minor','line_net_minor','line_tax_minor','line_total_minor','tax_snapshot']
      WHEN 'order_adjustments' THEN ARRAY['tenant_id','order_id'] ELSE allowed END;
    ELSIF privilege='INSERT' THEN
-    allowed:=CASE t.relname WHEN 'quote_conversions' THEN ARRAY['tenant_id','quote_id','buyer_company_id','customer_id','order_id','quote_version','idempotency_key','dd9d88cf-fb48-59ef-871e-aac2a213dd96','order_number','currency','total_minor'] WHEN 'quotes' THEN ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','created_by','currency','subtotal','tax','shipping','total','snapshot','expires_at']
+    allowed:=CASE t.relname WHEN 'quote_conversions' THEN ARRAY['tenant_id','quote_id','buyer_company_id','customer_id','order_id','quote_version','idempotency_key','request_hash','order_number','currency','total_minor'] WHEN 'quotes' THEN ARRAY['tenant_id','id','site_id','inquiry_id','buyer_company_id','created_by','currency','subtotal','tax','shipping','total','snapshot','expires_at']
      WHEN 'quote_lines' THEN ARRAY['tenant_id','quote_id','line_no','product_id','variant_id','description','quantity','unit_price','line_total','snapshot']
      WHEN 'quote_approvals' THEN ARRAY['tenant_id','quote_id','buyer_company_id','requested_by','decided_by','decision']
      WHEN 'outbox_events' THEN ARRAY['tenant_id','event_type','payload','delivery_target','dedup_key'] ELSE allowed END;
@@ -1258,12 +1258,12 @@ BEGIN
     ELSIF privilege='SELECT' AND role_name='app_returns_service' AND t.relname='orders' THEN
      allowed:=ARRAY['tenant_id','id','total_minor','currency'];
     ELSIF privilege='SELECT' AND role_name='app_returns_service' AND t.relname='idempotency_records' THEN
-     allowed:=ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','dd9d88cf-fb48-59ef-871e-aac2a213dd96','claim_token','state'];
+     allowed:=ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','request_hash','claim_token','state'];
     ELSIF privilege='UPDATE' AND role_name='app_returns_service' AND t.relname='idempotency_records' THEN
      allowed:=ARRAY['state','response_status','response_body_reference','completed_at'];
     ELSIF privilege='UPDATE' AND role_name='app_fulfillment_executor' THEN
      allowed:=CASE t.relname WHEN 'shipments' THEN ARRAY['sealed','order_version']
-      WHEN 'returns' THEN ARRAY['creation_response','receive_response','sealed','order_version','status','restocked','received_at','receive_key','c2f12f15-810d-58e9-a333-9cdfda52ff7d','refund_key','81ab9bfe-4ab8-5389-9ad8-82d9258faefd',
+      WHEN 'returns' THEN ARRAY['creation_response','receive_response','sealed','order_version','status','restocked','received_at','receive_key','receive_hash','refund_key','refund_hash',
        'refund_expected_version','provider_ref','payment_version','income_account_id','tax_account_id','shipping_account_id','cash_account_id',
        'ledger_transaction_id','refunded_at','income_minor','tax_minor','shipping_minor','refund_minor'] ELSE allowed END;
     END IF;

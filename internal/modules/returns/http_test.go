@@ -21,6 +21,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/internal/store"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/httpapitest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -208,15 +209,15 @@ func TestHTTPAdmissionAndCommands(t *testing.T) {
 			if tc.calls > 0 {
 				switch tc.operation {
 				case "request":
-					if service.request.ExpectedVersion != 4 || service.request.Kind != contract.UnshippedCancel || len(service.request.IdempotencyKey) != 64 {
+					if service.request.ExpectedVersion != 4 || service.request.Kind != contract.UnshippedCancel || len(service.request.IdempotencyKey) != 36 {
 						t.Fatal("request input lost")
 					}
 				case "receive":
-					if service.receive.ExpectedVersion != 4 || !service.receive.Restock || len(service.receive.IdempotencyKey) != 64 {
+					if service.receive.ExpectedVersion != 4 || !service.receive.Restock || len(service.receive.IdempotencyKey) != 36 {
 						t.Fatal("receive input lost")
 					}
 				case "refund":
-					if service.refund.ExpectedVersion != 4 || len(service.refund.IdempotencyKey) != 64 {
+					if service.refund.ExpectedVersion != 4 || len(service.refund.IdempotencyKey) != 36 {
 						t.Fatal("refund input lost")
 					}
 				}
@@ -387,7 +388,7 @@ func TestHTTPBusinessTransactionMustRetainActor(t *testing.T) {
 	var tenantOnly context.Context
 	legacy := httpapi.New(legacyHTTPAuth{httpAuth{}}, nil)
 	spec := httpapi.RouteSpec{OperationID: "actorless", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/actorless", Access: httpapi.AdminOrAPIKey, Scope: "returns:write"}
-	if err := legacy.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { tenantOnly = r.Context(); w.WriteHeader(204) })); err != nil {
+	if err := httpapitest.Register(t, legacy, false, spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { tenantOnly = r.Context(); w.WriteHeader(204) })); err != nil {
 		t.Fatal(err)
 	}
 	legacy.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/v1/t/"+httpTenant+"/actorless", nil))

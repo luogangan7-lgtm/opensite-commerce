@@ -248,6 +248,11 @@ func TestFixtureRolesLifecyclePostgres(t *testing.T) {
 	})
 	var leaked bool
 	if err := observer.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		// Socket Close can return before PostgreSQL processes the disconnect.
+		// Taking the same lock observes completed teardown without sleep/polling.
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", fixtureInitializationLockKey); err != nil {
+			return err
+		}
 		return tx.QueryRow(ctx, `SELECT EXISTS(SELECT FROM pg_roles WHERE rolname IN ($1,$2))
    OR to_regclass('public.' || $1) IS NOT NULL
    OR EXISTS(SELECT FROM pg_locks WHERE pid=$3 AND locktype='advisory' AND classid=0 AND objid=18004518)`, name, name+"_two", pid).Scan(&leaked)

@@ -29,7 +29,7 @@ func (a deadlineAuth) Authenticate(ctx context.Context, _ *http.Request, _ httpa
 }
 
 func TestRequestDeadlineIncludesAuthenticationAndHandler(t *testing.T) {
-	s, err := bootstrap.New(bootstrap.Config{Authenticator: deadlineAuth{t}, Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "deadlineProbe", Method: "GET", Pattern: "/deadline", Access: httpapi.AdminSession}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s, err := bootstrap.NewTestServer(t, bootstrap.Config{Authenticator: deadlineAuth{t}, Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "deadlineProbe", Method: "GET", Pattern: "/deadline", Access: httpapi.AdminSession}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		deadline, ok := r.Context().Deadline()
 		if !ok || time.Until(deadline) > 75*time.Second {
 			t.Fatal("handler has no bounded request context")
@@ -100,7 +100,7 @@ func TestQuotesUnconfiguredAuthenticationIsDenied(t *testing.T) {
 }
 
 func TestOperationalMetricsObserveRecoveredStatus(t *testing.T) {
-	s, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "metricsProbePanic", Method: "GET", Pattern: "/probe-panic", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s, err := bootstrap.NewTestServer(t, bootstrap.Config{Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "metricsProbePanic", Method: "GET", Pattern: "/probe-panic", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(201)
 		_, _ = w.Write([]byte("partial-secret"))
 		panic("panic-secret")

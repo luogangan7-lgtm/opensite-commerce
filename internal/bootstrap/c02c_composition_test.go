@@ -53,7 +53,7 @@ func TestC02cCheckoutPreservesStaffExtensions(t *testing.T) {
 				}
 				w.WriteHeader(204)
 			})}
-			s, err := bootstrap.New(bootstrap.Config{Authenticator: c02cGuardAuth{}, Checkout: &checkout.Config{}, Routes: []httpapi.Route{route}})
+			s, err := bootstrap.NewTestServer(t, bootstrap.Config{Authenticator: c02cGuardAuth{}, Checkout: &checkout.Config{}, Routes: []httpapi.Route{route}})
 			if err != nil {
 				t.Fatal(err)
 			}

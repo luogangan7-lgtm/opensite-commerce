@@ -18,9 +18,9 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/internal/store"
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 var _ contract.PaymentEventApplier = (*Service)(nil)
@@ -133,7 +133,7 @@ func (s *Service) applyTerminalFact(ctx context.Context, tx pgx.Tx, q *db.Querie
 		// overwrite a durable competing confirmation with a failure fact.
 		return contract.ErrConflict
 	}
-	changed, err := s.config.Orders.Transition(ctx, tx, row.TenantID.String(), orders.TransitionInput{OrderID: row.OrderID.String(), Target: target, EventKey: "checkout:" + row.ID.String() + ":" + terminal})
+	changed, err := s.config.Orders.Transition(ctx, tx, row.TenantID.String(), orders.TransitionInput{OrderID: row.OrderID.String(), Target: target, EventKey: idempotency.DerivedKey("checkout.order-transition.v1", row.ID.String(), terminal)})
 	if err != nil {
 		return err
 	}

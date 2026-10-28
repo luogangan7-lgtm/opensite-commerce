@@ -177,7 +177,7 @@ func (s *Service) Get(ctx context.Context, actor contract.AuthorizedActor, check
 	return out, err
 }
 func operation(row db.AppCheckoutSession, action string) payment.PaymentOperation {
-	return payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: row.TenantID.String(), OrderID: row.OrderID.String(), Amount: money.Money{Amount: row.AmountMinor, Currency: row.Currency}, OrderVersion: row.PayableVersion, IdempotencyKey: "checkout:v1:" + row.ID.String() + ":" + action}, ProviderRef: row.ProviderRef}
+	return payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: row.TenantID.String(), OrderID: row.OrderID.String(), Amount: money.Money{Amount: row.AmountMinor, Currency: row.Currency}, OrderVersion: row.PayableVersion, IdempotencyKey: idempotency.DerivedKey("checkout.provider.v1", row.ID.String(), action)}, ProviderRef: row.ProviderRef}
 }
 func update(ctx context.Context, q *db.Queries, row db.AppCheckoutSession) (db.AppCheckoutSession, error) {
 	x, e := q.UpdateCheckout(ctx, db.UpdateCheckoutParams{TenantID: row.TenantID, ID: row.ID, Phase: row.Phase, ProviderRef: row.ProviderRef, StartResult: row.StartResult, FinalResult: row.FinalResult, ClaimKind: row.ClaimKind, ClaimKey: row.ClaimKey})
@@ -678,7 +678,7 @@ func (s *Service) failCreation(ctx context.Context, row db.AppCheckoutSession) (
 		if current.Phase != "pending" {
 			return contract.ErrConflict
 		}
-		changed, e := s.config.Orders.Transition(ctx, tx, current.TenantID.String(), orders.TransitionInput{OrderID: current.OrderID.String(), Target: orders.Cancelled, EventKey: "checkout:" + current.ID.String() + ":create-failure"})
+		changed, e := s.config.Orders.Transition(ctx, tx, current.TenantID.String(), orders.TransitionInput{OrderID: current.OrderID.String(), Target: orders.Cancelled, EventKey: idempotency.DerivedKey("checkout.order-transition.v1", current.ID.String(), "create-failure")})
 		if e != nil {
 			return e
 		}

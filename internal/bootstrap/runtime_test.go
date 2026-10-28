@@ -73,7 +73,7 @@ func TestRuntimeActorForwardingAndOptionalAbsence(t *testing.T) {
 				}
 				w.WriteHeader(204)
 			})}
-			server, err := bootstrap.New(bootstrap.Config{Authenticator: tc.auth, Routes: []httpapi.Route{route}})
+			server, err := bootstrap.NewTestServer(t, bootstrap.Config{Authenticator: tc.auth, Routes: []httpapi.Route{route}})
 			if err != nil {
 				t.Fatal(err)
 			}

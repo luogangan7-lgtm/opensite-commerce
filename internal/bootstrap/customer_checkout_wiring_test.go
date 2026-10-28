@@ -362,7 +362,7 @@ func TestCheckoutCompositionPreservesCMSAndStaffActorResolver(t *testing.T) {
 				}
 				w.WriteHeader(http.StatusNoContent)
 			})}
-			server, err := bootstrap.New(bootstrap.Config{Authenticator: staff, Checkout: &checkouthttp.Config{}, Routes: []httpapi.Route{route}})
+			server, err := bootstrap.NewTestServer(t, bootstrap.Config{Authenticator: staff, Checkout: &checkouthttp.Config{}, Routes: []httpapi.Route{route}})
 			if err != nil {
 				t.Fatal(err)
 			}

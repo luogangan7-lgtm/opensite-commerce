@@ -95,13 +95,24 @@ func New(auth Authenticator, logger *slog.Logger) *Router {
 // Register is called during static startup; all errors must reach bootstrap.
 // ServeMux conflicts are configuration errors, not process-level panics.
 func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
+	contract, err := GetSwagger()
+	if err != nil {
+		return fmt.Errorf("load idempotency admission contract: %w", err)
+	}
+	return s.RegisterWithContract(spec, handler, contract)
+}
+
+// RegisterWithContract registers only a method/path explicitly declared by the
+// supplied admission contract. Test helpers use a separate fixture contract;
+// normal startup always uses Register and the embedded production contract.
+func (s *Router) RegisterWithContract(spec RouteSpec, handler http.Handler, contract *openapi3.T) (err error) {
 	if err = validateRoute(spec); err != nil {
 		return err
 	}
 	if handler == nil {
 		return fmt.Errorf("route %q: nil handler", spec.OperationID)
 	}
-	requiresKey, err := requiresIdempotencyKey(spec)
+	requiresKey, err := requiresIdempotencyKey(spec, contract)
 	if err != nil {
 		return err
 	}
@@ -197,10 +208,9 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 
 // Every route must resolve in the embedded contract before startup can succeed.
 // Path-level inherited parameters participate in the same admission policy.
-func requiresIdempotencyKey(spec RouteSpec) (bool, error) {
-	doc, err := GetSwagger()
-	if err != nil {
-		return false, fmt.Errorf("load idempotency admission contract: %w", err)
+func requiresIdempotencyKey(spec RouteSpec, doc *openapi3.T) (bool, error) {
+	if doc == nil || doc.Paths == nil {
+		return false, fmt.Errorf("route %q: admission contract required", spec.OperationID)
 	}
 	item := doc.Paths.Value(spec.Pattern)
 	if item == nil {
