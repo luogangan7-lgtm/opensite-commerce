@@ -492,6 +492,57 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
     """MDEL-00: mandatory merchant policy is independent of customer retention."""
     setUpClass = PrivacyRegistryTests.__dict__["setUpClass"]
 
+    def test_uuid_checked_columns_reject_non_uuid_scrub_policies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "migrations/pending").mkdir(parents=True)
+            (root / "migrations/pending/probe.sql").write_text(
+                "ALTER TABLE app.returns ADD CONSTRAINT refund_key_uuid CHECK "
+                "(refund_key ~ '^" + "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');")
+            # No caller_key flag: the actual CHECK also constrains unmarked fields.
+            for strategy, value in (("row_id_placeholder", "erased:{id}"),
+                                    ("constant", "alice@example.invalid"),
+                                    ("fixed_enum", "legacy")):
+                with self.subTest(strategy=strategy):
+                    registry = {"returns.refund_key": {"merchant_deletion": {
+                        "action": "erase", "strategy": strategy, "value": value}}}
+                    with self.assertRaisesRegex(ValueError, "MERCHANT_UUID_SCRUB.*returns.refund_key"):
+                        self.gate.validate_caller_key_constraints(root, registry)
+            for policy in ({"action": "retain", "strategy": "unchanged", "value_type": "opaque_ref"},
+                           {"action": "erase", "strategy": "delete_row"},
+                           {"action": "erase", "strategy": "constant", "value": None},
+                           {"action": "erase", "strategy": "row_id_placeholder", "value": "{id}"},
+                           {"action": "erase", "strategy": "constant", "value": "11111111-1111-4111-8111-111111111111"}):
+                self.gate.validate_caller_key_constraints(root, {"returns.refund_key": {"merchant_deletion": policy}})
+
+    def test_actual_uuid_keys_are_opaque_and_unchanged_on_surviving_rows(self):
+        for key, field in self.gate.load_registry(ROOT).items():
+            if not field.get("caller_key"):
+                continue
+            policy = field["merchant_deletion"]
+            if policy["strategy"] == "delete_row":
+                continue  # Whole-row deletion never writes a CHECK'd cell.
+            with self.subTest(key=key):
+                self.assertEqual((policy["action"], policy["strategy"], policy.get("value_type")),
+                                 ("retain", "unchanged", "opaque_ref"))
+
+    def test_rename_destinations_are_writers_even_for_aliases_and_os_root(self):
+        for statement in ('fs.Rename("old", "new")', 'r.Rename("old", "new")'):
+            with self.subTest(statement=statement), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+                (root / "internal").mkdir()
+                source = root / "internal/probe.go"
+                prefix = 'package probe\nimport fs "os"\nfunc publish(r *fs.Root) {\n'
+                source.write_text(prefix + statement + '\n}\n')
+                with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
+                    self.gate.artifact_catalog(root)
+                source.write_text(prefix + '// privacy-artifact: orders.published\n' + statement + '\n}\n')
+                self.assertEqual(self.gate.artifact_catalog(root), {"orders.published": "internal/probe.go"})
+                source.write_text(prefix + 'rename := ' + statement.split('(')[0] + '; _ = rename\n}\n')
+                with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER_ESCAPE"):
+                    self.gate.artifact_catalog(root)
+
     def test_caller_key_constraint_is_required_even_for_sqlc_writers(self):
         validate = getattr(self.gate, "validate_caller_key_constraints", None)
         self.assertTrue(callable(validate), "MERCHANT_CALLER_KEY_CHECK: migration gate missing")

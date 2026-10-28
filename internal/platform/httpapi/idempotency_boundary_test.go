@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -135,5 +136,12 @@ func TestRegisterRejectsMissingContractPathOrMethod(t *testing.T) {
 				t.Fatal("rejected route leaked into registry")
 			}
 		})
+	}
+}
+
+// Arbitrary admission contracts must not be callable through the production API.
+func TestProductionRouterHasNoContractInjectionMethod(t *testing.T) {
+	if _, found := reflect.TypeOf((*httpapi.Router)(nil)).MethodByName("RegisterWithContract"); found {
+		t.Fatal("production Router exports arbitrary admission contract injection")
 	}
 }

@@ -276,6 +276,9 @@ func TestFulfillmentRefundReconcileAfterCustomerErasure(t *testing.T) {
 func TestReturnReceiptReplayWaitsForErasureFence(t *testing.T) {
 	for _, mode := range []string{"creation", "7e99593d-15b8-5fd9-b621-8c13cec1c290"} {
 		t.Run(mode, func(t *testing.T) {
+			if mode != "creation" && mode != "receive" {
+				t.Fatalf("unknown receipt replay mode: %q", mode)
+			}
 			f := newFulfillmentFixture(t)
 			customer := uuid.NewString()
 			err := f.maint.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
