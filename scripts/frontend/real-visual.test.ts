@@ -3,6 +3,7 @@
  */
 import { expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { BASELINES, sha256 } from './baseline-provenance';
 import { REAL_VISUAL_STATES, realVisualPaths, realBackendEvidence } from './real-visual-manifest';
 import { assertDistinctHistoryPngs, SHARED_RENDER } from './real-visual-shared-render-manifest';
@@ -69,4 +70,20 @@ test('VISUAL-REAL provenance identifies injected faults and unreachable boundary
   expect(realBackendEvidence('desktop/real-213-checkout-in-flight.png').fault).toContain('real Go POST');
   expect(realBackendEvidence('mobile/real-213-completion-error.png').fault).toContain('503');
   expect(realBackendEvidence('mobile/real-213-completion-long-order.png').boundary).toContain('maximum legal UUID');
+});
+
+// These reviewed sources are part of the real-data boundary. Any change requires
+// re-review before updating the digest, including alternate response constructors.
+test('VISUAL-REAL proxy and launcher match the reviewed no-DTO sources', () => {
+  const approved: Record<string, string> = {
+    'scripts/frontend/real-proxy.ts': '76076331f022df650544b3a465952ef9b19cd78101a6e3c861b073d338b67189',
+    'scripts/frontend/start-real-backend.py': 'ad31ab875e5ce8500bacb8d728f4f2d1b41d09c30a0876bcc3369c15262aa6f2',
+  };
+  for (const [path, digest] of Object.entries(approved)) expect(sha256(path), path).toBe(digest);
+});
+
+test('VISUAL-REAL cleanup continues after a failed database drop', () => {
+  const result = spawnSync('python3', ['scripts/frontend/test_real_launcher.py',
+    'LauncherCleanup.test_drop_database_failure_still_attempts_each_role'], { encoding: 'utf8' });
+  expect(result.status, result.stderr).toBe(0);
 });
