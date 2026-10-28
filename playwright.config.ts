@@ -43,6 +43,7 @@ export default defineConfig({
     // Existing test-only HTTP capability enables the actual backend-mode account document.
     // Browser routes supply safe state DTOs; no backend identity or payment acceptance is implied.
     { command: `HOST=127.0.0.1 PORT=4324 OPENSITE_ENVIRONMENT=test OSC_COMMERCE_TEST_HTTP=1 OSC_READ_API_ORIGIN=http://127.0.0.1:4175 OSC_COMMERCE_MODE=backend OSC_COMMERCE_SITE=http://127.0.0.1:4324 OSC_COMMERCE_API_ORIGIN=http://127.0.0.1:4175 OSC_COMMERCE_COOKIE_KEY="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')" bun run start:storefront`, url: 'http://127.0.0.1:4324/account', reuseExistingServer: false, timeout: 120_000 },
-    { command: 'HOST=127.0.0.1 PORT=4322 OSC_READ_API_ORIGIN=http://127.0.0.1:1 bun run start:storefront', port: 4322, reuseExistingServer: false, timeout: 120_000 }
+    { command: 'HOST=127.0.0.1 PORT=4322 OSC_READ_API_ORIGIN=http://127.0.0.1:1 bun run start:storefront', port: 4322, reuseExistingServer: false, timeout: 120_000 },
+    { command: 'python3 scripts/frontend/start-real-backend.py', url: 'http://127.0.0.1:4325/products/canvas-tote', reuseExistingServer: false, timeout: 300_000, gracefulShutdown: { signal: 'SIGTERM', timeout: 15_000 } }
   ]
 });
