@@ -145,6 +145,7 @@ expected = [
     'db_refund_recovery.sql',
     'db_privacy_hardening.sql',
     'db_caller_key_constraints.sql',
+    'db_tenant_lifecycle.sql',
 ]
 # Coverage guards only: real-PG runners execute the locking/upgrade contracts.
 races = (root / 'scripts/check_pg_races.sh').read_text()
