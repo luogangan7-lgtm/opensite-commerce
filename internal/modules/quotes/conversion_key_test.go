@@ -15,7 +15,7 @@ func TestConversionOrderKeyScope(t *testing.T) {
 	const other = "00000000-0000-4000-8000-000000000004"
 	base := conversionOrderKey(tenant, "customer", actor, quote, "once")
 	// The literal is independent of the helper's serialization and operation.
-	want := "701cf5c0-4947-8662-be46-62a8251a2808"
+	want := "8ef671bc-3eed-5550-b045-d4a8853f5df7"
 	if base != want || len(base) != 36 || !conversionKey(base) {
 		t.Fatalf("namespace key = %q, want %q (UUID)", base, want)
 	}

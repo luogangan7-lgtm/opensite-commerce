@@ -1889,7 +1889,7 @@ BEGIN
    o:=uuidv7();
    SET LOCAL ROLE app_orders_executor;
    INSERT INTO app.orders(tenant_id,id,customer_id,order_number,creation_key,request_hash,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-    VALUES(t,o,c,subject_no,'conversion-upgrade-'||subject_no,sha256('conversion'::bytea),'USD',100,0,0,'{}',100);
+    VALUES(t,o,c,subject_no,'00000000-0000-5000-8000-'||lpad(subject_no::text,12,'0'),sha256('conversion'::bytea),'USD',100,0,0,'{}',100);
    SET LOCAL ROLE app_quotes_executor;
    INSERT INTO app.quote_conversions(tenant_id,quote_id,buyer_company_id,customer_id,order_id,quote_version,idempotency_key,request_hash,order_number,currency,total_minor)
     VALUES(t,q,co,c,o,4,'30796ae3-1c13-58bd-8ac3-ee7d23d1f53d',sha256('conversion'::bytea),subject_no,'USD',100);

@@ -82,8 +82,8 @@ async function seededCompletion(page: Page, project: string, long = false) {
   sql(`BEGIN; SELECT set_config('app.tenant_id','${tenant}',true);
     INSERT INTO app.carts(tenant_id,id,guest_token_hash,currency) VALUES('${tenant}','${id(1)}',decode('${hash}','hex'),'USD');
     DO $seed$ DECLARE r app.inventory_reservations; BEGIN
-      r:=app.inventory_reserve('${sku}',1,'order','${id(2)}','visual-${n}',3600);
-      PERFORM app.orders_create('${id(2)}','visual-${n}',sha256('visual-${n}'::bytea),NULL,
+      r:=app.inventory_reserve('${sku}',1,'order','${id(2)}','${id(5)}',3600);
+      PERFORM app.orders_create('${id(2)}','${id(6)}',sha256('visual-${n}'::bytea),NULL,
         '{"email":"visual-buyer@example.test"}','USD',0,'{}',
         jsonb_build_array(jsonb_build_object('id','${id(3)}','sku_id','${sku}','sku','C24-CANVAS-TOTE',
           'quantity',1,'unit_price_minor',${amount}::bigint,'line_net_minor',${amount}::bigint,'line_tax_minor',0,
@@ -91,7 +91,7 @@ async function seededCompletion(page: Page, project: string, long = false) {
     END $seed$;
     INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,
       order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
-      VALUES('${tenant}','${id(4)}','guest','${hash}','visual-${n}',sha256('visual-${n}'::bytea),'${id(1)}',1,
+      VALUES('${tenant}','${id(4)}','guest','${hash}','${id(7)}',sha256('visual-${n}'::bytea),'${id(1)}',1,
         '${id(2)}','{}','USD',${amount},${amount},0,0,1);
     UPDATE app.checkout_sessions SET phase='ready',provider_ref='visual_${n}',
       start_result=jsonb_build_object('checkout_id',id,'order_id',order_id,'state','ready','amount_minor',amount_minor,

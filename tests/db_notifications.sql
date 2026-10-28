@@ -44,7 +44,7 @@ BEGIN
   n:=n+1;valid:=n IN(3,8);
   EXECUTE 'SET LOCAL ROLE app_orders_executor';
   INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-  VALUES(t,uuidv7(),n,'recipient-admission-'||n,sha256('n'::bytea),jsonb_build_object('email',contact),'USD',100,0,0,'{}',100) RETURNING id INTO oid;
+  VALUES(t,uuidv7(),n,'00000000-0000-5000-8000-'||lpad(n::text,12,'0'),sha256('n'::bytea),jsonb_build_object('email',contact),'USD',100,0,0,'{}',100) RETURNING id INTO oid;
   EXECUTE 'RESET ROLE';
   INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
   VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','recipient-admission-'||n) RETURNING id INTO source;

@@ -1658,7 +1658,7 @@ SELECT id AS shipping FROM app.ledger_accounts WHERE tenant_id='$T' AND code='sh
 SELECT id AS cash FROM app.ledger_accounts WHERE tenant_id='$T' AND code='cash' \gset
 SET LOCAL ROLE app_returns_service;
 SELECT app.returns_prepare_refund(:'rid',3,'23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','captured-race',1,:'income',:'tax',:'shipping',:'cash');
-SELECT app.payments_post_return_refund(:'rid','c19d2-money','c19d2-refund') AS jid \gset
+SELECT app.payments_post_return_refund(:'rid','23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','c19d2-refund') AS jid \gset
 SELECT app.returns_complete_refund(:'rid','23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','captured-race',:'jid');
 COMMIT; SELECT :'rid';
 SQL
@@ -1697,7 +1697,7 @@ SELECT id AS shipping FROM app.ledger_accounts WHERE tenant_id='$T' AND code='sh
 SELECT id AS cash FROM app.ledger_accounts WHERE tenant_id='$T' AND code='cash' \gset
 SET LOCAL ROLE app_returns_service;
 SELECT app.returns_prepare_refund(:'rid',3,'23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','captured-race',1,:'income',:'tax',:'shipping',:'cash');
-SELECT app.payments_post_return_refund(:'rid','c19d2-money','c19d2-refund') AS jid \gset
+SELECT app.payments_post_return_refund(:'rid','23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','c19d2-refund') AS jid \gset
 SELECT app.returns_complete_refund(:'rid','23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','captured-race',:'jid');
 COMMIT; SELECT :'rid';
 SQL
