@@ -1397,7 +1397,7 @@ for f in migrations/[0-9][0-9][0-9]_*.sql; do
  apply_forward "$LIFECYCLE_DB" "$f"
 done
 db "$LIFECYCLE_DB" <<'SQL' >/dev/null
-INSERT INTO app.tenants(name,status) VALUES('mdel01-upgrade-active','active'),('mdel01-upgrade-deleted','deleted');
+INSERT INTO app.tenants(name,status) VALUES('mdel01-upgrade-active','active'),('mdel01-upgrade-suspended','suspended');
 CREATE TABLE public.mdel01_scope_before AS
  SELECT role,app.auth_role_scopes(role) scopes FROM unnest(ARRAY['owner','admin','catalog_editor','content_editor','viewer','unknown','*','']) role;
 SQL
