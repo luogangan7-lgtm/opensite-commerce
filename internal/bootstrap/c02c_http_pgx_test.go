@@ -369,6 +369,21 @@ func TestC02cProductionHTTPPostgres(t *testing.T) {
 		t.Fatal("session revoked after admission still issued an API key")
 	}
 	execFixture("UPDATE app.auth_sessions SET revoked_at=NULL WHERE id=$1", session)
+	t.Run("MDEL01_actor_scope_before_database", func(t *testing.T) {
+		body := `{"scopes":["tenant:delete"]}`
+		expect(request("POST", keyPath, body, "", sessionView.CSRF, true), 201)
+		execFixture("UPDATE app.tenant_memberships SET role='admin' WHERE tenant_id=$1 AND user_id=$2", target, user)
+		// Poison the persistence capability, preserving its signature/ACL/owner.
+		// A clean 403 can only come from transport admission before any create call.
+		execFixture(`DO $probe$ DECLARE d text; b text; BEGIN
+ SELECT pg_get_functiondef(oid),prosrc INTO STRICT d,b FROM pg_proc WHERE oid='app.auth_create_api_key(uuid,uuid,uuid,text,bytea,text[],timestamptz)'::regprocedure;
+ EXECUTE replace(d,b,'BEGIN RAISE EXCEPTION ''MDEL01_CREATE_DATABASE_CALL''; END');
+END $probe$;`)
+		w := request("POST", keyPath, body, "", sessionView.CSRF, true)
+		if w.Code != 403 || strings.Contains(w.Body.String(), "42501") || strings.Contains(w.Body.String(), "MDEL01_CREATE_DATABASE_CALL") {
+			t.Fatalf("MDEL01_ACTOR_SCOPE_BEFORE_DB: admin status=%d want clean 403", w.Code)
+		}
+	})
 	execFixture("UPDATE app.auth_sessions SET created_at=clock_timestamp()-interval '2 hours',last_seen_at=clock_timestamp()-interval '2 hours',expires_at=clock_timestamp()-interval '1 hour' WHERE id=$1", session)
 	expect(request("GET", path, "", "", "", true), 401)
 }
