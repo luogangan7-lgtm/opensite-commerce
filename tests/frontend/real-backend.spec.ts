@@ -174,12 +174,16 @@ test.describe('VISUAL-REAL #213', () => {
     await review(page);
     const before = sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}';`);
     await fault(page, backend, 'POST', 'drop');
+    // Mutation probe: a real noncommitted Go 409 must fail the committed-201 gate.
+    sql(`UPDATE app.price_entries SET unit_amount=4800 WHERE tenant_id='${tenant}' AND sku_id='${sku}';`);
     const firstRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/purchase/api/checkout' && request.method() === 'POST');
     await page.getByRole('button', { name: 'Start test checkout', exact: true }).click();
     const requestKey = await (await firstRequest).headerValue('Idempotency-Key');
     if (!requestKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey)) throw new Error('Expected a UUID checkout request key');
     await expect(page.getByRole('alert')).toBeVisible();
-    const committed = await committedAttempt(page, requestKey, before);
+    let committed: string;
+    try { committed = await committedAttempt(page, requestKey, before); }
+    finally { sql(`UPDATE app.price_entries SET unit_amount=2400 WHERE tenant_id='${tenant}' AND sku_id='${sku}';`); }
     await snapshot(page, 'checkout-ambiguous-failure');
     const replayResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/purchase/api/checkout' && response.request().method() === 'POST');
     await start(page);
