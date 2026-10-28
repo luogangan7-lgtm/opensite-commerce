@@ -301,17 +301,17 @@ async function registerAccount(page: Page, email: string, password: string) {
   return mailboxProof(page, email);
 }
 
-// #250 reuses real registration, SMTP proof custody and login. No session is forged.
+// #250 follows scripts/e2e/b2b.py's identity seed, then real Go password login.
+// #235 owns registration/proof coverage. Sharing its IP for 34 writes/minute
+// exhausts the real 30/min budget; seed identities, never relax/reset that budget.
 async function historyCustomer(page: Page, project: string, suffix: string) {
   if (!['desktop', 'mobile'].includes(project) || !/^[a-z0-9-]+$/.test(suffix)) throw new Error('Invalid owned customer fixture');
-  const email = `visual-250-${project}-${suffix}@example.test`, password = accountPassword();
-  const proof = await registerAccount(page, email, password);
-  await openProof(page, proof);
-  await page.getByRole('button', { name: 'Verify email', exact: true }).click();
-  await expect(page.locator('[data-customer-verification] > p[role="status"]')).toContainText('Email verified.');
+  const email = `visual-250-${project}-${suffix}@example.test`, password = runtime().staffPassword, id = randomUUID();
+  sql(`BEGIN; INSERT INTO app.customers(tenant_id,id,email,verified_at)
+    VALUES('${tenant}','${id}','${email}',clock_timestamp());
+    INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash)
+      SELECT '${tenant}','${id}',password_hash FROM app.users WHERE email='visual-owner@example.test'; COMMIT;`);
   await historyLogin(page, email, password);
-  const id = sql(`SELECT id FROM app.customers WHERE tenant_id='${tenant}' AND email_normalized='${email}';`);
-  expect(id).toMatch(/^[0-9a-f-]{36}$/);
   return { id, email, password };
 }
 async function historyLogin(page: Page, email: string, password: string) {
@@ -477,9 +477,11 @@ test.describe('VISUAL-REAL #250', () => {
     expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
     await historySnapshot(page, 'history-list-503'); await control(page, 'release');
     await page.getByRole('button', { name: 'Try again', exact: true }).click(); await historyReady(page);
-    sql(`UPDATE app.customer_sessions SET created_at=clock_timestamp()-interval '2 hours',
-      last_seen_at=clock_timestamp()-interval '1 hour',idle_expires_at=clock_timestamp()-interval '1 second',
-      expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id='${tenant}' AND customer_id='${customer.id}' AND revoked_at IS NULL;`);
+    sql(`WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS n)
+      UPDATE app.customer_sessions SET created_at=stamp.n-interval '2 hours',
+      last_seen_at=stamp.n-interval '1 hour',idle_expires_at=stamp.n-interval '1 second',
+      expires_at=stamp.n-interval '1 second' FROM stamp
+      WHERE tenant_id='${tenant}' AND customer_id='${customer.id}' AND revoked_at IS NULL;`);
     await page.reload(); await expect(page.getByRole('alert')).toHaveText('Sign in to view your orders.');
     await expect(historyPanel(page).getByRole('button', { name: /^Order #/ })).toHaveCount(0);
     await historySnapshot(page, 'history-expired-session');

@@ -28,8 +28,8 @@ export function realBackendEvidence(snapshot: string) {
   const history = /^real-250-(.+)\.png$/.exec(snapshot.split('/').at(-1) ?? '')?.[1];
   if (history) return { application: 'Go', database: 'PostgreSQL 18.6', mode: 'test',
     seed: history.startsWith('b2b-')
-      ? 'real registration, inquiry, quote, separate approver, conversion and signed Fake payment HTTP flow'
-      : 'real registration/session and constrained owned historical order fixtures; all DB guards remain enabled',
+      ? 'existing E2E identity seed; real login, inquiry, quote, separate approver, conversion and signed Fake payment HTTP flow'
+      : 'existing E2E verified identity seed and real Go password login/session; constrained owned historical orders with all DB guards enabled',
     fault: history.endsWith('-loading') ? 'proxy holds a completed real Go customer orders GET response'
       : history.endsWith('-503') ? 'proxy substitutes HTTP 503 after forwarding real Go customer orders GET'
       : 'none',
