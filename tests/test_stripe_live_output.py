@@ -22,6 +22,19 @@ CANARIES = ['https://invoice.example.test/private-canary', 'owner-canary@example
 
 
 class OutputCanaries(unittest.TestCase):
+    def test_account_required_before_child_with_clear_owner_action(self):
+        for account in ('', 'acct_', 'sk_live_private_canary', 'acct_bad\n', 'acct_' + 'x' * 124):
+            with self.subTest(account=account):
+                env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch',
+                           GITHUB_REF='refs/heads/main', GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40,
+                           GITHUB_RUN_ATTEMPT='1', STRIPE_SMOKE_RUN_ID='12345', STRIPE_SMOKE_PHASE='A',
+                           STRIPE_SMOKE_ACCOUNT=account)
+                with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run') as child:
+                    with self.assertRaisesRegex(SystemExit, 'OWNER ACTION: add Environment secret STRIPE_SMOKE_ACCOUNT=acct_') as failure:
+                        runner.main()
+                    child.assert_not_called()
+                    self.assertNotIn('sk_live_private_canary', str(failure.exception))
+
     def test_AB_reruns_refused_before_child(self):
         for phase in ('A', 'B'):
             for attempt in ('2', '99', '', '0', 'invalid'):
@@ -58,6 +71,7 @@ class OutputCanaries(unittest.TestCase):
                 env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch',
                            GITHUB_REF='refs/heads/main', GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40,
                            GITHUB_RUN_ATTEMPT='1', STRIPE_SMOKE_RUN_ID='12345', STRIPE_SMOKE_PHASE='A', RUNNER_TEMP=tmp,
+                           STRIPE_SMOKE_ACCOUNT='acct_offlinepg',
                            GITHUB_STEP_SUMMARY=str(summary))
                 value = dict(phase='A', status=state, amount_minor=50, currency='USD',
                              livemode=True, owner_action_needed=False)
@@ -80,6 +94,7 @@ class OutputCanaries(unittest.TestCase):
             env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REF='refs/heads/main',
                        GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40, STRIPE_SMOKE_RUN_ID='12345',
                        STRIPE_SMOKE_PHASE='A', GITHUB_RUN_ATTEMPT='1', RUNNER_TEMP=tmp, GITHUB_STEP_SUMMARY=str(Path(tmp) / 'summary'))
+            env['STRIPE_SMOKE_ACCOUNT'] = 'acct_offlinepg'
             log = io.StringIO()
             error = subprocess.TimeoutExpired(CANARIES, 1, output=' '.join(CANARIES))
             with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run', side_effect=error), contextlib.redirect_stdout(log):

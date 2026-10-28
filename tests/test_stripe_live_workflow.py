@@ -58,6 +58,21 @@ def validate(sources):
 
 
 class LiveWorkflowGate(unittest.TestCase):
+    def test_every_environment_name_must_be_literal(self):
+        original = workflows()
+        for name in ("${{ 'stripe-live' }}", '${{ inputs.env }}', 'prefix-${{ inputs.env }}'):
+            for environment in (name, {'name': name}):
+                for filename in ('another.yml', 'another.yaml', LIVE.name):
+                    with self.subTest(environment=environment, filename=filename):
+                        document = yaml.safe_load(original[filename]) if filename in original else {'jobs': {}}
+                        document['jobs']['expression'] = {'environment': environment, 'steps': [{'run': 'true'}]}
+                        with self.assertRaisesRegex(AssertionError, 'LIVE_ENVIRONMENT_LITERAL_REQUIRED'):
+                            validate({**original, filename: yaml.safe_dump(document).encode()})
+
+    def test_live_runs_are_serialized_without_cancellation(self):
+        document = yaml.safe_load(LIVE.read_bytes())
+        self.assertEqual(document['concurrency'], {'group': 'stripe-live', 'cancel-in-progress': False})
+
     def test_environment_belongs_to_exactly_one_live_job(self):
         original = workflows()
         for name in ('stripe-live', 'STRIPE-LIVE', 'Stripe-Live'):

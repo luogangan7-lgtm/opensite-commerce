@@ -6,6 +6,7 @@
 package db_test
 
 import (
+	"net"
 	"net/http"
 	"os"
 	"testing"
@@ -44,7 +45,15 @@ func TestStripeLiveTransportGuard(t *testing.T) {
 	if stripeLiveRealHTTPTransport() {
 		t.Fatal("nil transport admitted")
 	}
+	http.DefaultTransport = &http.Transport{DialContext: (&net.Dialer{}).DialContext}
+	if stripeLiveRealHTTPTransport() {
+		t.Fatal("custom DialContext transport admitted")
+	}
 	http.DefaultTransport = &http.Transport{}
+	if stripeLiveRealHTTPTransport() {
+		t.Fatal("replacement transport admitted")
+	}
+	http.DefaultTransport = original
 	if stripeLiveRealHTTPTransport() == stripeLiveOfflineCompiled {
 		t.Fatal("restored transport erased offline build identity")
 	}
