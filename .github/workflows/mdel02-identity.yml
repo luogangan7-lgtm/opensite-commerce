@@ -66,7 +66,7 @@ jobs:
           git rev-parse HEAD
           ./scripts/migrate_river.sh
           ./scripts/migrate.sh
-      - name: Baseline and two isolated assertion-specific mutations
+      - name: Baseline and isolated assertion-specific mutations
         run: |
           python3 - <<'PYTHON'
           import os, subprocess
@@ -87,6 +87,7 @@ jobs:
           mutations = [
               ('auth_merchant_scope(uuid,text,text)', "IF st='active' THEN RETURN true; END IF;", 'RETURN true;', 'MDEL02_COOLING_WRITE'),
               ('auth_erase_merchant_proofs(uuid,uuid,bigint)', 'DELETE FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant;', 'PERFORM 1;', 'MDEL02_DERIVED_PROOF_SCRUB'),
+              ('auth_merchant_receipt(uuid,uuid,uuid,uuid)', 'IF EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id', 'IF false AND EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id', 'MDEL02_EXECUTING_OWNER_STATUS'),
           ]
           for function, old, new, marker in mutations:
               source = command("SELECT pg_get_functiondef('app." + function + "'::regprocedure);")
