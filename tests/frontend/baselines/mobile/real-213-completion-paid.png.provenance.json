@@ -62,7 +62,7 @@
     ]
   },
   "backend": {
-    "application": "Go",
+    "application": "Mock",
     "database": "PostgreSQL 18.6",
     "mode": "test",
     "seed": "existing E2E SQL and constrained owned order/checkout fixtures",
