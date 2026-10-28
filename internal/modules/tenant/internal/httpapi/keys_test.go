@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	auth "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/tenant/contract"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 )
@@ -51,7 +52,7 @@ func (r *repository) Revoke(context.Context, string, string, string) error { r.r
 func testRouter(t *testing.T, r contract.Repository, kind string) *platform.Router {
 	t.Helper()
 	router := platform.New(admitted{kind}, nil)
-	for _, route := range New(r).Routes() {
+	for _, route := range New(r, func(context.Context) []string { return auth.RoleScopes("owner") }).Routes() {
 		if err := router.Register(route.Spec, route.Handler); err != nil {
 			t.Fatal(err)
 		}
@@ -130,5 +131,27 @@ func TestAPIKeyInputAndActorAdmission(t *testing.T) {
 	}
 	if w := call(testRouter(t, nil, "user"), "GET", "/api/v1/t/"+testTenant+"/api-keys", ""); w.Code != 503 {
 		t.Fatal("missing persistence did not fail closed", w.Code)
+	}
+}
+
+func TestMDEL01ActorScopeBeforePersistence(t *testing.T) {
+	for _, role := range []string{"owner", "admin", "viewer", "unknown"} {
+		t.Run(role, func(t *testing.T) {
+			repo := &repository{}
+			router := platform.New(admitted{"user"}, nil)
+			for _, route := range New(repo, func(context.Context) []string { return auth.RoleScopes(role) }).Routes() {
+				if err := router.Register(route.Spec, route.Handler); err != nil {
+					t.Fatal(err)
+				}
+			}
+			w := call(router, "POST", "/api/v1/t/"+testTenant+"/api-keys", `{"scopes":["tenant:delete"]}`)
+			wantStatus, wantCreates := 403, 0
+			if role == "owner" {
+				wantStatus, wantCreates = 201, 1
+			}
+			if w.Code != wantStatus || repo.created != wantCreates {
+				t.Fatalf("MDEL01_ACTOR_SCOPE: role=%s status=%d creates=%d", role, w.Code, repo.created)
+			}
+		})
 	}
 }

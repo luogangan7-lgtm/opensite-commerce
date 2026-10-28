@@ -189,3 +189,110 @@ func c02cHoldAuthorityRow(t *testing.T, ctx context.Context, admin *pgxadapter.I
 		})
 	}
 }
+
+// MDEL-01 uses the production TouchKey port, including its real app_auth login.
+// Ordinary activity writes must stop in every non-active lifecycle state.
+func TestMDEL01TouchKeyLifecyclePostgres(t *testing.T) {
+	ctx, admin, fixtureDSN, authDSN, _ := c02cHTTPPGFixture(t)
+	module, err := tenant.Open(ctx, tenant.Config{DatabaseURL: authDSN})
+	if err != nil {
+		t.Fatal("MDEL01 touch authority fixture unavailable")
+	}
+	t.Cleanup(func() { _ = module.Close(context.Background()) })
+	witness, err := pgxadapter.OpenIdentity(ctx, fixtureDSN)
+	if err != nil {
+		t.Fatal("MDEL01 touch witness unavailable")
+	}
+	t.Cleanup(func() { _ = witness.Close(context.Background()) })
+	var tenantID, userID, keyID string
+	if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `INSERT INTO app.users(email,password_hash) VALUES('mdel-touch@invalid.test','fixture') RETURNING id::text`).Scan(&userID); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, `INSERT INTO app.tenants(name) VALUES('mdel-touch') RETURNING id::text`).Scan(&tenantID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'owner')`, tenantID, userID); err != nil {
+			return err
+		}
+		return tx.QueryRow(ctx, `INSERT INTO app.api_keys(tenant_id,issued_by,key_prefix,key_hash) VALUES($1,$2,'mdeltouch',$3) RETURNING id::text`, tenantID, userID, c02cHTTPRandom(t, 32)).Scan(&keyID)
+	}); err != nil {
+		t.Fatal("MDEL01 touch seed failed")
+	}
+	setState := func(t *testing.T, state string) {
+		t.Helper()
+		if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE app.tenant_lifecycles SET state=$2,request_id=uuidv7(),requester_id=$3,requested_at=clock_timestamp(),execute_after=clock_timestamp()+interval '720 hours' WHERE tenant_id=$1`, tenantID, state, userID)
+			if err != nil {
+				return err
+			}
+			_, err = tx.Exec(ctx, `UPDATE app.api_keys SET last_used_at=NULL WHERE id=$1`, keyID)
+			return err
+		}); err != nil {
+			t.Fatal("MDEL01 touch state fixture failed")
+		}
+	}
+	for _, state := range []string{"active", "cooling_off", "executing", "failed", "deleted"} {
+		t.Run(state, func(t *testing.T) {
+			setState(t, state)
+			err := module.Authorization().TouchKey(ctx, keyID)
+			if (err == nil) != (state == "active") {
+				t.Fatalf("MDEL01_TOUCH_LIFECYCLE: state=%s admitted=%v", state, err == nil)
+			}
+			var written bool
+			if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, `SELECT last_used_at IS NOT NULL FROM app.api_keys WHERE id=$1`, keyID).Scan(&written)
+			}); err != nil || written != (state == "active") {
+				t.Fatal("MDEL01_TOUCH_DURABLE_WRITE", state, written)
+			}
+		})
+	}
+	t.Run("request_wins_real_touch", func(t *testing.T) {
+		setState(t, "active")
+		// A transition holds the lifecycle row while the production port starts.
+		// The shell race gates additionally cover both orders with advisory gates.
+		release := c02cHoldAuthorityRow(t, ctx, admin, `UPDATE app.tenant_lifecycles SET state='cooling_off' WHERE tenant_id=$1`, tenantID)
+		defer release()
+		done := make(chan error, 1)
+		go func() { done <- module.Authorization().TouchKey(ctx, keyID) }()
+		waitCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		for {
+			select {
+			case <-done:
+				t.Fatal("MDEL01_TOUCH_RACE: real TouchKey escaped the lifecycle transition")
+			default:
+			}
+			var blocked bool
+			if err := witness.InMaintenance(waitCtx, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, `SELECT EXISTS(SELECT FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%auth_touch_api_key%')`).Scan(&blocked)
+			}); err != nil {
+				t.Fatal("MDEL01 touch race witness unavailable")
+			}
+			if blocked {
+				break
+			}
+			select {
+			case <-waitCtx.Done():
+				t.Fatal("MDEL01 real TouchKey never reached lifecycle lock")
+			case <-time.After(time.Millisecond):
+			}
+		}
+		release()
+		if err := <-done; err == nil {
+			t.Fatal("MDEL01_TOUCH_RACE: real TouchKey admitted after request committed")
+		}
+		if err := admin.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			var written bool
+			if err := tx.QueryRow(ctx, `SELECT last_used_at IS NOT NULL FROM app.api_keys WHERE id=$1`, keyID).Scan(&written); err != nil {
+				return err
+			}
+			if written {
+				return errors.New("MDEL01_TOUCH_RACE: denied touch persisted activity")
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+}

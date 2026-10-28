@@ -68,6 +68,7 @@ sql:
       - "migrations/pending/b-pricing-cas_missing_tier.sql"
       - "migrations/pending/b-pricing-invalidation_publication_candidates.sql"
       - "migrations/pending/mdel00-caller-keys_caller_key_constraints.sql"
+      - "migrations/pending/mdel01-lifecycle_tenant_lifecycle.sql"
     queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant", "queries/pricing", "queries/catalog"]
     gen:
       go:

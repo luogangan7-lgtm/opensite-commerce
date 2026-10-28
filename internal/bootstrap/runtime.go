@@ -314,7 +314,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 			closeRuntime()
 			return Config{}, nil, errors.New("staff login startup failed")
 		}
-		tenantAuth, err = tenant.Open(startup, tenant.Config{DatabaseURL: authURL})
+		tenantAuth, err = tenant.Open(startup, tenant.Config{DatabaseURL: authURL, ActorScopes: admittedSessionScopes})
 		if err != nil {
 			closeRuntime()
 			return Config{}, nil, errors.New("tenant authorization startup failed")
