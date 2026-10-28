@@ -51,7 +51,30 @@ type stripeEventState struct {
 
 // Read committed evidence; HTTP admission alone does not prove application.
 func waitStripeEvent(ctx context.Context, read func(context.Context) (stripeEventState, error)) (stripeEventState, error) {
-	return read(ctx)
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	var state stripeEventState
+	for {
+		if err := ctx.Err(); err != nil {
+			return state, err
+		}
+		next, err := read(ctx)
+		if err != nil {
+			return state, err
+		}
+		state = next
+		if state.inbox == 1 && state.events == 1 && state.applied == 1 {
+			return state, nil
+		}
+		if state.inbox > 1 || state.events > 1 || state.applied > 1 {
+			return state, errors.New("duplicate event persistence evidence")
+		}
+		select {
+		case <-ctx.Done():
+			return state, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func testStripeEventWait(t *testing.T) {
@@ -240,10 +263,16 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	}
 	assertEvent := func(id string) {
 		t.Helper()
-		state, err := waitStripeEvent(ctx, func(ctx context.Context) (stripeEventState, error) {
+		waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		state, err := waitStripeEvent(waitCtx, func(ctx context.Context) (stripeEventState, error) {
 			var state stripeEventState
 			err := f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-				return tx.QueryRow(ctx, `SELECT count(*),count(e.id),count(*) FILTER(WHERE e.applied) FROM app.webhook_inbox i LEFT JOIN app.payment_events e ON (e.tenant_id,e.id)=(i.tenant_id,i.id) WHERE i.tenant_id=$1 AND i.provider='stripe' AND i.provider_event_id=$2`, f.tenant, id).Scan(&state.inbox, &state.events, &state.applied)
+				return tx.QueryRow(ctx, `SELECT count(*),count(e.id),count(*) FILTER(WHERE e.applied)
+ FROM app.webhook_inbox i
+ LEFT JOIN app.payment_event_deliveries d ON (d.tenant_id,d.id)=(i.tenant_id,i.id)
+ LEFT JOIN app.payment_events e ON (e.tenant_id,e.id)=(d.tenant_id,d.payment_event_id)
+ WHERE i.tenant_id=$1 AND i.provider='stripe' AND i.provider_event_id=$2`, f.tenant, id).Scan(&state.inbox, &state.events, &state.applied)
 			})
 			return state, err
 		})
