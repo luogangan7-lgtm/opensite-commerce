@@ -27,7 +27,7 @@ func TestSubjectCommandReadErrors(t *testing.T) {
 	} {
 		route := AdmitCommand(Route{Spec: RouteSpec{MaxBodySize: 8}, Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("failed body reached handler") })})
 		req := httptest.NewRequest("POST", "/", io.NopCloser(commandReadError{tc.err}))
-		req.Header.Set("Idempotency-Key", "subject-size-test")
+		req.Header.Set("Idempotency-Key", "0df9eef0-210c-5547-92ea-7c0935627e76")
 		rr := httptest.NewRecorder()
 		route.Handler.ServeHTTP(rr, req)
 		if rr.Code != tc.status || !strings.Contains(rr.Body.String(), `"code":"`+tc.code+`"`) {

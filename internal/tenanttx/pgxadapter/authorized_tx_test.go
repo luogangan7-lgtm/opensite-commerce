@@ -28,7 +28,7 @@ func stampedTxContext(t *testing.T, access httpapi.Access) context.Context {
 	t.Helper()
 	var ctx context.Context
 	router := httpapi.New(authorizeTxProbe{}, nil)
-	spec := httpapi.RouteSpec{OperationID: "txProbe", Method: "GET", Pattern: "/t/{tenant_id}", Access: access}
+	spec := httpapi.RouteSpec{OperationID: "txProbe", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/products", Access: access}
 	if access != httpapi.Public {
 		spec.Scope = "checkout.write"
 	}
@@ -38,7 +38,7 @@ func stampedTxContext(t *testing.T, access httpapi.Access) context.Context {
 	})); err != nil {
 		t.Fatal(err)
 	}
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/t/11111111-1111-1111-1111-111111111111", nil))
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/v1/t/11111111-1111-1111-1111-111111111111/products", nil))
 	if ctx == nil {
 		t.Fatal("probe did not reach handler")
 	}

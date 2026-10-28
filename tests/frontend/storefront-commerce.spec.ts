@@ -176,7 +176,7 @@ test('checkout requires confirmation of an updated server total and reuses ambig
   await expect(page.getByRole('button',{name:'Fake payment: capture',exact:true})).toBeDisabled();
   await expect(page.locator('.payment-result')).toContainText('$99.99');
   await quality(page, 'checkout-updated-payment-consent-disabled');
-  expect(keys).toHaveLength(2); expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
+  expect(keys).toHaveLength(2); expect(keys[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/); expect(keys[1]).toBe(keys[0]);
   let accepted: unknown;
   await page.route(`${api}/payment`, async route => { accepted=route.request().postDataJSON().accepted_total; await route.fulfill({status:409,json:{code:'checkout_total_changed'}}); });
   await page.getByRole('button',{name:'Confirm updated total',exact:true}).click();
@@ -491,7 +491,11 @@ test('commerce upstream contract: private owner, If-Match, API pricing and idemp
   const shipping_address = { country: 'US', address1: '1 Test Way', city: 'Test City', postal_code: '10001' }, input = { cart_id: raw.cart.id, shipping_address, buyer_contact: { email: 'buyer@example.test' }, accepted_total: { amount_minor: '5780', currency: 'USD' } };
   const preview = await upstream(request, unique, `${prefix}/checkout/preview`, 'POST', input, headers);
   expect(await preview.json()).toMatchObject({ subtotal_minor: '4800', tax_minor: '480', shipping_minor: '500', total_minor: '5780' });
-  const checkoutHeaders = { ...headers, 'Idempotency-Key': `test-${crypto.randomUUID()}` };
+  const checkoutHeaders = { ...headers, 'Idempotency-Key': crypto.randomUUID() };
+  for (const key of ['alice@example.test', `test-${crypto.randomUUID()}`, 'ABCDEF01-2345-6789-ABCD-EF0123456789']) {
+    const rejected = await upstream(request, unique, `${prefix}/checkout`, 'POST', input, { ...headers, 'Idempotency-Key': key });
+    expect(rejected.status()).toBe(400); expect(await rejected.json()).toMatchObject({ code: 'invalid_idempotency_key' });
+  }
   expect((await upstream(request, unique, `${prefix}/checkout`, 'POST', { ...input, shipping_address: { country: 'US', postal_code: '10001' } }, checkoutHeaders)).status()).toBe(422);
   expect((await upstream(request, unique, `${prefix}/checkout`, 'POST', { ...input, buyer_contact: { ...input.buyer_contact, name: 'x'.repeat(201) } }, checkoutHeaders)).status()).toBe(422);
   const checkout = await upstream(request, unique, `${prefix}/checkout`, 'POST', input, checkoutHeaders);

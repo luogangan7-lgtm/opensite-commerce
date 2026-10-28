@@ -39,6 +39,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	checkouthttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/checkout"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/shipping"
@@ -231,7 +232,7 @@ func TestQuoteOrdersPGProductionCompositionAdmissionAndConfirm(t *testing.T) {
 	if sessionResponse.Code != 200 || json.Unmarshal(sessionResponse.Body.Bytes(), &session) != nil || session.CSRF == "" {
 		t.Fatalf("real session challenge: %d", sessionResponse.Code)
 	}
-	const key = "production-composition-shared-raw-key"
+	const key = "450ff667-ca12-5d6a-9b13-c923034d98bb"
 	post := func(quoteID, csrf, requestOrigin, body string, sessionCookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", origin+"/api/v1/t/"+f.tenant+"/quotes/"+quoteID+"/orders", strings.NewReader(body)).WithContext(quoteObserved(f.ctx))
 		r.Header.Set("Content-Type", "application/json")
@@ -365,7 +366,7 @@ func TestQuoteOrdersPGProductionCompositionAdmissionAndConfirm(t *testing.T) {
 
 func TestQuoteOrdersPGOrderKeyDoesNotCollideWithOrdinaryOrder(t *testing.T) {
 	f := quoteOrdersDB(t, time.Hour)
-	const raw = "ordinary-and-quote-same-raw-key"
+	const raw = "31c68263-a406-55fb-a1b6-6bc0933a9623"
 	line, rate := uuid.NewString(), uuid.NewString()
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	in := oc.CreateInput{ID: uuid.NewString(), IdempotencyKey: raw, Currency: "USD", Buyer: oc.Buyer{CustomerID: f.buyer},
@@ -415,7 +416,7 @@ func TestQuoteOrdersPGOrderKeyDoesNotCollideWithOrdinaryOrder(t *testing.T) {
 		if err := tx.QueryRow(ctx, `SELECT request_key FROM app.checkout_sessions WHERE tenant_id=$1 AND order_id=$2`, f.tenant, converted.OrderID).Scan(&checkoutKey); err != nil {
 			return err
 		}
-		if ordinaryKey != raw || receiptKey != raw || checkoutKey != "quotes.orders.v1:"+converted.OrderID {
+		if ordinaryKey != raw || receiptKey != raw || checkoutKey != idempotency.DerivedKey("quotes.checkout.v1", converted.OrderID) {
 			return fmt.Errorf("raw receipt/ordinary key or internal checkout namespace changed")
 		}
 		return nil

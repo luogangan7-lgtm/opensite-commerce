@@ -7,57 +7,58 @@
     "media_uploads": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Uploader actor_id is staff authority, not customer-media ownership; filenames may contain personal text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "actor_id": {"classification": "operational"},
-        "original_filename": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "redact"},
-        "declared_mime": {"classification": "operational"},
-        "expected_size": {"classification": "operational"},
-        "expected_sha256": {"classification": "operational", "structure": "Sha256Digest"},
-        "temporary_key": {"classification": "operational"},
-        "received_bytes": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "expires_at": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "media_id": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "actor_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.actor_id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "original_filename": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "redact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.original_filename with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "declared_mime": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.declared_mime with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "expected_size": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.expected_size with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "expected_sha256": {"classification": "operational", "structure": "Sha256Digest", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.expected_sha256 with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "temporary_key": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.temporary_key with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "received_bytes": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.received_bytes with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.status with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "expires_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.expires_at with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.created_at with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}},
+        "media_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_uploads.media_id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_uploads.tenant_id"}}}
       }
     },
     "media_blobs": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "backend": {"classification": "operational"},
-        "storage_key": {"classification": "operational"},
-        "sha256": {"classification": "operational", "structure": "Sha256Digest"},
-        "size_bytes": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_blobs.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_blobs.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_blobs.id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_blobs.tenant_id"}}},
+        "backend": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_blobs.backend with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_blobs.tenant_id"}}},
+        "storage_key": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_blobs.storage_key with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_blobs.tenant_id"}}},
+        "sha256": {"classification": "operational", "structure": "Sha256Digest", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_blobs.sha256 with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_blobs.tenant_id"}}},
+        "size_bytes": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_blobs.size_bytes with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_blobs.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_blobs.status with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_blobs.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_blobs.created_at with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_blobs.tenant_id"}}}
       }
     },
     "media_assets": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Media assets have no customer ownership FK; filename is a potential personal-data copy, not authority to associate a customer."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "blob_id": {"classification": "operational"},
-        "filename": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "redact"},
-        "mime_type": {"classification": "operational"},
-        "visibility": {"classification": "operational"},
-        "width": {"classification": "operational"},
-        "height": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_assets.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_assets.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_assets.id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_assets.tenant_id"}}},
+        "blob_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_assets.blob_id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_assets.tenant_id"}}},
+        "filename": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "redact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_assets.filename with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_assets.tenant_id"}}},
+        "mime_type": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_assets.mime_type with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_assets.tenant_id"}}},
+        "visibility": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_assets.visibility with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_assets.tenant_id"}}},
+        "width": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_assets.width with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_assets.tenant_id"}}},
+        "height": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_assets.height with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_assets.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned media_assets.created_at with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "media_assets.tenant_id"}}}
       }
     },
     "product_media": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "media_id": {"classification": "operational"},
-        "role": {"classification": "operational"},
-        "sort_order": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_media.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "product_media.tenant_id"}}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_media.product_id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "product_media.tenant_id"}}},
+        "media_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_media.media_id with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "product_media.tenant_id"}}},
+        "role": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_media.role with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "product_media.tenant_id"}}},
+        "sort_order": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned product_media.sort_order with its row, including all merchant/guest/derived copies.", "handler": "media.erase", "ownership": {"kind": "tenant_column", "path": "product_media.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"media.erase": {"depends_on": ["reliability.erase"], "tables": ["product_media", "media_assets", "media_uploads", "media_blobs"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {"media.originals": {"action": "erase", "strategy": "unlink_tenant_namespace", "reason": "Remove original and derived private tenant bytes, including interrupted/rollback orphans; DB metadata erasure alone is insufficient.", "handler": "media.erase", "source": "internal/storage/local/local.go", "ownership": {"kind": "tenant_column", "path": "media_blobs.tenant_id"}, "paths": ["originals/<sha_prefix>/<sha_prefix>/<sha256>"], "guards": ["canonical_ids", "anchored_root", "no_symlinks", "fsync_parents", "verify_empty"], "prerequisite": "MDEL-21a"}, "media.staging": {"action": "erase", "strategy": "unlink_tenant_namespace", "reason": "Remove original and derived private tenant bytes, including interrupted/rollback orphans; DB metadata erasure alone is insufficient.", "handler": "media.erase", "source": "internal/storage/local/local.go", "ownership": {"kind": "tenant_column", "path": "media_blobs.tenant_id"}, "paths": ["staging/upload-*"], "guards": ["canonical_ids", "anchored_root", "no_symlinks", "fsync_parents", "verify_empty"], "prerequisite": "MDEL-21a"}}}
 }

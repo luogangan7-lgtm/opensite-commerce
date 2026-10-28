@@ -17,11 +17,11 @@ test('redrive retries keep the explicit key, no body, CSRF and no-store',async()
   return Response.json({notification_id:id,token:id,status:'pending',generation:2});
  }) as typeof fetch});
  await api.session();const notifications=new NotificationsAPI(api,tenant);
- await expect(notifications.redrive(id,'stable-request')).rejects.toThrow();
- expect(await notifications.redrive(id,'stable-request')).toMatchObject({notification_id:id,generation:2});
+ await expect(notifications.redrive(id,id)).rejects.toThrow();
+ expect(await notifications.redrive(id,id)).toMatchObject({notification_id:id,generation:2});
  for(const call of calls.slice(1)){
   expect(call.method).toBe('POST');expect(call.body).toBeUndefined();expect(call.cache).toBe('no-store');
-  expect(new Headers(call.headers).get('Idempotency-Key')).toBe('stable-request');
+  expect(new Headers(call.headers).get('Idempotency-Key')).toBe(id);
   expect(new Headers(call.headers).get('X-CSRF-Token')).toBe('csrf');
  }
 });

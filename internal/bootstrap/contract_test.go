@@ -128,7 +128,9 @@ func TestCheckoutProductionFakeConfigurationStopsStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	response := httptest.NewRecorder()
-	server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/t/10000000-0000-4000-8000-000000000001/checkout", nil))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/t/10000000-0000-4000-8000-000000000001/checkout", nil)
+	req.Header.Set("Idempotency-Key", "11111111-1111-4111-8111-111111111111")
+	server.Handler.ServeHTTP(response, req)
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("unconfigured storefront authentication: %d", response.Code)
 	}
@@ -174,7 +176,7 @@ func TestRouteContractRejectsDrift(t *testing.T) {
 
 func TestRouteSpecsAreSuccessfulRegistrationSnapshots(t *testing.T) {
 	router := httpapi.New(nil, nil)
-	spec := httpapi.RouteSpec{OperationID: "probe", Method: "GET", Pattern: "/probe", Access: httpapi.Public}
+	spec := httpapi.RouteSpec{OperationID: "probe", Method: "GET", Pattern: "/healthz", Access: httpapi.Public}
 	if err := router.Register(spec, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})); err != nil {
 		t.Fatal(err)
 	}
@@ -249,6 +251,7 @@ func TestCheckoutAndCartAuthenticationStaySeparate(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Authorization", "Bearer staff")
+			req.Header.Set("Idempotency-Key", "11111111-1111-4111-8111-111111111111")
 			req.Header.Set("Cookie", "__Host-osc_admin_session=staff")
 			server.Handler.ServeHTTP(response, req)
 			if response.Code != tc.status || response.Header().Get("Content-Type") != "application/problem+json" {

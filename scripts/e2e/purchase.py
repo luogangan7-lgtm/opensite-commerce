@@ -32,7 +32,7 @@ def publish(psql, credentials, origin='http://127.0.0.1:8080'):
 
     def post(path, body, etag=None):
         headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + bearer,
-                   'Idempotency-Key': 'c09d-' + str(uuid.uuid4())}
+                   'Idempotency-Key': str(uuid.uuid4())}
         if etag:
             headers['If-Match'] = etag
         request = urllib.request.Request(origin + path,

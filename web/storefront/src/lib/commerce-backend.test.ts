@@ -21,7 +21,7 @@ const names = ['OSC_COMMERCE_MODE','OSC_COMMERCE_API_ORIGIN','OSC_COMMERCE_SITE'
 const saved = new Map(names.map(name => [name, process.env[name]]));
 let mock: ReturnType<typeof spyOn>;
 const calls: Request[] = [];
-let failure = false, failureCode='stock_unavailable';
+let failure = false, failureOnlyCheckout = false, failureCode='stock_unavailable';
 function cookies() {
   const values = new Map<string,string>(), flags: Record<string,unknown>[] = [];
   return { jar: {get: (key: string) => values.has(key) ? {value: values.get(key)!} : undefined,
@@ -34,11 +34,11 @@ function request(operation: string, csrf?: string, value?: unknown) {
 beforeEach(() => {
   (globalThis as typeof globalThis & {__OSC_COMMERCE_TEST_HTTP__?:boolean}).__OSC_COMMERCE_TEST_HTTP__=true;
   Object.assign(process.env, {OSC_COMMERCE_MODE:'backend',OSC_COMMERCE_API_ORIGIN:'http://api:8080',OSC_COMMERCE_SITE:site,OSC_COMMERCE_COOKIE_KEY:randomBytes(32).toString('base64url'),OSC_STOREFRONT_ALLOWED_HOSTS:'shop.example.test',OPENSITE_STOREFRONT_ORIGIN:site,OPENSITE_STOREFRONT_KEY:randomBytes(32).toString('base64url')});
-  calls.length=0; failure=false;failureCode='stock_unavailable';
+  calls.length=0; failure=false;failureOnlyCheckout=false;failureCode='stock_unavailable';
   mock=spyOn(globalThis,'fetch').mockImplementation(Object.assign(async(input:RequestInfo|URL,init?:RequestInit)=>{
     const req=input instanceof Request ? input : new Request(input,init); calls.push(req);
     if(new URL(req.url).pathname==='/api/v1/public/sites/current') return Response.json({tenant_id:tenant,hostname:'shop.example.test',locale:'en',products:[{id:product,name:'Canvas tote',slug:'canvas-tote',skus:[{sku_id:sku,sku_code:'TOTE',option_values:[],price_minor:'2400',currency:'USD',available:true}]}]});
-    if(failure) return Response.json({type:'about:blank',status:409,code:failureCode,detail:'postgres://private/internal'}, {status:409,headers:{'Content-Type':'application/problem+json'}});
+    if(failure && (!failureOnlyCheckout || req.url.endsWith('/checkout'))) return Response.json({type:'about:blank',status:409,code:failureCode,detail:'postgres://private/internal'}, {status:409,headers:{'Content-Type':'application/problem+json'}});
     if(req.url.endsWith('/carts')) return Response.json({cart:{id:cart,currency:'USD',version:1,lines:[],subtotal:0},cart_token:token},{status:201,headers:{ETag:etag}});
     return new Response(`{"id":"${cart}","currency":"USD","version":1,"lines":[{"sku_id":"${sku}","quantity":1,"sellable":true,"unit_amount":9223372036854775807,"line_amount":9223372036854775807}],"subtotal":9223372036854775807}`,{headers:{ETag:etag,'Content-Type':'application/json'}});
   },{preconnect:globalThis.fetch.preconnect}));
@@ -60,9 +60,33 @@ test('backend problem code is visible without returning upstream private detail'
   expect(context.enabled).toBe(true);
   await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
   failure=true;
-  const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers:{Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json','Idempotency-Key':'c09d-retry-same-key'},body:JSON.stringify({shipping_address:{country:'US',address1:'1 Test Way',city:'New York',postal_code:'10001'},buyer_contact:{email:'buyer@example.test'},accepted_total:{amount_minor:'160',currency:'USD'}})}),jar.jar,'checkout');
+  const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers:{Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json','Idempotency-Key':'c09d0001-0000-4000-8000-000000000001'},body:JSON.stringify({shipping_address:{country:'US',address1:'1 Test Way',city:'New York',postal_code:'10001'},buyer_contact:{email:'buyer@example.test'},accepted_total:{amount_minor:'160',currency:'USD'}})}),jar.jar,'checkout');
   expect(response.status).toBe(409);expect(response.headers.get('content-type')).toContain('application/problem+json');
   const text=await response.text();expect(JSON.parse(text).code).toBe('stock_unavailable');expect(text).not.toContain('private');
+  expect(calls.at(-1)!.headers.get('Idempotency-Key')).toBe('c09d0001-0000-4000-8000-000000000001');
+});
+test('checkout accepts uppercase UUIDs and forwards lowercase',async()=>{
+  const jar=cookies(),context=await readPurchaseContext(request('context'),jar.jar);
+  await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
+  failure=true;failureOnlyCheckout=true;
+  const key='abcdef01-2345-6789-abcd-ef0123456789';
+  const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers:{Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json','Idempotency-Key':key.toUpperCase()},body:JSON.stringify({shipping_address:{country:'US',postal_code:'10001'},accepted_total:{amount_minor:'2400',currency:'USD'}})}),jar.jar,'checkout');
+  expect(response.status).toBe(409);
+  expect(calls.at(-1)!.headers.get('Idempotency-Key')).toBe(key);
+});
+test('checkout rejects missing, noncanonical and repeated idempotency keys before forwarding a write',async()=>{
+  const jar=cookies(),context=await readPurchaseContext(request('context'),jar.jar);
+  await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
+  const canonical='abcdef01-2345-6789-abcd-ef0123456789';
+  const before=calls.filter(call=>call.method!=='GET').length;
+  for(const key of [undefined,'','alice@example.test','legacy-key',canonical.replaceAll('-',''),`{${canonical}}`,`${canonical}.reserve`,`${canonical.slice(0,-1)}g`,`${canonical}, ${canonical}`]){
+    const headers=new Headers({Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json'});
+    if(key!==undefined)headers.set('Idempotency-Key',key);
+    const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers,body:'{}'}),jar.jar,'checkout');
+    expect(response.status).toBe(400);expect(response.headers.get('Content-Type')).toBe('application/problem+json');
+    expect(await response.json()).toEqual({type:'about:blank',status:400,code:'invalid_idempotency_key'});
+  }
+  expect(calls.filter(call=>call.method!=='GET')).toHaveLength(before);
 });
 test('cookie storage failures return an unavailable context instead of breaking SSR',async()=>{
   const jar={get(){throw new Error('cookie storage blocked');},set(){throw new Error('cookie storage blocked');}} as unknown as AstroCookies;

@@ -95,7 +95,7 @@ func (f orderFixture) input(t *testing.T) contract.CreateInput {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return contract.CreateInput{ID: uuid.NewString(), IdempotencyKey: "create:" + uuid.NewString(), Currency: "USD", Buyer: contract.Buyer{Guest: contract.Contact{Email: "guest@example.test"}}, Lines: []contract.Line{{ID: line, SKUID: f.sku, SKU: "ORDER-SKU", Quantity: 2, Price: price, Tax: taxes.Lines[0]}}, Shipping: shippingQuote}
+	return contract.CreateInput{ID: uuid.NewString(), IdempotencyKey: uuid.NewString(), Currency: "USD", Buyer: contract.Buyer{Guest: contract.Contact{Email: "guest@example.test"}}, Lines: []contract.Line{{ID: line, SKUID: f.sku, SKU: "ORDER-SKU", Quantity: 2, Price: price, Tax: taxes.Lines[0]}}, Shipping: shippingQuote}
 }
 func (f orderFixture) errorAtSavepoint(t *testing.T, fn func() error, want error) {
 	t.Helper()
@@ -167,10 +167,10 @@ func TestOrdersServiceProductionQueries(t *testing.T) {
 		return e
 	}, contract.ErrConflict)
 	f.errorAtSavepoint(t, func() error {
-		_, e := svc.Transition(f.ctx, f.tx, f.tenant, contract.TransitionInput{OrderID: in.ID, Target: contract.Fulfilled, EventKey: "shipment:event-1"})
+		_, e := svc.Transition(f.ctx, f.tx, f.tenant, contract.TransitionInput{OrderID: in.ID, Target: contract.Fulfilled, EventKey: "d33f44bd-38b5-5cfb-a000-6852e4ad644c"})
 		return e
 	}, contract.ErrConflict)
-	shipmentInput := fulfillmentcontract.CreateInput{OrderID: in.ID, ExpectedVersion: paid.Version, IdempotencyKey: "shipment:event-1", Carrier: "manual", TrackingNumber: "ORDER-GATE-1"}
+	shipmentInput := fulfillmentcontract.CreateInput{OrderID: in.ID, ExpectedVersion: paid.Version, IdempotencyKey: "d33f44bd-38b5-5cfb-a000-6852e4ad644c", Carrier: "manual", TrackingNumber: "ORDER-GATE-1"}
 	for _, line := range in.Lines {
 		shipmentInput.Lines = append(shipmentInput.Lines, fulfillmentcontract.Line{OrderLineID: line.ID, Quantity: line.Quantity})
 	}
@@ -420,7 +420,7 @@ func TestOrdersServiceMixedReservationExpiryNoDeadlock(t *testing.T) {
 	if _, err := admin.Exec(ctx, "SELECT app.inventory_adjust($1,10,'mixed race receipt',$2,'inbound')", f.sku, uuid.NewString()); err != nil {
 		t.Fatal(err)
 	}
-	if err := admin.QueryRow(ctx, "SELECT (app.inventory_reserve($1,2,'order',$2,'mixed-explicit',900)).id::text", f.sku, orderID).Scan(&explicit); err != nil {
+	if err := admin.QueryRow(ctx, "SELECT (app.inventory_reserve($1,2,'order',$2,'6bf94d66-45d6-59d7-97b9-3a706aa350ff',900)).id::text", f.sku, orderID).Scan(&explicit); err != nil {
 		t.Fatal(err)
 	}
 	// Due now: the sweep would take it unless the create already holds the row.

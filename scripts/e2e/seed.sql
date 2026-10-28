@@ -116,11 +116,11 @@ BEGIN
   IF NOT EXISTS(SELECT FROM app.payment_provider_accounts WHERE tenant_id=t AND provider='fake' AND provider_account_id='c19-e2e-'||CASE n WHEN 1 THEN 'desktop' ELSE 'mobile' END AND environment='test' AND enabled) THEN RAISE EXCEPTION 'C19_E2E_ACCOUNT_DRIFT'; END IF;
   IF NOT EXISTS(SELECT FROM app.checkout_sessions WHERE tenant_id=t AND id=cid) THEN
    PERFORM app.inventory_adjust(fixture_sku,10,'C19 webhook seed',('c1900006-0000-4000-8000-'||suffix)::uuid,'inbound');
-   r:=app.inventory_reserve(fixture_sku,2,'order',oid,'c19-e2e-hold',3600);
-   fixture_order:=app.orders_create(oid,'c19-e2e-order',sha256('c19-e2e-order'::bytea),NULL,'{"email":"c19-webhook@example.invalid"}','USD',50,'{}',
+   r:=app.inventory_reserve(fixture_sku,2,'order',oid,('c1900008-0000-5000-8000-'||suffix),3600);
+   fixture_order:=app.orders_create(oid,('c1900009-0000-5000-8000-'||suffix),sha256('c19-e2e-order'::bytea),NULL,'{"email":"c19-webhook@example.invalid"}','USD',50,'{}',
     jsonb_build_array(jsonb_build_object('id',('c1900007-0000-4000-8000-'||suffix)::uuid,'sku_id',fixture_sku,'sku','C19-WEBHOOK','quantity',2,'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',20,'line_total_minor',220,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
    INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
-    VALUES(t,cid,'guest',repeat('a',64),'c19-e2e-checkout',sha256('c19-e2e-checkout'::bytea),('c1900005-0000-4000-8000-'||suffix)::uuid,1,oid,'{}','USD',270,200,20,50,1);
+    VALUES(t,cid,'guest',repeat('a',64),('c190000a-0000-5000-8000-'||suffix),sha256('c19-e2e-checkout'::bytea),('c1900005-0000-4000-8000-'||suffix)::uuid,1,oid,'{}','USD',270,200,20,50,1);
    UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake_c19_e2e_'||n,start_result='{"state":"ready"}' WHERE tenant_id=t AND id=cid;
   END IF;
   IF NOT EXISTS(SELECT FROM app.checkout_sessions c JOIN app.orders o ON (o.tenant_id,o.id)=(c.tenant_id,c.order_id) WHERE c.tenant_id=t AND c.id=cid AND c.order_id=oid AND c.phase='ready' AND c.provider_ref='fake_c19_e2e_'||n AND c.amount_minor=270 AND c.currency='USD' AND c.payable_version=1 AND o.state='pending_payment' AND o.version=1 AND o.total_minor=270 AND o.sealed)

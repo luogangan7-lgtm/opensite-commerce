@@ -6,6 +6,8 @@ python3 tests/test_stripe_live_workflow.py
 python3 tests/test_stripe_live_output.py
 python3 tests/test_batch_hygiene.py
 bash scripts/check_gofmt.sh
+# Reconcile erasure declarations before broader runtime checks can mask their RED.
+python3 tests/test_privacy_registry.py
 GOPROXY=off GOSUMDB=off go test -count=1 ./...
 GOPROXY=off GOSUMDB=off go vet ./...
 GOPROXY=off GOSUMDB=off go run ./cmd/preflight fixtures/home-valid.json
@@ -31,7 +33,6 @@ python3 tests/test_fulfillment_contract.py
 python3 tests/test_quotes_contract.py
 python3 tests/test_notifications_contract_static.py
 python3 tests/test_notifications_api.py
-python3 tests/test_privacy_registry.py
 python3 scripts/privacy_registry.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_ops_deploy tests.test_ops_backup tests.test_ops_drill tests.test_ops_connection_policy
 python3 scripts/check_oapi_codegen.py

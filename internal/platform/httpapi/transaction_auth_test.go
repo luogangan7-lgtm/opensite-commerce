@@ -23,12 +23,12 @@ func TestC02cTransactionAuthorizationFailsClosed(t *testing.T) {
 	a := transactionGuardAuth{&projectedAuth{actor: httpapi.Actor{Kind: "user", ID: actorUser}}}
 	r := httpapi.New(a, nil)
 	called := false
-	spec := httpapi.RouteSpec{OperationID: "actorCommand", Method: "POST", Pattern: "/t/{tenant_id}", Access: httpapi.AdminSession, Scope: "catalog:write"}
+	spec := httpapi.RouteSpec{OperationID: "actorCommand", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/carts", Access: httpapi.AdminSession, Scope: "catalog:write"}
 	if err := r.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { called = true; w.WriteHeader(204) })); err != nil {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest("POST", "/t/"+actorTenant, nil))
+	r.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/t/"+actorTenant+"/carts", nil))
 	if w.Code != 403 || called {
 		t.Fatalf("missing transaction authority reached handler: status %d called %v", w.Code, called)
 	}

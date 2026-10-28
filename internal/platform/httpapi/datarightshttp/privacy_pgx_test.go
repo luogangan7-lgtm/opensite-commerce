@@ -187,7 +187,7 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 		router.ServeHTTP(rr, req)
 		return rr
 	}
-	first := request("POST", urlBase, "original")
+	first := request("POST", urlBase, "50143d6f-041f-5c94-bcd3-76b6768a9b64")
 	if first.Code != 202 {
 		t.Fatalf("export request=%d %s callback=%v", first.Code, first.Body.String(), lastError)
 	}
@@ -198,16 +198,16 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 	if json.Unmarshal(first.Body.Bytes(), &created) != nil || created.RequestID == "" || created.Status != "pending" || strings.Contains(first.Body.String(), "token") {
 		t.Fatal("POST leaked capability or invalid metadata")
 	}
-	replay := request("POST", urlBase, "original")
+	replay := request("POST", urlBase, "50143d6f-041f-5c94-bcd3-76b6768a9b64")
 	if replay.Code != 202 || replay.Body.String() != first.Body.String() {
 		t.Fatal("exact replay failed")
 	}
-	changed := request("POST", strings.Replace(urlBase, customerID, uuid.NewString(), 1), "original")
+	changed := request("POST", strings.Replace(urlBase, customerID, uuid.NewString(), 1), "50143d6f-041f-5c94-bcd3-76b6768a9b64")
 	if changed.Code != 422 {
 		t.Fatalf("fingerprint mismatch status=%d", changed.Code)
 	}
 	failEnqueue = true
-	failed := request("POST", urlBase, "enqueue-failure")
+	failed := request("POST", urlBase, "20974660-3f4d-53fb-8413-ffefe2d8f26a")
 	failEnqueue = false
 	if failed.Code != 500 {
 		t.Fatalf("enqueue failure status=%d", failed.Code)
@@ -297,14 +297,14 @@ func TestPrivacyHTTPPGAtomicReplaySignedJobs(t *testing.T) {
 	// stored opaque IDs without rerunning erasure or exposing profile data.
 	cleanupService.failures = 1
 	eraseURL := "/api/v1/t/" + tenantID + "/customers/" + customerID + "/data-erasure"
-	erasedFailure := request("POST", eraseURL, "erase-original")
+	erasedFailure := request("POST", eraseURL, "f14dbffb-c5b3-5a3f-ab5c-bb0fa7d7ae0b")
 	if erasedFailure.Code != 503 {
 		t.Fatalf("cleanup failure=%d %s", erasedFailure.Code, erasedFailure.Body.String())
 	}
 	if _, err = os.Stat(filename); err != nil {
 		t.Fatal("fixture did not preserve failed cleanup artifact")
 	}
-	erased := request("POST", eraseURL, "erase-original")
+	erased := request("POST", eraseURL, "f14dbffb-c5b3-5a3f-ab5c-bb0fa7d7ae0b")
 	if erased.Code != 200 {
 		t.Fatalf("erase replay=%d %s", erased.Code, erased.Body.String())
 	}

@@ -74,7 +74,7 @@ func TestMediaPostgresHTTP(t *testing.T) {
 			t.Fatal(e)
 		}
 		req.Header.Set("Content-Type", content)
-		req.Header.Set("Idempotency-Key", "media-gate")
+		req.Header.Set("Idempotency-Key", "09af9445-5d48-5254-be70-9700bb00bbad")
 		res, e := http.DefaultClient.Do(req)
 		if e != nil {
 			t.Fatal(e)
@@ -146,7 +146,7 @@ func TestMediaPostgresHTTP(t *testing.T) {
 				replays <- replayResult{err: e}
 				return
 			}
-			req.Header.Set("Idempotency-Key", "media-replay")
+			req.Header.Set("Idempotency-Key", "788da45c-b8cb-5353-8d84-18a7b213829c")
 			res, e := http.DefaultClient.Do(req)
 			if e != nil {
 				replays <- replayResult{err: e}
@@ -209,7 +209,7 @@ func TestMediaPostgresHTTP(t *testing.T) {
 				t.Error(e)
 				return
 			}
-			req.Header.Set("Idempotency-Key", "media-race-"+id)
+			req.Header.Set("Idempotency-Key", id)
 			res, e := http.DefaultClient.Do(req)
 			if e != nil {
 				t.Error(e)

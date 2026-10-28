@@ -132,7 +132,7 @@ func runRefundConservation(t *testing.T, quantity, unit, taxBasisPoints, shippin
 	if physical {
 		version, _, _ := conservationOrder(t, f)
 		err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-			s, err := fulfillment.New().CreateShipment(ctx, tx, f.tenant, fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: "ship-all", Carrier: "manual", TrackingNumber: "conservation", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: quantity}}})
+			s, err := fulfillment.New().CreateShipment(ctx, tx, f.tenant, fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: "7c1a6c76-2fb3-5692-8a3a-82ea1647a5e8", Carrier: "manual", TrackingNumber: "conservation", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: quantity}}})
 			if err == nil {
 				shipmentLine = s.Lines[0].ID
 			}
@@ -150,7 +150,7 @@ func runRefundConservation(t *testing.T, quantity, unit, taxBasisPoints, shippin
 		if physical {
 			kind = returnscontract.ShipmentReturn
 		}
-		in := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: fmt.Sprintf("rma-%d", i), Kind: kind, Reason: "conservation", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipmentLine, Quantity: chunk}}}
+		in := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: fixtureCallerKey(fmt.Sprintf("rma-%d", i)), Kind: kind, Reason: "conservation", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipmentLine, Quantity: chunk}}}
 		err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			var err error
 			rmas[i], err = f.returns.Request(ctx, tx, f.tenant, in)
@@ -183,7 +183,7 @@ func runRefundConservation(t *testing.T, quantity, unit, taxBasisPoints, shippin
 		rma := rmas[i]
 		if physical {
 			version, _, _ := conservationOrder(t, f)
-			in := returnscontract.ReceiveInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fmt.Sprintf("receive-%d", i), Restock: true}
+			in := returnscontract.ReceiveInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fixtureCallerKey(fmt.Sprintf("receive-%d", i)), Restock: true}
 			err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 				var err error
 				rma, err = f.returns.Receive(ctx, tx, f.tenant, in)
@@ -211,7 +211,7 @@ func runRefundConservation(t *testing.T, quantity, unit, taxBasisPoints, shippin
 			continue
 		}
 		version, _, _ := conservationOrder(t, f)
-		in := returnscontract.RefundInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fmt.Sprintf("refund-%d", i)}
+		in := returnscontract.RefundInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fixtureCallerKey(fmt.Sprintf("refund-%d", i))}
 		refunded, err := f.returns.Refund(f.ctx, f.tenant, in)
 		if err != nil {
 			t.Fatalf("refund chunk %d: %v", i, err)
@@ -279,7 +279,7 @@ func runTerminalRMAThenLegacy(t *testing.T, quantity, unit, discount, firstQuant
 	positive := int64(0)
 	createAndFinish := func(index int, qty, expected int64) returnscontract.Return {
 		version, _, _ := conservationOrder(t, f)
-		in := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: fmt.Sprintf("interleave-rma-%d", index), Kind: returnscontract.UnshippedCancel, Reason: "terminal RMA then legacy", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: qty}}}
+		in := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: fixtureCallerKey(fmt.Sprintf("interleave-rma-%d", index)), Kind: returnscontract.UnshippedCancel, Reason: "terminal RMA then legacy", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: qty}}}
 		var rma returnscontract.Return
 		err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			var err error
@@ -300,7 +300,7 @@ func runTerminalRMAThenLegacy(t *testing.T, quantity, unit, discount, firstQuant
 		}
 		positive++
 		version, _, _ = conservationOrder(t, f)
-		refund := returnscontract.RefundInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fmt.Sprintf("interleave-refund-%d", index)}
+		refund := returnscontract.RefundInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fixtureCallerKey(fmt.Sprintf("interleave-refund-%d", index))}
 		rma, err = f.returns.Refund(f.ctx, f.tenant, refund)
 		if err != nil || rma.Status != "refunded" || rma.RefundMinor != expected {
 			t.Fatalf("interleaved refund %d: %+v %v", index, rma, err)

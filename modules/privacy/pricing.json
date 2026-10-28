@@ -7,29 +7,30 @@
     "price_lists": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "currency": {"classification": "financial_non_contact"},
-        "version": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "starts_at": {"classification": "operational"},
-        "ends_at": {"classification": "operational"},
-        "priority": {"classification": "operational"},
-        "audience": {"classification": "operational"},
-        "customer_group_id": {"classification": "operational"},
-        "buyer_company_id": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.id with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}},
+        "currency": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.currency with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}},
+        "version": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.version with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.status with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}},
+        "starts_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.starts_at with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}},
+        "ends_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.ends_at with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}},
+        "priority": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.priority with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}},
+        "audience": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.audience with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}},
+        "customer_group_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.customer_group_id with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}},
+        "buyer_company_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_lists.buyer_company_id with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_lists.tenant_id"}}}
       }
     },
     "price_entries": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "price_list_id": {"classification": "operational"},
-        "sku_id": {"classification": "operational"},
-        "min_quantity": {"classification": "operational"},
-        "unit_amount": {"classification": "financial_non_contact"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_entries.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_entries.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_entries.id with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_entries.tenant_id"}}},
+        "price_list_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_entries.price_list_id with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_entries.tenant_id"}}},
+        "sku_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_entries.sku_id with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_entries.tenant_id"}}},
+        "min_quantity": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_entries.min_quantity with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_entries.tenant_id"}}},
+        "unit_amount": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned price_entries.unit_amount with its row, including all merchant/guest/derived copies.", "handler": "pricing.erase", "ownership": {"kind": "tenant_column", "path": "price_entries.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"pricing.erase": {"depends_on": ["cart.erase"], "tables": ["price_entries", "price_lists"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

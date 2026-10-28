@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/internal/service"
@@ -200,14 +201,14 @@ func TestCMSHTTPAdmissionAndRedaction(t *testing.T) {
 		name, path, body, key, version string
 		status                         int
 	}{
-		{"version missing", cmsDraftPath + "/pages", cmsPageBody, "a", "", 428},
-		{"version unquoted", cmsDraftPath + "/pages", cmsPageBody, "a", "1", 400},
-		{"unknown field", cmsDraftPath + "/pages", strings.Replace(cmsPageBody, `"page_key"`, `"unknown":1,"page_key"`, 1), "a", `"1"`, 400},
-		{"duplicate field", cmsDraftPath + "/pages", strings.Replace(cmsPageBody, `"locale":"en"`, `"locale":"en","locale":"zh"`, 1), "a", `"1"`, 400},
-		{"unknown block", cmsDraftPath + "/pages", strings.Replace(cmsPageBody, `"heading"`, `"html"`, 1), "a", `"1"`, 400},
-		{"script text", cmsDraftPath + "/pages", strings.Replace(cmsPageBody, "Welcome", "<script>alert(1)</script>", 1), "a", `"1"`, 422},
-		{"reserved route", cmsDraftPath + "/pages", strings.Replace(cmsPageBody, `"path":"/"`, `"path":"/products/secret"`, 1), "a", `"1"`, 422},
-		{"query", cmsDraftPath + "/pages?token=secret", cmsPageBody, "a", `"1"`, 400},
+		{"version missing", cmsDraftPath + "/pages", cmsPageBody, "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", "", 428},
+		{"version unquoted", cmsDraftPath + "/pages", cmsPageBody, "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", "1", 400},
+		{"unknown field", cmsDraftPath + "/pages", strings.Replace(cmsPageBody, `"page_key"`, `"unknown":1,"page_key"`, 1), "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", `"1"`, 400},
+		{"duplicate field", cmsDraftPath + "/pages", strings.Replace(cmsPageBody, `"locale":"en"`, `"locale":"en","locale":"zh"`, 1), "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", `"1"`, 400},
+		{"unknown block", cmsDraftPath + "/pages", strings.Replace(cmsPageBody, `"heading"`, `"html"`, 1), "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", `"1"`, 400},
+		{"script text", cmsDraftPath + "/pages", strings.Replace(cmsPageBody, "Welcome", "<script>alert(1)</script>", 1), "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", `"1"`, 422},
+		{"reserved route", cmsDraftPath + "/pages", strings.Replace(cmsPageBody, `"path":"/"`, `"path":"/products/secret"`, 1), "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", `"1"`, 422},
+		{"query", cmsDraftPath + "/pages?token=secret", cmsPageBody, "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", `"1"`, 400},
 		{"key missing", cmsDraftPath + "/pages", cmsPageBody, "", `"1"`, 400},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -222,13 +223,13 @@ func TestCMSHTTPAdmissionAndRedaction(t *testing.T) {
 		t.Fatalf("GET body %d calls=%d", wbody.Code, writer.calls)
 	}
 	auth.missingActor = true
-	w := cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "a", `"1"`)
+	w := cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", `"1"`)
 	if w.Code != 401 {
 		t.Fatalf("missing actor=%d", w.Code)
 	}
 	auth.missingActor = false
 	auth.denyScope = "cms:write"
-	w = cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "a", `"1"`)
+	w = cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", `"1"`)
 	if w.Code != 403 {
 		t.Fatalf("scope=%d", w.Code)
 	}
@@ -243,7 +244,7 @@ func TestCMSHTTPAdmissionAndRedaction(t *testing.T) {
 		t.Fatalf("unredacted response %d %s", w.Code, w.Body)
 	}
 	denied, _ := cmsRouter(t, nil, writer)
-	w = cmsRequest(denied, "POST", cmsDraftPath+"/pages", cmsPageBody, "a", `"1"`)
+	w = cmsRequest(denied, "POST", cmsDraftPath+"/pages", cmsPageBody, "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", `"1"`)
 	if w.Code != 401 {
 		t.Fatalf("production default auth=%d", w.Code)
 	}
@@ -252,39 +253,39 @@ func TestCMSHTTPExactReplayAndScope(t *testing.T) {
 	writer := &cmsFakeWriter{}
 	auth := &cmsAuth{}
 	router, claims := cmsRouter(t, auth, writer)
-	first := cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "exact", `"1"`)
+	first := cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "f7eb7396-77bd-580d-ac03-eb24dd2f8d2b", `"1"`)
 	if first.Code != 201 || first.Header().Get("Cache-Control") != "no-store" || first.Header().Get("ETag") != `"2"` {
 		t.Fatalf("first %d %s", first.Code, first.Body)
 	}
 	writer.revision = 7
-	second := cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "exact", `"1"`)
+	second := cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "f7eb7396-77bd-580d-ac03-eb24dd2f8d2b", `"1"`)
 	if second.Code != first.Code || second.Body.String() != first.Body.String() || second.Header().Get("Cache-Control") != first.Header().Get("Cache-Control") || second.Header().Get("ETag") != first.Header().Get("ETag") || writer.calls != 1 {
 		t.Fatalf("replay %d calls=%d", second.Code, writer.calls)
 	}
-	changed := cmsRequest(router, "POST", cmsDraftPath+"/pages", strings.Replace(cmsPageBody, "Welcome", "Changed", 1), "exact", `"1"`)
+	changed := cmsRequest(router, "POST", cmsDraftPath+"/pages", strings.Replace(cmsPageBody, "Welcome", "Changed", 1), "f7eb7396-77bd-580d-ac03-eb24dd2f8d2b", `"1"`)
 	if changed.Code != 422 || writer.calls != 1 {
 		t.Fatalf("changed %d calls=%d", changed.Code, writer.calls)
 	}
-	changed = cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "exact", `"2"`)
+	changed = cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "f7eb7396-77bd-580d-ac03-eb24dd2f8d2b", `"2"`)
 	if changed.Code != 422 {
 		t.Fatalf("changed IfMatch %d", changed.Code)
 	}
-	changed = cmsRequest(router, "POST", strings.Replace(cmsDraftPath, cmsDraft, cmsPage, 1)+"/pages", cmsPageBody, "exact", `"1"`)
+	changed = cmsRequest(router, "POST", strings.Replace(cmsDraftPath, cmsDraft, cmsPage, 1)+"/pages", cmsPageBody, "f7eb7396-77bd-580d-ac03-eb24dd2f8d2b", `"1"`)
 	if changed.Code != 422 || writer.calls != 1 {
 		t.Fatalf("path scope %d calls=%d", changed.Code, writer.calls)
 	}
 	key1 := writer.last.ReceiptKey
 	auth.actor = cmsPage
-	changed = cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "exact", `"1"`)
+	changed = cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "f7eb7396-77bd-580d-ac03-eb24dd2f8d2b", `"1"`)
 	if changed.Code != 201 || writer.last.ReceiptKey == key1 || claims.count != 2 {
 		t.Fatalf("actor isolation %d claims=%d", changed.Code, claims.count)
 	}
 	writer.err = contract.ErrConflict
-	changed = cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "inflight", `"1"`)
+	changed = cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "14c0eddd-3404-5d98-9de0-24c3d37ef49d", `"1"`)
 	if changed.Code != 412 {
 		t.Fatalf("stale version %d", changed.Code)
 	}
-	changed = cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "inflight", `"1"`)
+	changed = cmsRequest(router, "POST", cmsDraftPath+"/pages", cmsPageBody, "14c0eddd-3404-5d98-9de0-24c3d37ef49d", `"1"`)
 	if changed.Code != 409 {
 		t.Fatalf("in-progress %d", changed.Code)
 	}
@@ -340,8 +341,8 @@ func TestCMSHTTPTransportBounds(t *testing.T) {
 	router, claims := cmsRouter(t, &cmsAuth{}, writer)
 	r := httptest.NewRequest("POST", cmsDraftPath+"/pages", strings.NewReader(cmsPageBody))
 	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Idempotency-Key", "a")
-	r.Header.Add("Idempotency-Key", "b")
+	r.Header.Set("Idempotency-Key", "c4c408dc-7cf0-5f3b-bc23-e04632853ca6")
+	r.Header.Add("Idempotency-Key", "c57425b2-b1a6-5e74-96a3-5c9753cfac05")
 	r.Header.Set("If-Match", `"1"`)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, r)
@@ -350,7 +351,7 @@ func TestCMSHTTPTransportBounds(t *testing.T) {
 	}
 	r = httptest.NewRequest("POST", cmsDraftPath+"/pages", strings.NewReader(cmsPageBody))
 	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Idempotency-Key", "a")
+	r.Header.Set("Idempotency-Key", "c4c408dc-7cf0-5f3b-bc23-e04632853ca6")
 	r.Header.Add("If-Match", `"1"`)
 	r.Header.Add("If-Match", `"2"`)
 	w = httptest.NewRecorder()
@@ -362,7 +363,7 @@ func TestCMSHTTPTransportBounds(t *testing.T) {
 	r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", contract.MaxWriteBytes+1)))
 	r.ContentLength = -1
 	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Idempotency-Key", "a")
+	r.Header.Set("Idempotency-Key", "c4c408dc-7cf0-5f3b-bc23-e04632853ca6")
 	r.Header.Set("If-Match", `"1"`)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, r)
@@ -386,7 +387,7 @@ func TestCMSHTTPEveryOperationReachesFacade(t *testing.T) {
 		{"POST", cmsDraftPath + "/preview-tokens", `{"ttl_seconds":60}`, 201}, {"GET", cmsBase + "/releases", "", 200}, {"POST", cmsBase + "/releases/" + cmsPage + "/restore", `{"expected_release_id":null}`, 201},
 	} {
 		before := writer.calls
-		w := cmsRequest(router, tc.method, tc.path, tc.body, "op-"+string(rune('a'+i)), `"1"`)
+		w := cmsRequest(router, tc.method, tc.path, tc.body, fmt.Sprintf("00000000-0000-4000-8000-%012x", i+1), `"1"`)
 		if w.Code != tc.status || writer.calls != before+1 {
 			t.Fatalf("%s %s: %d calls=%d body=%s", tc.method, tc.path, w.Code, writer.calls, w.Body)
 		}
@@ -400,7 +401,7 @@ func TestCMSHTTPEveryOperationReachesFacade(t *testing.T) {
 func TestCMSHTTPUpdateRequiresExistingDraftPage(t *testing.T) {
 	writer := &cmsFakeWriter{}
 	router, _ := cmsRouter(t, &cmsAuth{}, writer)
-	w := cmsRequest(router, "PUT", cmsDraftPath+"/pages/"+cmsPage, cmsPageBody, "update-membership", `"1"`)
+	w := cmsRequest(router, "PUT", cmsDraftPath+"/pages/"+cmsPage, cmsPageBody, "286f1da1-45fd-514f-b596-828078d208fb", `"1"`)
 	if w.Code != 200 || writer.last.Operation != "update_page" || writer.last.PageID != cmsPage {
 		t.Fatalf("update must retain draft membership semantics: status=%d operation=%s page=%s", w.Code, writer.last.Operation, writer.last.PageID)
 	}
@@ -412,7 +413,7 @@ func TestCMSHTTPSanitizesOnce(t *testing.T) {
 	writer := &cmsFakeWriter{}
 	router, _ := cmsRouter(t, &cmsAuth{}, writer)
 	body := strings.Replace(cmsPageBody, `"Welcome"`, `"<p>&amp;copy; &amp;lt;b&amp;gt;</p>"`, 1)
-	if w := cmsRequest(router, "POST", cmsDraftPath+"/pages", body, "once", `"1"`); w.Code != 201 {
+	if w := cmsRequest(router, "POST", cmsDraftPath+"/pages", body, "21c4b2fd-69c4-525b-b40c-14df25739bcf", `"1"`); w.Code != 201 {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body)
 	}
 	// Second (Writer-side) pass over what the handler forwarded.

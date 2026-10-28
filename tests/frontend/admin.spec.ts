@@ -250,7 +250,7 @@ test('notification snapshot pages and confirmation retain safe recovery states',
  await audit(page,'admin-notifications-error.png');
  status=409;await dialog.getByRole('button',{name:'Confirm redrive',exact:true}).click();
  await expect(page.getByRole('status').filter({hasText:'state changed'})).toBeVisible();
- expect(keys).toHaveLength(2);expect(keys[0]).toBe(keys[1]);
+ expect(keys).toHaveLength(2);expect(keys[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);expect(keys[0]).toBe(keys[1]);
  await expect(trigger).toBeDisabled();await expect(page.getByText('PRIVATE_CONTACT_DETAIL')).toHaveCount(0);
  await audit(page,'admin-notifications-stale.png');
  await page.getByRole('button',{name:'Reload failures',exact:true}).click();await expect(trigger).toBeEnabled();

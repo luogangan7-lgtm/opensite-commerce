@@ -8,7 +8,6 @@ package service
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -22,6 +21,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/internal/store"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 type Service struct{}
@@ -92,9 +92,9 @@ func create(ctx context.Context, tx pgx.Tx, tenantID string, in contract.CreateI
 			continue
 		}
 		sku, _ := store.UUID(lines[i].SKUID)
-		// Hashes remain fixed-length even when the caller's key is 128 bytes.
-		keyHash := sha256.Sum256([]byte(strings.ToLower(in.ID) + ":" + lines[i].ID + ":" + in.IdempotencyKey))
-		reservation, err := q.ReserveOrderInventory(ctx, db.ReserveOrderInventoryParams{SkuID: sku, Quantity: lines[i].Quantity, OrderID: orderID, IdempotencyKey: "order:" + hex.EncodeToString(keyHash[:]), TtlSeconds: p.ttl})
+		// The internal per-line identity obeys the same UUID storage contract.
+		reservationKey := idempotency.DerivedKey("order.inventory", strings.ToLower(in.ID), lines[i].ID, in.IdempotencyKey)
+		reservation, err := q.ReserveOrderInventory(ctx, db.ReserveOrderInventoryParams{SkuID: sku, Quantity: lines[i].Quantity, OrderID: orderID, IdempotencyKey: reservationKey, TtlSeconds: p.ttl})
 		if err != nil {
 			return contract.Order{}, store.MapError(err)
 		}

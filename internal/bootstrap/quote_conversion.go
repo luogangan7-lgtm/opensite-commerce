@@ -19,6 +19,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/customerhttp"
 	quoteshttp "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/quotes"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 type QuoteConversionConfig struct {
@@ -49,7 +50,7 @@ func (p quoteCheckout) Prepay(ctx context.Context, actor qc.AuthorizedActor, rec
 	}
 	// Cart Start shares checkout's actor/key namespace; the immutable receipt
 	// order supplies a separate internal key while the quote retains its raw key.
-	result, err := p.service.AdoptOrder(ctx, buyer, receipt.OrderID, "quotes.orders.v1:"+receipt.OrderID)
+	result, err := p.service.AdoptOrder(ctx, buyer, receipt.OrderID, idempotency.DerivedKey("quotes.checkout.v1", receipt.OrderID))
 	if err != nil {
 		switch {
 		case errors.Is(err, checkoutcontract.ErrNotFound):

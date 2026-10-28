@@ -72,12 +72,12 @@ func TestPrivacyHTTPAdmission(t *testing.T) {
 		resolve                      httpapi.SubjectResolver
 		want                         int
 	}{
-		{name: "default deny", method: "POST", uri: path, key: "key", want: 401},
+		{name: "default deny", method: "POST", uri: path, key: "8372771c-f49f-582e-80b0-3e36a37d360f", want: 401},
 		{name: "scope denied", method: "GET", uri: path + "/" + requestID, auth: auth{scope: "catalog:export"}, resolve: subject, want: 403},
-		{name: "missing validated subject", method: "POST", uri: path, key: "key", auth: auth{scope: "customers:privacy"}, want: 401},
-		{name: "wire actor denied", method: "POST", uri: path, body: `{"actor_id":"` + customer + `"}`, key: "key", auth: auth{scope: "customers:privacy"}, resolve: subject, want: 400},
+		{name: "missing validated subject", method: "POST", uri: path, key: "8372771c-f49f-582e-80b0-3e36a37d360f", auth: auth{scope: "customers:privacy"}, want: 401},
+		{name: "wire actor denied", method: "POST", uri: path, body: `{"actor_id":"` + customer + `"}`, key: "8372771c-f49f-582e-80b0-3e36a37d360f", auth: auth{scope: "customers:privacy"}, resolve: subject, want: 400},
 		{name: "missing key", method: "POST", uri: path, auth: auth{scope: "customers:privacy"}, resolve: subject, want: 400},
-		{name: "unconfigured enqueue", method: "POST", uri: path, key: "key", auth: auth{scope: "customers:privacy"}, resolve: subject, want: 503},
+		{name: "unconfigured enqueue", method: "POST", uri: path, key: "8372771c-f49f-582e-80b0-3e36a37d360f", auth: auth{scope: "customers:privacy"}, resolve: subject, want: 503},
 		{name: "foreign tenant", method: "GET", uri: strings.Replace(path, tenant, requestID, 1) + "/" + requestID, auth: auth{scope: "customers:privacy"}, resolve: subject, want: 404},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

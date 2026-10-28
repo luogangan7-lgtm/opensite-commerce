@@ -32,7 +32,7 @@ func TestCMSDefaultAdmissionAndActorComposition(t *testing.T) {
 			t.Fatalf("default CMS admission=%d", w.Code)
 		}
 	}
-	spec := httpapi.RouteSpec{OperationID: "actorCompositionProbe", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/actor-probe", Access: httpapi.AdminOrAPIKey, Scope: "cms:write"}
+	spec := httpapi.RouteSpec{OperationID: "actorCompositionProbe", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/products", Access: httpapi.AdminOrAPIKey, Scope: "cms:write"}
 	route := httpapi.Route{Spec: spec, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		actor, err := httpapi.AuthorizedActor(r.Context())
 		if err != nil || actor.ID != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
@@ -42,12 +42,12 @@ func TestCMSDefaultAdmissionAndActorComposition(t *testing.T) {
 		}
 		w.WriteHeader(204)
 	})}
-	server, err = bootstrap.New(bootstrap.Config{Authenticator: cmsStaffAuth{}, Routes: []httpapi.Route{route}})
+	server, err = bootstrap.NewTestServer(t, bootstrap.Config{Authenticator: cmsStaffAuth{}, Routes: []httpapi.Route{route}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	server.Handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/11111111-1111-4111-8111-111111111111/actor-probe", nil))
+	server.Handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/11111111-1111-4111-8111-111111111111/products", nil))
 	if w.Code != 204 {
 		t.Fatalf("actor composition=%d", w.Code)
 	}

@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
@@ -93,7 +94,7 @@ func (f *idemPGFixture) connect(t *testing.T) *pgx.Conn {
 	return c
 }
 func (f *idemPGFixture) scope(key string) idempotency.Scope {
-	return idempotency.Scope{TenantID: f.tenants[0], ActorKind: "service", ActorID: f.actor, Operation: "testCommand", Key: key}
+	return idempotency.Scope{TenantID: f.tenants[0], ActorKind: "service", ActorID: f.actor, Operation: "testCommand", Key: uuid.NewSHA1(uuid.Nil, []byte(key)).String()}
 }
 func idemScoped(ctx context.Context, c *pgx.Conn, tenant string) (pgx.Tx, error) {
 	tx, err := c.Begin(ctx)

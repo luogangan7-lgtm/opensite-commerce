@@ -113,7 +113,7 @@ func TestNotificationAdmissionAndAuthorization(t *testing.T) {
 		{"default deny", "GET", base + "/failures", "", "", "", 401},
 		{"scope deny", "GET", base + "/failures", "", "Bearer catalog:write", "", 403},
 		{"invalid tenant", "GET", "/api/v1/t/bad/notifications/failures", "", "Bearer notifications:write", "", 400},
-		{"invalid id", "POST", base + "/bad/redrive", "key", "Bearer notifications:write", "", 400},
+		{"invalid id", "POST", base + "/bad/redrive", "8372771c-f49f-582e-80b0-3e36a37d360f", "Bearer notifications:write", "", 400},
 		{"missing key", "POST", base + "/" + id + "/redrive", "", "Bearer notifications:write", "", 400},
 		{"space key", "POST", base + "/" + id + "/redrive", "bad key", "Bearer notifications:write", "", 400},
 		{"unicode key", "POST", base + "/" + id + "/redrive", "é", "Bearer notifications:write", "", 400},
@@ -122,7 +122,7 @@ func TestNotificationAdmissionAndAuthorization(t *testing.T) {
 		{"large limit", "GET", base + "/failures?limit=101", "", "Bearer notifications:write", "", 400},
 		{"fractional limit", "GET", base + "/failures?limit=1.5", "", "Bearer notifications:write", "", 400},
 		{"duplicate limit", "GET", base + "/failures?limit=1&limit=2", "", "Bearer notifications:write", "", 400},
-		{"body forbidden", "POST", base + "/" + id + "/redrive", "key", "Bearer notifications:write", "{}", 400},
+		{"body forbidden", "POST", base + "/" + id + "/redrive", "8372771c-f49f-582e-80b0-3e36a37d360f", "Bearer notifications:write", "{}", 400},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &service{}
@@ -137,7 +137,7 @@ func TestNotificationAdmissionAndAuthorization(t *testing.T) {
 		if method == "POST" {
 			path = base + "/" + id + "/redrive"
 		}
-		w := request(t, nil, nil, method, path, "key", "Bearer notifications:write", "")
+		w := request(t, nil, nil, method, path, "8372771c-f49f-582e-80b0-3e36a37d360f", "Bearer notifications:write", "")
 		if w.Code != 401 {
 			t.Fatalf("default=%d", w.Code)
 		}
@@ -154,9 +154,9 @@ func TestNotificationSafeListAndReplay(t *testing.T) {
 			t.Fatalf("private field %s leaked: %s", private, w.Body)
 		}
 	}
-	first := request(t, s, authorized(t), "POST", base+"/"+id+"/redrive", "exact-Key!", "Bearer notifications:write", "")
-	second := request(t, s, authorized(t), "POST", base+"/"+id+"/redrive", "exact-Key!", "Bearer notifications:write", "")
-	if first.Code != 200 || second.Code != 200 || first.Body.String() != second.Body.String() || s.key != "exact-Key!" || second.Header().Get("Cache-Control") != "no-store" {
+	first := request(t, s, authorized(t), "POST", base+"/"+id+"/redrive", "909795ca-7a7c-5ed4-ac42-e3a70d7adaf2", "Bearer notifications:write", "")
+	second := request(t, s, authorized(t), "POST", base+"/"+id+"/redrive", "909795ca-7a7c-5ed4-ac42-e3a70d7adaf2", "Bearer notifications:write", "")
+	if first.Code != 200 || second.Code != 200 || first.Body.String() != second.Body.String() || s.key != "909795ca-7a7c-5ed4-ac42-e3a70d7adaf2" || second.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("replay: %d %d %s %s", first.Code, second.Code, first.Body, second.Body)
 	}
 	s.unsafe = true
@@ -176,7 +176,7 @@ func TestNotificationServiceErrors(t *testing.T) {
 			if method == "POST" {
 				path = base + "/" + id + "/redrive"
 			}
-			w := request(t, s, authorized(t), method, path, "key", "Bearer notifications:write", "")
+			w := request(t, s, authorized(t), method, path, "8372771c-f49f-582e-80b0-3e36a37d360f", "Bearer notifications:write", "")
 			if w.Code != tc.code || strings.Contains(w.Body.String(), "@") {
 				t.Fatalf("%s error: %d %s", method, w.Code, w.Body)
 			}
@@ -187,7 +187,7 @@ func TestNotificationServiceErrors(t *testing.T) {
 		t.Fatalf("nil service: %d %s", w.Code, w.Body)
 	}
 	other := "44444444-4444-4444-8444-444444444444"
-	w = request(t, &service{}, authorized(t), "POST", "/api/v1/t/"+other+"/notifications/"+id+"/redrive", "key", "Bearer notifications:write", "")
+	w = request(t, &service{}, authorized(t), "POST", "/api/v1/t/"+other+"/notifications/"+id+"/redrive", "8372771c-f49f-582e-80b0-3e36a37d360f", "Bearer notifications:write", "")
 	if w.Code != 404 {
 		t.Fatalf("cross tenant: %d %s", w.Code, w.Body)
 	}
@@ -205,8 +205,8 @@ func TestNotificationEmptyListAndDuplicateKey(t *testing.T) {
 	}
 	req := httptest.NewRequest("POST", base+"/"+id+"/redrive", nil)
 	req.Header.Set("Authorization", "Bearer notifications:write")
-	req.Header.Add("Idempotency-Key", "one")
-	req.Header.Add("Idempotency-Key", "two")
+	req.Header.Add("Idempotency-Key", "b47bb372-4ddf-5f46-bdb1-f20e176b3941")
+	req.Header.Add("Idempotency-Key", "dfd716d5-b8b1-5fb3-ad15-e56dd758fbf7")
 	before := s.calls
 	w = httptest.NewRecorder()
 	server.Handler.ServeHTTP(w, req)

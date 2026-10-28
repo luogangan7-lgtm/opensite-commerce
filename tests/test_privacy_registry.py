@@ -488,5 +488,452 @@ class PrivacyRegistryTests(unittest.TestCase):
             self.assertNotIn("sensitive constraint detail", stderr.getvalue())
 
 
+class MerchantDeletionRegistryTests(unittest.TestCase):
+    """MDEL-00: mandatory merchant policy is independent of customer retention."""
+    setUpClass = PrivacyRegistryTests.__dict__["setUpClass"]
+
+    def test_uuid_checked_columns_reject_non_uuid_scrub_policies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "migrations/pending").mkdir(parents=True)
+            (root / "migrations/pending/probe.sql").write_text(
+                "ALTER TABLE app.returns ADD CONSTRAINT refund_key_uuid CHECK "
+                "(refund_key ~ '^" + "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');")
+            # No caller_key flag: the actual CHECK also constrains unmarked fields.
+            for strategy, value in (("row_id_placeholder", "erased:{id}"),
+                                    ("constant", "alice@example.invalid"),
+                                    ("fixed_enum", "legacy")):
+                with self.subTest(strategy=strategy):
+                    registry = {"returns.refund_key": {"merchant_deletion": {
+                        "action": "erase", "strategy": strategy, "value": value}}}
+                    with self.assertRaisesRegex(ValueError, "MERCHANT_UUID_SCRUB.*returns.refund_key"):
+                        self.gate.validate_caller_key_constraints(root, registry)
+            for policy in ({"action": "retain", "strategy": "unchanged", "value_type": "opaque_ref"},
+                           {"action": "erase", "strategy": "delete_row"},
+                           {"action": "erase", "strategy": "constant", "value": None},
+                           {"action": "erase", "strategy": "row_id_placeholder", "value": "{id}"},
+                           {"action": "erase", "strategy": "constant", "value": "11111111-1111-4111-8111-111111111111"}):
+                self.gate.validate_caller_key_constraints(root, {"returns.refund_key": {"merchant_deletion": policy}})
+
+    def test_actual_uuid_keys_are_opaque_and_unchanged_on_surviving_rows(self):
+        for key, field in self.gate.load_registry(ROOT).items():
+            if not field.get("caller_key"):
+                continue
+            policy = field["merchant_deletion"]
+            if policy["strategy"] == "delete_row":
+                continue  # Whole-row deletion never writes a CHECK'd cell.
+            with self.subTest(key=key):
+                self.assertEqual((policy["action"], policy["strategy"], policy.get("value_type")),
+                                 ("retain", "unchanged", "opaque_ref"))
+
+    def test_rename_destinations_are_writers_even_for_aliases_and_os_root(self):
+        for statement in ('fs.Rename("old", "new")', 'r.Rename("old", "new")'):
+            with self.subTest(statement=statement), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+                (root / "internal").mkdir()
+                source = root / "internal/probe.go"
+                prefix = 'package probe\nimport fs "os"\nfunc publish(r *fs.Root) {\n'
+                source.write_text(prefix + statement + '\n}\n')
+                with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
+                    self.gate.artifact_catalog(root)
+                source.write_text(prefix + '// privacy-artifact: orders.published\n' + statement + '\n}\n')
+                self.assertEqual(self.gate.artifact_catalog(root), {"orders.published": "internal/probe.go"})
+                source.write_text(prefix + 'rename := ' + statement.split('(')[0] + '; _ = rename\n}\n')
+                with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER_ESCAPE"):
+                    self.gate.artifact_catalog(root)
+
+    def test_caller_key_constraint_is_required_even_for_sqlc_writers(self):
+        validate = getattr(self.gate, "validate_caller_key_constraints", None)
+        self.assertTrue(callable(validate), "MERCHANT_CALLER_KEY_CHECK: migration gate missing")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "migrations/pending").mkdir(parents=True)
+            registry = {"returns.refund_key": {"merchant_deletion": {
+                "action": "retain", "value_type": "opaque_ref"}}}
+            with self.assertRaisesRegex(ValueError, "MERCHANT_CALLER_KEY_CHECK.*returns.refund_key"):
+                validate(root, registry)
+            migration = root / "migrations/pending/probe_keys.sql"
+            exact = "ALTER TABLE app.returns ADD CONSTRAINT refund_key_uuid CHECK (refund_key ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');"
+            migration.write_text(exact)
+            validate(root, registry)
+            for mutant in ("-- " + exact, exact.replace("CHECK (", "CHECK (true OR "), exact.replace("[0-9a-f]", "[0-9a-fA-F]"), exact.replace("refund_key ~", "provider_ref ~"), exact + "\nALTER TABLE app.returns DROP CONSTRAINT refund_key_uuid;"):
+                migration.write_text(mutant)
+                with self.assertRaisesRegex(ValueError, "MERCHANT_CALLER_KEY_CHECK"):
+                    validate(root, registry)
+
+    def fixture(self, root):
+        body = document()
+        body["merchant_deletion"] = {
+            "version": 1,
+            "handlers": {"orders.scrub": {
+                "depends_on": [], "tables": ["orders"],
+                "lock_order": "tenant_fence -> artifact_uuid -> module",
+                "clock": "database", "transaction": "one_item_and_checkpoint",
+            }},
+            "artifacts": {},
+        }
+        for name, field in body["tables"]["orders"]["columns"].items():
+            field["merchant_deletion"] = {
+                "action": "erase", "strategy": "delete_row",
+                "reason": "Remove merchant-owned order copy: " + name,
+                "handler": "orders.scrub",
+                "ownership": {"kind": "tenant_column", "path": "orders.tenant_id"},
+            }
+        self.write(root, body)
+        return body
+
+    def write(self, root, body):
+        folder = root / "modules/privacy"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "orders.json").write_text(json.dumps(body))
+
+    def load(self, root):
+        return self.gate.load_merchant_contract(root, self.gate.load_registry(root))
+
+    def test_contract_is_versioned_deterministic_and_binds_policy_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = self.fixture(root)
+            first = self.load(root)
+            self.assertEqual(first["version"], 1)
+            self.assertEqual(first["handler_order"], ["orders.scrub"])
+            self.assertEqual(first["digest"], self.load(root)["digest"])
+            body["tables"]["orders"]["columns"]["id"]["merchant_deletion"]["reason"] += " changed"
+            self.write(root, body)
+            self.assertNotEqual(first["digest"], self.load(root)["digest"])
+
+    def test_retained_type_must_match_actual_catalog(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = self.fixture(root)
+            # Keep all cells in the same witness row; no mixed row-delete plan.
+            for field in body["tables"]["orders"]["columns"].values():
+                field["merchant_deletion"].update(strategy="constant", value=None)
+            body["tables"]["orders"]["columns"]["id"]["merchant_deletion"].update(
+                action="retain", strategy="unchanged", retained_kind="financial", value_type="uuid")
+            self.write(root, body)
+            registry = self.gate.load_registry(root)
+            self.gate.validate_catalog(registry, catalog())
+            rows = copy.deepcopy(catalog())
+            rows[0]["udt_name"] = "text"
+            with self.assertRaisesRegex(ValueError, "MERCHANT_RETAIN_CATALOG_TYPE.*orders.id"):
+                self.gate.validate_catalog(registry, rows)
+
+    def test_owner_can_detach_fk_then_delete_same_table_in_separate_items(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = self.fixture(root)
+            handlers = body["merchant_deletion"]["handlers"]
+            handlers["orders.detach"] = copy.deepcopy(handlers["orders.scrub"])
+            handlers["orders.scrub"]["depends_on"] = ["orders.detach"]
+            body["tables"]["orders"]["columns"]["address_snapshot"]["merchant_deletion"].update(
+                handler="orders.detach", strategy="constant", value={"erased": True})
+            self.write(root, body)
+            self.assertEqual(self.load(root)["handler_order"], ["orders.detach", "orders.scrub"])
+            handlers["orders.detach"]["depends_on"] = ["orders.scrub"]
+            self.write(root, body)
+            with self.assertRaisesRegex(ValueError, "MERCHANT_DEPENDENCY_CYCLE"):
+                self.load(root)
+
+    def test_contract_schema_and_version_are_mandatory(self):
+        for mutation in ("missing", "version", "unknown", "mixed_row"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                body = self.fixture(root)
+                if mutation == "missing":
+                    body.pop("merchant_deletion")
+                elif mutation == "version":
+                    body["merchant_deletion"]["version"] = 2
+                elif mutation == "unknown":
+                    body["merchant_deletion"]["guess"] = True
+                else:
+                    body["tables"]["orders"]["columns"]["id"]["merchant_deletion"].update(strategy="constant", value=None)
+                self.write(root, body)
+                with self.assertRaises(ValueError):
+                    self.load(root)
+
+    def test_every_column_needs_independent_explicit_policy(self):
+        for key in ("action", "strategy", "reason", "handler", "ownership"):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                body = self.fixture(root)
+                body["tables"]["orders"]["columns"]["address_snapshot"]["merchant_deletion"].pop(key)
+                self.write(root, body)
+                with self.assertRaisesRegex(ValueError, "MERCHANT_.*orders.address_snapshot"):
+                    self.load(root)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = self.fixture(root)
+            body["tables"]["orders"]["columns"]["id"].pop("merchant_deletion")
+            self.write(root, body)
+            with self.assertRaisesRegex(ValueError, "MERCHANT_POLICY_MISSING.*orders.id"):
+                self.load(root)
+
+    def test_unknown_values_blank_reasons_and_forged_tenant_authority_fail(self):
+        mutations = [
+            {"action": "eventually"}, {"strategy": "guess_from_name"}, {"reason": " "},
+            {"ownership": {"kind": "tenant_column", "path": "orders.missing"}},
+            {"ownership": {"kind": "tenant_column", "path": "other.tenant_id"}},
+            {"ownership": {"kind": "payload_tenant", "path": "args.tenant_id"}},
+            {"handler": "other.scrub"},
+            {"action": "retain", "strategy": "unchanged", "retained_kind": "financial"},
+        ]
+        for changes in mutations:
+            with self.subTest(changes=changes), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                body = self.fixture(root)
+                body["tables"]["orders"]["columns"]["address_snapshot"]["merchant_deletion"].update(changes)
+                self.write(root, body)
+                with self.assertRaises(ValueError):
+                    self.load(root)
+
+    def test_unknown_dependency_cycle_wrong_owner_and_incomplete_table_order_fail(self):
+        for change in ("unknown", "cycle", "owner", "tables", "clock", "transaction", "lock"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                body = self.fixture(root)
+                handler = body["merchant_deletion"]["handlers"]["orders.scrub"]
+                if change == "unknown":
+                    handler["depends_on"] = ["missing.handler"]
+                elif change == "cycle":
+                    handler["depends_on"] = ["orders.scrub"]
+                elif change == "owner":
+                    body["merchant_deletion"]["handlers"] = {"other.scrub": handler}
+                elif change == "tables":
+                    handler["tables"] = []
+                elif change == "clock":
+                    handler["clock"] = "application"
+                elif change == "transaction":
+                    handler["transaction"] = "network_inside_transaction"
+                else:
+                    handler["lock_order"] = "module -> tenant_fence"
+                self.write(root, body)
+                with self.assertRaises(ValueError):
+                    self.load(root)
+
+    def test_artifact_inventory_is_bidirectional_and_requires_a_scrub(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = self.fixture(root)
+            source = root / "internal/export.go"
+            source.parent.mkdir()
+            source.write_text('package export\nimport "os"\n// privacy-artifact: orders.archive\nvar f, _ = os.CreateTemp(".", "private")\n')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_UNDECLARED"):
+                self.load(root)
+            body["merchant_deletion"]["artifacts"]["orders.archive"] = {
+                "action": "erase", "strategy": "unlink_tenant_namespace",
+                "reason": "Private order export bytes include derived contacts.",
+                "handler": "orders.scrub", "source": "internal/export.go",
+                "ownership": {"kind": "tenant_column", "path": "orders.tenant_id"},
+                "paths": ["exports/<tenant_uuid>/<request_uuid>.json"],
+                "guards": ["canonical_ids", "anchored_root", "no_symlinks", "fsync_parents", "verify_empty"],
+            }
+            self.write(root, body)
+            self.load(root)
+            body["merchant_deletion"]["artifacts"]["orders.archive"]["action"] = "retain"
+            self.write(root, body)
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT"):
+                self.load(root)
+            body["merchant_deletion"]["artifacts"]["orders.archive"]["action"] = "erase"
+            self.write(root, body)
+            source.write_text("package export\n")
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_PHANTOM"):
+                self.load(root)
+
+    def test_unclassified_filesystem_writer_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            source = root / "internal/unregistered.go"
+            source.parent.mkdir()
+            source.write_text('package export\nvar f = os.CreateTemp(root, "private")\n')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
+                self.load(root)
+
+    def test_root_writers_and_each_new_call_require_own_annotation(self):
+        cases = [
+            'package probe\nimport "os"\nfunc write(r *os.Root) { r.Create("new") }\n',
+            'package probe\nimport "os"\nfunc write(r *os.Root) { r.WriteFile("new", nil, 0600) }\n',
+            'package probe\nimport "os"\n// privacy-artifact: orders.archive\nvar f, _ = os.CreateTemp(".", "old")\nvar g, _ = os.Create("new")\n',
+            'package probe\nimport "os"\n// privacy-artifact: orders.archive\nvar f, _ = os.CreateTemp(".", "old")\nfunc write(r *os.Root) { r.Create("new") }\n',
+        ]
+        for source in cases:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "internal").mkdir()
+                (root / "internal/probe.go").write_text(source)
+                with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
+                    self.gate.artifact_catalog(root)
+
+    def test_os_root_types_aliases_and_inactive_files_are_inventoried(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+            (root / "internal").mkdir()
+            source = root / "internal/probe.go"
+            source.write_text('''package probe
+import fs "os"
+type business struct{}
+func (business) Create(string) {}
+func write(r *fs.Root, b business) {
+ // privacy-artifact: orders.archive
+ r.Create("private")
+ b.Create("business")
+ _ = "os.Create(quoted)"
+}
+''')
+            self.assertEqual(self.gate.artifact_catalog(root), {"orders.archive": "internal/probe.go"})
+            original = source.read_text()
+            source.write_text(original + '\nfunc (business) OpenFile(string) {}\nfunc extra(b business) { b.OpenFile("unreviewed-wrapper") }\n')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
+                self.gate.artifact_catalog(root)
+            source.write_text(original)
+            (root / "internal/tagged.go").write_text('''//go:build privacy_future
+package probe
+import "os"
+func future(r *os.Root) { r.WriteFile("unregistered", nil, 0600) }
+''')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
+                self.gate.artifact_catalog(root)
+
+    def test_writer_function_references_cannot_escape_inventory(self):
+        cases = {
+            "alias": 'func write() { put := os.WriteFile; _ = put("private", nil, 0600) }',
+            "method_value": 'func write(r *os.Root) { put := r.WriteFile; _ = put("private", nil, 0600) }',
+            "func_arg": 'func accept(any) {}\nfunc write() { accept(os.WriteFile) }',
+            "method_expression": 'var put = (*os.Root).WriteFile',
+            "returned": 'func writer() any { return os.CreateTemp }',
+            "annotated_escape": '// privacy-artifact: orders.archive\nvar put = os.OpenFile',
+        }
+        for typed in (False, True):
+            for name, source in cases.items():
+                with self.subTest(typed=typed, form=name), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    if typed:
+                        (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+                    (root / "internal").mkdir()
+                    (root / "internal/probe.go").write_text('package probe\nimport "os"\n' + source + '\n')
+                    with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER_ESCAPE"):
+                        self.gate.artifact_catalog(root)
+
+    def test_dot_import_writer_cannot_escape_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+            (root / "internal").mkdir()
+            (root / "internal/probe.go").write_text('package probe\nimport . "os"\nvar put = WriteFile\n')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER_ESCAPE"):
+                self.gate.artifact_catalog(root)
+
+    def test_direct_writer_calls_and_business_method_values_remain_distinct(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+            (root / "internal").mkdir()
+            (root / "internal/probe.go").write_text('''package probe
+import . "os"
+type business struct{}
+func (business) Create(string) {}
+func write(b business) {
+ put := b.Create
+ put("business")
+ // privacy-artifact: orders.archive
+ (WriteFile)("private", nil, 0600)
+}
+''')
+            self.assertEqual(self.gate.artifact_catalog(root), {"orders.archive": "internal/probe.go"})
+            (root / "internal/probe.go").write_text('''package probe
+import fs "os"
+func write() {
+ // privacy-artifact: orders.archive
+ (fs.WriteFile)("private", nil, 0600)
+}
+''')
+            self.assertEqual(self.gate.artifact_catalog(root), {"orders.archive": "internal/probe.go"})
+
+    def test_credential_or_personal_hash_cannot_claim_financial_retention(self):
+        registry = self.gate.load_registry(ROOT)
+        handlers = self.load(ROOT)["handlers"]
+        for key in ("api_keys.key_hash", "customer_credentials.password_hash", "orders.guest_contact"):
+            with self.subTest(key=key):
+                field = registry[key]
+                policy = copy.deepcopy(field["merchant_deletion"])
+                policy.pop("preserve_null", None)
+                policy.pop("value", None)
+                policy.update(action="retain", strategy="unchanged", retained_kind="financial", value_type="digest")
+                with self.assertRaisesRegex(ValueError, "MERCHANT_PERSONAL_RETAIN"):
+                    self.gate.merchant_policy(key, policy, field["module"], registry, handlers)
+
+    def test_reviewed_scrubs_match_constraints_and_immutable_receipt(self):
+        fields = self.load(ROOT)["fields"]
+        self.assertEqual((fields["product_variants.option_key"]["strategy"],
+                          fields["product_variants.option_key"]["value"]),
+                         ("row_id_placeholder", "erased:{id}"))
+        self.assertEqual((fields["orders.guest_contact"]["strategy"], fields["orders.guest_contact"]["value"]),
+                         ("row_json_template", {"email": "erased-{id}@invalid.test", "erased": True}))
+        self.assertEqual(fields["orders.shipping_snapshot"]["strategy"], "row_json_template")
+        self.assertEqual(fields["orders.shipping_snapshot"]["value"],
+                         {"erased": True, "amount_minor": {"column": "shipping_minor"}, "currency": {"column": "currency"}})
+        scope = fields["data_rights_erasures.scope"]
+        self.assertEqual((scope["action"], scope["strategy"], scope["retained_kind"], scope["value_type"]),
+                         ("retain", "unchanged", "control", "enum"))
+        self.assertEqual(scope["values"], ["customer.profile,addresses,credentials,b2b,order_snapshots,exports"])
+
+    def test_json_templates_reject_untrusted_or_cross_row_sources(self):
+        registry = self.gate.load_registry(ROOT)
+        handlers = self.load(ROOT)["handlers"]
+        base = registry["orders.guest_contact"]["merchant_deletion"]
+        for value in ({"email": "{guest_contact}"}, {"x": {"column": "guest_contact"}},
+                      {"x": {"column": "customers.email"}}, {"x": {"sql": "current_user"}},
+                      {"x": {"column": "missing"}}, ["{id}"]):
+            with self.subTest(value=value):
+                policy = {**base, "strategy": "row_json_template", "value": value}
+                with self.assertRaisesRegex(ValueError, "MERCHANT_JSON_TEMPLATE"):
+                    self.gate.merchant_policy("orders.guest_contact", policy, "orders", registry, handlers)
+
+    def test_actual_registry_covers_derived_copies_and_global_exclusions(self):
+        try:
+            contract = self.load(ROOT)
+        except ValueError as error:
+            self.fail(str(error))
+        registry = self.gate.load_registry(ROOT)
+        self.assertEqual(set(contract["fields"]), set(registry))
+        for name in ("tenants.name", "ledger_accounts.code", "inventory_movements.reason",
+                     "storefront_serving.body", "storefront_serving.fallback_body", "queue.river_job.args"):
+            self.assertEqual(contract["fields"][name]["action"], "erase", name)
+        for name in ("users.email", "auth_sessions.token_hash"):
+            self.assertEqual(contract["fields"][name]["ownership"]["kind"], "global_exclusion")
+        # #403's typed receipt must survive with the retained financial order;
+        # mailbox proof/profile data is never a substitute for this UUID witness.
+        for column in ("tenant_id", "order_id", "customer_id"):
+            name = "data_rights_erased_orders." + column
+            policy = contract["fields"][name]
+            self.assertEqual((policy["action"], policy["strategy"], policy["retained_kind"], policy["value_type"]),
+                             ("retain", "unchanged", "witness", "uuid"), name)
+            self.assertEqual(policy["handler"], "datarights.erase", name)
+            self.assertEqual(policy["ownership"], {
+                "kind": "tenant_column", "path": "data_rights_erased_orders.tenant_id",
+            }, name)
+        tables = contract["handlers"]["datarights.erase"]["tables"]
+        self.assertLess(tables.index("data_rights_erased_orders"), tables.index("data_rights_erasures"))
+        self.assertEqual(set(contract["artifacts"]), {
+            "media.originals", "media.staging", "datarights.customer_export", "datarights.export_temp",
+        })
+        self.assertEqual(contract["artifacts"]["media.originals"]["prerequisite"], "MDEL-21a")
+        pointer = contract["fields"]["sites.published_release_id"]
+        self.assertEqual((pointer["handler"], pointer["strategy"], pointer["value"]),
+                         ("site.detach", "constant", None))
+        order = contract["handler_order"]
+        self.assertLess(order.index("site.detach"), order.index("publish.erase"))
+        self.assertLess(order.index("publish.erase"), order.index("site.erase"))
+        self.assertEqual(set(contract["fields"]["payment_refund_terminals.order_target"]["values"]),
+                         set(contract["fields"]["orders.state"]["values"]),
+                         "Refund terminals preserve an existing Orders state or its quantity-derived compensation target")
+        for name in ("orders.guest_contact", "checkout_sessions.start_result", "checkout_sessions.final_result",
+                     "checkout_attempts.result", "returns.creation_response", "returns.receive_response"):
+            self.assertTrue(contract["fields"][name]["preserve_null"], name)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

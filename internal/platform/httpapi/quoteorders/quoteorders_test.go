@@ -134,7 +134,7 @@ func assertStatus(t *testing.T, w *httptest.ResponseRecorder, status int) {
 func TestQuoteOrderTrustedBuyerDefaultDeny(t *testing.T) {
 	for _, buyer := range []httpapi.Authenticator{nil, authenticator{}, authenticator{kind: "staff"}, authenticator{kind: "customer", nilContext: true}, authenticator{kind: "customer", fail: apperrors.New(401, "unauthenticated", "Denied")}, authenticator{kind: "customer", company: "not-uuid"}} {
 		f := &fixture{}
-		w := request(router(t, f, authenticator{kind: "staff"}, buyer), "POST", path("/orders"), "{}", "k")
+		w := request(router(t, f, authenticator{kind: "staff"}, buyer), "POST", path("/orders"), "{}", "f4563f11-2569-5903-905e-1497893eedee")
 		assertStatus(t, w, 401)
 		if f.calls != 0 {
 			t.Fatal("untrusted buyer reached domain")
@@ -147,7 +147,7 @@ func TestQuoteOrderSuccessUsesActorAndExactMoney(t *testing.T) {
 	for _, x := range []struct {
 		method, suffix, body, key string
 		status                    int
-	}{{"POST", "/orders", "{}", "a", 201}, {"POST", "/orders", "{}", "a", 201}, {"GET", "/order-conversion", "", "", 200}} {
+	}{{"POST", "/orders", "{}", "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", 201}, {"POST", "/orders", "{}", "c4c408dc-7cf0-5f3b-bc23-e04632853ca6", 201}, {"GET", "/order-conversion", "", "", 200}} {
 		w := request(h, x.method, path(x.suffix), x.body, x.key)
 		assertStatus(t, w, x.status)
 		if w.Header().Get("Cache-Control") != "no-store" {
@@ -166,20 +166,20 @@ func TestQuoteOrderSuccessUsesActorAndExactMoney(t *testing.T) {
 			}
 		}
 	}
-	if f.id != quoteID || f.key != "a" || f.actor.Kind() != "staff" {
+	if f.id != quoteID || f.key != "c4c408dc-7cf0-5f3b-bc23-e04632853ca6" || f.actor.Kind() != "staff" {
 		t.Fatal("domain arguments lost")
 	}
 }
 func TestQuoteOrderBuyerTenantAndCompanyIsolation(t *testing.T) {
 	f := &fixture{}
 	h := router(t, f, nil, authenticator{kind: "customer", tenant: orderID})
-	assertStatus(t, request(h, "POST", path("/orders"), "{}", "k"), 404)
+	assertStatus(t, request(h, "POST", path("/orders"), "{}", "f4563f11-2569-5903-905e-1497893eedee"), 404)
 	if f.calls != 0 {
 		t.Fatal("foreign tenant reached domain")
 	}
 	f = &fixture{fail: qc.ErrNotFound}
 	h = router(t, f, nil, authenticator{kind: "customer", company: orderID})
-	assertStatus(t, request(h, "POST", path("/orders"), "{}", "k"), 404)
+	assertStatus(t, request(h, "POST", path("/orders"), "{}", "f4563f11-2569-5903-905e-1497893eedee"), 404)
 	if f.calls != 1 || f.actor.CompanyID() != orderID || f.actor.ID() != customerID {
 		t.Fatal("company authority replaced by client headers")
 	}
@@ -207,12 +207,12 @@ func TestQuoteOrderSellerAuthAndScope(t *testing.T) {
 func TestQuoteOrderStrictAdmission(t *testing.T) {
 	for _, body := range []string{`{"amount":"1"}`, `{"price":1}`, `{"company_id":"` + companyID + `"}`, `{"customer_id":"` + customerID + `"}`, `{"x":1,"x":2}`, `{} {}`, `null`, `[]`, ``} {
 		f := &fixture{}
-		assertStatus(t, request(router(t, f, nil, authenticator{kind: "customer"}), "POST", path("/orders"), body, "k"), 400)
+		assertStatus(t, request(router(t, f, nil, authenticator{kind: "customer"}), "POST", path("/orders"), body, "f4563f11-2569-5903-905e-1497893eedee"), 400)
 		if f.calls != 0 {
 			t.Fatalf("bad body reached domain: %s", body)
 		}
 	}
-	for _, key := range []string{"", " k", "k ", "a b", "a\tb", "é", strings.Repeat("a", 129)} {
+	for _, key := range []string{"", " k", "k ", "a b", "a\tb", "é", "printable-key", "alice@example.test", strings.Repeat("a", 128), strings.Repeat("a", 129)} {
 		f := &fixture{}
 		assertStatus(t, request(router(t, f, nil, authenticator{kind: "customer"}), "POST", path("/orders"), "{}", key), 400)
 		if f.calls != 0 {
@@ -225,8 +225,8 @@ func TestQuoteOrderStrictAdmission(t *testing.T) {
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Origin", "https://buyer.example")
 	r.Header.Set("X-CSRF-Token", "verified")
-	r.Header.Add("Idempotency-Key", "a")
-	r.Header.Add("Idempotency-Key", "b")
+	r.Header.Add("Idempotency-Key", "c4c408dc-7cf0-5f3b-bc23-e04632853ca6")
+	r.Header.Add("Idempotency-Key", "c57425b2-b1a6-5e74-96a3-5c9753cfac05")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	assertStatus(t, w, 400)
@@ -236,16 +236,16 @@ func TestQuoteOrderStrictAdmission(t *testing.T) {
 	for _, replace := range []string{"BAD", "00000000-0000-0000-0000-000000000000", "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"} {
 		for _, param := range []string{tenantID, quoteID} {
 			f := &fixture{}
-			assertStatus(t, request(router(t, f, nil, authenticator{kind: "customer"}), "POST", strings.Replace(path("/orders"), param, replace, 1), "{}", "k"), 400)
+			assertStatus(t, request(router(t, f, nil, authenticator{kind: "customer"}), "POST", strings.Replace(path("/orders"), param, replace, 1), "{}", "f4563f11-2569-5903-905e-1497893eedee"), 400)
 			if f.calls != 0 {
 				t.Fatal("bad UUID reached domain")
 			}
 		}
 	}
 }
-func TestQuoteOrderKeyBoundAndOptionalReference(t *testing.T) {
+func TestQuoteOrderCanonicalKeyAndOptionalReference(t *testing.T) {
 	f := &fixture{}
-	w := request(router(t, f, nil, authenticator{kind: "customer"}), "POST", path("/orders"), "{}", strings.Repeat("a", 128))
+	w := request(router(t, f, nil, authenticator{kind: "customer"}), "POST", path("/orders"), "{}", "c4c408dc-7cf0-5f3b-bc23-e04632853ca6")
 	assertStatus(t, w, 201)
 	if strings.Contains(w.Body.String(), "provider_ref") || f.actor.Kind() != "customer" || f.actor.CompanyID() != companyID {
 		t.Fatal("optional ref or buyer actor incorrect")
@@ -258,7 +258,7 @@ func TestQuoteOrderDomainErrorMapping(t *testing.T) {
 		code   string
 	}{{qc.ErrUnauthorized, 401, "unauthenticated"}, {qc.ErrForbidden, 403, "forbidden"}, {qc.ErrNotFound, 404, "not_found"}, {qc.ErrConflict, 409, "quote_conflict"}, {qc.ErrIdempotencyReused, 422, "idempotency_key_reused"}, {qc.ErrInvalid, 422, "validation_failed"}, {qc.ErrUnavailable, 500, "internal_error"}} {
 		f := &fixture{fail: x.err}
-		w := request(router(t, f, nil, authenticator{kind: "customer"}), "POST", path("/orders"), "{}", "k")
+		w := request(router(t, f, nil, authenticator{kind: "customer"}), "POST", path("/orders"), "{}", "f4563f11-2569-5903-905e-1497893eedee")
 		assertStatus(t, w, x.status)
 		var p map[string]any
 		if err := json.Unmarshal(w.Body.Bytes(), &p); err != nil {
@@ -279,7 +279,7 @@ func TestQuoteOrderTransportAndUnavailableFailures(t *testing.T) {
 		h := router(t, f, nil, authenticator{kind: "customer"})
 		r := httptest.NewRequest("POST", path("/orders"), strings.NewReader(x.body))
 		r.Header.Set("Content-Type", x.media)
-		r.Header.Set("Idempotency-Key", "k")
+		r.Header.Set("Idempotency-Key", "f4563f11-2569-5903-905e-1497893eedee")
 		r.Header.Set("Origin", "https://buyer.example")
 		r.Header.Set("X-CSRF-Token", "verified")
 		w := httptest.NewRecorder()
@@ -301,7 +301,7 @@ func TestQuoteOrderTransportAndUnavailableFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	assertStatus(t, request(r, "POST", path("/orders"), "{}", "k"), 500)
+	assertStatus(t, request(r, "POST", path("/orders"), "{}", "f4563f11-2569-5903-905e-1497893eedee"), 500)
 	for _, bad := range []string{"BAD", "00000000-0000-0000-0000-000000000000"} {
 		f := &fixture{}
 		assertStatus(t, request(router(t, f, authenticator{kind: "staff"}, nil), "GET", strings.Replace(path("/order-conversion"), quoteID, bad, 1), "", ""), 400)
@@ -318,7 +318,7 @@ func TestQuoteOrderRejectsInvalidDomainReceipt(t *testing.T) {
 		bad := base
 		mutate(&bad)
 		f := &fixture{view: &bad}
-		w := request(router(t, f, nil, authenticator{kind: "customer"}), "POST", path("/orders"), "{}", "k")
+		w := request(router(t, f, nil, authenticator{kind: "customer"}), "POST", path("/orders"), "{}", "f4563f11-2569-5903-905e-1497893eedee")
 		assertStatus(t, w, 500)
 		if strings.Contains(w.Body.String(), "private-key") || strings.Contains(w.Body.String(), customerID) {
 			t.Fatal("invalid receipt leaked private data")
@@ -330,7 +330,7 @@ func TestQuoteOrderBuyerScopeAndCookieHeaders(t *testing.T) {
 	var specs []httpapi.RouteSpec
 	f := &fixture{}
 	h := router(t, f, nil, authenticator{kind: "customer", specs: &specs})
-	assertStatus(t, request(h, "POST", path("/orders"), "{}", "k"), 201)
+	assertStatus(t, request(h, "POST", path("/orders"), "{}", "f4563f11-2569-5903-905e-1497893eedee"), 201)
 	if len(specs) != 1 || specs[0].Access != httpapi.BuyerCompany || specs[0].Scope != "quotes:convert" {
 		t.Fatalf("buyer authentication must run exactly once with company scope: %+v", specs)
 	}
@@ -340,7 +340,7 @@ func TestQuoteOrderBuyerScopeAndCookieHeaders(t *testing.T) {
 			h := router(t, f, nil, authenticator{kind: "customer"})
 			r := httptest.NewRequest("POST", path("/orders"), strings.NewReader("{}"))
 			r.Header.Set("Content-Type", "application/json")
-			r.Header.Set("Idempotency-Key", "k")
+			r.Header.Set("Idempotency-Key", "f4563f11-2569-5903-905e-1497893eedee")
 			r.Header.Set("Origin", "https://buyer.example")
 			r.Header.Set("X-CSRF-Token", "verified")
 			r.Header.Del(name)
