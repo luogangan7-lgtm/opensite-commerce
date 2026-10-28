@@ -348,12 +348,12 @@ test.describe('VISUAL-REAL #235', () => {
     expect(sql(`SELECT count(*) FROM app.customer_auth_tokens WHERE tenant_id='${tenant}' AND consumed_at IS NOT NULL;`)).toBe(before);
     await accountSnapshot(page, 'verification-valid-proof');
     await page.getByRole('button', { name: 'Verify email', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('Email verified.');
+    await expect(page.locator('[data-customer-verification] > p[role="status"]')).toContainText('Email verified.');
     expect(Number(sql(`SELECT count(*) FROM app.customer_auth_tokens WHERE tenant_id='${tenant}' AND consumed_at IS NOT NULL;`))).toBe(Number(before) + 1);
     await accountSnapshot(page, 'verification-success');
     await openProof(page, proof);
     await page.getByRole('button', { name: 'Verify email', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('Verification could not be completed.');
+    await expect(page.locator('[data-customer-verification] > p[role="status"]')).toContainText('Verification could not be completed.');
     await accountSnapshot(page, 'verification-replayed');
     await page.goto(`${site}/account`); await credentials(page, email, password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -406,7 +406,7 @@ test.describe('VISUAL-REAL #235', () => {
     await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
     await accountSnapshot(page, 'verification-processing', true);
     await control(page, 'release');
-    await expect(page.getByRole('status')).toContainText('Verification could not be completed.');
+    await expect(page.locator('[data-customer-verification] > p[role="status"]')).toContainText('Verification could not be completed.');
     await accountSnapshot(page, 'verification-expired');
     expect(sql(`SELECT count(*) FROM app.customers WHERE tenant_id='${tenant}' AND email_normalized='${email}' AND verified_at IS NOT NULL;`)).toBe('0');
     expect(await page.evaluate(value => document.documentElement.outerHTML.includes(value), proof)).toBe(false);
