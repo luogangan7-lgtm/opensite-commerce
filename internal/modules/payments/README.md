@@ -1,5 +1,33 @@
 # Payment refund facts
 
+## CI-only live smoke
+
+Authority: `docs/architecture/V1_DECISIONS.md`, “Stripe live smoke (CI-only,
+owner-gated)”, revised by LIVE-A-ONLY (#414). `NewStripeLiveSmoke` is an isolated
+permission probe, never production composition or a financial Payment Port.
+It requires main/dispatch/first-attempt admission, a restricted live key and the
+private expected account. The only permission required is PaymentIntents write.
+Only list, create without payment method, and cancel are callable; no money
+moves and no financial fact or journal is ingested. Existing run metadata or
+uncertainty fails closed without another create; no recovery phase exists.
+
+The key and account remain environment-only `STRIPE_API` and
+`STRIPE_SMOKE_ACCOUNT`. Requests pin `2026-09-30.endive`. The disposable DB
+provides its clock before HTTP and witnesses zero journals/orders/payment facts;
+no live persistence schema or migration is needed. All old and asynchronous
+paths and test-mode constraints retain their admission rules.
+
+Normal CI runs fake-only endpoint/admission tests, PG zero-journal witnesses,
+workflow/composition static gates and public-output process canaries. The owner
+entry compiles separately; raw child output is discarded by the fixed wrapper.
+The live workflow remains owner-started and approval-gated; agents never run it.
+Payment/refund/reconciliation acceptance stays in test mode and offline fixtures.
+Live real-card testing is prohibited by the Stripe SSA; see the contract's dated
+[official source](https://docs.stripe.com/testing). Live/production acceptance
+remain NOT_RUN.
+
+## Refund fact authority
+
 Authority: `docs/architecture/V1_DECISIONS.md` §6. Payments owns money refunds;
 Returns owns RMA/receipt/restock; Orders owns order state. Payments owns the
 single refund journal path and the C-19d terminal-fact finalizer described below.

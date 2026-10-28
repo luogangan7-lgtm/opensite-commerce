@@ -1,7 +1,94 @@
 {
-  "rule": "For one run and one lane (job name), the latest attempt GitHub reports as a successful job is the only acceptable evidence. Its receipt/artifact must exist; an older attempt is never substituted, and no successful attempt fails closed. scripts/rerun_attempts.py and scripts/frontend/rerun-attempts.ts implement this same rule; both test suites replay these vectors.",
+  "rule": "For one run and lane, select the latest successful execution, requiring its original receipt/artifact. GitHub can copy a successful job into later attempts with new job ids and run_attempt but unchanged started_at and completed_at. Such copies refer to the original execution. A genuinely re-executed success must have its own evidence; missing or incomplete identity never permits fallback. Both languages replay these vectors.",
   "job_name": "foundation-pg",
   "cases": [
+    {
+      "name": "carried_over_success_with_new_id_and_attempt_uses_original_receipt",
+      "jobs": [
+        {"id": 122704550182, "name": "foundation-pg", "run_attempt": 1, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"},
+        {"id": 122724483602, "name": "foundation-pg", "run_attempt": 2, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [1],
+      "expected": {"attempt": 1}
+    },
+    {
+      "name": "carried_over_same_job_id_uses_original_receipt",
+      "jobs": [
+        {"id": 101, "name": "foundation-pg", "run_attempt": 1, "status": "completed", "conclusion": "success"},
+        {"id": 101, "name": "foundation-pg", "run_attempt": 2, "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [1],
+      "expected": {"attempt": 1}
+    },
+    {
+      "name": "reexecuted_success_uses_own_receipt",
+      "jobs": [
+        {"id": 101, "name": "foundation-pg", "run_attempt": 1, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"},
+        {"id": 202, "name": "foundation-pg", "run_attempt": 2, "started_at": "2026-10-28T09:02:59Z", "completed_at": "2026-10-28T09:07:03Z", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [1, 2],
+      "expected": {"attempt": 2}
+    },
+    {
+      "name": "reexecuted_success_without_own_receipt_rejects_stale_receipt",
+      "jobs": [
+        {"id": 101, "name": "foundation-pg", "run_attempt": 1, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"},
+        {"id": 202, "name": "foundation-pg", "run_attempt": 2, "started_at": "2026-10-28T09:02:59Z", "completed_at": "2026-10-28T09:07:03Z", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [1],
+      "expected": {"error": "latest successful attempt 2"}
+    },
+    {
+      "name": "carried_over_reexecution_cannot_borrow_first_execution_receipt",
+      "job_pages": [
+        [
+          {"id": 101, "name": "foundation-pg", "run_attempt": 1, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"},
+          {"id": 202, "name": "foundation-pg", "run_attempt": 2, "started_at": "2026-10-28T09:02:59Z", "completed_at": "2026-10-28T09:07:03Z", "status": "completed", "conclusion": "success"}
+        ],
+        [
+          {"id": 303, "name": "foundation-pg", "run_attempt": 3, "started_at": "2026-10-28T09:02:59Z", "completed_at": "2026-10-28T09:07:03Z", "status": "completed", "conclusion": "success"}
+        ]
+      ],
+      "evidence_attempts": [1],
+      "expected": {"error": "latest successful attempt 2"}
+    },
+    {
+      "name": "copies_across_pages_and_out_of_order_keep_original_attempt",
+      "job_pages": [
+        [{"id": 303, "name": "foundation-pg", "run_attempt": 3, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"}],
+        [{"id": 101, "name": "foundation-pg", "run_attempt": 1, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"}],
+        [{"id": 202, "name": "foundation-pg", "run_attempt": 2, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"}]
+      ],
+      "evidence_attempts": [1],
+      "expected": {"attempt": 1}
+    },
+    {
+      "name": "copy_requires_original_execution_receipt_not_copied_attempt_receipt",
+      "jobs": [
+        {"id": 101, "name": "foundation-pg", "run_attempt": 1, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"},
+        {"id": 202, "name": "foundation-pg", "run_attempt": 2, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [2],
+      "expected": {"error": "latest successful attempt 1"}
+    },
+    {
+      "name": "same_start_different_completion_is_not_carried_over",
+      "jobs": [
+        {"id": 101, "name": "foundation-pg", "run_attempt": 1, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T08:17:21Z", "status": "completed", "conclusion": "success"},
+        {"id": 202, "name": "foundation-pg", "run_attempt": 2, "started_at": "2026-10-28T08:15:42Z", "completed_at": "2026-10-28T09:07:03Z", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [1],
+      "expected": {"error": "latest successful attempt 2"}
+    },
+    {
+      "name": "incomplete_timestamp_identity_does_not_allow_fallback",
+      "jobs": [
+        {"id": 101, "name": "foundation-pg", "run_attempt": 1, "started_at": "2026-10-28T08:15:42Z", "status": "completed", "conclusion": "success"},
+        {"id": 202, "name": "foundation-pg", "run_attempt": 2, "started_at": "2026-10-28T08:15:42Z", "status": "completed", "conclusion": "success"}
+      ],
+      "evidence_attempts": [1],
+      "expected": {"error": "latest successful attempt 2"}
+    },
     {
       "name": "latest_successful_attempt_wins",
       "jobs": [
