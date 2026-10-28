@@ -89,6 +89,12 @@ func (f *liveFake) roundTrip(r *http.Request) (*http.Response, error) {
 		if f.corrupt == "cancel_status" {
 			obj["status"] = "processing"
 		}
+		if strings.HasPrefix(f.corrupt, "cancel_missing_") {
+			delete(obj, strings.TrimPrefix(f.corrupt, "cancel_missing_"))
+		}
+		if f.corrupt == "cancel_status_only" {
+			out = map[string]any{"status": "canceled"}
+		}
 	default:
 		return nil, errors.New("forbidden endpoint")
 	}
@@ -198,5 +204,21 @@ func TestStripeLiveAOnlyEndpoints(t *testing.T) {
 		if f.s.request(context.Background(), "POST", "payment_intents", "key", form, &liveObject{}) == nil || len(f.requests) != 0 {
 			t.Fatal("unsafe form reached transport")
 		}
+	}
+}
+
+func TestStripeLiveCancellationEvidenceIsIndependent(t *testing.T) {
+	for _, corrupt := range []string{"cancel_status_only", "cancel_missing_id", "cancel_missing_metadata", "cancel_missing_amount_received", "cancel_missing_amount", "cancel_missing_currency", "cancel_missing_livemode", "cancel_missing_payment_method", "cancel_missing_status", "cancel_status"} {
+		t.Run(corrupt, func(t *testing.T) {
+			f := newLiveFake(t)
+			f.corrupt = corrupt
+			v, err := f.s.Execute(context.Background())
+			if len(f.requests) != 3 {
+				t.Fatal("fixture did not reach cancellation after a valid create")
+			}
+			if err == nil || v.Status != "PENDING" {
+				t.Fatal("cancellation inherited create evidence or accepted wrong status")
+			}
+		})
 	}
 }

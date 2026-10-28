@@ -19,6 +19,20 @@ CANARIES = ('https://invoice.example.test/private-canary', 'owner-canary@example
 
 
 class LiveRealProcessCanaries(unittest.TestCase):
+    def test_owner_entry_refuses_offline_transport(self):
+        binary = Path(os.environ['RUNNER_TEMP']) / 'stripe-live.test'
+        env = dict(os.environ, GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch',
+                   GITHUB_REF='refs/heads/main', GITHUB_RUN_ATTEMPT='1',
+                   STRIPE_SMOKE_PHASE='A', STRIPE_SMOKE_RUN_ID='246810',
+                   STRIPE_SMOKE_ACCOUNT='acct_offlinepg',
+                   STRIPE_API='rk_live_OFFLINE_NOT_A_REAL_CREDENTIAL',
+                   STRIPE_LIVE_OFFLINE_CASE='success', OPENSITE_DISPOSABLE_PG='stripe-live')
+        result = subprocess.run([str(binary), '-test.run=^TestStripeLiveOwnerGate$', '-test.timeout=2m'],
+                                cwd=ROOT / 'internal/db', env=env, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, timeout=130, check=False)
+        self.assertNotEqual(result.returncode, 0, 'owner entry admitted an offline transport')
+        self.assertNotIn('OSC_LIVE_SUMMARY ', result.stdout, 'owner entry reached probe execution')
+
     def test_real_go_entry_all_public_sinks(self):
         binary = Path(os.environ['RUNNER_TEMP']) / 'stripe-live.test'
         self.assertTrue(binary.is_file(), 'offline binary must be compiled by CI')

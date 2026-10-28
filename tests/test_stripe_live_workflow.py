@@ -105,6 +105,32 @@ def validate(document, workflows):
 
 
 class LiveWorkflowGate(unittest.TestCase):
+    def test_secret_ownership_is_case_insensitive(self):
+        original = yaml.safe_load(LIVE.read_text())
+        for secret in OWNED_SECRETS:
+            for name in (secret.lower(), secret.title()):
+                for expression in (f'secrets.{name}', f"secrets['{name}']", f'secrets["{name}"]'):
+                    with self.subTest(expression=expression):
+                        other = yaml.safe_dump({'env': {'ALIAS': '${{ ' + expression + ' }}'}})
+                        with self.assertRaisesRegex(AssertionError, 'LIVE_SECRET_OWNERSHIP'):
+                            validate(original, {'other.yml': other})
+
+    def test_prepare_build_command_is_pinned(self):
+        original = yaml.safe_load(LIVE.read_text())
+        command = 'go test -c -tags pgx,stripe_live -o "$RUNNER_TEMP/stripe-live.test" ./internal/db'
+        for replacement in (command.replace('pgx,stripe_live', 'pgx'),
+                            command.replace('pgx,stripe_live', 'pgx,stripe_live,other'),
+                            command.replace('./internal/db', './internal/modules/payments'),
+                            command + '; echo unsafe',
+                            '# ' + command):
+            with self.subTest(command=replacement):
+                bad = copy.deepcopy(original)
+                prepare = bad['jobs']['live']['steps'][2]
+                self.assertIn(command, prepare['run'])
+                prepare['run'] = prepare['run'].replace(command, replacement)
+                with self.assertRaisesRegex(AssertionError, 'LIVE_PREPARE_BUILD'):
+                    validate(bad, {})
+
     def test_secret_context_and_env_aliases_fail_closed(self):
         original = yaml.safe_load(LIVE.read_text())
         for expression in ("secrets[env.SECRET_NAME]", "toJSON(secrets)", 'env.STRIPE_API', "env['STRIPE_SMOKE_EMAIL']"):
