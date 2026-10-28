@@ -87,7 +87,7 @@ func TestStrictRoutesAdmission(t *testing.T) {
 			router, s := admissionRouter(t, acceptTenant{})
 			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", tc.content)
-			req.Header.Set("Idempotency-Key", "test-key")
+			req.Header.Set("Idempotency-Key", "afe36e5c-6a6d-5f83-a817-48661fcdb1cc")
 			if tc.match != "" {
 				req.Header.Set("If-Match", tc.match)
 			}
@@ -102,7 +102,9 @@ func TestStrictRoutesAdmission(t *testing.T) {
 func TestStrictRoutesAuthenticationPrecedesAdmission(t *testing.T) {
 	router, s := admissionRouter(t, nil)
 	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, httptest.NewRequest("POST", "/api/v1/t/not-a-uuid/products", strings.NewReader(`{"unknown":true}`)))
+	req := httptest.NewRequest("POST", "/api/v1/t/not-a-uuid/products", strings.NewReader(`{"unknown":true}`))
+	req.Header.Set("Idempotency-Key", "11111111-1111-4111-8111-111111111111")
+	router.ServeHTTP(rr, req)
 	if rr.Code != 401 || s.calls != 0 {
 		t.Fatalf("%d calls %d", rr.Code, s.calls)
 	}
@@ -126,9 +128,9 @@ func TestStrictHeaderAndBodyLimits(t *testing.T) {
 		{"idempotency missing", "POST", `{"product_code":"p"}`, nil, nil, 400},
 		{"idempotency empty", "POST", `{"product_code":"p"}`, []string{""}, nil, 400},
 		{"idempotency oversized", "POST", `{"product_code":"p"}`, []string{strings.Repeat("x", 129)}, nil, 400},
-		{"idempotency duplicate", "POST", `{"product_code":"p"}`, []string{"a", "b"}, nil, 400},
-		{"version duplicate", "PATCH", `{"product_code":"p"}`, []string{"a"}, []string{`"1"`, `"2"`}, 400},
-		{"json byte limit", "POST", `{"product_code":"` + strings.Repeat("x", 1<<20) + `"}`, []string{"a"}, nil, 413},
+		{"idempotency duplicate", "POST", `{"product_code":"p"}`, []string{"c4c408dc-7cf0-5f3b-bc23-e04632853ca6", "c57425b2-b1a6-5e74-96a3-5c9753cfac05"}, nil, 400},
+		{"version duplicate", "PATCH", `{"product_code":"p"}`, []string{"c4c408dc-7cf0-5f3b-bc23-e04632853ca6"}, []string{`"1"`, `"2"`}, 400},
+		{"json byte limit", "POST", `{"product_code":"` + strings.Repeat("x", 1<<20) + `"}`, []string{"c4c408dc-7cf0-5f3b-bc23-e04632853ca6"}, nil, 413},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			router, s := admissionRouter(t, acceptTenant{})
@@ -171,7 +173,7 @@ func TestStrictBinaryAdmission(t *testing.T) {
 			req := httptest.NewRequest("PUT", path, strings.NewReader(tc.body))
 			req.ContentLength = tc.length
 			req.Header.Set("Content-Type", tc.content)
-			req.Header.Set("Idempotency-Key", "binary-test")
+			req.Header.Set("Idempotency-Key", "708b6a73-5bd8-5ff9-8413-f5ce2471f983")
 			rr := httptest.NewRecorder()
 			router.ServeHTTP(rr, req)
 			if rr.Code != tc.want || s.calls != tc.calls {

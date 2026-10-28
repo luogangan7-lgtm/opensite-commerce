@@ -15,6 +15,7 @@ import (
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/paymentfake"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 func TestStripePGConsentAdmission(t *testing.T) {
@@ -26,13 +27,13 @@ func TestStripePGConsentAdmission(t *testing.T) {
 	if !ok {
 		t.Fatal("real-provider admission missing: AdoptOrder/legacy sources must fail closed")
 	}
-	r := payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: start.OrderID, OrderVersion: start.OrderVersion, Amount: money.Money{Amount: start.AmountMinor, Currency: start.Currency}, IdempotencyKey: "checkout:v1:" + start.CheckoutID + ":create"}
+	r := payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: start.OrderID, OrderVersion: start.OrderVersion, Amount: money.Money{Amount: start.AmountMinor, Currency: start.Currency}, IdempotencyKey: idempotency.DerivedKey("checkout.provider.v1", start.CheckoutID, "create")}
 	// A ready session must not mint a fresh intent or bypass the capture claim.
 	if admission.AdmitRealPayment(f.ctx, r, false) == nil || admission.AdmitRealPayment(f.ctx, r, true) == nil {
 		t.Fatal("phase/key bypass admitted")
 	}
 
-	r.IdempotencyKey = "checkout:v1:" + start.CheckoutID + ":capture"
+	r.IdempotencyKey = idempotency.DerivedKey("checkout.provider.v1", start.CheckoutID, "capture")
 	f.provider.before = func(ctx context.Context, op paymentfake.Operation) error {
 		if op == paymentfake.Capture {
 			for _, change := range []func(*payment.CreatePaymentIntent){
@@ -69,7 +70,7 @@ func TestStripePGConsentSourceGuardAtAcceptedCapture(t *testing.T) {
 			return nil
 		}
 		cartCalls++
-		return admit.AdmitRealPayment(ctx, payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: cart.OrderID, OrderVersion: cart.OrderVersion, Amount: money.Money{Amount: cart.AmountMinor, Currency: cart.Currency}, IdempotencyKey: "checkout:v1:" + cart.CheckoutID + ":capture"}, true)
+		return admit.AdmitRealPayment(ctx, payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: cart.OrderID, OrderVersion: cart.OrderVersion, Amount: money.Money{Amount: cart.AmountMinor, Currency: cart.Currency}, IdempotencyKey: idempotency.DerivedKey("checkout.provider.v1", cart.CheckoutID, "capture")}, true)
 	}
 	if _, err := f.service.Confirm(checkoutRequestContext(f.ctx), f.event(cart, payment.StatusAuthorized)); err != nil || cartCalls != 1 {
 		t.Fatalf("cart capture control not accepted: calls=%d err=%v", cartCalls, err)
@@ -87,7 +88,7 @@ func TestStripePGConsentSourceGuardAtAcceptedCapture(t *testing.T) {
 			return nil
 		}
 		adoptCalls++
-		request := payment.CreatePaymentIntent{TenantID: a.f.tenant, OrderID: adopted.OrderID, OrderVersion: adopted.OrderVersion, Amount: money.Money{Amount: adopted.AmountMinor, Currency: adopted.Currency}, IdempotencyKey: "checkout:v1:" + adopted.CheckoutID + ":capture"}
+		request := payment.CreatePaymentIntent{TenantID: a.f.tenant, OrderID: adopted.OrderID, OrderVersion: adopted.OrderVersion, Amount: money.Money{Amount: adopted.AmountMinor, Currency: adopted.Currency}, IdempotencyKey: idempotency.DerivedKey("checkout.provider.v1", adopted.CheckoutID, "capture")}
 		if check.AdmitRealPayment(ctx, request, true) == nil {
 			t.Error("ADOPT_SOURCE_RED: existing order without consent admitted")
 		}

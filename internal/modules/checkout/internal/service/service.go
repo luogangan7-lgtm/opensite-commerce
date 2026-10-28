@@ -21,6 +21,7 @@ import (
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
 	"net/mail"
 	"strings"
@@ -176,7 +177,7 @@ func (s *Service) Get(ctx context.Context, actor contract.AuthorizedActor, check
 	return out, err
 }
 func operation(row db.AppCheckoutSession, action string) payment.PaymentOperation {
-	return payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: row.TenantID.String(), OrderID: row.OrderID.String(), Amount: money.Money{Amount: row.AmountMinor, Currency: row.Currency}, OrderVersion: row.PayableVersion, IdempotencyKey: "checkout:v1:" + row.ID.String() + ":" + action}, ProviderRef: row.ProviderRef}
+	return payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: row.TenantID.String(), OrderID: row.OrderID.String(), Amount: money.Money{Amount: row.AmountMinor, Currency: row.Currency}, OrderVersion: row.PayableVersion, IdempotencyKey: idempotency.DerivedKey("checkout.provider.v1", row.ID.String(), action)}, ProviderRef: row.ProviderRef}
 }
 func update(ctx context.Context, q *db.Queries, row db.AppCheckoutSession) (db.AppCheckoutSession, error) {
 	x, e := q.UpdateCheckout(ctx, db.UpdateCheckoutParams{TenantID: row.TenantID, ID: row.ID, Phase: row.Phase, ProviderRef: row.ProviderRef, StartResult: row.StartResult, FinalResult: row.FinalResult, ClaimKind: row.ClaimKind, ClaimKey: row.ClaimKey})
@@ -253,7 +254,7 @@ func (s *Service) Start(ctx context.Context, actor contract.AuthorizedActor, in 
 		if actor.Kind() == "customer" {
 			buyer = orders.Buyer{CustomerID: actor.ID()}
 		}
-		created, e := s.config.Orders.Create(ctx, tx, actor.TenantID(), orders.CreateInput{ID: oid, IdempotencyKey: "checkout:" + id, Buyer: buyer, Currency: rules.Currency, Lines: quoted.Lines, Shipping: quoted.Shipping})
+		created, e := s.config.Orders.Create(ctx, tx, actor.TenantID(), orders.CreateInput{ID: oid, IdempotencyKey: idempotency.DerivedKey("checkout.order", id), Buyer: buyer, Currency: rules.Currency, Lines: quoted.Lines, Shipping: quoted.Shipping})
 		if e != nil {
 			return e
 		}
@@ -458,11 +459,13 @@ func (s *Service) Cancel(ctx context.Context, actor contract.AuthorizedActor, in
 	if !s.available() {
 		return contract.Result{}, contract.ErrUnavailable
 	}
-	keyHash := sha256.Sum256([]byte(actor.Kind() + ":" + actor.ID() + ":" + in.IdempotencyKey))
 	requestHash := digest(struct{ CheckoutID, Key string }{in.CheckoutID, in.IdempotencyKey})
-	return s.finish(ctx, actor, actor.TenantID(), "", in.CheckoutID, "cancel", hex.EncodeToString(keyHash[:]), requestHash, nil, "cancelling", "cancelled")
+	return s.finish(ctx, actor, actor.TenantID(), "", in.CheckoutID, "cancel", idempotency.DerivedKey("checkout.cancel", actor.Kind(), actor.ID(), in.IdempotencyKey), requestHash, nil, "cancelling", "cancelled")
 }
 func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, tenantID, oid, cid, kind, eventKey string, requestHash []byte, event *payment.VerifiedEvent, claimPhase, terminal string) (contract.Result, error) {
+	if kind == "payment" {
+		eventKey = idempotency.DerivedKey("checkout.payment", eventKey)
+	}
 	var row db.AppCheckoutSession
 	var result contract.Result
 	complete := false
@@ -631,15 +634,7 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 			return contract.ErrConflict
 		}
 		if terminal == "paid" {
-			rows, e := q.GetCheckoutLedgerAccounts(ctx, current.TenantID)
-			if e != nil {
-				return store.MapError(e)
-			}
-			accounts := map[string]db.GetCheckoutLedgerAccountsRow{}
-			for _, a := range rows {
-				accounts[a.Code] = a
-			}
-			posting, e := journal(current, current.ClaimKey.String, accounts)
+			posting, e := factJournal(ctx, q, current, event.EventID)
 			if e != nil {
 				return e
 			}
@@ -675,7 +670,7 @@ func (s *Service) failCreation(ctx context.Context, row db.AppCheckoutSession) (
 		if current.Phase != "pending" {
 			return contract.ErrConflict
 		}
-		changed, e := s.config.Orders.Transition(ctx, tx, current.TenantID.String(), orders.TransitionInput{OrderID: current.OrderID.String(), Target: orders.Cancelled, EventKey: "checkout:" + current.ID.String() + ":create-failure"})
+		changed, e := s.config.Orders.Transition(ctx, tx, current.TenantID.String(), orders.TransitionInput{OrderID: current.OrderID.String(), Target: orders.Cancelled, EventKey: idempotency.DerivedKey("checkout.order-transition.v1", current.ID.String(), "create-failure")})
 		if e != nil {
 			return e
 		}

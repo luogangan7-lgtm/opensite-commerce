@@ -163,7 +163,7 @@ func TestCheckoutPGRealCartGuestAndCustomer(t *testing.T) {
 			// A new key is a new purchase of the same shopping intent. Immutable
 			// order line IDs must be namespaced per purchase, not reused cart IDs.
 			secondInput := in
-			secondInput.IdempotencyKey = "start:" + uuid.NewString()
+			secondInput.IdempotencyKey = uuid.NewString()
 			second, err := f.service.Start(ctx, f.actor, secondInput)
 			if err != nil || second.CheckoutID == start.CheckoutID || second.OrderID == start.OrderID {
 				t.Fatalf("second cart purchase %#v %v", second, err)

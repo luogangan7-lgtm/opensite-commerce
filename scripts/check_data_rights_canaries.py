@@ -129,7 +129,7 @@ DO $after$ DECLARE leaked text; lost text; BEGIN
   RAISE EXCEPTION 'PRIVACY_GATE fulfillment financial/state/identity cells changed'; END IF;
  SELECT string_agg(key||'@'||hits,'; ') INTO leaked FROM pg_temp.privacy_hits() WHERE expect='erase' AND hits IS NOT NULL;
  SELECT string_agg(key,', ') INTO lost FROM pg_temp.privacy_hits() WHERE expect='retain' AND hits IS NULL;
- IF NOT EXISTS(SELECT FROM app.idempotency_records WHERE idempotency_key='staff-unrelated'
+ IF NOT EXISTS(SELECT FROM app.idempotency_records WHERE idempotency_key='b00781ad-8b81-5ca6-bbe0-a74316e10354'
   AND response_body->>'snapshot'='privacy-unrelated-staff-control') THEN
   RAISE EXCEPTION 'PRIVACY_GATE erased unrelated staff receipt';
  END IF;
@@ -141,7 +141,7 @@ SET LOCAL ROLE app_returns_service;
 DO $reconcile$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;
  rid uuid:=current_setting('privacy.fixture.return_id')::uuid; r jsonb; receipt jsonb; journal uuid;
 BEGIN
- r:=app.returns_lock_refund(rid,'privacy-return-refund');
+ r:=app.returns_lock_refund(rid,'07e4bf79-6f27-5978-9811-4375a0803602');
  IF r->>'status'<>'refund_reconcile' OR r->>'provider_ref'<>'opaque-privacy-refund-capture'
   OR r->>'reason'<>'[erased]' THEN RAISE EXCEPTION 'PRIVACY_GATE erased frozen recovery authority'; END IF;
  -- Payments derives principal from the sealed RMA; Returns has no generic posting grant.
@@ -192,17 +192,17 @@ DO $future_fulfillment$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;
  v bigint; shipment jsonb; sid uuid; rid uuid;
 BEGIN
  SELECT version INTO STRICT v FROM app.orders WHERE tenant_id=t AND id=oid;
- shipment:=app.fulfillment_create_shipment(oid,v,'privacy-late-shipment','privacy-future-carrier','privacy-future-tracking',
+ shipment:=app.fulfillment_create_shipment(oid,v,'f0c10000-0000-5000-8000-000000000031','privacy-future-carrier','privacy-future-tracking',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
  IF shipment->>'carrier'<>'[erased]' OR shipment->>'tracking_number'<>'[erased]' THEN
   RAISE EXCEPTION 'PRIVACY_GATE future shipment resurrected PII'; END IF;
  SELECT id INTO STRICT sid FROM app.shipment_lines WHERE tenant_id=t AND shipment_id=(shipment->>'id')::uuid;
  SELECT version INTO STRICT v FROM app.orders WHERE tenant_id=t AND id=oid;
- PERFORM app.returns_create(oid,v,'privacy-late-return','shipment_return','privacy-future-customer-text',
+ PERFORM app.returns_create(oid,v,'f0c10000-0000-5000-8000-000000000032','shipment_return','privacy-future-customer-text',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',1)));
- SELECT id INTO STRICT rid FROM app.returns WHERE tenant_id=t AND creation_key='privacy-late-return';
+ SELECT id INTO STRICT rid FROM app.returns WHERE tenant_id=t AND creation_key='f0c10000-0000-5000-8000-000000000032';
  SELECT version INTO STRICT v FROM app.orders WHERE tenant_id=t AND id=oid;
- PERFORM app.returns_receive(rid,v,'privacy-late-receive',true);
+ PERFORM app.returns_receive(rid,v,'f0c10000-0000-5000-8000-000000000033',true);
  IF NOT EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND id=rid AND reason='[erased]'
   AND creation_response='{{"erased":true}}'::jsonb AND receive_response='{{"erased":true}}'::jsonb) THEN
   RAISE EXCEPTION 'PRIVACY_GATE future return resurrected PII'; END IF;

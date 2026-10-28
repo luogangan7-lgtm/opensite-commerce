@@ -19,6 +19,7 @@ import (
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 func TestCheckoutPGChangedTotalConsent(t *testing.T) {
@@ -77,7 +78,7 @@ func TestCheckoutPGConsentReplayAndRepricing(t *testing.T) {
 	if _, err := f.service.Start(checkoutRequestContext(f.ctx), f.actor, in); !errors.Is(err, checkoutcontract.ErrKeyReused) {
 		t.Fatalf("changed consent reused key: %v", err)
 	}
-	in.IdempotencyKey += ":new"
+	in.IdempotencyKey = fixtureCallerKey(in.IdempotencyKey + ":new")
 	in.AcceptedTotal.AmountMinor = 160
 	if _, err := f.service.Start(checkoutRequestContext(f.ctx), f.actor, in); !errors.Is(err, checkoutcontract.ErrTotalChanged) {
 		t.Fatalf("new attempt accepted stale money: %v", err)
@@ -116,6 +117,7 @@ func TestCheckoutPGHTTPConsentConflict(t *testing.T) {
 	for _, accepted := range []string{`{"amount_minor":159,"currency":"USD"}`, `{"amount_minor":160,"currency":"EUR"}`} {
 		f := newCheckoutPGFixture(t, 5, 1)
 		in := f.input()
+		in.IdempotencyKey = uuid.NewString()
 		raw, _ := json.Marshal(in)
 		var fields map[string]json.RawMessage
 		_ = json.Unmarshal(raw, &fields)
@@ -138,7 +140,7 @@ func TestCheckoutPGLegacyOrForgedConsentCannotCapture(t *testing.T) {
 		id := uuid.NewString()
 		if err := a.f.run(a.f.ctx, a.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			_, err := tx.Exec(ctx, `INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,source_kind,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
-			 VALUES($1,$2,'customer',$3,'legacy-consent',sha256('legacy'::bytea),'cart',$4,1,$5,$6::jsonb,'USD',270,200,20,50,1)`, a.f.tenant, id, a.f.actor.ID(), uuid.NewString(), a.order.ID, snapshot)
+			 VALUES($1,$2,'customer',$3,'959ed9b6-34a4-5de7-b93c-efc457c89ca4',sha256('legacy'::bytea),'cart',$4,1,$5,$6::jsonb,'USD',270,200,20,50,1)`, a.f.tenant, id, a.f.actor.ID(), uuid.NewString(), a.order.ID, snapshot)
 			if err != nil {
 				return err
 			}
@@ -168,7 +170,7 @@ func TestCheckoutPGConsentLegacyRecoveryAndPaidReplay(t *testing.T) {
 		t.Run(string(status), func(t *testing.T) {
 			a := newCheckoutAdoptionPG(t)
 			f, id := a.f, uuid.NewString()
-			request := payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: a.order.ID, OrderVersion: 1, Amount: money.Money{Amount: 270, Currency: "USD"}, IdempotencyKey: "checkout:v1:" + id + ":create"}
+			request := payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: a.order.ID, OrderVersion: 1, Amount: money.Money{Amount: 270, Currency: "USD"}, IdempotencyKey: idempotency.DerivedKey("checkout.provider.v1", id, "create")}
 			intent, err := f.provider.CreateIntent(checkoutRequestContext(f.ctx), request)
 			if err != nil {
 				t.Fatal(err)
@@ -178,7 +180,7 @@ func TestCheckoutPGConsentLegacyRecoveryAndPaidReplay(t *testing.T) {
 			raw, _ := json.Marshal(start)
 			if err := f.run(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 				_, err := tx.Exec(ctx, `INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,source_kind,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
-				 VALUES($1,$2,'customer',$3,'legacy-recovery',sha256('legacy'::bytea),'cart',$4,1,$5,'{}','USD',270,200,20,50,1)`, f.tenant, id, f.actor.ID(), uuid.NewString(), a.order.ID)
+				 VALUES($1,$2,'customer',$3,'75cd895f-7408-5d5a-be45-a30032e59dae',sha256('legacy'::bytea),'cart',$4,1,$5,'{}','USD',270,200,20,50,1)`, f.tenant, id, f.actor.ID(), uuid.NewString(), a.order.ID)
 				if err != nil {
 					return err
 				}
@@ -186,12 +188,12 @@ func TestCheckoutPGConsentLegacyRecoveryAndPaidReplay(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				_, err = tx.Exec(ctx, "UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key=$3 WHERE tenant_id=$1 AND id=$2", f.tenant, id, event.EventID)
+				_, err = tx.Exec(ctx, "UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key=$3 WHERE tenant_id=$1 AND id=$2", f.tenant, id, fixturePaymentEventKey(event.EventID))
 				return err
 			}); err != nil {
 				t.Fatal(err)
 			}
-			request.IdempotencyKey = "checkout:v1:" + id + ":capture"
+			request.IdempotencyKey = idempotency.DerivedKey("checkout.provider.v1", id, "capture")
 			if _, err := f.provider.Capture(checkoutRequestContext(f.ctx), payment.PaymentOperation{CreatePaymentIntent: request, ProviderRef: intent.ProviderRef}); err != nil {
 				t.Fatal(err)
 			}
@@ -234,6 +236,7 @@ func TestCheckoutPGHTTPConsentInvalid(t *testing.T) {
 		t.Run(accepted, func(t *testing.T) {
 			f := newCheckoutPGFixture(t, 5, 1)
 			in := f.input()
+			in.IdempotencyKey = uuid.NewString()
 			raw, _ := json.Marshal(in)
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(raw, &fields)

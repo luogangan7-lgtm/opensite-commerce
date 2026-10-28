@@ -62,7 +62,7 @@ func notificationFixture(t *testing.T) fixture {
 			return e
 		}
 		var order string
-		if e := tx.QueryRow(ctx, `INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor) VALUES($1,uuidv7(),1,'notification-gate',decode(repeat('01',32),'hex'),'{"email":"Buyer@safe.test","name":"<script>buyer</script>"}','USD',100,0,0,'{}',100) RETURNING id::text`, f.tenant).Scan(&order); e != nil {
+		if e := tx.QueryRow(ctx, `INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor) VALUES($1,uuidv7(),1,'d1d50d45-c431-5e93-8cd5-9b70112233aa',decode(repeat('01',32),'hex'),'{"email":"Buyer@safe.test","name":"<script>buyer</script>"}','USD',100,0,0,'{}',100) RETURNING id::text`, f.tenant).Scan(&order); e != nil {
 			return e
 		}
 		if _, e := tx.Exec(ctx, `RESET ROLE`); e != nil {
@@ -209,7 +209,7 @@ func TestNotificationTenFailuresDLQRedriveIsolation(t *testing.T) {
 	if e != nil || len(foreign) != 0 {
 		t.Fatal("NOTIFICATION_TENANT_READ", foreign, e)
 	}
-	if _, e = a.Redrive(f.ctx, f.foreign, f.id, "key"); e == nil {
+	if _, e = a.Redrive(f.ctx, f.foreign, f.id, "5b5cda6b-15cc-5e9e-9a04-c28e2b4c565d"); e == nil {
 		t.Fatal("NOTIFICATION_TENANT_REDRIVE")
 	} else {
 		var app *apperrors.Error
@@ -221,11 +221,11 @@ func TestNotificationTenFailuresDLQRedriveIsolation(t *testing.T) {
 	if e != nil || len(failures) != 1 || failures[0].Status != "dead_letter" {
 		t.Fatal("NOTIFICATION_FAILURES", failures, e)
 	}
-	one, e := a.Redrive(f.ctx, f.tenant, f.id, "redrive-key")
+	one, e := a.Redrive(f.ctx, f.tenant, f.id, "b94ed2a2-aa70-5850-b3bc-362c81565254")
 	if e != nil {
 		t.Fatal(e)
 	}
-	two, e := a.Redrive(f.ctx, f.tenant, f.id, "redrive-key")
+	two, e := a.Redrive(f.ctx, f.tenant, f.id, "b94ed2a2-aa70-5850-b3bc-362c81565254")
 	if e != nil || one != two || one.Token == "" || one.Generation != 2 {
 		t.Fatal("NOTIFICATION_REDRIVE_IDEMPOTENCY", one, two, e)
 	}
@@ -251,7 +251,7 @@ func TestNotificationUncertainNeverResends(t *testing.T) {
 	if result, e := d.Dispatch(f.ctx, f.tenant, 1); e != nil || result.Claimed != 0 || len(fake.Snapshot()) != 1 {
 		t.Fatal("NOTIFICATION_UNCERTAIN_AUTORETRY", result, e)
 	}
-	if _, e := notifications.New(f.admin()).Redrive(f.ctx, f.tenant, f.id, "unsafe-redrive"); e == nil {
+	if _, e := notifications.New(f.admin()).Redrive(f.ctx, f.tenant, f.id, "a0f8c299-7c8d-5568-83e4-9ff653ae5ab3"); e == nil {
 		t.Fatal("NOTIFICATION_UNCERTAIN_REDRIVE")
 	} else {
 		var app *apperrors.Error

@@ -142,6 +142,7 @@ func budgetLegacy(ctx context.Context, tx pgx.Tx, order, key string, amount int6
 }
 
 func budgetRequest(ctx context.Context, tx pgx.Tx, f fulfillmentFixture, version, quantity int64, key string) (string, int64, error) {
+	key = fixtureCallerKey(key)
 	lines := fmt.Sprintf(`[{"order_line_id":%q,"quantity":%d}]`, f.line, quantity)
 	var id string
 	var amount int64
@@ -169,6 +170,7 @@ func newBudgetReturn(t *testing.T, f fulfillmentFixture, quantity int64, key str
 // A valid posted public Ledger receipt isolates the database completion gate;
 // provider orchestration remains covered by the existing conservation tests.
 func prepareBudgetReturn(t *testing.T, f fulfillmentFixture, id, key string, amount int64) string {
+	key = fixtureCallerKey(key)
 	t.Helper()
 	version, _, _ := conservationOrder(t, f)
 	var income, tax, shipping, cash string
@@ -202,6 +204,7 @@ func prepareBudgetReturn(t *testing.T, f fulfillmentFixture, id, key string, amo
 }
 
 func completeBudgetReturn(ctx context.Context, tx pgx.Tx, id, key, journal string) error {
+	key = fixtureCallerKey(key)
 	_, err := tx.Exec(ctx, "SELECT app.returns_complete_refund($1,$2,'budget-provider',$3)", id, key, journal)
 	return err
 }

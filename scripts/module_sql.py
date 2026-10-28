@@ -22,7 +22,7 @@ def _fail(marker, location, detail):
     raise SqlOwnershipError(f"{marker}: {location}: {detail}")
 
 
-def _tokens(sql, location):
+def _tokens(sql, location, literal_values=False):
     """Lex PostgreSQL strings/comments; retain identifier case and token lines."""
     result, i, line = [], 0, 1
     while i < len(sql):
@@ -72,7 +72,7 @@ def _tokens(sql, location):
                     i += 1
             else:
                 _fail("MODULE_SQL_LEXICAL", location, f"line {token_line}: unterminated quote")
-            result.append(("ident" if quote == '"' else "literal", "".join(value) if quote == '"' else "", token_line))
+            result.append(("ident" if quote == '"' else "literal", "".join(value) if quote == '"' or literal_values and not escaped else "", token_line))
             line += sql[start:i].count("\n")
             continue
         if char == "$":

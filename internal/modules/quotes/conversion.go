@@ -16,6 +16,7 @@ import (
 	oc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	c "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/pricing"
 )
 
@@ -49,8 +50,7 @@ func conversionKey(key string) bool {
 // Orders creation keys span the tenant; quote receipts retain the buyer's raw
 // key. A JSON tuple preserves field boundaries and the digest fits Orders' cap.
 func conversionOrderKey(tenant, actorKind, actorID, quoteID, rawKey string) string {
-	body, _ := json.Marshal([]string{"quotes.orders.v1", tenant, actorKind, actorID, quoteID, rawKey})
-	return fmt.Sprintf("quotes.orders.v1:%x", sha256.Sum256(body))
+	return idempotency.DerivedKey("quotes.orders.v1", tenant, actorKind, actorID, quoteID, rawKey)
 }
 
 func (a *ConversionApplication) Convert(ctx context.Context, quoteID, key string) (out c.Conversion, err error) {

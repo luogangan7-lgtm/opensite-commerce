@@ -7,37 +7,38 @@
     "notification_deliveries": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "order.*: reference_id -> orders.id -> customer_id (or mailbox-verified customer_guest_order_links.customer_id); quote.approved: reference_id -> quotes.id -> accepted_by; quote.converted: reference_id -> quote_conversions.quote_id -> customer_id", "null_subject_policy": "quote.sent and guest order recipients are inquiry-owned/unverified contacts; do not link by email alone."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "source_event_id": {"classification": "operational"},
-        "dispatch_event_id": {"classification": "operational"},
-        "recipient": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "locale": {"classification": "operational"},
-        "template_key": {"classification": "operational"},
-        "reference_id": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "attempt_count": {"classification": "operational"},
-        "generation": {"classification": "operational"},
-        "send_token": {"classification": "operational"},
-        "lease_attempt": {"classification": "operational"},
-        "lease_worker": {"classification": "operational"},
-        "last_error": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "updated_at": {"classification": "operational"},
-        "sent_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.id with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "source_event_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.source_event_id with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "dispatch_event_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.dispatch_event_id with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "recipient": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.recipient with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.locale with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "template_key": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.template_key with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "reference_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.reference_id with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.status with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "attempt_count": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.attempt_count with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "generation": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.generation with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "send_token": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.send_token with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "lease_attempt": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.lease_attempt with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "lease_worker": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.lease_worker with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "last_error": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.last_error with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.created_at with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "updated_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.updated_at with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}},
+        "sent_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_deliveries.sent_at with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_deliveries.tenant_id"}}}
       }
     },
     "notification_redrive_requests": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "notification_id": {"classification": "operational"},
-        "idempotency_key": {"classification": "operational"},
-        "request_token": {"classification": "operational"},
-        "generation": {"classification": "operational"},
-        "dispatch_event_id": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_redrive_requests.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_redrive_requests.tenant_id"}}},
+        "notification_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_redrive_requests.notification_id with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_redrive_requests.tenant_id"}}},
+        "idempotency_key": {"caller_key": true, "classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_redrive_requests.idempotency_key with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_redrive_requests.tenant_id"}}},
+        "request_token": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_redrive_requests.request_token with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_redrive_requests.tenant_id"}}},
+        "generation": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_redrive_requests.generation with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_redrive_requests.tenant_id"}}},
+        "dispatch_event_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_redrive_requests.dispatch_event_id with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_redrive_requests.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned notification_redrive_requests.created_at with its row, including all merchant/guest/derived copies.", "handler": "notifications.erase", "ownership": {"kind": "tenant_column", "path": "notification_redrive_requests.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"notifications.erase": {"depends_on": ["publish.erase"], "tables": ["notification_redrive_requests", "notification_deliveries"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

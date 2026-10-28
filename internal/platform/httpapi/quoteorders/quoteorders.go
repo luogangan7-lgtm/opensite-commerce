@@ -17,6 +17,7 @@ import (
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 type Service interface {
@@ -82,9 +83,8 @@ func (h *Handler) admit(spec httpapi.RouteSpec, next http.HandlerFunc) http.Hand
 					return
 				}
 			}
-			keys := r.Header.Values("Idempotency-Key")
-			if len(keys) != 1 || len(keys[0]) < 1 || len(keys[0]) > 128 || strings.IndexFunc(keys[0], func(c rune) bool { return c < 0x21 || c > 0x7e }) >= 0 {
-				httpapi.WriteProblem(w, r, apperrors.New(400, "invalid_idempotency_key", "One visible ASCII Idempotency-Key of at most 128 bytes is required"))
+			if _, err := idempotency.ValidateKey(r.Header); err != nil {
+				httpapi.WriteProblem(w, r, err)
 				return
 			}
 			// Decode into a closed object before the generated map DTO. Shared

@@ -156,7 +156,7 @@ func (f *jobsPG) seed() (string, string) {
 	if _, err := rand.Read(bearer); err != nil {
 		f.t.Fatal("generate inventory holder capability")
 	}
-	if err := tx.QueryRow(f.ctx, "SELECT (app.inventory_reserve_non_order($1::text::uuid,1,'checkout',uuidv7(),'jobs-expire',900,$2)).id::text", sku, bearer).Scan(&res); err != nil {
+	if err := tx.QueryRow(f.ctx, "SELECT (app.inventory_reserve_non_order($1::text::uuid,1,'checkout',uuidv7(),'e6779fd9-d2a2-58ba-b233-9c663173040a',900,$2)).id::text", sku, bearer).Scan(&res); err != nil {
 		f.t.Fatal(err)
 	}
 	if err := tx.Commit(f.ctx); err != nil {

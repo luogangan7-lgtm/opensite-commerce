@@ -54,7 +54,7 @@ class NotificationAPITests(unittest.TestCase):
                     op = contract.operation_inventory(api)["listNotificationFailures"][2]
                     op["parameters"][0]["schema"]["maximum"] = 1000
                 elif change == "key":
-                    api["components"]["parameters"]["NotificationIdempotencyKey"]["schema"].pop("pattern")
+                    api["components"]["parameters"]["NotificationIdempotencyKey"]["schema"].pop("format")
                 else:
                     schemas["NotificationFailure"]["properties"]["safe_error"].pop("pattern")
                 with self.assertRaises((AssertionError, ValueError)):

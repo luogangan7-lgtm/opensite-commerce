@@ -207,7 +207,7 @@ func (f *checkoutPGFixture) run(ctx context.Context, tenant string, fn func(cont
 }
 
 func (f *checkoutPGFixture) input() checkoutcontract.StartInput {
-	return checkoutcontract.StartInput{AcceptedTotal: checkoutcontract.AcceptedTotal{AmountMinor: 110*f.cart.cart.Lines[0].Quantity + 50, Currency: "USD"}, CartID: f.cart.cart.ID, BuyerContact: orderscontract.Contact{Email: "buyer@example.test", Name: "Fixture buyer"}, ShippingAddress: checkoutcontract.ShippingAddress{Country: "US", Address1: "100 Test Avenue", City: "Test City", PostalCode: "10000"}, IdempotencyKey: "start:" + uuid.NewString()}
+	return checkoutcontract.StartInput{AcceptedTotal: checkoutcontract.AcceptedTotal{AmountMinor: 110*f.cart.cart.Lines[0].Quantity + 50, Currency: "USD"}, CartID: f.cart.cart.ID, BuyerContact: orderscontract.Contact{Email: "buyer@example.test", Name: "Fixture buyer"}, ShippingAddress: checkoutcontract.ShippingAddress{Country: "US", Address1: "100 Test Avenue", City: "Test City", PostalCode: "10000"}, IdempotencyKey: uuid.NewString()}
 }
 func (f *checkoutPGFixture) start(t *testing.T) checkoutcontract.Result {
 	t.Helper()
@@ -444,7 +444,7 @@ func TestCheckoutPGEventAndActorCannotCrossBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.service.Cancel(checkoutRequestContext(f.ctx), other, checkoutcontract.CancelInput{CheckoutID: start.CheckoutID, IdempotencyKey: "cancel-other"}); !errors.Is(err, checkoutcontract.ErrNotFound) {
+	if _, err = f.service.Cancel(checkoutRequestContext(f.ctx), other, checkoutcontract.CancelInput{CheckoutID: start.CheckoutID, IdempotencyKey: "0f00ebeb-e90d-5de0-85aa-d6fa0c467ed0"}); !errors.Is(err, checkoutcontract.ErrNotFound) {
 		t.Fatalf("foreign actor cancelled: %v", err)
 	}
 	if f.provider.captures.Load() != 0 || f.provider.cancels.Load() != 0 {
@@ -485,7 +485,7 @@ func TestCheckoutPGConfirmCancelOneWinner(t *testing.T) {
 				err    error
 			}
 			finished := make(chan outcome, 1)
-			cancel := checkoutcontract.CancelInput{CheckoutID: start.CheckoutID, IdempotencyKey: "cancel:" + uuid.NewString()}
+			cancel := checkoutcontract.CancelInput{CheckoutID: start.CheckoutID, IdempotencyKey: uuid.NewString()}
 			go func() {
 				var r checkoutcontract.Result
 				var e error

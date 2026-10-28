@@ -29,7 +29,7 @@ func (a deadlineAuth) Authenticate(ctx context.Context, _ *http.Request, _ httpa
 }
 
 func TestRequestDeadlineIncludesAuthenticationAndHandler(t *testing.T) {
-	s, err := bootstrap.New(bootstrap.Config{Authenticator: deadlineAuth{t}, Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "deadlineProbe", Method: "GET", Pattern: "/deadline", Access: httpapi.AdminSession}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s, err := bootstrap.NewTestServer(t, bootstrap.Config{Authenticator: deadlineAuth{t}, Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "deadlineProbe", Method: "GET", Pattern: "/api/v1/auth/current-actor", Access: httpapi.AdminSession}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		deadline, ok := r.Context().Deadline()
 		if !ok || time.Until(deadline) > 75*time.Second {
 			t.Fatal("handler has no bounded request context")
@@ -39,7 +39,7 @@ func TestRequestDeadlineIncludesAuthenticationAndHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/deadline", nil))
+	s.Handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/v1/auth/current-actor", nil))
 }
 
 func TestStartupRejectsInvalidRoute(t *testing.T) {
@@ -90,7 +90,9 @@ func TestQuotesUnconfiguredAuthenticationIsDenied(t *testing.T) {
 	id := "11111111-1111-1111-1111-111111111111"
 	for _, tc := range []struct{ method, path string }{{"POST", "/api/v1/t/" + id + "/quotes/" + id + "/orders"}, {"GET", "/api/v1/t/" + id + "/quotes/" + id + "/order-conversion"}, {"POST", "/api/public/v1/inquiries"}, {"POST", "/api/v1/t/" + id + "/quotes"}, {"GET", "/api/v1/t/" + id + "/quotes/" + id}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/send"}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/withdraw"}, {"POST", "/api/v1/t/" + id + "/quotes/" + id + "/expire"}, {"GET", "/api/public/v1/quotes/" + id}, {"POST", "/api/public/v1/quotes/" + id + "/accept"}, {"POST", "/api/public/v1/quotes/" + id + "/approve"}, {"POST", "/api/public/v1/quotes/" + id + "/reject"}} {
 		w := httptest.NewRecorder()
-		server.Handler.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, nil))
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		req.Header.Set("Idempotency-Key", "11111111-1111-4111-8111-111111111111")
+		server.Handler.ServeHTTP(w, req)
 		if w.Code != 401 || w.Header().Get("Content-Type") != "application/problem+json" {
 			t.Fatalf("%s %s=%d %s", tc.method, tc.path, w.Code, w.Body.String())
 		}
@@ -98,7 +100,7 @@ func TestQuotesUnconfiguredAuthenticationIsDenied(t *testing.T) {
 }
 
 func TestOperationalMetricsObserveRecoveredStatus(t *testing.T) {
-	s, err := bootstrap.New(bootstrap.Config{Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "metricsProbePanic", Method: "GET", Pattern: "/probe-panic", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s, err := bootstrap.NewTestServer(t, bootstrap.Config{Routes: []httpapi.Route{{Spec: httpapi.RouteSpec{OperationID: "metricsProbePanic", Method: "GET", Pattern: "/api/v1/auth/admin-sessions", Access: httpapi.Public}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(201)
 		_, _ = w.Write([]byte("partial-secret"))
 		panic("panic-secret")
@@ -118,7 +120,7 @@ func TestOperationalMetricsObserveRecoveredStatus(t *testing.T) {
 	for _, tc := range []struct {
 		path   string
 		status int
-	}{{"/healthz", 204}, {"/probe-panic", 500}, {"/customer-secret?token=query-secret", 404}} {
+	}{{"/healthz", 204}, {"/api/v1/auth/admin-sessions", 500}, {"/customer-secret?token=query-secret", 404}} {
 		w := httptest.NewRecorder()
 		s.Handler.ServeHTTP(w, httptest.NewRequest("GET", tc.path, nil))
 		if w.Code != tc.status {

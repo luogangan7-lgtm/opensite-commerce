@@ -7,85 +7,86 @@
     "inquiries": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Buyer contact is inquiry-owned; buyer_company_id identifies a company but buyer_email does not prove individual customer ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "buyer_email": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "buyer_name": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
-        "quantity": {"classification": "operational"},
-        "message": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
-        "status": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "buyer_company_id": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.site_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.product_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}},
+        "buyer_email": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.buyer_email with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}},
+        "buyer_name": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.buyer_name with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}},
+        "quantity": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.quantity with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}},
+        "message": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.message with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.status with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.created_at with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}},
+        "buyer_company_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned inquiries.buyer_company_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "inquiries.tenant_id"}}}
       }
     },
     "quotes": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "quotes.accepted_by -> buyer_company_members.customer_id -> customers.id", "null_subject_policy": "Before acceptance, inquiry contact is unverified; company membership does not assign all free-form snapshot content to one member."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "inquiry_id": {"classification": "operational"},
-        "buyer_company_id": {"classification": "operational"},
-        "created_by": {"classification": "operational"},
-        "currency": {"classification": "financial_non_contact"},
-        "subtotal": {"classification": "financial_non_contact"},
-        "tax": {"classification": "financial_non_contact"},
-        "shipping": {"classification": "financial_non_contact"},
-        "total": {"classification": "financial_non_contact"},
-        "snapshot": {"classification": "personal", "structure": "QuoteSnapshot", "erase": {"strategy": "scrub"}, "export": "include"},
-        "expires_at": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "version": {"classification": "operational"},
-        "accepted_by": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "updated_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.site_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "inquiry_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.inquiry_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "buyer_company_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.buyer_company_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "created_by": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.created_by with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "currency": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.currency with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "subtotal": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.subtotal with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "tax": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.tax with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "shipping": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.shipping with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "total": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.total with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "snapshot": {"classification": "personal", "structure": "QuoteSnapshot", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.snapshot with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "expires_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.expires_at with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.status with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "version": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.version with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "accepted_by": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.accepted_by with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.created_at with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}},
+        "updated_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quotes.updated_at with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quotes.tenant_id"}}}
       }
     },
     "quote_lines": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "quote_lines.quote_id -> quotes.id -> quotes.accepted_by -> customers.id", "null_subject_policy": "Draft/sent quote uses unverified inquiry contact policy."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "quote_id": {"classification": "operational"},
-        "line_no": {"classification": "operational"},
-        "product_id": {"classification": "operational"},
-        "variant_id": {"classification": "operational"},
-        "description": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
-        "quantity": {"classification": "operational"},
-        "unit_price": {"classification": "financial_non_contact"},
-        "line_total": {"classification": "financial_non_contact"},
-        "snapshot": {"classification": "personal", "structure": "QuoteLineSnapshot", "erase": {"strategy": "scrub"}, "export": "include"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_lines.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_lines.tenant_id"}}},
+        "quote_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_lines.quote_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_lines.tenant_id"}}},
+        "line_no": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_lines.line_no with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_lines.tenant_id"}}},
+        "product_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_lines.product_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_lines.tenant_id"}}},
+        "variant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_lines.variant_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_lines.tenant_id"}}},
+        "description": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_lines.description with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_lines.tenant_id"}}},
+        "quantity": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_lines.quantity with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_lines.tenant_id"}}},
+        "unit_price": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_lines.unit_price with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_lines.tenant_id"}}},
+        "line_total": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_lines.line_total with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_lines.tenant_id"}}},
+        "snapshot": {"classification": "personal", "structure": "QuoteLineSnapshot", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_lines.snapshot with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_lines.tenant_id"}}}
       }
     },
     "quote_approvals": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "quote_id": {"classification": "operational"},
-        "buyer_company_id": {"classification": "operational"},
-        "requested_by": {"classification": "operational"},
-        "decided_by": {"classification": "operational"},
-        "decision": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_approvals.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_approvals.tenant_id"}}},
+        "quote_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_approvals.quote_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_approvals.tenant_id"}}},
+        "buyer_company_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_approvals.buyer_company_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_approvals.tenant_id"}}},
+        "requested_by": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_approvals.requested_by with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_approvals.tenant_id"}}},
+        "decided_by": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_approvals.decided_by with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_approvals.tenant_id"}}},
+        "decision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_approvals.decision with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_approvals.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_approvals.created_at with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_approvals.tenant_id"}}}
       }
     },
     "quote_conversions": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "quote_conversions.customer_id -> customers.id", "null_subject_policy": "Customer ownership is an explicit tenant-scoped foreign key; no copied contact or free-form snapshot fields."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "quote_id": {"classification": "operational"},
-        "buyer_company_id": {"classification": "operational"},
-        "customer_id": {"classification": "operational"},
-        "order_id": {"classification": "operational"},
-        "quote_version": {"classification": "operational"},
-        "idempotency_key": {"classification": "operational", "export": "exclude"},
-        "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
-        "order_number": {"classification": "operational"},
-        "currency": {"classification": "financial_non_contact"},
-        "total_minor": {"classification": "financial_non_contact"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "quote_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.quote_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "buyer_company_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.buyer_company_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "customer_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.customer_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "order_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.order_id with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "quote_version": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.quote_version with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "idempotency_key": {"caller_key": true, "classification": "operational", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.idempotency_key with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "request_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.request_hash with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "order_number": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.order_number with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "currency": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.currency with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "total_minor": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.total_minor with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned quote_conversions.created_at with its row, including all merchant/guest/derived copies.", "handler": "quotes.erase", "ownership": {"kind": "tenant_column", "path": "quote_conversions.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"quotes.erase": {"depends_on": ["orders.erase"], "tables": ["quote_conversions", "quote_approvals", "quote_lines", "quotes", "inquiries"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

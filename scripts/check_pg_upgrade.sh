@@ -179,10 +179,11 @@ CLOCK_DB=""
 RECOVERY_DB=""
 PRIVACY_HARDENING_DB=""
 AUDIT_DB=""
+CALLER_KEYS_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -193,7 +194,7 @@ db "$RELIABILITY_DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('legacy-reliability') RETURNING id AS t \gset
 INSERT INTO app.outbox_events(tenant_id,event_type,payload) VALUES(:'t','legacy','{}');
 INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at)
- VALUES(:'t','service',uuidv7(),'legacy','one',sha256('request'::bytea),now()+interval '1 day');
+ VALUES(:'t','service',uuidv7(),'legacy','ac585171-8d9c-5d11-8feb-a32bc62aa7ad',sha256('request'::bytea),now()+interval '1 day');
 SQL
 if ! out=$(apply_reliability "$RELIABILITY_DB"); then bad "pending reliability upgrade: $out"
 elif [[ $(db "$RELIABILITY_DB" -c "SELECT count(*) FROM app.outbox_events WHERE delivery_target='legacy' AND dedup_key=id::text AND status='pending' AND lease_owner IS NULL AND attempts=0") != 1 ]]; then bad 'legacy pending event identity changed'
@@ -209,7 +210,7 @@ for legacy_state in processing delivered failed completed; do
  if [[ $legacy_state == processing || $legacy_state == delivered ]]; then
   db "$RELIABILITY_DB" -c "INSERT INTO app.outbox_events(tenant_id,event_type,payload,status) SELECT id,'legacy','{}','$legacy_state' FROM app.tenants" >/dev/null
  else
-  db "$RELIABILITY_DB" -c "INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,state,response_status,response_body) SELECT id,'service',uuidv7(),'legacy','one',sha256('request'::bytea),now()+interval '1 day','$legacy_state',201,'{\"legacy\":true}' FROM app.tenants" >/dev/null
+  db "$RELIABILITY_DB" -c "INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,state,response_status,response_body) SELECT id,'service',uuidv7(),'legacy','ac585171-8d9c-5d11-8feb-a32bc62aa7ad',sha256('request'::bytea),now()+interval '1 day','$legacy_state',201,'{\"legacy\":true}' FROM app.tenants" >/dev/null
  fi
  if out=$(apply_reliability "$RELIABILITY_DB"); then bad "reliability silently accepted legacy $legacy_state"
  elif [[ $out != *RELIABILITY_UPGRADE_REQUIRES_RECONCILIATION* ]]; then bad "reliability $legacy_state failed for another reason: $out"
@@ -244,7 +245,7 @@ SET ROLE app_inventory_manager;
 SELECT app.inventory_adjust(current_setting('upgrade.sku')::uuid,2,'existing SKU receipt',uuidv7(),'inbound');
 RESET ROLE;
 SET ROLE app_runtime;
-SELECT (app.inventory_reserve(current_setting('upgrade.sku')::uuid,1,'checkout',uuidv7(),'upgrade-key',900)).id AS rid \gset
+SELECT (app.inventory_reserve(current_setting('upgrade.sku')::uuid,1,'checkout',uuidv7(),'afff0635-f78d-5d89-91d7-299cff38235e',900)).id AS rid \gset
 SELECT app.inventory_commit(:'rid');
 SELECT 'INVENTORY_UPGRADE='||s.on_hand||'|'||s.reserved||'|'||
  (SELECT count(*) FROM app.inventory_movements)||'|'||
@@ -803,7 +804,7 @@ SELECT app.inventory_adjust(:'sku',3,'legacy receipt',uuidv7(),'inbound');
 RESET ROLE;
 SET ROLE app_runtime;
 SELECT uuidv7() AS oid \gset
-SELECT app.inventory_reserve(:'sku',1,'order',:'oid','legacy-orders-reserve',900);
+SELECT app.inventory_reserve(:'sku',1,'order',:'oid','b596ffa1-ff67-55f1-ae2b-fddf0f219427',900);
 SQL
 { echo 'BEGIN;'; cat "${orders_files[0]}"; echo 'COMMIT;'; } | db "$DB" >/dev/null
 result=$(db "$DB" <<'SQL'
@@ -812,7 +813,7 @@ SELECT id AS sku FROM app.product_variants WHERE sku='orders-legacy' \gset
 SELECT id AS rid,owner_id AS oid FROM app.inventory_reservations WHERE tenant_id=:'t' \gset
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_runtime;
-SELECT app.orders_create(:'oid','legacy-create',sha256('legacy'::bytea),NULL,
+SELECT app.orders_create(:'oid','c814a75e-b677-584b-b658-9cc492943b00',sha256('legacy'::bytea),NULL,
  '{"email":"legacy@example.invalid"}','USD',20,'{"currency":"USD","amount_minor":20,"service":"fixture"}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','orders-legacy','quantity',1,
  'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
@@ -972,7 +973,7 @@ INSERT INTO app.tenants(name) VALUES('notification-upgrade') RETURNING id AS t \
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_orders_executor;
 INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-VALUES(:'t',uuidv7(),1,'upgrade',sha256('upgrade'::bytea),'{"email":"upgrade@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
+VALUES(:'t',uuidv7(),1,'6c045ad4-5d06-55f1-a725-cf7dadb256a6',sha256('upgrade'::bytea),'{"email":"upgrade@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
 RESET ROLE;
 INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
 VALUES(:'t','order.paid',jsonb_build_object('order_id',:'oid'),'orders.events','upgrade-source');
@@ -1025,8 +1026,8 @@ SELECT app.inventory_adjust(:'sku',2,'synthetic privacy upgrade',uuidv7(),'inbou
 RESET ROLE;
 SET ROLE app_runtime;
 SELECT uuidv7() AS oid \gset
-SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','privacy-legacy-reserve',900)).id AS rid \gset
-SELECT app.orders_create(:'oid','privacy-legacy-create',sha256('legacy'::bytea),:'customer',NULL,'USD',20,
+SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','542ebc5b-2736-50dd-91f8-4780722cc26b',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','41f67f2c-4129-55be-8b58-0b53f0964ced',sha256('legacy'::bytea),:'customer',NULL,'USD',20,
  '{"currency":"USD","amount_minor":20,"recipient":"Synthetic legacy"}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','privacy-legacy-sku','quantity',1,
  'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
@@ -1353,6 +1354,37 @@ result=$(db "$LISTING_DB" -c "UPDATE app.product_listings SET slug='updated' RET
 admin -c "DROP DATABASE $LISTING_DB" >/dev/null; LISTING_DB=""
 pass 'listing upgrade preserves old state and legacy writes advance listing version'
 
+# MDEL-00: apply all predecessors, preserve canonical keys, reject legacy text.
+caller_key_files=(migrations/[0-9][0-9][0-9]_caller_key_constraints.sql)
+[[ ${#caller_key_files[@]} == 1 ]] || { bad 'exactly one caller key migration required'; exit 1; }
+for key_case in canonical invalid; do
+ CALLER_KEYS_DB=upgrade_caller_keys_${key_case}_$$
+ admin -c "CREATE DATABASE $CALLER_KEYS_DB" >/dev/null
+ for f in migrations/[0-9][0-9][0-9]_*.sql; do
+  [[ $f == "${caller_key_files[0]}" ]] && break
+  apply_forward "$CALLER_KEYS_DB" "$f"
+ done
+ caller_value=abcdef01-2345-6789-abcd-ef0123456789
+ [[ $key_case == canonical ]] || caller_value=alice@example.test
+ db "$CALLER_KEYS_DB" <<SQL >/dev/null
+ INSERT INTO app.tenants(name) VALUES('caller-key-upgrade') RETURNING id AS t \gset
+ INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at)
+ VALUES(:'t','service',uuidv7(),'caller-upgrade','$caller_value',sha256('fixture'::bytea),clock_timestamp()+interval '1 hour');
+SQL
+ if out=$(apply_forward "$CALLER_KEYS_DB" "${caller_key_files[0]}" 2>&1); then
+  if [[ $key_case == invalid ]]; then bad 'caller-key upgrade accepted legacy contact text'
+  else
+   [[ $(db "$CALLER_KEYS_DB" -c "SELECT idempotency_key FROM app.idempotency_records") == "$caller_value" ]] || bad 'caller-key upgrade rewrote identity'
+   db "$CALLER_KEYS_DB" -f tests/db_caller_key_constraints.sql >/dev/null
+   pass 'caller-key upgrade preserves UUID identity and all deployed column CHECKs reject contact text'
+  fi
+ elif [[ $key_case == canonical || $out != *idempotency_records_idempotency_key_uuid* ]]; then
+  bad "caller-key upgrade unexpected failure: $out"
+ else pass 'caller-key upgrade refuses legacy contact text without rewriting historical receipts'
+ fi
+ admin -c "DROP DATABASE $CALLER_KEYS_DB" >/dev/null; CALLER_KEYS_DB=""
+done
+
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
 # Quotes takes over the existing005 inquiry table without rebuilding contacts.
@@ -1434,8 +1466,8 @@ SET ROLE app_inventory_manager;
 SELECT app.inventory_adjust(:'sku',2,'legacy stock',uuidv7(),'inbound');
 RESET ROLE; SET ROLE app_runtime;
 SELECT uuidv7() AS oid \gset
-SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','checkout-legacy-stock',900)).id AS rid \gset
-SELECT app.orders_create(:'oid','checkout-legacy-order',sha256('legacy'::bytea),NULL,'{"email":"legacy@example.invalid"}','USD',0,'{}',
+SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','9c45e55c-400f-5b91-a5f5-36201bb37bd4',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','417f5891-373e-50d7-8b30-21e3aa2dfe53',sha256('legacy'::bytea),NULL,'{"email":"legacy@example.invalid"}','USD',0,'{}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','checkout-legacy','quantity',1,'unit_price_minor',100,
  'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
 SELECT app.orders_transition(:'oid','paid','legacy-paid',0);
@@ -1470,7 +1502,7 @@ INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash) VALUES
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_orders_executor;
 INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-VALUES(:'t',uuidv7(),1,'auth-upgrade',sha256('auth-upgrade'::bytea),'{"email":"legacy-auth@example.invalid","name":"Immutable"}','USD',0,0,0,'{}',0) RETURNING id AS oid \gset
+VALUES(:'t',uuidv7(),1,'5fbc3309-f14e-5aec-b745-2596a5083c2b',sha256('auth-upgrade'::bytea),'{"email":"legacy-auth@example.invalid","name":"Immutable"}','USD',0,0,0,'{}',0) RETURNING id AS oid \gset
 UPDATE app.orders SET sealed=true WHERE tenant_id=:'t' AND id=:'oid';
 RESET ROLE;
 CREATE TABLE public.customer_auth_upgrade_witness AS
@@ -1546,7 +1578,7 @@ SET ROLE app_inventory_manager;
 SELECT app.inventory_adjust(:'sku',2,'legacy holder receipt',uuidv7(),'inbound');
 RESET ROLE;
 SET ROLE app_runtime;
-SELECT (app.inventory_reserve(:'sku',1,'checkout',:'owner','legacy-holder-key',900)).id AS rid \gset
+SELECT (app.inventory_reserve(:'sku',1,'checkout',:'owner','0ea3a358-53cd-50a6-aa5b-9d55a7be7c5e',900)).id AS rid \gset
 RESET ROLE;
 CREATE TABLE public.inventory_owner_upgrade_witness AS
  SELECT to_jsonb(r) AS snapshot FROM app.inventory_reservations r WHERE r.id=:'rid';
@@ -1585,7 +1617,7 @@ BEGIN
  IF app.inventory_expire_due(100)<>1 THEN RAISE EXCEPTION 'INVENTORY_HOLDER_UPGRADE_LEGACY_SWEEP'; END IF;
  EXECUTE 'RESET ROLE';
  EXECUTE 'SET LOCAL ROLE app_runtime';
- new_hold:=app.inventory_reserve_non_order(legacy.sku_id,1,'checkout',legacy.owner_id,'new-holder-key',900,bearer);
+ new_hold:=app.inventory_reserve_non_order(legacy.sku_id,1,'checkout',legacy.owner_id,'a9c1e8e0-d99b-53ca-b238-2fdeed06d2cd',900,bearer);
  new_hold:=app.inventory_commit_non_order(new_hold.id,'checkout',legacy.owner_id,bearer);
  IF new_hold.state<>'committed' OR new_hold.holder_hash IS DISTINCT FROM sha256(bearer)
  THEN RAISE EXCEPTION 'INVENTORY_HOLDER_UPGRADE_NEW_CAPABILITY'; END IF;
@@ -1658,12 +1690,12 @@ SET ROLE app_inventory_manager;
 SELECT app.inventory_adjust(:'sku',2,'payment upgrade stock',uuidv7(),'inbound');
 SET ROLE app_runtime;
 SELECT uuidv7() AS oid \gset
-SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','payment-upgrade-stock',900)).id AS rid \gset
-SELECT app.orders_create(:'oid','payment-upgrade-order',sha256('payment-upgrade'::bytea),NULL,'{"email":"payment-upgrade@example.invalid"}','USD',0,'{}',
+SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','fe185518-52b1-50e1-9c69-81e76eb28d41',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','da30010d-e0e7-511e-ac42-a3bcd85501be',sha256('payment-upgrade'::bytea),NULL,'{"email":"payment-upgrade@example.invalid"}','USD',0,'{}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','payment-upgrade','quantity',1,'unit_price_minor',100,
  'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
 INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
-VALUES(:'t',uuidv7(),'guest',repeat('a',64),'upgrade',sha256('upgrade'::bytea),uuidv7(),1,:'oid','{}','USD',100,100,0,0,1);
+VALUES(:'t',uuidv7(),'guest',repeat('a',64),'6c045ad4-5d06-55f1-a725-cf7dadb256a6',sha256('upgrade'::bytea),uuidv7(),1,:'oid','{}','USD',100,100,0,0,1);
 UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake_upgrade',start_result='{}';
 RESET ROLE;
 CREATE TABLE public.payment_upgrade_witness AS SELECT to_jsonb(s) AS snapshot FROM app.checkout_sessions s;
@@ -1698,8 +1730,8 @@ SET ROLE app_inventory_manager;
 SELECT app.inventory_adjust(:'sku',5,'legacy stock',uuidv7(),'inbound');
 SET ROLE app_runtime;
 SELECT uuidv7() AS oid,uuidv7() AS lid \gset
-SELECT (app.inventory_reserve(:'sku',2,'order',:'oid','existing-reserve',900)).id AS rid \gset
-SELECT app.orders_create(:'oid','existing-order',sha256('existing'::bytea),NULL,'{"email":"existing@example.invalid"}',
+SELECT (app.inventory_reserve(:'sku',2,'order',:'oid','149d0bb7-c269-5a68-9633-7e405a354dba',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','53e0d56a-c6e9-5777-8fa9-abab6e8e3b68',sha256('existing'::bytea),NULL,'{"email":"existing@example.invalid"}',
  'USD',2,'{"amount_minor":2,"currency":"USD","service":"fixture"}',
  jsonb_build_array(jsonb_build_object('id',:'lid','sku_id',:'sku','sku','existing','quantity',2,'unit_price_minor',5,
  'line_net_minor',10,'line_tax_minor',2,'line_total_minor',12,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
@@ -1715,9 +1747,9 @@ SELECT id AS oid FROM app.orders WHERE tenant_id=:'t' \gset
 SELECT id AS lid FROM app.order_lines WHERE tenant_id=:'t' \gset
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_runtime;
-SELECT app.fulfillment_create_shipment(:'oid',2,'existing-shipment','manual','LEGACY',
+SELECT app.fulfillment_create_shipment(:'oid',2,'3c936835-b249-5597-a6fc-0ffad7bdcde1','manual','LEGACY',
  jsonb_build_array(jsonb_build_object('order_line_id',:'lid','quantity',1)));
-SELECT app.returns_create(:'oid',3,'existing-cancel','unshipped_cancel','legacy remainder',
+SELECT app.returns_create(:'oid',3,'51421e49-54c0-57f1-af3b-8926b4215af5','unshipped_cancel','legacy remainder',
  jsonb_build_array(jsonb_build_object('order_line_id',:'lid','quantity',1)));
 SELECT 'FULFILLMENT_UPGRADE='||o.state||'|'||o.version||'|'||s.on_hand||'|'||s.reserved||'|'||
  (SELECT sum(quantity) FROM app.shipment_lines WHERE tenant_id=:'t')||'|'||
@@ -1782,7 +1814,7 @@ INSERT INTO app.customers(tenant_id,email) VALUES(:'t','legacy-guest@example.inv
 SELECT set_config('app.tenant_id',:'t',true);
 SET LOCAL ROLE app_orders_executor;
 INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
- VALUES(:'t',uuidv7(),1,'privacy-legacy',sha256('legacy'::bytea),'{"email":"legacy-guest@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id AS o \gset
+ VALUES(:'t',uuidv7(),1,'cd4d4fb9-c7ae-5881-8fe9-fd4aa2422927',sha256('legacy'::bytea),'{"email":"legacy-guest@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id AS o \gset
 RESET ROLE;
 INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES(:'t',:'c',:'o');
 SET LOCAL ROLE app_runtime;
@@ -1803,7 +1835,7 @@ fi
 db "$PRIVACY_HARDENING_DB" <<'SQL' >/dev/null
 INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id)
  SELECT e.tenant_id,e.customer_id,o.id FROM app.data_rights_erasures e JOIN app.orders o ON o.tenant_id=e.tenant_id
- WHERE o.creation_key='privacy-legacy';
+ WHERE o.creation_key='cd4d4fb9-c7ae-5881-8fe9-fd4aa2422927';
 SQL
 if ! out=$(apply_forward "$PRIVACY_HARDENING_DB" "${privacy_bounds[0]}" 2>&1); then
  bad "PRIVACY_UPGRADE verified mapping retry failed: $out"
@@ -1857,10 +1889,10 @@ BEGIN
    o:=uuidv7();
    SET LOCAL ROLE app_orders_executor;
    INSERT INTO app.orders(tenant_id,id,customer_id,order_number,creation_key,request_hash,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-    VALUES(t,o,c,subject_no,'conversion-upgrade-'||subject_no,sha256('conversion'::bytea),'USD',100,0,0,'{}',100);
+    VALUES(t,o,c,subject_no,'00000000-0000-5000-8000-'||lpad(subject_no::text,12,'0'),sha256('conversion'::bytea),'USD',100,0,0,'{}',100);
    SET LOCAL ROLE app_quotes_executor;
    INSERT INTO app.quote_conversions(tenant_id,quote_id,buyer_company_id,customer_id,order_id,quote_version,idempotency_key,request_hash,order_number,currency,total_minor)
-    VALUES(t,q,co,c,o,4,'conversion-upgrade',sha256('conversion'::bytea),subject_no,'USD',100);
+    VALUES(t,q,co,c,o,4,'30796ae3-1c13-58bd-8ac3-ee7d23d1f53d',sha256('conversion'::bytea),subject_no,'USD',100);
    RESET ROLE;
    INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
     VALUES(t,'quote.converted',jsonb_build_object('quote_id',q,'order_id',o,'quote_version',4),'quotes','converted:'||q) RETURNING id INTO e;
@@ -1871,7 +1903,7 @@ BEGIN
     UPDATE app.notification_deliveries SET status='dead_letter' WHERE tenant_id=t AND id=d.id;
     UPDATE app.outbox_events SET status='dead_letter' WHERE tenant_id=t AND id=d.dispatch_event_id;
     SET LOCAL ROLE app_runtime;
-    PERFORM app.notification_redrive(t,d.id,'pre-upgrade-generation');
+    PERFORM app.notification_redrive(t,d.id,'b402f9bb-95fa-5c2a-aa88-55aeb801e85c');
     PERFORM app.data_rights_erase_customer(c,'service',u);
     RESET ROLE;
     UPDATE app.notification_deliveries SET status=CASE WHEN subject_no=1 THEN 'pending' ELSE 'failed' END WHERE tenant_id=t AND id=d.id;
@@ -1934,7 +1966,7 @@ BEGIN
    RESET ROLE;
    BEGIN
     SET LOCAL ROLE app_runtime;
-    PERFORM app.notification_redrive(w.tenant_id,d.id,'post-upgrade-redrive');
+    PERFORM app.notification_redrive(w.tenant_id,d.id,'92920ccc-2983-52fb-a749-4c015f12224c');
     RAISE EXCEPTION 'PRIVACY_CONVERSION_UPGRADE redrove erased notification';
    EXCEPTION WHEN object_not_in_prerequisite_state THEN
     IF SQLERRM<>'PRIVACY_NOTIFICATION_IMMUTABLE' THEN RAISE; END IF;

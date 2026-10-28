@@ -84,12 +84,40 @@ func checkoutHTTPProblem(t *testing.T, w *httptest.ResponseRecorder, status int,
 func TestCheckoutPGHTTPSoldOutIs409(t *testing.T) {
 	f := newCheckoutPGFixture(t, 1, 2)
 	router := checkoutHTTPRouter(t, f)
-	checkoutHTTPProblem(t, checkoutHTTPStart(router, f, "100 Test Avenue", "sold-out:"+uuid.NewString()), 409, "stock_unavailable")
+	checkoutHTTPProblem(t, checkoutHTTPStart(router, f, "100 Test Avenue", uuid.NewString()), 409, "stock_unavailable")
 	var onHand, reserved, orders int64
 	if err := f.runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, "SELECT on_hand,reserved,(SELECT count(*) FROM app.orders WHERE tenant_id=$1) FROM app.stock_levels WHERE tenant_id=$1 AND sku_id=$2", f.tenant, f.sku).Scan(&onHand, &reserved, &orders)
 	}); err != nil || onHand != 1 || reserved != 0 || orders != 0 {
 		t.Fatalf("sold-out request changed state: on_hand=%d reserved=%d orders=%d %v", onHand, reserved, orders, err)
+	}
+}
+
+func TestCheckoutPGHTTPUUIDAdmissionPersistsOnlyNormalizedIdentity(t *testing.T) {
+	f := newCheckoutPGFixture(t, 10, 1)
+	router := checkoutHTTPRouter(t, f)
+	checkoutHTTPProblem(t, checkoutHTTPStart(router, f, "100 Test Avenue", "alice@example.test"), 400, "invalid_idempotency_key")
+	var sessions, orders, attempts, claims int
+	if err := f.runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT
+		 (SELECT count(*) FROM app.checkout_sessions WHERE tenant_id=$1),
+		 (SELECT count(*) FROM app.orders WHERE tenant_id=$1),
+		 (SELECT count(*) FROM app.checkout_attempts WHERE tenant_id=$1),
+		 (SELECT count(*) FROM app.idempotency_records WHERE tenant_id=$1)`, f.tenant).Scan(&sessions, &orders, &attempts, &claims)
+	}); err != nil || sessions != 0 || orders != 0 || attempts != 0 || claims != 0 {
+		t.Fatalf("rejected email persisted sessions=%d orders=%d attempts=%d claims=%d err=%v", sessions, orders, attempts, claims, err)
+	}
+	const key = "abcdefab-cdef-4bcd-8fab-cdefabcdefab"
+	first := checkoutHTTPStart(router, f, "100 Test Avenue", strings.ToUpper(key))
+	replay := checkoutHTTPStart(router, f, "100 Test Avenue", key)
+	if first.Code != 201 || replay.Code != first.Code || replay.Body.String() != first.Body.String() {
+		t.Fatalf("UUID case split replay identity: first=%d %s replay=%d %s", first.Code, first.Body.String(), replay.Code, replay.Body.String())
+	}
+	var persisted string
+	if err := f.runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "SELECT request_key FROM app.checkout_sessions WHERE tenant_id=$1", f.tenant).Scan(&persisted)
+	}); err != nil || persisted != key {
+		t.Fatalf("persisted request key=%q err=%v", persisted, err)
 	}
 }
 
@@ -99,7 +127,7 @@ func TestCheckoutPGHTTPLastItemRaceOne201One409(t *testing.T) {
 	var wg sync.WaitGroup
 	codes := make([]*httptest.ResponseRecorder, 2)
 	for i := range codes {
-		wg.Go(func() { codes[i] = checkoutHTTPStart(router, f, "100 Test Avenue", "last-item:"+uuid.NewString()) })
+		wg.Go(func() { codes[i] = checkoutHTTPStart(router, f, "100 Test Avenue", uuid.NewString()) })
 	}
 	wg.Wait()
 	created, conflict := 0, 0
@@ -124,10 +152,10 @@ func TestCheckoutPGHTTPLastItemRaceOne201One409(t *testing.T) {
 func TestCheckoutPGHTTPAddressCharacterLimit(t *testing.T) {
 	f := newCheckoutPGFixture(t, 10, 1)
 	router := checkoutHTTPRouter(t, f)
-	if w := checkoutHTTPStart(router, f, strings.Repeat("路", 500), "addr:"+uuid.NewString()); w.Code != 201 {
+	if w := checkoutHTTPStart(router, f, strings.Repeat("路", 500), uuid.NewString()); w.Code != 201 {
 		t.Fatalf("500-character address rejected: %d %s", w.Code, w.Body.String())
 	}
-	checkoutHTTPProblem(t, checkoutHTTPStart(router, f, strings.Repeat("路", 501), "addr:"+uuid.NewString()), 400, "invalid_json")
+	checkoutHTTPProblem(t, checkoutHTTPStart(router, f, strings.Repeat("路", 501), uuid.NewString()), 400, "invalid_json")
 }
 
 func TestCheckoutPGHTTPFakeCanceledCallbackAfterCancel(t *testing.T) {
@@ -138,7 +166,7 @@ func TestCheckoutPGHTTPFakeCanceledCallbackAfterCancel(t *testing.T) {
 	// command tripwire before admitting its callback. No request runs in flight.
 	guard := f.provider.before
 	f.provider.before = nil
-	cancelled, err := f.service.Cancel(ctx, f.actor, checkoutcontract.CancelInput{CheckoutID: start.CheckoutID, IdempotencyKey: "cancel:" + uuid.NewString()})
+	cancelled, err := f.service.Cancel(ctx, f.actor, checkoutcontract.CancelInput{CheckoutID: start.CheckoutID, IdempotencyKey: uuid.NewString()})
 	f.provider.before = guard
 	if err != nil || cancelled.State != "cancelled" {
 		t.Fatalf("Cancel %#v %v", cancelled, err)
@@ -182,10 +210,14 @@ func TestCheckoutPGHTTPFakeCanceledCallbackAfterCancel(t *testing.T) {
 	}
 	var receipts, inboxes, events int
 	if err := f.runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var providerKey string
+		if err := tx.QueryRow(ctx, `SELECT e.event_key FROM app.payment_events e JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE e.tenant_id=$1 AND e.provider_account_id=$3 AND i.provider_event_id=$2`, f.tenant, event.EventID, p.account).Scan(&providerKey); err != nil {
+			return err
+		}
 		return tx.QueryRow(ctx, `SELECT
-		 (SELECT count(*) FROM app.checkout_attempts a JOIN app.payment_events e ON (a.tenant_id,a.event_key)=(e.tenant_id,e.event_key) JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE a.tenant_id=$1 AND a.event_kind='payment' AND a.result IS NOT NULL AND e.provider_account_id=$3 AND i.provider_event_id=$2),
+		 (SELECT count(*) FROM app.checkout_attempts a JOIN app.payment_events e ON (a.tenant_id,a.event_key)=(e.tenant_id,$4::text) JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE a.tenant_id=$1 AND a.event_kind='payment' AND a.result IS NOT NULL AND e.provider_account_id=$3 AND i.provider_event_id=$2),
 		 (SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider='fake' AND provider_account_id=$3 AND environment='test' AND provider_event_id=$2 AND status='processed'),
-		 (SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE e.tenant_id=$1 AND e.provider_account_id=$3 AND i.provider_event_id=$2 AND e.applied)`, f.tenant, event.EventID, p.account).Scan(&receipts, &inboxes, &events)
+		 (SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE e.tenant_id=$1 AND e.provider_account_id=$3 AND i.provider_event_id=$2 AND e.applied)`, f.tenant, event.EventID, p.account, fixturePaymentEventKey(providerKey)).Scan(&receipts, &inboxes, &events)
 	}); err != nil || receipts != 1 || inboxes != 1 || events != 1 {
 		t.Fatalf("canceled callback receipts checkout=%d inbox=%d events=%d %v", receipts, inboxes, events, err)
 	}

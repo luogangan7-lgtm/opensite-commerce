@@ -27,7 +27,7 @@ func TestRefundFailedIntentGuard(t *testing.T) {
 	var ret returnscontract.Return
 	err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
-		ret, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "failure-request", Kind: returnscontract.UnshippedCancel, Reason: "failure guard", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 2}}})
+		ret, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "0d185b45-6b8f-55c2-9439-267c7bbf99c7", Kind: returnscontract.UnshippedCancel, Reason: "failure guard", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 2}}})
 		return err
 	})
 	if err != nil {
@@ -47,7 +47,7 @@ func TestRefundFailedIntentGuard(t *testing.T) {
 	prepare := func(key string, version int64) error {
 		return f.service.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			var raw []byte
-			err := tx.QueryRow(ctx, `SELECT app.returns_prepare_refund($1,$2,$3,'capture-proof',1,$4,$5,$6,$7)`, ret.ID, version, key, accounts.Income, accounts.Tax, accounts.Shipping, accounts.Cash).Scan(&raw)
+			err := tx.QueryRow(ctx, `SELECT app.returns_prepare_refund($1,$2,$3,'capture-proof',1,$4,$5,$6,$7)`, ret.ID, version, fixtureCallerKey(key), accounts.Income, accounts.Tax, accounts.Shipping, accounts.Cash).Scan(&raw)
 			if err != nil {
 				return err
 			}
@@ -59,7 +59,7 @@ func TestRefundFailedIntentGuard(t *testing.T) {
 	}
 	fail := func(runner fulfillmentRunner, key string, rejected bool) error {
 		return runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, "SELECT app.returns_fail_refund($1,$2,$3)", ret.ID, key, rejected)
+			_, err := tx.Exec(ctx, "SELECT app.returns_fail_refund($1,$2,$3)", ret.ID, fixtureCallerKey(key), rejected)
 			return err
 		})
 	}
@@ -109,7 +109,7 @@ func TestRefundFailedIntentGuard(t *testing.T) {
 		t.Fatal("failure replay changed order version")
 	}
 	err = f.service.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, "SELECT app.returns_lock_refund($1,'failed-key')", ret.ID)
+		_, err := tx.Exec(ctx, "SELECT app.returns_lock_refund($1,'cc9758d3-141d-5458-bda5-0e15780d1de7')", ret.ID)
 		return err
 	})
 	if err == nil {
@@ -132,14 +132,14 @@ func TestRefundRejectedThenCorrected(t *testing.T) {
 	var ret returnscontract.Return
 	err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
-		ret, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "rejected-request", Kind: returnscontract.UnshippedCancel, Reason: "corrected refund", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 2}}})
+		ret, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "0c7fd1ec-8618-593b-af48-6bd00f33c937", Kind: returnscontract.UnshippedCancel, Reason: "corrected refund", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 2}}})
 		return err
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.payments.FailNext(paymentfake.Refund, &payment.PaymentError{Code: payment.ErrorNonRetryable, Message: "fixture no-effect rejection"})
-	failed := returnscontract.RefundInput{ReturnID: ret.ID, ExpectedVersion: ret.OrderVersion, IdempotencyKey: "rejected-refund"}
+	failed := returnscontract.RefundInput{ReturnID: ret.ID, ExpectedVersion: ret.OrderVersion, IdempotencyKey: "8aaa1b8d-90dc-5be9-8032-93d9937fe25e"}
 	if _, err = f.returns.Refund(f.ctx, f.tenant, failed); err == nil {
 		t.Fatal("provider rejection reported success")
 	}
@@ -163,7 +163,7 @@ func TestRefundRejectedThenCorrected(t *testing.T) {
 	if _, err = f.returns.Refund(f.ctx, f.tenant, failed); !errors.Is(err, returnscontract.ErrConflict) {
 		t.Fatalf("failed same-key intent revived: %v", err)
 	}
-	corrected := returnscontract.RefundInput{ReturnID: ret.ID, ExpectedVersion: version, IdempotencyKey: "corrected-refund"}
+	corrected := returnscontract.RefundInput{ReturnID: ret.ID, ExpectedVersion: version, IdempotencyKey: "bdfe8104-b923-583d-bc40-6f70fd71eaa0"}
 	for i := 0; i < 2; i++ {
 		out, err := f.returns.Refund(f.ctx, f.tenant, corrected)
 		if err != nil || out.Status != "refunded" || out.RefundMinor != ret.RefundMinor {
@@ -189,12 +189,12 @@ func TestReturnsPGTrustedLedgerFailureRecovery(t *testing.T) {
 			var ret returnscontract.Return
 			if err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 				var err error
-				ret, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "trusted-ledger-request", Kind: returnscontract.UnshippedCancel, Reason: "trusted error status", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 1}}})
+				ret, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "235eb5e4-f53f-5fbb-9425-9511be48082b", Kind: returnscontract.UnshippedCancel, Reason: "trusted error status", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 1}}})
 				return err
 			}); err != nil {
 				t.Fatal(err)
 			}
-			input := returnscontract.RefundInput{ReturnID: ret.ID, ExpectedVersion: ret.OrderVersion, IdempotencyKey: "trusted-ledger-refund"}
+			input := returnscontract.RefundInput{ReturnID: ret.ID, ExpectedVersion: ret.OrderVersion, IdempotencyKey: "a04569c8-8123-5ab2-a187-558fc08aca0b"}
 			if failure == "account binding" {
 				var accounts returnscontract.RefundAccounts
 				if err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {

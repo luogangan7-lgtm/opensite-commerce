@@ -99,7 +99,7 @@ test('real API denies anonymous catalog reads and creation before data access', 
   for (const response of [
     await request.get(path, { maxRedirects: 0 }),
     await request.get(`${path}/${fixture.productId}`, { maxRedirects: 0 }),
-    await request.post(path, { data: { product_code: 'C24-UNAUTHORIZED' }, maxRedirects: 0 }),
+    await request.post(path, { data: { product_code: 'C24-UNAUTHORIZED' }, headers: { 'Idempotency-Key': crypto.randomUUID() }, maxRedirects: 0 }),
   ]) {
     expect(response.status()).toBe(401);
     expect(response.headers()['content-type']).toContain('application/problem+json');
@@ -167,7 +167,12 @@ test('real owner session reads and creates tenant catalog through production aut
 
   // The same real cookie cannot read another tenant, or write without session CSRF.
   expect((await page.request.get(`${fixture.admin}/api/v1/t/${fixture.tenantId}/products`)).status()).toBe(404);
-  expect((await page.request.post(catalogURL, { data: { product_code: 'CSRF-REJECTED' } })).status()).toBe(403);
+  // Pass UUID admission so this request exercises missing session CSRF.
+  const csrfRejected = await page.request.post(catalogURL, {
+    data: { product_code: 'CSRF-REJECTED' }, headers: { 'Idempotency-Key': crypto.randomUUID() },
+  });
+  expect(csrfRejected.status()).toBe(403);
+  expect(await csrfRejected.json()).toMatchObject({ code: 'csrf_invalid' });
   await page.getByRole('link', { name: 'Create product', exact: true }).click();
   const productCode = `C02C-${crypto.randomUUID()}`.toUpperCase();
   await page.getByLabel('Product code', { exact: true }).fill(productCode);

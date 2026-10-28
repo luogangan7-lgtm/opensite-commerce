@@ -6,6 +6,7 @@ package quotes_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -104,7 +105,7 @@ func TestQuotesTrustedBuyerCannotBeBypassed(t *testing.T) {
 			if suffix == "" {
 				method, body = "GET", ""
 			}
-			w := quoteRequest(h, method, "/api/public/v1/quotes/"+quoteID+suffix, body, map[string]string{"If-Match": quoteView().ETag(), "Idempotency-Key": "k", "X-Customer-ID": quoteActor, "X-Company-ID": quoteCompany, "Authorization": "Bearer fake"})
+			w := quoteRequest(h, method, "/api/public/v1/quotes/"+quoteID+suffix, body, map[string]string{"If-Match": quoteView().ETag(), "Idempotency-Key": "f4563f11-2569-5903-905e-1497893eedee", "X-Customer-ID": quoteActor, "X-Company-ID": quoteCompany, "Authorization": "Bearer fake"})
 			if w.Code != 401 {
 				t.Errorf("suffix=%s status=%d body=%s", suffix, w.Code, w.Body.String())
 			}
@@ -133,7 +134,7 @@ func TestQuotesStaffAuthenticationAndTenantRequired(t *testing.T) {
 func TestQuotesStrictAdmissionBeforeService(t *testing.T) {
 	f := &quoteFixture{}
 	h := quoteRouter(t, f, quoteAuth{kind: "staff"}, quoteAuth{kind: "customer"}, nil)
-	headers := map[string]string{"If-Match": quoteView().ETag(), "Idempotency-Key": "k"}
+	headers := map[string]string{"If-Match": quoteView().ETag(), "Idempotency-Key": "f4563f11-2569-5903-905e-1497893eedee"}
 	for _, body := range []string{`{"company_id":"` + quoteCompany + `"}`, `{"x":1,"x":2}`, `{} {}`, `null`, `[]`} {
 		w := quoteRequest(h, "POST", "/api/public/v1/quotes/"+quoteID+"/accept", body, headers)
 		if w.Code != 400 {
@@ -148,7 +149,7 @@ func TestQuotesWritePreconditions(t *testing.T) {
 	for _, tc := range []struct {
 		match, key string
 		status     int
-	}{{"", "k", 428}, {"*", "k", 412}, {"W/" + quoteView().ETag(), "k", 412}, {quoteView().ETag(), "", 400}, {quoteView().ETag(), "k", 200}} {
+	}{{"", "f4563f11-2569-5903-905e-1497893eedee", 428}, {"*", "f4563f11-2569-5903-905e-1497893eedee", 412}, {"W/" + quoteView().ETag(), "f4563f11-2569-5903-905e-1497893eedee", 412}, {quoteView().ETag(), "", 400}, {quoteView().ETag(), "f4563f11-2569-5903-905e-1497893eedee", 200}} {
 		f := &quoteFixture{}
 		h := quoteRouter(t, f, quoteAuth{kind: "staff"}, nil, nil)
 		w := quoteRequest(h, "POST", "/api/v1/t/"+quoteTenant+"/quotes/"+quoteID+"/send", "{}", map[string]string{"If-Match": tc.match, "Idempotency-Key": tc.key})
@@ -196,7 +197,7 @@ func quoteCreateBody() string {
 func TestQuotesCreateUsesGeneratedStrictAdapter(t *testing.T) {
 	f := &quoteFixture{}
 	h := quoteRouter(t, f, quoteAuth{kind: "staff"}, nil, nil)
-	w := quoteRequest(h, "POST", "/api/v1/t/"+quoteTenant+"/quotes", quoteCreateBody(), map[string]string{"If-Match": "*", "Idempotency-Key": "create-one"})
+	w := quoteRequest(h, "POST", "/api/v1/t/"+quoteTenant+"/quotes", quoteCreateBody(), map[string]string{"If-Match": "*", "Idempotency-Key": "7fabb2b6-a859-54b5-b2f6-a15e426b3836"})
 	if w.Code != 201 || f.calls != 1 || f.createInput.Lines[0].UnitPrice != 9007199254740993 || f.opts.IfMatch != "*" {
 		t.Fatalf("status=%d calls=%d input=%+v body=%s", w.Code, f.calls, f.createInput, w.Body.String())
 	}
@@ -205,7 +206,7 @@ func TestQuotesCreateUsesGeneratedStrictAdapter(t *testing.T) {
 		t.Fatalf("representation lost %v", body)
 	}
 	for _, bad := range []string{strings.Replace(quoteCreateBody(), `"unit_price":9007199254740993`, `"unit_price":9223372036854775808`, 1), strings.Replace(quoteCreateBody(), `"currency":"USD"`, `"Currency":"USD"`, 1), strings.Replace(quoteCreateBody(), `"tax_category":"standard"`, `"tax_category":"standard","company_id":"`+quoteCompany+`"`, 1), strings.Replace(quoteCreateBody(), `"weight_g":12`, `"weight_g":12,"weight_g":13`, 1), strings.Replace(quoteCreateBody(), `"quantity":2`, `"quantity":0`, 1)} {
-		w = quoteRequest(h, "POST", "/api/v1/t/"+quoteTenant+"/quotes", bad, map[string]string{"If-Match": "*", "Idempotency-Key": "bad-create"})
+		w = quoteRequest(h, "POST", "/api/v1/t/"+quoteTenant+"/quotes", bad, map[string]string{"If-Match": "*", "Idempotency-Key": "0538aa8f-899c-5702-b3ff-75a26288c1e0"})
 		if w.Code != 400 {
 			t.Errorf("invalid create admitted status=%d body=%s", w.Code, w.Body.String())
 		}
@@ -267,12 +268,12 @@ func TestQuotesEveryLifecycleRouteReachesService(t *testing.T) {
 			t.Fatalf("%s=%d %s", path, w.Code, w.Body.String())
 		}
 	}
-	for _, action := range []string{"send", "withdraw", "expire", "accept", "approve", "reject"} {
+	for i, action := range []string{"send", "withdraw", "expire", "accept", "approve", "reject"} {
 		path := "/api/v1/t/" + quoteTenant + "/quotes/" + quoteID + "/" + action
 		if action == "accept" || action == "approve" || action == "reject" {
 			path = "/api/public/v1/quotes/" + quoteID + "/" + action
 		}
-		w := quoteRequest(h, "POST", path, "{}", map[string]string{"If-Match": quoteView().ETag(), "Idempotency-Key": action})
+		w := quoteRequest(h, "POST", path, "{}", map[string]string{"If-Match": quoteView().ETag(), "Idempotency-Key": fmt.Sprintf("00000000-0000-4000-8000-%012x", i+1)})
 		if w.Code != 200 {
 			t.Errorf("%s=%d %s", path, w.Code, w.Body.String())
 		}
@@ -288,7 +289,7 @@ func TestQuotesDuplicateHeaderAndBodyLimit(t *testing.T) {
 		r := httptest.NewRequest("POST", "/api/v1/t/"+quoteTenant+"/quotes/"+quoteID+"/send", strings.NewReader("{}"))
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("If-Match", quoteView().ETag())
-		r.Header.Set("Idempotency-Key", "k")
+		r.Header.Set("Idempotency-Key", "f4563f11-2569-5903-905e-1497893eedee")
 		r.Header.Add(name, r.Header.Get(name))
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
@@ -300,14 +301,14 @@ func TestQuotesDuplicateHeaderAndBodyLimit(t *testing.T) {
 			t.Fatalf("duplicate %s=%d", name, w.Code)
 		}
 	}
-	w := quoteRequest(h, "POST", "/api/v1/t/"+quoteTenant+"/quotes/"+quoteID+"/send", `{"x":"`+strings.Repeat("x", 1024)+`"}`, map[string]string{"If-Match": quoteView().ETag(), "Idempotency-Key": "large"})
+	w := quoteRequest(h, "POST", "/api/v1/t/"+quoteTenant+"/quotes/"+quoteID+"/send", `{"x":"`+strings.Repeat("x", 1024)+`"}`, map[string]string{"If-Match": quoteView().ETag(), "Idempotency-Key": "c9c22d64-b106-5c59-b8b5-54c139ed5030"})
 	if w.Code != 413 || f.calls != 0 {
 		t.Fatalf("oversize %d %d", w.Code, f.calls)
 	}
 	r := httptest.NewRequest("POST", "/api/v1/t/"+quoteTenant+"/quotes/"+quoteID+"/send", strings.NewReader("{}"))
 	r.Header.Set("Content-Type", "text/plain")
 	r.Header.Set("If-Match", quoteView().ETag())
-	r.Header.Set("Idempotency-Key", "wrongtype")
+	r.Header.Set("Idempotency-Key", "34a4ec09-62d0-5dc9-a8ce-58dce7c34182")
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != 415 || f.calls != 0 {

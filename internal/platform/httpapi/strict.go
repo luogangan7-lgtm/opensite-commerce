@@ -19,6 +19,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi/generated"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 // StrictRoutes is static composition. Invalid embedded contracts panic and are
@@ -95,6 +96,14 @@ func requiresVersion(op *openapi3.Operation) bool {
 }
 func strictAdmission(next http.Handler, schema *openapi3.Schema, binary, version, allowZero bool, parameters openapi3.Parameters) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, parameter := range parameters {
+			if parameter.Value != nil && parameter.Value.In == "header" && strings.EqualFold(parameter.Value.Name, "Idempotency-Key") {
+				if _, err := idempotency.ValidateKey(r.Header); err != nil {
+					WriteProblem(w, r, err)
+					return
+				}
+			}
+		}
 		if version {
 			if err := admitVersion(r, allowZero); err != nil {
 				WriteProblem(w, r, err)

@@ -7,30 +7,31 @@
     "buyer_companies": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "name": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_companies.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_companies.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_companies.id with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_companies.tenant_id"}}},
+        "name": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_companies.name with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_companies.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_companies.status with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_companies.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_companies.created_at with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_companies.tenant_id"}}}
       }
     },
     "buyer_roles": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "code": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_roles.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_roles.tenant_id"}}},
+        "code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_roles.code with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_roles.tenant_id"}}}
       }
     },
     "buyer_company_members": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "buyer_company_id": {"classification": "operational"},
-        "customer_id": {"classification": "operational"},
-        "role_code": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_company_members.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_company_members.tenant_id"}}},
+        "buyer_company_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_company_members.buyer_company_id with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_company_members.tenant_id"}}},
+        "customer_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_company_members.customer_id with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_company_members.tenant_id"}}},
+        "role_code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_company_members.role_code with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_company_members.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_company_members.status with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_company_members.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned buyer_company_members.created_at with its row, including all merchant/guest/derived copies.", "handler": "b2b.erase", "ownership": {"kind": "tenant_column", "path": "buyer_company_members.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"b2b.erase": {"depends_on": ["tax.erase"], "tables": ["buyer_company_members", "buyer_roles", "buyer_companies"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

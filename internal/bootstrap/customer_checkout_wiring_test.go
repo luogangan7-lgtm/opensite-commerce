@@ -208,7 +208,7 @@ func checkoutWiringCSRF(t *testing.T, handler http.Handler, cookie *http.Cookie,
 func checkoutWiringRequest(tenant, csrf string, cookie *http.Cookie) *http.Request {
 	r := httptest.NewRequest(http.MethodPost, checkoutWiringOrigin+"/api/v1/t/"+tenant+"/checkout", strings.NewReader(checkoutWiringBody))
 	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Idempotency-Key", "customer-checkout-fixture-1")
+	r.Header.Set("Idempotency-Key", "3da81975-3ff1-5ebc-ba1a-ee9e12760c82")
 	r.Header.Set("Origin", checkoutWiringOrigin)
 	r.Header.Set("X-CSRF-Token", csrf)
 	if cookie != nil {
@@ -354,7 +354,7 @@ func TestCheckoutCompositionPreservesCMSAndStaffActorResolver(t *testing.T) {
 	for _, scope := range []string{"cms:write", "orders:read"} {
 		t.Run(scope, func(t *testing.T) {
 			staff := &checkoutWiringStaff{}
-			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "checkoutStaffProjectionProbe", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/checkout-staff-probe", Access: httpapi.AdminOrAPIKey, Scope: scope}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "checkoutStaffProjectionProbe", Method: http.MethodGet, Pattern: "/api/v1/t/{tenant_id}/products", Access: httpapi.AdminOrAPIKey, Scope: scope}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				actor, err := httpapi.AuthorizedActor(r.Context())
 				if err != nil || actor.Kind != "user" || actor.ID != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
 					w.WriteHeader(http.StatusUnauthorized)
@@ -362,12 +362,12 @@ func TestCheckoutCompositionPreservesCMSAndStaffActorResolver(t *testing.T) {
 				}
 				w.WriteHeader(http.StatusNoContent)
 			})}
-			server, err := bootstrap.New(bootstrap.Config{Authenticator: staff, Checkout: &checkouthttp.Config{}, Routes: []httpapi.Route{route}})
+			server, err := bootstrap.NewTestServer(t, bootstrap.Config{Authenticator: staff, Checkout: &checkouthttp.Config{}, Routes: []httpapi.Route{route}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			w := httptest.NewRecorder()
-			server.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/t/"+checkoutWiringTenant+"/checkout-staff-probe", nil))
+			server.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/t/"+checkoutWiringTenant+"/products", nil))
 			if w.Code != http.StatusNoContent || staff.authentications != 1 || staff.projections != 1 {
 				t.Fatalf("CHECKOUT_STAFF_ACTOR_FORWARD_RED: status=%d authenticate=%d project=%d", w.Code, staff.authentications, staff.projections)
 			}

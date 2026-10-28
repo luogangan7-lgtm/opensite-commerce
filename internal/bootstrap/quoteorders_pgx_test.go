@@ -477,7 +477,7 @@ func TestQuoteOrdersPGCreationKeyIsBuyerScoped(t *testing.T) {
 	secondCtx := qc.WithTrustedActor(f.ctx, qc.ActorIdentity{TenantID: f.tenant, CustomerID: f.approver, CompanyID: f.company})
 	secondQuote := approveQuote(secondActor, f.actor)
 	thirdQuote := approveQuote(f.actor, secondActor)
-	key := "shared-customer-conversion-key"
+	key := "e7898eab-1b68-5d0a-99b0-b46108c20791"
 	first, e := f.convertAndPay(t, f.buyerCtx, f.quote.ID, key)
 	if e != nil {
 		t.Fatalf("first buyer conversion: %v", e)

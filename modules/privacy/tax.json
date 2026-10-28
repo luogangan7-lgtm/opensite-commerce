@@ -7,47 +7,48 @@
     "tax_zones": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "name": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_zones.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_zones.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_zones.id with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_zones.tenant_id"}}},
+        "name": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_zones.name with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_zones.tenant_id"}}}
       }
     },
     "tax_zone_locations": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "zone_id": {"classification": "operational"},
-        "country_code": {"classification": "operational"},
-        "subdivision": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_zone_locations.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_zone_locations.tenant_id"}}},
+        "zone_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_zone_locations.zone_id with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_zone_locations.tenant_id"}}},
+        "country_code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_zone_locations.country_code with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_zone_locations.tenant_id"}}},
+        "subdivision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_zone_locations.subdivision with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_zone_locations.tenant_id"}}}
       }
     },
     "tax_categories": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "code": {"classification": "operational"},
-        "name": {"classification": "operational"},
-        "is_exempt": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_categories.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_categories.tenant_id"}}},
+        "code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_categories.code with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_categories.tenant_id"}}},
+        "name": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_categories.name with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_categories.tenant_id"}}},
+        "is_exempt": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_categories.is_exempt with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_categories.tenant_id"}}}
       }
     },
     "tax_rates": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "zone_id": {"classification": "operational"},
-        "category_code": {"classification": "operational"},
-        "rate_bp": {"classification": "financial_non_contact"},
-        "valid_from": {"classification": "operational"},
-        "valid_until": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_rates.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_rates.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_rates.id with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_rates.tenant_id"}}},
+        "zone_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_rates.zone_id with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_rates.tenant_id"}}},
+        "category_code": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_rates.category_code with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_rates.tenant_id"}}},
+        "rate_bp": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_rates.rate_bp with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_rates.tenant_id"}}},
+        "valid_from": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_rates.valid_from with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_rates.tenant_id"}}},
+        "valid_until": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_rates.valid_until with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_rates.tenant_id"}}}
       }
     },
     "tax_settings": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "prices_include_tax": {"classification": "financial_non_contact"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_settings.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_settings.tenant_id"}}},
+        "prices_include_tax": {"classification": "financial_non_contact", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tax_settings.prices_include_tax with its row, including all merchant/guest/derived copies.", "handler": "tax.erase", "ownership": {"kind": "tenant_column", "path": "tax_settings.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"tax.erase": {"depends_on": ["shipping.erase"], "tables": ["tax_rates", "tax_zone_locations", "tax_categories", "tax_zones", "tax_settings"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

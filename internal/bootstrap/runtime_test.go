@@ -62,7 +62,7 @@ func TestRuntimeActorForwardingAndOptionalAbsence(t *testing.T) {
 		{"projected", runtimeActorAuth{}, true, 204}, {"missing actor", runtimeLegacyAuth{}, true, 401}, {"legacy optional", runtimeLegacyAuth{}, false, 204},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "actorProbe", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/actor-probe", Access: httpapi.AdminOrAPIKey, Scope: "probe:read"}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			route := httpapi.Route{Spec: httpapi.RouteSpec{OperationID: "actorProbe", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/products", Access: httpapi.AdminOrAPIKey, Scope: "probe:read"}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				actor, err := httpapi.AuthorizedActor(r.Context())
 				if tc.require && err != nil {
 					httpapi.WriteProblem(w, r, err)
@@ -73,12 +73,12 @@ func TestRuntimeActorForwardingAndOptionalAbsence(t *testing.T) {
 				}
 				w.WriteHeader(204)
 			})}
-			server, err := bootstrap.New(bootstrap.Config{Authenticator: tc.auth, Routes: []httpapi.Route{route}})
+			server, err := bootstrap.NewTestServer(t, bootstrap.Config{Authenticator: tc.auth, Routes: []httpapi.Route{route}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			w := httptest.NewRecorder()
-			server.Handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/11111111-1111-4111-8111-111111111111/actor-probe", nil))
+			server.Handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/t/11111111-1111-4111-8111-111111111111/products", nil))
 			if w.Code != tc.want {
 				t.Fatalf("status=%d want=%d", w.Code, tc.want)
 			}

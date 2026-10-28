@@ -25,6 +25,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/pgxtest"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
@@ -314,7 +315,7 @@ func TestStorefrontServingPG(t *testing.T) {
 		go func() {
 			defer close(stopped)
 			c1 <- a.admin.InTenant(holderCtx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
-				if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve_non_order($1::uuid,7331,'checkout',gen_random_uuid(),'g12-c1-'||$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.ready, a.tenant); err != nil {
+				if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve_non_order($1::uuid,7331,'checkout',gen_random_uuid(),$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.ready, idempotency.DerivedKey("publish.g12-c1.v1", a.tenant)); err != nil {
 					return err
 				}
 				close(c1Held)
@@ -331,7 +332,7 @@ func TestStorefrontServingPG(t *testing.T) {
 		}
 		c2ctx, c2cancel := context.WithTimeout(ctx, 5*time.Second)
 		err = a.admin.InTenant(c2ctx, a.tenant, func(ctx context.Context, tx pgx.Tx) error {
-			if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve_non_order($1::uuid,2,'checkout',gen_random_uuid(),'g12-c2-'||$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.archived, a.tenant); err != nil {
+			if _, err := tx.Exec(ctx, `SELECT app.inventory_reserve_non_order($1::uuid,2,'checkout',gen_random_uuid(),$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.archived, idempotency.DerivedKey("publish.g12-c2.v1", a.tenant)); err != nil {
 				return err
 			}
 			return rollback
@@ -378,11 +379,11 @@ func TestStorefrontServingPG(t *testing.T) {
 			t.Fatalf("refresh did not serve the new price: %+v", site.Products[0].SKUs)
 		}
 		// A reservation that keeps the SKU available appends nothing; one that sells out does.
-		mutate(`SELECT app.inventory_reserve_non_order($1::uuid,1,'serving_test',gen_random_uuid(),'serving-a-'||$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.ready, a.tenant)
+		mutate(`SELECT app.inventory_reserve_non_order($1::uuid,1,'serving_test',gen_random_uuid(),$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.ready, idempotency.DerivedKey("publish.serving-a.v1", a.tenant))
 		if pending() != 0 {
 			t.Fatal("availability-preserving reservation appended an invalidation")
 		}
-		mutate(`SELECT app.inventory_reserve_non_order($1::uuid,7330,'serving_test',gen_random_uuid(),'serving-b-'||$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.ready, a.tenant)
+		mutate(`SELECT app.inventory_reserve_non_order($1::uuid,7330,'serving_test',gen_random_uuid(),$2::text,900,uuid_send(gen_random_uuid())||uuid_send(gen_random_uuid()))`, ids.ready, idempotency.DerivedKey("publish.serving-b.v1", a.tenant))
 		if pending() == 0 {
 			t.Fatal("sell-out reservation did not append an invalidation")
 		}

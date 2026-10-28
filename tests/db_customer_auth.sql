@@ -31,13 +31,13 @@ BEGIN
  PERFORM set_config('test.customer_auth.guest',guest::text,true);
  EXECUTE 'SET LOCAL ROLE app_orders_executor';
  INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
- VALUES(t,oid,1,'customer-auth-guest',sha256('guest'::bytea),'{"email":" OWNER@example.invalid ","name":"Original"}','USD',0,0,0,'{}',0);
+ VALUES(t,oid,1,'b7a8de5a-d35d-5638-b9d6-0a52d7d370a3',sha256('guest'::bytea),'{"email":" OWNER@example.invalid ","name":"Original"}','USD',0,0,0,'{}',0);
  UPDATE app.orders SET sealed=true WHERE tenant_id=t AND id=oid;
  EXECUTE 'RESET ROLE';
  PERFORM set_config('app.tenant_id',other_t::text,true);
  EXECUTE 'SET LOCAL ROLE app_orders_executor';
  INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
- VALUES(other_t,foreign_order,1,'customer-auth-foreign',sha256('foreign'::bytea),'{"email":"owner@example.invalid"}','USD',0,0,0,'{}',0);
+ VALUES(other_t,foreign_order,1,'a5b77c3f-2710-5f11-85e8-51d464ea72ba',sha256('foreign'::bytea),'{"email":"owner@example.invalid"}','USD',0,0,0,'{}',0);
  UPDATE app.orders SET sealed=true WHERE tenant_id=other_t AND id=foreign_order;
  EXECUTE 'RESET ROLE';
  PERFORM set_config('app.tenant_id',t::text,true);

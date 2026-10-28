@@ -153,8 +153,8 @@ BEGIN
 
  -- App commands preserve their real ownership fences and emit derivative rows.
  PERFORM app.inventory_adjust(sku,20,'privacy-unowned-stock-control',uuidv7(),'inbound');
- reservation := app.inventory_reserve(sku,1,'order',registered_order,'privacy-registered-hold',900);
- registered := app.orders_create(registered_order,'privacy-registered-order',
+ reservation := app.inventory_reserve(sku,1,'order',registered_order,'976f7307-0975-5b80-9fef-0f54beefb77a',900);
+ registered := app.orders_create(registered_order,'ebcb4599-59ca-5ee8-9ed9-43166edb6dc5',
   sha256('privacy-registered-order'::bytea),customer,NULL,'USD',5,
   jsonb_build_object('method','fixed','contact',{{canary:orders.shipping_snapshot}}),
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','privacy-fixture-sku',
@@ -166,7 +166,7 @@ BEGIN
  INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,
   cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,
   shipping_minor,payable_version)
- VALUES(t,checkout,'customer',customer::text,'privacy-checkout',sha256('privacy-checkout'::bytea),
+ VALUES(t,checkout,'customer',customer::text,'c29e1592-1a74-5264-8f0d-9282ee207187',sha256('privacy-checkout'::bytea),
   cart,1,registered_order,jsonb_build_object('recipient',{{canary:checkout_sessions.address_snapshot}}),
   registered.currency,registered.total_minor,registered.items_net_minor,registered.tax_minor,
   registered.shipping_minor,registered.version);
@@ -174,22 +174,22 @@ BEGIN
  UPDATE app.checkout_sessions SET phase='ready',provider_ref='privacy-local-provider-no-io',
   start_result=jsonb_build_object('contact',{{canary:checkout_sessions.start_result}}),
   updated_at=clock_timestamp() WHERE tenant_id=t AND id=checkout;
- UPDATE app.checkout_sessions SET phase='cancelling',claim_kind='cancel',claim_key='privacy-cancel',
+ UPDATE app.checkout_sessions SET phase='cancelling',claim_kind='cancel',claim_key='0500dffb-2fbd-5351-98af-6c3f55008cdf',
   updated_at=clock_timestamp() WHERE tenant_id=t AND id=checkout;
  PERFORM app.orders_transition(registered_order,'cancelled','privacy-cancel');
  UPDATE app.checkout_sessions SET phase='cancelled',
   final_result=jsonb_build_object('contact',{{canary:checkout_sessions.final_result}}),
   updated_at=clock_timestamp() WHERE tenant_id=t AND id=checkout;
  INSERT INTO app.checkout_attempts(tenant_id,event_kind,event_key,checkout_id,request_hash)
- VALUES(t,'cancel','privacy-cancel',checkout,sha256('privacy-cancel'::bytea));
+ VALUES(t,'cancel','0500dffb-2fbd-5351-98af-6c3f55008cdf',checkout,sha256('privacy-cancel'::bytea));
  UPDATE app.checkout_attempts SET result=jsonb_build_object('contact',{{canary:checkout_attempts.result}})
- WHERE tenant_id=t AND event_kind='cancel' AND event_key='privacy-cancel';
+ WHERE tenant_id=t AND event_kind='cancel' AND event_key='0500dffb-2fbd-5351-98af-6c3f55008cdf';
 
  -- Create a paid registered-customer order so the notification recipient
  -- witness belongs to the verified customer, not only to an unrelated guest.
  -- No Sender is invoked by these database-only fixtures.
- reservation := app.inventory_reserve(sku,1,'order',notification_order,'privacy-notification-hold',900);
- PERFORM app.orders_create(notification_order,'privacy-notification-order',
+ reservation := app.inventory_reserve(sku,1,'order',notification_order,'239b4edd-bd2f-5e98-9ca6-5d80e7e20afb',900);
+ PERFORM app.orders_create(notification_order,'a199898a-f3e2-589a-9959-d941a006eb7c',
   sha256('privacy-notification-order'::bytea),customer,NULL,'USD',0,'{}'::jsonb,
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
@@ -205,15 +205,15 @@ BEGIN
  -- Independent paid stock graph: the earlier checkout order is cancelled and
  -- cannot authorize fulfillment. Commands retain all real guards, quantity
  -- bounds and immutable receipt writes; no PSP, ledger post or worker is run.
- reservation := app.inventory_reserve(sku,2,'order',fulfillment_order,'privacy-fulfillment-hold',900);
- registered := app.orders_create(fulfillment_order,'privacy-fulfillment-order',
+ reservation := app.inventory_reserve(sku,2,'order',fulfillment_order,'53affb47-ebb8-5586-ae58-2e622fa3e863',900);
+ registered := app.orders_create(fulfillment_order,'7149a2b6-fc2d-5356-a134-0b76858eaa41',
   sha256('privacy-fulfillment-order'::bytea),customer,NULL,'USD',0,'{}'::jsonb,
   jsonb_build_array(jsonb_build_object('id',fulfillment_line,'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',2,'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
    'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]'::jsonb);
  registered := app.orders_transition(fulfillment_order,'paid','privacy-fulfillment-payment');
  shipment_receipt := app.fulfillment_create_shipment(fulfillment_order,registered.version,
-  'privacy-shipment',{{canary:shipments.carrier}},{{canary:shipments.tracking_number}},
+  '2bf3445d-a336-5edb-9453-6bc0c9229e9e',{{canary:shipments.carrier}},{{canary:shipments.tracking_number}},
   jsonb_build_array(jsonb_build_object('order_line_id',fulfillment_line,'quantity',1)));
  SELECT id INTO STRICT shipment_line FROM app.shipment_lines
  WHERE tenant_id=t AND shipment_id=(shipment_receipt->>'id')::uuid AND order_line_id=fulfillment_line;
@@ -221,13 +221,13 @@ BEGIN
  -- Each immutable response column has its own distinct token in the reason
  -- copied by fulfillment_return_json. The gate reads each persisted cell,
  -- rather than accepting a marker in only the authoritative reason column.
- return_receipt := app.returns_create(fulfillment_order,registered.version,'privacy-return',
+ return_receipt := app.returns_create(fulfillment_order,registered.version,'1bfb3e1a-a27d-5030-a5ed-5c776cc65aea',
   'shipment_return',{{canary:returns.reason}}||' '||{{canary:returns.creation_response}}||' '||
    {{canary:returns.receive_response}},
   jsonb_build_array(jsonb_build_object('order_line_id',fulfillment_line,'shipment_line_id',shipment_line,'quantity',1)));
  return_id := (return_receipt->>'id')::uuid;
  SELECT * INTO STRICT registered FROM app.orders WHERE tenant_id=t AND id=fulfillment_order;
- PERFORM app.returns_receive(return_id,registered.version,'privacy-return-receive',true);
+ PERFORM app.returns_receive(return_id,registered.version,'bc24d441-823e-5559-84dc-8ac0a5faa166',true);
  IF NOT EXISTS(SELECT FROM app.inventory_movements WHERE tenant_id=t AND owner_type='return'
   AND owner_id=return_id AND reason='return_received') THEN
   RAISE EXCEPTION 'PRIVACY_GATE return restock copied personal text'; END IF;
@@ -245,14 +245,14 @@ BEGIN
   (t,shipping_account,'privacy-return-shipping','USD','revenue'),
   (t,cash_account,'privacy-return-cash','USD','asset');
  SELECT * INTO STRICT registered FROM app.orders WHERE tenant_id=t AND id=fulfillment_order;
- PERFORM app.returns_prepare_refund(return_id,registered.version,'privacy-return-refund',
+ PERFORM app.returns_prepare_refund(return_id,registered.version,'07e4bf79-6f27-5978-9811-4375a0803602',
   'opaque-privacy-refund-capture',1,income_account,tax_account,shipping_account,cash_account);
- PERFORM app.returns_fail_refund(return_id,'privacy-return-refund',false);
+ PERFORM app.returns_fail_refund(return_id,'07e4bf79-6f27-5978-9811-4375a0803602',false);
  PERFORM set_config('privacy.fixture.return_id',return_id::text,true);
 
  -- Guest contact retains its own independent column canary.
- reservation := app.inventory_reserve(sku,1,'order',guest_order,'privacy-guest-hold',900);
- PERFORM app.orders_create(guest_order,'privacy-guest-order',sha256('privacy-guest-order'::bytea),
+ reservation := app.inventory_reserve(sku,1,'order',guest_order,'f0900b0a-08d4-5c64-b0f7-25e02c9f3247',900);
+ PERFORM app.orders_create(guest_order,'2835155d-8253-5aec-a714-3d27fcaa020d',sha256('privacy-guest-order'::bytea),
   NULL,jsonb_build_object('email',{{canary:orders.guest_contact}}||'@canary.invalid'),'USD',0,'{}'::jsonb,
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
@@ -267,22 +267,22 @@ BEGIN
  INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,
   cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,
   shipping_minor,payable_version)
- SELECT t,guest_checkout,'guest',encode(sha256('privacy-guest-fixture-token'::bytea),'hex'),'privacy-guest-checkout',sha256('privacy-guest-checkout'::bytea),
+ SELECT t,guest_checkout,'guest',encode(sha256('privacy-guest-fixture-token'::bytea),'hex'),'5e2c096c-1b75-56dd-97b1-1b3a0521d710',sha256('privacy-guest-checkout'::bytea),
   guest_cart,1,id,jsonb_build_object('recipient',{{canary:checkout_sessions.address_snapshot}}),
   currency,total_minor,items_net_minor,tax_minor,shipping_minor,version
  FROM app.orders WHERE tenant_id=t AND id=guest_order;
  UPDATE app.checkout_sessions SET phase='ready',provider_ref='privacy-guest-local-no-io',
   start_result=jsonb_build_object('contact',{{canary:checkout_sessions.start_result}})
  WHERE tenant_id=t AND id=guest_checkout;
- UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key='privacy-guest-payment'
+ UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key='f898f73c-a708-5563-b5e9-b603ef4c0a4d'
  WHERE tenant_id=t AND id=guest_checkout;
  PERFORM app.orders_transition(guest_order,'paid','privacy-guest-payment');
  UPDATE app.checkout_sessions SET phase='paid',final_result=jsonb_build_object('contact',{{canary:checkout_sessions.final_result}})
  WHERE tenant_id=t AND id=guest_checkout;
  INSERT INTO app.checkout_attempts(tenant_id,event_kind,event_key,checkout_id,request_hash)
- VALUES(t,'payment','privacy-guest-payment',guest_checkout,sha256('privacy-guest-payment'::bytea));
+ VALUES(t,'payment','f898f73c-a708-5563-b5e9-b603ef4c0a4d',guest_checkout,sha256('privacy-guest-payment'::bytea));
  UPDATE app.checkout_attempts SET result=jsonb_build_object('contact',{{canary:checkout_attempts.result}})
- WHERE tenant_id=t AND event_kind='payment' AND event_key='privacy-guest-payment';
+ WHERE tenant_id=t AND event_kind='payment' AND event_key='f898f73c-a708-5563-b5e9-b603ef4c0a4d';
  -- Mailbox-proven link (customer_guest_order_links): the verified customer now
  -- owns this guest order, its contact copy, adjustment text and notifications.
  INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES(t,customer,guest_order);
@@ -294,24 +294,24 @@ BEGIN
    'snapshot',jsonb_build_object('contact',{{canary:quote_lines.snapshot}}))));
  PERFORM set_config('privacy.fixture.quote_id',quote::text,true);
  -- DERIVED COPY: a staff create receipt predates the verified customer's acceptance.
- PERFORM app.idempotency_claim(t,'user',staff,'quotes.create','staff-snapshot',
+ PERFORM app.idempotency_claim(t,'user',staff,'quotes.create','0069ff46-95a5-5778-8155-62116e1adbdb',
   sha256('privacy-staff-quote-receipt'::bytea),interval '1 hour',inline_claim);
  PERFORM set_config('app.idempotency_claim',inline_claim::text,true);
  UPDATE app.idempotency_records SET state='completed',response_status=201,
   response_body=jsonb_build_object('id',quote,'snapshot',jsonb_build_object(
    'contact',{{canary:idempotency_records.response_body}})),completed_at=clock_timestamp()
  WHERE tenant_id=t AND actor_kind='user' AND actor_id=staff
-  AND operation='quotes.create' AND idempotency_key='staff-snapshot';
+  AND operation='quotes.create' AND idempotency_key='0069ff46-95a5-5778-8155-62116e1adbdb';
 
  -- An unrelated staff receipt must survive; no quote ID ownership is inferred.
- PERFORM app.idempotency_claim(t,'user',staff,'quotes.create','staff-unrelated',
+ PERFORM app.idempotency_claim(t,'user',staff,'quotes.create','b00781ad-8b81-5ca6-bbe0-a74316e10354',
   sha256('privacy-unrelated-staff'::bytea),interval '1 hour',uuidv7());
  PERFORM set_config('app.idempotency_claim',(SELECT claim_token::text FROM app.idempotency_records
-  WHERE tenant_id=t AND actor_id=staff AND operation='quotes.create' AND idempotency_key='staff-unrelated'),true);
+  WHERE tenant_id=t AND actor_id=staff AND operation='quotes.create' AND idempotency_key='b00781ad-8b81-5ca6-bbe0-a74316e10354'),true);
  UPDATE app.idempotency_records SET state='completed',response_status=201,
   response_body=jsonb_build_object('id',uuidv7(),'snapshot','privacy-unrelated-staff-control'),completed_at=clock_timestamp()
  WHERE tenant_id=t AND actor_kind='user' AND actor_id=staff
-  AND operation='quotes.create' AND idempotency_key='staff-unrelated';
+  AND operation='quotes.create' AND idempotency_key='b00781ad-8b81-5ca6-bbe0-a74316e10354';
  PERFORM app.transition_quote(t,quote,1,'send','staff',staff);
  PERFORM app.transition_quote(t,quote,2,'accept','customer',customer);
  PERFORM app.transition_quote(t,quote,3,'approve','customer',approver);
@@ -334,19 +334,19 @@ BEGIN
   jsonb_build_object('tenant_id',t,'contact',{{canary:queue.river_job.args}}),
   ARRAY[jsonb_build_object('error',{{canary:queue.river_job.errors}})],
   jsonb_build_object('contact',{{canary:queue.river_job.metadata}}),1);
- PERFORM app.idempotency_claim(t,'customer',customer,'quotes.privacy-fixture','inline',
+ PERFORM app.idempotency_claim(t,'customer',customer,'quotes.privacy-fixture','28d4b13d-c3f7-5ecf-ade1-a5976a50aea2',
   sha256('privacy-inline-receipt'::bytea),interval '1 hour',inline_claim);
  PERFORM set_config('app.idempotency_claim',inline_claim::text,true);
  UPDATE app.idempotency_records SET state='completed',response_status=200,
   response_body=jsonb_build_object('contact',{{canary:idempotency_records.response_body}}),
   completed_at=clock_timestamp()
  WHERE tenant_id=t AND actor_kind='customer' AND actor_id=customer
-  AND operation='quotes.privacy-fixture' AND idempotency_key='inline';
- PERFORM app.idempotency_claim(t,'customer',customer,'privacy-fixture-reference','reference',
+  AND operation='quotes.privacy-fixture' AND idempotency_key='28d4b13d-c3f7-5ecf-ade1-a5976a50aea2';
+ PERFORM app.idempotency_claim(t,'customer',customer,'privacy-fixture-reference','a32cdbb3-29cb-5695-8add-bebc2434fded',
   sha256('privacy-reference-receipt'::bytea),interval '1 hour',reference_claim);
  PERFORM set_config('app.idempotency_claim',reference_claim::text,true);
  UPDATE app.idempotency_records SET state='completed',response_status=200,
   response_body_reference={{canary:idempotency_records.response_body_reference}},completed_at=clock_timestamp()
  WHERE tenant_id=t AND actor_kind='customer' AND actor_id=customer
-  AND operation='privacy-fixture-reference' AND idempotency_key='reference';
+  AND operation='privacy-fixture-reference' AND idempotency_key='a32cdbb3-29cb-5695-8add-bebc2434fded';
 END $privacy_fixture$;

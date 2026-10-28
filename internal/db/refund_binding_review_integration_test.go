@@ -65,16 +65,16 @@ DECLARE c app.checkout_sessions; o app.orders; r jsonb; rid uuid; journal uuid;
 BEGIN
  SELECT * INTO STRICT c FROM app.checkout_sessions WHERE tenant_id=current_setting('app.tenant_id')::uuid;
  SELECT * INTO STRICT o FROM app.orders WHERE tenant_id=c.tenant_id AND id=c.order_id;
- r:=app.returns_create(o.id,o.version,'binding-rma','unshipped_cancel','binding regression',
+ r:=app.returns_create(o.id,o.version,'e8662d85-bfc1-58de-8dbe-72ed5aa3d26a','unshipped_cancel','binding regression',
   (SELECT jsonb_build_array(jsonb_build_object('order_line_id',id,'quantity',1)) FROM app.order_lines WHERE tenant_id=o.tenant_id AND order_id=o.id LIMIT 1));
  rid:=(r->>'id')::uuid;
- r:=app.returns_prepare_refund(rid,(r->>'order_version')::bigint,'binding-refund',c.provider_ref,c.payable_version,
+ r:=app.returns_prepare_refund(rid,(r->>'order_version')::bigint,'23f67387-ccdb-5db4-a899-fe18ac4de6f7',c.provider_ref,c.payable_version,
   (SELECT id FROM app.ledger_accounts WHERE tenant_id=o.tenant_id AND code='revenue'),
   (SELECT id FROM app.ledger_accounts WHERE tenant_id=o.tenant_id AND code='tax_payable'),
   (SELECT id FROM app.ledger_accounts WHERE tenant_id=o.tenant_id AND code='shipping_revenue'),
   (SELECT id FROM app.ledger_accounts WHERE tenant_id=o.tenant_id AND code='cash'));
- journal:=app.payments_post_return_refund(rid,'binding-refund','re_original_stripe');
- PERFORM app.returns_complete_refund(rid,'binding-refund',c.provider_ref,journal);
+ journal:=app.payments_post_return_refund(rid,'23f67387-ccdb-5db4-a899-fe18ac4de6f7','re_original_stripe');
+ PERFORM app.returns_complete_refund(rid,'23f67387-ccdb-5db4-a899-fe18ac4de6f7',c.provider_ref,journal);
 END $fixture$`)
 		if err != nil {
 			return err
@@ -100,8 +100,8 @@ END $fixture$`)
 	}
 	p.rejectCompensationMutation(t, "app_fulfillment_executor", `INSERT INTO app.returns
  SELECT (jsonb_populate_record(NULL::app.returns,to_jsonb(r)||jsonb_build_object(
- 'id',gen_random_uuid(),'creation_key','forged-compensated','receive_key','forged-receive',
- 'refund_key','forged-refund','status','refund_compensated'))).* FROM app.returns r WHERE tenant_id=$1`)
+ 'id',gen_random_uuid(),'creation_key','eb54b95e-bf95-5e5b-93b5-601874e51fa5','receive_key','6fefd11b-77c0-5ee1-bc1d-d86bcf3dae7c',
+ 'refund_key','2f2d724b-bca9-5d02-9dec-125121717032','status','refund_compensated'))).* FROM app.returns r WHERE tenant_id=$1`)
 	// Rejection must leave the real provider able to finalize the original
 	// refund without waiting for a success webhook or creating a new attempt.
 	if err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {

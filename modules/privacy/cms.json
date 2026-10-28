@@ -7,82 +7,83 @@
     "company_contacts": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "organization_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "contact_type": {"classification": "operational"},
-        "contact_value": {"classification": "contact", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
-        "is_public": {"classification": "operational"},
-        "sort_order": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_contacts.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_contacts.tenant_id"}}},
+        "organization_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_contacts.organization_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_contacts.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_contacts.id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_contacts.tenant_id"}}},
+        "contact_type": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_contacts.contact_type with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_contacts.tenant_id"}}},
+        "contact_value": {"classification": "contact", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_contacts.contact_value with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_contacts.tenant_id"}}},
+        "is_public": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_contacts.is_public with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_contacts.tenant_id"}}},
+        "sort_order": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_contacts.sort_order with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_contacts.tenant_id"}}}
       }
     },
     "company_profile_revisions": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "organization_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "revision": {"classification": "operational"},
-        "profile": {"classification": "personal", "structure": "CompanyProfile", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_profile_revisions.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_profile_revisions.tenant_id"}}},
+        "organization_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_profile_revisions.organization_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_profile_revisions.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_profile_revisions.locale with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_profile_revisions.tenant_id"}}},
+        "revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_profile_revisions.revision with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_profile_revisions.tenant_id"}}},
+        "profile": {"classification": "personal", "structure": "CompanyProfile", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_profile_revisions.profile with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_profile_revisions.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned company_profile_revisions.created_at with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "company_profile_revisions.tenant_id"}}}
       }
     },
     "pages": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "page_key": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned pages.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "pages.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned pages.site_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "pages.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned pages.id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "pages.tenant_id"}}},
+        "page_key": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned pages.page_key with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "pages.tenant_id"}}}
       }
     },
     "page_revisions": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "page_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "revision": {"classification": "operational"},
-        "document": {"classification": "personal", "structure": "PageDocument", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
-        "created_at": {"classification": "operational"},
-        "media_ids": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned page_revisions.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "page_revisions.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned page_revisions.site_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "page_revisions.tenant_id"}}},
+        "page_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned page_revisions.page_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "page_revisions.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned page_revisions.locale with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "page_revisions.tenant_id"}}},
+        "revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned page_revisions.revision with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "page_revisions.tenant_id"}}},
+        "document": {"classification": "personal", "structure": "PageDocument", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned page_revisions.document with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "page_revisions.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned page_revisions.created_at with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "page_revisions.tenant_id"}}},
+        "media_ids": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned page_revisions.media_ids with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "page_revisions.tenant_id"}}}
       }
     },
     "blog_posts": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_posts.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_posts.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_posts.site_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_posts.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_posts.id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_posts.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_posts.created_at with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_posts.tenant_id"}}}
       }
     },
     "blog_post_revisions": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Tenant-authored public company/person content has no verified customer identity FK; do not associate a customer by matching published text."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "post_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "revision": {"classification": "operational"},
-        "title": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
-        "excerpt": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
-        "body_blocks": {"classification": "personal", "structure": "BlogBodyBlocks", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_revisions.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_revisions.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_revisions.site_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_revisions.tenant_id"}}},
+        "post_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_revisions.post_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_revisions.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_revisions.locale with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_revisions.tenant_id"}}},
+        "revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_revisions.revision with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_revisions.tenant_id"}}},
+        "title": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_revisions.title with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_revisions.tenant_id"}}},
+        "excerpt": {"classification": "personal", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_revisions.excerpt with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_revisions.tenant_id"}}},
+        "body_blocks": {"classification": "personal", "structure": "BlogBodyBlocks", "erase": {"strategy": "retain", "reason": "Published tenant-authored contact/content has no verified registered-customer ownership path; preserve until content owner resolves an identified person request. Public visibility does not exempt this copy from privacy review."}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_revisions.body_blocks with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_revisions.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_revisions.created_at with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_revisions.tenant_id"}}}
       }
     },
     "blog_post_publications": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "site_id": {"classification": "operational"},
-        "post_id": {"classification": "operational"},
-        "locale": {"classification": "operational"},
-        "slug": {"classification": "operational"},
-        "published_revision": {"classification": "operational"},
-        "status": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_publications.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_publications.tenant_id"}}},
+        "site_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_publications.site_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_publications.tenant_id"}}},
+        "post_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_publications.post_id with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_publications.tenant_id"}}},
+        "locale": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_publications.locale with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_publications.tenant_id"}}},
+        "slug": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_publications.slug with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_publications.tenant_id"}}},
+        "published_revision": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_publications.published_revision with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_publications.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned blog_post_publications.status with its row, including all merchant/guest/derived copies.", "handler": "cms.erase", "ownership": {"kind": "tenant_column", "path": "blog_post_publications.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"cms.erase": {"depends_on": ["catalog.erase"], "tables": ["company_contacts", "company_profile_revisions", "blog_post_publications", "blog_post_revisions", "blog_posts", "page_revisions", "pages"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

@@ -163,6 +163,7 @@ func TestC02cStaffAuthenticatorRejectsOtherAccessClasses(t *testing.T) {
 func (f *c02cFixture) request(method, tenant string, cookie, bearer bool) *http.Request {
 	q := httptest.NewRequest(method, "/api/v1/t/"+tenant+"/products", nil)
 	q.RemoteAddr = "192.0.2.8:12345"
+	q.Header.Set("Idempotency-Key", "11111111-1111-4111-8111-111111111111")
 	if cookie {
 		q.AddCookie(&http.Cookie{Name: SessionCookie, Value: f.sessionToken})
 	}
