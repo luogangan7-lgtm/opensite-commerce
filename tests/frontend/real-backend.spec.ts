@@ -320,6 +320,9 @@ async function historyLogin(page: Page, email: string, password: string) {
   await expect(page.getByRole('link', { name: 'Order history', exact: true })).toBeVisible();
 }
 const historyPanel = (page: Page) => page.locator('.purchase-page[aria-label="Order history"]');
+// Only the live-created B2B list date varies with the DB day. Keep its real
+// text and datetime assertions; suppress its ink solely during pixel capture.
+const b2bDateCaptureStyle = '.purchase-page[aria-label="Order history"] time { visibility: hidden; }';
 async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250][number], pending = false, fullPage = true) {
   await page.evaluate(async () => { await document.fonts.ready; });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'history fits viewport').toBe(true);
@@ -329,7 +332,7 @@ async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250]
   }
   const panel = historyPanel(page);
   if (state !== 'account-entry') await expect(panel).toHaveAttribute('aria-busy', String(pending));
-  await expect(page).toHaveScreenshot(`real-250-${state}.png`, { fullPage });
+  await expect(page).toHaveScreenshot(`real-250-${state}.png`, { fullPage, ...(state === 'b2b-paid-list' ? { style: b2bDateCaptureStyle } : {}) });
   if (state !== 'account-entry') await expect(panel).toHaveAttribute('aria-busy', String(pending));
 }
 
@@ -583,9 +586,9 @@ test.describe('VISUAL-REAL #250', () => {
       await expect(date).toHaveText(new Date(createdAt).toLocaleDateString('en-US', { timeZone: 'UTC' }));
       // Exercise a different calendar date without changing the real backend fact.
       const original = await date.innerText();
-      const before = await page.screenshot({ fullPage: true });
+      const before = await page.screenshot({ fullPage: true, style: b2bDateCaptureStyle });
       await date.evaluate(node => { node.textContent = '12/31/2099'; });
-      const after = await page.screenshot({ fullPage: true });
+      const after = await page.screenshot({ fullPage: true, style: b2bDateCaptureStyle });
       await date.evaluate((node, value) => { node.textContent = value; }, original);
       expect(after.equals(before), 'date change must not alter screenshot pixels').toBe(true);
       await historySnapshot(page, 'b2b-paid-list');
