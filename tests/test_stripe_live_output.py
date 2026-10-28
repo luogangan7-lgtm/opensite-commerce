@@ -52,17 +52,17 @@ class OutputCanaries(unittest.TestCase):
                 child.assert_not_called()
 
     def test_all_public_sinks(self):
-        for state in ('REFUNDED', 'PENDING', 'REFUND_UNRESOLVED', 'REFUND_UNRESOLVED_MANUAL', 'TIMED_OUT'):
+        for state in ('CANCELED', 'PENDING'):
             with self.subTest(state=state), tempfile.TemporaryDirectory() as tmp:
                 summary = Path(tmp) / 'summary'
                 env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch',
                            GITHUB_REF='refs/heads/main', GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40,
-                           STRIPE_SMOKE_RUN_ID='1234', STRIPE_SMOKE_PHASE='R', STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID='true', RUNNER_TEMP=tmp,
+                           GITHUB_RUN_ATTEMPT='1', STRIPE_SMOKE_RUN_ID='12345', STRIPE_SMOKE_PHASE='A', RUNNER_TEMP=tmp,
                            GITHUB_STEP_SUMMARY=str(summary))
-                value = dict(phase='R', status=state, amount_minor=5000, currency='USD',
-                             livemode=True, owner_action_needed=state.startswith('REFUND_UNRESOLVED'))
+                value = dict(phase='A', status=state, amount_minor=50, currency='USD',
+                             livemode=True, owner_action_needed=False)
                 raw = '\n'.join(CANARIES) + '\nOSC_LIVE_SUMMARY ' + json.dumps(value)
-                result = subprocess.CompletedProcess([], int(state != 'REFUNDED'), stdout=raw)
+                result = subprocess.CompletedProcess([], int(state != 'CANCELED'), stdout=raw)
                 log = io.StringIO()
                 with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run', return_value=result) as child, contextlib.redirect_stdout(log):
                     try:
@@ -73,15 +73,13 @@ class OutputCanaries(unittest.TestCase):
                 public = log.getvalue() + summary.read_text()
                 for canary in CANARIES:
                     self.assertFalse(canary in public, 'public output leaked a private canary')
-                self.assertIn('original_run=1234', public)
-                if state.startswith('REFUND_UNRESOLVED'):
-                    self.assertIn('owner action needed', public)
+                self.assertIn('original_run=12345', public)
 
     def test_timeout_never_interpolates_captured_data(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REF='refs/heads/main',
-                       GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40, STRIPE_SMOKE_RUN_ID='1234',
-                       STRIPE_SMOKE_PHASE='R', STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID='true', RUNNER_TEMP=tmp, GITHUB_STEP_SUMMARY=str(Path(tmp) / 'summary'))
+                       GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40, STRIPE_SMOKE_RUN_ID='12345',
+                       STRIPE_SMOKE_PHASE='A', GITHUB_RUN_ATTEMPT='1', RUNNER_TEMP=tmp, GITHUB_STEP_SUMMARY=str(Path(tmp) / 'summary'))
             log = io.StringIO()
             error = subprocess.TimeoutExpired(CANARIES, 1, output=' '.join(CANARIES))
             with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run', side_effect=error), contextlib.redirect_stdout(log):
@@ -91,8 +89,15 @@ class OutputCanaries(unittest.TestCase):
             for canary in CANARIES:
                 self.assertFalse(canary in public, 'public timeout output leaked a private canary')
 
+    def test_removed_phases_and_nonzero_journals_refused(self):
+        good = dict(phase='A', status='CANCELED', amount_minor=50, currency='USD', livemode=True, owner_action_needed=False)
+        for phase in ('B', 'R'):
+            with self.assertRaises(ValueError): runner.public_summary(dict(good, phase=phase))
+        with self.assertRaises(ValueError):
+            runner.public_summary(dict(good, counts=dict(capture_journals=1, refund_journals=0, extra_replay_journals=0)))
+
     def test_tainted_summary_values_are_rejected(self):
-        good = dict(phase='B', status='REFUNDED', amount_minor=5000, currency='USD', livemode=True, owner_action_needed=False)
+        good = dict(phase='A', status='CANCELED', amount_minor=50, currency='USD', livemode=True, owner_action_needed=False)
         for field in good:
             for canary in CANARIES:
                 bad = dict(good); bad[field] = canary

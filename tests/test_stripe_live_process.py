@@ -26,11 +26,10 @@ class LiveRealProcessCanaries(unittest.TestCase):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
                 summary = Path(tmp) / 'summary'
                 env = dict(os.environ, GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch',
-                           GITHUB_REF='refs/heads/main', GITHUB_RUN_ID='12345', GITHUB_RUN_ATTEMPT='1',
-                           GITHUB_SHA='a' * 40, STRIPE_SMOKE_PHASE='B', STRIPE_SMOKE_RUN_ID='246810',
-                           STRIPE_REFUND_ATTEMPT='', STRIPE_SMOKE_ACCOUNT='acct_offlinepg',
+                           GITHUB_REF='refs/heads/main', GITHUB_RUN_ID='246810', GITHUB_RUN_ATTEMPT='1',
+                           GITHUB_SHA='a' * 40, STRIPE_SMOKE_PHASE='A', STRIPE_SMOKE_RUN_ID='246810',
+                           STRIPE_SMOKE_ACCOUNT='acct_offlinepg',
                            STRIPE_API='rk_live_OFFLINE_NOT_A_REAL_CREDENTIAL',
-                           STRIPE_SMOKE_EMAIL='owner-canary@example.test',
                            STRIPE_LIVE_OFFLINE_CASE=case, OPENSITE_DISPOSABLE_PG='stripe-live',
                            GITHUB_STEP_SUMMARY=str(summary))
                 result = subprocess.run([sys.executable, str(ROOT / 'scripts/stripe_live_ci.py')],
@@ -43,7 +42,7 @@ class LiveRealProcessCanaries(unittest.TestCase):
                 self.assertIn('original_run=246810', public)
                 if case == 'success':
                     receipt = next(json.loads(line) for line in result.stdout.splitlines() if line.startswith('{'))
-                    self.assertEqual(receipt['counts'], dict(capture_journals=1, refund_journals=1, extra_replay_journals=0))
+                    self.assertEqual(receipt['counts'], dict(capture_journals=0, refund_journals=0, extra_replay_journals=0))
 
 
 if __name__ == '__main__':

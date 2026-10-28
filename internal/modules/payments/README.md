@@ -2,102 +2,29 @@
 
 ## CI-only live smoke
 
-Authority: `V1_DECISIONS.md`, “Stripe live smoke (CI-only, owner-gated)” (#395).
-`NewStripeLiveSmoke` has a separate restricted-live constructor and no production
-composition site. It verifies main/dispatch admission and uses API version
-`2026-09-30.endive` (official API versioning reference verified 2026-10-26).
-The CI-only fixture owns `stripe_smoke.accounts` and `stripe_smoke.inbox`; these
-are created only inside the disposable job DB, so no production migration or
-test-pinned constraint change is required. Every real financial projection goes
-through the existing Payments `applyFact`, Checkout/Orders and Ledger functions.
-Fixture SQL is test orchestration, not a new production persistence layer.
+Authority: `docs/architecture/V1_DECISIONS.md`, “Stripe live smoke (CI-only,
+owner-gated)”, revised by LIVE-A-ONLY (#414). `NewStripeLiveSmoke` is an isolated
+permission probe, never production composition or a financial Payment Port.
+It requires main/dispatch/first-attempt admission, a restricted live key and the
+private expected account. The only permission required is PaymentIntents write.
+Only list, create without payment method, and cancel are callable; no money
+moves and no financial fact or journal is ingested. Existing run metadata or
+uncertainty fails closed without another create; no recovery phase exists.
 
-The account ID is an additional Environment secret `STRIPE_SMOKE_ACCOUNT`:
-Actions prints non-secret step environment values, so a plain variable would
-expose a full provider identifier. It scopes every provider request with the
-`Stripe-Account` header and maps only this account/run in the ephemeral DB.
-The key and email remain exclusively `STRIPE_API` and `STRIPE_SMOKE_EMAIL`.
-Invoices and PaymentIntents bind the original run, phase and association before
-the private invoice is sent. R locates provider facts and rebuilds a new local
-order; no killed-runner file, DB, tenant or local order ID is authoritative.
+The key and account remain environment-only `STRIPE_API` and
+`STRIPE_SMOKE_ACCOUNT`. Requests pin `2026-09-30.endive`. The disposable DB
+provides its clock before HTTP and witnesses zero journals/orders/payment facts;
+no live persistence schema or migration is needed. All old and asynchronous
+paths and test-mode constraints retain their admission rules.
 
-Only harness create/cancel, Customer/Invoice setup/finalize/send/void, metadata
-binding, authenticated Events projection, and Payments refund/recovery are new
-write entrances. Production, old batch/async paths and sandbox admission are
-unchanged. Timeout uses DB time and is not provider expiry. HTTP never runs
-under a DB lock; the live transaction locks stream, Inbox, Checkout/Orders and
-Ledger in that order. Refund history is paginated before writes; attempt keys
-derive from original run/attempt and durable provider metadata prevents replay
-after key retention expires. Pending/unknown and failed/canceled refunds remain
-open; automatic attempt increments are forbidden.
-
-Normal CI runs fake-provider lifecycle/output canaries, real PG capture/refund/
-reconstruction/replay, and a dispatch/main/Environment/secret-ownership gate.
-The owner-only entry is compiled, never executed, by normal PR CI. The secret
-step captures and discards all child output and emits only validated receipts;
-there is no raw log or artifact upload. Live A/B/R and the separate permission
-probe remain NOT_RUN until the owner explicitly starts them after merge.
-
-The endpoint allowlist proves only the application's required capabilities.
-Exact manually configured restricted-key grants require independent Dashboard
-configuration evidence and the owner-approved probe; the Stripe Apps combined
-Charges/Refunds permission is not silently substituted for refund-only access.
-
-References, read 2026-10-26: [API versioning](https://docs.stripe.com/api/versioning),
-[invoice line items](https://docs.stripe.com/api/invoice-line-item/bulk),
-[restricted keys](https://docs.stripe.com/keys/restricted-api-keys).
-
-Authority: `docs/architecture/V1_DECISIONS.md` §6. Payments owns money refunds;
-Returns owns RMA/receipt/restock; Orders owns order state. Payments owns the
-single refund journal path and the C-19d terminal-fact finalizer described below.
-
-Stripe `refund.created` and `refund.updated` succeeded deliveries share the
-provider refund ID as their financial identity. Each delivery retains its own
-exact-body Inbox receipt. Changed amount/order/currency under the same refund
-identity is rejected. Pending API refund recovery is retryable with the same
-request key; it never proves permanent absence of a provider effect.
-
-Delivery-to-fact bindings persist until the canonical fact reaches a terminal
-outcome, including when several refund deliveries arrive before capture.
-Legacy facts have no recoverable provider refund ID. Exact-body replays retain
-their original journal key; new refund identities on those streams are retained
-as failed Inbox deliveries and rejected for trusted reconciliation. No automatic
-amount-based matching or rewriting of historical financial identities occurs.
-
-Valid pending and other nonterminal refund facts are ignored without entering
-unmatched reconciliation. Confirmed failed/canceled transitions enter the dedicated C-19d finalizer when
-that capability is configured. Unconfirmed retrieval and ambiguous legacy
-bindings remain retained reconciliation cases. Without the capability, matched
-terminal facts retain `refund_terminal_after_match` and metadata-free facts
-retain `unmatched_refund`; neither posts a reversal. The generic Ledger primitive
-alone cannot authorize financial projection changes.
-Terminal failed/canceled API refunds return permanent `NoSideEffect` proof on
-both creation and durable recovery; pending/unknown states remain retryable.
-
-Dashboard refunds without `osc_order` are acknowledged as `unmatched`, retained
-as failed Stripe Inbox entries with bounded event ID and SHA-256 payload hash,
-and emit `payment_webhook_reconciliation_required` / `unmatched_refund`.
-No raw provider payload, credential, or customer data is retained. They produce
-no normalized order event and no journal. Reconciliation can list failed Stripe
-Inbox rows having no associated `payment_events` row, retrieve the immutable
-provider event by its event ID, then establish a trusted order/attempt binding.
-Part 3 exposes an explicit trusted terminal replay port; no public financial
-mutation route is added.
-
-**Live-mode prerequisite (NOT_RUN):** an owned reconciliation workflow must
-monitor unresolved Inbox facts and provider balances, support authenticated
-matching with audit evidence, and prove one journal across request/webhook
-replays before live keys or production refunds can be enabled. A successful
-sandbox check does not satisfy this live acceptance requirement.
-
-Refund components are allocated by Payments' closed
-`app.payments_allocate_refund(uuid,jsonb,bigint)` command for both ordinary
-facts and quantity-bounded RMA creation. It takes the Orders physical fence,
-locks RMAs by UUID, and subtracts frozen receipts plus Checkout's actual ordinary
-component counters. Orders-only legacy credit keeps its prior waterfall.
-The existing Checkout component CHECKs remain the final cap guard. Identity-less
-refund deliveries retain a failed Inbox/hash without a normalized money fact;
-Fake events and results carry the same durable refund identity.
+Normal CI runs fake-only endpoint/admission tests, PG zero-journal witnesses,
+workflow/composition static gates and public-output process canaries. The owner
+entry compiles separately; raw child output is discarded by the fixed wrapper.
+The live workflow remains owner-started and approval-gated; agents never run it.
+Payment/refund/reconciliation acceptance stays in test mode and offline fixtures.
+Live real-card testing is prohibited by the Stripe SSA; see the contract's dated
+[official source](https://docs.stripe.com/testing). Live/production acceptance
+remain NOT_RUN.
 
 ## C-19d preparation (part 1)
 

@@ -63,14 +63,15 @@ def validate(document, workflows):
     assert len(consumers) == 1, 'LIVE_SINGLE_SECRET_CONSUMER'
     env = consumers[0].get('env', {})
     assert secret_expression(env.get('STRIPE_API'), 'STRIPE_API'), 'LIVE_KEY_ENV_ONLY'
-    assert secret_expression(env.get('STRIPE_SMOKE_EMAIL'), 'STRIPE_SMOKE_EMAIL'), 'LIVE_EMAIL_ENV_ONLY'
+    assert 'STRIPE_SMOKE_EMAIL' not in env, 'LIVE_NO_EMAIL'
     assert secret_expression(env.get('STRIPE_SMOKE_ACCOUNT'), 'STRIPE_SMOKE_ACCOUNT'), 'LIVE_ACCOUNT_NOT_PUBLIC'
     assert not references({k:v for k,v in env.items() if k not in OWNED_SECRETS}, 'secrets'), 'LIVE_SECRET_ENV_ALIAS'
     assert not references(env, 'env') & OWNED_SECRETS, 'LIVE_SECRET_ENV_ALIAS'
-    identity = '${{ inputs.phase == \'R\' && inputs.smoke_run_id || github.run_id }}'
-    assert env.get('STRIPE_SMOKE_RUN_ID') == identity, 'LIVE_PROVIDER_RUN_IDENTITY'
-    assert document.get('concurrency', {}).get('group') == 'stripe-live-' + identity, 'LIVE_ORIGINAL_RUN_CONCURRENCY'
-    assert env.get('STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID') == "${{ inputs.smoke_run_id != '' }}", 'LIVE_R_ORIGINAL_REQUIRED'
+    assert not triggers['workflow_dispatch'] or not triggers['workflow_dispatch'].get('inputs'), 'LIVE_A_ONLY_INPUTS'
+    assert env.get('STRIPE_SMOKE_PHASE') == 'A', 'LIVE_A_ONLY_PHASE'
+    assert env.get('STRIPE_SMOKE_RUN_ID') == '${{ github.run_id }}', 'LIVE_PROVIDER_RUN_IDENTITY'
+    assert document.get('concurrency', {}).get('group') == 'stripe-live-${{ github.run_id }}', 'LIVE_ORIGINAL_RUN_CONCURRENCY'
+    assert not {'STRIPE_REFUND_ATTEMPT', 'STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID'} & env.keys(), 'LIVE_NO_RECOVERY'
     assert not references({k:v for k,v in consumers[0].items() if k != 'env'}, 'secrets'), 'LIVE_SECRET_ARGV'
     assert 'uses' not in consumers[0], 'LIVE_ALLOWLISTED_OUTPUT_WRAPPER'
     assert consumers[0].get('run') == 'python3 scripts/stripe_live_ci.py', 'LIVE_ALLOWLISTED_OUTPUT_WRAPPER'
@@ -81,6 +82,17 @@ def validate(document, workflows):
             other = yaml.safe_load(body)
             assert not references(other, 'secrets') & OWNED_SECRETS, 'LIVE_SECRET_OWNERSHIP'
             assert not references(other, 'env') & OWNED_SECRETS, 'LIVE_SECRET_OWNERSHIP'
+    # Literal capability regression guard complements the runtime endpoint/form
+    # allowlist. Scan every live production source, not test fixtures/canaries.
+    for path in (ROOT / 'internal/modules/payments').glob('stripe_live*.go'):
+        if path.name.endswith('_test.go'):
+            continue
+        for match in GO_NON_CODE.finditer(path.read_text()):
+            token = match[0]
+            if token.startswith(('//', '/*', '`json:')):
+                continue
+            assert not re.search(r'(?i)(?:confirm|capture|invoice|refund|customer)', token), 'LIVE_NO_MONEY_MOVING_ENDPOINT'
+            assert not re.search(r'(?i)(?:^|["`/])payment_methods?(?:/|["`])', token), 'LIVE_NO_MONEY_MOVING_ENDPOINT'
     for path in ROOT.rglob('*.go'):
         if path.name.endswith('_test.go'):
             continue
@@ -118,7 +130,7 @@ class LiveWorkflowGate(unittest.TestCase):
         for template in ("secrets['%s']", 'secrets["%s"]', "secrets [ '%s' ]"):
             bad = copy.deepcopy(original)
             env = next(step['env'] for step in bad['jobs']['live']['steps'] if 'STRIPE_API' in step.get('env', {}))
-            for name in ('STRIPE_API', 'STRIPE_SMOKE_EMAIL', 'STRIPE_SMOKE_ACCOUNT'):
+            for name in ('STRIPE_API', 'STRIPE_SMOKE_ACCOUNT'):
                 env[name] = '${{ ' + template % name + ' }}'
             validate(bad, {})
 
