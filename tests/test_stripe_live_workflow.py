@@ -6,10 +6,12 @@ Invariant: only the pinned live job can enter stripe-live. No provider execution
 from pathlib import Path
 import hashlib
 import re
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 import yaml
+import test_stripe_live_output as output_tests
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE = ROOT / '.github/workflows/stripe-live-smoke.yml'
@@ -21,6 +23,11 @@ GO_NON_CODE = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|`[^`]*`|\'(?:\\.
 
 def workflows():
     return {p.name: p.read_bytes() for p in LIVE.parent.glob('*.y*ml')}
+
+
+def track_go_fixture(root):
+    subprocess.run(['git', 'init', '-q', str(root)], check=True, capture_output=True, timeout=10)
+    subprocess.run(['git', '-C', str(root), 'add', '.'], check=True, capture_output=True, timeout=10)
 
 
 def validate(sources):
@@ -59,6 +66,35 @@ def validate(sources):
 
 
 class LiveWorkflowGate(unittest.TestCase):
+    def test_environment_fixture_detects_missing_ownership_assertion(self):
+        # A no-op validator must fail the environment-secret ownership fixture.
+        with patch.dict(validate.__globals__, validate=lambda sources: None):
+            with self.assertRaises(AssertionError):
+                LiveWorkflowGate().test_other_environment_cannot_read_live_environment_secrets()
+
+    def test_reusable_jobs_cannot_hide_environment_owners(self):
+        original = workflows()
+        for filename in ('another.yml', 'another.yaml'):
+            for uses in ('other/repo/.github/workflows/live.yml@main',
+                         './.github/workflows/stripe-live-smoke.yml'):
+                with self.subTest(filename=filename, uses=uses):
+                    other = {'jobs': {'hidden': {'uses': uses, 'secrets': 'inherit'}}}
+                    with self.assertRaisesRegex(AssertionError, 'LIVE_REUSABLE_WORKFLOW_UNSCANNED'):
+                        validate({**original, filename: yaml.safe_dump(other).encode()})
+
+    def test_removed_phase_fixture_detects_phase_guard_bypass(self):
+        # Run the existing wrapper fixture against a phase-only mutation. All
+        # its other inputs must be valid, or another guard hides this defect.
+        runner = output_tests.runner
+        source = Path(runner.__file__).read_text()
+        guard = "        or phase != 'A'\n"
+        self.assertEqual(source.count(guard), 1)
+        namespace = {'__file__': runner.__file__, '__name__': 'phase_guard_probe'}
+        exec(compile(source.replace(guard, '', 1), runner.__file__, 'exec'), namespace)
+        with patch.object(runner, 'main', namespace['main']):
+            with self.assertRaises(AssertionError):
+                output_tests.OutputCanaries().test_R_requires_original_run_before_child()
+
     def test_every_environment_name_must_be_literal(self):
         original = workflows()
         for name in ("${{ 'stripe-live' }}", '${{ inputs.env }}', 'prefix-${{ inputs.env }}'):
@@ -145,6 +181,7 @@ class LiveWorkflowGate(unittest.TestCase):
                     path = root / name
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text('package rogue\nfunc boot() { _ = ' + call + ' }\n')
+                    track_go_fixture(root)
                     with patch.dict(validate.__globals__, ROOT=root):
                         with self.assertRaisesRegex(AssertionError, 'LIVE_NO_PRODUCTION_COMPOSITION'):
                             validate(original)
@@ -157,6 +194,7 @@ class LiveWorkflowGate(unittest.TestCase):
             path.parent.mkdir(parents=True)
             declaration = 'package payments\nfunc NewStripeLiveSmoke(c Config, o LiveSmokeOptions) (*StripeLiveSmoke, error) { return nil, nil }\n'
             path.write_text(declaration + '// NewStripeLiveSmoke(c, o) is forbidden here\nvar label = "NewStripeLiveSmoke(c, o)"\n')
+            track_go_fixture(root)
             with patch.dict(validate.__globals__, ROOT=root):
                 validate(original)
                 path.write_text(declaration + 'func rogue() { _ = NewStripeLiveSmoke(c, o) }\n')
@@ -173,9 +211,28 @@ class LiveWorkflowGate(unittest.TestCase):
                 target = root / 'internal/modules/payments/stripe_live.go'
                 target.parent.mkdir(parents=True)
                 target.write_text(source + '\nfunc forbidden() { _ = "' + endpoint + '" }\n')
+                track_go_fixture(root)
                 with patch.dict(validate.__globals__, ROOT=root):
                     with self.assertRaisesRegex(AssertionError, 'LIVE_NO_MONEY_MOVING_ENDPOINT'):
                         validate(original)
+
+    def test_composition_scan_uses_only_this_repositorys_tracked_go(self):
+        original = workflows()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tracked = root / 'cmd/path with spaces/main.go'
+            tracked.parent.mkdir(parents=True)
+            tracked.write_text('package main\nfunc main() {}\n')
+            track_go_fixture(root)
+            nested = root / '.orchestrator/wt/another-card/main.go'
+            nested.parent.mkdir(parents=True)
+            nested.write_text('package main\nvar rogue = payments.NewStripeLiveSmoke\n')
+            track_go_fixture(nested.parent)
+            with patch.dict(validate.__globals__, ROOT=root):
+                validate(original)
+                tracked.write_text('package main\nvar rogue = payments.NewStripeLiveSmoke\n')
+                with self.assertRaisesRegex(AssertionError, 'LIVE_NO_PRODUCTION_COMPOSITION'):
+                    validate(original)
 
     def test_committed_workflow(self):
         self.assertTrue(LIVE.is_file(), 'LIVE_WORKFLOW_MISSING')
