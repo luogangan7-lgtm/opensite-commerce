@@ -320,6 +320,14 @@ async function historyLogin(page: Page, email: string, password: string) {
   await expect(page.getByRole('link', { name: 'Order history', exact: true })).toBeVisible();
 }
 const historyPanel = (page: Page) => page.locator('.purchase-page[aria-label="Order history"]');
+type Box = { x: number; y: number; width: number; height: number };
+function assertDateMaskBounds(mask: Box, date: Box, protectedBoxes: Box[]) {
+  const right = (box: Box) => box.x + box.width, bottom = (box: Box) => box.y + box.height;
+  if (mask.x < date.x || mask.y < date.y || right(mask) > right(date) || bottom(mask) > bottom(date))
+    throw new Error('Date mask extends outside time element');
+  if (protectedBoxes.some(box => mask.x < right(box) && right(mask) > box.x && mask.y < bottom(box) && bottom(mask) > box.y))
+    throw new Error('Date mask overlaps status or amount');
+}
 // Only the runtime B2B order may supply an exact date mask. Historical dates
 // remain visible; real API timestamp/display assertions precede every mask.
 async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250][number], pending = false, fullPage = true, mask: Locator[] = [], maskColor?: string) {
@@ -580,7 +588,8 @@ test.describe('VISUAL-REAL #250', () => {
       expect(persisted.status()).toBe(200);
       const createdAt = (await persisted.json()).order.created_at as string;
       const order = page.getByRole('button', { name: `Order #${receipt.order_number}`, exact: true });
-      const date = historyPanel(page).locator('li.cart-line').filter({ has: order }).locator('time');
+      const row = historyPanel(page).locator('li.cart-line').filter({ has: order });
+      const date = row.locator('time');
       await expect(date).toHaveCount(1);
       await expect(date).toHaveAttribute('datetime', createdAt);
       await expect(date).toHaveText(/^(?:[1-9]|1[0-2])\/(?:[1-9]|[12][0-9]|3[01])\/\d{4}$/);
@@ -592,6 +601,15 @@ test.describe('VISUAL-REAL #250', () => {
       const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
       const original = await date.innerText();
       const beforeBox = await date.boundingBox();
+      const amountBox = await row.locator('.cart-line-heading p').boundingBox();
+      const statusBox = await date.locator('..').evaluate(element => {
+        const range = document.createRange(); range.selectNodeContents(element.firstChild!);
+        const r = range.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
+      });
+      const rowBox = await row.boundingBox();
+      if (!beforeBox || !amountBox || !rowBox) throw new Error('Missing date mask geometry');
+      // RED fixture: the faulty candidate mask spans the entire order row.
+      assertDateMaskBounds(rowBox, beforeBox, [statusBox, amountBox]);
       const before = await page.screenshot({ fullPage: true, mask: [date], maskColor });
       await date.evaluate(node => { node.textContent = '12/31/2099'; });
       const afterBox = await date.boundingBox();
