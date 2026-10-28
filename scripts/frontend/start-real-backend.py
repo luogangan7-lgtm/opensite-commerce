@@ -30,6 +30,7 @@ def main():
     pg = dict(PGHOST=source.hostname, PGPORT=str(source.port or 5432), PGUSER=unquote(source.username or ''),
               PGPASSWORD=unquote(source.password or ''), PGDATABASE=source.path[1:], PGCONNECT_TIMEOUT='10')
     children = []
+    provisioned = False
     owned = ROOT / '.work/visual-real'
     owned.mkdir(parents=True, exist_ok=True)
 
@@ -79,7 +80,11 @@ def main():
         for seed in ['tests/fixtures/storefront_seed.sql', 'scripts/e2e/seed.sql']:
             query((ROOT / seed).read_text())
         passwords = {kind: secrets.token_hex(32) for kind in LOGIN_ROLES}
+        names = ','.join("'" + login + "'" for login, _ in LOGIN_ROLES.values())
+        if query(f'SELECT count(*) FROM pg_roles WHERE rolname IN ({names});') != '0\n':
+            raise RuntimeError('Real visual fixture refuses pre-existing runtime logins')
         query(provision_sql(database, passwords))
+        provisioned = True
         # Only non-sensitive process configuration survives into the application.
         env = {key: os.environ[key] for key in ['PATH', 'HOME', 'GOTOOLCHAIN', 'GITHUB_ACTIONS', 'GITHUB_RUN_ID'] if key in os.environ}
         env.update(OPENSITE_DB_HOST=source.hostname, OPENSITE_DB=database,
@@ -116,11 +121,11 @@ def main():
         # No database identity, runtime passwords, or bootstrap capability enters Astro.
         frontend = {key: env[key] for key in ['PATH', 'HOME', 'OPENSITE_ENVIRONMENT', 'OPENSITE_STOREFRONT_KEY',
                     'OPENSITE_STOREFRONT_ORIGIN', 'OPENSITE_CUSTOMER_CSRF_SECRET', 'OPENSITE_FAKE_PSP', 'OPENSITE_FAKE_WEBHOOK_KEY']}
-        frontend.update(HOST='127.0.0.1', PORT='4325', OSC_COMMERCE_MODE='backend', OSC_COMMERCE_TEST_HTTP='1',
+        frontend.update(HOST='127.0.0.1', PORT='4349', OSC_COMMERCE_MODE='backend', OSC_COMMERCE_TEST_HTTP='1',
                         OSC_READ_API_ORIGIN='http://127.0.0.1:4181', OSC_COMMERCE_API_ORIGIN='http://127.0.0.1:4181',
-                        OSC_COMMERCE_SITE='http://127.0.0.1:4325', OSC_COMMERCE_COOKIE_KEY=runtime['cookieKey'], OPENSITE_FAKE_ACCOUNT_ID='c09d-e2e')
+                        OSC_COMMERCE_SITE='http://127.0.0.1:4349', OSC_COMMERCE_COOKIE_KEY=runtime['cookieKey'], OPENSITE_FAKE_ACCOUNT_ID='c09d-e2e')
         spawn(['bash', 'scripts/start_storefront_ssr.sh'], frontend)
-        wait('http://127.0.0.1:4325/products/canvas-tote')
+        wait('http://127.0.0.1:4349/products/canvas-tote')
         print('VISUAL-REAL: restricted Go + PostgreSQL 18.6 + transparent proxy + Astro ready', flush=True)
         while all(proc.poll() is None for proc in children):
             time.sleep(.2)
@@ -137,6 +142,10 @@ def main():
         (owned / 'runtime.json').unlink(missing_ok=True)
         pg['PGDATABASE'] = source.path[1:]
         query(f'DROP DATABASE {database} WITH (FORCE);')
+        # Group roles are cluster-global: remove ONLY logins created by this invocation,
+        # after its database/CONNECT grants are gone, before the writer's second launch.
+        if provisioned:
+            query(''.join(f'DROP ROLE {login};' for login, _ in LOGIN_ROLES.values()))
 
 
 if __name__ == '__main__':

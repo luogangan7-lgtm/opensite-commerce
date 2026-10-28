@@ -9,7 +9,7 @@ import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { REAL_VISUAL_STATES } from '../../scripts/frontend/real-visual-manifest';
 
-const site = 'http://127.0.0.1:4325';
+const site = 'http://127.0.0.1:4349';
 const tenant = 'c0900001-0000-4000-8000-000000000001';
 const sku = 'c2400008-0000-4000-8000-000000000001';
 const backend = `/api/v1/t/${tenant}/checkout`;
@@ -78,7 +78,7 @@ async function seededCompletion(page: Page, project: string, long = false) {
         '{"email":"visual-buyer@example.test"}','USD',0,'{}',
         jsonb_build_array(jsonb_build_object('id','${id(3)}','sku_id','${sku}','sku','C24-CANVAS-TOTE',
           'quantity',1,'unit_price_minor',${amount}::bigint,'line_net_minor',${amount}::bigint,'line_tax_minor',0,
-          'line_total_minor',${amount}::bigint,'reservation_id',r.id,'tax_snapshot','{}'::jsonb)),'[]');
+          'line_total_minor',${amount}::bigint,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
     END $seed$;
     INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,
       order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
