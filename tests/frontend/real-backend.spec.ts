@@ -248,3 +248,170 @@ test.describe('VISUAL-REAL #213', () => {
     await snapshot(page, 'completion-long-amount');
   });
 });
+
+// #235 captures only after fragment custody and password removal. Automatic
+// traces/video/failure captures remain disabled for this credential-bearing lane.
+async function accountSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[235][number], pending = false) {
+  await page.evaluate(async () => { await document.fonts.ready; });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await page.locator('input[type="password"]').evaluateAll(inputs =>
+    inputs.every(input => (input as HTMLInputElement).value === ''))).toBe(true);
+  if (!pending) {
+    const report = await new AxeBuilder({ page }).analyze();
+    expect(report.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
+  }
+  const busy = page.locator('[data-customer-ready], [data-customer-verification]');
+  if (pending) await expect(busy).toHaveAttribute('aria-busy', 'true');
+  await expect(page).toHaveScreenshot(`real-235-${state}.png`, { fullPage: true });
+  if (pending) await expect(busy).toHaveAttribute('aria-busy', 'true');
+}
+const customerBackend = `/api/v1/t/${tenant}/customer`;
+const accountPassword = () => randomBytes(24).toString('base64url');
+async function credentials(page: Page, email: string, password: string) {
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  // Keep credential values out of Playwright step titles.
+  await page.locator('input[type="password"]').evaluate((input, value) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    setter.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, password);
+}
+async function mailboxProof(page: Page, email: string) {
+  const response = await page.request.post('http://127.0.0.1:4182/proof', {
+    headers: { Authorization: `Bearer ${runtime().control}` }, data: { email },
+  });
+  if (response.status() !== 200) throw new Error('Real SMTP notification proof was not delivered');
+  const payload = await response.json();
+  if (typeof payload.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(payload.token)) throw new Error('Invalid SMTP proof');
+  return payload.token as string;
+}
+async function openProof(page: Page, proof: string) {
+  await page.goto(`${site}/account`);
+  // Browser-only navigation: fragment never reaches an HTTP server or step URL.
+  await page.evaluate(value => location.assign(`/customer/verify#token=${value}`), proof);
+  await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeEnabled();
+  await expect(page).toHaveURL(`${site}/customer/verify`);
+  expect(await page.evaluate(value => document.documentElement.outerHTML.includes(value), proof)).toBe(false);
+}
+async function registerAccount(page: Page, email: string, password: string) {
+  await page.goto(`${site}/account`); await credentials(page, email, password);
+  await page.getByRole('button', { name: 'Register', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('verification email has been sent');
+  await expect(page.getByRole('link', { name: 'Order history', exact: true })).toHaveCount(0);
+  return mailboxProof(page, email);
+}
+
+test.describe('VISUAL-REAL #235', () => {
+  test('notification sink rejects missing authority and malformed reads', async ({ page }) => {
+    expect((await page.request.post('http://127.0.0.1:4182/proof', { data: { email: 'visual@example.test' } })).status()).toBe(403);
+    expect((await page.request.post('http://127.0.0.1:4182/proof', {
+      headers: { Authorization: `Bearer ${runtime().control}` }, data: { email: 'external@example.com' },
+    })).status()).toBe(400);
+  });
+  test.afterEach(async ({ page }) => { await control(page, 'release'); });
+
+  test('real guest, validation, long email/help and keyboard focus', async ({ page }) => {
+    await page.goto(`${site}/account`);
+    await expect(page.getByText('You are browsing as a guest.', { exact: true })).toBeVisible();
+    await accountSnapshot(page, 'account-guest');
+    await page.getByLabel('Email', { exact: true }).click();
+    await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Tab');
+    await expect(page.getByLabel('Email', { exact: true })).toBeFocused();
+    await accountSnapshot(page, 'account-keyboard-focus');
+    await page.getByRole('button', { name: 'Register', exact: true }).click();
+    await expect(page.getByText('Enter a valid email address.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Enter your password. New passwords must contain 12–1024 UTF-8 bytes.', { exact: true })).toBeVisible();
+    await accountSnapshot(page, 'account-validation-errors');
+    const longEmail = `${'long-customer.'.repeat(4)}buyer@${'department.'.repeat(9)}example.test`;
+    await page.getByLabel('Email', { exact: true }).fill(longEmail);
+    await expect(page.getByLabel('Email', { exact: true })).toHaveValue(longEmail);
+    await accountSnapshot(page, 'account-long-email');
+    await expect(page.getByText('Registration requires 12–1024 UTF-8 bytes. Sign in with your existing password.', { exact: true })).toBeVisible();
+    await accountSnapshot(page, 'account-long-help');
+  });
+
+  test('real registration, disabled in-flight fields, notice, verification and login', async ({ page }, info) => {
+    const email = `visual-235-${info.project.name}@example.test`, password = accountPassword();
+    await page.goto(`${site}/account`); await credentials(page, email, password);
+    await fault(page, `${customerBackend}/registrations`, 'POST', 'hold');
+    await page.getByRole('button', { name: 'Register', exact: true }).click();
+    await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(202);
+    await expect(page.locator('[data-customer-ready]')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByLabel('Email', { exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Register', exact: true })).toBeDisabled();
+    // Clear only the disabled input's presentation while the real request is held;
+    // its body has already reached Go and no password is rendered in evidence.
+    await page.locator('input[type="password"]').evaluate(input => { (input as HTMLInputElement).value = ''; });
+    await accountSnapshot(page, 'account-in-flight', true);
+    await control(page, 'release');
+    await expect(page.getByRole('status')).toContainText('verification email has been sent');
+    await accountSnapshot(page, 'account-registration-notice');
+    const proof = await mailboxProof(page, email);
+    const before = sql(`SELECT count(*) FROM app.customer_auth_tokens WHERE tenant_id='${tenant}' AND consumed_at IS NOT NULL;`);
+    await openProof(page, proof);
+    expect(sql(`SELECT count(*) FROM app.customer_auth_tokens WHERE tenant_id='${tenant}' AND consumed_at IS NOT NULL;`)).toBe(before);
+    await accountSnapshot(page, 'verification-valid-proof');
+    await page.getByRole('button', { name: 'Verify email', exact: true }).click();
+    await expect(page.locator('[data-customer-verification] > p[role="status"]')).toContainText('Email verified.');
+    expect(Number(sql(`SELECT count(*) FROM app.customer_auth_tokens WHERE tenant_id='${tenant}' AND consumed_at IS NOT NULL;`))).toBe(Number(before) + 1);
+    await accountSnapshot(page, 'verification-success');
+    await openProof(page, proof);
+    await page.getByRole('button', { name: 'Verify email', exact: true }).click();
+    await expect(page.locator('[data-customer-verification] > p[role="status"]')).toContainText('Verification could not be completed.');
+    await accountSnapshot(page, 'verification-replayed');
+    await page.goto(`${site}/account`); await credentials(page, email, password);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page.getByRole('link', { name: 'Order history', exact: true })).toBeVisible();
+    await accountSnapshot(page, 'account-signed-in');
+    await fault(page, `${customerBackend}/session`, 'GET', '503');
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Temporarily unavailable', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Register', exact: true })).toHaveCount(0);
+    await accountSnapshot(page, 'account-disabled');
+    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
+    await control(page, 'release');
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
+    await credentials(page, email, password);
+    await fault(page, `${customerBackend}/session`, 'POST', '503');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('We could not complete this request.');
+    await page.locator('input[type="password"]').evaluate(input => { (input as HTMLInputElement).value = ''; });
+    await accountSnapshot(page, 'account-request-failure');
+  });
+
+  test('real proof enabled, private, processing and DB-clock expiry', async ({ page }, info) => {
+    await page.goto(`${site}/customer/verify`);
+    await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
+    await accountSnapshot(page, 'verification-no-proof');
+    await page.goto(`${site}/account`);
+    await page.evaluate(() => location.assign('/customer/verify#token=invalid'));
+    await expect(page).toHaveURL(`${site}/customer/verify`);
+    await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
+    await accountSnapshot(page, 'verification-invalid-proof');
+    const email = `visual-235-expiry-${info.project.name}@example.test`;
+    const proof = await registerAccount(page, email, accountPassword());
+    await openProof(page, proof);
+    await accountSnapshot(page, 'verification-private');
+    await page.getByRole('button', { name: 'Verify email', exact: true }).focus();
+    await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
+    await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeFocused();
+    await accountSnapshot(page, 'verification-keyboard-focus');
+    await accountSnapshot(page, 'verification-enabled');
+    // Preserve constraints; only owned real challenges age, using DB time.
+    sql(`UPDATE app.customer_auth_tokens SET created_at=clock_timestamp()-interval '2 hours',expires_at=clock_timestamp()-interval '1 hour'
+      WHERE tenant_id='${tenant}' AND email_normalized='${email}' AND consumed_at IS NULL;`);
+    await fault(page, `${customerBackend}/verifications`, 'POST', 'hold');
+    await page.getByRole('button', { name: 'Verify email', exact: true }).click();
+    await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(400);
+    await expect(page.locator('[data-customer-verification]')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('[data-customer-verification] button[aria-busy="true"]')).toBeDisabled();
+    await accountSnapshot(page, 'verification-processing', true);
+    await control(page, 'release');
+    await expect(page.locator('[data-customer-verification] > p[role="status"]')).toContainText('Verification could not be completed.');
+    await accountSnapshot(page, 'verification-expired');
+    expect(sql(`SELECT count(*) FROM app.customers WHERE tenant_id='${tenant}' AND email_normalized='${email}' AND verified_at IS NOT NULL;`)).toBe('0');
+    expect(await page.evaluate(value => document.documentElement.outerHTML.includes(value), proof)).toBe(false);
+  });
+});
