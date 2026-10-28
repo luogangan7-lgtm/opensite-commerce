@@ -114,8 +114,8 @@ func TestRegisterAllowedAndConflicts(t *testing.T) {
 	t.Run("duplicate operation", func(t *testing.T) {
 		other := s
 		other.Pattern = "/api/v1/t/{tenant_id}/sites"
-		if r.Register(other, h) == nil {
-			t.Error("duplicate operation registered")
+		if err := r.Register(other, h); err == nil || !strings.Contains(err.Error(), "duplicate operation") {
+			t.Errorf("expected duplicate operation rejection, got %v", err)
 		}
 	})
 	t.Run("mux conflict", func(t *testing.T) {
