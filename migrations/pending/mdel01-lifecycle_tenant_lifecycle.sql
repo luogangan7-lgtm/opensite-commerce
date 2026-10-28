@@ -31,8 +31,10 @@ DO $role$ BEGIN
 END $role$;
 GRANT USAGE ON SCHEMA app TO app_tenant_lifecycle_executor;
 
+-- Empty tenants retain their existing removal contract. A lifecycle with any
+-- request/event cannot cascade away: the child composite FKs stay restrictive.
 CREATE TABLE app.tenant_lifecycles (
- tenant_id uuid NOT NULL REFERENCES app.tenants(id),
+ tenant_id uuid NOT NULL REFERENCES app.tenants(id) ON DELETE CASCADE,
  id uuid NOT NULL CHECK(id=tenant_id),
  state text NOT NULL DEFAULT 'active' CHECK(state IN('active','cooling_off','executing','failed','deleted')),
  epoch bigint NOT NULL DEFAULT 0 CHECK(epoch>=0),
@@ -91,6 +93,8 @@ GRANT SELECT,INSERT,UPDATE ON app.tenant_lifecycles TO app_tenant_lifecycle_exec
 GRANT SELECT,INSERT ON app.tenant_lifecycle_receipts,app.tenant_lifecycle_events TO app_tenant_lifecycle_executor;
 GRANT SELECT(id,status) ON app.tenants TO app_tenant_lifecycle_executor;
 GRANT SELECT(tenant_id,user_id,role,status) ON app.tenant_memberships TO app_tenant_lifecycle_executor;
+CREATE POLICY lifecycle_membership_read ON app.tenant_memberships FOR SELECT TO app_tenant_lifecycle_executor
+ USING (tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
 GRANT EXECUTE ON FUNCTION app.auth_revalidate_tenant(uuid,uuid,text,uuid,text),app.auth_role_scopes(text) TO app_tenant_lifecycle_executor;
 
 INSERT INTO app.tenant_lifecycles(tenant_id,id,state,completed_at)
