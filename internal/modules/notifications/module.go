@@ -22,3 +22,13 @@ type Fake = service.Fake
 type AmbiguousError = service.AmbiguousError
 
 func SenderFromEnv(get func(string) string) (Sender, error) { return service.SenderFromEnv(get) }
+
+// ExternalTestSenderFromEnv is composed only by cmd/smtp-external-test.
+func ExternalTestSenderFromEnv(get func(string) string) (Sender, error) {
+	return service.ExternalTestSenderFromEnv(get)
+}
+
+// RenderTestNotification uses the worker's actual fixed notification templates.
+func RenderTestNotification(event, recipient, kind string) (Message, error) {
+	return service.Render(event, recipient, "en", kind, "FAKE-SMTP-TEST")
+}

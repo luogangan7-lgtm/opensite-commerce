@@ -56,8 +56,16 @@ func SenderFromEnv(get func(string) string) (contract.Sender, error) {
 }
 
 func MIME(m contract.Message) ([]byte, error) {
+	if !validTestRecipient(m.Recipient) {
+		return nil, errors.New("NOTIFICATION_INVALID_ENVELOPE")
+	}
+	return mimeEnvelope(m, "notifications@safe.test")
+}
+
+// mimeEnvelope shares encoding only; each transport owns destination admission.
+func mimeEnvelope(m contract.Message, from string) ([]byte, error) {
 	key, e := hex.DecodeString(m.Key)
-	if e != nil || len(key) != 32 || len(m.Subject) > 256 || strings.ContainsAny(m.Subject, "\r\n") || !validTestRecipient(m.Recipient) || len(m.Text) > 65536 || len(m.HTML) > 65536 {
+	if e != nil || len(key) != 32 || len(m.Subject) > 256 || strings.ContainsAny(m.Subject, "\r\n") || (!ValidRecipient(m.Recipient) || !ValidRecipient(from)) || len(m.Text) > 65536 || len(m.HTML) > 65536 {
 		return nil, errors.New("NOTIFICATION_INVALID_ENVELOPE")
 	}
 	var body bytes.Buffer
@@ -81,7 +89,7 @@ func MIME(m contract.Message) ([]byte, error) {
 	if e = mw.Close(); e != nil {
 		return nil, e
 	}
-	header := fmt.Sprintf("From: notifications@safe.test\r\nTo: %s\r\nSubject: %s\r\nMessage-ID: <%s@notifications.safe.test>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=%q\r\n\r\n", m.Recipient, mime.QEncoding.Encode("utf-8", m.Subject), m.Key, mw.Boundary())
+	header := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMessage-ID: <%s@notifications.safe.test>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=%q\r\n\r\n", from, m.Recipient, mime.QEncoding.Encode("utf-8", m.Subject), m.Key, mw.Boundary())
 	return append([]byte(header), body.Bytes()...), nil
 }
 func (s *SMTP) Send(ctx context.Context, m contract.Message) error {

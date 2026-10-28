@@ -6,11 +6,17 @@ from pathlib import Path
 import json
 import re
 import subprocess
+import tempfile
+import sys
+from unittest.mock import patch
 import unittest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 LANES = {'go', 'offline', 'pg', 'pgx', 'sqlc'}
+sys.path.insert(0, str(ROOT / 'scripts'))
+from check_modules import go_imports
+
 
 # A wall-clock bound is a numeric literal or a variable holding one; `sudo` may
 # sit between `timeout` and the command (literal or the SUDO=(sudo) array).
@@ -36,6 +42,182 @@ def unbounded_apt_calls(body):
 
 
 class FoundationLanes(unittest.TestCase):
+    def test_external_smtp_workflow_is_owner_gated(self):
+        path = ROOT / '.github/workflows/smtp-external-test.yml'
+        self.assertTrue(path.is_file(), 'SMTP_EXTERNAL_WORKFLOW_REQUIRED')
+        document = yaml.safe_load(path.read_text())
+        # PyYAML YAML 1.1 reads the unquoted key `on` as True.
+        self.assertEqual(document.get('on', document.get(True)), {'workflow_dispatch': None},
+                         'SMTP_EXTERNAL_DISPATCH_ONLY')
+        self.assertEqual(document['permissions'], {'contents': 'read'})
+        self.assertEqual(set(document['jobs']), {'smtp-test'})
+        job = document['jobs']['smtp-test']
+        self.assertEqual(job['environment'], 'smtp-test')
+        self.assertEqual(job['if'], "github.ref == 'refs/heads/main'")
+        self.assertLessEqual(job['timeout-minutes'], 5)
+        consumer = job['steps'][-1]
+        self.assertEqual(consumer['run'], '\"$RUNNER_TEMP/smtp-external-test\"')
+        expected = {'SMTP_TEST_HOST', 'SMTP_TEST_PORT', 'SMTP_TEST_FROM',
+                    'SMTP_TEST_USER', 'SMTP_TEST_AUTH_CODE', 'SMTP_TEST_TO'}
+        self.assertEqual(set(consumer['env']), expected | {'APP_ENV', 'ENVIRONMENT'})
+        self.assertEqual(consumer['env']['APP_ENV'], 'test')
+        self.assertEqual(consumer['env']['ENVIRONMENT'], 'test')
+        for key in expected:
+            secret = 'SMTP_TEST_USER' if key == 'SMTP_TEST_FROM' else key
+            self.assertRegex(consumer['env'][key],
+                             r"^\$\{\{\s*secrets(?:\." + secret +
+                             r"|\[\s*'" + secret + r"'\s*\]|\[\s*\"" + secret +
+                             r"\"\s*\])\s*\}\}$")
+        # Exempt a single structural path, not object identity: YAML aliases may
+        # reuse the same mapping in another step and must still be rejected.
+        consumer_env = ('jobs', 'smtp-test', 'steps', len(job['steps']) - 1, 'env')
+        def reject_test_references(value, location=(), permitted=None):
+            if location == permitted:
+                return
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    reject_test_references(key, location, permitted)
+                    reject_test_references(item, location + (key,), permitted)
+            elif isinstance(value, list):
+                for index, item in enumerate(value):
+                    reject_test_references(item, location + (index,), permitted)
+            elif isinstance(value, str):
+                self.assertIsNone(re.search(r'SMTP_TEST_', value, re.I),
+                                  'SMTP_EXTERNAL_SECRET_ISOLATION')
+        reject_test_references(document, permitted=consumer_env)
+        for other in (ROOT / '.github/workflows').glob('*'):
+            if other != path and other.suffix in ('.yml', '.yaml'):
+                reject_test_references(yaml.safe_load(other.read_text()))
+
+    def test_production_never_composes_external_smtp(self):
+        symbol = 'ExternalTestSenderFromEnv'
+        constructors = {
+            Path('internal/modules/notifications/module.go'),
+            Path('internal/modules/notifications/internal/service/smtp_external.go'),
+        }
+        for source in ROOT.rglob('*.go'):
+            relative = source.relative_to(ROOT)
+            if source.name.endswith('_test.go') or any(
+                    part in {'.git', 'node_modules', '.orchestrator', '.worktrees', '.work'}
+                    for part in relative.parts):
+                continue
+            tokens, _ = go_imports(source.read_text())
+            cursor = 0
+            while cursor < len(tokens):
+                # Exempt named constructor declarations, never their entire file.
+                # The isolated smoke command is the sole permitted caller.
+                allowed = ((relative in constructors and tokens[cursor:cursor + 2] == ['func', symbol]) or
+                           (relative == Path('cmd/smtp-external-test/main.go') and
+                            tokens[cursor:cursor + 2] == ['func', 'run']))
+                if allowed:
+                    while cursor < len(tokens) and tokens[cursor] != '{':
+                        cursor += 1
+                    depth = 1
+                    cursor += 1
+                    while cursor < len(tokens) and depth:
+                        depth += {'{': 1, '}': -1}.get(tokens[cursor], 0)
+                        cursor += 1
+                    self.assertEqual(depth, 0, 'SMTP_EXTERNAL_CONSTRUCTOR_INVALID')
+                    continue
+                self.assertNotEqual(tokens[cursor], symbol, 'SMTP_EXTERNAL_PRODUCTION_WIRING: ' + str(relative))
+                cursor += 1
+
+    def smtp_workflow_fixture(self, root):
+        path = root / '.github/workflows/smtp-external-test.yml'
+        path.parent.mkdir(parents=True)
+        document = yaml.safe_load((ROOT / '.github/workflows/smtp-external-test.yml').read_text())
+        consumer = document['jobs']['smtp-test']['steps'][-1]
+        for key in ('SMTP_TEST_HOST', 'SMTP_TEST_PORT'):
+            consumer['env'][key] = '${{ secrets.' + key + ' }}'
+        return path, document
+
+    def test_external_secret_gate_negative_fixtures(self):
+        # Exercise the actual gate with each expression spelling at every scope.
+        forms = ("secrets.SMTP_TEST_AUTH_CODE", "secrets['SMTP_TEST_AUTH_CODE']",
+                 'secrets["SMTP_TEST_AUTH_CODE"]')
+        for form in forms:
+            for scope in ('workflow-env', 'job-env', 'step-env', 'step-run',
+                          'job-if', 'consumer-run', 'other-workflow'):
+                with self.subTest(form=form, scope=scope), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    path, document = self.smtp_workflow_fixture(root)
+                    job = document['jobs']['smtp-test']
+                    expression = '${{ ' + form + ' }}'
+                    if scope == 'workflow-env':
+                        document['env'] = {'ALIAS': expression}
+                    elif scope == 'job-env':
+                        job['env'] = {'ALIAS': expression}
+                    elif scope == 'step-env':
+                        job['steps'].insert(-1, {'env': {'ALIAS': expression}, 'run': 'echo "$ALIAS"'})
+                    elif scope == 'step-run':
+                        job['steps'].insert(-1, {'run': 'echo ' + expression})
+                    elif scope == 'job-if':
+                        job['if'] += ' && ' + expression
+                    elif scope == 'consumer-run':
+                        job['steps'][-1]['run'] += ' ' + expression
+                    else:
+                        (path.parent / 'leak.yaml').write_text(yaml.safe_dump({'env': {'ALIAS': expression}}))
+                    path.write_text(yaml.safe_dump(document))
+                    with patch.dict(globals(), ROOT=root), self.assertRaises(AssertionError):
+                        self.test_external_smtp_workflow_is_owner_gated()
+        for reference in ('env.SMTP_TEST_AUTH_CODE', "env['SMTP_TEST_AUTH_CODE']",
+                          'env["SMTP_TEST_AUTH_CODE"]'):
+            with self.subTest(reference=reference), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                path, document = self.smtp_workflow_fixture(root)
+                document['jobs']['smtp-test']['steps'].insert(-1, {'run': 'echo ${{ ' + reference + ' }}'})
+                path.write_text(yaml.safe_dump(document))
+                with patch.dict(globals(), ROOT=root), self.assertRaises(AssertionError):
+                    self.test_external_smtp_workflow_is_owner_gated()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path, document = self.smtp_workflow_fixture(root)
+            steps = document['jobs']['smtp-test']['steps']
+            # safe_dump retains this shared mapping as a YAML anchor/alias.
+            steps.insert(-1, {'env': steps[-1]['env'], 'run': 'echo "$SMTP_TEST_USER"'})
+            path.write_text(yaml.safe_dump(document))
+            with patch.dict(globals(), ROOT=root), self.assertRaises(AssertionError):
+                self.test_external_smtp_workflow_is_owner_gated()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path, document = self.smtp_workflow_fixture(root)
+            # Positive control: bracket references are legal in the sole env consumer.
+            for key in document['jobs']['smtp-test']['steps'][-1]['env']:
+                if key.startswith('SMTP_TEST_'):
+                    secret = 'SMTP_TEST_USER' if key == 'SMTP_TEST_FROM' else key
+                    document['jobs']['smtp-test']['steps'][-1]['env'][key] = "${{ secrets['" + secret + "'] }}"
+            path.write_text(yaml.safe_dump(document))
+            with patch.dict(globals(), ROOT=root):
+                self.test_external_smtp_workflow_is_owner_gated()
+
+    def test_external_composition_gate_negative_fixtures(self):
+        paths = ('cmd/worker/leak.go', 'cmd/api/leak.go', 'cmd/new-entry/leak.go',
+                 'internal/bootstrap/leak.go', 'internal/modules/notifications/leak.go',
+                 'internal/modules/notifications/module.go',
+                 'internal/modules/notifications/internal/service/smtp_external.go',
+                 'internal/other/leak.go', 'new-package/leak.go',
+                 'cmd/smtp-external-test/main.go')
+        for relative in paths:
+            for use in ('notifications.ExternalTestSenderFromEnv(nil)',
+                        'factory := notifications.ExternalTestSenderFromEnv; _ = factory'):
+                with self.subTest(path=relative, use=use), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    path = root / relative
+                    path.parent.mkdir(parents=True)
+                    # A permitted declaration must not exempt sibling functions.
+                    declaration = 'func ExternalTestSenderFromEnv() {}\n'
+                    path.write_text('package example\n' + declaration + 'func leak() { ' + use + ' }\n')
+                    with patch.dict(globals(), ROOT=root), self.assertRaises(AssertionError):
+                        self.test_production_never_composes_external_smtp()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in paths[5:7]:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text((ROOT / relative).read_text())
+            with patch.dict(globals(), ROOT=root):
+                self.test_production_never_composes_external_smtp()
+
     def test_existing_gate_inventory_and_fixture_order(self):
         parts = yaml.safe_load((ROOT / '.github/workflows/checks.yml').read_text())['jobs']['foundation-lane']
         steps = parts['steps']

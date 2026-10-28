@@ -45,7 +45,85 @@ type stripeDelivery struct {
 	status                             int
 }
 
+type stripeEventState struct {
+	inbox, events, applied int
+}
+
+// Read committed evidence; HTTP admission alone does not prove application.
+func waitStripeEvent(ctx context.Context, read func(context.Context) (stripeEventState, error)) (stripeEventState, error) {
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	var state stripeEventState
+	for {
+		if err := ctx.Err(); err != nil {
+			return state, err
+		}
+		next, err := read(ctx)
+		if err != nil {
+			return state, err
+		}
+		state = next
+		if state.inbox == 1 && state.events == 1 && state.applied == 1 {
+			return state, nil
+		}
+		if state.inbox > 1 || state.events > 1 || state.applied > 1 {
+			return state, errors.New("duplicate event persistence evidence")
+		}
+		select {
+		case <-ctx.Done():
+			return state, ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func testStripeEventWait(t *testing.T) {
+	t.Run("waits_for_application", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		states := []stripeEventState{{}, {inbox: 1}, {inbox: 1, events: 1}, {inbox: 1, events: 1, applied: 1}}
+		reads := 0
+		got, err := waitStripeEvent(ctx, func(context.Context) (stripeEventState, error) {
+			state := states[min(reads, len(states)-1)]
+			reads++
+			return state, nil
+		})
+		if err != nil || got != states[len(states)-1] || reads != len(states) {
+			t.Fatalf("FIX433_APPLICATION_WAIT_RED: state=%+v reads=%d error=%v", got, reads, err)
+		}
+	})
+	for _, state := range []stripeEventState{{}, {inbox: 1}, {inbox: 1, events: 1}} {
+		t.Run(fmt.Sprintf("deadline_%d_%d_%d", state.inbox, state.events, state.applied), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			got, err := waitStripeEvent(ctx, func(context.Context) (stripeEventState, error) { return state, nil })
+			if !errors.Is(err, context.DeadlineExceeded) || got != state {
+				t.Fatalf("FIX433_DEADLINE_RED: state=%+v error=%v", got, err)
+			}
+		})
+	}
+	t.Run("read_error", func(t *testing.T) {
+		unavailable := errors.New("evidence unavailable")
+		_, err := waitStripeEvent(context.Background(), func(context.Context) (stripeEventState, error) {
+			return stripeEventState{}, unavailable
+		})
+		if !errors.Is(err, unavailable) {
+			t.Fatalf("query failure hidden: %v", err)
+		}
+	})
+	t.Run("duplicate_evidence", func(t *testing.T) {
+		state := stripeEventState{inbox: 2, events: 2, applied: 2}
+		got, err := waitStripeEvent(context.Background(), func(context.Context) (stripeEventState, error) { return state, nil })
+		if err == nil || got != state {
+			t.Fatalf("duplicate evidence admitted: state=%+v error=%v", got, err)
+		}
+	})
+}
+
 func TestStripeSandboxLifecycle(t *testing.T) {
+	if !t.Run("event_persistence_wait", testStripeEventWait) {
+		t.Fatal("event persistence wait regression")
+	}
 	if !strings.HasPrefix(os.Getenv("STRIPE_TEST_SECRET_KEY"), "sk_test_") {
 		t.Fatal("FAIL: no test secret; this explicit CI gate cannot skip")
 	}
@@ -185,12 +263,21 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	}
 	assertEvent := func(id string) {
 		t.Helper()
-		var inbox, events, applied int
-		err := f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
-			return tx.QueryRow(ctx, `SELECT count(*),count(e.id),count(*) FILTER(WHERE e.applied) FROM app.webhook_inbox i LEFT JOIN app.payment_events e ON (e.tenant_id,e.id)=(i.tenant_id,i.id) WHERE i.tenant_id=$1 AND i.provider='stripe' AND i.provider_event_id=$2`, f.tenant, id).Scan(&inbox, &events, &applied)
+		waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		state, err := waitStripeEvent(waitCtx, func(ctx context.Context) (stripeEventState, error) {
+			var state stripeEventState
+			err := f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, `SELECT count(*),count(e.id),count(*) FILTER(WHERE e.applied)
+ FROM app.webhook_inbox i
+ LEFT JOIN app.payment_event_deliveries d ON (d.tenant_id,d.id)=(i.tenant_id,i.id)
+ LEFT JOIN app.payment_events e ON (e.tenant_id,e.id)=(d.tenant_id,d.payment_event_id)
+ WHERE i.tenant_id=$1 AND i.provider='stripe' AND i.provider_event_id=$2`, f.tenant, id).Scan(&state.inbox, &state.events, &state.applied)
+			})
+			return state, err
 		})
-		if err != nil || inbox != 1 || events != 1 || applied != 1 {
-			t.Fatalf("event persistence inbox=%d events=%d applied=%d error=%v", inbox, events, applied, err)
+		if err != nil || state.inbox != 1 || state.events != 1 || state.applied != 1 {
+			t.Fatalf("event persistence inbox=%d events=%d applied=%d error=%v", state.inbox, state.events, state.applied, err)
 		}
 	}
 	start := f.start(t)
@@ -318,6 +405,29 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 			t.Fatal("refund duplicate rejected")
 		}
 		assertEvent(refund.id)
+		if i == 0 {
+			// Deterministic read-side fixture for the alternate delivery order:
+			// another Inbox ID refers to the same real, already applied refund.
+			// This is not a signed provider fact and creates no financial rows.
+			alias := "FIX433_test_only_alias"
+			err := f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+				var inbox, event string
+				if err := tx.QueryRow(ctx, `INSERT INTO app.webhook_inbox(tenant_id,provider,provider_account_id,environment,provider_event_id,payload_hash,payload_reference,status,processed_at)
+ SELECT tenant_id,provider,provider_account_id,environment,$3,payload_hash,'test-only alias fixture',status,processed_at
+ FROM app.webhook_inbox WHERE tenant_id=$1 AND provider='stripe' AND provider_event_id=$2 RETURNING id::text`, f.tenant, refund.id, alias).Scan(&inbox); err != nil {
+					return err
+				}
+				if err := tx.QueryRow(ctx, `SELECT d.payment_event_id::text FROM app.payment_event_deliveries d JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(d.tenant_id,d.id) WHERE i.tenant_id=$1 AND i.provider='stripe' AND i.provider_event_id=$2`, f.tenant, refund.id).Scan(&event); err != nil {
+					return err
+				}
+				_, err := tx.Exec(ctx, `INSERT INTO app.payment_event_deliveries(tenant_id,id,payment_event_id) VALUES($1,$2,$3)`, f.tenant, inbox, event)
+				return err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertEvent(alias)
+		}
 		refunds = append(refunds, refund)
 		total += completed.RefundMinor
 		if i == 0 && total >= start.AmountMinor {
