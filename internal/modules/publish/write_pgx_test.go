@@ -309,21 +309,26 @@ func TestCMSWritePublishRestorePG(t *testing.T) {
 // to pin a deterministic READ COMMITTED interleaving inside the facade's TX.
 type publishHookTx struct {
 	pgx.Tx
-	before func()
+	before        func()
+	beforeServing func()
 }
 
 func (h publishHookTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	if h.before != nil && strings.Contains(sql, "cms_publish(") {
 		h.before()
 	}
+	if h.beforeServing != nil && strings.Contains(sql, "cms_seal_skus(") {
+		h.beforeServing()
+	}
 	return h.Tx.QueryRow(ctx, sql, args...)
 }
 
 type cmsPG struct {
-	admin        pgxadapter.Runner
-	m            *publish.WriteModule
-	tenant, site string
-	beforeSeal   func()
+	admin             pgxadapter.Runner
+	m                 *publish.WriteModule
+	tenant, site      string
+	beforeSeal        func()
+	beforeServingSeal func()
 }
 
 // newCMSPG seeds a fresh tenant/site plus extra maintenance SQL ($1 tenant, $2 site).
@@ -369,7 +374,13 @@ func newCMSPG(t *testing.T, ctx context.Context, seed ...string) *cmsPG {
 			if err := role(ctx, tx); err != nil {
 				return err
 			}
-			return fn(ctx, publishHookTx{Tx: tx, before: func() {
+			return fn(ctx, publishHookTx{Tx: tx, beforeServing: func() {
+				if f.beforeServingSeal != nil {
+					hook := f.beforeServingSeal
+					f.beforeServingSeal = nil
+					hook()
+				}
+			}, before: func() {
 				if f.beforeSeal != nil {
 					hook := f.beforeSeal
 					f.beforeSeal = nil

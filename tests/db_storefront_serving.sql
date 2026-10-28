@@ -110,5 +110,24 @@ DO $price_invalidation$ BEGIN
   OR (SELECT serving_generation FROM app.storefront_serving WHERE tenant_id=current_setting('test.tenant')::uuid)<>1 THEN
   RAISE EXCEPTION 'STAFF_PRICING_GATE serving invalidation'; END IF;
 END $price_invalidation$;
+-- G15: changing a price-entry SKU invalidates both sides, once per site.
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status)
+ VALUES(:'tenant',:'product','SKU-2','b','ready') RETURNING id AS sku2 \gset
+INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'tenant',:'org','SKU2') RETURNING id AS site2 \gset
+INSERT INTO app.site_releases(tenant_id,site_id,release_no,renderer_build_id,manifest,manifest_hash)
+ VALUES(:'tenant',:'site2',1,'t','{}',sha256('{}'::bytea)) RETURNING id AS rel2 \gset
+INSERT INTO app.site_release_skus(tenant_id,site_id,release_id,product_id,sku_id,ordinal,sku_code,option_values)
+ VALUES(:'tenant',:'site2',:'rel2',:'product',:'sku2',0,'SKU-2','[]');
+INSERT INTO app.storefront_serving(tenant_id,site_id,release_id,publication_revision,serving_generation,body,fallback_body,body_sha256,fallback_sha256,valid_until,built_at)
+ VALUES(:'tenant',:'site2',:'rel2',1,1,'{}','{}',sha256('{}'::bytea),sha256('{}'::bytea),now()+interval '1 minute',now());
+INSERT INTO app.price_lists(tenant_id,currency,starts_at) VALUES(:'tenant','USD',now()) RETURNING id AS list2 \gset
+INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) VALUES(:'tenant',:'list2',:'sku',1,111);
+DELETE FROM app.serving_invalidations WHERE tenant_id=:'tenant';
+UPDATE app.price_entries SET sku_id=:'sku2' WHERE tenant_id=:'tenant' AND price_list_id=:'list2';
+DO $both$ BEGIN
+ IF (SELECT count(*) FROM app.serving_invalidations WHERE tenant_id=current_setting('test.tenant')::uuid AND reason='price_entry')<>2
+  OR (SELECT count(DISTINCT site_id) FROM app.serving_invalidations WHERE tenant_id=current_setting('test.tenant')::uuid AND reason='price_entry')<>2 THEN
+  RAISE EXCEPTION 'PRICE_ENTRY_OLD_NEW_INVALIDATION'; END IF;
+END $both$;
 ROLLBACK;
 SELECT 'PASS: storefront serving write-once SKUs, CAS, anonymous scope' AS result;

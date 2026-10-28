@@ -11,14 +11,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/internal/store"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"github.com/jackc/pgx/v5"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/datarights/internal/store"
 	"time"
 )
 
@@ -72,6 +72,13 @@ func (s *Service) write(tenant, id string, b []byte) error {
 			return contract.ErrUnavailable
 		}
 	}
+	// Persist both directory entries before publishing a file in the tenant
+	// directory. Repeat on retries: a previous creation may have outlived fsync.
+	for _, dir := range []string{".", "data-rights"} {
+		if e = s.syncDirectory(r, dir); e != nil {
+			return e
+		}
+	}
 	tmp := p + "." + uuid.NewString() + ".tmp"
 	f, e := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if e != nil {
@@ -91,7 +98,13 @@ func (s *Service) write(tenant, id string, b []byte) error {
 	if e = r.Rename(tmp, p); e != nil {
 		return e
 	}
-	d, e := r.Open(filepath.Dir(p))
+	return s.syncDirectory(r, filepath.Dir(p))
+}
+func (s *Service) syncDirectory(r *os.Root, path string) error {
+	if s.syncDir != nil {
+		return s.syncDir(r, path)
+	}
+	d, e := r.Open(path)
 	if e != nil {
 		return e
 	}

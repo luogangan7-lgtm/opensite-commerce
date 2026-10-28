@@ -27,3 +27,22 @@ func TestStaffContentAdmission(t *testing.T) {
 		})
 	}
 }
+
+// A final transport commit cannot acquire Cache-Control retroactively.
+func TestStaffContentRejectsLateHeader(t *testing.T) {
+	for _, late := range []bool{false, true} {
+		h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if !late {
+				w.Header().Set("Cache-Control", "no-store")
+			}
+			w.WriteHeader(http.StatusServiceUnavailable)
+			if late {
+				w.Header().Set("Cache-Control", "no-store")
+			}
+		})
+		rr := httpRequest(h, http.MethodGet, "/", "", "")
+		if got := rr.Header().Get("Cache-Control") == "no-store"; got == late {
+			t.Fatalf("CATALOG_SENT_HEADER_RED: late=%v accepted=%v", late, got)
+		}
+	}
+}

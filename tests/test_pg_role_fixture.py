@@ -28,6 +28,11 @@ FAIL_FIXTURES = (
     'raw_string_test.go',     # `CREATE ROLE x`
     'split_keyword_test.go',  # raw newline/tab between keywords
     'escape_split_test.go',   # "REVOKE x\nFROM y"
+    'const_omitted_list_test.go',  # omitted two-name list broadcast the last expression
+    'const_omitted_three_test.go',  # omitted three-name list binds by index
+    'const_omitted_twice_test.go',  # two consecutive omitted lists repeat the full list
+    'const_omitted_cross_file_test.go',  # omitted list declared in another package file
+    'func_const_omitted_list_test.go',   # omitted list inside a function body
 )
 
 

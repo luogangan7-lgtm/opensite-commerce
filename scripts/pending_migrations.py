@@ -12,6 +12,9 @@ contiguous 001..N; order = sorted stable-id, overridden only by explicit
 or names fail closed (exit 2) before anything is written. Every pending file
 starts with `-- stable-id: <id>`; land is a byte-identical move, so the header
 lets depends-on lines resolve after their target landed and keeps checksums.
+`find-stable-id <id> [root]` locates one migration by that header across both
+layouts (pending/ or numbered), so callers keep working before and after C-22a
+is formally landed; a missing or duplicated id fails closed with exit 2.
 """
 import re
 import shutil
@@ -50,6 +53,30 @@ def landed_ids(files):
         if match:
             ids.add(match[1])
     return ids
+
+
+def find_stable_id(root, stable_id):
+    """The file carrying `-- stable-id: <stable_id>`, pending or landed.
+
+    Landing is a byte-identical move from pending/<id>_<name>.sql to
+    migrations/<NNN>_<name>.sql, so the stable-id header is the only stable
+    handle. Both layouts are scanned; a duplicate fails closed.
+    """
+    directory = root / "migrations"
+    candidates = sorted(directory.glob("[0-9][0-9][0-9]_*.sql"))
+    pending = directory / "pending"
+    if pending.is_dir():
+        candidates += sorted(pending.glob("*.sql"))
+    found = []
+    for path in candidates:
+        with path.open() as handle:
+            match = STABLE_ID.fullmatch(handle.readline())
+        if match and match[1] == stable_id:
+            found.append(path)
+    if len(found) > 1:
+        raise PendingError(
+            f"Duplicate stable-id {stable_id}: {', '.join(path.name for path in found)}")
+    return found[0] if found else None
 
 
 def ordered_pending(root):
@@ -136,13 +163,22 @@ def main(argv):
             materialize(ROOT, Path(argv[1]))
         elif argv[:1] == ["land"] and len(argv) == 2:
             land(ROOT, argv[1])
+        elif argv[:1] == ["find-stable-id"] and len(argv) in (2, 3):
+            root = Path(argv[2]).resolve() if len(argv) == 3 else ROOT
+            path = find_stable_id(root, argv[1])
+            if path is None:
+                print(f"PENDING_MIGRATION_INVALID: no migration carries stable-id {argv[1]}",
+                      file=sys.stderr)
+                return 2
+            print(path.resolve())
         elif argv[:1] == ["ci-normalize"] and len(argv) == 1:
             # Ephemeral CI checkout only: land every pending file in order so all
             # gates (which glob migrations/NNN_*.sql) see the final candidate.
             for source, _ in plan(ROOT):
                 land(ROOT, PENDING.fullmatch(source.name)[1])
         else:
-            print("usage: pending_migrations.py order | materialize DIR | land STABLE_ID | ci-normalize", file=sys.stderr)
+            print("usage: pending_migrations.py order | materialize DIR | land STABLE_ID | "
+                  "find-stable-id STABLE_ID [ROOT] | ci-normalize", file=sys.stderr)
             return 64
     except PendingError as error:
         print(f"PENDING_MIGRATION_INVALID: {error}", file=sys.stderr)

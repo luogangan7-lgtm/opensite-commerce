@@ -38,7 +38,7 @@ func allowedMIME(s string) bool {
 	}
 	return false
 }
-func dimensions(w, h int) bool { return w > 0 && h > 0 && int64(w)*int64(h) <= maxPixels }
+func dimensions(w, h int) bool { return w > 0 && h > 0 && w <= maxPixels/h }
 func inspect(b []byte, declared string) (string, int, int, error) {
 	bad := func() (string, int, int, error) {
 		return "", 0, 0, apperrors.New(415, "invalid_media", "Content is not a supported valid image")

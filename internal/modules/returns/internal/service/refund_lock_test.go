@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -73,18 +73,34 @@ func TestRefundLockFailurePreservesPendingWithoutFinalization(t *testing.T) {
 }
 
 // Errors originate in the trusted Payments posting port after PSP success.
-type postingFailureLedger struct { *ledgerFake; cause error; atLock bool }
+type postingFailureLedger struct {
+	*ledgerFake
+	cause  error
+	atLock bool
+}
+
 func (l *postingFailureLedger) LockReturnCheckout(context.Context, pgx.Tx, string) error {
-	if l.atLock { err := l.cause; l.cause = nil; return err }
+	if l.atLock {
+		err := l.cause
+		l.cause = nil
+		return err
+	}
 	return nil
 }
 func (l *postingFailureLedger) PostReturnRefund(ctx context.Context, tx pgx.Tx, _ string, _ string, _ string, in ledger.Transaction) (string, error) {
-	if l.cause != nil { err := l.cause; l.cause = nil; return "", err }
+	if l.cause != nil {
+		err := l.cause
+		l.cause = nil
+		return "", err
+	}
 	return l.Post(ctx, tx, in)
 }
 func TestRefundPostingErrorContractAndSameKeyRecovery(t *testing.T) {
 	for _, atLock := range []bool{false, true} {
-		for _, tt := range []struct { name string; cause, want error }{
+		for _, tt := range []struct {
+			name        string
+			cause, want error
+		}{
 			{"serialization", &pgxadapter.PgError{Code: "40001"}, contract.ErrRetry},
 			{"deadlock", &pgxadapter.PgError{Code: "40P01"}, contract.ErrRetry},
 			{"account", &pgxadapter.PgError{Code: "23514", Message: "FULFILLMENT_LEDGER_ACCOUNT_CONFIG"}, contract.ErrUnavailable},
@@ -98,13 +114,21 @@ func TestRefundPostingErrorContractAndSameKeyRecovery(t *testing.T) {
 				s.config.Ledger = &postingFailureLedger{ledgerFake: l, cause: fmt.Errorf("trusted posting: %w", tt.cause), atLock: atLock}
 				in := contract.RefundInput{ReturnID: returnID, ExpectedVersion: 4, IdempotencyKey: "posting-recovery"}
 				out, err := s.Refund(context.Background(), tenantID, in)
-				if !errors.Is(err, tt.want) || out.ID != "" { t.Errorf("RETURNS_POSTING_STATUS_RED: out=%+v err=%v want=%v", out, err, tt.want) }
-				if !r.pending || r.completed || r.completes != 0 || runner.commits != 1 || len(p.Events()) != 3 || l.calls != 0 { t.Fatal("posting failure lost prepared intent or finalized effects") }
+				if !errors.Is(err, tt.want) || out.ID != "" {
+					t.Errorf("RETURNS_POSTING_STATUS_RED: out=%+v err=%v want=%v", out, err, tt.want)
+				}
+				if !r.pending || r.completed || r.completes != 0 || runner.commits != 1 || len(p.Events()) != 3 || l.calls != 0 {
+					t.Fatal("posting failure lost prepared intent or finalized effects")
+				}
 				frozen := r.prepared
 				c.fail, a.fail = true, true
 				out, err = s.Refund(context.Background(), tenantID, in)
-				if err != nil || out.Status != "refunded" || r.prepares != 1 || c.calls != 1 || a.calls != 1 || len(p.Events()) != 3 || l.calls != 1 || !sameIntent(frozen, r.prepared) { t.Fatalf("same-key recovery changed frozen money: %+v %v", out, err) }
-				if _, err := s.Refund(context.Background(), tenantID, in); err != nil || l.calls != 1 || len(p.Events()) != 3 { t.Fatalf("completed replay repeated money: %v", err) }
+				if err != nil || out.Status != "refunded" || r.prepares != 1 || c.calls != 1 || a.calls != 1 || len(p.Events()) != 3 || l.calls != 1 || !sameIntent(frozen, r.prepared) {
+					t.Fatalf("same-key recovery changed frozen money: %+v %v", out, err)
+				}
+				if _, err := s.Refund(context.Background(), tenantID, in); err != nil || l.calls != 1 || len(p.Events()) != 3 {
+					t.Fatalf("completed replay repeated money: %v", err)
+				}
 			})
 		}
 	}

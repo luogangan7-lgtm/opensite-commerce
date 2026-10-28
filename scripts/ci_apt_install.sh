@@ -7,14 +7,41 @@
 # Called by: .github/workflows/checks.yml, stripe-sandbox.yml, inventory-race-soak.yml,
 #   checkout-consent.yml, fulfillment-review.yml.
 # Invariants: a no-op when every requested command is already on PATH; every apt
-#   network call has a wall-clock bound; at most 3 attempts; failure is fatal.
+#   network call has a wall-clock bound; the whole install phase has one total
+#   budget that shrinks each attempt and every backoff; failure is fatal.
 set -euo pipefail
 
-UPDATE_TIMEOUT=180
-INSTALL_TIMEOUT=300
-ATTEMPTS=3
-RETRY_BACKOFF=10
+# One total budget below the shortest caller job (20 min) leaves the lane its
+# test time even when update and install both run slowly. The per-attempt caps
+# are still hard bounds; they are clipped to the remaining total on every round.
+TOTAL_BUDGET=${CI_APT_TOTAL_BUDGET:-300}
+UPDATE_TIMEOUT=${CI_APT_UPDATE_TIMEOUT:-180}
+INSTALL_TIMEOUT=${CI_APT_INSTALL_TIMEOUT:-300}
+ATTEMPTS=${CI_APT_ATTEMPTS:-3}
+RETRY_BACKOFF=${CI_APT_RETRY_BACKOFF:-10}
 NO_RECOMMENDS=()
+
+require_positive() {
+  local name=$1 value=$2
+  if ! [[ $value =~ ^[0-9]+$ ]] || [ "$value" -le 0 ]; then
+    echo "FAIL: ci_apt_install: $name must be a positive integer, got '$value'" >&2
+    exit 2
+  fi
+}
+
+require_nonnegative() {
+  local name=$1 value=$2
+  if ! [[ $value =~ ^[0-9]+$ ]]; then
+    echo "FAIL: ci_apt_install: $name must be a non-negative integer, got '$value'" >&2
+    exit 2
+  fi
+}
+
+require_positive CI_APT_TOTAL_BUDGET "$TOTAL_BUDGET"
+require_positive CI_APT_UPDATE_TIMEOUT "$UPDATE_TIMEOUT"
+require_positive CI_APT_INSTALL_TIMEOUT "$INSTALL_TIMEOUT"
+require_positive CI_APT_ATTEMPTS "$ATTEMPTS"
+require_nonnegative CI_APT_RETRY_BACKOFF "$RETRY_BACKOFF"
 
 usage() {
   echo "usage: $0 [--no-install-recommends] <package>..." >&2
@@ -63,20 +90,45 @@ else
   SUDO=(sudo)
 fi
 
+started=$SECONDS
+remaining_budget() {
+  local left=$((TOTAL_BUDGET - (SECONDS - started)))
+  if [ "$left" -lt 0 ]; then left=0; fi
+  printf '%s' "$left"
+}
+
 attempt=1
 while [ "$attempt" -le "$ATTEMPTS" ]; do
-  echo "apt: attempt ${attempt}/${ATTEMPTS}: update + install ${missing[*]}"
-  if timeout "$UPDATE_TIMEOUT" "${SUDO[@]}" apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=20 \
-     && timeout "$INSTALL_TIMEOUT" "${SUDO[@]}" apt-get install -y -qq "${NO_RECOMMENDS[@]}" "${missing[@]}"; then
-    echo "apt: attempt ${attempt}/${ATTEMPTS}: installed ${missing[*]}"
-    exit 0
+  left="$(remaining_budget)"
+  if [ "$left" -le 0 ]; then
+    echo "FAIL: apt: total budget ${TOTAL_BUDGET}s exhausted before attempt ${attempt}" >&2
+    exit 1
+  fi
+  update_budget=$(( left < UPDATE_TIMEOUT ? left : UPDATE_TIMEOUT ))
+  echo "apt: attempt ${attempt}/${ATTEMPTS}: update (<=${update_budget}s) + install, remaining budget ${left}s"
+  if timeout "$update_budget" "${SUDO[@]}" apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=20; then
+    left="$(remaining_budget)"
+    if [ "$left" -gt 0 ]; then
+      install_budget=$(( left < INSTALL_TIMEOUT ? left : INSTALL_TIMEOUT ))
+      if timeout "$install_budget" "${SUDO[@]}" apt-get install -y -qq "${NO_RECOMMENDS[@]}" "${missing[@]}"; then
+        echo "apt: attempt ${attempt}/${ATTEMPTS}: installed ${missing[*]} ($((SECONDS - started))s elapsed)"
+        exit 0
+      fi
+    fi
   fi
   echo "apt: attempt ${attempt}/${ATTEMPTS} failed" >&2
   attempt=$((attempt + 1))
   if [ "$attempt" -le "$ATTEMPTS" ]; then
-    sleep $((RETRY_BACKOFF * (attempt - 1)))
+    left="$(remaining_budget)"
+    if [ "$left" -le 0 ]; then
+      echo "FAIL: apt: total budget ${TOTAL_BUDGET}s exhausted after a failed attempt; not retrying" >&2
+      break
+    fi
+    backoff=$((RETRY_BACKOFF * (attempt - 1)))
+    if [ "$backoff" -gt "$left" ]; then backoff=$left; fi
+    if [ "$backoff" -gt 0 ]; then sleep "$backoff"; fi
   fi
 done
 
-echo "FAIL: apt: could not install ${missing[*]} after ${ATTEMPTS} attempts (update bounded at ${UPDATE_TIMEOUT}s, install at ${INSTALL_TIMEOUT}s). Check the apt mirror or retry the lane." >&2
+echo "FAIL: apt: could not install ${missing[*]} after $((attempt - 1)) attempt(s) within ${TOTAL_BUDGET}s total budget (elapsed $((SECONDS - started))s; update per-attempt <=${UPDATE_TIMEOUT}s, install <=${INSTALL_TIMEOUT}s). Check the apt mirror or retry the lane." >&2
 exit 1

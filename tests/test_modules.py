@@ -304,10 +304,18 @@ class GovernanceTests(unittest.TestCase):
                 self.assert_red("MODULE_TRUSTED_TX")
                 (self.root / name).unlink()
 
+    def test_trusted_tx_call_in_export_review_red(self):
+        for name in ("export_surface_test.go", "reviewed_exports_test.go"):
+            with self.subTest(name=name):
+                self.source("internal/tenanttx/pgxadapter/" + name,
+                            'package pgxadapter\n\nfunc unauthorized() { runner.RunTrustedTx() }\n')
+                self.assert_red("MODULE_TRUSTED_TX")
+                (self.root / "internal/tenanttx/pgxadapter" / name).unlink()
+
     def test_trusted_tx_in_export_review_list_green(self):
         # The #153 export-surface review list must name every adapter export, including this seam.
-        self.source("internal/tenanttx/pgxadapter/export_surface_test.go",
-                    "package pgxadapter\n\nvar reviewed = []string{\"method:QueryRunner.RunTrustedTx\"}\n")
+        self.source("internal/tenanttx/pgxadapter/reviewed_exports_test.go",
+                    "package pgxadapter_test\n\nvar reviewedAdapterExports = []string{\"method:QueryRunner.RunTrustedTx\",}\n")
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -899,6 +907,27 @@ class GovernanceTests(unittest.TestCase):
                     'func Open() *Runner { var pool *pgxpool.Pool; return &Runner{pool: pool} }\n')
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_auth_exports_exact_callers_red(self):
+        # Names, calls, method values and sibling/nested/test paths all carry capability.
+        for symbol in ("OpenAuthorization", "OpenStaffAuthentication", "RunAuthentication"):
+            for path in ("internal/bridge/auth.go", "internal/bridge/auth_test.go",
+                         "internal/modules/identity/internal/store/nested/auth.go",
+                         "internal/modules/tenant/internal/store/auth_extra.go"):
+                for expression in (f"adapter.{symbol}()", f"adapter.{symbol}"):
+                    with self.subTest(symbol=symbol, path=path, expression=expression):
+                        with self.assertRaisesRegex(checker.GovernanceError, "MODULE_AUTH_CALLER"):
+                            checker.check_maintenance(f"package bridge\nvar X = {expression}\n", Path(path))
+
+    def test_auth_exports_reviewed_callers_green(self):
+        for path, symbols in {
+            "internal/modules/identity/internal/store/login.go": ("OpenStaffAuthentication", "RunAuthentication"),
+            "internal/modules/tenant/internal/store/auth.go": ("OpenAuthorization", "RunAuthentication"),
+            "internal/tenanttx/pgxadapter/identity.go": ("OpenAuthorization", "OpenStaffAuthentication", "RunAuthentication"),
+            "internal/tenanttx/pgxadapter/export_surface_test.go": ("OpenAuthorization", "OpenStaffAuthentication", "RunAuthentication"),
+        }.items():
+            for symbol in symbols:
+                checker.check_maintenance(f"package store\nvar X = adapter.{symbol}\n", Path(path))
 
     def test_h2_maintenance_reference_red(self):
         self.registry["modules"].append(module("identity"))
