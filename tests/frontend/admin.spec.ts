@@ -14,7 +14,7 @@ test.afterAll(async({},testInfo)=>{
  const present=requiredNotificationSnapshots.filter(path=>!path.startsWith(prefix)||existsSync(`tests/frontend/baselines/${path}`));
  expect(missingNotificationSnapshots(present),'Required #366 desktop/mobile PNGs must exist').toEqual([]);
 });
-async function audit(page:Page,name?:string){await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));});expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);if(name&&snapshots)await expect(page).toHaveScreenshot(name,{fullPage:true});}
+async function audit(page:Page,name?:string,beforeScreenshot?:()=>Promise<void>){await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));});expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);if(beforeScreenshot)await beforeScreenshot();if(name&&snapshots)await expect(page).toHaveScreenshot(name,{fullPage:true});}
 // Hold one routed API response until its loading UI has been captured; no backend/time changes.
 async function holdResponse(page:Page,url:string){
  let release!:()=>void,started!:()=>void;
@@ -34,8 +34,8 @@ async function statusFitsVisibleTable(page:Page,caption:string,text:string){
  for(const rect of fragments){expect(rect.left).toBeGreaterThanOrEqual(region.x);expect(rect.right).toBeLessThanOrEqual(region.x+region.width);}
 }
 // Visibility of the element alone misses text overflowing its cell or scroll region.
-async function fullTextFitsVisibleCell(element:Locator){
- await element.scrollIntoViewIfNeeded();
+async function fullTextFitsVisibleCell(element:Locator,scrollIntoView=true){
+ if(scrollIntoView)await element.scrollIntoViewIfNeeded();
  const geometry=await element.evaluate(el=>{
   const cell=el.closest('td'),region=el.closest('.os-table-scroll');
   if(!cell||!region)throw new Error('Expected a table cell in its scroll region');
@@ -308,7 +308,8 @@ test('notification legal long metadata and failed status retain read-only recove
  await expect(table.getByRole('cell',{name:'failed',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Redrive',exact:true})).toHaveCount(0);
  await expect(page.getByRole('dialog')).toHaveCount(0);
- await audit(page,notificationVisualStates.failed);
+ // Capture-time geometry must prove the guidance survives the preceding accessibility audit.
+ await audit(page,notificationVisualStates.failed,()=>fullTextFitsVisibleCell(table.getByRole('cell',{name:'Automatic retry pending',exact:true}),false));
  expect(writes).toEqual([]);
 });
 test('notification 403 hides all private metadata and mutation controls',async({page})=>{
