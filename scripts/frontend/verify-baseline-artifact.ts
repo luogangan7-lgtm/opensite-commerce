@@ -55,8 +55,8 @@ try {
     assertNoBunEnvFiles((await api(`contents?ref=${run.head_sha}`) as { name: string }[]).map(entry => entry.name));
     // `filter=all` is required: the default listing only shows the latest
     // execution, so a partial re-run can hide the earlier successful producer.
-    // Per lane the latest successful attempt is authoritative and its exact
-    // per-attempt artifact must exist; an older attempt is never accepted.
+    // Use the original attempt of the latest successful execution (copies in
+    // partial re-runs keep its timestamps). Real re-executions need new artifacts.
     const attempt = latestSuccessfulAttempt(await listRunJobs(api, id), 'frontend-baselines');
     const artifactName = `frontend-baselines-${id}-${attempt}`;
     // A full re-run uploads one immutable artifact per attempt; filter by the
