@@ -1,7 +1,7 @@
 // Responsibility: private staff-auth persistence through generated SQL.
 // Dependencies: tenanttx identity runner and internal/db; identity login service calls.
 // Invariants: runner-admitted app_auth LOGIN; isolated bounded lanes; atomic rotation;
-// driver errors and credentials never escape this boundary.
+// driver error text and credentials never escape this boundary.
 package store
 
 import (
@@ -50,16 +50,39 @@ func openLogin(ctx context.Context, dsn string, idleTimeout time.Duration, open 
 	}
 	sessions, err := open(ctx, dsn)
 	if err != nil {
-		_ = runner.Close(ctx)
-		return nil, login.ErrDatabase
+		return nil, cleanupLoginFailure(ctx, err, runner)
 	}
-	r := &LoginRepository{runner: runner, sessionRunner: sessions, idle: idleTimeout}
 	noop := func(context.Context, *db.Queries) error { return nil }
-	if r.run(ctx, noop) != nil || r.runLane(ctx, sessions, noop) != nil {
-		_ = r.Close(ctx)
-		return nil, login.ErrDatabase
+	if err := runner.RunAuthentication(observability.WithAuthenticationLane(ctx, "staff_credential"), noop); err != nil {
+		return nil, cleanupLoginFailure(ctx, err, runner, sessions)
 	}
-	return r, nil
+	if err := sessions.RunAuthentication(ctx, noop); err != nil {
+		return nil, cleanupLoginFailure(ctx, err, runner, sessions)
+	}
+	return &LoginRepository{runner: runner, sessionRunner: sessions, idle: idleTimeout}, nil
+}
+
+// Preserve startup/cleanup causes for errors.Is without exposing driver text.
+type loginInitializationError struct{ cause error }
+
+func (e loginInitializationError) Error() string {
+	return login.ErrDatabase.Error()
+}
+
+func (e loginInitializationError) Unwrap() error {
+	return e.cause
+}
+
+// Initialization owns these runners exclusively. Cleanup keeps caller values,
+// but gets its own short budget even if opening or probing canceled the caller.
+func cleanupLoginFailure(ctx context.Context, cause error, runners ...authRunner) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer cancel()
+	failures := []error{login.ErrDatabase, cause}
+	for _, runner := range runners {
+		failures = append(failures, runner.Close(cleanupCtx))
+	}
+	return loginInitializationError{cause: errors.Join(failures...)}
 }
 
 // run delegates all queue/deadline/role policy to the query-only adapter port.
