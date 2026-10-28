@@ -1548,6 +1548,42 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        MerchantDeletionMetadata: {
+            /** Format: uuid */
+            request_id: string;
+            /** @enum {string} */
+            state: "active" | "cooling_off" | "executing" | "failed" | "deleted";
+            /** @enum {string} */
+            phase: "none" | "preconditions" | "executing" | "completed";
+            /** Format: int64 */
+            epoch: number;
+            /** Format: date-time */
+            requested_at: string;
+            /** Format: date-time */
+            execute_after: string;
+            /** Format: int32 */
+            attempt: number;
+            /** Format: date-time */
+            next_retry_at: string | null;
+            categories: {
+                /** Format: int64 */
+                paid_unfulfilled?: number;
+                /** Format: int64 */
+                fulfillment_return?: number;
+                /** Format: int64 */
+                payment_refund?: number;
+                /** Format: int64 */
+                checkout_capture?: number;
+                /** Format: int64 */
+                refund_reconciliation?: number;
+                /** Format: int64 */
+                pending_payout?: number;
+                /** Format: int64 */
+                unsettled_provider_balance?: number;
+                /** Format: int64 */
+                legal_hold?: number;
+            };
+        };
         RefundCasePage: {
             /** Format: int64 */
             open_count: number;
@@ -3387,9 +3423,12 @@ export interface operations {
             /** @description Deletion metadata only; no capability or personal data. */
             202: {
                 headers: {
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MerchantDeletionMetadata"];
+                };
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
