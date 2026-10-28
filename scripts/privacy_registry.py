@@ -172,7 +172,7 @@ MERCHANT_STRATEGIES = {"delete_row", "unchanged", "constant", "row_id_placeholde
 # DATA_RIGHTS/MERCHANT_DELETION permit these existing financial request/evidence
 # hashes; tenant credentials (even declared as financial digests) are erased.
 FINANCIAL_DIGESTS = {
-    "orders.request_hash", "checkout_sessions.request_hash", "checkout_attempts.request_hash",
+    "api_keys.key_hash", "orders.request_hash", "checkout_sessions.request_hash", "checkout_attempts.request_hash",
     "inventory_reservations.request_hash", "shipments.request_hash", "returns.request_hash",
     "returns.receive_hash", "returns.refund_hash", "webhook_inbox.payload_hash",
     "payment_refund_cases.evidence_hash", "payment_refund_case_resolutions.evidence_hash",
