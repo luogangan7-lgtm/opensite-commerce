@@ -47,7 +47,7 @@ func (a *projectedAuth) ResolveActor(ctx context.Context, r *http.Request, spec 
 func actorRouter(t *testing.T, auth httpapi.Authenticator, access httpapi.Access, handler http.HandlerFunc) *httpapi.Router {
 	t.Helper()
 	router := httpapi.New(auth, nil)
-	spec := httpapi.RouteSpec{OperationID: "actorCommand", Method: "GET", Pattern: "/t/{tenant_id}", Access: access}
+	spec := httpapi.RouteSpec{OperationID: "actorCommand", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/products", Access: access}
 	if access != httpapi.Public {
 		spec.Scope = "returns:write"
 	}
@@ -58,7 +58,7 @@ func actorRouter(t *testing.T, auth httpapi.Authenticator, access httpapi.Access
 }
 func actorStatus(t *testing.T, router *httpapi.Router, ctx context.Context) int {
 	t.Helper()
-	req := httptest.NewRequest("GET", "/t/"+actorTenant, nil)
+	req := httptest.NewRequest("GET", "/api/v1/t/"+actorTenant+"/products", nil)
 	if ctx != nil {
 		req = req.WithContext(ctx)
 	}

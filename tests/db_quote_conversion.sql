@@ -52,8 +52,8 @@ DECLARE t uuid:=current_setting('qc.t')::uuid; q uuid; BEGIN
 END $$;
 CREATE FUNCTION pg_temp.qc_order(p_unit bigint DEFAULT 50,p_net bigint DEFAULT 100,p_tax bigint DEFAULT 10) RETURNS uuid LANGUAGE plpgsql AS $$
 DECLARE oid uuid:=uuidv7(); r app.inventory_reservations; o app.orders; BEGIN
- r:=app.inventory_reserve(current_setting('qc.sku')::uuid,2,'order',oid,'qc-reserve:'||oid,900);
- o:=app.orders_create(oid,'qc-create:'||oid,sha256(oid::text::bytea),current_setting('qc.buyer')::uuid,NULL,'USD',5,
+ r:=app.inventory_reserve(current_setting('qc.sku')::uuid,2,'order',oid,(md5(('qc-reserve:'||oid)::text)::uuid::text),900);
+ o:=app.orders_create(oid,(md5(('qc-create:'||oid)::text)::uuid::text),sha256(oid::text::bytea),current_setting('qc.buyer')::uuid,NULL,'USD',5,
  '{"ZoneID":"zone","RateID":"rate","Method":"fixed","Charge":{"Amount":5,"Currency":"USD"}}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',current_setting('qc.sku')::uuid,'sku','conversion-sku','quantity',2,
  'unit_price_minor',p_unit,'line_net_minor',p_net,'line_tax_minor',p_tax,'line_total_minor',p_net+p_tax,'reservation_id',r.id,
@@ -89,13 +89,13 @@ CREATE FUNCTION pg_temp.qc_snapshot_order(p_lines jsonb,p_shipping jsonb DEFAULT
 RETURNS uuid LANGUAGE plpgsql AS $$
 DECLARE oid uuid:=uuidv7(); r app.inventory_reservations; o app.orders; x jsonb; lines jsonb:='[]'; BEGIN
  FOR x IN SELECT value FROM jsonb_array_elements(p_lines) LOOP
-  r:=app.inventory_reserve(current_setting('qc.sku')::uuid,(x->>'quantity')::bigint,'order',oid,'qc-snapshot-reserve:'||uuidv7(),900);
+  r:=app.inventory_reserve(current_setting('qc.sku')::uuid,(x->>'quantity')::bigint,'order',oid,(md5(('qc-snapshot-reserve:'||uuidv7())::text)::uuid::text),900);
   lines:=lines||jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',current_setting('qc.sku')::uuid,
    'sku','conversion-sku','quantity',(x->>'quantity')::bigint,'unit_price_minor',(x->>'unit')::bigint,
    'line_net_minor',(x->>'net')::bigint,'line_tax_minor',(x->>'tax')::bigint,
    'line_total_minor',(x->>'net')::bigint+(x->>'tax')::bigint,'reservation_id',r.id,'tax_snapshot',x->'tax_snapshot'));
  END LOOP;
- o:=app.orders_create(oid,'qc-snapshot-create:'||oid,sha256(oid::text::bytea),current_setting('qc.buyer')::uuid,
+ o:=app.orders_create(oid,(md5(('qc-snapshot-create:'||oid)::text)::uuid::text),sha256(oid::text::bytea),current_setting('qc.buyer')::uuid,
   NULL,'USD',5,p_shipping,lines,'[]');
  IF o.id IS DISTINCT FROM oid OR NOT o.sealed OR o.state<>'pending_payment' THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_SETUP_ORDER'; END IF;
@@ -112,7 +112,7 @@ DECLARE q app.quotes; o app.orders; BEGIN
   RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_SETUP_HEADER %',p_label; END IF;
  BEGIN
   PERFORM app.quote_conversion_bind(q.tenant_id,q.id,q.buyer_company_id,current_setting('qc.buyer')::uuid,
-   o.id,q.version,'snapshot:'||p_label,sha256(p_label::bytea));
+   o.id,q.version,(md5(('snapshot:'||p_label)::text)::uuid::text),sha256(p_label::bytea));
  EXCEPTION WHEN OTHERS THEN
   IF SQLSTATE<>'23514' OR SQLERRM<>p_message THEN
    RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_WRONG_REFUSAL % expected 23514/% got %/%',p_label,p_message,SQLSTATE,SQLERRM;
@@ -140,9 +140,9 @@ DECLARE t uuid:=current_setting('qc.t')::uuid; company uuid:=current_setting('qc
   RAISE EXCEPTION 'QUOTE_CONVERSION_ABSENT_RECEIPT'; END IF;
  PERFORM 1; -- A raised P0002 here would abort before subsequent order commands.
  oid:=pg_temp.qc_order(); PERFORM set_config('qc.order',oid::text,true);
- c:=app.quote_conversion_bind(t,q,company,buyer,oid,4,'conversion-key',sha256('conversion'::bytea));
+ c:=app.quote_conversion_bind(t,q,company,buyer,oid,4,'1544cb87-6c71-5ede-99a4-c78d276e92d6',sha256('conversion'::bytea));
  IF c.order_id<>oid OR c.quote_id<>q THEN RAISE EXCEPTION 'QUOTE_CONVERSION_BIND_RESULT'; END IF;
- c:=app.quote_conversion_bind(t,q,company,buyer,oid,4,'conversion-key',sha256('conversion'::bytea));
+ c:=app.quote_conversion_bind(t,q,company,buyer,oid,4,'1544cb87-6c71-5ede-99a4-c78d276e92d6',sha256('conversion'::bytea));
  IF (SELECT count(*) FROM app.quote_conversions)<>1
  OR (SELECT count(*) FROM app.outbox_events WHERE event_type='quote.converted')<>1 THEN RAISE EXCEPTION 'QUOTE_CONVERSION_REPLAY_DUPLICATE'; END IF;
  -- Conversion and replay must persist one notification for the receipt owner.
@@ -163,10 +163,10 @@ DECLARE t uuid:=current_setting('qc.t')::uuid; company uuid:=current_setting('qc
    AND dispatch.event_type='notification.dispatch' AND dispatch.delivery_target='notifications.email'
    AND dispatch.payload=jsonb_build_object('notification_id',d.id)) THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_NOTIFICATION_AUTHORITY'; END IF;
- PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''conversion-key'',sha256(''changed''::bytea))',t,q,company,buyer,oid),'22000','hash reuse');
- PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''different-key'',sha256(''conversion''::bytea))',t,q,company,buyer,oid),'55000','same quote different key');
- PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''conversion-key'',sha256(''conversion''::bytea))',t,q2,company,buyer,oid),'22000','same key other quote');
- PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''second-key'',sha256(''conversion''::bytea))',t,q2,company,buyer,oid),'23505','same order second quote');
+ PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''1544cb87-6c71-5ede-99a4-c78d276e92d6'',sha256(''changed''::bytea))',t,q,company,buyer,oid),'22000','hash reuse');
+ PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''73606a5e-d221-5957-910f-7b484b92bfc7'',sha256(''conversion''::bytea))',t,q,company,buyer,oid),'55000','same quote different key');
+ PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''1544cb87-6c71-5ede-99a4-c78d276e92d6'',sha256(''conversion''::bytea))',t,q2,company,buyer,oid),'22000','same key other quote');
+ PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''d2948d65-5614-549c-b725-2fd666fb677e'',sha256(''conversion''::bytea))',t,q2,company,buyer,oid),'23505','same order second quote');
  PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_lock(%L,%L,%L,%L)',t,q,current_setting('qc.other_company'),buyer),'P0002','stamped wrong company');
  PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_lock(%L,%L,%L,%L)',t,q,company,current_setting('qc.outsider')),'P0002','outsider');
  PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_lock(%L,%L,%L,%L)',current_setting('qc.foreign_t'),q,company,buyer),'P0002','foreign tenant');
@@ -175,7 +175,7 @@ DECLARE t uuid:=current_setting('qc.t')::uuid; company uuid:=current_setting('qc
  PERFORM pg_temp.qc_refuse(format('INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(%L,''quote.converted'',''{}'',''quotes'',''converted:forged'')',t),'42501','forged converted event');
  -- Same total cannot hide a changed tax/net/price composition.
  bad:=pg_temp.qc_order(49,98,12);
- PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''bad-key'',sha256(''bad''::bytea))',t,q2,company,buyer,bad),'23514','same total different snapshot');
+ PERFORM pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''65945e61-ace4-5519-9744-2b1c373f6173'',sha256(''bad''::bytea))',t,q2,company,buyer,bad),'23514','same total different snapshot');
  IF EXISTS(SELECT FROM app.quote_conversions WHERE quote_id=q2) THEN RAISE EXCEPTION 'QUOTE_CONVERSION_BAD_SNAPSHOT_BOUND'; END IF;
 END $conversion$;
 DO $same_header_snapshots$
@@ -185,7 +185,7 @@ DECLARE q uuid; oid uuid; base jsonb; split jsonb; two_lines jsonb; zero_line js
  -- Exact positive control runs the same descriptor/hold/order helper as negatives.
  q:=pg_temp.qc_snapshot_quote(base); oid:=pg_temp.qc_snapshot_order(base);
  PERFORM app.quote_conversion_bind(current_setting('qc.t')::uuid,q,current_setting('qc.company')::uuid,
-  current_setting('qc.buyer')::uuid,oid,4,'snapshot:control',sha256('snapshot:control'::bytea));
+  current_setting('qc.buyer')::uuid,oid,4,'a9fcda58-26b5-5d24-a2d7-ca67d4b5f21f',sha256('a9fcda58-26b5-5d24-a2d7-ca67d4b5f21f'::bytea));
  IF NOT EXISTS(SELECT FROM app.quote_conversions WHERE quote_id=q AND order_id=oid) THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_CONTROL_NOT_BOUND'; END IF;
  q:=pg_temp.qc_snapshot_quote(base); oid:=pg_temp.qc_snapshot_order(jsonb_build_array(pg_temp.qc_snapshot_line(1,100,10)));
@@ -216,7 +216,7 @@ SELECT pg_temp.qc_order() AS good_order \gset
 RESET ROLE;
 REVOKE INSERT(tenant_id,event_type,payload,delivery_target,dedup_key) ON app.outbox_events FROM app_quotes_executor;
 SET LOCAL ROLE app_runtime;
-SELECT pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''outbox-key'',sha256(''outbox''::bytea))',:'t',current_setting('qc.q2'),:'company',:'buyer',:'good_order'),'42501','outbox atomic rollback');
+SELECT pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''c68a40b5-56b4-5289-8d6b-0445ff452798'',sha256(''outbox''::bytea))',:'t',current_setting('qc.q2'),:'company',:'buyer',:'good_order'),'42501','outbox atomic rollback');
 RESET ROLE;
 GRANT INSERT(tenant_id,event_type,payload,delivery_target,dedup_key) ON app.outbox_events TO app_quotes_executor;
 DO $atomic$ BEGIN
@@ -226,7 +226,7 @@ END $atomic$;
 -- A dispatch failure must roll receipt, source and delivery back together.
 REVOKE INSERT(tenant_id,id,event_type,payload,delivery_target,dedup_key) ON app.outbox_events FROM app_notifications_executor;
 SET LOCAL ROLE app_runtime;
-SELECT pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''dispatch-key'',sha256(''dispatch''::bytea))',:'t',current_setting('qc.q2'),:'company',:'buyer',:'good_order'),'42501','notification dispatch atomic rollback');
+SELECT pg_temp.qc_refuse(format('SELECT app.quote_conversion_bind(%L,%L,%L,%L,%L,4,''7602bfb0-297d-5d96-b0ca-298281cfecd0'',sha256(''dispatch''::bytea))',:'t',current_setting('qc.q2'),:'company',:'buyer',:'good_order'),'42501','notification dispatch atomic rollback');
 RESET ROLE;
 GRANT INSERT(tenant_id,id,event_type,payload,delivery_target,dedup_key) ON app.outbox_events TO app_notifications_executor;
 DO $notification_atomic$ BEGIN

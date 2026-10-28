@@ -95,7 +95,7 @@ func TestPGCommandActorIsolationReplayAndProcessing(t *testing.T) {
 			return fn(ctx, tx)
 		})
 	}
-	spec := httpapi.RouteSpec{OperationID: "createShipment", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/command", Access: httpapi.AdminOrAPIKey, Scope: "fulfillment:write", MaxBodySize: 1024}
+	spec := httpapi.RouteSpec{OperationID: "createShipment", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/products", Access: httpapi.AdminOrAPIKey, Scope: "fulfillment:write", MaxBodySize: 1024}
 	var entered = make(chan struct{})
 	var release = make(chan struct{})
 	var once sync.Once
@@ -142,7 +142,7 @@ func TestPGCommandActorIsolationReplayAndProcessing(t *testing.T) {
 	}
 	handler := makeHandler(config)
 	request := func(handler http.Handler, actor, key, body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", "/api/v1/t/"+tenant+"/command", bytes.NewBufferString(body))
+		r := httptest.NewRequest("POST", "/api/v1/t/"+tenant+"/products", bytes.NewBufferString(body))
 		r = r.WithContext(ctx)
 		r.Header.Set("X-Test-Actor", actor)
 		r.Header.Set("Idempotency-Key", key)

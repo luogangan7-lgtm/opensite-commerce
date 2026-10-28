@@ -31,13 +31,13 @@ SET LOCAL ROLE app_runtime;
 DO $$ DECLARE v text; BEGIN
  FOREACH v IN ARRAY ARRAY['1 year -359 days','-1 year 361 days','24 hours 1 microsecond','0 seconds','-1 second','infinity','-infinity'] LOOP
   PERFORM pg_temp.reject_limits(format('SELECT app.idempotency_claim(%L,%L,uuidv7(),%L,%L,sha256(%L::bytea),%L::interval,uuidv7())',
-   current_setting('test.limits_ta'),'api_key','limits','key','hash',v),'22023','TTL_REJECT_'||v);
+   current_setting('test.limits_ta'),'api_key','limits','8758efb8-1883-50ac-aaa5-57eeffec32ad','hash',v),'22023','TTL_REJECT_'||v);
  END LOOP;
  PERFORM pg_temp.reject_limits(format('SELECT app.idempotency_claim(%L,%L,uuidv7(),%L,%L,sha256(%L::bytea),NULL,uuidv7())',
-  current_setting('test.limits_ta'),'api_key','limits','key','hash'),'22023','TTL_REJECT_NULL');
+  current_setting('test.limits_ta'),'api_key','limits','8758efb8-1883-50ac-aaa5-57eeffec32ad','hash'),'22023','TTL_REJECT_NULL');
  PERFORM pg_temp.assert_limits((SELECT count(*)=0 FROM app.idempotency_records),'TTL_REJECT_NO_INSERT');
  FOREACH v IN ARRAY ARRAY['24 hours','1 day','1 month -29 days','1 year -364.25 days'] LOOP
-  PERFORM pg_temp.assert_limits((app.idempotency_claim(current_setting('test.limits_ta')::uuid,'api_key',uuidv7(),'limits','key',sha256('hash'::bytea),v::interval,uuidv7())).state='in_progress','TTL_MAX_ACCEPTED_'||v);
+  PERFORM pg_temp.assert_limits((app.idempotency_claim(current_setting('test.limits_ta')::uuid,'api_key',uuidv7(),'limits','8758efb8-1883-50ac-aaa5-57eeffec32ad',sha256('hash'::bytea),v::interval,uuidv7())).state='in_progress','TTL_MAX_ACCEPTED_'||v);
  END LOOP;
 END $$;
 RESET ROLE;

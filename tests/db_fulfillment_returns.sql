@@ -50,8 +50,8 @@ BEGIN
  INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
   (t,income,'fulfillment-income','USD','revenue'),(t,tax,'fulfillment-tax','USD','liability'),
   (t,shipping,'fulfillment-shipping','USD','revenue'),(t,cash,'fulfillment-cash','USD','asset');
- reservation:=app.inventory_reserve(sku,4,'order',oid,'fulfillment-reserve',900);
- ord:=app.orders_create(oid,'fulfillment-order',sha256('fulfillment'::bytea),NULL,
+ reservation:=app.inventory_reserve(sku,4,'order',oid,'6e7d97c2-6b34-5b65-ba83-991e57707916',900);
+ ord:=app.orders_create(oid,'8c29a995-921f-5199-bc9b-651183d6d7d2',sha256('fulfillment'::bytea),NULL,
   '{"email":"fulfillment@example.invalid"}','USD',40,'{"amount_minor":40,"currency":"USD","service":"fixture"}',
   jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',4,
    'unit_price_minor',100,'line_net_minor',400,'line_tax_minor',40,'line_total_minor',440,
@@ -61,108 +61,108 @@ BEGIN
  IF stock<>16 OR (SELECT state FROM app.inventory_reservations WHERE tenant_id=t AND id=reservation.id)<>'committed' THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE paid stock semantics changed';
  END IF;
- shipped:=app.fulfillment_create_shipment(oid,ord.version,'shipment-first','manual','TRACK-1',
+ shipped:=app.fulfillment_create_shipment(oid,ord.version,'4ecca1b7-a168-5adc-981b-ee5ee966a8b0','manual','TRACK-1',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',2)));
  IF shipped->>'status'<>'shipped' OR shipped->>'order_id'<>oid::text
   OR (SELECT state FROM app.orders WHERE tenant_id=t AND id=oid)<>'partially_fulfilled'
   OR (SELECT on_hand FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku)<>16 THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE partial shipment state/stock';
  END IF;
- IF app.fulfillment_create_shipment(oid,ord.version,'shipment-first','manual','TRACK-1',
+ IF app.fulfillment_create_shipment(oid,ord.version,'4ecca1b7-a168-5adc-981b-ee5ee966a8b0','manual','TRACK-1',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',2)))->>'id'<>shipped->>'id' THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE shipment replay duplicated';
  END IF;
  SELECT id INTO sid FROM app.shipment_lines WHERE tenant_id=t AND shipment_id=(shipped->>'id')::uuid;
  SELECT version INTO ord.version FROM app.orders WHERE tenant_id=t AND id=oid;
  BEGIN
-  PERFORM app.fulfillment_create_shipment(oid,ord.version,'shipment-over','manual','OVER',
+  PERFORM app.fulfillment_create_shipment(oid,ord.version,'e2377e1d-e2cc-5c50-ae0a-5baad9c8ba59','manual','OVER',
    jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',3)));
   RAISE EXCEPTION 'FULFILLMENT_GATE overship accepted';
  EXCEPTION WHEN check_violation THEN NULL; END;
  BEGIN
-  PERFORM app.fulfillment_create_shipment(oid,1,'shipment-stale','manual','STALE',
+  PERFORM app.fulfillment_create_shipment(oid,1,'276fd92a-64db-558c-85c8-41b549e90f1a','manual','STALE',
    jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
   RAISE EXCEPTION 'FULFILLMENT_GATE stale If-Match accepted';
  EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
- cancelled:=app.returns_create(oid,ord.version,'cancel-one','unshipped_cancel','buyer cancelled remainder',
+ cancelled:=app.returns_create(oid,ord.version,'07297935-a8e1-5208-987c-84a38418e5da','unshipped_cancel','buyer cancelled remainder',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
  cancel_id:=(cancelled->>'id')::uuid;
  IF cancelled->>'status'<>'received' OR (SELECT on_hand FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku)<>17 THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE unshipped cancellation did not restore committed stock';
  END IF;
- PERFORM app.returns_create(oid,ord.version,'cancel-one','unshipped_cancel','buyer cancelled remainder',
+ PERFORM app.returns_create(oid,ord.version,'07297935-a8e1-5208-987c-84a38418e5da','unshipped_cancel','buyer cancelled remainder',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
  IF (SELECT on_hand FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku)<>17 THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE cancellation replay restocked twice';
  END IF;
  SELECT version INTO ord.version FROM app.orders WHERE tenant_id=t AND id=oid;
  BEGIN
-  PERFORM app.fulfillment_create_shipment(oid,ord.version,'shipment-after-cancel','manual','OVER',
+  PERFORM app.fulfillment_create_shipment(oid,ord.version,'7d78ae85-0524-564a-a12c-16d181204eff','manual','OVER',
    jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',2)));
   RAISE EXCEPTION 'FULFILLMENT_GATE shipment ignored cancellation reservation';
  EXCEPTION WHEN check_violation THEN NULL; END;
  create_version:=ord.version;
- returned:=app.returns_create(oid,ord.version,'return-one','shipment_return','received damaged',
+ returned:=app.returns_create(oid,ord.version,'e66bbcd5-f69e-5c04-91a9-1f33e1af7582','shipment_return','received damaged',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',1)));
  return_id:=(returned->>'id')::uuid;
  SELECT version INTO ord.version FROM app.orders WHERE tenant_id=t AND id=oid;
  BEGIN
-  PERFORM app.returns_create(oid,ord.version,'return-over','shipment_return','too many',
+  PERFORM app.returns_create(oid,ord.version,'12a8ee06-ea44-5686-b18a-0cdf7bf1011d','shipment_return','too many',
    jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',2)));
   RAISE EXCEPTION 'FULFILLMENT_GATE overreturn accepted';
  EXCEPTION WHEN check_violation THEN NULL; END;
  receive_version:=ord.version;
- received:=app.returns_receive(return_id,ord.version,'receive-one',false);
+ received:=app.returns_receive(return_id,ord.version,'35b5f949-2b9d-5cb2-9fc8-95a04269d498',false);
  IF received->>'status'<>'received' OR (SELECT on_hand FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku)<>17 THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE optional no-restock failed';
  END IF;
- PERFORM app.returns_receive(return_id,ord.version,'receive-one',false);
+ PERFORM app.returns_receive(return_id,ord.version,'35b5f949-2b9d-5cb2-9fc8-95a04269d498',false);
  SELECT version INTO ord.version FROM app.orders WHERE tenant_id=t AND id=oid;
  BEGIN
-  PERFORM app.returns_prepare_refund(cancel_id,ord.version,'runtime-forged','captured-fixture',1,income,tax,shipping,cash);
+  PERFORM app.returns_prepare_refund(cancel_id,ord.version,'465e87be-41a0-514c-b177-f548a99ba71f','captured-fixture',1,income,tax,shipping,cash);
   RAISE EXCEPTION 'FULFILLMENT_GATE runtime forged PSP intent';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
-  PERFORM app.returns_complete_refund(cancel_id,'runtime-forged','captured-fixture',uuidv7());
+  PERFORM app.returns_complete_refund(cancel_id,'465e87be-41a0-514c-b177-f548a99ba71f','captured-fixture',uuidv7());
   RAISE EXCEPTION 'FULFILLMENT_GATE runtime forged PSP completion';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  EXECUTE 'SET LOCAL ROLE app_returns_service';
- prepared:=app.returns_prepare_refund(cancel_id,ord.version,'refund-cancel','captured-fixture',1,income,tax,shipping,cash);
+ prepared:=app.returns_prepare_refund(cancel_id,ord.version,'444723f5-c6f7-5f3d-ac8a-083b8ed9411b','captured-fixture',1,income,tax,shipping,cash);
  IF prepared->>'status'<>'refund_pending' OR (prepared->>'refund_minor')::bigint<>120
   OR (prepared->>'income_minor')::bigint<>100 OR (prepared->>'tax_minor')::bigint<>10
   OR (prepared->>'shipping_minor')::bigint<>10 THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE server refund allocation';
  END IF;
  BEGIN
-  PERFORM app.returns_complete_refund(cancel_id,'refund-cancel','captured-fixture',uuidv7());
+  PERFORM app.returns_complete_refund(cancel_id,'444723f5-c6f7-5f3d-ac8a-083b8ed9411b','captured-fixture',uuidv7());
   RAISE EXCEPTION 'FULFILLMENT_GATE unposted/foreign ledger accepted';
  EXCEPTION WHEN check_violation THEN NULL; END;
  EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
  journal:=app.post_ledger(t,'USD','refund-probe',cancel_id::text,'wrong-receipt',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[1,1]::bigint[]);
  EXECUTE 'SET LOCAL ROLE app_returns_service';
  BEGIN
-  PERFORM app.returns_complete_refund(cancel_id,'refund-cancel','captured-fixture',journal);
+  PERFORM app.returns_complete_refund(cancel_id,'444723f5-c6f7-5f3d-ac8a-083b8ed9411b','captured-fixture',journal);
   RAISE EXCEPTION 'FULFILLMENT_GATE posted wrong journal accepted';
  EXCEPTION WHEN check_violation THEN NULL; END;
  EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
  journal:=app.post_ledger(t,'USD','return',cancel_id::text,'refund',ARRAY[income,tax,shipping,cash],
   ARRAY['debit','debit','debit','credit'],ARRAY[100,10,10,120]::bigint[]);
  EXECUTE 'SET LOCAL ROLE app_returns_service';
- completed:=app.returns_complete_refund(cancel_id,'refund-cancel','captured-fixture',journal);
+ completed:=app.returns_complete_refund(cancel_id,'444723f5-c6f7-5f3d-ac8a-083b8ed9411b','captured-fixture',journal);
  EXECUTE 'SET LOCAL ROLE app_runtime';
  IF completed->>'status'<>'refunded' OR (SELECT refunded_minor FROM app.orders WHERE tenant_id=t AND id=oid)<>120
   OR (SELECT state FROM app.orders WHERE tenant_id=t AND id=oid)<>'partially_refunded' THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE refund not atomic with order state';
  END IF;
  EXECUTE 'SET LOCAL ROLE app_returns_service';
- PERFORM app.returns_complete_refund(cancel_id,'refund-cancel','captured-fixture',journal);
+ PERFORM app.returns_complete_refund(cancel_id,'444723f5-c6f7-5f3d-ac8a-083b8ed9411b','captured-fixture',journal);
  EXECUTE 'SET LOCAL ROLE app_runtime';
  IF (SELECT refunded_minor FROM app.orders WHERE tenant_id=t AND id=oid)<>120 THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE refund replay duplicated amount';
  END IF;
  EXECUTE 'SET LOCAL ROLE app_runtime';
  SELECT version INTO ord.version FROM app.orders WHERE tenant_id=t AND id=oid;
- shipped:=app.fulfillment_create_shipment(oid,ord.version,'shipment-last','manual','TRACK-2',
+ shipped:=app.fulfillment_create_shipment(oid,ord.version,'b8982a19-9647-54c0-9002-7c718dc45a03','manual','TRACK-2',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
  IF (SELECT state FROM app.orders WHERE tenant_id=t AND id=oid)<>'partially_refunded'
   OR (SELECT sum(quantity) FROM app.shipment_lines WHERE tenant_id=t AND order_line_id=lid)<>3 THEN
@@ -170,23 +170,23 @@ BEGIN
  END IF;
  SELECT version INTO ord.version FROM app.orders WHERE tenant_id=t AND id=oid;
  EXECUTE 'SET LOCAL ROLE app_returns_service';
- prepared:=app.returns_prepare_refund(return_id,ord.version,'refund-return','captured-fixture',1,income,tax,shipping,cash);
+ prepared:=app.returns_prepare_refund(return_id,ord.version,'6837caef-b6b1-5598-8155-724aa49847ad','captured-fixture',1,income,tax,shipping,cash);
  EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
  journal:=app.post_ledger(t,'USD','return',return_id::text,'refund',ARRAY[income,tax,shipping,cash],
   ARRAY['debit','debit','debit','credit'],ARRAY[100,10,10,120]::bigint[]);
  EXECUTE 'SET LOCAL ROLE app_returns_service';
- PERFORM app.returns_complete_refund(return_id,'refund-return','captured-fixture',journal);
+ PERFORM app.returns_complete_refund(return_id,'6837caef-b6b1-5598-8155-724aa49847ad','captured-fixture',journal);
  EXECUTE 'SET LOCAL ROLE app_runtime';
  IF (SELECT refunded_minor FROM app.orders WHERE tenant_id=t AND id=oid)<>240 THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE cumulative refund amount';
  END IF;
- IF app.returns_create(oid,create_version,'return-one','shipment_return','received damaged',
+ IF app.returns_create(oid,create_version,'e66bbcd5-f69e-5c04-91a9-1f33e1af7582','shipment_return','received damaged',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',1))) IS DISTINCT FROM returned THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE creation response drifted after refund'; END IF;
- IF app.returns_receive(return_id,receive_version,'receive-one',false) IS DISTINCT FROM received THEN
+ IF app.returns_receive(return_id,receive_version,'35b5f949-2b9d-5cb2-9fc8-95a04269d498',false) IS DISTINCT FROM received THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE receive response drifted after refund'; END IF;
  BEGIN
-  UPDATE app.shipments SET tracking_number='forged' WHERE tenant_id=t;
+  UPDATE app.shipments SET tracking_number='3122fa34-c798-53de-8f57-4223245e2ac0' WHERE tenant_id=t;
   RAISE EXCEPTION 'FULFILLMENT_GATE runtime mutated shipment';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
@@ -199,12 +199,12 @@ BEGIN
   RAISE EXCEPTION 'FULFILLMENT_GATE cross-tenant read';
  END IF;
  BEGIN
-  PERFORM app.returns_receive(return_id,1,'foreign-return',true);
+  PERFORM app.returns_receive(return_id,1,'18c8f68d-408f-513e-a1f0-74fa09bbac61',true);
   RAISE EXCEPTION 'FULFILLMENT_GATE cross-tenant command';
  EXCEPTION WHEN no_data_found THEN NULL; END;
  PERFORM set_config('app.tenant_id','',true);
  BEGIN
-  PERFORM app.fulfillment_create_shipment(oid,1,'missing-context','manual','X','[]');
+  PERFORM app.fulfillment_create_shipment(oid,1,'a8068149-78a6-54c4-90b4-8ae7b87530ab','manual','X','[]');
   RAISE EXCEPTION 'FULFILLMENT_GATE missing tenant context';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $fulfillment$;
@@ -227,8 +227,8 @@ BEGIN
  FOR gate_i IN 1..3 LOOP
   gate_name:=CASE gate_i WHEN 1 THEN 'cancel-received' WHEN 2 THEN 'physical-requested' ELSE 'physical-received' END;
   oid:=uuidv7();lid:=uuidv7();
-  res:=app.inventory_reserve(sku,2,'order',oid,'active-rma-reserve-'||gate_i,900);
-  ord:=app.orders_create(oid,'active-rma-order-'||gate_i,sha256(('active-rma'||gate_i)::bytea),NULL,
+  res:=app.inventory_reserve(sku,2,'order',oid,(md5(('active-rma-reserve-'||gate_i)::text)::uuid::text),900);
+  ord:=app.orders_create(oid,(md5(('active-rma-order-'||gate_i)::text)::uuid::text),sha256(('active-rma'||gate_i)::bytea),NULL,
    '{"email":"active-rma@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
    jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
     'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
@@ -239,23 +239,23 @@ BEGIN
   IF ord.refunded_minor<>10 OR ord.state<>'partially_refunded' THEN
    RAISE EXCEPTION 'FULFILLMENT_GATE no-RMA legacy financial event rejected'; END IF;
   IF gate_i>1 THEN
-   shipment:=app.fulfillment_create_shipment(oid,ord.version,'active-rma-shipment-'||gate_i,'manual','RMA',
+   shipment:=app.fulfillment_create_shipment(oid,ord.version,(md5(('active-rma-shipment-'||gate_i)::text)::uuid::text),'manual','RMA',
     jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
    sid:=(shipment->'lines'->0->>'id')::uuid;
    SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
   END IF;
   SELECT on_hand INTO before_stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
   IF gate_i=1 THEN
-   rma:=app.returns_create(oid,ord.version,'active-rma-create-'||gate_i,'unshipped_cancel','cancel paid remainder',
+   rma:=app.returns_create(oid,ord.version,(md5(('active-rma-create-'||gate_i)::text)::uuid::text),'unshipped_cancel','cancel paid remainder',
     jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
   ELSE
-   rma:=app.returns_create(oid,ord.version,'active-rma-create-'||gate_i,'shipment_return','return shipped unit',
+   rma:=app.returns_create(oid,ord.version,(md5(('active-rma-create-'||gate_i)::text)::uuid::text),'shipment_return','return shipped unit',
     jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',1)));
   END IF;
   rid:=(rma->>'id')::uuid;
   SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
   IF gate_i=3 THEN
-   rma:=app.returns_receive(rid,ord.version,'active-rma-receive-'||gate_i,true);
+   rma:=app.returns_receive(rid,ord.version,(md5(('active-rma-receive-'||gate_i)::text)::uuid::text),true);
    SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
   END IF;
   expected_status:=CASE gate_i WHEN 2 THEN 'requested' ELSE 'received' END;
@@ -295,8 +295,8 @@ BEGIN
  FOR case_i IN 1..2 LOOP
   oid:=uuidv7();lid:=uuidv7();parts:=case_i;
   SELECT on_hand INTO initial_stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
-  res:=app.inventory_reserve(sku,2,'order',oid,'legacy-reserve-'||case_i,900);
-  ord:=app.orders_create(oid,'legacy-order-'||case_i,sha256(('legacy'||case_i)::bytea),NULL,
+  res:=app.inventory_reserve(sku,2,'order',oid,(md5(('legacy-reserve-'||case_i)::text)::uuid::text),900);
+  ord:=app.orders_create(oid,(md5(('legacy-order-'||case_i)::text)::uuid::text),sha256(('83d8c44f-a133-5a43-b196-1565e9318c2d'||case_i)::bytea),NULL,
    '{"email":"legacy@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
    jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
     'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
@@ -304,19 +304,19 @@ BEGIN
   ord:=app.orders_transition(oid,'paid','legacy-paid-'||case_i,0);
   ord:=app.orders_transition(oid,'partially_refunded','legacy-credit-'||case_i,10);
   FOR part_i IN 1..parts LOOP
-   r:=app.returns_create(oid,ord.version,'legacy-rma-'||case_i||'-'||part_i,'unshipped_cancel','remaining credit',
+   r:=app.returns_create(oid,ord.version,(md5(('legacy-rma-'||case_i||'-'||part_i)::text)::uuid::text),'unshipped_cancel','remaining credit',
     jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',2/parts)));
    rid:=(r->>'id')::uuid;amount:=190/parts;
    IF (r->>'refund_minor')::bigint<>amount THEN
     RAISE EXCEPTION 'FULFILLMENT_GATE legacy credit frozen amount: got %, expected %',r->>'refund_minor',amount;END IF;
    SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
    EXECUTE 'SET LOCAL ROLE app_returns_service';
-   r:=app.returns_prepare_refund(rid,ord.version,'legacy-refund-'||case_i||'-'||part_i,'legacy-capture',1,income,tax,shipping,cash);
+   r:=app.returns_prepare_refund(rid,ord.version,(md5(('legacy-refund-'||case_i||'-'||part_i)::text)::uuid::text),'legacy-capture',1,income,tax,shipping,cash);
    IF (r->>'refund_minor')::bigint<>amount THEN RAISE EXCEPTION 'FULFILLMENT_GATE legacy freeze drift';END IF;
  EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
    journal:=app.post_ledger(t,'USD','return',rid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[amount,amount]);
  EXECUTE 'SET LOCAL ROLE app_returns_service';
-   PERFORM app.returns_complete_refund(rid,'legacy-refund-'||case_i||'-'||part_i,'legacy-capture',journal);
+   PERFORM app.returns_complete_refund(rid,(md5(('legacy-refund-'||case_i||'-'||part_i)::text)::uuid::text),'legacy-capture',journal);
    EXECUTE 'SET LOCAL ROLE app_runtime';
    SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
   END LOOP;
@@ -348,19 +348,19 @@ BEGIN
   (t,shipping,'cross-line-shipping','USD','revenue'),(t,cash,'cross-line-cash','USD','asset');
  SELECT on_hand INTO initial_stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
  FOR i IN 1..3 LOOP
-  res:=app.inventory_reserve(sku,1,'order',oid,'cross-line-reserve-'||i,900);
+  res:=app.inventory_reserve(sku,1,'order',oid,(md5(('cross-line-reserve-'||i)::text)::uuid::text),900);
   lines:=lines||jsonb_build_array(jsonb_build_object('id',lids[i],'sku_id',sku,'sku','fulfillment-sku',
    'quantity',1,'unit_price_minor',caps[i],'line_net_minor',caps[i],'line_tax_minor',0,
    'line_total_minor',caps[i],'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb));
  END LOOP;
- ord:=app.orders_create(oid,'cross-line-order',sha256('cross-line'::bytea),NULL,
+ ord:=app.orders_create(oid,'d0f42c7e-b84c-5e77-b3a0-819378444041',sha256('cross-line'::bytea),NULL,
   '{"email":"cross-line@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',lines,'[]');
  ord:=app.orders_transition(oid,'paid','cross-line-paid',0);
  -- Return the last UUID first; its immutable financial receipt consumes its cap.
  FOR i IN 1..3 LOOP
   line_i:=CASE i WHEN 1 THEN 3 WHEN 2 THEN 1 ELSE 2 END;
   expected:=CASE i WHEN 1 THEN 1 WHEN 2 THEN 0 ELSE 3 END;
-  r:=app.returns_create(oid,ord.version,'cross-line-rma-'||i,'unshipped_cancel','cross-line remaining capacity',
+  r:=app.returns_create(oid,ord.version,(md5(('cross-line-rma-'||i)::text)::uuid::text),'unshipped_cancel','cross-line remaining capacity',
    jsonb_build_array(jsonb_build_object('order_line_id',lids[line_i],'quantity',1)));
   rid:=(r->>'id')::uuid;
   IF i=1 THEN first_rid:=rid;END IF;
@@ -369,11 +369,11 @@ BEGIN
   SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
   IF expected>0 THEN
    EXECUTE 'SET LOCAL ROLE app_returns_service';
-   PERFORM app.returns_prepare_refund(rid,ord.version,'cross-line-refund-'||i,'cross-line-capture',1,income,tax,shipping,cash);
+   PERFORM app.returns_prepare_refund(rid,ord.version,(md5(('cross-line-refund-'||i)::text)::uuid::text),'cross-line-capture',1,income,tax,shipping,cash);
  EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
    journal:=app.post_ledger(t,'USD','return',rid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[expected,expected]);
  EXECUTE 'SET LOCAL ROLE app_returns_service';
-   PERFORM app.returns_complete_refund(rid,'cross-line-refund-'||i,'cross-line-capture',journal);
+   PERFORM app.returns_complete_refund(rid,(md5(('cross-line-refund-'||i)::text)::uuid::text),'cross-line-capture',journal);
    EXECUTE 'SET LOCAL ROLE app_runtime';
   ELSIF r->>'status'<>'completed' OR EXISTS(SELECT FROM app.returns WHERE tenant_id=t AND id=rid
     AND (refund_key IS NOT NULL OR ledger_transaction_id IS NOT NULL)) THEN
@@ -416,44 +416,44 @@ BEGIN
   (t,income,'zero-income','USD','revenue'),(t,tax,'zero-tax','USD','liability'),
   (t,shipping,'zero-shipping','USD','revenue'),(t,cash,'zero-cash','USD','asset');
  SELECT on_hand INTO initial_stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
- res:=app.inventory_reserve(sku,2,'order',oid,'zero-reserve',900);
- ord:=app.orders_create(oid,'zero-order',sha256('zero'::bytea),NULL,
+ res:=app.inventory_reserve(sku,2,'order',oid,'e5677381-4745-5127-b546-d73aae3703e2',900);
+ ord:=app.orders_create(oid,'6801961a-5e04-5d18-a977-e845f9d207a6',sha256('5997dec8-e818-58d2-93dc-99dd4d35dd0f'::bytea),NULL,
   '{"email":"zero@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
   jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
    'unit_price_minor',1,'line_net_minor',2,'line_tax_minor',0,'line_total_minor',2,
    'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb)),
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','discount','amount_minor',-1,'reason','zero fixture')));
  ord:=app.orders_transition(oid,'paid','zero-paid',0);
- shipment:=app.fulfillment_create_shipment(oid,ord.version,'zero-shipment','manual','ZERO',
+ shipment:=app.fulfillment_create_shipment(oid,ord.version,'2839c908-6c21-55c7-950a-e67cd59ce710','manual','ZERO',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',2)));
  sid:=(shipment->'lines'->0->>'id')::uuid;
  SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
- a:=app.returns_create(oid,ord.version,'zero-a','shipment_return','zero unit',
+ a:=app.returns_create(oid,ord.version,'c9a583b5-8433-533b-8eb1-3d27fdb65759','shipment_return','zero unit',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',1)));
  aid:=(a->>'id')::uuid;
  SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
- b:=app.returns_create(oid,ord.version,'zero-b','shipment_return','positive unit',
+ b:=app.returns_create(oid,ord.version,'3a29790d-00ff-591a-8360-dc3af8ba2c93','shipment_return','positive unit',
   jsonb_build_array(jsonb_build_object('order_line_id',lid,'shipment_line_id',sid,'quantity',1)));
  bid:=(b->>'id')::uuid;
  IF (a->>'refund_minor')::bigint<>0 OR (b->>'refund_minor')::bigint<>1 THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE zero fixture entitlements not [0,1]';END IF;
  SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
- PERFORM app.returns_receive(bid,ord.version,'zero-receive-b',true);
+ PERFORM app.returns_receive(bid,ord.version,'69f9d1e2-d6b6-59b6-baba-de948cfd3870',true);
  SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
  EXECUTE 'SET LOCAL ROLE app_returns_service';
- PERFORM app.returns_prepare_refund(bid,ord.version,'zero-refund-b','zero-capture',1,income,tax,shipping,cash);
+ PERFORM app.returns_prepare_refund(bid,ord.version,'a6b78b9d-039c-5b0d-a750-386357bd8bd5','zero-capture',1,income,tax,shipping,cash);
  EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
  journal:=app.post_ledger(t,'USD','return',bid::text,'refund',ARRAY[income,cash],ARRAY['debit','credit'],ARRAY[1,1]::bigint[]);
  EXECUTE 'SET LOCAL ROLE app_returns_service';
- PERFORM app.returns_complete_refund(bid,'zero-refund-b','zero-capture',journal);
+ PERFORM app.returns_complete_refund(bid,'a6b78b9d-039c-5b0d-a750-386357bd8bd5','zero-capture',journal);
  EXECUTE 'SET LOCAL ROLE app_runtime';
  SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
  IF ord.state<>'refunded' THEN RAISE EXCEPTION 'FULFILLMENT_GATE zero positive unit did not refund order';END IF;
  receive_version:=ord.version;
- received:=app.returns_receive(aid,receive_version,'zero-receive-a',true);
+ received:=app.returns_receive(aid,receive_version,'7d3e9387-734f-5acf-8eca-cdb384c64b92',true);
  IF received->>'status'<>'completed' OR (received->>'restocked')::boolean IS DISTINCT FROM true THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE zero return lacks terminal completed receipt';END IF;
- IF app.returns_receive(aid,receive_version,'zero-receive-a',true) IS DISTINCT FROM received THEN
+ IF app.returns_receive(aid,receive_version,'7d3e9387-734f-5acf-8eca-cdb384c64b92',true) IS DISTINCT FROM received THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE zero receive replay drift';END IF;
  IF (SELECT state FROM app.orders WHERE tenant_id=t AND id=oid)<>'refunded'
   OR (SELECT refunded_minor FROM app.orders WHERE tenant_id=t AND id=oid)<>1
@@ -487,15 +487,15 @@ BEGIN
   oid:=uuidv7();lid:=uuidv7();other_lid:=uuidv7();
   IF case_i=1 THEN
    expected:=ARRAY[5,3,1];
-   res:=app.inventory_reserve(sku,9,'order',oid,'tiny-reserve',900);
+   res:=app.inventory_reserve(sku,9,'order',oid,'c33a8eef-a83b-522c-ba55-6e1ee6bb64c0',900);
    lines:=jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',9,
     'unit_price_minor',1,'line_net_minor',9,'line_tax_minor',3,'line_total_minor',12,'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb));
   ELSIF case_i=4 THEN
    -- UUID order matters: excess discount20 consumes first-line tax3 then shipping17.
    lid:='00000000-0000-4000-8000-000000000411';other_lid:='00000000-0000-4000-8000-000000000412';
    expected:=ARRAY[0,7,43];
-   res:=app.inventory_reserve(sku,2,'order',oid,'allocation-reserve-4a',900);
-   res2:=app.inventory_reserve(sku2,2,'order',oid,'allocation-reserve-4b',900);
+   res:=app.inventory_reserve(sku,2,'order',oid,'622ec6e7-6451-5254-944b-991ba299d123',900);
+   res2:=app.inventory_reserve(sku2,2,'order',oid,'54032304-942c-5a18-bada-7229fcf97ef4',900);
    lines:=jsonb_build_array(jsonb_build_object('id',other_lid,'sku_id',sku2,'sku','fulfillment-sku-2','quantity',2,
     'unit_price_minor',25,'line_net_minor',50,'line_tax_minor',7,'line_total_minor',57,'reservation_id',res2.id,'tax_snapshot','{"category":"standard"}'::jsonb),
     jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
@@ -503,26 +503,26 @@ BEGIN
   ELSE
    expected:=CASE case_i WHEN 2 THEN ARRAY[25,8,5] ELSE ARRAY[0,0,4] END;
    IF case_i=2 THEN
-    res:=app.inventory_reserve(sku,2,'order',oid,'allocation-reserve-2a',900);
-    res2:=app.inventory_reserve(sku2,2,'order',oid,'allocation-reserve-2b',900);
+    res:=app.inventory_reserve(sku,2,'order',oid,'b295f721-3ca5-5acf-a991-f34dacd5a742',900);
+    res2:=app.inventory_reserve(sku2,2,'order',oid,'f211f75f-fe6d-5b33-8f99-c2ea0ca9c5f0',900);
     lines:=jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
      'unit_price_minor',5,'line_net_minor',10,'line_tax_minor',3,'line_total_minor',13,'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb),
      jsonb_build_object('id',other_lid,'sku_id',sku2,'sku','fulfillment-sku-2','quantity',2,
      'unit_price_minor',9,'line_net_minor',18,'line_tax_minor',5,'line_total_minor',23,'reservation_id',res2.id,'tax_snapshot','{"category":"standard"}'::jsonb));
    ELSE
-    res:=app.inventory_reserve(sku,4,'order',oid,'allocation-reserve-3',900);
+    res:=app.inventory_reserve(sku,4,'order',oid,'91011e26-c39d-5d71-b8ca-db79da348538',900);
     lines:=jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',4,
      'unit_price_minor',0,'line_net_minor',0,'line_tax_minor',0,'line_total_minor',0,'reservation_id',res.id,'tax_snapshot','{"category":"standard"}'::jsonb));
    END IF;
   END IF;
   raw_shipping:=CASE case_i WHEN 4 THEN 60 ELSE expected[3] END;
-  ord:=app.orders_create(oid,'allocation-order-'||case_i,sha256(('allocation'||case_i)::bytea),NULL,
+  ord:=app.orders_create(oid,(md5(('allocation-order-'||case_i)::text)::uuid::text),sha256(('allocation'||case_i)::bytea),NULL,
    '{"email":"allocation@example.invalid"}','USD',raw_shipping,jsonb_build_object('currency','USD','amount_minor',raw_shipping,'service','fixture'),
    lines,CASE WHEN case_i IN(1,2,4) THEN jsonb_build_array(jsonb_build_object('id',uuidv7(),'kind','discount','amount_minor',CASE case_i WHEN 1 THEN -4 WHEN 4 THEN -120 ELSE -3 END,'reason','fixture discount')) ELSE '[]'::jsonb END);
   ord:=app.orders_transition(oid,'paid','allocation-paid-'||case_i,0);actual:=ARRAY[0,0,0]::bigint[];
   FOR unit_i IN 1..CASE case_i WHEN 1 THEN 9 ELSE 4 END LOOP
    chosen_id:=CASE WHEN case_i IN(2,4) AND unit_i%2=0 THEN other_lid ELSE lid END;
-   r:=app.returns_create(oid,ord.version,'allocation-return-'||case_i||'-'||unit_i,'unshipped_cancel','unit entitlement',
+   r:=app.returns_create(oid,ord.version,(md5(('allocation-return-'||case_i||'-'||unit_i)::text)::uuid::text),'unshipped_cancel','unit entitlement',
     jsonb_build_array(jsonb_build_object('order_line_id',chosen_id,'quantity',1)));
    n:=(r->>'income_minor')::bigint;tx:=(r->>'tax_minor')::bigint;sh:=(r->>'shipping_minor')::bigint;
    IF n<0 OR tx<0 OR sh<0 THEN RAISE EXCEPTION 'FULFILLMENT_GATE nonmonotone tiny entitlement';END IF;
@@ -533,7 +533,7 @@ BEGIN
    SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
    IF (r->>'refund_minor')::bigint>0 THEN
     EXECUTE 'SET LOCAL ROLE app_returns_service';
-    r:=app.returns_prepare_refund((r->>'id')::uuid,ord.version,'allocation-refund-'||case_i||'-'||unit_i,'capture-allocation',1,income,tax,shipping,cash);
+    r:=app.returns_prepare_refund((r->>'id')::uuid,ord.version,(md5(('allocation-refund-'||case_i||'-'||unit_i)::text)::uuid::text),'capture-allocation',1,income,tax,shipping,cash);
     accounts:=ARRAY[]::uuid[];sides:=ARRAY[]::text[];amounts:=ARRAY[]::bigint[];
     IF n>0 THEN accounts:=array_append(accounts,income);sides:=array_append(sides,'debit');amounts:=array_append(amounts,n);END IF;
     IF tx>0 THEN accounts:=array_append(accounts,tax);sides:=array_append(sides,'debit');amounts:=array_append(amounts,tx);END IF;
@@ -542,7 +542,7 @@ BEGIN
  EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
     journal:=app.post_ledger(t,'USD','return',r->>'id','refund',accounts,sides,amounts);
  EXECUTE 'SET LOCAL ROLE app_returns_service';
-    PERFORM app.returns_complete_refund((r->>'id')::uuid,'allocation-refund-'||case_i||'-'||unit_i,'capture-allocation',journal);
+    PERFORM app.returns_complete_refund((r->>'id')::uuid,(md5(('allocation-refund-'||case_i||'-'||unit_i)::text)::uuid::text),'capture-allocation',journal);
     EXECUTE 'SET LOCAL ROLE app_runtime';
    END IF;
    SELECT * INTO ord FROM app.orders WHERE tenant_id=t AND id=oid;
@@ -571,10 +571,10 @@ SELECT set_config('test.refund_c04_t',:'ta',true),set_config('test.refund_c04_ot
  set_config('test.refund_c04_actor',:'actor',true),set_config('test.refund_c04_claim',:'claim',true),
  set_config('app.tenant_id',:'ta',true);
 SET LOCAL ROLE app_runtime;
-SELECT app.idempotency_claim(:'ta','api_key',:'actor','refundReturn','refund-service',sha256('refund-service'::bytea),interval '1 hour',:'claim');
-SELECT app.idempotency_claim(:'ta','api_key',:'actor','createShipment','other-operation',sha256('other-op'::bytea),interval '1 hour',uuidv7());
+SELECT app.idempotency_claim(:'ta','api_key',:'actor','refundReturn','96bff2a2-faf6-5416-8656-d84d4c64712f',sha256('96bff2a2-faf6-5416-8656-d84d4c64712f'::bytea),interval '1 hour',:'claim');
+SELECT app.idempotency_claim(:'ta','api_key',:'actor','createShipment','a261d7b6-99af-55e3-8fe8-4ea29e72dd8b',sha256('other-op'::bytea),interval '1 hour',uuidv7());
 SELECT set_config('app.tenant_id',:'tb',true);
-SELECT app.idempotency_claim(:'tb','api_key',:'actor','refundReturn','other-tenant',sha256('other-tenant'::bytea),interval '1 hour',uuidv7());
+SELECT app.idempotency_claim(:'tb','api_key',:'actor','refundReturn','3d557673-cc15-5fbc-9c67-66542f4e9ed4',sha256('3d557673-cc15-5fbc-9c67-66542f4e9ed4'::bytea),interval '1 hour',uuidv7());
 SELECT set_config('app.tenant_id',:'ta',true);
 SET LOCAL ROLE app_returns_service;
 DO $refund_c04$
@@ -593,7 +593,7 @@ BEGIN
  IF n<>0 THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE coordinator updated foreign tenant'; END IF;
  BEGIN
   INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at)
-  VALUES(t,'api_key',actor,'refundReturn','forged',sha256('forged'::bytea),clock_timestamp()+interval '1 hour');
+  VALUES(t,'api_key',actor,'refundReturn','3122fa34-c798-53de-8f57-4223245e2ac0',sha256('3122fa34-c798-53de-8f57-4223245e2ac0'::bytea),clock_timestamp()+interval '1 hour');
   RAISE EXCEPTION 'FULFILLMENT_C04_GATE coordinator claimed new intent';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
@@ -605,7 +605,7 @@ BEGIN
   UPDATE app.idempotency_records SET state='completed',response_status=200,
    response_body_reference='fixture:refund',completed_at=clock_timestamp()
   WHERE tenant_id=t AND actor_kind='api_key' AND actor_id=actor AND operation='refundReturn'
-   AND idempotency_key='refund-service' AND request_hash=sha256('refund-service'::bytea)
+   AND idempotency_key='96bff2a2-faf6-5416-8656-d84d4c64712f' AND request_hash=sha256('96bff2a2-faf6-5416-8656-d84d4c64712f'::bytea)
    AND claim_token=token AND state='in_progress';
   RAISE EXCEPTION 'FULFILLMENT_C04_GATE stale claim completed';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
@@ -613,7 +613,7 @@ BEGIN
  UPDATE app.idempotency_records SET state='completed',response_status=200,
   response_body_reference='fixture:refund',completed_at=clock_timestamp()
  WHERE tenant_id=t AND actor_kind='api_key' AND actor_id=actor AND operation='refundReturn'
-  AND idempotency_key='refund-service' AND request_hash=sha256('refund-service'::bytea)
+  AND idempotency_key='96bff2a2-faf6-5416-8656-d84d4c64712f' AND request_hash=sha256('96bff2a2-faf6-5416-8656-d84d4c64712f'::bytea)
   AND claim_token=token AND state='in_progress';
  GET DIAGNOSTICS n=ROW_COUNT;
  IF n<>1 THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE refund completion unavailable'; END IF;
@@ -645,7 +645,7 @@ BEGIN
  SELECT regexp_replace(prosrc,'[[:space:]]+$','') INTO original_body FROM pg_proc WHERE pg_proc.oid=command;
  -- A nested original PL/pgSQL block retains all declarations and RETURNs.
  IF right(original_body,1)<>';' THEN original_body:=original_body||';'; END IF;
- FOREACH phase IN ARRAY ARRAY['legacy','freeze_before','freeze_after','reserve','lock','complete'] LOOP
+ FOREACH phase IN ARRAY ARRAY['83d8c44f-a133-5a43-b196-1565e9318c2d','freeze_before','freeze_after','reserve','lock','complete'] LOOP
   target:=CASE WHEN starts_with(phase,'freeze_') THEN 'freeze' ELSE phase END;
   INSERT INTO app.tenants(name,settlement_currency) VALUES('budget intervention '||phase,'USD') RETURNING id INTO t;
   INSERT INTO app.products(tenant_id,product_code) VALUES(t,'budget') RETURNING id INTO product;
@@ -658,22 +658,22 @@ BEGIN
    (t,shipping,'shipping','USD','revenue'),(t,cash,'cash','USD','asset');
   oid:=uuidv7(); lid:=uuidv7();
   EXECUTE 'SET LOCAL ROLE app_runtime';
-  reservation:=app.inventory_reserve(sku,2,'order',oid,'budget-reserve',900);
-  ord:=app.orders_create(oid,'budget-order',sha256('budget'::bytea),NULL,
+  reservation:=app.inventory_reserve(sku,2,'order',oid,'9b34ae62-cf87-5706-bf16-34700262a8a0',900);
+  ord:=app.orders_create(oid,'c274ec69-57c5-5687-8e88-bfcf3af6012f',sha256('budget'::bytea),NULL,
    '{"email":"budget@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
    jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','budget','quantity',2,
     'unit_price_minor',10,'line_net_minor',20,'line_tax_minor',0,'line_total_minor',20,
     'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
   ord:=app.orders_transition(oid,'paid','budget-paid',0);
   IF phase IN('reserve','lock','complete') THEN
-   r:=app.returns_create(oid,ord.version,'budget-return','unshipped_cancel','budget test',
+   r:=app.returns_create(oid,ord.version,'73b5f4ea-07cb-5402-a65f-e736c8cfe19e','unshipped_cancel','budget test',
     jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
    rid:=(r->>'id')::uuid;
    SELECT version INTO ord.version FROM app.orders WHERE tenant_id=t AND id=oid;
   END IF;
   IF phase IN('lock','complete') THEN
    EXECUTE 'SET LOCAL ROLE app_returns_service';
-   r:=app.returns_prepare_refund(rid,ord.version,'budget-refund','budget-provider',1,income,tax,shipping,cash);
+   r:=app.returns_prepare_refund(rid,ord.version,'143e9905-be83-5c2c-8254-97873cbf0fa9','budget-provider',1,income,tax,shipping,cash);
   END IF;
   IF phase='complete' THEN
  EXECUTE 'SET LOCAL ROLE app_runtime'; -- privileged fixture journal, never Returns posting authority
@@ -715,19 +715,19 @@ BEGIN
    END $sentinel$',args,trap,original_body);
   hit:=false;
   BEGIN
-   IF target IN('legacy','freeze') THEN EXECUTE 'SET LOCAL ROLE app_runtime';
+   IF target IN('83d8c44f-a133-5a43-b196-1565e9318c2d','freeze') THEN EXECUTE 'SET LOCAL ROLE app_runtime';
    ELSE EXECUTE 'SET LOCAL ROLE app_returns_service'; END IF;
    IF phase='legacy' THEN
     PERFORM app.orders_transition(oid,'partially_refunded','budget-legacy',2);
    ELSIF target='freeze' THEN
-    PERFORM app.returns_create(oid,ord.version,'budget-return','unshipped_cancel','budget test',
+    PERFORM app.returns_create(oid,ord.version,'73b5f4ea-07cb-5402-a65f-e736c8cfe19e','unshipped_cancel','budget test',
      jsonb_build_array(jsonb_build_object('order_line_id',lid,'quantity',1)));
    ELSIF phase='reserve' THEN
-    PERFORM app.returns_prepare_refund(rid,ord.version,'budget-refund','budget-provider',1,income,tax,shipping,cash);
+    PERFORM app.returns_prepare_refund(rid,ord.version,'143e9905-be83-5c2c-8254-97873cbf0fa9','budget-provider',1,income,tax,shipping,cash);
    ELSIF phase='lock' THEN
-    PERFORM app.returns_lock_refund(rid,'budget-refund');
+    PERFORM app.returns_lock_refund(rid,'143e9905-be83-5c2c-8254-97873cbf0fa9');
    ELSE
-    PERFORM app.returns_complete_refund(rid,'budget-refund','budget-provider',journal);
+    PERFORM app.returns_complete_refund(rid,'143e9905-be83-5c2c-8254-97873cbf0fa9','budget-provider',journal);
    END IF;
   EXCEPTION WHEN SQLSTATE 'P39B1' THEN hit:=true;
   END;

@@ -295,7 +295,7 @@ export async function handlePurchaseRequest(request: Request, cookies: Jar, oper
     }
     if (operation === 'checkout' && request.method === 'POST') {
       if (!session.c) throw new HTTPError(404);
-      const idempotency = request.headers.get('Idempotency-Key'); if (!idempotency || idempotency.length !== 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(idempotency)) throw new HTTPError(400,'invalid_idempotency_key');
+      const idempotency = request.headers.get('Idempotency-Key')?.toLowerCase(); if (!idempotency || idempotency.length !== 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(idempotency)) throw new HTTPError(400,'invalid_idempotency_key');
       const input = await body(request, ['shipping_address','buyer_contact','accepted_total']);
       const accepted=acceptedTotal(input.accepted_total);
       const startBody={...(input as Pick<APIComponents['schemas']['CheckoutStart'],'shipping_address'|'buyer_contact'>),cart_id:session.c,accepted_total:accepted};

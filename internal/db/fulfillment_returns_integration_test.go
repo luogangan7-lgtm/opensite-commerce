@@ -155,7 +155,7 @@ func newFulfillmentFixture(t *testing.T) fulfillmentFixture {
 	}
 	zone, rate := uuid.NewString(), uuid.NewString()
 	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	in := orderscontract.CreateInput{ID: uuid.NewString(), IdempotencyKey: "create:" + uuid.NewString(), Buyer: orderscontract.Buyer{Guest: orderscontract.Contact{Email: "fixture@example.test"}}, Currency: "USD", Shipping: shipping.Result{Charge: money.Money{Amount: 40, Currency: "USD"}, ZoneID: zone, RateID: rate, Method: "fixed"}, Adjustments: []orderscontract.Adjustment{{ID: uuid.NewString(), Kind: "discount", AmountMinor: -20, Reason: "fixed gate discount"}}, Lines: []orderscontract.Line{{ID: f.line, SKUID: f.sku, SKU: "FULFILLMENT-SKU", Quantity: 4, Price: pricing.Result{Unit: money.Money{Amount: 100, Currency: "USD"}, Line: money.Money{Amount: 400, Currency: "USD"}, PriceListID: uuid.NewString(), MinQuantity: 1}, Tax: tax.LineResult{ID: f.line, Amounts: tax.Amounts{Net: 400, Tax: 40, Gross: 440}, Snapshot: tax.Snapshot{Currency: "USD", ZoneID: zone, RateID: rate, Category: "standard", BasisPoints: 1000, ValidFrom: &at, Rounding: "half_up", Reason: "rate"}}}}}
+	in := orderscontract.CreateInput{ID: uuid.NewString(), IdempotencyKey: uuid.NewString(), Buyer: orderscontract.Buyer{Guest: orderscontract.Contact{Email: "fixture@example.test"}}, Currency: "USD", Shipping: shipping.Result{Charge: money.Money{Amount: 40, Currency: "USD"}, ZoneID: zone, RateID: rate, Method: "fixed"}, Adjustments: []orderscontract.Adjustment{{ID: uuid.NewString(), Kind: "discount", AmountMinor: -20, Reason: "fixed gate discount"}}, Lines: []orderscontract.Line{{ID: f.line, SKUID: f.sku, SKU: "FULFILLMENT-SKU", Quantity: 4, Price: pricing.Result{Unit: money.Money{Amount: 100, Currency: "USD"}, Line: money.Money{Amount: 400, Currency: "USD"}, PriceListID: uuid.NewString(), MinQuantity: 1}, Tax: tax.LineResult{ID: f.line, Amounts: tax.Amounts{Net: 400, Tax: 40, Gross: 440}, Snapshot: tax.Snapshot{Currency: "USD", ZoneID: zone, RateID: rate, Category: "standard", BasisPoints: 1000, ValidFrom: &at, Rounding: "half_up", Reason: "rate"}}}}}
 	err = f.runtime.InTenant(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		f.order, err = orders.New().Create(ctx, tx, f.tenant, in)
@@ -164,7 +164,7 @@ func newFulfillmentFixture(t *testing.T) fulfillmentFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	intentRequest := payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: f.order.ID, OrderVersion: f.order.Version, Amount: f.order.Total, IdempotencyKey: "intent:" + uuid.NewString()}
+	intentRequest := payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: f.order.ID, OrderVersion: f.order.Version, Amount: f.order.Total, IdempotencyKey: uuid.NewString()}
 	intent, err := f.payments.CreateIntent(ctx, intentRequest)
 	if err != nil {
 		t.Fatal(err)
@@ -213,14 +213,14 @@ func TestFulfillmentRefundReconcileAfterCustomerErasure(t *testing.T) {
 	var requested returnscontract.Return
 	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
-		requested, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "privacy-cancel", Kind: returnscontract.UnshippedCancel, Reason: "private customer return note", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 1}}})
+		requested, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "0500dffb-2fbd-5351-98af-6c3f55008cdf", Kind: returnscontract.UnshippedCancel, Reason: "private customer return note", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 1}}})
 		return err
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.journal.fail = true
-	refund := returnscontract.RefundInput{ReturnID: requested.ID, ExpectedVersion: requested.OrderVersion, IdempotencyKey: "privacy-refund"}
+	refund := returnscontract.RefundInput{ReturnID: requested.ID, ExpectedVersion: requested.OrderVersion, IdempotencyKey: "95c03c4e-90b5-5799-8a82-ac0758075d87"}
 	if _, err = f.returns.Refund(f.ctx, f.tenant, refund); err == nil {
 		t.Fatal("post-provider failure was not injected")
 	}
@@ -249,7 +249,7 @@ func TestFulfillmentRefundReconcileAfterCustomerErasure(t *testing.T) {
 		t.Fatalf("erased refund replay repeated provider effect: err=%v effects=%d", err, len(f.payments.Events()))
 	}
 	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-		late, err := f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: completed.OrderVersion, IdempotencyKey: "privacy-late-cancel", Kind: returnscontract.UnshippedCancel, Reason: "late private customer note", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 1}}})
+		late, err := f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: completed.OrderVersion, IdempotencyKey: "e52303fc-0a92-582e-87f1-8512dc97de68", Kind: returnscontract.UnshippedCancel, Reason: "late private customer note", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 1}}})
 		if err == nil && !returnscontract.ValidID(late.ID) {
 			t.Fatal("scrubbed receipt broke the public command result identity")
 		}
@@ -274,7 +274,7 @@ func TestFulfillmentRefundReconcileAfterCustomerErasure(t *testing.T) {
 }
 
 func TestReturnReceiptReplayWaitsForErasureFence(t *testing.T) {
-	for _, mode := range []string{"creation", "receive"} {
+	for _, mode := range []string{"creation", "7e99593d-15b8-5fd9-b621-8c13cec1c290"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFulfillmentFixture(t)
 			customer := uuid.NewString()
@@ -291,13 +291,13 @@ func TestReturnReceiptReplayWaitsForErasureFence(t *testing.T) {
 			var shipped fulfillmentcontract.Shipment
 			err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 				var err error
-				shipped, err = fulfillment.New().CreateShipment(ctx, tx, f.tenant, fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "privacy-replay-shipment", Carrier: "manual", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 1}}})
+				shipped, err = fulfillment.New().CreateShipment(ctx, tx, f.tenant, fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "c0787eb7-3db5-58df-a082-27a32734d147", Carrier: "manual", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 1}}})
 				return err
 			})
 			if err != nil || len(shipped.Lines) != 1 {
 				t.Fatalf("replay shipment fixture: %+v %v", shipped, err)
 			}
-			request := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: shipped.OrderVersion, IdempotencyKey: "privacy-replay-return", Kind: returnscontract.ShipmentReturn, Reason: "private replay receipt canary", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipped.Lines[0].ID, Quantity: 1}}}
+			request := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: shipped.OrderVersion, IdempotencyKey: "79239faf-997b-5acd-9746-199fe6b97aa0", Kind: returnscontract.ShipmentReturn, Reason: "private replay receipt canary", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipped.Lines[0].ID, Quantity: 1}}}
 			var requested returnscontract.Return
 			err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 				var err error
@@ -307,8 +307,8 @@ func TestReturnReceiptReplayWaitsForErasureFence(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			receive := returnscontract.ReceiveInput{ReturnID: requested.ID, ExpectedVersion: requested.OrderVersion, IdempotencyKey: "privacy-replay-receive", Restock: true}
-			if mode == "receive" {
+			receive := returnscontract.ReceiveInput{ReturnID: requested.ID, ExpectedVersion: requested.OrderVersion, IdempotencyKey: "a2b17012-88e5-5d39-98e7-5dfe46008f70", Restock: true}
+			if mode == "7e99593d-15b8-5fd9-b621-8c13cec1c290" {
 				err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 					_, err := f.returns.Receive(ctx, tx, f.tenant, receive)
 					return err
@@ -340,7 +340,7 @@ func TestReturnReceiptReplayWaitsForErasureFence(t *testing.T) {
 			}
 			var reason string
 			replay := startBudgetSession(t, f, "runtime", false, func(ctx context.Context, tx pgx.Tx) error {
-				if mode == "receive" {
+				if mode == "7e99593d-15b8-5fd9-b621-8c13cec1c290" {
 					return tx.QueryRow(ctx, "SELECT app.returns_receive($1,$2,$3,$4)->>'reason'", receive.ReturnID, receive.ExpectedVersion, receive.IdempotencyKey, receive.Restock).Scan(&reason)
 				}
 				return tx.QueryRow(ctx, "SELECT app.returns_create($1,$2,$3,$4,$5,$6::jsonb)->>'reason'", request.OrderID, request.ExpectedVersion, request.IdempotencyKey, string(request.Kind), request.Reason, lines).Scan(&reason)
@@ -366,7 +366,7 @@ func TestFulfillmentPartialShipmentCancelRemainderRefund(t *testing.T) {
 	if got := f.stock(t); got != 16 {
 		t.Fatalf("paid must commit all four units: %d", got)
 	}
-	in := fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "ship:" + uuid.NewString(), Carrier: "manual", TrackingNumber: "gate", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 2}}}
+	in := fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: uuid.NewString(), Carrier: "manual", TrackingNumber: "gate", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 2}}}
 	var shipped fulfillmentcontract.Shipment
 	err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
@@ -383,7 +383,7 @@ func TestFulfillmentPartialShipmentCancelRemainderRefund(t *testing.T) {
 		t.Fatalf("shipment deducted paid stock twice: %d", got)
 	}
 	var cancelled returnscontract.Return
-	cancel := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: shipped.OrderVersion, IdempotencyKey: "cancel:" + uuid.NewString(), Kind: returnscontract.UnshippedCancel, Reason: "buyer cancelled remainder", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 2}}}
+	cancel := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: shipped.OrderVersion, IdempotencyKey: uuid.NewString(), Kind: returnscontract.UnshippedCancel, Reason: "buyer cancelled remainder", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 2}}}
 	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		cancelled, err = f.returns.Request(ctx, tx, f.tenant, cancel)
@@ -416,7 +416,7 @@ func TestFulfillmentPartialShipmentCancelRemainderRefund(t *testing.T) {
 		t.Fatalf("already allocated remainder accepted: %v", err)
 	}
 	f.journal.fail = true
-	refund := returnscontract.RefundInput{ReturnID: cancelled.ID, ExpectedVersion: cancelled.OrderVersion, IdempotencyKey: "refund:" + uuid.NewString()}
+	refund := returnscontract.RefundInput{ReturnID: cancelled.ID, ExpectedVersion: cancelled.OrderVersion, IdempotencyKey: uuid.NewString()}
 	if _, err = f.returns.Refund(f.ctx, f.tenant, refund); err == nil {
 		t.Fatal("injected journal failure accepted")
 	}
@@ -475,7 +475,7 @@ func TestFulfillmentPartialShipmentCancelRemainderRefund(t *testing.T) {
 	}
 	// Return the two physically shipped units and refund the remaining components.
 	var physical returnscontract.Return
-	physicalInput := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: done.OrderVersion, IdempotencyKey: "return:" + uuid.NewString(), Kind: returnscontract.ShipmentReturn, Reason: "received damaged", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipped.Lines[0].ID, Quantity: 2}}}
+	physicalInput := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: done.OrderVersion, IdempotencyKey: uuid.NewString(), Kind: returnscontract.ShipmentReturn, Reason: "received damaged", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipped.Lines[0].ID, Quantity: 2}}}
 	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		physical, err = f.returns.Request(ctx, tx, f.tenant, physicalInput)
@@ -484,11 +484,11 @@ func TestFulfillmentPartialShipmentCancelRemainderRefund(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.returns.Refund(f.ctx, f.tenant, returnscontract.RefundInput{ReturnID: physical.ID, ExpectedVersion: physical.OrderVersion, IdempotencyKey: "too-early:" + uuid.NewString()}); !errors.Is(err, returnscontract.ErrConflict) {
+	if _, err = f.returns.Refund(f.ctx, f.tenant, returnscontract.RefundInput{ReturnID: physical.ID, ExpectedVersion: physical.OrderVersion, IdempotencyKey: uuid.NewString()}); !errors.Is(err, returnscontract.ErrConflict) {
 		t.Fatalf("refund before return receipt accepted: %v", err)
 	}
 	originalRequest := physical
-	receiveInput := returnscontract.ReceiveInput{ReturnID: physical.ID, ExpectedVersion: physical.OrderVersion, IdempotencyKey: "receive:" + uuid.NewString(), Restock: true}
+	receiveInput := returnscontract.ReceiveInput{ReturnID: physical.ID, ExpectedVersion: physical.OrderVersion, IdempotencyKey: uuid.NewString(), Restock: true}
 	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		physical, err = f.returns.Receive(ctx, tx, f.tenant, receiveInput)
@@ -509,7 +509,7 @@ func TestFulfillmentPartialShipmentCancelRemainderRefund(t *testing.T) {
 			t.Fatalf("creation response drift: initial=%+v replay=%+v err=%v", originalRequest, replay, err)
 		}
 	})
-	if _, err = f.returns.Refund(f.ctx, f.tenant, returnscontract.RefundInput{ReturnID: physical.ID, ExpectedVersion: physical.OrderVersion, IdempotencyKey: "refund:" + uuid.NewString()}); err != nil {
+	if _, err = f.returns.Refund(f.ctx, f.tenant, returnscontract.RefundInput{ReturnID: physical.ID, ExpectedVersion: physical.OrderVersion, IdempotencyKey: uuid.NewString()}); err != nil {
 		t.Fatal(err)
 	}
 	if f.stock(t) != 20 || len(f.payments.Events()) != 4 {
@@ -541,7 +541,7 @@ func TestFulfillmentPartialShipmentCancelRemainderRefund(t *testing.T) {
 func gotStock(f fulfillmentFixture, t *testing.T) int64 { return f.stock(t) }
 func TestFulfillmentReturnTenantAndQuantityFences(t *testing.T) {
 	f := newFulfillmentFixture(t)
-	in := fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "over:" + uuid.NewString(), Carrier: "manual", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 5}}}
+	in := fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: uuid.NewString(), Carrier: "manual", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 5}}}
 	err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := fulfillment.New().CreateShipment(ctx, tx, f.tenant, in)
 		return err
@@ -566,7 +566,7 @@ func TestFulfillmentReturnTenantAndQuantityFences(t *testing.T) {
 		t.Fatalf("stale shipment: %v", err)
 	}
 	err = f.runtime.InTenant(f.ctx, f.foreign, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := f.returns.Receive(ctx, tx, f.foreign, returnscontract.ReceiveInput{ReturnID: uuid.NewString(), ExpectedVersion: 2, IdempotencyKey: "receive"})
+		_, err := f.returns.Receive(ctx, tx, f.foreign, returnscontract.ReceiveInput{ReturnID: uuid.NewString(), ExpectedVersion: 2, IdempotencyKey: "7e99593d-15b8-5fd9-b621-8c13cec1c290"})
 		return err
 	})
 	if !errors.Is(err, returnscontract.ErrNotFound) {
@@ -582,7 +582,7 @@ func TestFulfillmentReturnIdempotencyKeysAcrossRMAs(t *testing.T) {
 	var shipped fulfillmentcontract.Shipment
 	err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
-		shipped, err = fulfillment.New().CreateShipment(ctx, tx, f.tenant, fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "ship:" + uuid.NewString(), Carrier: "manual", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 4}}})
+		shipped, err = fulfillment.New().CreateShipment(ctx, tx, f.tenant, fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: uuid.NewString(), Carrier: "manual", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 4}}})
 		return err
 	})
 	if err != nil || len(shipped.Lines) != 1 {
@@ -594,7 +594,7 @@ func TestFulfillmentReturnIdempotencyKeysAcrossRMAs(t *testing.T) {
 		var out returnscontract.Return
 		err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			var err error
-			out, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: "request:" + uuid.NewString(), Kind: returnscontract.ShipmentReturn, Reason: "fixture", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipped.Lines[0].ID, Quantity: 1}}})
+			out, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: uuid.NewString(), Kind: returnscontract.ShipmentReturn, Reason: "fixture", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipped.Lines[0].ID, Quantity: 1}}})
 			return err
 		})
 		if err != nil {
@@ -609,7 +609,7 @@ func TestFulfillmentReturnIdempotencyKeysAcrossRMAs(t *testing.T) {
 		var out returnscontract.Return
 		err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			var err error
-			out, err = f.returns.Receive(ctx, tx, f.tenant, returnscontract.ReceiveInput{ReturnID: id, ExpectedVersion: version, IdempotencyKey: key, Restock: true})
+			out, err = f.returns.Receive(ctx, tx, f.tenant, returnscontract.ReceiveInput{ReturnID: id, ExpectedVersion: version, IdempotencyKey: fixtureCallerKey(key), Restock: true})
 			return err
 		})
 		return out, err
@@ -628,13 +628,13 @@ func TestFulfillmentReturnIdempotencyKeysAcrossRMAs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	refundKey := "refund:" + uuid.NewString()
-	first, err = f.returns.Refund(f.ctx, f.tenant, returnscontract.RefundInput{ReturnID: first.ID, ExpectedVersion: second.OrderVersion, IdempotencyKey: refundKey})
+	refundKey := uuid.NewString()
+	first, err = f.returns.Refund(f.ctx, f.tenant, returnscontract.RefundInput{ReturnID: first.ID, ExpectedVersion: second.OrderVersion, IdempotencyKey: fixtureCallerKey(refundKey)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	events := len(f.payments.Events())
-	if _, err = f.returns.Refund(f.ctx, f.tenant, returnscontract.RefundInput{ReturnID: second.ID, ExpectedVersion: first.OrderVersion, IdempotencyKey: refundKey}); !errors.Is(err, returnscontract.ErrKeyReused) {
+	if _, err = f.returns.Refund(f.ctx, f.tenant, returnscontract.RefundInput{ReturnID: second.ID, ExpectedVersion: first.OrderVersion, IdempotencyKey: fixtureCallerKey(refundKey)}); !errors.Is(err, returnscontract.ErrKeyReused) {
 		t.Fatalf("different RMA reused refund key: %v", err)
 	}
 	if len(f.payments.Events()) != events || f.stock(t) != 18 {
@@ -647,7 +647,7 @@ func TestFulfillmentRefundCompletionRollbackAndReplay(t *testing.T) {
 	var cancelled returnscontract.Return
 	err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
-		cancelled, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: "cancel:" + uuid.NewString(), Kind: returnscontract.UnshippedCancel, Reason: "fixture", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 2}}})
+		cancelled, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: f.order.Version, IdempotencyKey: uuid.NewString(), Kind: returnscontract.UnshippedCancel, Reason: "fixture", Lines: []returnscontract.Line{{OrderLineID: f.line, Quantity: 2}}})
 		return err
 	})
 	if err != nil {
@@ -677,7 +677,7 @@ func TestFulfillmentRefundCompletionRollbackAndReplay(t *testing.T) {
 		}
 		return nil
 	}
-	in := returnscontract.RefundInput{ReturnID: cancelled.ID, ExpectedVersion: cancelled.OrderVersion, IdempotencyKey: "refund:" + uuid.NewString()}
+	in := returnscontract.RefundInput{ReturnID: cancelled.ID, ExpectedVersion: cancelled.OrderVersion, IdempotencyKey: uuid.NewString()}
 	if _, err = completer.RefundWithCompletion(f.ctx, f.tenant, in, completion); !errors.Is(err, completionErr) {
 		t.Fatalf("completion failure not propagated: %v", err)
 	}

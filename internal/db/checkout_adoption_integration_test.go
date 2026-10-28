@@ -111,7 +111,7 @@ func newCheckoutAdoptionPG(t *testing.T) checkoutAdoptionPG {
 
 func (a checkoutAdoptionPG) adopt(t *testing.T, key string) checkoutcontract.Result {
 	t.Helper()
-	r, err := a.adopter.AdoptOrder(checkoutRequestContext(a.f.ctx), a.f.actor, a.order.ID, key)
+	r, err := a.adopter.AdoptOrder(checkoutRequestContext(a.f.ctx), a.f.actor, a.order.ID, fixtureCallerKey(key))
 	if err != nil || r.OrderID != a.order.ID || r.AmountMinor != 270 || r.Currency != "USD" || r.OrderVersion != 1 || r.State != "ready" || r.Payment.ProviderRef == "" {
 		t.Fatalf("adopt original frozen order: %#v %v", r, err)
 	}
@@ -169,7 +169,7 @@ func TestCheckoutPGAdoptionUncertainCaptureExpiredHoldStaysPending(t *testing.T)
 	if err := a.f.run(a.f.ctx, a.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `SELECT s.final_result IS NULL AND a.result IS NULL AND s.claim_kind='payment' AND s.claim_key=$3
 		 FROM app.checkout_sessions s JOIN app.checkout_attempts a ON a.tenant_id=s.tenant_id AND a.checkout_id=s.id
-		 WHERE s.tenant_id=$1 AND s.id=$2 AND a.event_key=$3`, a.f.tenant, start.CheckoutID, event.EventID).Scan(&incomplete)
+		 WHERE s.tenant_id=$1 AND s.id=$2 AND a.event_key=$3`, a.f.tenant, start.CheckoutID, fixturePaymentEventKey(event.EventID)).Scan(&incomplete)
 	}); err != nil || !incomplete {
 		t.Fatalf("recovery claim/receipt lost: pending=%v %v", incomplete, err)
 	}
@@ -185,7 +185,7 @@ func TestCheckoutPGAdoptionSourceAdmissionAndImmutableSnapshot(t *testing.T) {
 		var noCartID, noCartVersion bool
 		err := tx.QueryRow(ctx, `INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,source_kind,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
 		 VALUES($1,$2,'customer',$3,$4,sha256('admission-positive'::bytea),'existing_order',$5,'{}','USD',270,200,20,50,1)
-		 RETURNING source_kind,cart_id IS NULL,cart_version IS NULL`, a.f.tenant, uuid.NewString(), a.f.actor.ID(), "positive:"+uuid.NewString(), a.order.ID).Scan(&source, &noCartID, &noCartVersion)
+		 RETURNING source_kind,cart_id IS NULL,cart_version IS NULL`, a.f.tenant, uuid.NewString(), a.f.actor.ID(), uuid.NewString(), a.order.ID).Scan(&source, &noCartID, &noCartVersion)
 		if err != nil {
 			return err
 		}
@@ -274,7 +274,7 @@ func (a checkoutAdoptionPG) confirm(t *testing.T, event payment.VerifiedEvent, s
 
 func TestCheckoutPGAdoptExistingCustomerOrderPaidBalancedReplay(t *testing.T) {
 	a := newCheckoutAdoptionPG(t)
-	key := "adopt:" + uuid.NewString()
+	key := uuid.NewString()
 	start := a.adopt(t, key)
 	a.assertSnapshot(t, start)
 	event := a.commandEvent(t, start)

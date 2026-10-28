@@ -330,7 +330,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		if err := tx.QueryRow(ctx, "SELECT id::text FROM app.order_lines WHERE tenant_id=$1 AND order_id=$2", f.tenant, start.OrderID).Scan(&line); err != nil {
 			return err
 		}
-		shipment, err := fulfillment.New().CreateShipment(ctx, tx, f.tenant, fc.CreateInput{OrderID: start.OrderID, ExpectedVersion: version(), IdempotencyKey: "sandbox-ship", Carrier: "manual", TrackingNumber: "sandbox", Lines: []fc.Line{{OrderLineID: line, Quantity: 10}}})
+		shipment, err := fulfillment.New().CreateShipment(ctx, tx, f.tenant, fc.CreateInput{OrderID: start.OrderID, ExpectedVersion: version(), IdempotencyKey: "effb0f4a-d5cf-531d-82fc-1192be5bfd96", Carrier: "manual", TrackingNumber: "sandbox", Lines: []fc.Line{{OrderLineID: line, Quantity: 10}}})
 		if err == nil {
 			shipmentLine = shipment.Lines[0].ID
 		}
@@ -370,14 +370,14 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		var rma rc.Return
 		err = f.run(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			var err error
-			rma, err = coordinator.Request(ctx, tx, f.tenant, rc.RequestInput{OrderID: start.OrderID, ExpectedVersion: version(), IdempotencyKey: key, Kind: rc.ShipmentReturn, Reason: "sandbox return", Lines: []rc.Line{{OrderLineID: line, ShipmentLineID: shipmentLine, Quantity: quantity}}})
+			rma, err = coordinator.Request(ctx, tx, f.tenant, rc.RequestInput{OrderID: start.OrderID, ExpectedVersion: version(), IdempotencyKey: fixtureCallerKey(key), Kind: rc.ShipmentReturn, Reason: "sandbox return", Lines: []rc.Line{{OrderLineID: line, ShipmentLineID: shipmentLine, Quantity: quantity}}})
 			return err
 		})
 		if err != nil || rma.Status != "requested" {
 			t.Fatalf("RMA request: %+v %v", rma, err)
 		}
 		unreceived := f.witness(t, start.OrderID)
-		if _, err := coordinator.Refund(ctx, f.tenant, rc.RefundInput{ReturnID: rma.ID, ExpectedVersion: rma.OrderVersion, IdempotencyKey: key + "-too-early"}); !errors.Is(err, rc.ErrConflict) {
+		if _, err := coordinator.Refund(ctx, f.tenant, rc.RefundInput{ReturnID: rma.ID, ExpectedVersion: rma.OrderVersion, IdempotencyKey: fixtureCallerKey(key + "-too-early")}); !errors.Is(err, rc.ErrConflict) {
 			t.Fatalf("unreceived RMA admitted refund: %v", err)
 		}
 		if f.witness(t, start.OrderID) != unreceived {
@@ -385,13 +385,13 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		}
 		err = f.run(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			var err error
-			rma, err = coordinator.Receive(ctx, tx, f.tenant, rc.ReceiveInput{ReturnID: rma.ID, ExpectedVersion: version(), IdempotencyKey: key + "-receive", Restock: false})
+			rma, err = coordinator.Receive(ctx, tx, f.tenant, rc.ReceiveInput{ReturnID: rma.ID, ExpectedVersion: version(), IdempotencyKey: fixtureCallerKey(key + "-receive"), Restock: false})
 			return err
 		})
 		if err != nil || rma.Status != "received" {
 			t.Fatalf("RMA receive: %+v %v", rma, err)
 		}
-		in := rc.RefundInput{ReturnID: rma.ID, ExpectedVersion: rma.OrderVersion, IdempotencyKey: key + "-refund"}
+		in := rc.RefundInput{ReturnID: rma.ID, ExpectedVersion: rma.OrderVersion, IdempotencyKey: fixtureCallerKey(key + "-refund")}
 		completed, err := coordinator.Refund(ctx, f.tenant, in)
 		if err != nil || completed.Status != "refunded" || completed.RefundMinor <= 0 {
 			t.Fatalf("coordinator refund: %+v %v", completed, err)
@@ -448,7 +448,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		assertEvent(d.id)
 	}
 	assertRefunds(total, 2)
-	over := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: start.OrderID, OrderVersion: start.OrderVersion, Amount: money.Money{Amount: 1, Currency: start.Currency}, IdempotencyKey: "sandbox-over-refund"}, ProviderRef: start.Payment.ProviderRef}
+	over := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: f.tenant, OrderID: start.OrderID, OrderVersion: start.OrderVersion, Amount: money.Money{Amount: 1, Currency: start.Currency}, IdempotencyKey: "24cf67af-c9df-585d-b6b5-e7614407b8b8"}, ProviderRef: start.Payment.ProviderRef}
 	if _, err := adapter.Refund(ctx, over); err == nil {
 		t.Fatal("Stripe over-refund admitted")
 	}
@@ -473,7 +473,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 		t.Fatalf("Stripe over-refund status=%d want=400", response.StatusCode)
 	}
 	err = f.run(ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := coordinator.Request(ctx, tx, f.tenant, rc.RequestInput{OrderID: start.OrderID, ExpectedVersion: version(), IdempotencyKey: "sandbox-over-rma", Kind: rc.ShipmentReturn, Reason: "exhausted quantity", Lines: []rc.Line{{OrderLineID: line, ShipmentLineID: shipmentLine, Quantity: 1}}})
+		_, err := coordinator.Request(ctx, tx, f.tenant, rc.RequestInput{OrderID: start.OrderID, ExpectedVersion: version(), IdempotencyKey: "e9fe0004-7445-5dcf-997a-02d04b544809", Kind: rc.ShipmentReturn, Reason: "exhausted quantity", Lines: []rc.Line{{OrderLineID: line, ShipmentLineID: shipmentLine, Quantity: 1}}})
 		return err
 	})
 	if !errors.Is(err, rc.ErrConflict) {
@@ -493,7 +493,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	failBefore := f.witness(t, failStart.OrderID)
 	op := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: f.tenant,
 		OrderID: failStart.OrderID, OrderVersion: failStart.OrderVersion, Amount: money.Money{Amount: 1, Currency: failStart.Currency},
-		IdempotencyKey: "sandbox-posted-failure"}, ProviderRef: failStart.Payment.ProviderRef}
+		IdempotencyKey: "418ade83-1757-522d-b591-213278ac54d1"}, ProviderRef: failStart.Payment.ProviderRef}
 	if _, err := failAdapter.Refund(ctx, op); err != nil {
 		t.Fatalf("C19D2_SANDBOX_SUCCESS_RED: %v", err)
 	}
@@ -554,7 +554,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	}
 	t.Log("PASS C19D2: real TEST succeeded -> failed refund, one posted reversal and capacity restoration; signed duplicate/stale-success replay inert")
 	cancelStart := f.start(t)
-	canceled, err := svc.Cancel(checkoutRequestContext(ctx), f.actor, ch.CancelInput{CheckoutID: cancelStart.CheckoutID, IdempotencyKey: "sandbox-cancel"})
+	canceled, err := svc.Cancel(checkoutRequestContext(ctx), f.actor, ch.CancelInput{CheckoutID: cancelStart.CheckoutID, IdempotencyKey: "7a22c639-b123-5700-bd46-00834c663bb8"})
 	if err != nil || canceled.State != "cancelled" {
 		t.Fatalf("cancel failed: %v", err)
 	}

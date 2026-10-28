@@ -43,9 +43,9 @@ SELECT set_config('test.privacy_ledger_before',(SELECT jsonb_agg(to_jsonb(l) ORD
 DO $order$
 DECLARE sku uuid:=current_setting('test.privacy_sku')::uuid;oid uuid:=uuidv7();r app.inventory_reservations;o app.orders;l jsonb;
 BEGIN
- r:=app.inventory_reserve(sku,1,'order',oid,'privacy-reserve',900);
+ r:=app.inventory_reserve(sku,1,'order',oid,'2de5d28f-e5db-554d-ba72-e3e8922fe630',900);
  l:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',r.id,'tax_snapshot',jsonb_build_object('category','standard','net_minor',100,'tax_minor',10,'gross_minor',110,'currency','USD','basis_points','Secret Person','private','Private street')));
- o:=app.orders_create(oid,'privacy-create',sha256('fixture'::bytea),current_setting('test.privacy_customer')::uuid,NULL,'USD',20,'{"amount_minor":20,"currency":"USD","recipient":"Secret Person","address":"Private street"}',l,'[]');
+ o:=app.orders_create(oid,'10e495e6-7a48-5cb7-be2e-9965158b5f6a',sha256('fixture'::bytea),current_setting('test.privacy_customer')::uuid,NULL,'USD',20,'{"amount_minor":20,"currency":"USD","recipient":"Secret Person","address":"Private street"}',l,'[]');
  PERFORM set_config('test.privacy_order',oid::text,true);
  PERFORM set_config('test.privacy_order_before',(to_jsonb(o)-'shipping_snapshot')::text,true);
  PERFORM set_config('test.privacy_line_before',(SELECT (to_jsonb(x)-'tax_snapshot')::text FROM app.order_lines x WHERE order_id=oid),true);
@@ -70,17 +70,17 @@ BEGIN
    UPDATE app.outbox_events SET status='delivered',delivered_at=clock_timestamp() WHERE tenant_id=t AND id=d.dispatch_event_id;
   ELSIF i=3 THEN
    UPDATE app.notification_deliveries SET status='dead_letter',last_error='SEND_FAILED' WHERE tenant_id=t AND id=d.id;
-   PERFORM app.notification_redrive(t,d.id,'privacy-old-redrive');
+   PERFORM app.notification_redrive(t,d.id,'506fca7c-c7d3-5833-a0c2-ca787c147170');
   END IF;
  END LOOP;
  -- Identical email is deliberately not an ownership key: an unrelated guest
  -- order's frozen recipient must remain intact.
  EXECUTE 'SET LOCAL ROLE app_orders_executor';
  INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-  VALUES(t,uuidv7(),2,'privacy-unowned-guest',sha256('guest'::bytea),'{"email":"erasure-subject@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id INTO oid;
+  VALUES(t,uuidv7(),2,'991c90ef-f576-5b81-890d-116a2cd22024',sha256('guest'::bytea),'{"email":"erasure-subject@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id INTO oid;
  EXECUTE 'RESET ROLE';
  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
-  VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','privacy-unowned-guest') RETURNING id INTO source;
+  VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','991c90ef-f576-5b81-890d-116a2cd22024') RETURNING id INTO source;
  SELECT id INTO source FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=source;
  PERFORM set_config('test.privacy_unowned_notification',source::text,true);
  PERFORM set_config('test.privacy_unowned_order',oid::text,true);
@@ -160,7 +160,7 @@ BEGIN
  IF (SELECT guest_contact FROM app.orders WHERE tenant_id=t AND id=current_setting('test.privacy_unowned_order')::uuid)<>'{"email":"erasure-subject@example.invalid"}'::jsonb THEN RAISE EXCEPTION 'PRIVACY_GATE unlinked guest order scrubbed'; END IF;
  IF EXISTS(SELECT FROM app.notification_deliveries WHERE tenant_id=t AND reference_id=oid AND (recipient<>'erased-'||id::text||'@invalid.test' OR status<>'dead_letter' OR last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR send_token IS NOT NULL OR lease_worker IS NOT NULL OR lease_attempt IS NOT NULL OR sent_at IS NOT NULL)) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION PII or live send residue'; END IF;
  IF EXISTS(SELECT FROM app.outbox_events e JOIN app.notification_deliveries d ON d.tenant_id=e.tenant_id AND e.payload=jsonb_build_object('notification_id',d.id) WHERE d.tenant_id=t AND d.reference_id=oid AND (e.status NOT IN('dead_letter','delivered') OR e.last_error IS DISTINCT FROM 'PRIVACY_ERASED' OR e.lease_owner IS NOT NULL OR e.lease_until IS NOT NULL)) THEN RAISE EXCEPTION 'PRIVACY_NOTIFICATION live dispatch generation'; END IF;
- BEGIN PERFORM app.notification_redrive(t,n,'privacy-revive');RAISE EXCEPTION 'PRIVACY_NOTIFICATION redrive revival'; EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ BEGIN PERFORM app.notification_redrive(t,n,'4f78e4de-8499-5809-8740-d1b75d3e0590');RAISE EXCEPTION 'PRIVACY_NOTIFICATION redrive revival'; EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
  EXECUTE 'SET LOCAL ROLE app_runtime';
  BEGIN UPDATE app.notification_deliveries SET recipient='resurrected@example.test' WHERE tenant_id=t AND id=n; RAISE EXCEPTION 'PRIVACY_NOTIFICATION raw mutation'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  EXECUTE 'RESET ROLE';
@@ -201,14 +201,14 @@ BEGIN
  EXECUTE 'SET LOCAL ROLE app_data_rights_executor';
  -- Positive control: the exact (idempotent) scrub is admitted.
  UPDATE app.quotes SET snapshot=app.data_rights_quote_scrub(snapshot) WHERE tenant_id=t AND id=q;
- FOREACH probe IN ARRAY ARRAY['forged','non_scrub_column','partial','insert','delete'] LOOP
+ FOREACH probe IN ARRAY ARRAY['3122fa34-c798-53de-8f57-4223245e2ac0','non_scrub_column','partial','insert','delete'] LOOP
   BEGIN
    CASE probe
-    WHEN 'forged' THEN UPDATE app.quotes SET snapshot='{"forged":true}' WHERE tenant_id=t AND id=q;
+    WHEN '3122fa34-c798-53de-8f57-4223245e2ac0' THEN UPDATE app.quotes SET snapshot='{"forged":true}' WHERE tenant_id=t AND id=q;
     WHEN 'non_scrub_column' THEN UPDATE app.quotes SET status='withdrawn' WHERE tenant_id=t AND id=q;
     WHEN 'partial' THEN UPDATE app.quote_lines SET snapshot='{"forged":true}' WHERE tenant_id=t AND quote_id=q;
     WHEN 'insert' THEN INSERT INTO app.quote_lines(tenant_id,quote_id,line_no,description,quantity,unit_price,line_total,snapshot)
-     VALUES(t,q,999,'forged',1,1,1,'{}');
+     VALUES(t,q,999,'3122fa34-c798-53de-8f57-4223245e2ac0',1,1,1,'{}');
     WHEN 'delete' THEN DELETE FROM app.quote_lines WHERE tenant_id=t AND quote_id=q;
    END CASE;
    RAISE EXCEPTION 'PRIVACY_GATE scrub guard admitted %',probe;
@@ -283,9 +283,9 @@ BEGIN
    IF guard<>'customer_addresses_customer_fk' THEN RAISE EXCEPTION 'PRIVACY_GATE address parent wrong FK %',guard; END IF;
   END;
   BEGIN
-   oid:=uuidv7(); r:=app.inventory_reserve(sku,1,'order',oid,'privacy-missing-parent-'||oid::text,900);
+   oid:=uuidv7(); r:=app.inventory_reserve(sku,1,'order',oid,(md5(('privacy-missing-parent-'||oid::text)::text)::uuid::text),900);
    lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb));
-   PERFORM app.orders_create(oid,'privacy-missing-parent-'||oid::text,sha256('fixture'::bytea),parent,NULL,'USD',0,'{"amount_minor":0,"currency":"USD"}',lines,'[]');
+   PERFORM app.orders_create(oid,(md5(('privacy-missing-parent-'||oid::text)::text)::uuid::text),sha256('fixture'::bytea),parent,NULL,'USD',0,'{"amount_minor":0,"currency":"USD"}',lines,'[]');
    RAISE EXCEPTION 'PRIVACY_GATE missing order parent accepted';
   EXCEPTION WHEN foreign_key_violation THEN
    GET STACKED DIAGNOSTICS guard=CONSTRAINT_NAME;
@@ -305,9 +305,9 @@ BEGIN
  EXCEPTION WHEN object_not_in_prerequisite_state THEN
   IF SQLERRM<>'PRIVACY_CUSTOMER_DISABLED' THEN RAISE; END IF; END;
  BEGIN
-  oid:=uuidv7(); r:=app.inventory_reserve(sku,1,'order',oid,'privacy-erased-parent-'||oid::text,900);
+  oid:=uuidv7(); r:=app.inventory_reserve(sku,1,'order',oid,(md5(('privacy-erased-parent-'||oid::text)::text)::uuid::text),900);
   lines:=jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','frozen-sku','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb));
-  PERFORM app.orders_create(oid,'privacy-erased-parent-'||oid::text,sha256('fixture'::bytea),parent,NULL,'USD',0,'{"amount_minor":0,"currency":"USD"}',lines,'[]');
+  PERFORM app.orders_create(oid,(md5(('privacy-erased-parent-'||oid::text)::text)::uuid::text),sha256('fixture'::bytea),parent,NULL,'USD',0,'{"amount_minor":0,"currency":"USD"}',lines,'[]');
   RAISE EXCEPTION 'PRIVACY_GATE erased order parent accepted';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN
   IF SQLERRM<>'PRIVACY_CUSTOMER_DISABLED' THEN RAISE; END IF; END;

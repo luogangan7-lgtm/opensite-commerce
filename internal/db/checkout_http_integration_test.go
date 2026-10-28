@@ -166,7 +166,7 @@ func TestCheckoutPGHTTPFakeCanceledCallbackAfterCancel(t *testing.T) {
 	// command tripwire before admitting its callback. No request runs in flight.
 	guard := f.provider.before
 	f.provider.before = nil
-	cancelled, err := f.service.Cancel(ctx, f.actor, checkoutcontract.CancelInput{CheckoutID: start.CheckoutID, IdempotencyKey: "cancel:" + uuid.NewString()})
+	cancelled, err := f.service.Cancel(ctx, f.actor, checkoutcontract.CancelInput{CheckoutID: start.CheckoutID, IdempotencyKey: uuid.NewString()})
 	f.provider.before = guard
 	if err != nil || cancelled.State != "cancelled" {
 		t.Fatalf("Cancel %#v %v", cancelled, err)
@@ -210,10 +210,14 @@ func TestCheckoutPGHTTPFakeCanceledCallbackAfterCancel(t *testing.T) {
 	}
 	var receipts, inboxes, events int
 	if err := f.runner.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var providerKey string
+		if err := tx.QueryRow(ctx, `SELECT e.event_key FROM app.payment_events e JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE e.tenant_id=$1 AND e.provider_account_id=$3 AND i.provider_event_id=$2`, f.tenant, event.EventID, p.account).Scan(&providerKey); err != nil {
+			return err
+		}
 		return tx.QueryRow(ctx, `SELECT
-		 (SELECT count(*) FROM app.checkout_attempts a JOIN app.payment_events e ON (a.tenant_id,a.event_key)=(e.tenant_id,e.event_key) JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE a.tenant_id=$1 AND a.event_kind='payment' AND a.result IS NOT NULL AND e.provider_account_id=$3 AND i.provider_event_id=$2),
+		 (SELECT count(*) FROM app.checkout_attempts a JOIN app.payment_events e ON (a.tenant_id,a.event_key)=(e.tenant_id,$4::text) JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE a.tenant_id=$1 AND a.event_kind='payment' AND a.result IS NOT NULL AND e.provider_account_id=$3 AND i.provider_event_id=$2),
 		 (SELECT count(*) FROM app.webhook_inbox WHERE tenant_id=$1 AND provider='fake' AND provider_account_id=$3 AND environment='test' AND provider_event_id=$2 AND status='processed'),
-		 (SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE e.tenant_id=$1 AND e.provider_account_id=$3 AND i.provider_event_id=$2 AND e.applied)`, f.tenant, event.EventID, p.account).Scan(&receipts, &inboxes, &events)
+		 (SELECT count(*) FROM app.payment_events e JOIN app.webhook_inbox i ON (i.tenant_id,i.id)=(e.tenant_id,e.id) WHERE e.tenant_id=$1 AND e.provider_account_id=$3 AND i.provider_event_id=$2 AND e.applied)`, f.tenant, event.EventID, p.account, fixturePaymentEventKey(providerKey)).Scan(&receipts, &inboxes, &events)
 	}); err != nil || receipts != 1 || inboxes != 1 || events != 1 {
 		t.Fatalf("canceled callback receipts checkout=%d inbox=%d events=%d %v", receipts, inboxes, events, err)
 	}

@@ -34,7 +34,7 @@ func TestRegisterInvalid(t *testing.T) {
 		{"bad pattern", func(s *httpapi.RouteSpec) { s.Pattern = "not/a/path" }},
 		{"tenant without scope", func(s *httpapi.RouteSpec) { s.Scope = "" }},
 		{"tenant whitespace scope", func(s *httpapi.RouteSpec) { s.Scope = " " }},
-		{"self scope", func(s *httpapi.RouteSpec) { s.Access = httpapi.AuthenticatedSelf; s.Pattern = "/auth/whoami" }},
+		{"self scope", func(s *httpapi.RouteSpec) { s.Access = httpapi.AuthenticatedSelf; s.Pattern = "/api/v1/auth/current-actor" }},
 		{"self tenant", func(s *httpapi.RouteSpec) { s.Access = httpapi.AuthenticatedSelf; s.Scope = "" }},
 		{"self tenant alias", func(s *httpapi.RouteSpec) {
 			s.Access = httpapi.AuthenticatedSelf
@@ -95,7 +95,7 @@ func TestRegisterAllowedAndConflicts(t *testing.T) {
 			s.Access = access
 			if access == httpapi.Public || access == httpapi.AuthenticatedSelf {
 				s.Scope = ""
-				s.Pattern = "/auth/whoami"
+				s.Pattern = "/api/v1/auth/current-actor"
 			}
 			if err := httpapi.New(nil, nil).Register(s, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})); err != nil {
 				t.Fatal(err)
@@ -110,7 +110,7 @@ func TestRegisterAllowedAndConflicts(t *testing.T) {
 	}
 	t.Run("duplicate operation", func(t *testing.T) {
 		other := s
-		other.Pattern = "/other"
+		other.Pattern = "/api/v1/t/{tenant_id}/sites"
 		if r.Register(other, h) == nil {
 			t.Error("duplicate operation registered")
 		}
@@ -139,13 +139,13 @@ func TestDefaultDenyAndPublic(t *testing.T) {
 	for _, access := range []httpapi.Access{httpapi.Public, httpapi.AuthenticatedSelf, httpapi.AdminSession, httpapi.APIKey, httpapi.AdminOrAPIKey, httpapi.InternalService} {
 		t.Run(string(access), func(t *testing.T) {
 			r := httpapi.New(nil, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
-			s := httpapi.RouteSpec{OperationID: "whoami", Method: "GET", Pattern: "/auth/whoami", Access: access}
+			s := httpapi.RouteSpec{OperationID: "whoami", Method: "GET", Pattern: "/api/v1/auth/current-actor", Access: access}
 			called := false
 			if err := r.Register(s, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true; w.WriteHeader(200) })); err != nil {
 				t.Fatal(err)
 			}
 			w := httptest.NewRecorder()
-			r.ServeHTTP(w, httptest.NewRequest("GET", "/auth/whoami", nil))
+			r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/auth/current-actor", nil))
 			if access == httpapi.Public {
 				if w.Code != 200 || !called {
 					t.Fatal("public route unreachable")
@@ -227,7 +227,7 @@ func assertProblem(t *testing.T, w *httptest.ResponseRecorder, status int) {
 func TestPanicRecoveryAndPrivateLogs(t *testing.T) {
 	var logs bytes.Buffer
 	r := httpapi.New(nil, slog.New(slog.NewJSONHandler(&logs, nil)))
-	if err := r.Register(httpapi.RouteSpec{OperationID: "panicProbe", Method: "GET", Pattern: "/panic", Access: httpapi.Public}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	if err := r.Register(httpapi.RouteSpec{OperationID: "panicProbe", Method: "GET", Pattern: "/api/v1/auth/current-actor", Access: httpapi.Public}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Set-Cookie", "should-not-escape")
 		w.WriteHeader(201)
 		_, _ = w.Write([]byte("partial-secret"))
@@ -267,14 +267,14 @@ func TestPanicRecoveryAndPrivateLogs(t *testing.T) {
 
 func TestBufferedWriteSniffsContentType(t *testing.T) {
 	r := httpapi.New(nil, nil)
-	spec := httpapi.RouteSpec{OperationID: "sniff", Method: "GET", Pattern: "/sniff", Access: httpapi.Public}
+	spec := httpapi.RouteSpec{OperationID: "sniff", Method: "GET", Pattern: "/api/v1/auth/current-actor", Access: httpapi.Public}
 	if err := r.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("<!doctype html><html><body>hi</body></html>"))
 	})); err != nil {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest("GET", "/sniff", nil))
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/auth/current-actor", nil))
 	if got := w.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
 		t.Fatalf("Content-Type = %q, want sniffed text/html", got)
 	}
@@ -291,7 +291,7 @@ func TestStorefrontAccessIsTenantBoundDefaultDeny(t *testing.T) {
 	assertProblem(t, w, 401)
 	for _, change := range []func(*httpapi.RouteSpec){
 		func(s *httpapi.RouteSpec) { s.Scope = "catalog.read" },
-		func(s *httpapi.RouteSpec) { s.Pattern = "/auth/whoami" },
+		func(s *httpapi.RouteSpec) { s.Pattern = "/api/v1/auth/current-actor" },
 		func(s *httpapi.RouteSpec) { s.Pattern = "/t/{tenant_id}/carts" },
 	} {
 		bad := spec
@@ -313,7 +313,7 @@ func TestBuyerCompanyRequiresScopedTenantAndDefaultsDeny(t *testing.T) {
 	req.Header.Set("Idempotency-Key", "11111111-1111-4111-8111-111111111111")
 	r.ServeHTTP(w, req)
 	assertProblem(t, w, 401)
-	for _, change := range []func(*httpapi.RouteSpec){func(s *httpapi.RouteSpec) { s.Scope = "" }, func(s *httpapi.RouteSpec) { s.Scope = "quotes:write" }, func(s *httpapi.RouteSpec) { s.Pattern = "/auth/whoami" }, func(s *httpapi.RouteSpec) { s.Pattern = "/t/{tenant_id}/quotes" }} {
+	for _, change := range []func(*httpapi.RouteSpec){func(s *httpapi.RouteSpec) { s.Scope = "" }, func(s *httpapi.RouteSpec) { s.Scope = "quotes:write" }, func(s *httpapi.RouteSpec) { s.Pattern = "/api/v1/auth/current-actor" }, func(s *httpapi.RouteSpec) { s.Pattern = "/t/{tenant_id}/quotes" }} {
 		bad := spec
 		change(&bad)
 		if httpapi.New(nil, nil).Register(bad, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})) == nil {

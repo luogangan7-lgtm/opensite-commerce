@@ -195,8 +195,8 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 	return nil
 }
 
-// Unknown test-only routes have no contract key. All production operations use
-// the resolved embedded contract, including path-level inherited parameters.
+// Every route must resolve in the embedded contract before startup can succeed.
+// Path-level inherited parameters participate in the same admission policy.
 func requiresIdempotencyKey(spec RouteSpec) (bool, error) {
 	doc, err := GetSwagger()
 	if err != nil {
@@ -204,11 +204,11 @@ func requiresIdempotencyKey(spec RouteSpec) (bool, error) {
 	}
 	item := doc.Paths.Value(spec.Pattern)
 	if item == nil {
-		return false, nil
+		return false, fmt.Errorf("route %q: path absent from admission contract", spec.OperationID)
 	}
 	op := item.GetOperation(spec.Method)
 	if op == nil {
-		return false, nil
+		return false, fmt.Errorf("route %q: method absent from admission contract", spec.OperationID)
 	}
 	for _, parameters := range []openapi3.Parameters{item.Parameters, op.Parameters} {
 		for _, parameter := range parameters {

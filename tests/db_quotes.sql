@@ -19,7 +19,7 @@ INSERT INTO app.customers(tenant_id,email) VALUES(:'ta',uuidv7()::text||'@exampl
 INSERT INTO app.customers(tenant_id,email) VALUES(:'ta',uuidv7()::text||'@example.invalid') RETURNING id AS outsider \gset
 INSERT INTO app.buyer_companies(tenant_id,name) VALUES(:'ta','buyer-one') RETURNING id AS company \gset
 INSERT INTO app.buyer_companies(tenant_id,name) VALUES(:'ta','buyer-two') RETURNING id AS company2 \gset
-INSERT INTO app.buyer_companies(tenant_id,name) VALUES(:'tb','foreign') RETURNING id AS foreign_company \gset
+INSERT INTO app.buyer_companies(tenant_id,name) VALUES(:'tb','5e292400-2e01-5a41-8801-7c6a516eaaf0') RETURNING id AS foreign_company \gset
 INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code)
 VALUES(:'ta',:'company',:'buyer','approver'),(:'ta',:'company',:'approver','approver'),(:'ta',:'company2',:'outsider','approver');
 INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message) VALUES(:'ta',:'site','contact@example.invalid','contact') RETURNING id AS inquiry \gset
@@ -89,14 +89,14 @@ DO $runtime$ DECLARE t uuid:=current_setting('quotes.t')::uuid; q uuid; draft uu
  PERFORM pg_temp.quote_reject('SELECT pg_temp.quote_create_padded(1048577)','23514','snapshot hard cap');
  IF (SELECT count(*) FROM app.quotes WHERE status='approved')<>1 THEN RAISE EXCEPTION 'QUOTES_ACCEPTED_PORT_ONLY_APPROVED'; END IF;
  -- Shared receipts preserve claim fencing and return a response in this transaction.
- PERFORM app.idempotency_claim(t,'customer',buyer,'quotes.accept','same',sha256('same'::bytea),interval '1 hour',q);
+ PERFORM app.idempotency_claim(t,'customer',buyer,'quotes.accept','a75f7844-2851-5045-92dc-a4e4c6ea0f6b',sha256('a75f7844-2851-5045-92dc-a4e4c6ea0f6b'::bytea),interval '1 hour',q);
  PERFORM pg_temp.quote_reject(format('UPDATE app.idempotency_records SET state=''completed'',response_status=200,response_body=''{}'',completed_at=clock_timestamp() WHERE tenant_id=%L',t),'55000','receipt fence');
  PERFORM set_config('app.idempotency_claim',q::text,true);
  PERFORM pg_temp.quote_reject(format('UPDATE app.idempotency_records SET state=''completed'',response_status=200,response_body=''[]'',completed_at=clock_timestamp() WHERE tenant_id=%L',t),'23514','receipt shape');
  PERFORM pg_temp.quote_reject(format('UPDATE app.idempotency_records SET state=''completed'',response_status=200,response_body=jsonb_build_object(''x'',repeat(''x'',1048577)),completed_at=clock_timestamp() WHERE tenant_id=%L',t),'23514','receipt size');
  UPDATE app.idempotency_records SET state='completed',response_status=200,response_body=jsonb_build_object('id',q,'status','approved'),completed_at=clock_timestamp() WHERE tenant_id=t;
- IF (app.idempotency_claim(t,'customer',buyer,'quotes.accept','same',sha256('same'::bytea),interval '1 hour',uuidv7())).response_body->>'id'<>q::text THEN RAISE EXCEPTION 'QUOTES_RECEIPT_REPLAY'; END IF;
- PERFORM app.idempotency_claim(t,'user',staff,'legacy.action','legacy',sha256('legacy'::bytea),interval '1 hour',draft);
+ IF (app.idempotency_claim(t,'customer',buyer,'quotes.accept','a75f7844-2851-5045-92dc-a4e4c6ea0f6b',sha256('a75f7844-2851-5045-92dc-a4e4c6ea0f6b'::bytea),interval '1 hour',uuidv7())).response_body->>'id'<>q::text THEN RAISE EXCEPTION 'QUOTES_RECEIPT_REPLAY'; END IF;
+ PERFORM app.idempotency_claim(t,'user',staff,'legacy.action','83d8c44f-a133-5a43-b196-1565e9318c2d',sha256('83d8c44f-a133-5a43-b196-1565e9318c2d'::bytea),interval '1 hour',draft);
  PERFORM set_config('app.idempotency_claim',draft::text,true);
  PERFORM pg_temp.quote_reject(format('UPDATE app.idempotency_records SET state=''completed'',response_status=200,response_body=''{}'',completed_at=clock_timestamp() WHERE tenant_id=%L AND operation=''legacy.action''',t),'23514','legacy inline denied');
 END $runtime$;

@@ -124,7 +124,7 @@ INSERT INTO app.site_release_routes(tenant_id,site_id,release_id,locale,path,pag
 SELECT set_config('app.tenant_id',:'tenant',true),set_config('app.actor_id','c09b0000-0000-4000-8000-000000000001',true),set_config('app.actor_kind','user',true);
 SELECT app.publish_release(:'tenant',:'site',:'release',NULL);
 INSERT INTO app.site_releases(tenant_id,site_id,release_no,renderer_build_id,manifest,manifest_hash)
- VALUES(:'tenant',:'site',2,'legacy-gate','{"locale":"en"}',sha256('legacy'::bytea)) RETURNING id AS incompatible \gset
+ VALUES(:'tenant',:'site',2,'legacy-gate','{"locale":"en"}',sha256('83d8c44f-a133-5a43-b196-1565e9318c2d'::bytea)) RETURNING id AS incompatible \gset
 SELECT app.seal_release(:'tenant',:'site',:'incompatible');
 SELECT set_config('test.cms_incompatible',:'incompatible',true);
 SELECT set_config('test.cms_site',:'site',true),set_config('test.cms_release',:'release',true);

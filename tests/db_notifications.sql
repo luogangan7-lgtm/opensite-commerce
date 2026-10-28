@@ -11,9 +11,9 @@ INSERT INTO app.tenants(name) VALUES('notifications-B') RETURNING id AS other_t 
 SELECT set_config('app.tenant_id',:'t',true),set_config('test.notification_t',:'t',true),set_config('test.notification_other',:'other_t',true);
 SET LOCAL ROLE app_orders_executor;
 INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-VALUES(:'t',uuidv7(),1,'notification-order',sha256('n'::bytea),'{"email":" Buyer@Example.Test "}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
+VALUES(:'t',uuidv7(),1,'51b14265-cc1c-50ba-bc1f-34ac7512d782',sha256('n'::bytea),'{"email":" Buyer@Example.Test "}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
 INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-VALUES(:'t',uuidv7(),2,'notification-invalid-order',sha256('n'::bytea),'{"email":"invalid"}','USD',100,0,0,'{}',100) RETURNING id AS invalid_oid \gset
+VALUES(:'t',uuidv7(),2,'46b5005a-643f-52bd-861d-1dca69ed2907',sha256('n'::bytea),'{"email":"invalid"}','USD',100,0,0,'{}',100) RETURNING id AS invalid_oid \gset
 RESET ROLE;
 INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(:'t','order.paid',jsonb_build_object('order_id',:'oid','recipient','attacker@example.test'),'orders.events','source') RETURNING id AS source \gset
 INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES(:'t','order.paid',jsonb_build_object('order_id',:'invalid_oid'),'orders.events','invalid-source');
@@ -54,7 +54,7 @@ BEGIN
    IF NOT EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND id=d.dispatch_event_id AND delivery_target='notifications.email') THEN RAISE EXCEPTION 'NOTIFICATIONS_RECIPIENT_ADMISSION valid dispatch missing';END IF;
   ELSE
    IF d.recipient<>'' OR d.status<>'dead_letter' OR d.dispatch_event_id IS NOT NULL OR d.last_error IS DISTINCT FROM 'NOTIFICATION_RECIPIENT_UNAVAILABLE' THEN RAISE EXCEPTION 'NOTIFICATIONS_RECIPIENT_ADMISSION invalid length/dot contact dispatched case %',n;END IF;
-   BEGIN PERFORM app.notification_redrive(t,d.id,'invalid-contact');RAISE EXCEPTION 'NOTIFICATIONS_RECIPIENT_ADMISSION invalid contact redriven';EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL;END;
+   BEGIN PERFORM app.notification_redrive(t,d.id,'6eac585d-53d9-5ad8-86c8-58968c4adb72');RAISE EXCEPTION 'NOTIFICATIONS_RECIPIENT_ADMISSION invalid contact redriven';EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL;END;
    -- Exercise the table CHECK independently of the fanout classification.
    BEGIN
     UPDATE app.notification_deliveries SET recipient=contact,dispatch_event_id=current_setting('test.notification_source')::uuid,status='pending',last_error=NULL WHERE tenant_id=t AND id=d.id;
@@ -102,7 +102,7 @@ DO $caps$ DECLARE t uuid:=current_setting('test.notification_t')::uuid; source u
  PERFORM set_config('app.outbox_attempt',e.attempts::text,true);
  d:=app.notification_begin(t,e.id,d.id);
  IF d.status<>'uncertain' OR d.send_token IS NOT NULL OR d.attempt_count<>1 THEN RAISE EXCEPTION 'NOTIFICATIONS_GATE crash uncertain';END IF;
- BEGIN PERFORM app.notification_redrive(t,d.id,'uncertain');RAISE EXCEPTION 'NOTIFICATIONS_GATE uncertain redrive';EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL;END;
+ BEGIN PERFORM app.notification_redrive(t,d.id,'f9af01df-8dcb-5edb-9989-5df0900bb189');RAISE EXCEPTION 'NOTIFICATIONS_GATE uncertain redrive';EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL;END;
  UPDATE app.outbox_events SET status='delivered',lease_owner=NULL,lease_until=NULL,delivered_at=clock_timestamp() WHERE tenant_id=t AND id=e.id;
  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) SELECT t,'order.refunded',payload,'orders.events','refund' FROM app.outbox_events WHERE tenant_id=t AND id=source;
  SELECT * INTO STRICT e FROM app.claim_notification_outbox(t,worker,10,60);
@@ -112,9 +112,9 @@ DO $caps$ DECLARE t uuid:=current_setting('test.notification_t')::uuid; source u
  IF NOT app.notification_finish(t,d.id,d.send_token,'failed','DELIVERY_REJECTED') THEN RAISE EXCEPTION 'NOTIFICATIONS_GATE final failed finish';END IF;
  IF (SELECT status FROM app.notification_deliveries WHERE tenant_id=t AND id=d.id)<>'dead_letter' THEN RAISE EXCEPTION 'NOTIFICATIONS_GATE attempt cap';END IF;
  PERFORM app.fail_outbox(t,e.id,worker,10,'DELIVERY_REJECTED',0);
- r:=app.notification_redrive(t,d.id,'redrive-one');replay:=app.notification_redrive(t,d.id,'redrive-one');
+ r:=app.notification_redrive(t,d.id,'6bb8f30d-acf0-547f-8109-b7cc2be58fd7');replay:=app.notification_redrive(t,d.id,'6bb8f30d-acf0-547f-8109-b7cc2be58fd7');
  IF r IS DISTINCT FROM replay OR r.generation<>2 THEN RAISE EXCEPTION 'NOTIFICATIONS_GATE redrive replay';END IF;
- BEGIN PERFORM app.notification_redrive(t,d.id,'another-key');RAISE EXCEPTION 'NOTIFICATIONS_GATE redrive nonterminal';EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL;END;
+ BEGIN PERFORM app.notification_redrive(t,d.id,'be202eab-408e-5251-8976-139077193bae');RAISE EXCEPTION 'NOTIFICATIONS_GATE redrive nonterminal';EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL;END;
  IF EXISTS(SELECT FROM app.outbox_events WHERE tenant_id=t AND delivery_target IN('orders.events','other.module') AND (status<>'pending' OR attempts<>0)) THEN RAISE EXCEPTION 'NOTIFICATIONS_GATE other target consumed';END IF;
  BEGIN UPDATE app.notification_deliveries SET attempt_count=-1 WHERE tenant_id=t AND id=d.id;RAISE EXCEPTION 'NOTIFICATIONS_GATE negative attempts';EXCEPTION WHEN check_violation THEN NULL;END;
  BEGIN UPDATE app.notification_deliveries SET source_event_id=uuidv7() WHERE tenant_id=t AND id=d.id;RAISE EXCEPTION 'NOTIFICATIONS_GATE source FK';EXCEPTION WHEN foreign_key_violation THEN NULL;END;

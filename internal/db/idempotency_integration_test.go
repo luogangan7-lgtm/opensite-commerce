@@ -139,7 +139,7 @@ func idemEffectCount(t *testing.T, f *idemPGFixture, scope idempotency.Scope) in
 	return n
 }
 func idemTestResponse() idempotency.Response {
-	return idempotency.Response{Status: 201, Header: http.Header{"Content-Type": {"application/octet-stream"}, "Etag": {"\"idem-v1\""}, "X-Repeat": {"a", "b"}}, Body: []byte{0, 255, 'o', 'k'}}
+	return idempotency.Response{Status: 201, Header: http.Header{"Content-Type": {"application/octet-stream"}, "Etag": {"\"idem-v1\""}, "X-Repeat": {"a", "b"}}, Body: []byte{0, 255, 'o', '9fc71cc5-dcdd-5a3f-9e4d-15742b8f3271'}}
 }
 func idemLocalResponses(t *testing.T) idempotency.ResponseStore {
 	t.Helper()

@@ -21,6 +21,7 @@ import (
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
 	"net/mail"
 	"strings"
@@ -253,7 +254,7 @@ func (s *Service) Start(ctx context.Context, actor contract.AuthorizedActor, in 
 		if actor.Kind() == "customer" {
 			buyer = orders.Buyer{CustomerID: actor.ID()}
 		}
-		created, e := s.config.Orders.Create(ctx, tx, actor.TenantID(), orders.CreateInput{ID: oid, IdempotencyKey: "checkout:" + id, Buyer: buyer, Currency: rules.Currency, Lines: quoted.Lines, Shipping: quoted.Shipping})
+		created, e := s.config.Orders.Create(ctx, tx, actor.TenantID(), orders.CreateInput{ID: oid, IdempotencyKey: idempotency.DerivedKey("checkout.order", id), Buyer: buyer, Currency: rules.Currency, Lines: quoted.Lines, Shipping: quoted.Shipping})
 		if e != nil {
 			return e
 		}
@@ -458,11 +459,13 @@ func (s *Service) Cancel(ctx context.Context, actor contract.AuthorizedActor, in
 	if !s.available() {
 		return contract.Result{}, contract.ErrUnavailable
 	}
-	keyHash := sha256.Sum256([]byte(actor.Kind() + ":" + actor.ID() + ":" + in.IdempotencyKey))
 	requestHash := digest(struct{ CheckoutID, Key string }{in.CheckoutID, in.IdempotencyKey})
-	return s.finish(ctx, actor, actor.TenantID(), "", in.CheckoutID, "cancel", hex.EncodeToString(keyHash[:]), requestHash, nil, "cancelling", "cancelled")
+	return s.finish(ctx, actor, actor.TenantID(), "", in.CheckoutID, "cancel", idempotency.DerivedKey("checkout.cancel", actor.Kind(), actor.ID(), in.IdempotencyKey), requestHash, nil, "cancelling", "cancelled")
 }
 func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, tenantID, oid, cid, kind, eventKey string, requestHash []byte, event *payment.VerifiedEvent, claimPhase, terminal string) (contract.Result, error) {
+	if kind == "payment" {
+		eventKey = idempotency.DerivedKey("checkout.payment", eventKey)
+	}
 	var row db.AppCheckoutSession
 	var result contract.Result
 	complete := false
@@ -639,7 +642,7 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 			for _, a := range rows {
 				accounts[a.Code] = a
 			}
-			posting, e := journal(current, current.ClaimKey.String, accounts)
+			posting, e := journal(current, event.EventID, accounts)
 			if e != nil {
 				return e
 			}

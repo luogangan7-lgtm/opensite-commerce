@@ -194,7 +194,7 @@ func newOrderReadFixture(t *testing.T) *orderReadFixture {
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,
 			items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor,sealed)
-			VALUES($1,$2,1000000,'unsealed-read-probe',decode(repeat('ab',32),'hex'),'{"email":"guest@example.test"}','USD',0,0,0,'{}',0,false)`,
+			VALUES($1,$2,1000000,'1ea0ef55-2861-547e-a0ed-f8f90651423a',decode(repeat('ab',32),'hex'),'{"email":"guest@example.test"}','USD',0,0,0,'{}',0,false)`,
 			f.tenant, f.unsealed)
 		return err
 	}); err != nil {

@@ -26,15 +26,15 @@ sql() { "${PSQL[@]}" "$@"; }
 fixture() {
   sql <<'SQL' | tail -1
 DO $f$ DECLARE t uuid; o uuid; s uuid; r uuid; b uuid; a uuid; BEGIN
- INSERT INTO app.tenants(name) VALUES('race') RETURNING id INTO t;
+ INSERT INTO app.tenants(name) VALUES('da6dab07-57d2-550c-b107-3a405eccb15e') RETURNING id INTO t;
  INSERT INTO app.organizations(tenant_id,display_name) VALUES(t,'R') RETURNING id INTO o;
  INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(t,o,'R') RETURNING id INTO s;
  INSERT INTO app.site_releases(tenant_id,site_id,release_no,renderer_build_id,manifest,manifest_hash)
- VALUES(t,s,1,'race','{}',sha256(uuidv7()::text::bytea)) RETURNING id INTO r;
+ VALUES(t,s,1,'da6dab07-57d2-550c-b107-3a405eccb15e','{}',sha256(uuidv7()::text::bytea)) RETURNING id INTO r;
  INSERT INTO app.media_blobs(tenant_id,backend,storage_key,sha256,size_bytes,status)
  VALUES(t,'local',uuidv7()::text,sha256(uuidv7()::text::bytea),1,'ready') RETURNING id INTO b;
  INSERT INTO app.media_assets(tenant_id,blob_id,filename,mime_type,visibility)
- VALUES(t,b,'race','image/png','public') RETURNING id INTO a;
+ VALUES(t,b,'da6dab07-57d2-550c-b107-3a405eccb15e','image/png','public') RETURNING id INTO a;
  PERFORM set_config('race.ids',concat_ws(' ',t,s,r,b,a),false);
 END $f$;
 SELECT current_setting('race.ids');
@@ -173,7 +173,7 @@ T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('outbox-race') RETURNING id;" |
 read -r WA WB <<<"$(sql <<<"SELECT uuidv7(),uuidv7();" | tr '|' ' ')"
 sql <<SQL >/dev/null
 INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
- SELECT '$T','race','{}','race-worker',n::text FROM generate_series(1,4) n;
+ SELECT '$T','da6dab07-57d2-550c-b107-3a405eccb15e','{}','race-worker',n::text FROM generate_series(1,4) n;
 SQL
 gate_close 4; gate_close 7
 tx outbox_a app_outbox_worker "$T" "SELECT 'claimed='||count(*) FROM app.claim_outbox('$T','$WA',2,60); $(park 4)" &
@@ -191,7 +191,7 @@ echo "race outbox disjoint claims: $got (expected 4|2|2|true)"
 # Expiration is fixture data, not sleep ordering. Even before another worker
 # reclaims, an expired attempt must not acknowledge or reschedule the row.
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('outbox-fence-race') RETURNING id;" | tail -1)
-E=$(sql <<<"INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES('$T','race','{}','race-worker','fence') RETURNING id;" | tail -1)
+E=$(sql <<<"INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES('$T','da6dab07-57d2-550c-b107-3a405eccb15e','{}','race-worker','fence') RETURNING id;" | tail -1)
 tx lease_a app_outbox_worker "$T" "SELECT 'claimed='||count(*) FROM app.claim_outbox('$T','$WA',1,60);"
 sql <<<"UPDATE app.outbox_events SET lease_until=clock_timestamp()-interval '1 second' WHERE tenant_id='$T' AND id='$E';" >/dev/null
 tx expired app_outbox_worker "$T" "SELECT 'expired='||app.complete_outbox('$T','$E','$WA',1)||'|'||app.fail_outbox('$T','$E','$WA',1,'expired',0);"
@@ -215,7 +215,7 @@ echo "race expired lease fencing: $got (expected delivered|2|true|true)"
 # Set expiry strictly between its observed start and current database clock:
 # now() would wrongly accept the old lease; clock_timestamp() must reject it.
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('outbox-late-ack-race') RETURNING id;" | tail -1)
-E=$(sql <<<"INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES('$T','race','{}','race-worker','late-ack') RETURNING id;" | tail -1)
+E=$(sql <<<"INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES('$T','da6dab07-57d2-550c-b107-3a405eccb15e','{}','race-worker','late-ack') RETURNING id;" | tail -1)
 tx late_claim app_outbox_worker "$T" "SELECT 'claimed='||count(*) FROM app.claim_outbox('$T','$WA',1,60);"
 expect late_claim ok; result late_claim claimed=1
 gate_close 8
@@ -253,7 +253,7 @@ expect up_holder ok; expect up_late ok; result up_late locked=1; result up_late 
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('idempotency-race') RETURNING id;" | tail -1)
 read -r IA IB <<<"$(sql <<<"SELECT uuidv7(),uuidv7();" | tr '|' ' ')"
 H=$(sql <<<"SELECT encode(sha256('same-request'::bytea),'hex');")
-claim_a="INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token) VALUES('$T','service','$WA','race','same-key',sha256('same-request'::bytea),clock_timestamp()+interval '1 hour','$IA') ON CONFLICT (tenant_id,actor_kind,actor_id,operation,idempotency_key) DO UPDATE SET idempotency_key=EXCLUDED.idempotency_key RETURNING 'acquired='||(claim_token='$IA'::uuid)||'|'||state||'|'||encode(request_hash,'hex');"
+claim_a="INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token) VALUES('$T','service','$WA','da6dab07-57d2-550c-b107-3a405eccb15e','ab46d1fc-b24a-5c82-b0c1-f4a132d258d0',sha256('same-request'::bytea),clock_timestamp()+interval '1 hour','$IA') ON CONFLICT (tenant_id,actor_kind,actor_id,operation,idempotency_key) DO UPDATE SET idempotency_key=EXCLUDED.idempotency_key RETURNING 'acquired='||(claim_token='$IA'::uuid)||'|'||state||'|'||encode(request_hash,'hex');"
 claim_b=${claim_a//$IA/$IB}
 gate_close 6
 tx idem_a app_runtime "$T" "$claim_a $(park 6)" &
@@ -270,8 +270,8 @@ echo "race same-key occupancy: $got (expected 1|in_progress|true)"
 # takes it over (the other waits on the row lock, then sees a live claim).
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('idempotency-reclaim') RETURNING id;" | tail -1)
 read -r IO IA IB <<<"$(sql <<<"SELECT uuidv7(),uuidv7(),uuidv7();" | tr '|' ' ')"
-sql <<<"INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token) VALUES('$T','service','$WA','reclaim','k',sha256('r'::bytea),clock_timestamp()-interval '1 second','$IO');" >/dev/null
-reclaim_a="SELECT 'owner='||(claim_token='$IA'::uuid) FROM app.idempotency_claim('$T','service','$WA','reclaim','k',sha256('r'::bytea),interval '1 hour','$IA');"
+sql <<<"INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token) VALUES('$T','service','$WA','reclaim','9fc71cc5-dcdd-5a3f-9e4d-15742b8f3271',sha256('r'::bytea),clock_timestamp()-interval '1 second','$IO');" >/dev/null
+reclaim_a="SELECT 'owner='||(claim_token='$IA'::uuid) FROM app.idempotency_claim('$T','service','$WA','reclaim','9fc71cc5-dcdd-5a3f-9e4d-15742b8f3271',sha256('r'::bytea),interval '1 hour','$IA');"
 reclaim_b=${reclaim_a//$IA/$IB}
 gate_close 7
 tx rc_a app_runtime "$T" "$reclaim_a $(park 7)" &
@@ -316,9 +316,9 @@ inventory_bearer() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
 read -r T SKU OWNER <<<"$(inventory_fixture)"
 HOLDER=$(inventory_bearer)
 gate_close 11
-tx inv_first app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','last-first',900,decode('$HOLDER','hex')); $(park 11)" &
+tx inv_first app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','79d596c6-b639-58c9-89bf-d295a401d63f',900,decode('$HOLDER','hex')); $(park 11)" &
 await inv_first advisory
-tx inv_second app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','last-second',900,decode('$HOLDER','hex'));" &
+tx inv_second app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','6791e958-33e7-589b-8191-e7a1048d81b1',900,decode('$HOLDER','hex'));" &
 await inv_second "${ROWLOCK[@]}"
 gate_open 11; wait
 expect inv_first ok; expect inv_second INVENTORY_INSUFFICIENT_STOCK; expect inv_second P0001
@@ -328,9 +328,9 @@ for quantity in 1 2; do
   read -r T SKU OWNER <<<"$(inventory_fixture)"
   HOLDER=$(inventory_bearer)
   gate_close 12
-  tx inv_key_first app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','same-key',900,decode('$HOLDER','hex')); $(park 12)" &
+  tx inv_key_first app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','ab46d1fc-b24a-5c82-b0c1-f4a132d258d0',900,decode('$HOLDER','hex')); $(park 12)" &
   await inv_key_first advisory
-  tx inv_key_second app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',$quantity,'checkout','$OWNER','same-key',900,decode('$HOLDER','hex'));" &
+  tx inv_key_second app_runtime "$T" "SELECT app.inventory_reserve_non_order('$SKU',$quantity,'checkout','$OWNER','ab46d1fc-b24a-5c82-b0c1-f4a132d258d0',900,decode('$HOLDER','hex'));" &
   await inv_key_second advisory
   gate_open 12; wait
   expect inv_key_first ok
@@ -340,7 +340,7 @@ for quantity in 1 2; do
 done
 
 read -r T SKU OWNER <<<"$(inventory_fixture)"
-RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SELECT (app.inventory_reserve('$SKU',1,'order','$OWNER','expiry-race',900)).id;" | tail -1)
+RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SELECT (app.inventory_reserve('$SKU',1,'order','$OWNER','babcc8b2-ad84-5936-a1b1-4de223d23209',900)).id;" | tail -1)
 sql <<<"UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id='$T' AND id='$RID';" >/dev/null
 gate_close 13
 tx inv_expire app_queue_worker "$T" "SELECT app.inventory_expire_due(1); $(park 13)" &
@@ -355,7 +355,7 @@ inventory_check 'race inventory expiry beats commit' '1|0|0|3' "$T" "$SKU"
 # its counter. Its transaction and commit statement start before expiry; the
 # call finishes after expiry. No scheduler must meet a short clock deadline.
 read -r T SKU OWNER <<<"$(inventory_fixture)"
-RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SELECT (app.inventory_reserve('$SKU',1,'order','$OWNER','skip-race',900)).id;" | tail -1)
+RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SELECT (app.inventory_reserve('$SKU',1,'order','$OWNER','71f15804-7627-5bf5-a07b-46365a809760',900)).id;" | tail -1)
 gate_close 14
 tx inv_stock app_inventory_manager "$T" "SELECT app.inventory_adjust('$SKU',1,'concurrent receipt','$OWNER','inbound'); $(park 14)" &
 await inv_stock advisory
@@ -402,8 +402,8 @@ inventory_check 'race inventory concurrent first warehouse+stock' '3|0|0|2' "$T"
 # still expires another due row (it must not keep re-selecting the locked one).
 read -r T SKU OWNER <<<"$(inventory_fixture 2)"
 HOLDER=$(inventory_bearer)
-R1=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','sweep-old',1,decode('$HOLDER','hex'))).id;" | tail -1)
-R2=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','sweep-new',2,decode('$HOLDER','hex'))).id;" | tail -1)
+R1=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','00daed1d-92a2-5865-acc8-323483ba1dd8',1,decode('$HOLDER','hex'))).id;" | tail -1)
+R2=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','29b0d525-7eab-5fc2-bc4d-c65aed42e6dd',2,decode('$HOLDER','hex'))).id;" | tail -1)
 for _ in $(seq 1 100); do  # poll the database clock until both are due; never order actors by sleep
   [[ $(sql <<<"SELECT count(*) FROM app.inventory_reservations WHERE tenant_id='$T' AND expires_at<=clock_timestamp();") == 2 ]] && break
   sleep 0.05
@@ -425,7 +425,7 @@ for terminal in release commit; do
  for attack in observed_hash wrong_bearer; do
   read -r T SKU OWNER <<<"$(inventory_fixture)"
   HOLDER=$(inventory_bearer)
-  RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','holder-race',900,decode('$HOLDER','hex'))).id;" | tail -1)
+  RID=$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT (app.inventory_reserve_non_order('$SKU',1,'checkout','$OWNER','ac791813-a8fa-5264-9df6-f1b6ce69b5b8',900,decode('$HOLDER','hex'))).id;" | tail -1)
   read -r OBSERVED_OWNER OBSERVED_HASH <<<"$(sql <<<"SELECT set_config('app.tenant_id','$T',false); SET ROLE app_runtime; SELECT owner_id||' '||encode(holder_hash,'hex') FROM app.inventory_reservations WHERE id='$RID';" | tail -1)"
   [[ $OBSERVED_OWNER == "$OWNER" && ${#OBSERVED_HASH} == 64 ]] || { echo 'FAIL: holder race lacks runtime observation'; exit 1; }
   FOREIGN_BEARER=$OBSERVED_HASH
@@ -458,7 +458,7 @@ INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
  VALUES(:'t',:'p','R','default') RETURNING id AS k \gset
 INSERT INTO app.price_lists(tenant_id,currency,status,starts_at)
  VALUES(:'t','USD','active',now()) RETURNING id AS l \gset
-SELECT :'t'||' '||:'l'||' '||:'k';
+SELECT :'t'||' '||:'l'||' '||:'9fc71cc5-dcdd-5a3f-9e4d-15742b8f3271';
 SQL
 )"
 insert="INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) VALUES('$T','$L','$K',1,100);"
@@ -546,7 +546,7 @@ echo "race tax overlapping updates: $got (expected 2|true)"
 # intended constraint, so permissions/fixture errors cannot count as a loser.
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('customer-register-race') RETURNING id;" | tail -1)
 gate_close 23
-tx customer_first app_customer_auth "$T" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$T',' Race.Customer@Example.COM ','first'); $(park 23)" &
+tx customer_first app_customer_auth "$T" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$T',' Race.Customer@Example.COM ','a066cb64-37a0-5474-bc5c-6f7467d8db63'); $(park 23)" &
 await customer_first advisory
 tx customer_second app_customer_auth "$T" "INSERT INTO app.customers(tenant_id,email,display_name) VALUES('$T','race.customer@example.com','second');" &
 await customer_second "${ROWLOCK[@]}"
@@ -596,8 +596,8 @@ SELECT :'t'||' '||:'a'||' '||:'b';
 SQL
 )"
   amount=100; [[ $scenario == changed ]] && amount=101
-  post="SELECT 'journal='||app.post_ledger('$T','USD','race','same-key','capture',ARRAY['$A','$B']::uuid[],ARRAY['debit','credit'],ARRAY[100,100]::bigint[]);"
-  contender="SELECT 'journal='||app.post_ledger('$T','USD','race','same-key','capture',ARRAY['$A','$B']::uuid[],ARRAY['debit','credit'],ARRAY[$amount,$amount]::bigint[]);"
+  post="SELECT 'journal='||app.post_ledger('$T','USD','da6dab07-57d2-550c-b107-3a405eccb15e','ab46d1fc-b24a-5c82-b0c1-f4a132d258d0','capture',ARRAY['$A','$B']::uuid[],ARRAY['debit','credit'],ARRAY[100,100]::bigint[]);"
+  contender="SELECT 'journal='||app.post_ledger('$T','USD','da6dab07-57d2-550c-b107-3a405eccb15e','ab46d1fc-b24a-5c82-b0c1-f4a132d258d0','capture',ARRAY['$A','$B']::uuid[],ARRAY['debit','credit'],ARRAY[$amount,$amount]::bigint[]);"
   gate_close 30
   tx ledger_first app_runtime "$T" "$post $(park 30)" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
   await ledger_first advisory
@@ -639,7 +639,7 @@ INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
  VALUES(:'t','revenue','revenue','USD') RETURNING id AS b \gset
 ALTER TABLE app.ledger_transactions DISABLE TRIGGER ledger_final_balance;
 INSERT INTO app.ledger_transactions(tenant_id,currency,source_type,source_id,event)
- VALUES(:'t','USD','race','entry-v-posting','capture') RETURNING id AS j \gset
+ VALUES(:'t','USD','da6dab07-57d2-550c-b107-3a405eccb15e','entry-v-posting','capture') RETURNING id AS j \gset
 INSERT INTO app.ledger_entries(tenant_id,transaction_id,line_no,account_id,currency,side,amount)
  VALUES(:'t',:'j',1,:'a','USD','debit',100),(:'t',:'j',2,:'b','USD','credit',100);
 ALTER TABLE app.ledger_transactions ENABLE TRIGGER ledger_final_balance;
@@ -738,8 +738,8 @@ for isolation in 'READ COMMITTED' 'REPEATABLE READ' SERIALIZABLE; do
   sql <<SQL >/dev/null
 SELECT set_config('app.tenant_id','$T',false);
 SET ROLE app_runtime;
-SELECT (app.inventory_reserve('$SKU',1,'order','$OID','orders-race-reserve',900)).id AS rid \gset
-SELECT app.orders_create('$OID','orders-race-create',sha256('race'::bytea),NULL,
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','775f14e4-9898-57e2-9f9e-5069ddbea7fe',900)).id AS rid \gset
+SELECT app.orders_create('$OID','9e668d72-afe6-5f1f-8392-143cc9c202c8',sha256('da6dab07-57d2-550c-b107-3a405eccb15e'::bytea),NULL,
  '{"email":"race@example.invalid"}','USD',20,'{"amount_minor":20,"currency":"USD","service":"fixture"}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','race-sku','quantity',1,
  'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
@@ -748,9 +748,9 @@ SQL
   if [[ $first_target == paid ]]; then second_target=cancelled; stock=0; race_gate=40
   else second_target=paid; stock=1; race_gate=41; fi
   gate_close "$race_gate"
-  tx orders_first app_runtime "$T" "SELECT app.orders_transition('$OID','$first_target','race-first',0); $(park "$race_gate")" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
+  tx orders_first app_runtime "$T" "SELECT app.orders_transition('$OID','$first_target','23250dd6-9fb3-5ea8-bb29-56e793463b5e',0); $(park "$race_gate")" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
   await orders_first advisory
-  tx orders_second app_runtime "$T" "SELECT app.orders_transition('$OID','$second_target','race-second',0);" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
+  tx orders_second app_runtime "$T" "SELECT app.orders_transition('$OID','$second_target','e270d8f8-1dcc-5011-9090-cb54dd78d9e1',0);" "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL $isolation;" &
   await orders_second "${ROWLOCK[@]}"
   gate_open "$race_gate"; wait
   expect orders_first ok
@@ -774,9 +774,9 @@ read -r T SKU OID <<<"$(inventory_fixture 2)"
 sql <<SQL >/dev/null
 SELECT set_config('app.tenant_id','$T',false);
 SET ROLE app_runtime;
-SELECT (app.inventory_reserve('$SKU',1,'order','$OID','prelock-first',900)).id AS r1 \gset
-SELECT (app.inventory_reserve('$SKU',1,'order','$OID','prelock-second',900)).id AS r2 \gset
-SELECT app.orders_create('$OID','prelock-create',sha256('prelock'::bytea),NULL,
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','c5f53b7e-1ee3-5141-865b-35e8516aab36',900)).id AS r1 \gset
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','087abf2c-eece-5179-8ac2-bb18b11a239e',900)).id AS r2 \gset
+SELECT app.orders_create('$OID','db3e7e31-2167-586e-9102-cf83ec39583e',sha256('prelock'::bytea),NULL,
  '{"email":"prelock@example.invalid"}','USD',0,'{}',
  jsonb_build_array(
   jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','prelock-sku','quantity',1,
@@ -1027,7 +1027,7 @@ INSERT INTO app.tenants(name) VALUES('notifications-race') RETURNING id AS t \gs
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_orders_executor;
 INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-VALUES(:'t',uuidv7(),1,'race',sha256('race'::bytea),'{"email":"race@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
+VALUES(:'t',uuidv7(),1,'da6dab07-57d2-550c-b107-3a405eccb15e',sha256('da6dab07-57d2-550c-b107-3a405eccb15e'::bytea),'{"email":"race@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
 RESET ROLE;
 SELECT :'t'||' '||:'oid';
 SQL
@@ -1051,7 +1051,7 @@ UPDATE app.outbox_events SET status='dead_letter',attempts=10 WHERE tenant_id='$
 SELECT :'d'||' '||:'e';
 SQL
 )"
-redrive="SELECT 'redrive='||r.request_token||':'||r.generation FROM app.notification_redrive('$NT','$ND','race-redrive') r;"
+redrive="SELECT 'redrive='||r.request_token||':'||r.generation FROM app.notification_redrive('$NT','$ND','dd0c3f13-4fa9-5a1b-80c4-98f5ba228b58') r;"
 gate_close 61
 tx notification_redrive_first app_runtime "$NT" "$redrive $(park 61)" &
 await notification_redrive_first advisory
@@ -1141,17 +1141,17 @@ expect privacy_erase_first ok; expect privacy_build_second 55000
 # C22a notification erasure gates83–86: 84 uses two extra barrier phases.
 privacy_notification_fixture() {
  sql <<'SQL' | tail -1
-INSERT INTO app.tenants(name) VALUES('privacy-notification-race') RETURNING id AS t \gset
+INSERT INTO app.tenants(name) VALUES('da685aff-cbea-534d-9c18-be779b73a3f4') RETURNING id AS t \gset
 INSERT INTO app.customers(tenant_id,email) VALUES(:'t','privacy-notify@example.invalid') RETURNING id AS c \gset
 SELECT uuidv7() AS oid,uuidv7() AS request,uuidv7() AS actor \gset
 BEGIN;
 SELECT set_config('app.tenant_id',:'t',true);
 SET LOCAL ROLE app_orders_executor;
 INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,customer_id,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
- VALUES(:'t',:'oid',1,'privacy-notification-race',sha256('race'::bytea),:'c','USD',100,0,0,'{"amount_minor":0,"currency":"USD","address":"Synthetic private street"}',100);
+ VALUES(:'t',:'oid',1,'da685aff-cbea-534d-9c18-be779b73a3f4',sha256('da6dab07-57d2-550c-b107-3a405eccb15e'::bytea),:'c','USD',100,0,0,'{"amount_minor":0,"currency":"USD","address":"Synthetic private street"}',100);
 RESET ROLE;
 INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
- VALUES(:'t','order.paid',jsonb_build_object('order_id',:'oid'),'orders.events','privacy-notification-race') RETURNING id AS source \gset
+ VALUES(:'t','order.paid',jsonb_build_object('order_id',:'oid'),'orders.events','da685aff-cbea-534d-9c18-be779b73a3f4') RETURNING id AS source \gset
 SELECT id AS notification,dispatch_event_id AS dispatch FROM app.notification_deliveries WHERE tenant_id=:'t' AND source_event_id=:'source' \gset
 UPDATE app.notification_deliveries SET status='dead_letter',last_error='DELIVERY_REJECTED' WHERE tenant_id=:'t' AND id=:'notification';
 UPDATE app.outbox_events SET status='dead_letter',attempts=10 WHERE tenant_id=:'t' AND id=:'dispatch';
@@ -1165,7 +1165,7 @@ SQL
 # cannot wait holding older dispatches; NOWAIT must roll everything back.
 read -r T CUSTOMER PRIVACY_ORDER NOTIFICATION REQUEST ACTOR <<<"$(privacy_notification_fixture)"
 gate_close 83
-tx privacy_redrive_hold app_runtime "$T" "SELECT app.notification_redrive('$T','$NOTIFICATION','privacy-race-redrive'); $(park 83)" &
+tx privacy_redrive_hold app_runtime "$T" "SELECT app.notification_redrive('$T','$NOTIFICATION','a20ac528-d689-5fae-868d-0dda9ba3aba2'); $(park 83)" &
 await privacy_redrive_hold advisory
 tx privacy_redrive_erase_busy app_runtime "$T" "SELECT app.data_rights_erase_customer('$CUSTOMER','service','$ACTOR');" &
 PRIVACY_BUSY_PID=$!
@@ -1190,14 +1190,14 @@ PRIVACY_ORDER=$(sql <<<"SELECT uuidv7();")
 gate_close 84;gate_close 85;gate_close 86
 tx privacy_new_order_share postgres "$T" "SELECT id FROM app.customers WHERE tenant_id='$T' AND id='$CUSTOMER' FOR SHARE; $(park 84)" &
 await privacy_new_order_share advisory
-tx privacy_new_order_insert app_orders_executor "$T" "INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,customer_id,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor) VALUES('$T','$PRIVACY_ORDER',1,'privacy-new-order-race',sha256('race'::bytea),'$CUSTOMER','USD',100,0,0,'{\"amount_minor\":0,\"currency\":\"USD\",\"address\":\"Synthetic private street\"}',100); $(park 85)" &
+tx privacy_new_order_insert app_orders_executor "$T" "INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,customer_id,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor) VALUES('$T','$PRIVACY_ORDER',1,'c6d14da0-5835-56b1-9c58-b359221ed034',sha256('da6dab07-57d2-550c-b107-3a405eccb15e'::bytea),'$CUSTOMER','USD',100,0,0,'{\"amount_minor\":0,\"currency\":\"USD\",\"address\":\"Synthetic private street\"}',100); $(park 85)" &
 await privacy_new_order_insert advisory
 tx privacy_new_order_erase_busy app_runtime "$T" "SELECT app.data_rights_erase_customer('$CUSTOMER','service','$ACTOR');" &
 PRIVACY_BUSY_PID=$!
 await privacy_new_order_erase_busy "${ROWLOCK[@]}"
 gate_open 85;await privacy_new_order_insert gone
 expect privacy_new_order_insert ok
-tx privacy_new_order_transition app_orders_executor "$T" "SELECT id FROM app.orders WHERE tenant_id='$T' AND id='$PRIVACY_ORDER' FOR UPDATE; $(park 86) INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES('$T','order.paid',jsonb_build_object('order_id','$PRIVACY_ORDER'),'orders.events','privacy-new-order-race');" &
+tx privacy_new_order_transition app_orders_executor "$T" "SELECT id FROM app.orders WHERE tenant_id='$T' AND id='$PRIVACY_ORDER' FOR UPDATE; $(park 86) INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key) VALUES('$T','order.paid',jsonb_build_object('order_id','$PRIVACY_ORDER'),'orders.events','c6d14da0-5835-56b1-9c58-b359221ed034');" &
 await privacy_new_order_transition advisory
 gate_open 84;await privacy_new_order_share gone;await privacy_new_order_erase_busy gone;await_job privacy_new_order_erase_busy "$PRIVACY_BUSY_PID"
 expect privacy_new_order_share ok;expect privacy_new_order_erase_busy 55P03
@@ -1229,7 +1229,7 @@ INSERT INTO app.customers(tenant_id,email) VALUES(:'t',uuidv7()::text||'@race.in
 INSERT INTO app.buyer_companies(tenant_id,name) VALUES(:'t','R') RETURNING id AS c \gset
 INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code)
 VALUES(:'t',:'c',:'b','purchaser'),(:'t',:'c',:'a','approver');
-INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message) VALUES(:'t',:'s','race@example.invalid','race') RETURNING id AS i \gset
+INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message) VALUES(:'t',:'s','race@example.invalid','da6dab07-57d2-550c-b107-3a405eccb15e') RETURNING id AS i \gset
 BEGIN;
 SELECT set_config('app.tenant_id',:'t',true);
 SET LOCAL ROLE app_runtime;
@@ -1338,19 +1338,19 @@ INSERT INTO app.ledger_accounts(tenant_id,code,currency,account_type) VALUES
  ('$T','revenue','USD','revenue'),('$T','tax_payable','USD','liability'),('$T','shipping_revenue','USD','revenue');
 SELECT set_config('app.tenant_id','$T',false);
 SET ROLE app_runtime;
-SELECT (app.inventory_reserve('$SKU',1,'order','$OID','checkout-race-stock',900)).id AS rid \gset
-SELECT app.orders_create('$OID','checkout-race-order',sha256('race'::bytea),NULL,'{"email":"race@example.invalid"}','USD',20,'{}',
- jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','checkout-race','quantity',1,'unit_price_minor',100,
+SELECT (app.inventory_reserve('$SKU',1,'order','$OID','24ebea5b-19d7-5c87-91f1-339461604545',900)).id AS rid \gset
+SELECT app.orders_create('$OID','c175822e-9019-56a3-9614-a2fe0568ec16',sha256('da6dab07-57d2-550c-b107-3a405eccb15e'::bytea),NULL,'{"email":"race@example.invalid"}','USD',20,'{}',
+ jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$SKU','sku','0a625bed-1d9b-5863-bc0e-db674e4d6106','quantity',1,'unit_price_minor',100,
  'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
 INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,currency,
  amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version,address_snapshot)
- VALUES('$T','$CID','guest',repeat('a',64),'checkout-race',sha256('start'::bytea),uuidv7(),1,'$OID','USD',130,100,10,20,1,'{}');
+ VALUES('$T','$CID','guest',repeat('a',64),'0a625bed-1d9b-5863-bc0e-db674e4d6106',sha256('start'::bytea),uuidv7(),1,'$OID','USD',130,100,10,20,1,'{}');
 UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake-race',start_result='{}' WHERE tenant_id='$T' AND id='$CID';
 SQL
  if [[ $first_phase == confirming ]]; then second_phase=cancelling; first_kind=payment; second_kind=cancel; final=paid; stock=0; journals=1; outbox=3; race_gate=90
  else second_phase=confirming; first_kind=cancel; second_kind=payment; final=cancelled; stock=1; journals=0; outbox=2; race_gate=91; fi
- claim_first="WITH changed AS (UPDATE app.checkout_sessions SET phase='$first_phase',claim_kind='$first_kind',claim_key='race-first' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_FIRST='||count(*) FROM changed;"
- claim_second="WITH changed AS (UPDATE app.checkout_sessions SET phase='$second_phase',claim_kind='$second_kind',claim_key='race-second' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_SECOND='||count(*) FROM changed;"
+ claim_first="WITH changed AS (UPDATE app.checkout_sessions SET phase='$first_phase',claim_kind='$first_kind',claim_key='23250dd6-9fb3-5ea8-bb29-56e793463b5e' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_FIRST='||count(*) FROM changed;"
+ claim_second="WITH changed AS (UPDATE app.checkout_sessions SET phase='$second_phase',claim_kind='$second_kind',claim_key='e270d8f8-1dcc-5011-9090-cb54dd78d9e1' WHERE tenant_id='$T' AND id='$CID' AND phase='ready' RETURNING id) SELECT 'C18_CLAIM_SECOND='||count(*) FROM changed;"
  gate_close "$race_gate"
  tx checkout_first app_runtime "$T" "$claim_first $(park "$race_gate")" &
  await checkout_first advisory
@@ -1445,17 +1445,17 @@ done
 fulfillment_fixture() {
  sql -v finalizer="${1:-false}" <<'SQL' | tail -1
 INSERT INTO app.tenants(name,settlement_currency) VALUES('fulfillment-race','USD') RETURNING id AS t \gset
-INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','race') RETURNING id AS p \gset
-INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','race','default') RETURNING id AS sku \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','da6dab07-57d2-550c-b107-3a405eccb15e') RETURNING id AS p \gset
+INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','da6dab07-57d2-550c-b107-3a405eccb15e','default') RETURNING id AS sku \gset
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_inventory_manager;
 SELECT app.inventory_adjust(:'sku',5,'race receipt',uuidv7(),'inbound');
 SET ROLE app_runtime;
 SELECT uuidv7() AS oid,uuidv7() AS lid \gset
-SELECT (app.inventory_reserve(:'sku',2,'order',:'oid','race-reserve',900)).id AS rid \gset
-SELECT app.orders_create(:'oid','race-create',sha256('race'::bytea),NULL,'{"email":"race@example.invalid"}',
+SELECT (app.inventory_reserve(:'sku',2,'order',:'oid','ab848f37-d8ab-5514-aa87-267367559ea8',900)).id AS rid \gset
+SELECT app.orders_create(:'oid','8a6a9874-beec-532f-a9f6-75330fec23be',sha256('da6dab07-57d2-550c-b107-3a405eccb15e'::bytea),NULL,'{"email":"race@example.invalid"}',
  'USD',2,'{"currency":"USD","amount_minor":2,"service":"fixture"}',
- jsonb_build_array(jsonb_build_object('id',:'lid','sku_id',:'sku','sku','race','quantity',2,
+ jsonb_build_array(jsonb_build_object('id',:'lid','sku_id',:'sku','sku','da6dab07-57d2-550c-b107-3a405eccb15e','quantity',2,
  'unit_price_minor',5,'line_net_minor',10,'line_tax_minor',2,'line_total_minor',12,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
 \if :finalizer
 RESET ROLE;
@@ -1465,9 +1465,9 @@ INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id
 SET ROLE app_runtime;
 INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,currency,
  amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version,address_snapshot)
- VALUES(:'t',uuidv7(),'guest',repeat('a',64),'c19d2',sha256('c19d2'::bytea),uuidv7(),1,:'oid','USD',14,10,2,2,1,'{}');
+ VALUES(:'t',uuidv7(),'guest',repeat('a',64),'25e1e155-6404-5fe1-afd1-eedc6079878c',sha256('25e1e155-6404-5fe1-afd1-eedc6079878c'::bytea),uuidv7(),1,:'oid','USD',14,10,2,2,1,'{}');
 UPDATE app.checkout_sessions SET phase='ready',provider_ref='captured-race',start_result='{}' WHERE tenant_id=:'t';
-UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key='c19d2' WHERE tenant_id=:'t';
+UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key='25e1e155-6404-5fe1-afd1-eedc6079878c' WHERE tenant_id=:'t';
 UPDATE app.checkout_sessions SET phase='paid',final_result='{}' WHERE tenant_id=:'t';
 -- A paid Checkout alone is not original PSP authority. Seed the same mapped
 -- capture admission/outcome used by Payments before the synchronous RMA posts.
@@ -1486,9 +1486,9 @@ SQL
 }
 read -r T OID LID SKU <<<"$(fulfillment_fixture)"
 gate_close 120
-tx fulfill_ship_a app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',2,'ship-a','manual','A','[{\"order_line_id\":\"$LID\",\"quantity\":2}]'); $(park 120)" &
+tx fulfill_ship_a app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',2,'6878c69f-58e8-50ca-a4e4-5ec874734786','manual','A','[{\"order_line_id\":\"$LID\",\"quantity\":2}]'); $(park 120)" &
 await fulfill_ship_a advisory
-tx fulfill_ship_b app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',3,'ship-b','manual','B','[{\"order_line_id\":\"$LID\",\"quantity\":1}]');" &
+tx fulfill_ship_b app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',3,'92b972dd-20fa-508f-a25c-292515639821','manual','B','[{\"order_line_id\":\"$LID\",\"quantity\":1}]');" &
 await fulfill_ship_b "${ROWLOCK[@]}"
 gate_open 120; wait
 expect fulfill_ship_a ok; expect fulfill_ship_b FULFILLMENT_OVERSHIP
@@ -1496,22 +1496,22 @@ expect fulfill_ship_a ok; expect fulfill_ship_b FULFILLMENT_OVERSHIP
 
 read -r T OID LID SKU <<<"$(fulfillment_fixture)"
 gate_close 121
-tx fulfill_cancel_a app_runtime "$T" "SELECT app.returns_create('$OID',2,'cancel-a','unshipped_cancel','race cancellation','[{\"order_line_id\":\"$LID\",\"quantity\":2}]'); $(park 121)" &
+tx fulfill_cancel_a app_runtime "$T" "SELECT app.returns_create('$OID',2,'cbaf6164-0396-5ac4-bb27-ee1d48b49557','unshipped_cancel','race cancellation','[{\"order_line_id\":\"$LID\",\"quantity\":2}]'); $(park 121)" &
 await fulfill_cancel_a advisory
-tx fulfill_ship_cancel_b app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',3,'ship-cancel-b','manual','B','[{\"order_line_id\":\"$LID\",\"quantity\":1}]');" &
+tx fulfill_ship_cancel_b app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',3,'7d574273-19bc-51ab-b045-d7b9ba5a8b18','manual','B','[{\"order_line_id\":\"$LID\",\"quantity\":1}]');" &
 await fulfill_ship_cancel_b "${ROWLOCK[@]}"
 gate_open 121; wait
 expect fulfill_cancel_a ok; expect fulfill_ship_cancel_b FULFILLMENT_OVERSHIP
 [[ $(sql <<<"SELECT sum(quantity)||'|'||(SELECT on_hand FROM app.stock_levels WHERE tenant_id='$T' AND sku_id='$SKU')||'|'||(SELECT count(*) FROM app.shipment_lines WHERE tenant_id='$T') FROM app.return_lines WHERE tenant_id='$T';") == '2|5|0' ]] || fail=1
 
 read -r T OID LID SKU <<<"$(fulfillment_fixture)"
-tx fulfill_return_seed app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',2,'return-seed','manual','A','[{\"order_line_id\":\"$LID\",\"quantity\":2}]');"
+tx fulfill_return_seed app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',2,'8c9b65f3-b3b3-5554-86f6-9e6507547384','manual','A','[{\"order_line_id\":\"$LID\",\"quantity\":2}]');"
 expect fulfill_return_seed ok
 SLID=$(sql <<<"SELECT id FROM app.shipment_lines WHERE tenant_id='$T' AND order_line_id='$LID';")
 gate_close 122
-tx fulfill_return_a app_runtime "$T" "SELECT app.returns_create('$OID',3,'return-a','shipment_return','race return','[{\"order_line_id\":\"$LID\",\"shipment_line_id\":\"$SLID\",\"quantity\":2}]'); $(park 122)" &
+tx fulfill_return_a app_runtime "$T" "SELECT app.returns_create('$OID',3,'a66e5b67-24ac-59b7-908c-b9f378aa847e','shipment_return','race return','[{\"order_line_id\":\"$LID\",\"shipment_line_id\":\"$SLID\",\"quantity\":2}]'); $(park 122)" &
 await fulfill_return_a advisory
-tx fulfill_return_b app_runtime "$T" "SELECT app.returns_create('$OID',4,'return-b','shipment_return','race return','[{\"order_line_id\":\"$LID\",\"shipment_line_id\":\"$SLID\",\"quantity\":1}]');" &
+tx fulfill_return_b app_runtime "$T" "SELECT app.returns_create('$OID',4,'d4619d25-e941-5a79-a6d7-77a4d59b96f8','shipment_return','race return','[{\"order_line_id\":\"$LID\",\"shipment_line_id\":\"$SLID\",\"quantity\":1}]');" &
 await fulfill_return_b "${ROWLOCK[@]}"
 gate_open 122; wait
 expect fulfill_return_a ok; expect fulfill_return_b FULFILLMENT_RETURN_ORDER_BOUND
@@ -1521,9 +1521,9 @@ expect fulfill_return_a ok; expect fulfill_return_b FULFILLMENT_RETURN_ORDER_BOU
 # parent write forces serialization failure, not a stale sum that overships.
 read -r T OID LID SKU <<<"$(fulfillment_fixture)"
 gate_close 123
-tx fulfill_rr_b app_runtime "$T" "SELECT count(*) FROM app.shipment_lines WHERE tenant_id='$T'; $(park 123) SELECT app.fulfillment_create_shipment('$OID',3,'rr-b','manual','B','[{\"order_line_id\":\"$LID\",\"quantity\":1}]');" "SET default_transaction_isolation='repeatable read';" &
+tx fulfill_rr_b app_runtime "$T" "SELECT count(*) FROM app.shipment_lines WHERE tenant_id='$T'; $(park 123) SELECT app.fulfillment_create_shipment('$OID',3,'76168db2-aff8-5b79-bb77-874876557e56','manual','B','[{\"order_line_id\":\"$LID\",\"quantity\":1}]');" "SET default_transaction_isolation='repeatable read';" &
 await fulfill_rr_b advisory
-tx fulfill_rr_a app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',2,'rr-a','manual','A','[{\"order_line_id\":\"$LID\",\"quantity\":2}]');"
+tx fulfill_rr_a app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',2,'83a22a96-99d0-5522-a250-8395dbec1a37','manual','A','[{\"order_line_id\":\"$LID\",\"quantity\":2}]');"
 expect fulfill_rr_a ok
 gate_open 123; wait
 expect fulfill_rr_b 40001
@@ -1534,7 +1534,7 @@ expect fulfill_rr_b 40001
 # original If-Match and response, after blocking on the shared Orders parent.
 read -r T OID LID SKU <<<"$(fulfillment_fixture)"
 gate_close 124
-same_ship="SELECT app.fulfillment_create_shipment('$OID',2,'same-ship','manual','SAME','[{\"order_line_id\":\"$LID\",\"quantity\":1}]')->>'id';"
+same_ship="SELECT app.fulfillment_create_shipment('$OID',2,'8803e7f3-cb3a-524c-b367-a94841fcfcf2','manual','SAME','[{\"order_line_id\":\"$LID\",\"quantity\":1}]')->>'id';"
 tx fulfill_same_ship_a app_runtime "$T" "$same_ship $(park 124)" &
 await fulfill_same_ship_a advisory
 tx fulfill_same_ship_b app_runtime "$T" "$same_ship" &
@@ -1547,7 +1547,7 @@ result fulfill_same_ship_a "$ID";result fulfill_same_ship_b "$ID"
 
 read -r T OID LID SKU <<<"$(fulfillment_fixture)"
 gate_close 128
-same_cancel="SELECT app.returns_create('$OID',2,'same-cancel','unshipped_cancel','same cancellation','[{\"order_line_id\":\"$LID\",\"quantity\":2}]')->>'id';"
+same_cancel="SELECT app.returns_create('$OID',2,'41cd0d63-85a1-5467-a3a1-fe0366619dc9','unshipped_cancel','same cancellation','[{\"order_line_id\":\"$LID\",\"quantity\":2}]')->>'id';"
 tx fulfill_same_cancel_a app_runtime "$T" "$same_cancel $(park 128)" &
 await fulfill_same_cancel_a advisory
 tx fulfill_same_cancel_b app_runtime "$T" "$same_cancel" &
@@ -1566,7 +1566,7 @@ SELECT concat_ws(' ',:'income',:'tax',:'shipping',:'cash');
 SQL
 )"
 gate_close 125
-same_prepare="SELECT app.returns_prepare_refund('$RID',3,'same-refund','captured-race',1,'$INCOME','$TAX','$SHIPPING','$CASH')->>'id';"
+same_prepare="SELECT app.returns_prepare_refund('$RID',3,'e2e96e0b-e9ea-5cbe-bde1-a8db45c97e85','captured-race',1,'$INCOME','$TAX','$SHIPPING','$CASH')->>'id';"
 tx fulfill_same_prepare_a app_returns_service "$T" "$same_prepare $(park 125)" &
 await fulfill_same_prepare_a advisory
 tx fulfill_same_prepare_b app_returns_service "$T" "$same_prepare" &
@@ -1584,7 +1584,7 @@ SQL
 # Payments gate130: concurrent completion binds one provider refund to one RMA
 # attempt. Existing parent/RMA locks fence both the budget and permanent identity.
 gate_close 130
-money_complete="SELECT app.payments_lock_return_checkout('$RID'); SELECT app.returns_lock_refund('$RID','same-refund'); SELECT app.payments_bind_return_refund('$RID','same-refund','refund-gate130','$JID'); SELECT app.returns_complete_refund('$RID','same-refund','captured-race','$JID')->>'id';"
+money_complete="SELECT app.payments_lock_return_checkout('$RID'); SELECT app.returns_lock_refund('$RID','e2e96e0b-e9ea-5cbe-bde1-a8db45c97e85'); SELECT app.payments_bind_return_refund('$RID','e2e96e0b-e9ea-5cbe-bde1-a8db45c97e85','refund-gate130','$JID'); SELECT app.returns_complete_refund('$RID','e2e96e0b-e9ea-5cbe-bde1-a8db45c97e85','captured-race','$JID')->>'id';"
 tx payment_return_first app_returns_service "$T" "$money_complete $(park 130)" &
 await payment_return_first advisory
 tx payment_return_second app_returns_service "$T" "$money_complete" &
@@ -1595,7 +1595,7 @@ result payment_return_first "$RID"; result payment_return_second "$RID"
 [[ $(sql <<<"SELECT count(*)||'|'||(SELECT refunded_minor FROM app.orders WHERE tenant_id='$T') FROM app.payment_return_refunds WHERE tenant_id='$T';") == '1|14' ]] || fail=1
 echo 'PASS: Payments gate130 concurrent return refund binding and completion count once'
 gate_close 126
-same_complete="SELECT app.returns_complete_refund('$RID','same-refund','captured-race','$JID')->>'id';"
+same_complete="SELECT app.returns_complete_refund('$RID','e2e96e0b-e9ea-5cbe-bde1-a8db45c97e85','captured-race','$JID')->>'id';"
 tx fulfill_same_complete_a app_returns_service "$T" "$same_complete $(park 126)" &
 await fulfill_same_complete_a advisory
 tx fulfill_same_complete_b app_returns_service "$T" "$same_complete" &
@@ -1606,14 +1606,14 @@ result fulfill_same_complete_a "$RID";result fulfill_same_complete_b "$RID"
 [[ $(sql <<<"SELECT state||'|'||version||'|'||refunded_minor FROM app.orders WHERE tenant_id='$T';") == 'refunded|5|14' ]] || fail=1
 
 read -r T OID LID SKU <<<"$(fulfillment_fixture)"
-tx fulfill_receive_seed app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',2,'receive-seed','manual','A','[{\"order_line_id\":\"$LID\",\"quantity\":2}]');"
+tx fulfill_receive_seed app_runtime "$T" "SELECT app.fulfillment_create_shipment('$OID',2,'82b4e5a1-9218-5aff-ad46-e8bd4e86d818','manual','A','[{\"order_line_id\":\"$LID\",\"quantity\":2}]');"
 expect fulfill_receive_seed ok
 SLID=$(sql <<<"SELECT id FROM app.shipment_lines WHERE tenant_id='$T';")
-tx fulfill_receive_request app_runtime "$T" "SELECT app.returns_create('$OID',3,'receive-request','shipment_return','receive race','[{\"order_line_id\":\"$LID\",\"shipment_line_id\":\"$SLID\",\"quantity\":2}]');"
+tx fulfill_receive_request app_runtime "$T" "SELECT app.returns_create('$OID',3,'ea8b59d3-dae0-5f3b-902d-47450a20e0ee','shipment_return','receive race','[{\"order_line_id\":\"$LID\",\"shipment_line_id\":\"$SLID\",\"quantity\":2}]');"
 expect fulfill_receive_request ok
 RID=$(sql <<<"SELECT id FROM app.returns WHERE tenant_id='$T';")
 gate_close 127
-same_receive="SELECT app.returns_receive('$RID',4,'same-receive',true)->>'id';"
+same_receive="SELECT app.returns_receive('$RID',4,'a02f55c7-e393-536d-9f42-155fa01a7a54',true)->>'id';"
 tx fulfill_same_receive_a app_runtime "$T" "$same_receive $(park 127)" &
 await fulfill_same_receive_a advisory
 tx fulfill_same_receive_b app_runtime "$T" "$same_receive" &
@@ -1630,12 +1630,12 @@ read -r T OID LID SKU <<<"$(fulfillment_fixture)"
 gate_close 129
 tx fulfill_direct_rr_b app_fulfillment_executor "$T" "SELECT count(*) FROM app.shipment_lines WHERE tenant_id='$T'; $(park 129)
  INSERT INTO app.shipments(tenant_id,order_id,creation_key,request_hash,carrier,tracking_number)
- VALUES('$T','$OID','direct-b',sha256('direct-b'::bytea),'manual','B') RETURNING id AS shid \gset
+ VALUES('$T','$OID','6a1c63a0-684d-58a5-91b1-9aefc311d5ae',sha256('6a1c63a0-684d-58a5-91b1-9aefc311d5ae'::bytea),'manual','B') RETURNING id AS shid \gset
  INSERT INTO app.shipment_lines(tenant_id,shipment_id,order_id,order_line_id,quantity)
  VALUES('$T',:'shid','$OID','$LID',1);" "SET default_transaction_isolation='repeatable read';" &
 await fulfill_direct_rr_b advisory
 tx fulfill_direct_rr_a app_fulfillment_executor "$T" "INSERT INTO app.shipments(tenant_id,order_id,creation_key,request_hash,carrier,tracking_number)
- VALUES('$T','$OID','direct-a',sha256('direct-a'::bytea),'manual','A') RETURNING id AS shid \gset
+ VALUES('$T','$OID','b1ff6bae-ef8f-53ce-923a-3ad7a6143939',sha256('b1ff6bae-ef8f-53ce-923a-3ad7a6143939'::bytea),'manual','A') RETURNING id AS shid \gset
  INSERT INTO app.shipment_lines(tenant_id,shipment_id,order_id,order_line_id,quantity)
  VALUES('$T',:'shid','$OID','$LID',2);"
 expect fulfill_direct_rr_a ok
@@ -1650,16 +1650,16 @@ for isolation in 'read committed' 'repeatable read' 'serializable'; do
  read -r T OID LID SKU <<<"$(fulfillment_fixture true)"
  RID="$(sql <<SQL | tail -1
 BEGIN;SELECT set_config('app.tenant_id','$T',true);SET LOCAL ROLE app_runtime;
-SELECT app.returns_create('$OID',2,'c19d2-rma','unshipped_cancel','c19d2','[{"order_line_id":"$LID","quantity":2}]')->>'id' AS rid \gset
+SELECT app.returns_create('$OID',2,'925dbd9c-8b4d-5e17-9826-c342cd384326','unshipped_cancel','25e1e155-6404-5fe1-afd1-eedc6079878c','[{"order_line_id":"$LID","quantity":2}]')->>'id' AS rid \gset
 RESET ROLE;
 SELECT id AS income FROM app.ledger_accounts WHERE tenant_id='$T' AND code='revenue' \gset
 SELECT id AS tax FROM app.ledger_accounts WHERE tenant_id='$T' AND code='tax_payable' \gset
 SELECT id AS shipping FROM app.ledger_accounts WHERE tenant_id='$T' AND code='shipping_revenue' \gset
 SELECT id AS cash FROM app.ledger_accounts WHERE tenant_id='$T' AND code='cash' \gset
 SET LOCAL ROLE app_returns_service;
-SELECT app.returns_prepare_refund(:'rid',3,'c19d2-money','captured-race',1,:'income',:'tax',:'shipping',:'cash');
-SELECT app.payments_post_return_refund(:'rid','c19d2-money','c19d2-refund') AS jid \gset
-SELECT app.returns_complete_refund(:'rid','c19d2-money','captured-race',:'jid');
+SELECT app.returns_prepare_refund(:'rid',3,'23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','captured-race',1,:'income',:'tax',:'shipping',:'cash');
+SELECT app.payments_post_return_refund(:'rid','23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','c19d2-refund') AS jid \gset
+SELECT app.returns_complete_refund(:'rid','23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','captured-race',:'jid');
 COMMIT; SELECT :'rid';
 SQL
  )"
@@ -1689,16 +1689,16 @@ for isolation in 'read committed' 'repeatable read' 'serializable'; do
  read -r T OID LID SKU <<<"$(fulfillment_fixture true)"
  RID="$(sql <<SQL | tail -1
 BEGIN;SELECT set_config('app.tenant_id','$T',true);SET LOCAL ROLE app_runtime;
-SELECT app.returns_create('$OID',2,'c19d2-rma','unshipped_cancel','c19d2','[{"order_line_id":"$LID","quantity":2}]')->>'id' AS rid \gset
+SELECT app.returns_create('$OID',2,'925dbd9c-8b4d-5e17-9826-c342cd384326','unshipped_cancel','25e1e155-6404-5fe1-afd1-eedc6079878c','[{"order_line_id":"$LID","quantity":2}]')->>'id' AS rid \gset
 RESET ROLE;
 SELECT id AS income FROM app.ledger_accounts WHERE tenant_id='$T' AND code='revenue' \gset
 SELECT id AS tax FROM app.ledger_accounts WHERE tenant_id='$T' AND code='tax_payable' \gset
 SELECT id AS shipping FROM app.ledger_accounts WHERE tenant_id='$T' AND code='shipping_revenue' \gset
 SELECT id AS cash FROM app.ledger_accounts WHERE tenant_id='$T' AND code='cash' \gset
 SET LOCAL ROLE app_returns_service;
-SELECT app.returns_prepare_refund(:'rid',3,'c19d2-money','captured-race',1,:'income',:'tax',:'shipping',:'cash');
-SELECT app.payments_post_return_refund(:'rid','c19d2-money','c19d2-refund') AS jid \gset
-SELECT app.returns_complete_refund(:'rid','c19d2-money','captured-race',:'jid');
+SELECT app.returns_prepare_refund(:'rid',3,'23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','captured-race',1,:'income',:'tax',:'shipping',:'cash');
+SELECT app.payments_post_return_refund(:'rid','23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','c19d2-refund') AS jid \gset
+SELECT app.returns_complete_refund(:'rid','23cb8d60-5e1d-5369-b898-3ce0b5b67cb1','captured-race',:'jid');
 COMMIT; SELECT :'rid';
 SQL
  )"
@@ -1772,7 +1772,7 @@ done
 T=$(sql <<<"INSERT INTO app.tenants(name) VALUES('payments-gate93') RETURNING id;" | tail -1)
 ACCOUNT="c19-race-$T"
 sql <<<"INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment,enabled) VALUES('$T','fake','$ACCOUNT','test',true);" >/dev/null
-inbox_insert="INSERT INTO app.webhook_inbox(tenant_id,provider,provider_account_id,environment,provider_event_id,payload_hash,payload_reference) VALUES('$T','fake','$ACCOUNT','test','race-event',sha256('same'::bytea),'payment:race') ON CONFLICT (tenant_id,provider,provider_account_id,environment,provider_event_id) DO NOTHING RETURNING 'C19_INBOX_INSERTED';"
+inbox_insert="INSERT INTO app.webhook_inbox(tenant_id,provider,provider_account_id,environment,provider_event_id,payload_hash,payload_reference) VALUES('$T','fake','$ACCOUNT','test','race-event',sha256('a75f7844-2851-5045-92dc-a4e4c6ea0f6b'::bytea),'payment:race') ON CONFLICT (tenant_id,provider,provider_account_id,environment,provider_event_id) DO NOTHING RETURNING 'C19_INBOX_INSERTED';"
 gate_close 93
 tx payment_inbox_first app_runtime "$T" "$inbox_insert $(park 93)" &
 await payment_inbox_first advisory
@@ -1784,7 +1784,7 @@ result payment_inbox_first C19_INBOX_INSERTED
 if [[ $(cat "$ERRDIR/payment_inbox_second.out") == *C19_INBOX_INSERTED* ]]; then
  echo 'FAIL: C19 duplicate inbox inserted twice'; fail=1
 fi
-got=$(sql <<<"SELECT count(*)||'|'||bool_and(payload_hash=sha256('same'::bytea)) FROM app.webhook_inbox WHERE tenant_id='$T' AND provider_account_id='$ACCOUNT' AND provider_event_id='race-event';")
+got=$(sql <<<"SELECT count(*)||'|'||bool_and(payload_hash=sha256('a75f7844-2851-5045-92dc-a4e4c6ea0f6b'::bytea)) FROM app.webhook_inbox WHERE tenant_id='$T' AND provider_account_id='$ACCOUNT' AND provider_event_id='race-event';")
 echo "payments gate93 duplicate inbox: $got (expected 1|true)"
 [[ $got == '1|true' ]] || fail=1
 # The production lock function is the single authority for stream lock identity.
@@ -1838,8 +1838,8 @@ INSERT INTO app.buyer_companies(tenant_id,name) VALUES(:'t','R') RETURNING id AS
 INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code)
  VALUES(:'t',:'company',:'buyer','purchaser'),(:'t',:'company',:'approver','approver');
 INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message,buyer_company_id)
- VALUES(:'t',:'site','race@example.invalid','race',:'company') RETURNING id AS inquiry \gset
-INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','race') RETURNING id AS product \gset
+ VALUES(:'t',:'site','race@example.invalid','da6dab07-57d2-550c-b107-3a405eccb15e',:'company') RETURNING id AS inquiry \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','da6dab07-57d2-550c-b107-3a405eccb15e') RETURNING id AS product \gset
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'product','race-sku','default') RETURNING id AS sku \gset
 SELECT set_config('app.tenant_id',:'t',true),set_config('qc.t',:'t',false),set_config('qc.site',:'site',true),set_config('qc.inquiry',:'inquiry',true),
  set_config('qc.company',:'company',false),set_config('qc.staff',:'staff',true),set_config('qc.buyer',:'buyer',false),set_config('qc.approver',:'approver',true),
@@ -1849,7 +1849,7 @@ DECLARE t uuid:=current_setting('qc.t')::uuid; q uuid; BEGIN
  q:=app.create_quote(t,current_setting('qc.site')::uuid,current_setting('qc.inquiry')::uuid,current_setting('qc.company')::uuid,current_setting('qc.staff')::uuid,
  'USD',100,10,5,115,'{"shipping":{"ZoneID":"zone","RateID":"rate","Method":"fixed","Charge":{"Amount":5,"Currency":"USD"}}}',clock_timestamp()+interval '1 hour',
  jsonb_build_array(jsonb_build_object('line_no',1,'product_id',current_setting('qc.product')::uuid,'variant_id',current_setting('qc.sku')::uuid,
- 'description','race','quantity',2,'unit_price',50,'line_total',100,'snapshot',jsonb_build_object('id','1','amounts',jsonb_build_object('net',100,'tax',10,'gross',110),
+ 'description','da6dab07-57d2-550c-b107-3a405eccb15e','quantity',2,'unit_price',50,'line_total',100,'snapshot',jsonb_build_object('id','1','amounts',jsonb_build_object('net',100,'tax',10,'gross',110),
  'snapshot',jsonb_build_object('currency','USD','category','standard','reason','fixture')))));
  PERFORM app.transition_quote(t,q,1,'send','staff',current_setting('qc.staff')::uuid);
  PERFORM app.transition_quote(t,q,2,'accept','customer',current_setting('qc.buyer')::uuid);
@@ -1870,8 +1870,8 @@ DO \$convert\$ DECLARE c app.quote_conversions; o app.orders; r app.inventory_re
  SELECT * INTO c FROM app.quote_conversions WHERE tenant_id='$QT' AND quote_id='$1';
  IF FOUND THEN oid:=c.order_id;
  ELSE
-  oid:=uuidv7(); r:=app.inventory_reserve('$QS',2,'order',oid,'quote-race-reserve:'||oid,900);
-  o:=app.orders_create(oid,'quote-race-create:'||oid,sha256(oid::text::bytea),'$QB',NULL,'USD',5,
+  oid:=uuidv7(); r:=app.inventory_reserve('$QS',2,'order',oid,(md5(('quote-race-reserve:'||oid)::text)::uuid::text),900);
+  o:=app.orders_create(oid,(md5(('quote-race-create:'||oid)::text)::uuid::text),sha256(oid::text::bytea),'$QB',NULL,'USD',5,
   '{"ZoneID":"zone","RateID":"rate","Method":"fixed","Charge":{"Amount":5,"Currency":"USD"}}',
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id','$QS'::uuid,'sku','race-sku','quantity',2,'unit_price_minor',50,
   'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,'reservation_id',r.id,'tax_snapshot',jsonb_build_object('currency','USD','category','standard','reason','fixture'))),'[]');

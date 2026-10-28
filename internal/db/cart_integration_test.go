@@ -96,8 +96,8 @@ func newCartFixture(t *testing.T) *cartFixture {
 		}
 	})
 	f.product = f.id("INSERT INTO app.products(tenant_id,product_code,lifecycle_status) VALUES($1,'CART-P','ready') RETURNING id::text", f.tenant)
-	f.sku = f.id("INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status) VALUES($1,$2,'CART-SKU','one','ready') RETURNING id::text", f.tenant, f.product)
-	f.otherSKU = f.id("INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status) VALUES($1,$2,'CART-SKU-2','two','ready') RETURNING id::text", f.tenant, f.product)
+	f.sku = f.id("INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status) VALUES($1,$2,'CART-SKU','ac585171-8d9c-5d11-8feb-a32bc62aa7ad','ready') RETURNING id::text", f.tenant, f.product)
+	f.otherSKU = f.id("INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key,lifecycle_status) VALUES($1,$2,'CART-SKU-2','2768b5da-9242-5e38-a4c4-7bda32f9f96f','ready') RETURNING id::text", f.tenant, f.product)
 	f.customer = f.id("INSERT INTO app.customers(tenant_id,email) VALUES($1,'cart-owner@example.invalid') RETURNING id::text", f.tenant)
 	f.otherCustomer = f.id("INSERT INTO app.customers(tenant_id,email) VALUES($1,'cart-other@example.invalid') RETURNING id::text", f.tenant)
 	f.priceList = f.id("INSERT INTO app.price_lists(tenant_id,currency,status,priority,audience,starts_at) VALUES($1,'USD','active',1,'all','2020-01-01') RETURNING id::text", f.tenant)

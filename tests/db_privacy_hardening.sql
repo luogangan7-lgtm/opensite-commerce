@@ -97,10 +97,10 @@ SELECT pg_temp.privacy_check('guest-forged-marker',$test$
  DO $$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;o uuid:=uuidv7();e uuid;d app.notification_deliveries; BEGIN
   SET LOCAL ROLE app_orders_executor;
   INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-   VALUES(t,o,901,'privacy-forged',sha256('forged'::bytea),'{"email":"guest@example.invalid","erased":true}','USD',100,0,0,'{}',100);
+   VALUES(t,o,901,'8c2cbd72-a0c3-567b-b78b-a1ce4d69d5d5',sha256('3122fa34-c798-53de-8f57-4223245e2ac0'::bytea),'{"email":"guest@example.invalid","erased":true}','USD',100,0,0,'{}',100);
   RESET ROLE;
   INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
-   VALUES(t,'order.paid',jsonb_build_object('order_id',o),'orders.events','privacy-forged') RETURNING id INTO e;
+   VALUES(t,'order.paid',jsonb_build_object('order_id',o),'orders.events','8c2cbd72-a0c3-567b-b78b-a1ce4d69d5d5') RETURNING id INTO e;
   SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=e;
   IF d.recipient<>'guest@example.invalid' OR d.status<>'pending' THEN RAISE EXCEPTION 'guest forged erasure authority'; END IF;
  END $$ $test$);
@@ -108,10 +108,10 @@ SELECT pg_temp.privacy_check('guest-malformed-marker',$test$
  DO $$ DECLARE t uuid:=current_setting('app.tenant_id')::uuid;o uuid:=uuidv7();e uuid;d app.notification_deliveries; BEGIN
   SET LOCAL ROLE app_orders_executor;
   INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-   VALUES(t,o,902,'privacy-malformed',sha256('malformed'::bytea),'{"email":"guest@example.invalid","erased":"anything"}','USD',100,0,0,'{}',100);
+   VALUES(t,o,902,'55226d05-0e70-5365-93c3-34cafdd36408',sha256('malformed'::bytea),'{"email":"guest@example.invalid","erased":"anything"}','USD',100,0,0,'{}',100);
   RESET ROLE;
   INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
-   VALUES(t,'order.paid',jsonb_build_object('order_id',o),'orders.events','privacy-malformed') RETURNING id INTO e;
+   VALUES(t,'order.paid',jsonb_build_object('order_id',o),'orders.events','55226d05-0e70-5365-93c3-34cafdd36408') RETURNING id INTO e;
   SELECT * INTO STRICT d FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=e;
   IF d.recipient<>'guest@example.invalid' OR d.status<>'pending' THEN RAISE EXCEPTION 'malformed guest marker affected fanout'; END IF;
  END $$ $test$);
@@ -135,10 +135,10 @@ SELECT pg_temp.privacy_check('conversion-ownership-and-future-fanout',$test$
   RESET ROLE;
   SET LOCAL ROLE app_orders_executor;
   INSERT INTO app.orders(tenant_id,id,customer_id,order_number,creation_key,request_hash,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-   VALUES(t,o,c,903,'privacy-conversion',sha256('conversion'::bytea),'USD',100,0,0,'{}',100);
+   VALUES(t,o,c,903,'b3b57ff6-9864-521b-97e1-15bcf06347ff',sha256('conversion'::bytea),'USD',100,0,0,'{}',100);
   SET LOCAL ROLE app_quotes_executor;
   INSERT INTO app.quote_conversions(tenant_id,quote_id,buyer_company_id,customer_id,order_id,quote_version,idempotency_key,request_hash,order_number,currency,total_minor)
-   VALUES(t,q,co,c,o,4,'privacy-conversion',sha256('conversion'::bytea),903,'USD',100);
+   VALUES(t,q,co,c,o,4,'b3b57ff6-9864-521b-97e1-15bcf06347ff',sha256('conversion'::bytea),903,'USD',100);
   RESET ROLE;
   INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
    VALUES(t,'quote.converted',jsonb_build_object('quote_id',q,'order_id',o,'quote_version',4),'quotes','converted:'||q) RETURNING id INTO e;
@@ -166,7 +166,7 @@ SELECT pg_temp.privacy_check('linked-guest-durable-authority',$test$
   INSERT INTO app.customers(tenant_id,email) VALUES(t,'linked-guest@example.invalid') RETURNING id INTO c;
   SET LOCAL ROLE app_orders_executor;
   INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-   VALUES(t,o,904,'privacy-linked-guest',sha256('linked'::bytea),'{"email":"linked-guest@example.invalid"}','USD',100,0,0,'{}',100);
+   VALUES(t,o,904,'1a67ebd0-cb77-53a7-a3c3-4bd64ddab247',sha256('linked'::bytea),'{"email":"linked-guest@example.invalid"}','USD',100,0,0,'{}',100);
   RESET ROLE;
   INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES(t,c,o);
   SET LOCAL ROLE app_runtime;

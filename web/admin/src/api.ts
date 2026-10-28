@@ -73,8 +73,8 @@ export class AdminAPI {
       headers.set('X-CSRF-Token', this.csrfToken);
       if (!options.anonymous && path !== '/api/v1/auth/logout') {
         const key = options.idempotencyKey ?? crypto.randomUUID();
-        if (key.length !== 36 || !validateUUID(key) || key !== key.toLowerCase()) throw new APIError(400, 'invalid_idempotency_key');
-        headers.set('Idempotency-Key', key);
+        if (key.length !== 36 || !validateUUID(key)) throw new APIError(400, 'invalid_idempotency_key');
+        headers.set('Idempotency-Key', key.toLowerCase());
       }
     }
     if (options.etag !== undefined) {
@@ -218,8 +218,8 @@ export class CatalogAPI {
   async archiveVariant(productId: string, variantId: string, version: number, options: MutationOptions = {}): Promise<void> { return this.client.request(this.variantPath(productId, variantId), 'DELETE', undefined, { ...options, version }); }
   async uploadMedia(file: File, options: MutationOptions = {}): Promise<UploadSession> {
     const issue = validateMediaFile(file); if (issue) throw new APIError(422, 'invalid_media', issue);
-    const base = options.idempotencyKey ?? crypto.randomUUID();
-    if (base.length !== 36 || !validateUUID(base) || base !== base.toLowerCase()) throw new APIError(400, 'invalid_idempotency_key');
+    const base = (options.idempotencyKey ?? crypto.randomUUID()).toLowerCase();
+    if (base.length !== 36 || !validateUUID(base)) throw new APIError(400, 'invalid_idempotency_key');
     options.signal?.throwIfAborted();
     const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))].map(byte => byte.toString(16).padStart(2, '0')).join('');
     options.signal?.throwIfAborted();

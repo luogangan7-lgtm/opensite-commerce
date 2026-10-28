@@ -8,6 +8,7 @@ back by default; --emit-fixture produces input for a consumer's own test DB.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -178,57 +179,43 @@ FINANCIAL_DIGESTS = {
     "payment_refund_cases.evidence_hash", "payment_refund_case_resolutions.evidence_hash",
 }
 
-# Closed reviewed inventory, not a claim inferred from a column name. HTTP key
-# origins below are admitted by the OAS-selected shared validator before any
-# handler; the remaining IDs belong to existing verified PSP/webhook contracts.
-# A new opaque column needs a provenance review rather than an automatic retain.
-OPAQUE_REFERENCE_SOURCES = {
-    "returns.refund_key": "http_idempotency_key",
-    "checkout_sessions.claim_key": "http_idempotency_key_or_verified_payment_event",
-    "checkout_attempts.event_key": "http_idempotency_key_or_verified_payment_event",
-    "payment_return_refunds.attempt_key": "returns.refund_key",
-    "payment_refund_attempts.attempt_key": "returns.refund_key",
-    **{key: "verified_provider_identity" for key in (
-        "returns.provider_ref", "checkout_sessions.provider_ref",
-        "payment_return_refunds.provider_account_id", "payment_return_refunds.provider_ref",
-        "payment_return_refunds.provider_refund_id", "payment_provider_accounts.provider_account_id",
-        "payment_events.provider_account_id", "payment_events.provider_ref",
-        "payment_events.provider_refund_id", "payment_events.event_key",
-        "payment_refund_attempts.provider_account_id", "payment_refund_attempts.provider_refund_id",
-        "payment_refund_attempts.provider_ref", "payment_refund_reversals.provider_account_id",
-        "payment_refund_reversals.provider_refund_id", "payment_refund_terminals.provider_account_id",
-        "payment_refund_terminals.provider_refund_id", "payment_refund_terminals.provider_ref",
-        "payment_refund_cases.provider_account_id", "payment_refund_cases.case_key",
-        "payment_refund_cases.provider_refund_id", "payment_refund_cases.provider_ref",
-        "payment_refund_case_resolutions.terminal_refund_id", "webhook_inbox.provider_account_id",
-        "webhook_inbox.provider_event_id",
-    )},
-}
+# The migration contract is deliberately an exact, unconditional CHECK, not a
+# proof about writer provenance. PG tests also execute each deployed CHECK.
+CALLER_KEY_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 
 
-def validate_opaque_provenance(root, registry):
-    """Closed HTTP key admission and direct writer boundary, checked on Go AST.
-
-    This proves OAS-selected HTTP Idempotency-Key origins use the shared
-    validator with an error-return branch before handler effects. It rejects
-    raw literal header readers/mutations and new direct SQL writers to retained
-    opaque tables. It does not claim general body/PSP-to-generated-SQL taint
-    analysis; existing provider and database copy contracts remain authorities.
-    """
-    fields = {key for key, field in registry.items()
-              if field.get("merchant_deletion", {}).get("action") == "retain" and
-              field["merchant_deletion"].get("value_type") == "opaque_ref"}
-    if not fields:
-        return
-    require(not fields - OPAQUE_REFERENCE_SOURCES.keys(), "MERCHANT_OPAQUE_PROVENANCE",
-            "unreviewed opaque column " + ", ".join(sorted(fields - OPAQUE_REFERENCE_SOURCES.keys())))
-    scanner = Path(__file__).resolve().parent / "privacyopaque"
-    try:
-        scan = subprocess.run(["go", "run", str(scanner), str(root), ",".join(sorted(fields))],
-                              cwd=scanner.parents[1], text=True, capture_output=True, timeout=180)
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise ValueError("MERCHANT_OPAQUE_PROVENANCE: Go provenance inventory unavailable") from error
-    require(scan.returncode == 0, "MERCHANT_OPAQUE_PROVENANCE", scan.stderr.strip())
+def validate_caller_key_constraints(root, registry):
+    module = importlib.util.spec_from_file_location("privacy_sql_lexer", Path(__file__).with_name("module_sql.py"))
+    lexer = importlib.util.module_from_spec(module)
+    module.loader.exec_module(lexer)
+    checks, dropped = {}, set()
+    files = sorted((root / "migrations").glob("[0-9][0-9][0-9]_*.sql"))
+    files += sorted((root / "migrations/pending").glob("*.sql"))
+    for path in files:
+        statement = []
+        for token in lexer._tokens(path.read_text(), str(path), literal_values=True):
+            if token[:2] != ("symbol", ";"):
+                statement.append(token)
+                continue
+            values = [item[1] for item in statement]
+            if len(values) >= 8 and values[:4] == ["alter", "table", "app", "."]:
+                table, name = values[4], values[7]
+                if values[5:7] == ["drop", "constraint"]:
+                    dropped.add((table, name))
+                if (len(values) == 14 and values[5:7] == ["add", "constraint"] and
+                        values[8:10] == ["check", "("] and values[11:] == ["~", CALLER_KEY_PATTERN, ")"] and
+                        statement[10][0] in {"word", "ident"} and statement[12][0] == "literal"):
+                    checks.setdefault(f"{table}.{values[10]}", set()).add((table, name))
+            statement = []
+    for key, field in registry.items():
+        policy = field.get("merchant_deletion", {})
+        caller = field.get("caller_key") is True
+        if policy.get("value_type") == "opaque_ref":
+            origin = field.get("opaque_source")
+            require(origin is None or origin == "verified_provider", "MERCHANT_CALLER_KEY_CHECK", key)
+            caller = caller or origin is None
+        if caller:
+            require(bool(checks.get(key, set()) - dropped), "MERCHANT_CALLER_KEY_CHECK", key)
 
 
 def artifact_catalog(root):
@@ -403,7 +390,7 @@ def load_merchant_contract(root, registry):
         policy = field.get("merchant_deletion")
         merchant_policy(key, policy, field["module"], registry, handlers)
         fields[key] = policy
-    validate_opaque_provenance(root, registry)
+    validate_caller_key_constraints(root, registry)
     # A module may first detach an owned FK, then delete its row in a later
     # work item. Each item owns explicit columns, never another module's store.
     tables, deleting = set(), {}

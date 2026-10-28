@@ -4,8 +4,6 @@
 package quotes
 
 import (
-	"crypto/sha256"
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -17,9 +15,9 @@ func TestConversionOrderKeyScope(t *testing.T) {
 	const other = "00000000-0000-4000-8000-000000000004"
 	base := conversionOrderKey(tenant, "customer", actor, quote, "once")
 	// The literal is independent of the helper's serialization and operation.
-	want := fmt.Sprintf("quotes.orders.v1:%x", sha256.Sum256([]byte(`["quotes.orders.v1","00000000-0000-4000-8000-000000000001","customer","00000000-0000-4000-8000-000000000002","00000000-0000-4000-8000-000000000003","once"]`)))
-	if base != want || len(base) != 81 || !conversionKey(base) {
-		t.Fatalf("namespace key = %q, want %q (81 valid bytes)", base, want)
+	want := "701cf5c0-4947-8662-be46-62a8251a2808"
+	if base != want || len(base) != 36 || !conversionKey(base) {
+		t.Fatalf("namespace key = %q, want %q (UUID)", base, want)
 	}
 	for _, tc := range []struct {
 		name, tenant, kind, actor, quote, raw string
@@ -34,7 +32,7 @@ func TestConversionOrderKeyScope(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := conversionOrderKey(tc.tenant, tc.kind, tc.actor, tc.quote, tc.raw)
-			if got == base || len(got) != 81 || !conversionKey(got) || !conversionKey(tc.raw) {
+			if got == base || len(got) != 36 || !conversionKey(got) || !conversionKey(tc.raw) {
 				t.Fatalf("scope key=%q raw=%q", got, tc.raw)
 			}
 			if replay := conversionOrderKey(tc.tenant, tc.kind, tc.actor, tc.quote, tc.raw); replay != got {

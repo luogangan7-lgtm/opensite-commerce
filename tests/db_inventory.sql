@@ -24,8 +24,8 @@ DECLARE t uuid:=current_setting('test.inventory_t')::uuid;
  r app.inventory_reservations; replay app.inventory_reservations; n bigint;
  bearer bytea:=sha256(convert_to(uuidv4()::text||uuidv4()::text||uuidv4()::text,'UTF8'));
 BEGIN
- r:=app.inventory_reserve_non_order(s,3,'checkout',owner_id,'inventory-key',900,bearer);
- replay:=app.inventory_reserve_non_order(s,3,'checkout',owner_id,'inventory-key',900,bearer);
+ r:=app.inventory_reserve_non_order(s,3,'checkout',owner_id,'06b718b7-68ac-571b-a800-416bebd1242c',900,bearer);
+ replay:=app.inventory_reserve_non_order(s,3,'checkout',owner_id,'06b718b7-68ac-571b-a800-416bebd1242c',900,bearer);
  IF r.id<>replay.id OR r.expires_at<>replay.expires_at THEN
   RAISE EXCEPTION 'INVENTORY_GATE replay changed reservation or TTL';
  END IF;
@@ -34,15 +34,15 @@ BEGIN
   RAISE EXCEPTION 'INVENTORY_GATE replay duplicated movement/reserved';
  END IF;
  BEGIN
-  PERFORM app.inventory_reserve_non_order(s,4,'checkout',owner_id,'inventory-key',900,bearer);
+  PERFORM app.inventory_reserve_non_order(s,4,'checkout',owner_id,'06b718b7-68ac-571b-a800-416bebd1242c',900,bearer);
   RAISE EXCEPTION 'INVENTORY_GATE changed-key-request accepted';
  EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
  BEGIN
-  PERFORM app.inventory_reserve_non_order(s,3,'checkout',owner_id,'inventory-key',901,bearer);
+  PERFORM app.inventory_reserve_non_order(s,3,'checkout',owner_id,'06b718b7-68ac-571b-a800-416bebd1242c',901,bearer);
   RAISE EXCEPTION 'INVENTORY_GATE changed-key-TTL accepted';
  EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
  BEGIN
-  PERFORM app.inventory_reserve_non_order(s,3,'checkout',owner_id,'last-too-many',900,bearer);
+  PERFORM app.inventory_reserve_non_order(s,3,'checkout',owner_id,'360c2079-7fae-56da-bb88-685119899339',900,bearer);
   RAISE EXCEPTION 'INVENTORY_GATE oversell accepted';
  EXCEPTION WHEN raise_exception THEN
   IF SQLERRM<>'INVENTORY_INSUFFICIENT_STOCK' THEN RAISE; END IF;
@@ -60,20 +60,20 @@ BEGIN
   RAISE EXCEPTION 'INVENTORY_GATE runtime bypasses stock function';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
-  UPDATE app.inventory_movements SET reason='forged' WHERE tenant_id=t;
+  UPDATE app.inventory_movements SET reason='3122fa34-c798-53de-8f57-4223245e2ac0' WHERE tenant_id=t;
   RAISE EXCEPTION 'INVENTORY_GATE runtime mutates movement';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
-  PERFORM app.inventory_reserve(s,0,'order',owner_id,'zero',900);
+  PERFORM app.inventory_reserve(s,0,'order',owner_id,'5997dec8-e818-58d2-93dc-99dd4d35dd0f',900);
   RAISE EXCEPTION 'INVENTORY_GATE zero quantity accepted';
  EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
  BEGIN
-  PERFORM app.inventory_reserve(s,1,'order',owner_id,'zero-ttl',0);
+  PERFORM app.inventory_reserve(s,1,'order',owner_id,'1efb03c6-44de-5cb5-9dc9-c9f61bbbdcad',0);
   RAISE EXCEPTION 'INVENTORY_GATE zero TTL accepted';
  EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
  PERFORM app.inventory_release_non_order(r.id,r.owner_type,r.owner_id,bearer);
  PERFORM app.inventory_release_non_order(r.id,r.owner_type,r.owner_id,bearer);
- replay:=app.inventory_reserve_non_order(s,3,'checkout',owner_id,'inventory-key',900,bearer);
+ replay:=app.inventory_reserve_non_order(s,3,'checkout',owner_id,'06b718b7-68ac-571b-a800-416bebd1242c',900,bearer);
  IF replay.id<>r.id OR replay.state<>'released' OR replay.expires_at<>r.expires_at THEN
   RAISE EXCEPTION 'INVENTORY_GATE released key was reused or expiry extended';
  END IF;
@@ -85,10 +85,10 @@ BEGIN
   PERFORM app.inventory_commit_non_order(r.id,r.owner_type,r.owner_id,bearer);
   RAISE EXCEPTION 'INVENTORY_GATE released reservation committed';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
- r:=app.inventory_reserve_non_order(s,2,'checkout',owner_id,'commit-key',900,bearer);
+ r:=app.inventory_reserve_non_order(s,2,'checkout',owner_id,'18a0b517-f198-59d6-97a0-a4f84dd1c811',900,bearer);
  PERFORM app.inventory_commit_non_order(r.id,r.owner_type,r.owner_id,bearer);
  PERFORM app.inventory_commit_non_order(r.id,r.owner_type,r.owner_id,bearer);
- replay:=app.inventory_reserve_non_order(s,2,'checkout',owner_id,'commit-key',900,bearer);
+ replay:=app.inventory_reserve_non_order(s,2,'checkout',owner_id,'18a0b517-f198-59d6-97a0-a4f84dd1c811',900,bearer);
  IF replay.id<>r.id OR replay.state<>'committed' OR replay.expires_at<>r.expires_at THEN
   RAISE EXCEPTION 'INVENTORY_GATE committed key was reused or expiry extended';
  END IF;
@@ -103,7 +103,7 @@ BEGIN
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
  -- Subtransaction: the order-owned probe hold is rolled back afterwards.
  BEGIN
-  r:=app.inventory_reserve(s,1,'order',owner_id,'order-owned-key',900);
+  r:=app.inventory_reserve(s,1,'order',owner_id,'fc10cae9-a4a6-5ff0-844c-c2ee518d2b6d',900);
   BEGIN
    PERFORM app.inventory_commit_non_order(r.id,r.owner_type,r.owner_id,bearer);
    RAISE EXCEPTION 'INVENTORY_GATE runtime committed order-owned reservation';
@@ -124,7 +124,7 @@ BEGIN
  EXCEPTION WHEN raise_exception THEN
   IF SQLERRM<>'INVENTORY_PROBE_ROLLBACK' THEN RAISE; END IF;
  END;
- r:=app.inventory_reserve_non_order(s,1,'checkout',owner_id,'expire-key',900,bearer);
+ r:=app.inventory_reserve_non_order(s,1,'checkout',owner_id,'75ed05ee-5d4c-5d93-a65c-94a459dc6cac',900,bearer);
  PERFORM set_config('test.inventory_expire_id',r.id::text,true);
  -- Transaction-local fixture state; never a production token storage path.
  PERFORM set_config('test.inventory_expire_bearer',encode(bearer,'hex'),true);

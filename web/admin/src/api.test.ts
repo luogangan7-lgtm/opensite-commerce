@@ -207,7 +207,7 @@ describe('review follow-ups', () => {
     const h = harness([json(session), json(reserved, 201), new Response(null, { status: 204 }), json({}, 503), json(reserved, 201), new Response(null, { status: 204 }), json(stored, 202)]);
     const api = new AdminAPI({ fetch: h.fetcher }); await api.session();
     const catalog = new CatalogAPI(api, tenant), file = new File(['abc'], 'photo.avif', { type: '' });
-    await expect(catalog.uploadMedia(file, { idempotencyKey: requestKey })).rejects.toMatchObject({ status: 503 });
+    await expect(catalog.uploadMedia(file, { idempotencyKey: requestKey.toUpperCase() })).rejects.toMatchObject({ status: 503 });
     expect(await catalog.uploadMedia(file, { idempotencyKey: requestKey })).toEqual(stored);
     const keys = h.calls.slice(1).map(c => new Headers(c.init.headers).get('Idempotency-Key'));
     expect(keys).toHaveLength(6);
