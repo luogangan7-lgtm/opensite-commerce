@@ -1183,6 +1183,45 @@ type AppTenant struct {
 	SettlementCurrency pgtype.Text        `json:"settlement_currency"`
 }
 
+type AppTenantLifecycle struct {
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	ID           pgtype.UUID        `json:"id"`
+	State        string             `json:"state"`
+	Epoch        int64              `json:"epoch"`
+	RequestID    pgtype.UUID        `json:"request_id"`
+	RequesterID  pgtype.UUID        `json:"requester_id"`
+	RequestedAt  pgtype.Timestamptz `json:"requested_at"`
+	ExecuteAfter pgtype.Timestamptz `json:"execute_after"`
+	Phase        string             `json:"phase"`
+	Attempt      int32              `json:"attempt"`
+	NextRetryAt  pgtype.Timestamptz `json:"next_retry_at"`
+	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
+}
+
+type AppTenantLifecycleEvent struct {
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	LifecycleID pgtype.UUID        `json:"lifecycle_id"`
+	ID          pgtype.UUID        `json:"id"`
+	RequestID   pgtype.UUID        `json:"request_id"`
+	Epoch       int64              `json:"epoch"`
+	State       string             `json:"state"`
+	Phase       string             `json:"phase"`
+	Blockers    []byte             `json:"blockers"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type AppTenantLifecycleReceipt struct {
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	LifecycleID pgtype.UUID        `json:"lifecycle_id"`
+	ID          pgtype.UUID        `json:"id"`
+	RequestID   pgtype.UUID        `json:"request_id"`
+	ActorID     pgtype.UUID        `json:"actor_id"`
+	Operation   string             `json:"operation"`
+	BodyDigest  []byte             `json:"body_digest"`
+	Metadata    []byte             `json:"metadata"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type AppTenantMembership struct {
 	TenantID  pgtype.UUID        `json:"tenant_id"`
 	UserID    pgtype.UUID        `json:"user_id"`

@@ -33,6 +33,14 @@ func TestObligationAuthorityCannotDefaultToSettled(t *testing.T) {
 			t.Fatalf("lost blocker %s: %v %v", category, items, err)
 		}
 	}
+	complete := []Obligation{}
+	for _, category := range []ObligationCategory{PaidUnfulfilled, FulfillmentReturn, PaymentRefund, CheckoutCapture, RefundReconciliation, PendingPayout, UnsettledProviderBalance, LegalHold} {
+		complete = append(complete, Obligation{Category: category, Known: true})
+	}
+	items, err = CollectDeletionObligations(ctx, &db.Queries{}, tenant, []ObligationPort{obligationFixture{items: complete}})
+	if err != nil || len(ObligationCounts(items)) != 8 {
+		t.Fatalf("complete zero witnesses lost: %v %v", items, err)
+	}
 	for _, f := range []obligationFixture{
 		{err: errors.New("provider not mapped")},
 		{items: []Obligation{{Category: "unknown", Known: true}}},

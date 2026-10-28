@@ -82,7 +82,7 @@ BEGIN
  FOREACH t IN ARRAY ARRAY['tenant_lifecycles','tenant_lifecycle_receipts','tenant_lifecycle_events'] LOOP
   EXECUTE format('ALTER TABLE app.%I ENABLE ROW LEVEL SECURITY',t);
   EXECUTE format('ALTER TABLE app.%I FORCE ROW LEVEL SECURITY',t);
-  EXECUTE format('CREATE POLICY tenant_isolation ON app.%I USING (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',t);
+  EXECUTE format('CREATE POLICY tenant_scope ON app.%I USING (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',t);
   EXECUTE format('REVOKE ALL ON app.%I FROM PUBLIC,app_runtime,app_auth,app_customer_auth,app_domain_resolver',t);
  END LOOP;
 END $rls$;

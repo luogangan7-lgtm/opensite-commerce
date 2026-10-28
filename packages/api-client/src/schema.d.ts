@@ -110,6 +110,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/merchant-deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Owner-only contract reservation. Activation requires MDEL-26 and sender approval; API keys are denied. */
+        post: operations["requestMerchantDeletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/t/{tenant_id}/api-keys": {
         parameters: {
             query?: never;
@@ -1933,7 +1953,7 @@ export interface components {
             csrf_token: string;
         };
         CreateAPIKey: {
-            scopes: ("apikeys:write" | "catalog:read" | "catalog:write" | "cms:publish" | "cms:write" | "media:write" | "notifications:write" | "orders:read" | "quotes:read" | "quotes:write" | "organization.create" | "site.create" | "fulfillment:write" | "returns:write" | "customers:privacy" | "catalog:import" | "catalog:export")[];
+            scopes: ("apikeys:write" | "catalog:read" | "catalog:write" | "cms:publish" | "cms:write" | "media:write" | "notifications:write" | "orders:read" | "quotes:read" | "quotes:write" | "organization.create" | "site.create" | "fulfillment:write" | "returns:write" | "customers:privacy" | "catalog:import" | "catalog:export" | "tenant:delete")[];
             /**
              * Format: date-time
              * @description Optional future expiry; validated against the database clock.
@@ -3336,6 +3356,51 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalServerError"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    requestMerchantDeletion: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
+                Origin: components["parameters"]["Origin"];
+                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+                /** @description Scoped per (actor, operation, key) with a stored request hash (007_reliability). The hash covers the canonical request: method, path template, resolved path parameters (e.g. upload_id, draft_id), canonicalized query and the body (empty body hashes as empty), so one key reused across different resources is a different request. Same key + same request after completion replays the original response; same key while the original request is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header declares 409 and 422. Must be a UUID in 8-4-4-4-12 hexadecimal form, normalized to lowercase before any write. Non-UUID input returns 400 with Problem code `invalid_idempotency_key`. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    step_up_proof: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Deletion metadata only; no capability or personal data. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            default: components["responses"]["Problem"];
         };
     };
     listAPIKeys: {
