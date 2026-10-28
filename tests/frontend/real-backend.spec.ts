@@ -260,7 +260,10 @@ async function accountSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[235]
     const report = await new AxeBuilder({ page }).analyze();
     expect(report.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
   }
+  const busy = page.locator('[data-customer-ready], [data-customer-verification]');
+  if (pending) await expect(busy).toHaveAttribute('aria-busy', 'true');
   await expect(page).toHaveScreenshot(`real-235-${state}.png`, { fullPage: true });
+  if (pending) await expect(busy).toHaveAttribute('aria-busy', 'true');
 }
 const customerBackend = `/api/v1/t/${tenant}/customer`;
 const accountPassword = () => randomBytes(24).toString('base64url');
@@ -403,7 +406,7 @@ test.describe('VISUAL-REAL #235', () => {
     await page.getByRole('button', { name: 'Verify email', exact: true }).click();
     await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(400);
     await expect(page.locator('[data-customer-verification]')).toHaveAttribute('aria-busy', 'true');
-    await expect(page.getByRole('button', { name: 'Verify email', exact: true })).toBeDisabled();
+    await expect(page.locator('[data-customer-verification] button[aria-busy="true"]')).toBeDisabled();
     await accountSnapshot(page, 'verification-processing', true);
     await control(page, 'release');
     await expect(page.locator('[data-customer-verification] > p[role="status"]')).toContainText('Verification could not be completed.');
