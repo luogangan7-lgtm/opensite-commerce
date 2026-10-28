@@ -1,0 +1,76 @@
+# Temporary CI-only MDEL-01 positive baseline and causal mutation probes.
+name: mdel01-probes
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/mdel01-probes.yml'
+permissions:
+  contents: read
+jobs:
+  lifecycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GOTOOLCHAIN: local
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - run: go mod download
+      - run: python3 scripts/pending_migrations.py ci-normalize
+      - name: Full SQL baseline
+        run: bash scripts/check_pg.sh
+      - name: Focused lifecycle baseline
+        id: baseline
+        if: ${{ always() }}
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_tenant_lifecycle.sql
+      - name: Exact role matrix
+        if: ${{ always() }}
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_role_matrix.sql
+      - name: Two causal assertion probes
+        if: ${{ always() && steps.baseline.outcome == 'success' }}
+        run: |
+          python3 - <<'PYTHON'
+          import os, subprocess
+          cases = [
+              ('write-fence', 'app.tenant_lifecycle_write_fence(uuid)',
+               "IF s<>'active'", "IF false", 'MDEL01_WRITE_FENCE_OMITTED'),
+              ('derived-replay', 'app.tenant_lifecycle_transition(uuid,uuid,uuid,uuid,text,uuid,bytea,bigint,jsonb)',
+               'result:=jsonb_build_object(', "result:=jsonb_build_object('token','fault-secret')||jsonb_build_object(",
+               'MDEL01_REPLAY_METADATA_ONLY'),
+          ]
+          for name, signature, before, after, marker in cases:
+              sql = ("BEGIN;\nDO $fault$ DECLARE body text; BEGIN "
+                     "SELECT pg_get_functiondef('" + signature + "'::regprocedure) INTO STRICT body; "
+                     "IF strpos(body,$before$" + before + "$before$)=0 THEN RAISE EXCEPTION 'PROBE_NOT_APPLIED'; END IF; "
+                     "EXECUTE replace(body,$before$" + before + "$before$,$after$" + after + "$after$); "
+                     "END $fault$;\n\\i tests/db_tenant_lifecycle.sql\nROLLBACK;\n")
+              result = subprocess.run(['psql', os.environ['DATABASE_URL'], '-X', '-v', 'ON_ERROR_STOP=1'],
+                                      input=sql, text=True, capture_output=True)
+              if result.returncode == 0 or 'ERROR:  ' + marker not in result.stderr:
+                  print(result.stdout[-3000:], result.stderr[-3000:])
+                  raise SystemExit('FAIL: ' + name + ' did not fail at ' + marker)
+              print('PASS: ' + name + ' rejected at exact assertion ' + marker)
+          PYTHON
+      - name: Lock synchronized races
+        if: ${{ always() }}
+        run: bash scripts/check_pg_races.sh
+      - name: Populated forward upgrade
+        if: ${{ always() }}
+        run: bash scripts/check_pg_upgrade.sh
+
