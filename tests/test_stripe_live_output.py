@@ -49,19 +49,24 @@ class OutputCanaries(unittest.TestCase):
                         with self.assertRaises(SystemExit): runner.main()
                         child.assert_not_called()
 
-    def test_R_requires_original_run_before_child(self):
-        env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REF='refs/heads/main',
-                   GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40, STRIPE_SMOKE_RUN_ID='12345', STRIPE_SMOKE_PHASE='R',
-                   STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID='false')
-        with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run') as child:
-            with self.assertRaises(SystemExit): runner.main()
-            child.assert_not_called()
+    def test_removed_phase_R_refused_before_child(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / 'summary'
+            env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REF='refs/heads/main',
+                       GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40, STRIPE_SMOKE_RUN_ID='12345', STRIPE_SMOKE_PHASE='R',
+                       GITHUB_RUN_ATTEMPT='1', STRIPE_SMOKE_ACCOUNT='acct_offlinepg', RUNNER_TEMP=tmp,
+                       GITHUB_STEP_SUMMARY=str(summary))
+            with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run') as child:
+                with self.assertRaisesRegex(SystemExit, '^PENDING: invalid owner-gated execution; no provider details$'):
+                    runner.main()
+                child.assert_not_called()
+                self.assertFalse(summary.exists(), 'removed phase emitted a run receipt')
 
-    def test_R_rejects_malformed_original_run(self):
+    def test_malformed_run_ids_refused_before_child(self):
         for run_id in ('', 'not-a-run', '-1', '12\n34', '1' * 33):
             env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REF='refs/heads/main',
                        GITHUB_RUN_ID='12345', GITHUB_SHA='a' * 40, STRIPE_SMOKE_RUN_ID=run_id,
-                       STRIPE_SMOKE_PHASE='R', STRIPE_SMOKE_HAS_ORIGINAL_RUN_ID='true')
+                       STRIPE_SMOKE_PHASE='A', GITHUB_RUN_ATTEMPT='1', STRIPE_SMOKE_ACCOUNT='acct_offlinepg')
             with patch.dict(os.environ, env, clear=True), patch.object(runner.subprocess, 'run') as child:
                 with self.assertRaises(SystemExit): runner.main()
                 child.assert_not_called()
