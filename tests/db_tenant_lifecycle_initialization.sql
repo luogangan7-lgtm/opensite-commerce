@@ -3,6 +3,17 @@
 -- Invariant: an already-deleted tenant never acquires active write admission.
 \set ON_ERROR_STOP on
 BEGIN;
+-- Frozen 001 currently admits active/suspended only. Extend the disposable
+-- fixture to the already-designed tombstone input; never alter frozen DDL or
+-- disable its current checks in production. This extension rolls back below.
+DO $fixture$
+DECLARE original text;
+BEGIN
+ SELECT pg_get_expr(conbin,conrelid) INTO STRICT original FROM pg_constraint
+ WHERE conrelid='app.tenants'::regclass AND conname='tenants_status_check';
+ ALTER TABLE app.tenants DROP CONSTRAINT tenants_status_check;
+ EXECUTE 'ALTER TABLE app.tenants ADD CONSTRAINT tenants_status_check CHECK (('||original||') OR status=''deleted'')';
+END $fixture$;
 DO $test$
 DECLARE t uuid; l app.tenant_lifecycles; before_db timestamptz:=clock_timestamp();
 BEGIN
