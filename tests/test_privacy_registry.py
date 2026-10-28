@@ -727,6 +727,35 @@ func future(r *os.Root) { r.WriteFile("unregistered", nil, 0600) }
             with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
                 self.gate.artifact_catalog(root)
 
+    def test_writer_function_references_cannot_escape_inventory(self):
+        cases = {
+            "alias": 'func write() { put := os.WriteFile; _ = put("private", nil, 0600) }',
+            "method_value": 'func write(r *os.Root) { put := r.WriteFile; _ = put("private", nil, 0600) }',
+            "func_arg": 'func accept(any) {}\nfunc write() { accept(os.WriteFile) }',
+            "method_expression": 'var put = (*os.Root).WriteFile',
+            "returned": 'func writer() any { return os.CreateTemp }',
+            "annotated_escape": '// privacy-artifact: orders.archive\nvar put = os.OpenFile',
+        }
+        for typed in (False, True):
+            for name, source in cases.items():
+                with self.subTest(typed=typed, form=name), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    if typed:
+                        (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+                    (root / "internal").mkdir()
+                    (root / "internal/probe.go").write_text('package probe\nimport "os"\n' + source + '\n')
+                    with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER_ESCAPE"):
+                        self.gate.artifact_catalog(root)
+
+    def test_dot_import_writer_cannot_escape_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+            (root / "internal").mkdir()
+            (root / "internal/probe.go").write_text('package probe\nimport . "os"\nvar put = WriteFile\n')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER_ESCAPE"):
+                self.gate.artifact_catalog(root)
+
     def test_credential_or_personal_hash_cannot_claim_financial_retention(self):
         registry = self.gate.load_registry(ROOT)
         handlers = self.load(ROOT)["handlers"]
