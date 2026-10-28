@@ -61,7 +61,7 @@ func inventory(root string) ([]writer, error) {
 				return true
 			}
 			switch selector.Sel.Name {
-			case "Create", "CreateTemp", "WriteFile", "OpenFile":
+			case "CreateTemp", "OpenFile":
 			default:
 				return true
 			}
