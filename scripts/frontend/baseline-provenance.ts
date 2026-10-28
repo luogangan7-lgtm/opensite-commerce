@@ -5,16 +5,18 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { scopeInputs } from './scoped-inputs';
+import { realBackendEvidence } from './real-visual-manifest';
 
 export const PLAYWRIGHT_IMAGE = 'mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462';
 export const BASELINES = 'tests/frontend/baselines';
 export const REPOSITORY = 'luogangan7-lgtm/opensite-commerce';
-export const SCOPES = ['gallery', 'admin', 'storefront-published', 'storefront-commerce'] as const;
+export const SCOPES = ['gallery', 'admin', 'storefront-published', 'storefront-commerce', 'real-backend'] as const;
 export type Scope = typeof SCOPES[number];
 export const SPECS: Record<Scope, string> = {
   gallery: 'tests/frontend/gallery.spec.ts', admin: 'tests/frontend/admin.spec.ts',
   'storefront-published': 'tests/frontend/storefront.spec.ts',
   'storefront-commerce': 'tests/frontend/storefront-commerce.spec.ts',
+  'real-backend': 'tests/frontend/real-backend.spec.ts',
 };
 // chromiumArgs (C-08e): one producer job rendered storefront-commerce-cart.png twice (compare, then update) on the
 // same host and got two variants differing ±1 per channel at the anti-aliased corners of the just-blurred
@@ -29,6 +31,7 @@ export type BaselineRecord = {
   schema: 2; snapshot: string; scope: Scope; sourceFingerprint: string; pngSha256: string;
   scopeSnapshots: string[];
   sourceSha: string; runUrl: string; image: string; playwright: string; font: string; rendering: typeof RENDERING;
+  backend?: ReturnType<typeof realBackendEvidence>;
 };
 export function filesAt(directory: string): string[] {
   return readdirSync(directory).sort().flatMap(name => {
@@ -59,6 +62,7 @@ export function scopeForSnapshot(snapshot: string): Scope {
   const match = /^(desktop|mobile)\/([a-z0-9-]+)\.png$/.exec(snapshot);
   if (!match) throw new Error(`Invalid PNG identity: ${snapshot}`);
   const name = match[2];
+  if (name.startsWith('real-')) return 'real-backend';
   if (name.startsWith('admin-')) return 'admin';
   if (name.startsWith('storefront-commerce-')) return 'storefront-commerce';
   if (name.startsWith('storefront-')) return 'storefront-published';
@@ -73,7 +77,8 @@ export function runId(runUrl: string): string {
 }
 export function makeRecord(snapshot: string, fingerprint: string, png: string, sourceSha: string, runUrl: string, scopeSnapshots = [snapshot]): BaselineRecord {
   return { schema: 2, snapshot, scope: scopeForSnapshot(snapshot), sourceFingerprint: fingerprint, pngSha256: png,
-    scopeSnapshots, sourceSha, runUrl, image: PLAYWRIGHT_IMAGE, playwright: '1.64.0', font: '@fontsource/inter@5.3.0', rendering: RENDERING };
+    scopeSnapshots, sourceSha, runUrl, image: PLAYWRIGHT_IMAGE, playwright: '1.64.0', font: '@fontsource/inter@5.3.0', rendering: RENDERING,
+    ...(scopeForSnapshot(snapshot) === 'real-backend' ? { backend: realBackendEvidence(snapshot) } : {}) };
 }
 export function assertBaselineSet(pngs: Record<string, string>, records: Record<string, unknown>): BaselineRecord[] {
   const pngPaths = Object.keys(pngs).sort();
@@ -84,6 +89,7 @@ export function assertBaselineSet(pngs: Record<string, string>, records: Record<
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid PNG provenance record');
     const record = value as BaselineRecord;
     if (record.schema !== 2 || record.snapshot !== snapshot || record.scope !== scopeForSnapshot(snapshot)) throw new Error(`Invalid PNG scope or schema: ${snapshot}`);
+    if (record.scope === 'real-backend' && JSON.stringify(record.backend) !== JSON.stringify(realBackendEvidence(snapshot))) throw new Error(`Missing or altered real backend/fault provenance: ${snapshot}`);
     const inventory = pngPaths.filter(path => scopeForSnapshot(path) === record.scope);
     if (!Array.isArray(record.scopeSnapshots) || JSON.stringify(record.scopeSnapshots) !== JSON.stringify(inventory)) throw new Error(`Producer-observed scope inventory differs: ${snapshot}`);
     if (typeof record.sourceSha !== 'string' || !/^[0-9a-f]{40}$/.test(record.sourceSha)) throw new Error('Invalid producer SHA');

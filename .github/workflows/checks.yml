@@ -501,7 +501,7 @@ jobs:
       # C-08e: pixels must not depend on the host CPU (see RENDERING.chromiumArgs); log it to correlate any diff.
       - name: Runner CPU (raster diagnostics)
         run: grep -m1 'model name' /proc/cpuinfo; grep -o -m1 -w 'avx512f' /proc/cpuinfo || echo 'no avx512f'
-      - name: Candidate visual/a11y comparison against committed goldens
+      - name: Candidate visual/a11y comparison including VISUAL-REAL Go/PG lane
         id: visual
         env:
           OPENSITE_ORPHAN_CHECK: '1'

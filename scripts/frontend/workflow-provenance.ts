@@ -35,7 +35,8 @@ const PRE_WRITER_USES: Record<string, string[]> = {
 };
 /** Everything Bun reads to start the writer: entry script, its local imports, package/lock/tsconfig; bunfig.toml must be absent. */
 export const WRITER_INPUTS = ['package.json', 'bun.lock', 'bunfig.toml', 'tsconfig.json',
-  'scripts/frontend/update-baselines.ts', 'scripts/frontend/baseline-provenance.ts', 'scripts/frontend/scoped-inputs.ts'];
+  'scripts/frontend/update-baselines.ts', 'scripts/frontend/baseline-provenance.ts', 'scripts/frontend/scoped-inputs.ts',
+  'scripts/frontend/real-visual-manifest.ts'];
 
 const only = (value: unknown, keys: string[]) =>
   !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(key => keys.includes(key));
