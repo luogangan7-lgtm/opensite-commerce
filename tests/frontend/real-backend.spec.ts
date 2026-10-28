@@ -322,7 +322,7 @@ async function historyLogin(page: Page, email: string, password: string) {
 const historyPanel = (page: Page) => page.locator('.purchase-page[aria-label="Order history"]');
 // Only the runtime B2B order may supply an exact date mask. Historical dates
 // remain visible; real API timestamp/display assertions precede every mask.
-async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250][number], pending = false, fullPage = true, mask: Locator[] = []) {
+async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250][number], pending = false, fullPage = true, mask: Locator[] = [], maskColor?: string) {
   await page.evaluate(async () => { await document.fonts.ready; });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'history fits viewport').toBe(true);
   if (!pending) {
@@ -331,7 +331,7 @@ async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250]
   }
   const panel = historyPanel(page);
   if (state !== 'account-entry') await expect(panel).toHaveAttribute('aria-busy', String(pending));
-  await expect(page).toHaveScreenshot(`real-250-${state}.png`, { fullPage, mask });
+  await expect(page).toHaveScreenshot(`real-250-${state}.png`, { fullPage, mask, maskColor });
   if (state !== 'account-entry') await expect(panel).toHaveAttribute('aria-busy', String(pending));
 }
 
@@ -587,13 +587,24 @@ test.describe('VISUAL-REAL #250', () => {
       await expect(date).toHaveText(new Date(createdAt).toLocaleDateString('en-US', { timeZone: 'UTC' }));
       // Exercise a different calendar date without changing the real backend fact.
       await page.evaluate(async () => { await document.fonts.ready; });
+      // Proportional date glyphs change the mask's width. Matching the actual
+      // flat canvas keeps that rectangle's edge from becoming a date-shaped signal.
+      const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
       const original = await date.innerText();
-      const before = await page.screenshot({ fullPage: true, mask: [date] });
+      const beforeBox = await date.boundingBox();
+      const before = await page.screenshot({ fullPage: true, mask: [date], maskColor });
       await date.evaluate(node => { node.textContent = '12/31/2099'; });
-      const after = await page.screenshot({ fullPage: true, mask: [date] });
+      const afterBox = await date.boundingBox();
+      const after = await page.screenshot({ fullPage: true, mask: [date], maskColor });
       await date.evaluate((node, value) => { node.textContent = value; }, original);
+      console.info('VISUAL runtime date mask geometry', { beforeBox, afterBox, maskColor });
+      if (!after.equals(before)) {
+        // This page contains only the owned synthetic order, never credentials.
+        await info.attach('runtime-date-before', { body: before, contentType: 'image/png' });
+        await info.attach('runtime-date-shifted', { body: after, contentType: 'image/png' });
+      }
       expect(after.equals(before), 'date change must not alter screenshot pixels').toBe(true);
-      await historySnapshot(page, 'b2b-paid-list', false, true, [date]);
+      await historySnapshot(page, 'b2b-paid-list', false, true, [date], maskColor);
       await order.click(); await historyReady(page);
       await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('$27.00');
       await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('paid');
