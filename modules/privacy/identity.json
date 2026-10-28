@@ -59,7 +59,121 @@
         "failure_count": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "known_devices.failure_count is global identity/anti-abuse state, not owned by the target merchant; preserve other tenants and revoke only target-tenant authorization.", "handler": "identity.erase", "ownership": {"kind": "global_exclusion", "path": "global_identity", "reason": "No tenant ownership relationship exists; no email/payload inference may assign one."}, "retained_kind": "global", "value_type": "global"}},
         "created_at": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "known_devices.created_at is global identity/anti-abuse state, not owned by the target merchant; preserve other tenants and revoke only target-tenant authorization.", "handler": "identity.erase", "ownership": {"kind": "global_exclusion", "path": "global_identity", "reason": "No tenant ownership relationship exists; no email/payload inference may assign one."}, "retained_kind": "global", "value_type": "global"}}
       }
+    },
+    "identity_merchant_proofs": {
+      "subject": {
+        "tenant_key": "tenant_id",
+        "identity_path": "identity_merchant_proofs.user_id -> users.id; session/action-bound tenant step-up capability"
+      },
+      "columns": {
+        "tenant_id": {
+          "classification": "operational",
+          "merchant_deletion": {
+            "action": "erase",
+            "strategy": "delete_row",
+            "reason": "Trusted tenant ownership of the disposable step-up proof.",
+            "handler": "identity.erase",
+            "ownership": {
+              "kind": "tenant_column",
+              "path": "identity_merchant_proofs.tenant_id"
+            }
+          }
+        },
+        "id": {
+          "classification": "operational",
+          "merchant_deletion": {
+            "action": "erase",
+            "strategy": "delete_row",
+            "reason": "Opaque proof row identity.",
+            "handler": "identity.erase",
+            "ownership": {
+              "kind": "tenant_column",
+              "path": "identity_merchant_proofs.tenant_id"
+            }
+          }
+        },
+        "user_id": {
+          "classification": "operational",
+          "merchant_deletion": {
+            "action": "erase",
+            "strategy": "delete_row",
+            "reason": "Global staff subject binding; the proof is tenant-owned, the account is not.",
+            "handler": "identity.erase",
+            "ownership": {
+              "kind": "tenant_column",
+              "path": "identity_merchant_proofs.tenant_id"
+            }
+          }
+        },
+        "session_id": {
+          "classification": "operational",
+          "merchant_deletion": {
+            "action": "erase",
+            "strategy": "delete_row",
+            "reason": "Exact live global session binding without duplicating its token.",
+            "handler": "identity.erase",
+            "ownership": {
+              "kind": "tenant_column",
+              "path": "identity_merchant_proofs.tenant_id"
+            }
+          }
+        },
+        "action": {
+          "classification": "operational",
+          "merchant_deletion": {
+            "action": "erase",
+            "strategy": "delete_row",
+            "reason": "Fixed request/cancel action binding.",
+            "handler": "identity.erase",
+            "ownership": {
+              "kind": "tenant_column",
+              "path": "identity_merchant_proofs.tenant_id"
+            }
+          }
+        },
+        "proof_digest": {
+          "classification": "secret_hash",
+          "merchant_deletion": {
+            "action": "erase",
+            "strategy": "delete_row",
+            "reason": "Only a random one-use capability digest; erased on tenant deletion.",
+            "handler": "identity.erase",
+            "ownership": {
+              "kind": "tenant_column",
+              "path": "identity_merchant_proofs.tenant_id"
+            }
+          },
+          "structure": "Sha256Digest",
+          "export": "exclude"
+        },
+        "created_at": {
+          "classification": "operational",
+          "merchant_deletion": {
+            "action": "erase",
+            "strategy": "delete_row",
+            "reason": "DB-clock issuance instant.",
+            "handler": "identity.erase",
+            "ownership": {
+              "kind": "tenant_column",
+              "path": "identity_merchant_proofs.tenant_id"
+            }
+          }
+        },
+        "expires_at": {
+          "classification": "operational",
+          "merchant_deletion": {
+            "action": "erase",
+            "strategy": "delete_row",
+            "reason": "DB-clock five-minute expiration.",
+            "handler": "identity.erase",
+            "ownership": {
+              "kind": "tenant_column",
+              "path": "identity_merchant_proofs.tenant_id"
+            }
+          }
+        }
+      }
     }
   },
-  "merchant_deletion": {"version": 1, "handlers": {"identity.erase": {"depends_on": ["site.erase"], "tables": ["known_devices", "auth_sessions", "auth_login_attempts", "auth_account_attempts", "users"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
+  "merchant_deletion": {"version": 1, "handlers": {"identity.erase": {"depends_on": ["site.erase"], "tables": ["identity_merchant_proofs", "known_devices", "auth_sessions", "auth_login_attempts", "auth_account_attempts", "users"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

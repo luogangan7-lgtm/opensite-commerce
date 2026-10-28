@@ -50,7 +50,7 @@ BEGIN
   RAISE EXCEPTION 'MDEL02_PROOF_REPLAY';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  PERFORM app.auth_issue_merchant_proof(t,u,s,'request',d,'verified-phc');
- UPDATE app.identity_merchant_proofs SET expires_at=clock_timestamp() WHERE tenant_id=t;
+ WITH instant AS (SELECT clock_timestamp() AS at) UPDATE app.identity_merchant_proofs SET created_at=instant.at-interval '5 minutes',expires_at=instant.at FROM instant WHERE tenant_id=t;
  BEGIN
   PERFORM app.auth_consume_merchant_proof(t,u,s,'request',d);
   RAISE EXCEPTION 'MDEL02_EXPIRED_PROOF';
@@ -81,8 +81,8 @@ BEGIN
  PERFORM app.auth_issue_merchant_proof(t,u,s,'request',d,'replacement-phc');
  -- Lifecycle state is controlled by Tenant. Set a worker-admitted fixture;
  -- Identity never writes this table in production.
- UPDATE app.tenant_lifecycles SET state='cooling_off',request_id=req,requester_id=u,
-  requested_at=clock_timestamp(),execute_after=clock_timestamp()+interval '720 hours' WHERE tenant_id=t;
+ PERFORM app.tenant_lifecycle_transition(t,req,u,s,'request',uuidv7(),sha256('request'::bytea),0,
+  '{"paid_unfulfilled":0,"fulfillment_return":0,"payment_refund":0,"checkout_capture":0,"refund_reconciliation":0,"pending_payout":0,"unsettled_provider_balance":0,"legal_hold":0}');
  IF app.auth_revalidate_tenant(t,u,'session',s,'catalog:write') THEN RAISE EXCEPTION 'MDEL02_COOLING_WRITE'; END IF;
  IF NOT app.auth_revalidate_tenant(t,u,'session',s,'catalog:read') THEN RAISE EXCEPTION 'MDEL02_COOLING_READ'; END IF;
  IF NOT app.auth_revalidate_tenant(t,u,'session',s,'tenant:delete') THEN RAISE EXCEPTION 'MDEL02_CANCEL_AUTHORITY'; END IF;
@@ -101,7 +101,7 @@ BEGIN
  IF n=0 OR EXISTS(SELECT FROM app.identity_merchant_proofs WHERE tenant_id=t) THEN RAISE EXCEPTION 'MDEL02_DERIVED_PROOF_SCRUB'; END IF;
  IF app.auth_erase_merchant_proofs(t,req,e)<>0 THEN RAISE EXCEPTION 'MDEL02_SCRUB_NOT_IDEMPOTENT'; END IF;
  IF app.auth_merchant_receipt(t,req,u,s) THEN RAISE EXCEPTION 'MDEL02_NONTERMINAL_RECEIPT'; END IF;
- UPDATE app.tenant_lifecycles SET state='deleted',phase='completed',completed_at=clock_timestamp() WHERE tenant_id=t;
+ PERFORM app.tenant_lifecycle_checkpoint(t,req,e,true);
  -- Detachment does not revoke a global session or another tenant's authority.
  DELETE FROM app.tenant_memberships WHERE tenant_id=t;
  IF NOT app.auth_merchant_receipt(t,req,u,s) OR app.auth_merchant_receipt(t,uuidv7(),u,s)

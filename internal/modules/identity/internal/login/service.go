@@ -95,13 +95,18 @@ func NormalizeIdentifier(identifier string) string {
 	return strings.ToLower(strings.TrimSpace(identifier))
 }
 
-func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error) {
-	ctx, cancel := context.WithTimeout(ctx, s.cfg.HashTimeout)
-	defer cancel()
+// authenticatePassword is shared by login and merchant step-up. It preserves
+// the existing account/IP/global/KDF budgets and failure bookkeeping.
+type passwordAdmission struct {
+	credential Credential
+	oldHash *[32]byte
+}
+
+func (s *Service) authenticatePassword(ctx context.Context, in LoginInput) (passwordAdmission, error) {
 	arrival := s.cfg.Now()
 	in.Identifier = NormalizeIdentifier(in.Identifier)
 	if !ValidIdentifier(in.Identifier) || len(in.Password) == 0 || len(in.Password) > 1024 || !utf8.ValidString(in.Password) || strings.ContainsAny(in.Password, "\r\n\x00") || !in.IP.IsValid() || ctx.Err() != nil {
-		return LoginResult{}, ErrCredentials
+		return passwordAdmission{}, ErrCredentials
 	}
 	in.IP = rateLimitIP(in.IP)
 	// A MAC-valid, canonical device token is only a candidate. DB validation
@@ -117,7 +122,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	// pays nothing global until DB validation: only a valid, unexpired,
 	// unrevoked device bound to this account may draw the reserved budget.
 	if !s.admitIPClass(in.IP, arrival, candidate) || (!candidate && !s.admitGlobal(false, arrival)) {
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	admission := s.admissionSlots
 	if candidate {
@@ -126,7 +131,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	select {
 	case admission <- struct{}{}:
 	default:
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	// Bounds pre-KDF database admission only; cooldowns never sleep. Every return
 	// releases admission if it has not already been released before hashing.
@@ -145,10 +150,10 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	}
 	credential, e := s.repo.Credential(ctx, in.Identifier)
 	if ctx.Err() != nil {
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	if e != nil && !errors.Is(e, ErrNotFound) {
-		return LoginResult{}, ErrDatabase
+		return passwordAdmission{}, ErrDatabase
 	}
 	eligible := e == nil && credential.UserID != "" && credential.Status == "active"
 	var device Device
@@ -157,15 +162,15 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		var err error
 		device, err = s.repo.Device(ctx, candidateHash)
 		if ctx.Err() != nil {
-			return LoginResult{}, ErrRateLimited
+			return passwordAdmission{}, ErrRateLimited
 		}
 		if err != nil && !errors.Is(err, ErrNotFound) {
-			return LoginResult{}, ErrDatabase
+			return passwordAdmission{}, ErrDatabase
 		}
 		known = err == nil && device.ID != "" && device.UserID == credential.UserID && !device.Revoked
 	}
 	if candidate && !s.admitGlobal(known, arrival) {
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	if candidate && !known {
 		// A stale/wrong-user device pays the ordinary global (above) and
@@ -173,26 +178,26 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		select {
 		case s.admissionSlots <- struct{}{}:
 		default:
-			return LoginResult{}, ErrRateLimited
+			return passwordAdmission{}, ErrRateLimited
 		}
 		<-admission
 		admission = s.admissionSlots
 	}
 	account, accountIP, e := s.repo.Cooldowns(ctx, in.Identifier, in.IP)
 	if ctx.Err() != nil {
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	if e != nil {
-		return LoginResult{}, ErrDatabase
+		return passwordAdmission{}, ErrDatabase
 	}
 	if !accountIP.IsZero() {
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	if !known && !account.IsZero() {
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	if ctx.Err() != nil {
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	if !eligible {
 		oldHash = nil
@@ -200,7 +205,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	if oldHash != nil {
 		valid, err := s.repo.RotationSession(ctx, *oldHash, credential.UserID)
 		if err != nil {
-			return LoginResult{}, ErrDatabase
+			return passwordAdmission{}, ErrDatabase
 		}
 		// Preserve an observed active token through KDF for the later CAS.
 		// Expired/revoked/wrong-user cookies do not obstruct credential login.
@@ -218,7 +223,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	select {
 	case slots <- struct{}{}:
 	default:
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	// IDKey cannot be preempted. The worker owns its slot until real completion;
 	// deadline responses cannot release capacity for additional background KDFs.
@@ -233,10 +238,10 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	select {
 	case verifiedPassword = <-result:
 	case <-ctx.Done():
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	if ctx.Err() != nil {
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
 	if !verifiedPassword {
 		failureErr := s.repo.RecordFailure(ctx, in.Identifier, in.IP)
@@ -245,13 +250,25 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 			deviceErr = s.repo.FailDevice(ctx, device.ID)
 		}
 		if failureErr != nil || deviceErr != nil {
-			return LoginResult{}, ErrDatabase
+			return passwordAdmission{}, ErrDatabase
 		}
-		return LoginResult{}, ErrCredentials
+		return passwordAdmission{}, ErrCredentials
 	}
 	if ctx.Err() != nil {
-		return LoginResult{}, ErrRateLimited
+		return passwordAdmission{}, ErrRateLimited
 	}
+	return passwordAdmission{credential: credential, oldHash: oldHash}, nil
+}
+
+func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.HashTimeout)
+	defer cancel()
+	admitted, err := s.authenticatePassword(ctx, in)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	credential, oldHash := admitted.credential, admitted.oldHash
+
 	raw, e := newToken()
 	if e != nil {
 		return LoginResult{}, ErrDatabase

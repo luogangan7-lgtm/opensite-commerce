@@ -2096,6 +2096,53 @@ expect mdel_before_touch ok; expect mdel_touch_late 'tenant deletion write fence
 [[ $(sql <<<"SELECT last_used_at IS NULL FROM app.api_keys WHERE id='$MTOUCH';") == t ]] || { echo 'FAIL: MDEL01_TOUCH_AFTER_REQUEST_RACE'; fail=1; }
 echo 'PASS: MDEL01 gates 155-156 key activity/request serialization and lifecycle-first lock order'
 
+# MDEL-02: proofs serialize on the same lifecycle row before user/session/proof.
+read -r MT MU MS MR MK <<<"$(mdel_fixture)"
+MDEL02_DIGEST="sha256('mdel02-race-proof'::bytea)"
+tx mdel02_issue postgres "$MT" "SELECT app.auth_issue_merchant_proof('$MT','$MU','$MS','request',$MDEL02_DIGEST,'fixture');"
+expect mdel02_issue ok
+gate_close 157
+tx mdel02_first postgres "$MT" "SELECT app.auth_consume_merchant_proof('$MT','$MU','$MS','request',$MDEL02_DIGEST); $(park 157)" &
+await mdel02_first advisory
+tx mdel02_second postgres "$MT" "SELECT app.auth_consume_merchant_proof('$MT','$MU','$MS','request',$MDEL02_DIGEST);" &
+await mdel02_second "${ROWLOCK[@]}"
+gate_open 157; wait
+expect mdel02_first ok; expect mdel02_second 'merchant step-up denied'
+[[ $(sql <<<"SELECT count(*) FROM app.identity_merchant_proofs WHERE tenant_id='$MT';") == 0 ]] || { echo 'FAIL: MDEL02_CONCURRENT_CONSUMPTION'; fail=1; }
+
+# The contender starts before expiry but observes a DB-expired proof only after
+# taking the lifecycle lock. There is no application timestamp or sleep ordering.
+tx mdel02_reissue postgres "$MT" "SELECT app.auth_issue_merchant_proof('$MT','$MU','$MS','request',$MDEL02_DIGEST,'fixture');"
+gate_close 158
+tx mdel02_expire postgres "$MT" "SELECT app.tenant_lifecycle_transition_fence('$MT'); WITH instant AS MATERIALIZED(SELECT clock_timestamp() at) UPDATE app.identity_merchant_proofs SET created_at=instant.at-interval '5 minutes',expires_at=instant.at FROM instant WHERE tenant_id='$MT'; $(park 158)" &
+await mdel02_expire advisory
+tx mdel02_after_expiry postgres "$MT" "SELECT app.auth_consume_merchant_proof('$MT','$MU','$MS','request',$MDEL02_DIGEST);" &
+await mdel02_after_expiry "${ROWLOCK[@]}"
+gate_open 158; wait
+expect mdel02_expire ok; expect mdel02_after_expiry 'merchant step-up denied'
+
+# A verified password that changes while issuance waits cannot mint a proof.
+gate_close 159
+tx mdel02_password postgres "$MT" "UPDATE app.users SET password_hash='new-fixture' WHERE id='$MU'; $(park 159)" &
+await mdel02_password advisory
+tx mdel02_old_password postgres "$MT" "SELECT app.auth_issue_merchant_proof('$MT','$MU','$MS','request',$MDEL02_DIGEST,'fixture');" &
+await mdel02_old_password "${ROWLOCK[@]}"
+gate_open 159; wait
+expect mdel02_password ok; expect mdel02_old_password 'merchant step-up denied'
+
+# A late issuer waits for executing/fence admission, then cannot recreate a copy.
+read -r MT MU MS MR MK <<<"$(mdel_fixture)"
+tx mdel02_before_execute postgres "$MT" "$(mdel_call request 0)"
+gate_close 160
+tx mdel02_execute postgres "$MT" "SELECT app.tenant_lifecycle_transition_fence('$MT'); UPDATE app.tenant_lifecycles SET state='executing',phase='executing',epoch=epoch+1 WHERE tenant_id='$MT'; SELECT app.auth_erase_merchant_proofs('$MT','$MR',2); $(park 160)" &
+await mdel02_execute advisory
+tx mdel02_late_issue postgres "$MT" "SELECT app.auth_issue_merchant_proof('$MT','$MU','$MS','request',$MDEL02_DIGEST,'fixture');" &
+await mdel02_late_issue "${ROWLOCK[@]}"
+gate_open 160; wait
+expect mdel02_execute ok; expect mdel02_late_issue 'merchant step-up denied'
+[[ $(sql <<<"SELECT count(*) FROM app.identity_merchant_proofs WHERE tenant_id='$MT';") == 0 ]] || { echo 'FAIL: MDEL02_LATE_PROOF_RECREATED'; fail=1; }
+echo 'PASS: MDEL02 gates 157-160 single consumer, post-lock DB expiry, password and execution fencing'
+
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth/fulfillment/returns contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'

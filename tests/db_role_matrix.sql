@@ -19,7 +19,7 @@ DECLARE
   'blog_post_revisions','site_release_routes','site_release_templates',
   'site_release_media','draft_operations','audit_events'];
  special_tables text[] := ARRAY[
-  'tenant_lifecycles','tenant_lifecycle_receipts','tenant_lifecycle_events',
+  'tenant_lifecycles','tenant_lifecycle_receipts','tenant_lifecycle_events','identity_merchant_proofs',
   'tenants','users','auth_sessions','api_keys','tenant_memberships','sites',
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
   'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
@@ -77,7 +77,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenant_lifecycle_receipts','tenant_lifecycle_events','payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals','payment_refund_cases','payment_refund_case_deliveries','payment_refund_case_resolutions','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures','data_rights_erased_orders']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['identity_merchant_proofs','tenant_lifecycle_receipts','tenant_lifecycle_events','payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals','payment_refund_cases','payment_refund_case_deliveries','payment_refund_case_resolutions','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures','data_rights_erased_orders']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='SELECT' AND t.relname='customer_guest_order_links' THEN

@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
@@ -37,6 +38,7 @@ type principal struct {
 type AuthorizationSnapshot struct {
 	UserID, TenantID, Kind, CredentialID string
 	Scopes                               []string
+	ReceiptOnly bool
 }
 
 func AuthorizationFromContext(ctx context.Context) (AuthorizationSnapshot, bool) {
@@ -171,6 +173,16 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 			missing = unauthenticated()
 		}
 		if err != nil {
+			if !keyCredential && merchantReceiptRoute(spec) && errors.Is(err, contract.ErrNotFound) {
+				actor, _ := login.ActorFromContext(ctx)
+				allowed, receiptErr := h.service.MerchantReceipt(ctx, tenant, r.PathValue("request_id"), actor)
+				if receiptErr != nil { return nil, authUnavailable() }
+				if allowed {
+					snapshot.ReceiptOnly = true
+					snapshot.Scopes = []string{"tenant:delete"}
+					return context.WithValue(ctx, principalKey{}, principal{owner:h, spec:spec, snapshot:snapshot, token:token, session:session}), nil
+				}
+			}
 			return nil, authorityError(err, missing)
 		}
 		if membership.UserID != snapshot.UserID || membership.TenantID != tenant {
@@ -275,6 +287,18 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 	p, err := h.admitted(ctx, r, spec)
 	if err != nil {
 		return nil, err
+	}
+	if p.ReceiptOnly {
+		if !merchantReceiptRoute(spec) { return nil, unauthenticated() }
+		request := r.PathValue("request_id")
+		return func(ctx context.Context,q *db.Queries) error {
+			if q==nil { return unauthenticated() }
+			var tenant, req, user, session pgtype.UUID
+			_ = tenant.Scan(p.TenantID); _ = req.Scan(request); _ = user.Scan(p.UserID); _ = session.Scan(p.CredentialID)
+			ok, err := q.MerchantReceiptAllowed(ctx,db.MerchantReceiptAllowedParams{TenantID:tenant, RequestID:req, UserID:user, SessionID:session})
+			if err!=nil || !ok { return unauthenticated() }
+			return nil
+		}, nil
 	}
 	if h.authorization == nil {
 		return nil, authUnavailable()
