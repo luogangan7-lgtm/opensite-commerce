@@ -629,17 +629,23 @@ test.describe('VISUAL-REAL #250', () => {
         const range = document.createRange(); range.selectNodeContents(element.firstChild!);
         const r = range.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
       });
-      const rowBox = await row.boundingBox();
-      if (!beforeBox || !amountBox || !rowBox) throw new Error('Missing date mask geometry');
+      if (!beforeBox || !amountBox) throw new Error('Missing date mask geometry');
+      const maskBox = async (locator: Locator) => {
+        const box = await locator.boundingBox();
+        if (!box) throw new Error('Missing date mask geometry');
+        return box;
+      };
+      const dateMasks = [date];
       // The adversarial candidate spans the whole row; it must be rejected.
-      expect(() => assertDateMaskBounds(rowBox, beforeBox, [statusBox, amountBox])).toThrow('Date mask extends outside time element');
-      assertDateMaskBounds(beforeBox, beforeBox, [statusBox, amountBox]);
-      const before = await page.screenshot({ fullPage: true, mask: [date], maskColor });
+      const awaitedRowBox = await maskBox(row);
+      expect(() => assertDateMaskBounds(awaitedRowBox, beforeBox, [statusBox, amountBox])).toThrow('Date mask extends outside time element');
+      assertDateMaskBounds(await maskBox(dateMasks[0]), beforeBox, [statusBox, amountBox]);
+      const before = await page.screenshot({ fullPage: true, mask: dateMasks, maskColor });
       await date.evaluate(node => { node.textContent = '12/31/2099'; });
       const afterBox = await date.boundingBox();
       if (!afterBox) throw new Error('Missing shifted date mask geometry');
-      assertDateMaskBounds(afterBox, afterBox, [statusBox, amountBox]);
-      const after = await page.screenshot({ fullPage: true, mask: [date], maskColor });
+      assertDateMaskBounds(await maskBox(dateMasks[0]), afterBox, [statusBox, amountBox]);
+      const after = await page.screenshot({ fullPage: true, mask: dateMasks, maskColor });
       await date.evaluate((node, value) => { node.textContent = value; }, original);
       console.info('VISUAL runtime date mask geometry', { beforeBox, afterBox, maskColor });
       if (!after.equals(before)) {
@@ -648,7 +654,8 @@ test.describe('VISUAL-REAL #250', () => {
         await info.attach('runtime-date-shifted', { body: after, contentType: 'image/png' });
       }
       expect(after.equals(before), 'date change must not alter screenshot pixels').toBe(true);
-      await historySnapshot(page, 'b2b-paid-list', false, true, [date], maskColor);
+      assertDateMaskBounds(await maskBox(dateMasks[0]), await maskBox(date), [statusBox, amountBox]);
+      await historySnapshot(page, 'b2b-paid-list', false, true, dateMasks, maskColor);
       await order.click(); await historyReady(page);
       await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('$27.00');
       await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('paid');
