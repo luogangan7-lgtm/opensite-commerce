@@ -123,7 +123,7 @@ test.describe('VISUAL-REAL #213', () => {
 
   test('launcher removes its bootstrap role after failure, timeout and interruption, then provisions again', () => {
     // The launcher control flow and role DDL are real; business commands are isolated.
-    execFileSync('python3', ['scripts/frontend/test_real_launcher.py'], { stdio: 'pipe', timeout: 120_000 });
+    console.log(execFileSync('python3', ['scripts/frontend/test_real_launcher.py'], { stdio: 'pipe', timeout: 120_000 }).toString());
   });
 
   test('committed replay guard rejects a real noncommitted first attempt before retry', async ({ page }) => {
@@ -131,18 +131,29 @@ test.describe('VISUAL-REAL #213', () => {
     const before = sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}';`);
     sql(`UPDATE app.price_entries SET unit_amount=4800 WHERE tenant_id='${tenant}' AND sku_id='${sku}';`);
     try {
-      // Hold a real Go rejection: it has no checkout to replay. Never fabricate a DTO.
-      await fault(page, backend, 'POST', 'hold');
+      // Discard a real Go rejection: it has no checkout to replay. Never fabricate a DTO.
+      await fault(page, backend, 'POST', 'drop');
       const request = page.waitForRequest(request => new URL(request.url()).pathname === '/purchase/api/checkout' && request.method() === 'POST');
       await page.getByRole('button', { name: 'Start test checkout', exact: true }).click();
       const key = await (await request).headerValue('Idempotency-Key');
       if (!key || !/^[0-9a-f-]{36}$/i.test(key)) throw new Error('Expected a UUID checkout request key');
+      await expect(page.getByRole('alert')).toBeVisible();
       await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(409);
       expect(sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}';`)).toBe(before);
       expect(sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}' AND request_key='${key}';`)).toBe('0');
       await expect(committedAttempt(page, key, before)).rejects.toThrow('Discarded upstream was not committed (status 409)');
-      await control(page, 'release');
-      await expect(page.getByRole('button', { name: 'Confirm updated total', exact: true })).toBeVisible();
+      console.log('VISUAL noncommitted first attempt: upstream 409, zero rows, committed-replay guard rejected');
+      // After-only row counting would accept this later success. It is not a replay
+      // of the first attempt, which the guard has already rejected above.
+      sql(`UPDATE app.price_entries SET unit_amount=2400 WHERE tenant_id='${tenant}' AND sku_id='${sku}';`);
+      const retryResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/purchase/api/checkout' && response.request().method() === 'POST');
+      await start(page);
+      const retry = await retryResponse;
+      expect(retry.status()).toBe(201);
+      expect(await retry.request().headerValue('Idempotency-Key')).toBe(key);
+      const created = await retry.json();
+      expect(sql(`SELECT id FROM app.checkout_sessions WHERE tenant_id='${tenant}' AND request_key='${key}';`)).toBe(created.checkout_id);
+      expect(Number(sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}';`))).toBe(Number(before) + 1);
     } finally {
       sql(`UPDATE app.price_entries SET unit_amount=2400 WHERE tenant_id='${tenant}' AND sku_id='${sku}';`);
     }
@@ -177,6 +188,7 @@ test.describe('VISUAL-REAL #213', () => {
     expect(await replay.request().headerValue('Idempotency-Key')).toBe(requestKey);
     expect(await replay.json()).toMatchObject({ checkout_id: committed });
     expect(Number(sql(`SELECT count(*) FROM app.checkout_sessions WHERE tenant_id='${tenant}';`))).toBe(Number(before) + 1);
+    console.log('VISUAL committed replay: first upstream 201, row persisted before retry, same identity/key, exactly one row');
     await snapshot(page, 'checkout-retry');
   });
 

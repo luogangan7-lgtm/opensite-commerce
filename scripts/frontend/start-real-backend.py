@@ -32,6 +32,7 @@ def main():
               PGPASSWORD=unquote(source.password or ''), PGDATABASE=source.path[1:], PGCONNECT_TIMEOUT='10')
     children = []
     provisioned = False
+    bootstrap_owned = False
     owned = ROOT / '.work/visual-real'
     owned.mkdir(parents=True, exist_ok=True)
 
@@ -103,11 +104,13 @@ def main():
         env['OSC_PUBLIC_DATABASE_URL'] = f"host={source.hostname} dbname={database} user=opensite_domain_login password={passwords['DOMAIN']} sslmode=disable"
         # Offline owner bootstrap uses its own temporary capability, never the runtime login.
         boot_password = secrets.token_hex(32)
-        query(f"CREATE ROLE visual_bootstrap LOGIN PASSWORD '{boot_password}'; GRANT app_admin_bootstrap TO visual_bootstrap; GRANT CONNECT ON DATABASE {database} TO visual_bootstrap;")
+        query(f"BEGIN; CREATE ROLE visual_bootstrap LOGIN PASSWORD '{boot_password}'; GRANT app_admin_bootstrap TO visual_bootstrap; GRANT CONNECT ON DATABASE {database} TO visual_bootstrap; COMMIT;")
+        bootstrap_owned = True
         boot_env = {**env, 'OSC_BOOTSTRAP_DATABASE_URL': f'host={source.hostname} dbname={database} user=visual_bootstrap password={boot_password} sslmode=disable',
                     'OSC_BOOTSTRAP_PASSWORD': secrets.token_hex(32)}
         run(['go', 'run', './cmd/bootstrap-admin', '--email', 'visual-owner@example.test', '--tenant-name', 'Visual CI'], boot_env)
         query(f'REVOKE CONNECT ON DATABASE {database} FROM visual_bootstrap; DROP ROLE visual_bootstrap;')
+        bootstrap_owned = False
         run(['go', 'build', '-tags', 'pgx', '-o', str(owned / 'api'), './cmd/api'], env)
         spawn([str(owned / 'api')], env)
         wait('http://127.0.0.1:4180/healthz', 204)
@@ -153,6 +156,8 @@ def main():
         (owned / 'localhost-key.pem').unlink(missing_ok=True)
         pg['PGDATABASE'] = source.path[1:]
         query(f'DROP DATABASE {database} WITH (FORCE);')
+        if bootstrap_owned:
+            query('DROP ROLE visual_bootstrap;')
         # Group roles are cluster-global: remove ONLY logins created by this invocation,
         # after its database/CONNECT grants are gone, before the writer's second launch.
         if provisioned:

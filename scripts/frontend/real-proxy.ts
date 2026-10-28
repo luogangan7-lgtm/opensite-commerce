@@ -42,7 +42,8 @@ Bun.serve({ hostname: '127.0.0.1', port: 4181, idleTimeout: 30, async fetch(requ
       try { await Promise.race([current.pending, new Promise<void>((_, reject) => { timer = setTimeout(() => reject(new Error('Unreleased visual fault')), 15_000); })]); }
       finally { clearTimeout(timer); }
     } else {
-      fault = undefined;
+      // Retain the matched upstream status until explicit release so the browser
+      // can prove a dropped response was a committed 201, rather than a Go error.
       return new Response(null, { status: current.mode === '503' ? 503 : 502 });
     }
   }
