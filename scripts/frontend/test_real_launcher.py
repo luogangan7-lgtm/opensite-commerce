@@ -58,7 +58,7 @@ class LauncherCleanup(unittest.TestCase):
             self.assertIn('drop database', str(caught.exception))
             self.assertIn('drop role visual_cleanup_one', str(caught.exception))
             self.assertIn('REVOKE CONNECT ON DATABASE ' + next(
-                s.split()[2] for s in statements if s.startswith('CREATE DATABASE')) +
+                s.split()[2].rstrip(';') for s in statements if s.startswith('CREATE DATABASE')) +
                 ' FROM visual_cleanup_two;', statements)
             self.assertIn('DROP ROLE visual_bootstrap;', statements)
             self.assertIn('DROP ROLE visual_cleanup_one;', statements)
