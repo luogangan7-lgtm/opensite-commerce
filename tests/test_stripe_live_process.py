@@ -14,7 +14,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 OFFLINE_KEY = 'rk_live_OFFLINE_NOT_A_REAL_CREDENTIAL'
-CANARIES = ('https://invoice.example.test/private-canary', 'owner-canary@example.test',
+CANARIES = (OFFLINE_KEY, 'https://invoice.example.test/private-canary', 'owner-canary@example.test',
             'private-canary@example.test', 'pi_full_private_identifier',
             'in_full_private_identifier', 're_full_private_identifier',
             'pi_offlinepg', 'in_offlinepg', 're_offlinepg', 'acct_offlinepg')

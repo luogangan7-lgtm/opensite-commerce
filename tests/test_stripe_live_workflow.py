@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Responsibility: Environment ownership, workflow byte lock and Go capability gate.
-Dependencies: PyYAML and committed sources; called by normal foundation CI.
+Dependencies: PyYAML, wrapper fixtures and Git-tracked sources; normal foundation CI.
 Invariant: only the pinned live job can enter stripe-live. No provider execution.
 """
 from pathlib import Path
@@ -35,6 +35,9 @@ def validate(sources):
     for filename, body in sources.items():
         document = yaml.safe_load(body)
         for job_id, job in document.get('jobs', {}).items():
+            # A caller cannot expose the called workflow's Environment owners.
+            # Refuse reusable jobs until their complete call graph is scanned.
+            assert 'uses' not in job, 'LIVE_REUSABLE_WORKFLOW_UNSCANNED'
             environment = job.get('environment')
             if isinstance(environment, dict):
                 environment = environment.get('name')
@@ -43,10 +46,13 @@ def validate(sources):
                 admitted.append((filename, job_id))
     assert admitted == [(LIVE.name, 'live')], 'LIVE_ENVIRONMENT_OWNERSHIP'
     assert hashlib.sha256(sources[LIVE.name]).hexdigest() == LIVE_SHA256, 'LIVE_CONTENT_LOCK'
+    paths = [ROOT / name for name in subprocess.check_output(
+        ['git', 'ls-files', '-z', '--', '*.go'], cwd=ROOT, text=True, timeout=10).split('\0')
+        if name and not name.endswith('_test.go')]
     # Literal capability regression guard complements the runtime endpoint/form
     # allowlist. Scan every live production source, not test fixtures/canaries.
-    for path in (ROOT / 'internal/modules/payments').glob('stripe_live*.go'):
-        if path.name.endswith('_test.go'):
+    for path in paths:
+        if path.parent != ROOT / 'internal/modules/payments' or not path.name.startswith('stripe_live'):
             continue
         for match in GO_NON_CODE.finditer(path.read_text()):
             token = match[0]
@@ -54,15 +60,14 @@ def validate(sources):
                 continue
             assert not re.search(r'(?i)(?:confirm|capture|invoice|refund|customer)', token), 'LIVE_NO_MONEY_MOVING_ENDPOINT'
             assert not re.search(r'(?i)(?:^|["`/])payment_methods?(?:/|["`])', token), 'LIVE_NO_MONEY_MOVING_ENDPOINT'
-    for path in ROOT.rglob('*.go'):
-        if path.name.endswith('_test.go'):
-            continue
+    for path in paths:
         code = GO_NON_CODE.sub(' ', path.read_text())
         if path == ROOT / 'internal/modules/payments/stripe_live.go':
             # Exempt only this function's declaration token, never its body,
             # another same-named file, a call, or a constructor function value.
             code = re.sub(r'(\bfunc\s+)NewStripeLiveSmoke(?=\s*\()', r'\1DECLARATION', code, count=1)
         assert not re.search(r'\bNewStripeLiveSmoke\b', code), 'LIVE_NO_PRODUCTION_COMPOSITION'
+    return admitted
 
 
 class LiveWorkflowGate(unittest.TestCase):
@@ -93,7 +98,7 @@ class LiveWorkflowGate(unittest.TestCase):
         exec(compile(source.replace(guard, '', 1), runner.__file__, 'exec'), namespace)
         with patch.object(runner, 'main', namespace['main']):
             with self.assertRaises(AssertionError):
-                output_tests.OutputCanaries().test_R_requires_original_run_before_child()
+                output_tests.OutputCanaries().test_removed_phase_R_refused_before_child()
 
     def test_every_environment_name_must_be_literal(self):
         original = workflows()
@@ -164,7 +169,9 @@ class LiveWorkflowGate(unittest.TestCase):
                 }, 'steps': [{'run': 'true'}]}}}
                 if environment is not None:
                     other['jobs']['probe']['environment'] = environment
-                validate({**original, 'other.yml': yaml.safe_dump(other).encode()})
+                admitted = validate({**original, 'other.yml': yaml.safe_dump(other).encode()})
+                self.assertEqual(admitted, [(LIVE.name, 'live')])
+                self.assertNotIn(('other.yml', 'probe'), admitted, 'other job owns no live Environment secrets')
 
     def test_every_workflow_is_parsed_as_yaml(self):
         for filename in ('another.yml', 'another.yaml'):
