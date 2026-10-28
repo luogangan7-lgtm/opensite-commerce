@@ -1,7 +1,7 @@
 /** Rejects missing/orphan/tampered per-PNG records and unpinned renderers; CI calls this before artifact authority
  * and the candidate comparison. It does not compare input fingerprints (C-08d): pixels decide staleness. */
 import { checkedRecords, pngHashes } from './baseline-provenance';
-import { assertDistinctHistoryPngs } from './real-visual-manifest';
+import { assertDistinctHistoryPngs } from './real-visual-shared-render-manifest';
 try {
   const records = checkedRecords();
   assertDistinctHistoryPngs(pngHashes());

@@ -4,7 +4,8 @@
 import { expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { BASELINES, sha256 } from './baseline-provenance';
-import { REAL_VISUAL_STATES, assertDistinctHistoryPngs, realVisualPaths, realBackendEvidence } from './real-visual-manifest';
+import { REAL_VISUAL_STATES, realVisualPaths, realBackendEvidence } from './real-visual-manifest';
+import { assertDistinctHistoryPngs } from './real-visual-shared-render-manifest';
 
 test('VISUAL-REAL requires every issue state in desktop and mobile', () => {
   for (const snapshot of realVisualPaths()) {
