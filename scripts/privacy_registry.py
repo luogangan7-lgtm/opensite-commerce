@@ -165,31 +165,62 @@ def validate_catalog(registry, rows):
 
 # This is a declarative contract, never a SQL/path interpreter or erasure engine.
 # Bootstrap/owner handlers consume the version+digest in later MDEL cards.
-MERCHANT_STRATEGIES = {"delete_row", "unchanged", "constant", "row_id_placeholder",
+MERCHANT_STRATEGIES = {"delete_row", "unchanged", "constant", "row_id_placeholder", "row_json_template",
                        "database_time", "fixed_enum", "generated_from", "actor_placeholder",
                        "financial_source_id", "financial_event", "financial_account_code", "unlink_tenant_namespace"}
-ARTIFACT_MARKER = re.compile(r"^// privacy-artifact: ([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)$", re.M)
-FILE_WRITER = re.compile(r"(?:\bos\.(?:Create|CreateTemp|WriteFile|OpenFile)|\.OpenFile)\s*\(")
+# Explicitly reviewed integrity witnesses, never a name/classification heuristic.
+# DATA_RIGHTS/MERCHANT_DELETION permit these existing financial request/evidence
+# hashes; tenant credentials (even declared as financial digests) are erased.
+FINANCIAL_DIGESTS = {
+    "orders.request_hash", "checkout_sessions.request_hash", "checkout_attempts.request_hash",
+    "inventory_reservations.request_hash", "shipments.request_hash", "returns.request_hash",
+    "returns.receive_hash", "returns.refund_hash", "webhook_inbox.payload_hash",
+    "payment_refund_cases.evidence_hash", "payment_refund_case_resolutions.evidence_hash",
+}
 
 
 def artifact_catalog(root):
-    """Reconcile source-owned persistent writers, including orphan/temp bytes.
-
-    Explicit annotations declare artifact kinds; names never imply ownership.
-    A new unannotated internal filesystem writer fails closed. This is a source
-    inventory, not evidence of runtime erasure or an on-disk namespace scan.
-    """
+    """Type-resolved OS writers with a separate annotation at every call site."""
+    scanner = Path(__file__).resolve().parent / "privacywriters"
+    try:
+        scan = subprocess.run(["go", "run", str(scanner), str(root)], cwd=scanner.parents[1],
+                              text=True, capture_output=True, timeout=180)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ValueError("MERCHANT_ARTIFACT_SCAN: Go inventory unavailable") from error
+    require(scan.returncode == 0, "MERCHANT_ARTIFACT_WRITER", "Go call-site inventory failed: " + scan.stderr.strip())
     result = {}
-    for path in sorted((root / "internal").rglob("*.go")):
-        if path.name.endswith("_test.go"):
-            continue
-        source = path.read_text()
-        markers = ARTIFACT_MARKER.findall(source)
-        require(not FILE_WRITER.search(source) or markers, "MERCHANT_ARTIFACT_WRITER", str(path.relative_to(root)))
-        for name in markers:
+    for call in json.loads(scan.stdout):
+        require(call["artifacts"], "MERCHANT_ARTIFACT_WRITER", f"{call['path']}:{call['line']}")
+        for name in call["artifacts"]:
             require(name not in result, "MERCHANT_ARTIFACT_DUPLICATE", name)
-            result[name] = path.relative_to(root).as_posix()
+            result[name] = call["path"]
     return result
+
+
+def validate_json_template(key, value, registry):
+    """Bounded JSON scalars plus row UUID and reviewed financial source cells.
+
+    This validates a declaration only; it never evaluates SQL or original text.
+    Same-row financial sources are retained typed facts, never contact payloads.
+    """
+    require(isinstance(value, dict) and value, "MERCHANT_JSON_TEMPLATE", key)
+    for name, item in value.items():
+        require(isinstance(name, str) and IDENTIFIER.fullmatch(name), "MERCHANT_JSON_TEMPLATE", key)
+        if isinstance(item, dict):
+            require(set(item) == {"column"} and isinstance(item["column"], str) and
+                    IDENTIFIER.fullmatch(item["column"]), "MERCHANT_JSON_TEMPLATE", key)
+            source = registry.get(field_key(*field_parts(key)[:2], item["column"]), {})
+            retained = source.get("merchant_deletion", {})
+            require(source.get("classification") in {"financial_non_contact", "financial_obligation"} and
+                    retained.get("action") == "retain" and retained.get("strategy") == "unchanged" and
+                    retained.get("retained_kind") == "financial" and retained.get("value_type") in {"integer", "currency"},
+                    "MERCHANT_JSON_TEMPLATE", key)
+        elif isinstance(item, str):
+            require(not re.search(r"[{}]", item.replace("{id}", "")) and
+                    ("{id}" not in item or field_key(*field_parts(key)[:2], "id") in registry),
+                    "MERCHANT_JSON_TEMPLATE", key)
+        else:
+            require(item is None or type(item) in {bool, int}, "MERCHANT_JSON_TEMPLATE", key)
 
 
 def merchant_policy(key, policy, module, registry, handlers, artifact=False):
@@ -230,7 +261,7 @@ def merchant_policy(key, policy, module, registry, handlers, artifact=False):
         require(False, "MERCHANT_OWNERSHIP_UNKNOWN", key)
     if "preserve_null" in policy:
         require(type(policy["preserve_null"]) is bool and policy["action"] == "erase" and
-                strategy in {"constant", "row_id_placeholder"}, "MERCHANT_NULL_POLICY", key)
+                strategy in {"constant", "row_id_placeholder", "row_json_template"}, "MERCHANT_NULL_POLICY", key)
     if artifact:
         require(policy["action"] == "erase" and strategy == "unlink_tenant_namespace", "MERCHANT_ARTIFACT_POLICY", key)
     if policy["action"] == "retain":
@@ -238,8 +269,11 @@ def merchant_policy(key, policy, module, registry, handlers, artifact=False):
                 "MERCHANT_RETENTION_INVALID", key)
         require(policy.get("value_type") in {"uuid", "integer", "currency", "timestamp", "boolean", "digest", "opaque_ref", "enum", "global"},
                 "MERCHANT_RETAIN_TYPE", key)
+        if policy["value_type"] == "digest":
+            require(key in FINANCIAL_DIGESTS and policy["retained_kind"] == "financial", "MERCHANT_PERSONAL_RETAIN", key)
         if not artifact and registry[key]["classification"] in PII | {"secret_hash"}:
-            require(kind == "global_exclusion" or policy["value_type"] == "digest" and
+            require(kind == "global_exclusion" or registry[key]["classification"] == "secret_hash" and
+                    key in FINANCIAL_DIGESTS and policy["value_type"] == "digest" and
                     policy["retained_kind"] == "financial", "MERCHANT_PERSONAL_RETAIN", key)
         require((kind == "global_exclusion") == (policy["retained_kind"] == "global") and
                 (kind == "global_exclusion" or policy["value_type"] != "global"), "MERCHANT_RETAIN_TYPE", key)
@@ -262,6 +296,8 @@ def merchant_policy(key, policy, module, registry, handlers, artifact=False):
             require(isinstance(policy["value"], str) and "{id}" in policy["value"] and
                     field_key(*field_parts(key)[:2], "id") in registry,
                     "MERCHANT_SCRUB_VALUE", key)
+        if strategy == "row_json_template":
+            validate_json_template(key, policy.get("value"), registry)
         if strategy == "generated_from":
             source = policy.get("value")
             require(isinstance(source, str) and source in registry and

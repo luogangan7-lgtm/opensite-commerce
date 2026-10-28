@@ -2,8 +2,6 @@
 // access, rejects symlinks, bounds bytes, writes 0600 atomically with fsync.
 // Called by data-rights service under customer/request locks; the periodic
 // sweeper shares its export-ID advisory lock with construction.
-// privacy-artifact: datarights.customer_export
-// privacy-artifact: datarights.export_temp
 package service
 
 import (
@@ -82,6 +80,8 @@ func (s *Service) write(tenant, id string, b []byte) error {
 		}
 	}
 	tmp := p + "." + uuid.NewString() + ".tmp"
+	// privacy-artifact: datarights.customer_export
+	// privacy-artifact: datarights.export_temp
 	f, e := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if e != nil {
 		return e

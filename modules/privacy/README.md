@@ -66,7 +66,7 @@ exact `strategy`, its owning `handler` and an explicit `ownership`:
 `retain` requires `unchanged`, an explicit retained kind
 (`financial`/`witness`/`control`/`global`) and a value type. Fixed enums enumerate
 their values. Tenant personal/contact fields cannot be retained; frozen financial
-request/evidence digests are distinct from credentials. Financial references are
+request/evidence digests are distinct from credentials. `FINANCIAL_DIGESTS` explicitly lists the reviewed integrity columns; declaring an API-key/password hash as a financial digest never permits retention. Financial references are
 opaque provider/recovery identities under DATA_RIGHTS, never customer-entered
 notes. Conservation amounts, currencies, states, timestamps, IDs and necessary
 FK witnesses survive. Nonfinancial parent payloads are scrubbed; only referenced
@@ -77,7 +77,7 @@ Nullable financial receipt cells explicitly set `preserve_null: true`: leave
 an original null unchanged and replace only an existing value. In particular,
 registered orders must keep `guest_contact IS NULL`, and pending Checkout
 receipts must not invent a nonnull start/final result. This flag is allowed only
-for constant/row-ID scrubs, not retention or artifact deletion.
+for constant/row-ID/row-JSON scrubs, not retention or artifact deletion.
 
 Erasure strategies are declarative, never executable SQL from JSON:
 
@@ -86,6 +86,7 @@ Erasure strategies are declarative, never executable SQL from JSON:
 | `delete_row` | Delete the owned row in the declared local leaf-before-parent order. All columns assigned to that same work item must agree on row deletion. |
 | `constant` | Replace with the exact JSON `value`, including explicit null; scrub guards must admit only that change. |
 | `row_id_placeholder` | Substitute only the row's canonical UUID into the declared `{id}` template. Preserve uniqueness, never interpolate original text. |
+| `row_json_template` | Build the declared flat JSON object using only fixed scalars, `{id}` UUID substitution, and `{"column": "name"}` references to same-row retained financial integer/currency facts. Never copy original contact objects or execute SQL. Orders guest contact uses `erased-<row UUID>@invalid.test` (preserving NULL); shipping keeps `shipping_minor` as `amount_minor` and the original `currency`, matching the unchanged privacy trigger. |
 | `database_time` | Replace the original nonfinancial timestamp with the DB erasure time sampled after the tenant fence. |
 | `generated_from` | Scrub the named same-table source; let the stored generated expression recompute. Never write a generated column. |
 | `fixed_enum` | Keep an enumerated fixed code; replace any other text with the declared enum fallback. |
@@ -201,3 +202,15 @@ not OCR, image pixels, provider systems, logs or backups.
 Only GitHub CI runs database gates. Local tests, gates, containers and builds are
 NOT_RUN under the owner's CI-only rule. Removing this contract is a code-only
 rollback and does not alter a database migration or business write path.
+
+The append-only `data_rights_erasures.scope` remains the existing fixed control
+enum. Merchant deletion issues no UPDATE/DELETE against the erasure journal;
+its immutable trigger remains authoritative. Catalog option keys use stable
+`erased:{id}` replacements, preserving multiple variants and their financial FKs.
+
+Artifact inventory uses `scripts/privacywriters` and Go AST/type information to
+identify `os` and `(*os.Root)` Create/CreateTemp/WriteFile/OpenFile calls. Each
+writer needs its artifact comment group immediately before that call's line;
+a file-level marker cannot authorize another call. Multiple calls on that line
+cannot share a marker. Standalone synthetic fixtures are scanned conservatively
+by selector name. This is source inventory, not proof of runtime bytes removal.

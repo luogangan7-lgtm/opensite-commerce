@@ -3,8 +3,6 @@
 // Called by cmd/dev-api and storage tests; uses only the standard filesystem APIs.
 // New/Put/Remove acknowledge success only after affected directories are synced.
 // Never expose raw keys in a public URL; use an authorized media service.
-// privacy-artifact: media.originals
-// privacy-artifact: media.staging
 package local
 
 import (
@@ -78,6 +76,8 @@ func (s *Store) Put(ctx context.Context, src io.Reader) (Blob, error) {
 	if err := ctx.Err(); err != nil {
 		return zero, err
 	}
+	// privacy-artifact: media.originals
+	// privacy-artifact: media.staging
 	f, err := os.CreateTemp(filepath.Join(s.root, "staging"), "upload-*")
 	if err != nil {
 		return zero, err

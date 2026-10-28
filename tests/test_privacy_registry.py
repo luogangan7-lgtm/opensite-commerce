@@ -696,6 +696,32 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
                     self.gate.artifact_catalog(root)
 
+    def test_os_root_types_aliases_and_inactive_files_are_inventoried(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+            (root / "internal").mkdir()
+            source = root / "internal/probe.go"
+            source.write_text('''package probe
+import fs "os"
+type business struct{}
+func (business) Create(string) {}
+func write(r *fs.Root, b business) {
+ // privacy-artifact: orders.archive
+ r.Create("private")
+ b.Create("business")
+ _ = "os.Create(quoted)"
+}
+''')
+            self.assertEqual(self.gate.artifact_catalog(root), {"orders.archive": "internal/probe.go"})
+            (root / "internal/tagged.go").write_text('''//go:build privacy_future
+package probe
+import "os"
+func future(r *os.Root) { r.WriteFile("unregistered", nil, 0600) }
+''')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER"):
+                self.gate.artifact_catalog(root)
+
     def test_credential_or_personal_hash_cannot_claim_financial_retention(self):
         registry = self.gate.load_registry(ROOT)
         handlers = self.load(ROOT)["handlers"]
@@ -703,6 +729,8 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
             with self.subTest(key=key):
                 field = registry[key]
                 policy = copy.deepcopy(field["merchant_deletion"])
+                policy.pop("preserve_null", None)
+                policy.pop("value", None)
                 policy.update(action="retain", strategy="unchanged", retained_kind="financial", value_type="digest")
                 with self.assertRaisesRegex(ValueError, "MERCHANT_PERSONAL_RETAIN"):
                     self.gate.merchant_policy(key, policy, field["module"], registry, handlers)
