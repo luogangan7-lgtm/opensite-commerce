@@ -492,6 +492,108 @@ class MerchantDeletionRegistryTests(unittest.TestCase):
     """MDEL-00: mandatory merchant policy is independent of customer retention."""
     setUpClass = PrivacyRegistryTests.__dict__["setUpClass"]
 
+    def opaque_gate(self, root, registry):
+        validate = getattr(self.gate, "validate_opaque_provenance", None)
+        self.assertTrue(callable(validate), "MERCHANT_OPAQUE_PROVENANCE: executable provenance gate is missing")
+        return validate(root, registry)
+
+    def opaque_fixture(self, root, guard=None):
+        # Actual Go syntax, not scanner output or policy metadata: comments and
+        # an unrelated local regex must never stand in for the shared guard.
+        guard = guard if guard is not None else '''if requiresKey {
+            if _, err := idempotency.ValidateKey(r.Header); err != nil {
+                WriteProblem(w, r, err)
+                return
+            }
+        }'''
+        folder = root / "internal/platform/httpapi"
+        folder.mkdir(parents=True)
+        source = '''package httpapi
+import (
+    "net/http"
+    "strings"
+    "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
+)
+func requiresIdempotencyKey(spec RouteSpec) (bool, error) {
+    doc, err := GetSwagger()
+    if err != nil { return false, err }
+    item := doc.Paths.Value(spec.Pattern)
+    if item == nil { return false, errMissingContract }
+    op := item.GetOperation(spec.Method)
+    if op == nil { return false, errMissingContract }
+    parameters := append(append(Parameters{}, item.Parameters...), op.Parameters...)
+    for _, parameter := range parameters {
+        if parameter.Value != nil && parameter.Value.In == "header" && strings.EqualFold(parameter.Value.Name, "Idempotency-Key") {
+            return true, nil
+        }
+    }
+    return false, nil
+}
+func (s *Router) Register(spec RouteSpec, handler http.Handler) error {
+    requiresKey, err := requiresIdempotencyKey(spec)
+    if err != nil { return err }
+    s.mux.Handle(spec.Method+" "+spec.Pattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        GUARD
+        handler.ServeHTTP(w, r)
+    }))
+    return nil
+}
+'''.replace("GUARD", guard)
+        (folder / "router.go").write_text(source)
+        return {"returns.refund_key": {"merchant_deletion": {
+            "action": "retain", "strategy": "unchanged", "value_type": "opaque_ref",
+        }}}
+
+    def test_opaque_reference_provenance_accepts_shared_fail_closed_admission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            registry = self.opaque_fixture(root)
+            self.opaque_gate(root, registry)
+
+    def test_opaque_reference_provenance_rejects_unchecked_or_local_validation(self):
+        mutants = {
+            "absent": "",
+            "comment": "// if _, err := idempotency.ValidateKey(r.Header); err != nil { return }",
+            "ignored_error": "_, _ = idempotency.ValidateKey(r.Header)",
+            "no_return": "if requiresKey { if _, err := idempotency.ValidateKey(r.Header); err != nil { WriteProblem(w,r,err) } }",
+            "local_copy": "if requiresKey { if !localUUID.MatchString(r.Header.Get(\"Idempotency-Key\")) { return } }",
+            "after_write": "handler.ServeHTTP(w,r); if requiresKey { if _, err := idempotency.ValidateKey(r.Header); err != nil { return } }",
+            "false_branch": "if false { if _, err := idempotency.ValidateKey(r.Header); err != nil { return } }",
+            "wrong_header": "if requiresKey { if _, err := idempotency.ValidateKey(http.Header{}); err != nil { return } }",
+        }
+        for name, guard in mutants.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                registry = self.opaque_fixture(root, guard)
+                with self.assertRaisesRegex(ValueError, "MERCHANT_OPAQUE_PROVENANCE"):
+                    self.opaque_gate(root, registry)
+
+    def test_opaque_reference_provenance_rejects_unreviewed_column_and_direct_writer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            registry = self.opaque_fixture(root)
+            registry["returns.caller_text"] = copy.deepcopy(registry["returns.refund_key"])
+            with self.assertRaisesRegex(ValueError, "MERCHANT_OPAQUE_PROVENANCE.*returns.caller_text"):
+                self.opaque_gate(root, registry)
+            del registry["returns.caller_text"]
+            (root / "internal/probe.go").write_text('''package probe
+func write(tx Tx, r Request) {
+    tx.Exec("UPDATE app.returns SET refund_key=$1", r.Body.CallerText)
+}
+''')
+            with self.assertRaisesRegex(ValueError, "MERCHANT_OPAQUE_PROVENANCE.*writer"):
+                self.opaque_gate(root, registry)
+
+    def test_opaque_reference_provenance_checks_contract_lookup_not_only_guard_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            registry = self.opaque_fixture(root)
+            path = root / "internal/platform/httpapi/router.go"
+            path.write_text(path.read_text().replace(
+                "requiresKey, err := requiresIdempotencyKey(spec)", "requiresKey, err := false, error(nil)"))
+            with self.assertRaisesRegex(ValueError, "MERCHANT_OPAQUE_PROVENANCE"):
+                self.opaque_gate(root, registry)
+
     def fixture(self, root):
         body = document()
         body["merchant_deletion"] = {

@@ -30,6 +30,24 @@ func TestValidateKey(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalUUIDBoundary(t *testing.T) {
+	const lower = "abcdefab-cdef-abcd-efab-cdefabcdefab"
+	for _, key := range []string{lower, strings.ToUpper(lower)} {
+		header := http.Header{"Idempotency-Key": {key}}
+		got, err := ValidateKey(header)
+		if err != nil || got != lower || header.Get("Idempotency-Key") != lower {
+			t.Fatalf("canonical UUID must normalize before downstream decoding: got=%q header=%q err=%v", got, header.Get("Idempotency-Key"), err)
+		}
+	}
+	for _, key := range []string{"alice@example.test", "ordinary-key", strings.ReplaceAll(lower, "-", ""), "{" + lower + "}", "urn:uuid:" + lower, lower + " ", " " + lower, "abcdefab-cdef-abcd-efab-cdefabcdefag"} {
+		_, err := ValidateKey(http.Header{"Idempotency-Key": {key}})
+		var problem *apperrors.Error
+		if !errors.As(err, &problem) || problem.Status != 400 || problem.Code != "invalid_idempotency_key" {
+			t.Errorf("non-UUID caller key %q accepted: %v", key, err)
+		}
+	}
+}
 func TestFingerprintAxesCanonicalAndRawBody(t *testing.T) {
 	base := Fingerprint("POST", "/sites/{id}", map[string]string{"tenant_id": "t", "id": "a"}, url.Values{"z": {"2", "1"}, "a": {"x"}}, []byte(`{"a":1}`))
 	q := url.Values{"a": {"x"}, "z": {"1", "2"}}
